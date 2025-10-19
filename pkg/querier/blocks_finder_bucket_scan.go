@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"maps"
 	"path"
 	"path/filepath"
 	"sort"
@@ -11,10 +12,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -23,6 +25,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
@@ -56,7 +59,7 @@ type BucketScanBlocksFinder struct {
 	logger          log.Logger
 	bucketClient    objstore.Bucket
 	fetchersMetrics *storegateway.MetadataFetcherMetrics
-	usersScanner    *cortex_tsdb.UsersScanner
+	usersScanner    users.Scanner
 
 	// We reuse the metadata fetcher instance for a given tenant both because of performance
 	// reasons (the fetcher keeps a in-memory cache) and being able to collect and group metrics.
@@ -73,18 +76,18 @@ type BucketScanBlocksFinder struct {
 	scanLastSuccess prometheus.Gauge
 }
 
-func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient objstore.Bucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
+func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, usersScanner users.Scanner, bucketClient objstore.InstrumentedBucket, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) *BucketScanBlocksFinder {
 	d := &BucketScanBlocksFinder{
 		cfg:               cfg,
 		cfgProvider:       cfgProvider,
 		logger:            logger,
 		bucketClient:      bucketClient,
 		fetchers:          make(map[string]userFetcher),
-		usersScanner:      cortex_tsdb.NewUsersScanner(bucketClient, cortex_tsdb.AllUsers, logger),
 		userMetas:         make(map[string]bucketindex.Blocks),
 		userMetasLookup:   make(map[string]map[ulid.ULID]*bucketindex.Block),
 		userDeletionMarks: map[string]map[ulid.ULID]*bucketindex.BlockDeletionMark{},
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
+		usersScanner:      usersScanner,
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_querier_blocks_scan_duration_seconds",
 			Help:    "The total time it takes to run a full blocks scan across the storage.",
@@ -110,7 +113,7 @@ func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, bucketClient ob
 
 // GetBlocks returns known blocks for userID containing samples within the range minT
 // and maxT (milliseconds, both included). Returned blocks are sorted by MaxTime descending.
-func (d *BucketScanBlocksFinder) GetBlocks(_ context.Context, userID string, minT, maxT int64) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
+func (d *BucketScanBlocksFinder) GetBlocks(_ context.Context, userID string, minT, maxT int64, _ []*labels.Matcher) (bucketindex.Blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark, error) {
 	// We need to ensure the initial full bucket scan succeeded.
 	if d.State() != services.Running {
 		return nil, nil, errBucketScanBlocksFinderNotRunning
@@ -183,7 +186,8 @@ func (d *BucketScanBlocksFinder) scanBucket(ctx context.Context) (returnErr erro
 	}(time.Now())
 
 	// Discover all users first. This helps cacheability of the object store call.
-	userIDs, _, err := d.usersScanner.ScanUsers(ctx)
+	// Only active users are considered.
+	userIDs, _, _, err := d.usersScanner.ScanUsers(ctx)
 	if err != nil {
 		return err
 	}
@@ -254,17 +258,11 @@ pushJobsLoop:
 	} else {
 		// If an error occurred, we prefer to partially update the metas map instead of
 		// not updating it at all. At least we'll update blocks for the successful tenants.
-		for userID, metas := range resMetas {
-			d.userMetas[userID] = metas
-		}
+		maps.Copy(d.userMetas, resMetas)
 
-		for userID, metas := range resMetasLookup {
-			d.userMetasLookup[userID] = metas
-		}
+		maps.Copy(d.userMetasLookup, resMetasLookup)
 
-		for userID, deletionMarks := range resDeletionMarks {
-			d.userDeletionMarks[userID] = deletionMarks
-		}
+		maps.Copy(d.userDeletionMarks, resDeletionMarks)
 	}
 	d.userMx.Unlock()
 

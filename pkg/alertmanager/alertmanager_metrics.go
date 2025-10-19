@@ -30,6 +30,8 @@ type alertmanagerMetrics struct {
 	nflogQueryErrorsTotal        *prometheus.Desc
 	nflogQueryDuration           *prometheus.Desc
 	nflogPropagatedMessagesTotal *prometheus.Desc
+	nflogMaintenanceTotal        *prometheus.Desc
+	nflogMaintenanceErrorsTotal  *prometheus.Desc
 
 	// exported metrics, gathered from Alertmanager Marker
 	markerAlerts *prometheus.Desc
@@ -43,6 +45,8 @@ type alertmanagerMetrics struct {
 	silencesQueryDuration           *prometheus.Desc
 	silences                        *prometheus.Desc
 	silencesPropagatedMessagesTotal *prometheus.Desc
+	silencesMaintenanceTotal        *prometheus.Desc
+	silencesMaintenanceErrorsTotal  *prometheus.Desc
 
 	// The alertmanager config hash.
 	configHashValue *prometheus.Desc
@@ -127,6 +131,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_nflog_gossip_messages_propagated_total",
 			"Number of received gossip messages that have been further gossiped.",
 			nil, nil),
+		nflogMaintenanceTotal: prometheus.NewDesc(
+			"cortex_alertmanager_nflog_maintenance_total",
+			"How many maintenances were executed for the notification log.",
+			nil, nil),
+		nflogMaintenanceErrorsTotal: prometheus.NewDesc(
+			"cortex_alertmanager_nflog_maintenance_errors_total",
+			"How many maintenances were executed for the notification log that failed.",
+			nil, nil),
 		markerAlerts: prometheus.NewDesc(
 			"cortex_alertmanager_alerts",
 			"How many alerts by state.",
@@ -163,6 +175,14 @@ func newAlertmanagerMetrics() *alertmanagerMetrics {
 			"cortex_alertmanager_silences",
 			"How many silences by state.",
 			[]string{"user", "state"}, nil),
+		silencesMaintenanceTotal: prometheus.NewDesc(
+			"cortex_alertmanager_silences_maintenance_total",
+			"How many maintenances were executed for silences.",
+			nil, nil),
+		silencesMaintenanceErrorsTotal: prometheus.NewDesc(
+			"cortex_alertmanager_silences_maintenance_errors_total",
+			"How many maintenances were executed for silences that failed.",
+			nil, nil),
 		configHashValue: prometheus.NewDesc(
 			"cortex_alertmanager_config_hash",
 			"Hash of the currently loaded alertmanager configuration.",
@@ -268,6 +288,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.nflogQueryErrorsTotal
 	out <- m.nflogQueryDuration
 	out <- m.nflogPropagatedMessagesTotal
+	out <- m.nflogMaintenanceTotal
+	out <- m.nflogMaintenanceErrorsTotal
 	out <- m.silencesGCDuration
 	out <- m.silencesSnapshotDuration
 	out <- m.silencesSnapshotSize
@@ -276,6 +298,8 @@ func (m *alertmanagerMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- m.silencesQueryDuration
 	out <- m.silencesPropagatedMessagesTotal
 	out <- m.silences
+	out <- m.silencesMaintenanceTotal
+	out <- m.silencesMaintenanceErrorsTotal
 	out <- m.configHashValue
 	out <- m.partialMerges
 	out <- m.partialMergesFailed
@@ -317,6 +341,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, m.nflogQueryErrorsTotal, "alertmanager_nflog_query_errors_total")
 	data.SendSumOfHistograms(out, m.nflogQueryDuration, "alertmanager_nflog_query_duration_seconds")
 	data.SendSumOfCounters(out, m.nflogPropagatedMessagesTotal, "alertmanager_nflog_gossip_messages_propagated_total")
+	data.SendSumOfCounters(out, m.nflogMaintenanceTotal, "alertmanager_nflog_maintenance_total")
+	data.SendSumOfCounters(out, m.nflogMaintenanceErrorsTotal, "alertmanager_nflog_maintenance_errors_total")
 
 	data.SendSumOfSummaries(out, m.silencesGCDuration, "alertmanager_silences_gc_duration_seconds")
 	data.SendSumOfSummaries(out, m.silencesSnapshotDuration, "alertmanager_silences_snapshot_duration_seconds")
@@ -326,6 +352,8 @@ func (m *alertmanagerMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfHistograms(out, m.silencesQueryDuration, "alertmanager_silences_query_duration_seconds")
 	data.SendSumOfCounters(out, m.silencesPropagatedMessagesTotal, "alertmanager_silences_gossip_messages_propagated_total")
 	data.SendSumOfGaugesPerUserWithLabels(out, m.silences, "alertmanager_silences", "state")
+	data.SendSumOfCounters(out, m.silencesMaintenanceTotal, "alertmanager_silences_maintenance_total")
+	data.SendSumOfCounters(out, m.silencesMaintenanceErrorsTotal, "alertmanager_silences_maintenance_errors_total")
 
 	data.SendMaxOfGaugesPerUser(out, m.configHashValue, "alertmanager_config_hash")
 

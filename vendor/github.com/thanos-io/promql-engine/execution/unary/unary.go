@@ -6,15 +6,14 @@ package unary
 import (
 	"context"
 	"sync"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
-	"gonum.org/v1/gonum/floats"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
+	"gonum.org/v1/gonum/floats"
 )
 
 type unaryNegation struct {
@@ -22,16 +21,13 @@ type unaryNegation struct {
 	once sync.Once
 
 	series []labels.Labels
-	telemetry.OperatorTelemetry
 }
 
 func NewUnaryNegation(next model.VectorOperator, opts *query.Options) (model.VectorOperator, error) {
 	u := &unaryNegation{
 		next: next,
 	}
-	u.OperatorTelemetry = telemetry.NewTelemetry(u, opts)
-
-	return u, nil
+	return telemetry.NewOperator(telemetry.NewTelemetry(u, opts), u), nil
 }
 
 func (u *unaryNegation) Explain() (next []model.VectorOperator) {
@@ -43,9 +39,6 @@ func (u *unaryNegation) String() string {
 }
 
 func (u *unaryNegation) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := u.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -74,9 +67,6 @@ func (u *unaryNegation) GetPool() *model.VectorPool {
 }
 
 func (u *unaryNegation) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -92,6 +82,13 @@ func (u *unaryNegation) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 	for i := range in {
 		floats.Scale(-1, in[i].Samples)
+		negateHistograms(in[i].Histograms)
 	}
 	return in, nil
+}
+
+func negateHistograms(hists []*histogram.FloatHistogram) {
+	for i := range hists {
+		hists[i] = hists[i].Copy().Mul(-1)
+	}
 }

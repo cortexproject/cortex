@@ -3,15 +3,14 @@ package validation
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/pkg/errors"
-
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var allowedIntegrationNames = []string{
 	"webhook", "email", "pagerduty", "opsgenie", "wechat", "slack", "victorops", "pushover", "sns", "telegram", "discord", "webex",
-	"msteams",
+	"msteams", "msteamsv2", "jira", "rocketchat",
 }
 
 type NotificationRateLimitMap map[string]float64
@@ -32,7 +31,7 @@ func (m NotificationRateLimitMap) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(any) error) error {
 	newMap := map[string]float64{}
 	return m.updateMap(unmarshal(newMap), newMap)
 }
@@ -43,7 +42,7 @@ func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[strin
 	}
 
 	for k, v := range newMap {
-		if !util.StringsContain(allowedIntegrationNames, k) {
+		if !slices.Contains(allowedIntegrationNames, k) {
 			return errors.Errorf("unknown integration name: %s", k)
 		}
 		m[k] = v
@@ -52,6 +51,6 @@ func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[strin
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (m NotificationRateLimitMap) MarshalYAML() (interface{}, error) {
+func (m NotificationRateLimitMap) MarshalYAML() (any, error) {
 	return map[string]float64(m), nil
 }

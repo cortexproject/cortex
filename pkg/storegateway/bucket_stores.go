@@ -6,22 +6,23 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/gate"
+	thanos_model "github.com/thanos-io/thanos/pkg/model"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
@@ -34,6 +35,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
@@ -81,6 +83,8 @@ type BucketStores struct {
 	userTokenBucketsMu sync.RWMutex
 	userTokenBuckets   map[string]*util.TokenBucket
 
+	userScanner users.Scanner
+
 	// Keeps number of inflight requests
 	inflightRequestCnt int
 	inflightRequestMu  sync.RWMutex
@@ -97,7 +101,7 @@ var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many
 // NewBucketStores makes a new BucketStores.
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*BucketStores, error) {
 	matchers := tsdb.NewMatchers()
-	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, matchers, bucketClient, logger, reg)
+	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, tsdb.ParquetLabelsCacheConfig{}, matchers, bucketClient, logger, reg)
 	if err != nil {
 		return nil, errors.Wrapf(err, "create caching bucket")
 	}
@@ -141,6 +145,10 @@ func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStra
 			Name: "cortex_bucket_stores_tenants_synced",
 			Help: "Number of tenants synced.",
 		}),
+	}
+	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
 	u.matcherCache = storecache.NoopMatchersCache
@@ -242,9 +250,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 	errs := tsdb_errors.NewMulti()
 	errsMx := sync.Mutex{}
 
-	// Scan users in the bucket. In case of error, it may return a subset of users. If we sync a subset of users
-	// during a periodic sync, we may end up unloading blocks for users that still belong to this store-gateway
-	// so we do prefer to not run the sync at all.
+	// Scan users in the bucket.
 	userIDs, err := u.scanUsers(ctx)
 	if err != nil {
 		return err
@@ -326,7 +332,7 @@ func (u *BucketStores) syncUsersBlocks(ctx context.Context, f func(context.Conte
 // Series makes a series request to the underlying user bucket store.
 func (u *BucketStores) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
 	spanLog, spanCtx := spanlogger.New(srv.Context(), "BucketStores.Series")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -387,7 +393,7 @@ func (u *BucketStores) decrementInflightRequestCnt() {
 // LabelNames implements the Storegateway proto service.
 func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelNames")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -417,7 +423,7 @@ func (u *BucketStores) LabelNames(ctx context.Context, req *storepb.LabelNamesRe
 // LabelValues implements the Storegateway proto service.
 func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.LabelValues")
-	defer spanLog.Span.Finish()
+	defer spanLog.Finish()
 
 	userID := getUserIDFromGRPCContext(spanCtx)
 	if userID == "" {
@@ -442,20 +448,33 @@ func (u *BucketStores) LabelValues(ctx context.Context, req *storepb.LabelValues
 	return store.LabelValues(ctx, req)
 }
 
-// scanUsers in the bucket and return the list of found users. If an error occurs while
-// iterating the bucket, it may return both an error and a subset of the users in the bucket.
+// scanUsers in the bucket and return the list of found users. It includes active and deleting users
+// but not deleted users.
 func (u *BucketStores) scanUsers(ctx context.Context) ([]string, error) {
-	var users []string
-
-	// Iterate the bucket to find all users in the bucket. Due to how the bucket listing
-	// caching works, it's more likely to have a cache hit if there's no delay while
-	// iterating the bucket, so we do load all users in memory and later process them.
-	err := u.bucket.Iter(ctx, "", func(s string) error {
-		users = append(users, strings.TrimSuffix(s, "/"))
-		return nil
-	})
+	activeUsers, deletingUsers, _, err := u.userScanner.ScanUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	users := make([]string, 0, len(activeUsers)+len(deletingUsers))
+	users = append(users, activeUsers...)
+	users = append(users, deletingUsers...)
+	users = deduplicateUsers(users)
 
 	return users, err
+}
+
+func deduplicateUsers(users []string) []string {
+	seen := make(map[string]struct{}, len(users))
+	var uniqueUsers []string
+
+	for _, user := range users {
+		if _, ok := seen[user]; !ok {
+			seen[user] = struct{}{}
+			uniqueUsers = append(uniqueUsers, user)
+		}
+	}
+
+	return uniqueUsers
 }
 
 func (u *BucketStores) getStore(userID string) *store.BucketStore {
@@ -546,7 +565,20 @@ func (u *BucketStores) getOrCreateStore(userID string) (*store.BucketStore, erro
 	fetcherReg := prometheus.NewRegistry()
 
 	// The sharding strategy filter MUST be before the ones we create here (order matters).
-	filters := append([]block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}, []block.MetadataFilter{
+	filters := []block.MetadataFilter{NewShardingMetadataFilterAdapter(userID, u.shardingStrategy)}
+
+	if u.cfg.BucketStore.IgnoreBlocksBefore > 0 {
+		// We don't want to filter out any blocks for max time.
+		// Set a positive duration so we can always load blocks till now.
+		// IgnoreBlocksWithin
+		filterMaxTimeDuration := model.Duration(time.Second)
+		filterMinTime := thanos_model.TimeOrDurationValue{}
+		ignoreBlocksBefore := -model.Duration(u.cfg.BucketStore.IgnoreBlocksBefore)
+		filterMinTime.Dur = &ignoreBlocksBefore
+		filters = append(filters, block.NewTimePartitionMetaFilter(filterMinTime, thanos_model.TimeOrDurationValue{Dur: &filterMaxTimeDuration}))
+	}
+
+	filters = append(filters, []block.MetadataFilter{
 		block.NewConsistencyDelayMetaFilter(userLogger, u.cfg.BucketStore.ConsistencyDelay, fetcherReg),
 		// Use our own custom implementation.
 		NewIgnoreDeletionMarkFilter(userLogger, userBkt, u.cfg.BucketStore.IgnoreDeletionMarksDelay, u.cfg.BucketStore.MetaSyncConcurrency),

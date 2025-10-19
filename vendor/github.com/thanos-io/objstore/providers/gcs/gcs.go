@@ -186,6 +186,8 @@ func newBucket(ctx context.Context, logger log.Logger, gc Config, opts []option.
 	return bkt, nil
 }
 
+func (b *Bucket) Provider() objstore.ObjProvider { return objstore.GCS }
+
 // Name returns the bucket name for gcs.
 func (b *Bucket) Name() string {
 	return b.name
@@ -330,13 +332,15 @@ func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // Upload writes the file specified in src to remote GCS location specified as target.
-func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
+func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	w := b.bkt.Object(name).NewWriter(ctx)
 
+	uploadOpts := objstore.ApplyObjectUploadOptions(opts...)
 	// if `chunkSize` is 0, we don't set any custom value for writer's ChunkSize.
 	// It uses whatever the default value https://pkg.go.dev/google.golang.org/cloud/storage#Writer
 	if b.chunkSize > 0 {
 		w.ChunkSize = b.chunkSize
+		w.ContentType = uploadOpts.ContentType
 	}
 
 	if _, err := io.Copy(w, r); err != nil {

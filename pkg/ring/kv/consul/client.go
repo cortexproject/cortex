@@ -30,9 +30,6 @@ const (
 var (
 	writeOptions = &consul.WriteOptions{}
 
-	// ErrNotFound is returned by ConsulClient.Get.
-	ErrNotFound = fmt.Errorf("Not found")
-
 	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
@@ -149,7 +146,7 @@ func NewClient(cfg Config, codec codec.Codec, logger log.Logger, registerer prom
 }
 
 // Put is mostly here for testing.
-func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
+func (c *Client) Put(ctx context.Context, key string, value any) error {
 	bytes, err := c.codec.Encode(value)
 	if err != nil {
 		return err
@@ -166,13 +163,13 @@ func (c *Client) Put(ctx context.Context, key string, value interface{}) error {
 
 // CAS atomically modifies a value in a callback.
 // If value doesn't exist you'll get nil as an argument to your callback.
-func (c *Client) CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	return instrument.CollectedRequest(ctx, "CAS loop", c.consulMetrics.consulRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		return c.cas(ctx, key, f)
 	})
 }
 
-func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error {
+func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error {
 	retries := c.cfg.MaxCasRetries
 	if retries == 0 {
 		retries = 10
@@ -196,7 +193,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 			level.Error(c.logger).Log("msg", "error getting key", "key", key, "err", err)
 			continue
 		}
-		var intermediate interface{}
+		var intermediate any
 		if kvp != nil {
 			out, err := c.codec.Decode(kvp.Value)
 			if err != nil {
@@ -250,7 +247,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in interface{}) (ou
 // value. To construct the deserialised value, a factory function should be
 // supplied which generates an empty struct for WatchKey to deserialise
 // into. This function blocks until the context is cancelled or f returns false.
-func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) bool) {
+func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	var (
 		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
@@ -311,7 +308,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(interface{}) b
 // WatchPrefix will watch a given prefix in Consul for new keys and changes to existing keys under that prefix.
 // When the value under said key changes, the f callback is called with the deserialised value.
 // Values in Consul are assumed to be JSON. This function blocks until the context is cancelled.
-func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool) {
+func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
 	var (
 		backoff = backoff.New(ctx, backoffConfig)
 		index   = uint64(0)
@@ -390,7 +387,7 @@ func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
 }
 
 // Get implements kv.Get.
-func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
+func (c *Client) Get(ctx context.Context, key string) (any, error) {
 	options := &consul.QueryOptions{
 		AllowStale:        !c.cfg.ConsistentReads,
 		RequireConsistent: c.cfg.ConsistentReads,
@@ -437,9 +434,6 @@ func (c *Client) createRateLimiter() *rate.Limiter {
 		// burst is ignored when limit = rate.Inf
 		return rate.NewLimiter(rate.Inf, 0)
 	}
-	burst := c.cfg.WatchKeyBurstSize
-	if burst < 1 {
-		burst = 1
-	}
+	burst := max(c.cfg.WatchKeyBurstSize, 1)
 	return rate.NewLimiter(rate.Limit(c.cfg.WatchKeyRateLimit), burst)
 }

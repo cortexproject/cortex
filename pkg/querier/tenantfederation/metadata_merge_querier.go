@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/scrape"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -45,9 +46,9 @@ type metadataSelectJob struct {
 }
 
 // MetricsMetadata returns aggregated metadata for multiple tenants
-func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context) ([]scrape.MetricMetadata, error) {
+func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	log, ctx := spanlogger.New(ctx, "mergeMetadataQuerier.MetricsMetadata")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	tenantIds, err := tenant.TenantIDs(ctx)
 	if err != nil {
@@ -57,10 +58,10 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context) ([]scrape.Me
 	m.tenantsPerMetadataQuery.Observe(float64(len(tenantIds)))
 
 	if len(tenantIds) == 1 {
-		return m.upstream.MetricsMetadata(ctx)
+		return m.upstream.MetricsMetadata(ctx, req)
 	}
 
-	jobs := make([]interface{}, len(tenantIds))
+	jobs := make([]any, len(tenantIds))
 	results := make([][]scrape.MetricMetadata, len(tenantIds))
 
 	var jobPos int
@@ -73,13 +74,13 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context) ([]scrape.Me
 		jobPos++
 	}
 
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*metadataSelectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
 		}
 
-		res, err := job.querier.MetricsMetadata(user.InjectOrgID(ctx, job.id))
+		res, err := job.querier.MetricsMetadata(user.InjectOrgID(ctx, job.id), req)
 		if err != nil {
 			return errors.Wrapf(err, "error exemplars querying %s %s", job.id, err)
 		}

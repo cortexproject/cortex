@@ -26,7 +26,6 @@ import (
 )
 
 var testInstantQueryCodec = NewInstantQueryCodec(string(tripperware.NonCompression), string(tripperware.ProtobufCodecType))
-
 var jsonHttpReq = &http.Request{
 	Header: map[string][]string{
 		"Accept": {"application/json"},
@@ -91,10 +90,9 @@ func TestRequest(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
-			r, err := http.NewRequest("GET", tc.url, nil)
+			r, err := http.NewRequest("POST", tc.url, http.NoBody)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
 
@@ -190,7 +188,9 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 			require.Equal(t, tc.err, err)
 
 			if err == nil {
@@ -433,7 +433,6 @@ func TestResponse(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var response *http.Response
@@ -454,7 +453,8 @@ func TestResponse(t *testing.T) {
 				}
 			}
 
-			resp, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 			require.NoError(t, err)
 
 			// Reset response, as the above call will have consumed the body reader.
@@ -464,7 +464,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.jsonBody))),
 				ContentLength: int64(len(tc.jsonBody)),
 			}
-			resp2, err := testInstantQueryCodec.EncodeResponse(context.Background(), jsonHttpReq, resp)
+			resp2, err := testInstantQueryCodec.EncodeResponse(ctx, jsonHttpReq, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})
@@ -707,10 +707,9 @@ func TestMergeResponse(t *testing.T) {
 			cancelBeforeMerge: true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
@@ -1720,10 +1719,9 @@ func TestMergeResponseProtobuf(t *testing.T) {
 			cancelBeforeMerge: true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var resps []tripperware.Response
 			for _, r := range tc.resps {
@@ -1819,7 +1817,7 @@ func Benchmark_Decode(b *testing.B) {
 	maxSamplesCount := 1000000
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
-	for i := 0; i < maxSamplesCount; i++ {
+	for i := range maxSamplesCount {
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
@@ -1862,15 +1860,16 @@ func Benchmark_Decode(b *testing.B) {
 			body, err := json.Marshal(r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				response := &http.Response{
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 				require.NoError(b, err)
 			}
 		})
@@ -1881,7 +1880,7 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 	maxSamplesCount := 1000000
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
-	for i := 0; i < maxSamplesCount; i++ {
+	for i := range maxSamplesCount {
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
@@ -1924,16 +1923,17 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 			body, err := proto.Marshal(&r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				response := &http.Response{
 					StatusCode: 200,
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
 				}
-				_, err := testInstantQueryCodec.DecodeResponse(context.Background(), response, nil)
+
+				ctx := user.InjectOrgID(context.Background(), "1")
+				_, err := testInstantQueryCodec.DecodeResponse(ctx, response, nil)
 				require.NoError(b, err)
 			}
 		})

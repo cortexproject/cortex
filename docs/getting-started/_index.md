@@ -41,7 +41,8 @@ This example uses [Docker Compose](https://docs.docker.com/compose/) to set up:
 1. An instance of [SeaweedFS](https://github.com/seaweedfs/seaweedfs/) for S3-compatible object storage
 1. An instance of [Cortex](https://cortexmetrics.io/) to receive metrics.
 1. An instance of [Prometheus](https://prometheus.io/) to send metrics to Cortex.
-1. An instance of [Grafana](https://grafana.com/) to visualize the metrics.
+1. An instance of [Perses](https://perses.dev) for latest trend on dashboarding
+1. An instance of [Grafana](https://grafana.com/) for legacy dashboarding
 
 #### Instructions
 
@@ -50,17 +51,12 @@ $ git clone https://github.com/cortexproject/cortex.git
 $ cd cortex/docs/getting-started
 ```
 
+**Note**: This guide uses `grafana-datasource-docker.yaml` which is specifically configured for the single binary Docker Compose deployment. For Kubernetes/microservices mode, use `grafana-datasource.yaml` instead.
+
 ##### Start the services
 
 ```sh
-# Start SeaweedFS to emulate S3 storage for Cortex.
-$ docker-compose up seaweedfs -d --wait
-# Create buckets in SeaweedFS.
-$ for bucket in cortex-blocks cortex-ruler cortex-alertmanager; do
-  curl --aws-sigv4 "aws:amz:local:seaweedfs" --user "any:any" -X PUT http://localhost:8333/$bucket
-done
-# Start the remaining services.
-$ docker-compose up -d --wait
+$ docker compose up -d
 ```
 
 We can now access the following services:
@@ -123,7 +119,7 @@ Other things to explore:
 ### Clean up
 
 ```sh
-$ docker-compose down
+$ docker compose down -v
 ```
 
 ## Microservice Mode
@@ -220,6 +216,8 @@ how this is configured.
 # Deploy Grafana to visualize the metrics that were sent to Cortex.
 $ helm upgrade --install --version=7.3.9 --namespace cortex grafana grafana/grafana -f grafana-values.yaml --wait
 ```
+
+**Note**: This guide uses `grafana-values.yaml` with Helm to configure Grafana datasources. Alternatively, you can manually deploy Grafana with `grafana-datasource.yaml` which is specifically configured for Kubernetes/microservices mode with the correct `cortex-nginx` endpoints.
 
 ```sh
 # Create dashboards for Cortex

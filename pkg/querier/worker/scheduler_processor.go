@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/textproto"
 	"time"
 
 	"github.com/go-kit/log"
@@ -28,10 +27,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	cortexmiddleware "github.com/cortexproject/cortex/pkg/util/middleware"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
-func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer) (*schedulerProcessor, []services.Service) {
+func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, reg prometheus.Registerer, querierAddress string) (*schedulerProcessor, []services.Service) {
 	p := &schedulerProcessor{
 		log:            log,
 		handler:        handler,
@@ -39,11 +39,15 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 		querierID:      cfg.QuerierID,
 		grpcConfig:     cfg.GRPCClientConfig,
 		targetHeaders:  cfg.TargetHeaders,
+		schedulerClientFactory: func(conn *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient {
+			return schedulerpb.NewSchedulerForQuerierClient(conn)
+		},
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "cortex_querier_query_frontend_request_duration_seconds",
 			Help:    "Time spend doing requests to frontend.",
 			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
 		}, []string{"operation", "status_code"}),
+		querierAddress: querierAddress,
 	}
 
 	frontendClientsGauge := promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -68,16 +72,18 @@ type schedulerProcessor struct {
 	grpcConfig     grpcclient.Config
 	maxMessageSize int
 	querierID      string
+	querierAddress string
 
 	frontendPool                  *client.Pool
 	frontendClientRequestDuration *prometheus.HistogramVec
 
-	targetHeaders []string
+	targetHeaders          []string
+	schedulerClientFactory func(conn *grpc.ClientConn) schedulerpb.SchedulerForQuerierClient
 }
 
 // notifyShutdown implements processor.
 func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string) {
-	client := schedulerpb.NewSchedulerForQuerierClient(conn)
+	client := sp.schedulerClientFactory(conn)
 
 	req := &schedulerpb.NotifyQuerierShutdownRequest{QuerierID: sp.querierID}
 	if _, err := client.NotifyQuerierShutdown(ctx, req); err != nil {
@@ -87,13 +93,13 @@ func (sp *schedulerProcessor) notifyShutdown(ctx context.Context, conn *grpc.Cli
 }
 
 func (sp *schedulerProcessor) processQueriesOnSingleStream(ctx context.Context, conn *grpc.ClientConn, address string) {
-	schedulerClient := schedulerpb.NewSchedulerForQuerierClient(conn)
+	schedulerClient := sp.schedulerClientFactory(conn)
 
 	backoff := backoff.New(ctx, processorBackoffConfig)
 	for backoff.Ongoing() {
 		c, err := schedulerClient.QuerierLoop(ctx)
 		if err == nil {
-			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID})
+			err = c.Send(&schedulerpb.QuerierToScheduler{QuerierID: sp.querierID, QuerierAddress: sp.querierAddress})
 		}
 
 		if err != nil {
@@ -137,14 +143,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			for _, h := range request.HttpRequest.Headers {
 				headers[h.Key] = h.Values[0]
 			}
-			headerMap := make(map[string]string, 0)
-			// Remove non-existent header.
-			for _, header := range sp.targetHeaders {
-				if v, ok := headers[textproto.CanonicalMIMEHeaderKey(header)]; ok {
-					headerMap[header] = v
-				}
-			}
-			ctx = util_log.ContextWithHeaderMap(ctx, headerMap)
+			ctx = requestmeta.ContextWithRequestMetadataMapFromHeaders(ctx, headers, sp.targetHeaders)
 
 			tracer := opentracing.GlobalTracer()
 			// Ignore errors here. If we cannot get parent span, we just don't create new one.
@@ -211,11 +210,15 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 
 	c, err := sp.frontendPool.GetClientFor(frontendAddress)
 	if err == nil {
+		// To prevent querier panic, the panic could happen when the go-routines not-exited
+		// yet in `fetchSeriesFromStores` are increment query-stats while progressing
+		// (*QueryResultRequest).MarshalToSizedBuffer under the same query-stat objects are used.
+		copiedStats := stats.Copy()
 		// Response is empty and uninteresting.
 		_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 			QueryID:      queryID,
 			HttpResponse: response,
-			Stats:        stats,
+			Stats:        copiedStats,
 		})
 	}
 	if err != nil {

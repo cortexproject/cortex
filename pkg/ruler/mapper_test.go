@@ -3,6 +3,7 @@ package ruler
 import (
 	"net/url"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -10,7 +11,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -36,31 +36,23 @@ var (
 )
 
 func setupRuleSets() {
-	recordNode := yaml.Node{}
-	recordNode.SetString("example_rule")
-	exprNode := yaml.Node{}
-	exprNode.SetString("example_expr")
-	recordNodeUpdated := yaml.Node{}
-	recordNodeUpdated.SetString("example_ruleupdated")
-	exprNodeUpdated := yaml.Node{}
-	exprNodeUpdated.SetString("example_exprupdated")
 	initialRuleSet = map[string][]rulefmt.RuleGroup{
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -70,19 +62,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -92,28 +84,28 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_three",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -123,19 +115,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -143,10 +135,10 @@ func setupRuleSets() {
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -156,19 +148,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -176,10 +168,10 @@ func setupRuleSets() {
 		"file /two": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNodeUpdated,
-						Expr:   exprNodeUpdated,
+						Record: "example_ruleupdated",
+						Expr:   "example_exprupdated",
 					},
 				},
 			},
@@ -189,19 +181,19 @@ func setupRuleSets() {
 		"file /one": {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
 			{
 				Name: "rulegroup_two",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -211,10 +203,10 @@ func setupRuleSets() {
 		specialCharFile: {
 			{
 				Name: "rulegroup_one",
-				Rules: []rulefmt.RuleNode{
+				Rules: []rulefmt.Rule{
 					{
-						Record: recordNode,
-						Expr:   exprNode,
+						Record: "example_rule",
+						Expr:   "example_expr",
 					},
 				},
 			},
@@ -305,8 +297,8 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, fileOnePath, files))
-		require.True(t, sliceContains(t, fileTwoPath, files))
+		require.True(t, slices.Contains(files, fileOnePath))
+		require.True(t, slices.Contains(files, fileTwoPath))
 		require.NoError(t, err)
 
 		exists, err := afero.Exists(m.FS, fileOnePath)
@@ -321,8 +313,8 @@ func Test_mapper_MapRulesMultipleFiles(t *testing.T) {
 		updated, files, err := m.MapRules(testUser, twoFilesUpdatedRuleSet)
 		require.True(t, updated)
 		require.Len(t, files, 2)
-		require.True(t, sliceContains(t, fileOnePath, files))
-		require.True(t, sliceContains(t, fileTwoPath, files))
+		require.True(t, slices.Contains(files, fileOnePath))
+		require.True(t, slices.Contains(files, fileTwoPath))
 		require.NoError(t, err)
 
 		exists, err := afero.Exists(m.FS, fileOnePath)
@@ -382,18 +374,6 @@ func Test_mapper_MapRulesSpecialCharNamespace(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, exists)
 	})
-}
-
-func sliceContains(t *testing.T, find string, in []string) bool {
-	t.Helper()
-
-	for _, s := range in {
-		if find == s {
-			return true
-		}
-	}
-
-	return false
 }
 
 func TestYamlFormatting(t *testing.T) {

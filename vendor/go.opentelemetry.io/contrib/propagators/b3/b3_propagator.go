@@ -293,13 +293,13 @@ func extractSingle(ctx context.Context, contextHeader string) (context.Context, 
 			}
 			pos += separatorWidth // {traceID}-{spanID}-
 
-			switch {
-			case headerLen == pos+samplingWidth:
+			switch headerLen {
+			case pos + samplingWidth:
 				sampling = string(contextHeader[pos])
-			case headerLen == pos+parentSpanIDWidth:
+			case pos + parentSpanIDWidth:
 				// {traceID}-{spanID}-{parentSpanID} is invalid.
 				return ctx, empty, errInvalidScopeParentSingle
-			case headerLen == pos+samplingWidth+separatorWidth+parentSpanIDWidth:
+			case pos + samplingWidth + separatorWidth + parentSpanIDWidth:
 				sampling = string(contextHeader[pos])
 				pos += samplingWidth + separatorWidth // {traceID}-{spanID}-{sampling}-
 

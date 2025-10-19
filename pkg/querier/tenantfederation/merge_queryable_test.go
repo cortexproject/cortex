@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,11 +21,16 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 const (
@@ -169,7 +175,7 @@ func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 	}
 
 	log, _ := spanlogger.New(ctx, "mockTenantQuerier.select")
-	defer log.Span.Finish()
+	defer log.Finish()
 	var matrix model.Matrix
 
 	for _, s := range m.matrix(tenantIDs[0]) {
@@ -472,9 +478,6 @@ cortex_querier_federated_tenants_per_query_count 1
 )
 
 func TestMergeQueryable_Select(t *testing.T) {
-	// Set a multi tenant resolver.
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []selectScenario{
 		{
 			mergeQueryableScenario: threeTenantsScenario,
@@ -489,24 +492,24 @@ func TestMergeQueryable_Select(t *testing.T) {
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchNotEqual}},
 					expectedSeriesCount: 4,
 					expectedLabels: []labels.Labels{
-						{
-							{Name: "__tenant_id__", Value: "team-a"},
-							{Name: "instance", Value: "host1"},
-							{Name: "tenant-team-a", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-a"},
-							{Name: "instance", Value: "host2.team-a"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-c"},
-							{Name: "instance", Value: "host1"},
-							{Name: "tenant-team-c", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-c"},
-							{Name: "instance", Value: "host2.team-c"},
-						},
+						labels.FromStrings(
+							"__tenant_id__", "team-a",
+							"instance", "host1",
+							"tenant-team-a", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-a",
+							"instance", "host2.team-a",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-c",
+							"instance", "host1",
+							"tenant-team-c", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-c",
+							"instance", "host2.team-c",
+						),
 					},
 					expectedMetrics: expectedThreeTenantsMetrics,
 				},
@@ -515,15 +518,15 @@ func TestMergeQueryable_Select(t *testing.T) {
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
 					expectedLabels: []labels.Labels{
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host1"},
-							{Name: "tenant-team-b", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host2.team-b"},
-						},
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host1",
+							"tenant-team-b", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host2.team-b",
+						),
 					},
 					expectedMetrics: expectedThreeTenantsMetrics,
 				},
@@ -542,39 +545,39 @@ func TestMergeQueryable_Select(t *testing.T) {
 					name:                "should return all series when no matchers are provided",
 					expectedSeriesCount: 6,
 					expectedLabels: []labels.Labels{
-						{
-							{Name: "__tenant_id__", Value: "team-a"},
-							{Name: "instance", Value: "host1"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-							{Name: "tenant-team-a", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-a"},
-							{Name: "instance", Value: "host2.team-a"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host1"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-							{Name: "tenant-team-b", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host2.team-b"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-c"},
-							{Name: "instance", Value: "host1"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-							{Name: "tenant-team-c", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-c"},
-							{Name: "instance", Value: "host2.team-c"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-						},
+						labels.FromStrings(
+							"__tenant_id__", "team-a",
+							"instance", "host1",
+							"original___tenant_id__", "original-value",
+							"tenant-team-a", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-a",
+							"instance", "host2.team-a",
+							"original___tenant_id__", "original-value",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host1",
+							"original___tenant_id__", "original-value",
+							"tenant-team-b", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host2.team-b",
+							"original___tenant_id__", "original-value",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-c",
+							"instance", "host1",
+							"original___tenant_id__", "original-value",
+							"tenant-team-c", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-c",
+							"instance", "host2.team-c",
+							"original___tenant_id__", "original-value",
+						),
 					},
 					expectedMetrics: expectedThreeTenantsMetrics,
 				},
@@ -596,17 +599,17 @@ func TestMergeQueryable_Select(t *testing.T) {
 					matchers:            []*labels.Matcher{{Name: defaultTenantLabel, Value: "team-b", Type: labels.MatchEqual}},
 					expectedSeriesCount: 2,
 					expectedLabels: []labels.Labels{
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host1"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-							{Name: "tenant-team-b", Value: "static"},
-						},
-						{
-							{Name: "__tenant_id__", Value: "team-b"},
-							{Name: "instance", Value: "host2.team-b"},
-							{Name: "original___tenant_id__", Value: "original-value"},
-						},
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host1",
+							"original___tenant_id__", "original-value",
+							"tenant-team-b", "static",
+						),
+						labels.FromStrings(
+							"__tenant_id__", "team-b",
+							"instance", "host2.team-b",
+							"original___tenant_id__", "original-value",
+						),
 					},
 					expectedMetrics: expectedThreeTenantsMetrics,
 				},
@@ -651,53 +654,84 @@ func TestMergeQueryable_Select(t *testing.T) {
 			}},
 		},
 	} {
-		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.selectTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.selectTestCases {
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							bucketClient := &bucket.ClientMock{}
+							bucketClient.MockIter("", scenario.tenants, nil)
+							bucketClient.MockIter("__markers__", []string{}, nil)
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							for _, tenant := range scenario.tenants {
+								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							}
 
-					seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+								return bucketClient, nil
+							}
 
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
-					} else {
-						require.NoError(t, seriesSet.Err())
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
-					}
+							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+							tenantFederationConfig := Config{UserSyncInterval: time.Second}
+							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+							require.NoError(t, err)
 
-					if tc.expectedLabels != nil {
-						require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
-					}
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
+							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
-					count := 0
-					for i := 0; seriesSet.Next(); i++ {
-						count++
-						if tc.expectedLabels != nil {
-							require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() any {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
 						}
-					}
-					require.Equal(t, tc.expectedSeriesCount, count)
-				})
+
+						querier, reg, err := scenario.init()
+						require.NoError(t, err)
+
+						seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
+
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, seriesSet.Err(), tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, seriesSet.Err())
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assertEqualWarnings(t, tc.expectedWarnings, seriesSet.Warnings())
+						}
+
+						if tc.expectedLabels != nil {
+							require.Equal(t, len(tc.expectedLabels), tc.expectedSeriesCount)
+						}
+
+						count := 0
+						for i := 0; seriesSet.Next(); i++ {
+							count++
+							if tc.expectedLabels != nil {
+								require.Equal(t, tc.expectedLabels[i], seriesSet.At().Labels(), fmt.Sprintf("labels index: %d", i))
+							}
+						}
+						require.Equal(t, tc.expectedSeriesCount, count)
+					})
+				}
 			}
 		})
 	}
 }
 
 func TestMergeQueryable_LabelNames(t *testing.T) {
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelNamesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -821,39 +855,69 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 			},
 		},
 	} {
-		scenario := scenario
-		t.Run(scenario.mergeQueryableScenario.name, func(t *testing.T) {
-			t.Parallel()
-			querier, reg, err := scenario.init()
-			require.NoError(t, err)
+		for _, useRegexResolver := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s, useRegexResolver: %v", scenario.mergeQueryableScenario.name, useRegexResolver), func(t *testing.T) {
+				ctx := context.Background()
+				if useRegexResolver {
+					reg := prometheus.NewRegistry()
+					bucketClient := &bucket.ClientMock{}
+					bucketClient.MockIter("", scenario.tenants, nil)
+					bucketClient.MockIter("__markers__", []string{}, nil)
 
-			// inject tenants into context
-			ctx := context.Background()
-			if len(scenario.tenants) > 0 {
-				ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-			}
+					for _, tenant := range scenario.tenants {
+						bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+						bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+					}
 
-			t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
-				t.Parallel()
-				labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.labelNamesTestCase.matchers...)
-				if scenario.labelNamesTestCase.expectedQueryErr != nil {
-					require.EqualError(t, err, scenario.labelNamesTestCase.expectedQueryErr.Error())
-				} else {
+					bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+						return bucketClient, nil
+					}
+					usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+					tenantFederationConfig := Config{UserSyncInterval: time.Second}
+					regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 					require.NoError(t, err)
-					assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-					assert.Equal(t, scenario.labelNamesTestCase.expectedLabelNames, labelNames)
-					assertEqualWarnings(t, scenario.labelNamesTestCase.expectedWarnings, warnings)
+
+					// set a regex tenant resolver
+					tenant.WithDefaultResolver(regexResolver)
+					require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+					// wait update knownUsers
+					test.Poll(t, time.Second*10, true, func() any {
+						return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+					})
+
+					ctx = user.InjectOrgID(ctx, "team-.+")
+				} else {
+					// Set a multi tenant resolver.
+					tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+					// inject tenants into context
+					if len(scenario.tenants) > 0 {
+						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+					}
 				}
+
+				querier, reg, err := scenario.init()
+				require.NoError(t, err)
+
+				t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
+					t.Parallel()
+					labelNames, warnings, err := querier.LabelNames(ctx, nil, scenario.matchers...)
+					if scenario.expectedQueryErr != nil {
+						require.EqualError(t, err, scenario.expectedQueryErr.Error())
+					} else {
+						require.NoError(t, err)
+						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(scenario.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+						assert.Equal(t, scenario.expectedLabelNames, labelNames)
+						assertEqualWarnings(t, scenario.expectedWarnings, warnings)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
 func TestMergeQueryable_LabelValues(t *testing.T) {
-	t.Parallel()
-	// set a multi tenant resolver
-	tenant.WithDefaultResolver(tenant.NewMultiResolver())
-
 	for _, scenario := range []labelValuesScenario{
 		{
 			mergeQueryableScenario: singleTenantScenario,
@@ -1026,31 +1090,64 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 			}},
 		},
 	} {
-		scenario := scenario
 		t.Run(scenario.name, func(t *testing.T) {
-			for _, tc := range scenario.labelValuesTestCases {
-				tc := tc
-				t.Run(tc.name, func(t *testing.T) {
-					t.Parallel()
-					querier, reg, err := scenario.init()
-					require.NoError(t, err)
+			for _, useRegexResolver := range []bool{true, false} {
+				for _, tc := range scenario.labelValuesTestCases {
+					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
+						ctx := context.Background()
+						if useRegexResolver {
+							reg := prometheus.NewRegistry()
+							bucketClient := &bucket.ClientMock{}
+							bucketClient.MockIter("", scenario.tenants, nil)
+							bucketClient.MockIter("__markers__", []string{}, nil)
 
-					// inject tenants into context
-					ctx := context.Background()
-					if len(scenario.tenants) > 0 {
-						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
-					}
+							for _, tenant := range scenario.tenants {
+								bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
+								bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+							}
 
-					actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
-					if tc.expectedQueryErr != nil {
-						require.EqualError(t, err, tc.expectedQueryErr.Error())
-					} else {
+							bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+								return bucketClient, nil
+							}
+							usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+							tenantFederationConfig := Config{UserSyncInterval: time.Second}
+							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+							require.NoError(t, err)
+
+							// set a regex tenant resolver
+							tenant.WithDefaultResolver(regexResolver)
+							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+							// wait update knownUsers
+							test.Poll(t, time.Second*10, true, func() any {
+								return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(scenario.tenants))
+							})
+
+							ctx = user.InjectOrgID(ctx, "team-.+")
+						} else {
+							// Set a multi tenant resolver.
+							tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+							// inject tenants into context
+							if len(scenario.tenants) > 0 {
+								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
+							}
+						}
+
+						querier, reg, err := scenario.init()
 						require.NoError(t, err)
-						assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
-						assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
-						assertEqualWarnings(t, tc.expectedWarnings, warnings)
-					}
-				})
+
+						actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
+						if tc.expectedQueryErr != nil {
+							require.EqualError(t, err, tc.expectedQueryErr.Error())
+						} else {
+							require.NoError(t, err)
+							assert.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_querier_federated_tenants_per_query"))
+							assert.Equal(t, tc.expectedLabelValues, actLabelValues, fmt.Sprintf("unexpected values for label '%s'", tc.labelName))
+							assertEqualWarnings(t, tc.expectedWarnings, warnings)
+						}
+					})
+				}
 			}
 		})
 	}
@@ -1077,33 +1174,33 @@ func TestSetLabelsRetainExisting(t *testing.T) {
 	}{
 		// Test adding labels at the end.
 		{
-			labels:           labels.Labels{{Name: "a", Value: "b"}},
-			additionalLabels: labels.Labels{{Name: "c", Value: "d"}},
-			expected:         labels.Labels{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+			labels:           labels.FromStrings("a", "b"),
+			additionalLabels: labels.FromStrings("c", "d"),
+			expected:         labels.FromStrings("a", "b", "c", "d"),
 		},
 
 		// Test adding labels at the beginning.
 		{
-			labels:           labels.Labels{{Name: "c", Value: "d"}},
-			additionalLabels: labels.Labels{{Name: "a", Value: "b"}},
-			expected:         labels.Labels{{Name: "a", Value: "b"}, {Name: "c", Value: "d"}},
+			labels:           labels.FromStrings("c", "d"),
+			additionalLabels: labels.FromStrings("a", "b"),
+			expected:         labels.FromStrings("a", "b", "c", "d"),
 		},
 
 		// Test we do override existing labels and expose the original value.
 		{
-			labels:           labels.Labels{{Name: "a", Value: "b"}},
-			additionalLabels: labels.Labels{{Name: "a", Value: "c"}},
-			expected:         labels.Labels{{Name: "a", Value: "c"}, {Name: "original_a", Value: "b"}},
+			labels:           labels.FromStrings("a", "b"),
+			additionalLabels: labels.FromStrings("a", "c"),
+			expected:         labels.FromStrings("a", "c", "original_a", "b"),
 		},
 
 		// Test we do override existing labels but don't do it recursively.
 		{
-			labels:           labels.Labels{{Name: "a", Value: "b"}, {Name: "original_a", Value: "i am lost"}},
-			additionalLabels: labels.Labels{{Name: "a", Value: "d"}},
-			expected:         labels.Labels{{Name: "a", Value: "d"}, {Name: "original_a", Value: "b"}},
+			labels:           labels.FromStrings("a", "b", "original_a", "i am lost"),
+			additionalLabels: labels.FromStrings("a", "d"),
+			expected:         labels.FromStrings("a", "d", "original_a", "b"),
 		},
 	} {
-		assert.Equal(t, tc.expected, setLabelsRetainExisting(tc.labels, tc.additionalLabels...))
+		assert.Equal(t, tc.expected, setLabelsRetainExisting(tc.labels, tc.additionalLabels))
 	}
 }
 
@@ -1162,7 +1259,7 @@ func containsTags(span *mocktracer.MockSpan, expectedTag expectedTag) bool {
 
 type spanWithTags struct {
 	name string
-	tags map[string]interface{}
+	tags map[string]any
 }
 
 type expectedTag struct {

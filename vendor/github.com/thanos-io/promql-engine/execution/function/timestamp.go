@@ -6,32 +6,27 @@ package function
 import (
 	"context"
 	"sync"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type timestampOperator struct {
 	next model.VectorOperator
-	telemetry.OperatorTelemetry
 
 	series []labels.Labels
 	once   sync.Once
 }
 
-func newTimestampOperator(next model.VectorOperator, opts *query.Options) *timestampOperator {
+func newTimestampOperator(next model.VectorOperator, opts *query.Options) model.VectorOperator {
 	oper := &timestampOperator{
 		next: next,
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *timestampOperator) Explain() (next []model.VectorOperator) {
@@ -39,9 +34,6 @@ func (o *timestampOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *timestampOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -77,9 +69,6 @@ func (o *timestampOperator) GetPool() *model.VectorPool {
 }
 
 func (o *timestampOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

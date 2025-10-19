@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
@@ -42,7 +43,7 @@ func TestRequest(t *testing.T) {
 		expectedErr error
 	}{
 		{
-			url:      query,
+			url:      queryAll,
 			expected: &parsedRequestWithHeaders,
 		},
 		{
@@ -55,7 +56,7 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=0",
-			expectedErr: errEndBeforeStart,
+			expectedErr: queryapi.ErrEndBeforeStart,
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=baz",
@@ -63,17 +64,16 @@ func TestRequest(t *testing.T) {
 		},
 		{
 			url:         "api/v1/query_range?start=123&end=456&step=-1",
-			expectedErr: errNegativeStep,
+			expectedErr: queryapi.ErrNegativeStep,
 		},
 		{
 			url:         "api/v1/query_range?start=0&end=11001&step=1",
-			expectedErr: errStepTooSmall,
+			expectedErr: queryapi.ErrStepTooSmall,
 		},
 	} {
-		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
-			r, err := http.NewRequest("GET", tc.url, nil)
+			r, err := http.NewRequest("POST", tc.url, http.NoBody)
 			require.NoError(t, err)
 			r.Header.Add("Test-Header", "test")
 
@@ -264,12 +264,11 @@ func TestResponse(t *testing.T) {
 		},
 	}
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
 			require.NoError(t, err)
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 
 			var response *http.Response
 			if tc.isProtobuf {
@@ -397,7 +396,6 @@ func TestResponseWithStats(t *testing.T) {
 			isProtobuf: false,
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
@@ -420,7 +418,8 @@ func TestResponseWithStats(t *testing.T) {
 				tc.promBody.Headers = respHeadersJson
 			}
 
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			require.NoError(t, err)
 			assert.Equal(t, tc.promBody, resp)
 
@@ -1180,10 +1179,9 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		}} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx, cancelCtx := context.WithCancel(context.Background())
+			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
 			if tc.cancelCtx {
 				cancelCtx()
 			}
@@ -1286,7 +1284,9 @@ func TestCompressedResponse(t *testing.T) {
 				Header:     h,
 				Body:       io.NopCloser(responseBody),
 			}
-			resp, err := PrometheusCodec.DecodeResponse(context.Background(), response, nil)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			resp, err := PrometheusCodec.DecodeResponse(ctx, response, nil)
 			require.Equal(t, tc.err, err)
 
 			if err == nil {

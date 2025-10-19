@@ -17,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/discardedseries"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 )
@@ -57,10 +58,13 @@ const (
 
 	// Native Histogram specific validation reasons
 	nativeHistogramBucketCountLimitExceeded = "native_histogram_buckets_exceeded"
+	nativeHistogramInvalidSchema            = "native_histogram_invalid_schema"
+	nativeHistogramSampleSizeBytesExceeded  = "native_histogram_sample_size_bytes_exceeded"
 
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
-	RateLimited = "rate_limited"
+	RateLimited                = "rate_limited"
+	NativeHistogramRateLimited = "native_histogram_rate_limited"
 
 	// Too many HA clusters is one of the reasons for discarding samples.
 	TooManyHAClusters = "too_many_ha_clusters"
@@ -84,6 +88,11 @@ type ValidateMetrics struct {
 
 	DiscardedSamplesPerLabelSet *prometheus.CounterVec
 	LabelSetTracker             *labelset.LabelSetTracker
+
+	DiscardedSeries                   *prometheus.GaugeVec
+	DiscardedSeriesPerLabelset        *prometheus.GaugeVec
+	DiscardedSeriesTracker            *discardedseries.DiscardedSeriesTracker
+	DiscardedSeriesPerLabelsetTracker *discardedseries.DiscardedSeriesPerLabelsetTracker
 }
 
 func registerCollector(r prometheus.Registerer, c prometheus.Collector) {
@@ -142,6 +151,22 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		NativeHistogramMinResetDuration: 1 * time.Hour,
 	}, []string{"user"})
 	registerCollector(r, labelSizeBytes)
+	discardedSeries := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series",
+			Help: "The number of series that include discarded samples.",
+		},
+		[]string{discardReasonLabel, "user"},
+	)
+	registerCollector(r, discardedSeries)
+	discardedSeriesPerLabelset := prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_discarded_series_per_labelset",
+			Help: "The number of series that include discarded samples for each labelset.",
+		},
+		[]string{discardReasonLabel, "user", "labelset"},
+	)
+	registerCollector(r, discardedSeriesPerLabelset)
 
 	m := &ValidateMetrics{
 		DiscardedSamples:                  discardedSamples,
@@ -151,7 +176,13 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 		HistogramSamplesReducedResolution: histogramSamplesReducedResolution,
 		LabelSizeBytes:                    labelSizeBytes,
 		LabelSetTracker:                   labelset.NewLabelSetTracker(),
+		DiscardedSeries:                   discardedSeries,
+		DiscardedSeriesPerLabelset:        discardedSeriesPerLabelset,
+		DiscardedSeriesTracker:            discardedseries.NewDiscardedSeriesTracker(discardedSeries),
+		DiscardedSeriesPerLabelsetTracker: discardedseries.NewDiscardedSeriesPerLabelsetTracker(discardedSeriesPerLabelset),
 	}
+	m.DiscardedSeriesTracker.StartVendDiscardedSeriesMetricGoroutine()
+	m.DiscardedSeriesPerLabelsetTracker.StartVendDiscardedSeriesMetricGoroutine()
 
 	return m
 }
@@ -254,7 +285,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 			return newNoMetricNameError()
 		}
 
-		if !model.IsValidMetricName(model.LabelValue(unsafeMetricName)) {
+		if !limits.NameValidationScheme.IsValidLabelName(unsafeMetricName) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
 			return newInvalidMetricNameError(unsafeMetricName)
 		}
@@ -273,7 +304,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	labelsSizeBytes := 0
 
 	for _, l := range ls {
-		if !skipLabelNameValidation && !model.LabelName(l.Name).IsValid() {
+		if !skipLabelNameValidation && !limits.NameValidationScheme.IsValidLabelName(l.Name) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {
@@ -337,6 +368,19 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 }
 
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
+
+	// sample size validation for native histogram
+	if limits.MaxNativeHistogramSampleSizeBytes > 0 && histogramSample.Size() > limits.MaxNativeHistogramSampleSizeBytes {
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSampleSizeBytesExceeded, userID).Inc()
+		return cortexpb.Histogram{}, newNativeHistogramSampleSizeBytesExceededError(ls, histogramSample.Size(), limits.MaxNativeHistogramSampleSizeBytes)
+	}
+
+	// schema validation for native histogram
+	if histogramSample.Schema < histogram.ExponentialSchemaMin || histogramSample.Schema > histogram.ExponentialSchemaMax {
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalidSchema, userID).Inc()
+		return cortexpb.Histogram{}, newNativeHistogramSchemaInvalidError(ls, int(histogramSample.Schema))
+	}
+
 	if limits.MaxNativeHistogramBuckets == 0 {
 		return histogramSample, nil
 	}

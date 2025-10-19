@@ -5,11 +5,15 @@ package cortexpb;
 option go_package = "cortexpb";
 
 import "gogoproto/gogo.proto";
-
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
-message WriteRequest {
+
+message MessageWithBufRef {
+  option (gogoproto.typedecl) = false;
+}
+
+message WriteRequest  {
   repeated TimeSeries timeseries = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "PreallocTimeseries"];
   enum SourceEnum {
     API = 0;
@@ -19,9 +23,26 @@ message WriteRequest {
   repeated MetricMetadata metadata = 3 [(gogoproto.nullable) = true];
 
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
+  MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
 }
 
-message WriteResponse {}
+message StreamWriteRequest {
+  string TenantID = 1;
+  WriteRequest Request = 2;
+
+  MessageWithBufRef Ref = 1000 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false]; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
+}
+
+message WriteResponse {
+  int32 code = 1;
+  string message = 2;
+  // Samples represents X-Prometheus-Remote-Write-Written-Samples
+  int64 Samples = 3;
+  // Histograms represents X-Prometheus-Remote-Write-Written-Histograms
+  int64 Histograms = 4;
+  // Exemplars represents X-Prometheus-Remote-Write-Written-Exemplars
+  int64 Exemplars = 5;
+}
 
 message TimeSeries {
   repeated LabelPair labels = 1 [(gogoproto.nullable) = false, (gogoproto.customtype) = "LabelAdapter"];

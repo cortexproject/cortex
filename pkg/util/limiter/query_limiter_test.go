@@ -96,7 +96,7 @@ func TestQueryLimiter_AddSeriesBatch_ShouldReturnErrorOnLimitExceeded(t *testing
 	limiter := NewQueryLimiter(10, 0, 0, 0)
 	series := make([][]cortexpb.LabelAdapter, 0, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		s := []cortexpb.LabelAdapter{
 			{
 				Name:  labels.MetricName,
@@ -160,7 +160,7 @@ func AddSeriesConcurrentBench(b *testing.B, batchSize int) {
 	worker := func(w int) {
 		defer wg.Done()
 		var series []labels.Labels
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			series = append(series,
 				labels.FromMap(map[string]string{
 					labels.MetricName: metricName + "_1",
@@ -170,10 +170,7 @@ func AddSeriesConcurrentBench(b *testing.B, batchSize int) {
 
 		for i := 0; i < len(series); i += batchSize {
 			s := make([][]cortexpb.LabelAdapter, 0, batchSize)
-			j := i + batchSize
-			if j > len(series) {
-				j = len(series)
-			}
+			j := min(i+batchSize, len(series))
 			for k := i; k < j; k++ {
 				s = append(s, cortexpb.FromLabelsToLabelAdapters(series[k]))
 			}

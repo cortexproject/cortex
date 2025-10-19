@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,8 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"go.uber.org/atomic"
-
-	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 )
@@ -45,7 +44,7 @@ type MockBucketFailure struct {
 }
 
 func (m *MockBucketFailure) Delete(ctx context.Context, name string) error {
-	if util.StringsContain(m.DeleteFailures, name) {
+	if slices.Contains(m.DeleteFailures, name) {
 		return errors.New("mocked delete failure")
 	}
 	return m.Bucket.Delete(ctx, name)
@@ -79,7 +78,7 @@ func (m *MockBucketFailure) Get(ctx context.Context, name string) (io.ReadCloser
 	return m.Bucket.Get(ctx, name)
 }
 
-func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader) error {
+func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader, opts ...objstore.ObjectUploadOption) error {
 	m.UploadCalls.Add(1)
 	for prefix, err := range m.UploadFailures {
 		if strings.HasPrefix(name, prefix) {
@@ -90,7 +89,7 @@ func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader
 		return e
 	}
 
-	return m.Bucket.Upload(ctx, name, r)
+	return m.Bucket.Upload(ctx, name, r, opts...)
 }
 
 func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {

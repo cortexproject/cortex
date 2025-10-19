@@ -3,6 +3,7 @@ package tsdb
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
@@ -84,7 +84,7 @@ func (cfg *IndexCacheConfig) Validate() error {
 	}
 
 	for _, backend := range splitBackends {
-		if !util.StringsContain(supportedIndexCacheBackends, backend) {
+		if !slices.Contains(supportedIndexCacheBackends, backend) {
 			return errUnsupportedIndexCacheBackend
 		}
 
@@ -92,15 +92,16 @@ func (cfg *IndexCacheConfig) Validate() error {
 			return errors.WithMessagef(errDuplicatedIndexCacheBackend, "duplicated backend: %v", backend)
 		}
 
-		if backend == IndexCacheBackendMemcached {
+		switch backend {
+		case IndexCacheBackendMemcached:
 			if err := cfg.Memcached.Validate(); err != nil {
 				return err
 			}
-		} else if backend == IndexCacheBackendRedis {
+		case IndexCacheBackendRedis:
 			if err := cfg.Redis.Validate(); err != nil {
 				return err
 			}
-		} else {
+		default:
 			if err := cfg.InMemory.Validate(); err != nil {
 				return err
 			}
@@ -248,10 +249,7 @@ func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, regi
 	maxCacheSize := model.Bytes(cfg.MaxSizeBytes)
 
 	// Calculate the max item size.
-	maxItemSize := defaultMaxItemSize
-	if maxItemSize > maxCacheSize {
-		maxItemSize = maxCacheSize
-	}
+	maxItemSize := min(defaultMaxItemSize, maxCacheSize)
 
 	return NewInMemoryIndexCacheWithConfig(logger, nil, registerer, storecache.InMemoryIndexCacheConfig{
 		MaxSize:     maxCacheSize,

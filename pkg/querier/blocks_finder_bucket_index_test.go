@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -121,11 +121,10 @@ func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, testData.minT, testData.maxT)
+			blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, testData.minT, testData.maxT, nil)
 			require.NoError(t, err)
 			require.ElementsMatch(t, testData.expectedBlocks, blocks)
 			require.Equal(t, testData.expectedMarks, deletionMarks)
@@ -162,10 +161,8 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 	require.NoError(b, bucketindex.WriteIndex(ctx, bkt, userID, nil, idx))
 	finder := prepareBucketIndexBlocksFinder(b, bkt)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		blocks, marks, err := finder.GetBlocks(ctx, userID, 100, 200)
+	for b.Loop() {
+		blocks, marks, err := finder.GetBlocks(ctx, userID, 100, 200, nil)
 		if err != nil || len(blocks) != 11 || len(marks) != 11 {
 			b.Fail()
 		}
@@ -181,7 +178,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexDoesNotExist(t *testing.T)
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	finder := prepareBucketIndexBlocksFinder(t, bkt)
 
-	blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, 10, 20)
+	blocks, deletionMarks, err := finder.GetBlocks(ctx, userID, 10, 20, nil)
 	require.NoError(t, err)
 	assert.Empty(t, blocks)
 	assert.Empty(t, deletionMarks)
@@ -199,7 +196,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsCorrupted(t *testing.T) 
 	// Upload a corrupted bucket index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, bucketindex.IndexCompressedFilename), strings.NewReader("invalid}!")))
 
-	_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
+	_, _, err := finder.GetBlocks(ctx, userID, 10, 20, nil)
 	require.Equal(t, bucketindex.ErrIndexCorrupted, err)
 }
 
@@ -219,7 +216,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOld(t *testing.T) {
 		UpdatedAt:          time.Now().Add(-2 * time.Hour).Unix(),
 	}))
 
-	_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
+	_, _, err := finder.GetBlocks(ctx, userID, 10, 20, nil)
 	require.Equal(t, errBucketIndexTooOld, err)
 }
 
@@ -270,10 +267,10 @@ func TestBucketIndexBlocksFinder_GetBlocks_BucketIndexIsTooOldWithCustomerKeyErr
 		t.Run(name, func(t *testing.T) {
 			bucketindex.WriteSyncStatus(ctx, bkt, userID, tc.ss, log.NewNopLogger())
 			finder := prepareBucketIndexBlocksFinder(t, bkt)
-			_, _, err := finder.GetBlocks(ctx, userID, 10, 20)
+			_, _, err := finder.GetBlocks(ctx, userID, 10, 20, nil)
 			require.Equal(t, tc.err, err)
 			// Doing 2 times to return from the cache
-			_, _, err = finder.GetBlocks(ctx, userID, 10, 20)
+			_, _, err = finder.GetBlocks(ctx, userID, 10, 20, nil)
 			require.Equal(t, tc.err, err)
 		})
 	}
@@ -315,7 +312,7 @@ func TestBucketIndexBlocksFinder_GetBlocks_KeyPermissionDenied(t *testing.T) {
 
 	finder := prepareBucketIndexBlocksFinder(t, bkt)
 
-	_, _, err := finder.GetBlocks(context.Background(), userID, 0, 100)
+	_, _, err := finder.GetBlocks(context.Background(), userID, 0, 100, nil)
 	expected := validation.AccessDeniedError("error")
 	require.IsType(t, expected, err)
 }

@@ -17,9 +17,10 @@ type dynamodbInstrumentation struct {
 }
 
 type dynamodbMetrics struct {
-	dynamodbRequestDuration *instrument.HistogramCollector
-	dynamodbUsageMetrics    *prometheus.CounterVec
-	dynamodbCasAttempts     prometheus.Counter
+	dynamodbRequestDuration          *instrument.HistogramCollector
+	dynamodbUsageMetrics             *prometheus.CounterVec
+	dynamodbCasAttempts              prometheus.Counter
+	dynamodbConditionalCheckFailures prometheus.Counter
 }
 
 func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
@@ -39,10 +40,16 @@ func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 		Help: "DynamoDB KV Store Attempted CAS operations",
 	})
 
+	dynamodbConditionalCheckFailures := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "dynamodb_kv_conditional_check_failed_total",
+		Help: "Total number of DynamoDB conditional check failures",
+	})
+
 	dynamodbMetrics := dynamodbMetrics{
-		dynamodbRequestDuration: dynamodbRequestDurationCollector,
-		dynamodbUsageMetrics:    dynamodbUsageMetrics,
-		dynamodbCasAttempts:     dynamodbCasAttempts,
+		dynamodbRequestDuration:          dynamodbRequestDurationCollector,
+		dynamodbUsageMetrics:             dynamodbUsageMetrics,
+		dynamodbCasAttempts:              dynamodbCasAttempts,
+		dynamodbConditionalCheckFailures: dynamodbConditionalCheckFailures,
 	}
 	return &dynamodbMetrics
 }
@@ -59,8 +66,8 @@ func (d dynamodbInstrumentation) List(ctx context.Context, key dynamodbKey) ([]s
 	return resp, totalCapacity, err
 }
 
-func (d dynamodbInstrumentation) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string][]byte, float64, error) {
-	var resp map[string][]byte
+func (d dynamodbInstrumentation) Query(ctx context.Context, key dynamodbKey, isPrefix bool) (map[string]dynamodbItem, float64, error) {
+	var resp map[string]dynamodbItem
 	var totalCapacity float64
 	err := instrument.CollectedRequest(ctx, "Query", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
 		var err error
@@ -87,12 +94,19 @@ func (d dynamodbInstrumentation) Put(ctx context.Context, key dynamodbKey, data 
 	})
 }
 
-func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey][]byte, delete []dynamodbKey) error {
-	return instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
-		totalCapacity, err := d.kv.Batch(ctx, put, delete)
+func (d dynamodbInstrumentation) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem, delete []dynamodbKey) (bool, error) {
+	retry := false
+	err := instrument.CollectedRequest(ctx, "Batch", d.ddbMetrics.dynamodbRequestDuration, errorCode, func(ctx context.Context) error {
+		var err error
+		totalCapacity, shouldRetry, err := d.kv.Batch(ctx, put, delete)
+		retry = shouldRetry
+		if retry {
+			d.ddbMetrics.dynamodbConditionalCheckFailures.Inc()
+		}
 		d.ddbMetrics.dynamodbUsageMetrics.WithLabelValues("Batch").Add(totalCapacity)
 		return err
 	})
+	return retry, err
 }
 
 // errorCode converts an error into an error code string.

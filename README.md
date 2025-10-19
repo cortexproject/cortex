@@ -11,29 +11,23 @@
 
 # Cortex
 
-Cortex is a horizontally scalable, highly available, multi-tenant, long term storage for [Prometheus](https://prometheus.io).
+Cortex is a horizontally scalable, highly available, multi-tenant, long-term storage solution for [Prometheus](https://prometheus.io) and [OpenTelemetry Metrics](https://opentelemetry.io/docs/specs/otel/metrics/).
 
 ## Features
 
 - **Horizontally scalable:** Cortex can run across multiple machines in a cluster, exceeding the throughput and storage of a single machine.
 - **Highly available:** When run in a cluster, Cortex can replicate data between machines.
 - **Multi-tenant:** Cortex can isolate data and queries from multiple different independent Prometheus sources in a single cluster.
-- **Long term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long term storage of metric data.
-
-## Getting Started
-
-To get started with Cortex, follow these steps:
-
-1. [Installation](https://cortexmetrics.io/docs/getting-started/)
-2. [Basic Setup](https://cortexmetrics.io/docs/configuration/)
-3. [Example Usage](https://cortexmetrics.io/docs/guides/)
+- **Long-term storage:** Cortex supports S3, GCS, Swift and Microsoft Azure for long-term storage of metric data.
 
 ## Documentation
 
+- [Getting Started](https://cortexmetrics.io/docs/getting-started/)
 - [Architecture Overview](https://cortexmetrics.io/docs/architecture/)
-- [Configuration Guide](https://cortexmetrics.io/docs/configuration/)
-- [Security Guide](https://cortexmetrics.io/docs/guides/security/)
-- [Contributor Guidelines](https://cortexmetrics.io/docs/contributing/)
+- [Configuration](https://cortexmetrics.io/docs/configuration/)
+- [Guides](https://cortexmetrics.io/docs/guides/)
+- [Security](https://cortexmetrics.io/docs/guides/security/)
+- [Contributing](https://cortexmetrics.io/docs/contributing/)
 
 ## Community and Support
 
@@ -72,6 +66,8 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 
 ### Talks
 
+- Apr 2025 KubeCon talk "Cortex: Insights, Updates and Roadmap" ([video](https://youtu.be/3aUg2qxfoZU), [slides](https://static.sched.com/hosted_files/kccnceu2025/6c/Cortex%20Talk%20KubeCon%20EU%202025.pdf))
+- Apr 2025 KubeCon talk "Taming 50 Billion Time Series: Operating Global-Scale Prometheus Deployments on Kubernetes" ([video](https://youtu.be/OqLpKJwKZlk), [slides](https://static.sched.com/hosted_files/kccnceu2025/b2/kubecon%20-%2050b%20-%20final.pdf))
 - Nov 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/OGAEWCoM6Tw), [slides](https://static.sched.com/hosted_files/kccncna2024/0f/Cortex%20Talk%20KubeCon%20US%202024.pdf))
 - Mar 2024 KubeCon talk "Cortex Intro: Multi-Tenant Scalable Prometheus" ([video](https://youtu.be/by538PPSPQ0), [slides](https://static.sched.com/hosted_files/kccnceu2024/a1/Cortex%20Talk%20KubeConEU24.pptx.pdf))
 - Apr 2023 KubeCon talk "How to Run a Rock Solid Multi-Tenant Prometheus" ([video](https://youtu.be/Pl5hEoRPLJU), [slides](https://static.sched.com/hosted_files/kccnceu2023/49/Kubecon2023.pptx.pdf))
@@ -80,13 +76,13 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 - Sep 2020 KubeCon talk "Scaling Prometheus: How We Got Some Thanos Into Cortex" ([video](https://www.youtube.com/watch?v=Z5OJzRogAS4), [slides](https://static.sched.com/hosted_files/kccnceu20/ec/2020-08%20-%20KubeCon%20EU%20-%20Cortex%20blocks%20storage.pdf))
 - Jul 2020 PromCon talk "Sharing is Caring: Leveraging Open Source to Improve Cortex & Thanos" ([video](https://www.youtube.com/watch?v=2oTLouUvsac), [slides](https://docs.google.com/presentation/d/1OuKYD7-k9Grb7unppYycdmVGWN0Bo0UwdJRySOoPdpg/edit))
 - Nov 2019 KubeCon talks "[Cortex 101: Horizontally Scalable Long Term Storage for Prometheus][kubecon-cortex-101]" ([video][kubecon-cortex-101-video], [slides][kubecon-cortex-101-slides]), "[Configuring Cortex for Max
-  Performance][kubecon-cortex-201]" ([video][kubecon-cortex-201-video], [slides][kubecon-cortex-201-slides], [write up][kubecon-cortex-201-writeup]) and "[Blazin’ Fast PromQL][kubecon-blazin]" ([slides][kubecon-blazin-slides], [video][kubecon-blazin-video], [write up][kubecon-blazin-writeup])
+  Performance][kubecon-cortex-201]" ([video][kubecon-cortex-201-video], [slides][kubecon-cortex-201-slides], [write up][kubecon-cortex-201-writeup]) and "[Blazin' Fast PromQL][kubecon-blazin]" ([slides][kubecon-blazin-slides], [video][kubecon-blazin-video], [write up][kubecon-blazin-writeup])
 - Nov 2019 PromCon talk "[Two Households, Both Alike in Dignity: Cortex and Thanos][promcon-two-households]" ([video][promcon-two-households-video], [slides][promcon-two-households-slides], [write up][promcon-two-households-writeup])
 - May 2019 KubeCon talks; "[Cortex: Intro][kubecon-cortex-intro]" ([video][kubecon-cortex-intro-video], [slides][kubecon-cortex-intro-slides], [blog post][kubecon-cortex-intro-blog]) and "[Cortex: Deep Dive][kubecon-cortex-deepdive]" ([video][kubecon-cortex-deepdive-video], [slides][kubecon-cortex-deepdive-slides])
 - Nov 2018 CloudNative London meetup talk; "Cortex: Horizontally Scalable, Highly Available Prometheus" ([slides][cloudnative-london-2018-slides])
 - Aug 2018 PromCon panel; "[Prometheus Long-Term Storage Approaches][promcon-2018-panel]" ([video][promcon-2018-video])
 - Dec 2018 KubeCon talk; "[Cortex: Infinitely Scalable Prometheus][kubecon-2018-talk]" ([video][kubecon-2018-video], [slides][kubecon-2018-slides])
-- Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" ([videos][promcon-2017-video], [slides][promcon-2017-slides], write up [part 1][promcon-2017-writeup-1], [part 2][promcon-2017-writeup-2], [part 3][promcon-2017-writeup-3])
+- Aug 2017 PromCon talk; "[Cortex: Prometheus as a Service, One Year On][promcon-2017-talk]" ([video][promcon-2017-video], [slides][promcon-2017-slides], write up [part 1][promcon-2017-writeup-1], [part 2][promcon-2017-writeup-2], [part 3][promcon-2017-writeup-3])
 - Jun 2017 Prometheus London meetup talk; "Cortex: open-source, horizontally-scalable, distributed Prometheus" ([video][prometheus-london-2017-video])
 - Dec 2016 KubeCon talk; "Weave Cortex: Multi-tenant, horizontally scalable Prometheus as a Service" ([video][kubecon-2016-video], [slides][kubecon-2016-slides])
 - Aug 2016 PromCon talk; "Project Frankenstein: Multitenant, Scale-Out Prometheus": ([video][promcon-2016-video], [slides][promcon-2016-slides])
@@ -94,10 +90,10 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 ### Blog Posts
 
 - Dec 2020 blog post "[How AWS and Grafana Labs are scaling Cortex for the cloud](https://aws.amazon.com/blogs/opensource/how-aws-and-grafana-labs-are-scaling-cortex-for-the-cloud/)"
-- Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won’t look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
+- Oct 2020 blog post "[How to switch Cortex from chunks to blocks storage (and why you won't look back)](https://grafana.com/blog/2020/10/19/how-to-switch-cortex-from-chunks-to-blocks-storage-and-why-you-wont-look-back/)"
 - Oct 2020 blog post "[Now GA: Cortex blocks storage for running Prometheus at scale with reduced operational complexity](https://grafana.com/blog/2020/10/06/now-ga-cortex-blocks-storage-for-running-prometheus-at-scale-with-reduced-operational-complexity/)"
 - Sep 2020 blog post "[A Tale of Tail Latencies](https://www.weave.works/blog/a-tale-of-tail-latencies)"
-- Aug 2020 blog post "[Scaling Prometheus: How we’re pushing Cortex blocks storage to its limit and beyond](https://grafana.com/blog/2020/08/12/scaling-prometheus-how-were-pushing-cortex-blocks-storage-to-its-limit-and-beyond/)"
+- Aug 2020 blog post "[Scaling Prometheus: How we're pushing Cortex blocks storage to its limit and beyond](https://grafana.com/blog/2020/08/12/scaling-prometheus-how-were-pushing-cortex-blocks-storage-to-its-limit-and-beyond/)"
 - Jul 2020 blog post "[How blocks storage in Cortex reduces operational complexity for running Prometheus at massive scale](https://grafana.com/blog/2020/07/29/how-blocks-storage-in-cortex-reduces-operational-complexity-for-running-prometheus-at-massive-scale/)"
 - Mar 2020 blog post "[Cortex: Zone Aware Replication](https://kenhaines.net/cortex-zone-aware-replication/)"
 - Mar 2020 blog post "[How we're using gossip to improve Cortex and Loki availability](https://grafana.com/blog/2020/03/25/how-were-using-gossip-to-improve-cortex-and-loki-availability/)"
@@ -159,11 +155,9 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 
 ## Hosted Cortex
 
-There are several commercial services where you can use Cortex on-demand:
-
 ### Amazon Managed Service for Prometheus (AMP)
 
-[Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/) is a Prometheus-compatible monitoring service that makes it easy to monitor containerized applications at scale. It is a highly available, secure, and managed monitoring for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home). To learn more about the AMP, reference our [documentation](https://docs.aws.amazon.com/prometheus/latest/userguide/what-is-Amazon-Managed-Service-Prometheus.html) and [Getting Started with AMP blog](https://aws.amazon.com/blogs/mt/getting-started-amazon-managed-service-for-prometheus/).
+[Amazon Managed Service for Prometheus (AMP)](https://aws.amazon.com/prometheus/) is a Prometheus-compatible monitoring service that makes it easy to monitor containerized applications at scale. It is a highly available, secure, and managed monitoring service for your containers. Get started [here](https://console.aws.amazon.com/prometheus/home). To learn more about AMP, reference our [documentation](https://docs.aws.amazon.com/prometheus/latest/userguide/what-is-Amazon-Managed-Service-Prometheus.html) and [Getting Started with AMP blog](https://aws.amazon.com/blogs/mt/getting-started-amazon-managed-service-for-prometheus/).
 
 ## Emeritus Maintainers
 

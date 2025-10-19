@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/promql-engine/execution/parse"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
@@ -416,6 +417,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 						"-querier.query-store-for-labels-enabled":           "true",
 						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
+						"-querier.enable-x-functions":                       strconv.FormatBool(thanosEngine),
 						// Ingester.
 						"-ring.store":      "consul",
 						"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -433,9 +435,10 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
 
 				// Add the cache address to the flags.
-				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
+				switch testCfg.indexCacheBackend {
+				case tsdb.IndexCacheBackendMemcached:
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
-				} else if testCfg.indexCacheBackend == tsdb.IndexCacheBackendRedis {
+				case tsdb.IndexCacheBackendRedis:
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
@@ -1308,4 +1311,142 @@ func TestQuerierMaxSamplesLimit(t *testing.T) {
 		ErrorType: v1.ErrExec,
 		Error:     "query processing would load too many samples into memory in query execution",
 	})
+}
+
+func TestQuerierEngineConfigs(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		"-querier.thanos-engine":                   "true",
+		"-querier.enable-x-functions":              "true",
+		"-querier.optimizers":                      "all",
+	})
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex components for the write path.
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// Wait until the distributor and querier has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	series1Timestamp := time.Now()
+	series1, _ := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", series1Timestamp, prompb.Label{Name: "job", Value: "test"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	for xFunc := range parse.XFunctions {
+		result, err := c.Query(fmt.Sprintf(`%s(series_1{job="test"}[1m])`, xFunc), series1Timestamp)
+		require.NoError(t, err)
+		require.Equal(t, model.ValVector, result.Type())
+	}
+
+}
+
+func TestQuerierDistributedExecution(t *testing.T) {
+	// e2e test setup
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// initialize the flags
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		map[string]string{
+			"-blocks-storage.tsdb.block-ranges-period": (5 * time.Second).String(),
+			"-blocks-storage.tsdb.ship-interval":       "1s",
+			"-blocks-storage.tsdb.retention-period":    ((5 * time.Second * 2) - 1).String(),
+			"-querier.thanos-engine":                   "true",
+			// enable distributed execution (logical plan execution)
+			"-querier.distributed-exec-enabled": "true",
+		},
+	)
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// start services
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	queryScheduler := e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryScheduler, distributor, ingester, storeGateway))
+	flags = mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+	})
+
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", mergeFlags(flags, map[string]string{
+		"-frontend.scheduler-address": queryScheduler.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.scheduler-address": queryScheduler.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// wait until the distributor and querier has updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	series1Timestamp := time.Now()
+	series2Timestamp := series1Timestamp.Add(time.Minute * 1)
+	series1, expectedVector1 := generateSeries("series_1", series1Timestamp, prompb.Label{Name: "series_1", Value: "series_1"})
+	series2, expectedVector2 := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "series_2", Value: "series_2"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// main tests
+	// - make sure queries are still executable with distributed execution enabled
+	var val model.Value
+	val, err = c.Query("series_1", series1Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, expectedVector1, val.(model.Vector))
+
+	val, err = c.Query("series_2", series2Timestamp)
+	require.NoError(t, err)
+	require.Equal(t, expectedVector2, val.(model.Vector))
 }

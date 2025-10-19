@@ -2197,6 +2197,11 @@ func (c Zscan) Key(key string) ZscanKey {
 
 type ZscanCount Incomplete
 
+func (c ZscanCount) Noscores() ZscanNoscores {
+	c.cs.s = append(c.cs.s, "NOSCORES")
+	return (ZscanNoscores)(c)
+}
+
 func (c ZscanCount) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
@@ -2212,6 +2217,11 @@ func (c ZscanCursor) Match(pattern string) ZscanMatch {
 func (c ZscanCursor) Count(count int64) ZscanCount {
 	c.cs.s = append(c.cs.s, "COUNT", strconv.FormatInt(count, 10))
 	return (ZscanCount)(c)
+}
+
+func (c ZscanCursor) Noscores() ZscanNoscores {
+	c.cs.s = append(c.cs.s, "NOSCORES")
+	return (ZscanNoscores)(c)
 }
 
 func (c ZscanCursor) Build() Completed {
@@ -2233,7 +2243,19 @@ func (c ZscanMatch) Count(count int64) ZscanCount {
 	return (ZscanCount)(c)
 }
 
+func (c ZscanMatch) Noscores() ZscanNoscores {
+	c.cs.s = append(c.cs.s, "NOSCORES")
+	return (ZscanNoscores)(c)
+}
+
 func (c ZscanMatch) Build() Completed {
+	c.cs.Build()
+	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
+}
+
+type ZscanNoscores Incomplete
+
+func (c ZscanNoscores) Build() Completed {
 	c.cs.Build()
 	return Completed{cs: c.cs, cf: uint16(c.cf), ks: c.ks}
 }

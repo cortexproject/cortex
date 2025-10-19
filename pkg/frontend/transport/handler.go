@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,34 +23,39 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
-
-	errTooManyTenants = "too many tenants, max: %d, actual: %d"
 )
 
 var (
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, context.DeadlineExceeded.Error())
-	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "http: request body too large")
+	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
+	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "%s", "http: request body too large")
 )
 
 const (
+	reasonTooManyTenants           = "too_many_tenants"
 	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
 	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
 	reasonTooManyRequests          = "too_many_requests"
+	reasonResourceExhausted        = "resource_exhausted"
 	reasonTimeRangeExceeded        = "time_range_exceeded"
+	reasonResponseSizeExceeded     = "response_size_exceeded"
 	reasonTooManySamples           = "too_many_samples"
 	reasonSeriesFetched            = "series_fetched"
 	reasonChunksFetched            = "chunks_fetched"
@@ -58,12 +65,13 @@ const (
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
 
-	limitTooManySamples    = `query processing would load too many samples into memory`
-	limitTimeRangeExceeded = `the query time range exceeds the limit`
-	limitSeriesFetched     = `the query hit the max number of series limit`
-	limitChunksFetched     = `the query hit the max number of chunks limit`
-	limitChunkBytesFetched = `the query hit the aggregated chunks size limit`
-	limitDataBytesFetched  = `the query hit the aggregated data size limit`
+	limitTooManySamples       = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded    = `the query time range exceeds the limit`
+	limitResponseSizeExceeded = `the query response size exceeds limit`
+	limitSeriesFetched        = `the query hit the max number of series limit`
+	limitChunksFetched        = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched    = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched     = `the query hit the aggregated data size limit`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -73,15 +81,17 @@ const (
 
 // Config for a Handler.
 type HandlerConfig struct {
-	LogQueriesLongerThan time.Duration `yaml:"log_queries_longer_than"`
-	MaxBodySize          int64         `yaml:"max_body_size"`
-	QueryStatsEnabled    bool          `yaml:"query_stats_enabled"`
+	LogQueriesLongerThan      time.Duration `yaml:"log_queries_longer_than"`
+	MaxBodySize               int64         `yaml:"max_body_size"`
+	QueryStatsEnabled         bool          `yaml:"query_stats_enabled"`
+	EnabledRulerQueryStatsLog bool          `yaml:"enabled_ruler_query_stats_log"`
 }
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.LogQueriesLongerThan, "frontend.log-queries-longer-than", 0, "Log queries that are slower than the specified duration. Set to 0 to disable. Set to < 0 to enable on all queries.")
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
+	f.BoolVar(&cfg.EnabledRulerQueryStatsLog, "frontend.enabled-ruler-query-stats", false, "If enabled, report the query stats log for queries coming from the ruler to evaluate rules. It only takes effect when '-ruler.frontend-address' is configured.")
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
@@ -101,7 +111,11 @@ type Handler struct {
 	queryChunkBytes     *prometheus.CounterVec
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
+	slowQueries         *prometheus.CounterVec
 	activeUsers         *util.ActiveUsersCleanupService
+
+	initSlowQueryMetric sync.Once
+	reg                 prometheus.Registerer
 }
 
 // NewHandler creates a new frontend handler.
@@ -111,6 +125,7 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 		tenantFederationCfg: tenantFederationCfg,
 		log:                 log,
 		roundTripper:        roundTripper,
+		reg:                 reg,
 	}
 
 	if cfg.QueryStatsEnabled {
@@ -160,24 +175,65 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			},
 			[]string{"reason", "source", "user"},
 		)
-
-		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
-			h.querySeconds.DeleteLabelValues(user)
-			h.queryFetchedSeries.DeleteLabelValues(user)
-			h.queryFetchedSamples.DeleteLabelValues(user)
-			h.queryScannedSamples.DeleteLabelValues(user)
-			h.queryPeakSamples.DeleteLabelValues(user)
-			h.queryChunkBytes.DeleteLabelValues(user)
-			h.queryDataBytes.DeleteLabelValues(user)
-			if err := util.DeleteMatchingLabels(h.rejectedQueries, map[string]string{"user": user}); err != nil {
-				level.Warn(log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
-			}
-		})
+		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
 	}
 
 	return h
+}
+
+func (h *Handler) getOrCreateSlowQueryMetric() *prometheus.CounterVec {
+	h.initSlowQueryMetric.Do(func() {
+		h.slowQueries = promauto.With(h.reg).NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "cortex_slow_queries_total",
+				Help: "The total number of slow queries.",
+			},
+			[]string{"source", "user"},
+		)
+	})
+	return h.slowQueries
+}
+
+func (h *Handler) cleanupMetricsForInactiveUser(user string) {
+	if !h.cfg.QueryStatsEnabled {
+		return
+	}
+
+	// Create a map with the user label to match
+	userLabel := map[string]string{"user": user}
+
+	// Clean up all metrics for the user
+	if err := util.DeleteMatchingLabels(h.querySeconds, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_seconds_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryFetchedSeries, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_series_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryFetchedSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_samples_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryScannedSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_samples_scanned_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryPeakSamples, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_peak_samples metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryChunkBytes, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_chunks_bytes_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.queryDataBytes, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_query_fetched_data_bytes_total metric for user", "user", user, "err", err)
+	}
+	if err := util.DeleteMatchingLabels(h.rejectedQueries, userLabel); err != nil {
+		level.Warn(h.log).Log("msg", "failed to remove cortex_rejected_queries_total metric for user", "user", user, "err", err)
+	}
+	if h.slowQueries != nil {
+		if err := util.DeleteMatchingLabels(h.slowQueries, userLabel); err != nil {
+			level.Warn(h.log).Log("msg", "failed to remove cortex_slow_queries_total metric for user", "user", user, "err", err)
+		}
+	}
 }
 
 func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -188,18 +244,23 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	tenantIDs, err := tenant.TenantIDs(r.Context())
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	userID := tenant.JoinTenantIDs(tenantIDs)
+	source := tripperware.GetSource(r)
 
 	if f.tenantFederationCfg.Enabled {
 		maxTenant := f.tenantFederationCfg.MaxTenant
 		if maxTenant > 0 && len(tenantIDs) > maxTenant {
-			http.Error(w, fmt.Errorf(errTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
+			if f.cfg.QueryStatsEnabled {
+				f.rejectedQueries.WithLabelValues(reasonTooManyTenants, source, userID).Inc()
+			}
+			http.Error(w, fmt.Errorf(tenantfederation.ErrTooManyTenants, maxTenant, len(tenantIDs)).Error(), http.StatusBadRequest)
 			return
 		}
 	}
-
-	userID := tenant.JoinTenantIDs(tenantIDs)
 
 	// Initialise the stats in the context and make sure it's propagated
 	// down the request chain.
@@ -233,7 +294,6 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			http.Error(w, err.Error(), statusCode)
 			if f.cfg.QueryStatsEnabled && util.IsRequestBodyTooLarge(err) {
-				source := tripperware.GetSource(r.Header.Get("User-Agent"))
 				f.rejectedQueries.WithLabelValues(reasonRequestBodySizeExceeded, source, userID).Inc()
 			}
 			return
@@ -245,7 +305,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// We need to parse remote read proto to be properly log it so skip it.
 	if f.cfg.QueryStatsEnabled && !isRemoteRead {
 		queryString = f.parseRequestQueryString(r, buf)
-		f.logQueryRequest(r, queryString)
+		f.logQueryRequest(r, queryString, source)
 	}
 
 	startTime := time.Now()
@@ -259,6 +319,9 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if shouldReportSlowQuery {
 		f.reportSlowQuery(r, queryString, queryResponseTime)
+		if f.cfg.QueryStatsEnabled {
+			f.getOrCreateSlowQueryMetric().WithLabelValues(source, userID).Inc()
+		}
 	}
 
 	if f.cfg.QueryStatsEnabled {
@@ -271,14 +334,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// If the response status code is not 2xx, try to get the
 			// error message from response body.
 			if resp.StatusCode/100 != 2 {
-				body, err2 := tripperware.BodyBuffer(resp, f.log)
+				body, err2 := tripperware.BodyBytes(resp, f.log)
 				if err2 == nil {
-					err = httpgrpc.Errorf(resp.StatusCode, string(body))
+					err = httpgrpc.Errorf(resp.StatusCode, "%s", string(body))
 				}
 			}
 		}
 
-		source := tripperware.GetSource(r.Header.Get("User-Agent"))
 		f.reportQueryStats(r, source, userID, queryString, queryResponseTime, stats, err, statusCode, resp)
 	}
 
@@ -293,9 +355,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for h, vs := range resp.Header {
-		hs[h] = vs
-	}
+	maps.Copy(hs, resp.Header)
 
 	w.WriteHeader(resp.StatusCode)
 	// log copy response body error so that we will know even though success response code returned
@@ -305,10 +365,10 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func formatGrafanaStatsFields(r *http.Request) []interface{} {
+func formatGrafanaStatsFields(r *http.Request) []any {
 	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
 
-	fields := make([]interface{}, 0, 4)
+	fields := make([]any, 0, 4)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
 		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
 	}
@@ -319,8 +379,8 @@ func formatGrafanaStatsFields(r *http.Request) []interface{} {
 }
 
 // logQueryRequest logs query request before query execution.
-func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
-	logMessage := []interface{}{
+func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, source string) {
+	logMessage := []any{
 		"msg", "query request",
 		"component", "query-frontend",
 		"method", r.Method,
@@ -330,14 +390,37 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values) {
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
-	logMessage = append(logMessage, formatQueryString(queryString)...)
 
-	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	if query := queryString.Get("query"); len(query) > 0 {
+		logMessage = append(logMessage, "query_length", len(query))
+	}
+
+	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
+		logMessage = append(logMessage, "user_agent", ua)
+	}
+
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
+	}
+
+	if acceptEncoding := r.Header.Get("Accept-Encoding"); len(acceptEncoding) > 0 {
+		logMessage = append(logMessage, "accept_encoding", acceptEncoding)
+	}
+
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+	}
 }
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	logMessage := []interface{}{
+	logMessage := []any{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
@@ -369,6 +452,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	splitQueries := stats.LoadSplitQueries()
 	dataSelectMaxTime := stats.LoadDataSelectMaxTime()
 	dataSelectMinTime := stats.LoadDataSelectMinTime()
+	splitInterval := stats.LoadSplitInterval()
 
 	// Track stats.
 	f.querySeconds.WithLabelValues(source, userID).Add(wallTime.Seconds())
@@ -390,7 +474,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	}
 
 	// Log stats.
-	logMessage := append([]interface{}{
+	logMessage := append([]any{
 		"msg", "query stats",
 		"component", "query-frontend",
 		"method", r.Method,
@@ -406,6 +490,7 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		"split_queries", splitQueries,
 		"status_code", statusCode,
 		"response_size", contentLength,
+		"samples_scanned", numScannedSamples,
 	}, stats.LoadExtraFields()...)
 
 	if numStoreGatewayTouchedPostings > 0 {
@@ -434,6 +519,12 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 	if ua := r.Header.Get("User-Agent"); len(ua) > 0 {
 		logMessage = append(logMessage, "user_agent", ua)
 	}
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
+	}
 	if priority, ok := stats.LoadPriority(); ok {
 		logMessage = append(logMessage, "priority", priority)
 	}
@@ -441,6 +532,10 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		// Only include query storage wall time field if set. This value can be 0
 		// for query APIs that don't call `Querier` interface.
 		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
+	}
+
+	if splitInterval > 0 {
+		logMessage = append(logMessage, "split_interval", splitInterval.String())
 	}
 
 	if error != nil {
@@ -451,11 +546,15 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			logMessage = append(logMessage, "error", s.Message())
 		}
 	}
-	logMessage = append(logMessage, formatQueryString(queryString)...)
-	if error != nil {
-		level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
-	} else {
-		level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		if error != nil {
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		} else {
+			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		}
 	}
 
 	var reason string
@@ -463,12 +562,15 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		reason = reasonTooManyRequests
 	} else if statusCode == http.StatusRequestEntityTooLarge {
 		reason = reasonResponseBodySizeExceeded
-	} else if statusCode == http.StatusUnprocessableEntity {
+	} else if statusCode == http.StatusUnprocessableEntity && error != nil {
+		// We are unable to use errors.As to compare since body string from the http response is wrapped as an error
 		errMsg := error.Error()
 		if strings.Contains(errMsg, limitTooManySamples) {
 			reason = reasonTooManySamples
 		} else if strings.Contains(errMsg, limitTimeRangeExceeded) {
 			reason = reasonTimeRangeExceeded
+		} else if strings.Contains(errMsg, limitResponseSizeExceeded) {
+			reason = reasonResponseSizeExceeded
 		} else if strings.Contains(errMsg, limitSeriesFetched) {
 			reason = reasonSeriesFetched
 		} else if strings.Contains(errMsg, limitChunksFetched) {
@@ -483,6 +585,11 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
+		}
+	} else if statusCode == http.StatusServiceUnavailable && error != nil {
+		errMsg := error.Error()
+		if strings.Contains(errMsg, limiter.ErrResourceLimitReachedStr) {
+			reason = reasonResourceExhausted
 		}
 	}
 	if len(reason) > 0 {
@@ -505,12 +612,12 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	return r.Form
 }
 
-func formatQueryString(queryString url.Values) (fields []interface{}) {
-	var queryFields []interface{}
+func formatQueryString(queryString url.Values) (fields []any) {
+	var queryFields []any
 	for k, v := range queryString {
 		// If `query` or `match[]` field exists, we always put it as the last field.
 		if k == "query" || k == "match[]" {
-			queryFields = []interface{}{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
+			queryFields = []any{fmt.Sprintf("param_%s", k), strings.Join(v, ",")}
 			continue
 		}
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
 
@@ -231,4 +232,19 @@ func Test_setupModuleManager(t *testing.T) {
 			}
 		}
 	}
+}
+
+func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
+	cortex := &Cortex{
+		Server: &server.Server{},
+		Cfg: Config{
+			ResourceMonitor: configs.ResourceMonitor{
+				Resources: []string{"invalid"},
+			},
+		},
+	}
+
+	// log warning message and spin up other cortex services
+	_, err := cortex.initResourceMonitor()
+	require.ErrorContains(t, err, "unknown resource type")
 }

@@ -26,17 +26,18 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 		User:        user,
 		Limit:       int64(rl.Limit),
 		QueryOffset: queryOffset,
+		Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
 	}
 	return &rg
 }
 
-func formattedRuleToProto(rls []rulefmt.RuleNode) []*RuleDesc {
+func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 	rules := make([]*RuleDesc, len(rls))
 	for i := range rls {
 		rules[i] = &RuleDesc{
-			Expr:          rls[i].Expr.Value,
-			Record:        rls[i].Record.Value,
-			Alert:         rls[i].Alert.Value,
+			Expr:          rls[i].Expr,
+			Record:        rls[i].Record,
+			Alert:         rls[i].Alert,
 			For:           time.Duration(rls[i].For),
 			KeepFiringFor: time.Duration(rls[i].KeepFiringFor),
 			Labels:        cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rls[i].Labels)),
@@ -57,17 +58,18 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 	formattedRuleGroup := rulefmt.RuleGroup{
 		Name:        rg.GetName(),
 		Interval:    model.Duration(rg.Interval),
-		Rules:       make([]rulefmt.RuleNode, len(rg.GetRules())),
+		Rules:       make([]rulefmt.Rule, len(rg.GetRules())),
 		Limit:       int(rg.Limit),
 		QueryOffset: queryOffset,
+		Labels:      cortexpb.FromLabelAdaptersToLabels(rg.Labels).Map(),
 	}
 
 	for i, rl := range rg.GetRules() {
 		exprNode := yaml.Node{}
 		exprNode.SetString(rl.GetExpr())
 
-		newRule := rulefmt.RuleNode{
-			Expr:          exprNode,
+		newRule := rulefmt.Rule{
+			Expr:          exprNode.Value,
 			Labels:        cortexpb.FromLabelAdaptersToLabels(rl.Labels).Map(),
 			Annotations:   cortexpb.FromLabelAdaptersToLabels(rl.Annotations).Map(),
 			For:           model.Duration(rl.GetFor()),
@@ -75,13 +77,9 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 		}
 
 		if rl.GetRecord() != "" {
-			recordNode := yaml.Node{}
-			recordNode.SetString(rl.GetRecord())
-			newRule.Record = recordNode
+			newRule.Record = rl.GetRecord()
 		} else {
-			alertNode := yaml.Node{}
-			alertNode.SetString(rl.GetAlert())
-			newRule.Alert = alertNode
+			newRule.Alert = rl.GetAlert()
 		}
 
 		formattedRuleGroup.Rules[i] = newRule

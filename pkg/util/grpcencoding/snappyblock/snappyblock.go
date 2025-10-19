@@ -24,7 +24,7 @@ type compressor struct {
 func newCompressor() *compressor {
 	c := &compressor{}
 	c.readersPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &reader{
 				pool:  &c.readersPool,
 				cbuff: bytes.NewBuffer(make([]byte, 0, 512)),
@@ -32,7 +32,7 @@ func newCompressor() *compressor {
 		},
 	}
 	c.writersPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &writeCloser{
 				pool: &c.writersPool,
 				buff: bytes.NewBuffer(make([]byte, 0, 512)),

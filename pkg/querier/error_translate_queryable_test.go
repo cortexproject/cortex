@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/search"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/route"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,6 +24,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	"github.com/cortexproject/cortex/pkg/storegateway"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -82,6 +85,12 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedCode:   422,
 		},
 
+		{
+			err:            search.NewQuota(1).Reserve(2),
+			expectedString: "resource exhausted (used 1)",
+			expectedCode:   422,
+		},
+
 		// 505 is translated to 500
 		{
 			err:            httpgrpc.Errorf(http.StatusHTTPVersionNotSupported, "test"),
@@ -106,6 +115,16 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedString: "test string",
 			expectedCode:   422,
 		},
+		{
+			err:            storegateway.ErrTooManyInflightRequests,
+			expectedString: "too many inflight requests in store gateway",
+			expectedCode:   500,
+		},
+		{
+			err:            limiter.ErrResourceLimitReached,
+			expectedString: limiter.ErrResourceLimitReachedStr,
+			expectedCode:   500,
+		},
 	} {
 		for k, q := range map[string]storage.SampleAndChunkQueryable{
 			"error from queryable": errorTestQueryable{err: tc.err},
@@ -114,7 +133,7 @@ func TestApiStatusCodes(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%s/%d", k, ix), func(t *testing.T) {
 				opts := promql.EngineOpts{
-					Logger:             log.NewNopLogger(),
+					Logger:             promslog.NewNopLogger(),
 					Reg:                nil,
 					ActiveQueryTracker: nil,
 					MaxSamples:         100,
@@ -152,18 +171,25 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
-		log.NewNopLogger(),
+		promslog.NewNopLogger(),
 		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
 		false,
 		regexp.MustCompile(".*"),
 		func() (v1.RuntimeInfo, error) { return v1.RuntimeInfo{}, errors.New("not implemented") },
 		&v1.PrometheusVersion{},
+		nil,
+		nil,
 		prometheus.DefaultGatherer,
 		nil,
 		nil,
 		false,
 		nil,
+		false,
+		false,
+		false,
+		false,
+		5*time.Minute,
 		false,
 	)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -47,7 +48,7 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	// Make a random ring with N instances, and M tokens per ingests
 	desc := NewDesc()
 	ring := &Desc{}
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		tokens := g.GenerateTokens(ring, strconv.Itoa(i), "zone", numTokens, true)
 		desc.AddIngester(fmt.Sprintf("%d", i), fmt.Sprintf("instance-%d", i), strconv.Itoa(i), tokens, ACTIVE, time.Now())
 	}
@@ -88,9 +89,8 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 	for n, c := range tc {
 		b.Run(n, func(b *testing.B) {
 			// Generate a batch of N random keys, and look them up
-			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				generateKeys(rnd, numKeys, keys)
 				err := DoBatch(ctx, Write, &r, c.exe, keys, callback, cleanup)
 				require.NoError(b, err)
@@ -100,7 +100,7 @@ func benchmarkBatch(b *testing.B, g TokenGenerator, numInstances, numKeys int) {
 }
 
 func generateKeys(r *rand.Rand, numTokens int, dest []uint32) {
-	for i := 0; i < numTokens; i++ {
+	for i := range numTokens {
 		dest[i] = r.Uint32()
 	}
 }
@@ -136,7 +136,7 @@ func benchmarkUpdateRingState(b *testing.B, g TokenGenerator, numInstances, numZ
 	// Also make a copy with different timestamps and one with different tokens
 	desc := NewDesc()
 	otherDesc := NewDesc()
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		id := fmt.Sprintf("%d", i)
 		tokens := g.GenerateTokens(desc, id, "zone", numTokens, true)
 		now := time.Now()
@@ -156,8 +156,8 @@ func benchmarkUpdateRingState(b *testing.B, g TokenGenerator, numInstances, numZ
 	}
 
 	flipFlop := true
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+
+	for b.Loop() {
 		if flipFlop {
 			ring.updateRingState(desc)
 		} else {
@@ -285,7 +285,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterLeaving(t *testing.T) {
 			// Use the GenerateTokens to get an array of random uint32 values.
 			testValues := g.GenerateTokens(r, "", "", testCount, true)
 
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
 				require.NoError(t, err)
 
@@ -362,7 +362,7 @@ func TestRing_Get_ZoneAwarenessWithIngesterJoining(t *testing.T) {
 			// Use the GenerateTokens to get an array of random uint32 values.
 			testValues := g.GenerateTokens(ring.ringDesc, "", "", testCount, true)
 
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err := ring.Get(testValues[i], Write, instancesList, bufHosts, bufZones)
 				require.NoError(t, err)
 
@@ -467,7 +467,7 @@ func TestRing_Get_ZoneAwareness(t *testing.T) {
 
 			var set ReplicationSet
 			var err error
-			for i := 0; i < testCount; i++ {
+			for i := range testCount {
 				set, err = ring.Get(testValues[i], Write, instances, bufHosts, bufZones)
 				if testData.expectedErr != "" {
 					require.EqualError(t, err, testData.expectedErr)
@@ -557,12 +557,12 @@ func TestRing_Get_Stability(t *testing.T) {
 				KVClient:            &MockClient{},
 			}
 
-			for i := 0; i < numOfTokensToTest; i++ {
+			for i := range numOfTokensToTest {
 				expectedSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
 				assert.NoError(t, err)
 				assert.Equal(t, testData.replicationFactor, len(expectedSet.Instances))
 
-				for j := 0; j < numOfInvocations; j++ {
+				for range numOfInvocations {
 					newSet, err := ring.Get(testValues[i], Write, bufDescs, bufHosts, bufZones)
 					assert.NoError(t, err)
 					assert.Equal(t, expectedSet, newSet)
@@ -574,8 +574,6 @@ func TestRing_Get_Stability(t *testing.T) {
 }
 
 func TestRing_Get_Consistency(t *testing.T) {
-	// Number of tests to run.
-	const testCount = 10000
 	g := NewRandomTokenGenerator()
 
 	tests := map[string]struct {
@@ -686,10 +684,10 @@ func TestRing_Get_Consistency(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			testValues := g.GenerateTokens(NewDesc(), "", "", testCount, true)
+			ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+			testValues := g.GenerateTokens(ringDesc, "", "", 128, true)
 			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
-			for i := 0; i < testCount; i++ {
-				ringDesc := &Desc{Ingesters: generateRingInstances(testData.initialInstances, testData.numZones, 128)}
+			for i := range 128 {
 				ring := Ring{
 					cfg: Config{
 						HeartbeatTimeout:     time.Hour,
@@ -973,9 +971,6 @@ func TestRing_GetAllHealthy(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			for id, instance := range ringDesc.Ingesters {
-				ringDesc.Ingesters[id] = instance
-			}
 
 			ring := Ring{
 				cfg:                 Config{HeartbeatTimeout: heartbeatTimeout},
@@ -1195,9 +1190,6 @@ func TestRing_GetReplicationSetForOperation(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Init the ring.
 			ringDesc := &Desc{Ingesters: testData.ringInstances}
-			for id, instance := range ringDesc.Ingesters {
-				ringDesc.Ingesters[id] = instance
-			}
 
 			ring := Ring{
 				cfg: Config{
@@ -1784,7 +1776,7 @@ func TestRing_ShuffleShard_Stability(t *testing.T) {
 			require.NoError(t, err)
 
 			// Assert that multiple invocations generate the same exact shard.
-			for n := 0; n < numInvocations; n++ {
+			for range numInvocations {
 				r := ring.ShuffleShard(tenantID, size)
 				actual, err := r.GetAllHealthy(Read)
 				require.NoError(t, err)
@@ -1816,7 +1808,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 	// Initialise the ring instances. To have stable tests we generate tokens using a linear
 	// distribution. Tokens within the same zone are evenly distributed too.
 	instances := make(map[string]InstanceDesc, numInstances)
-	for i := 0; i < numInstances; i++ {
+	for i := range numInstances {
 		id := fmt.Sprintf("instance-%d", i)
 		instances[id] = InstanceDesc{
 			Addr:                fmt.Sprintf("127.0.0.%d", i),
@@ -1873,7 +1865,7 @@ func TestRing_ShuffleShard_Shuffling(t *testing.T) {
 
 			numMatching := 0
 			for _, c := range currShard {
-				if util.StringsContain(otherShard, c) {
+				if slices.Contains(otherShard, c) {
 					numMatching++
 				}
 			}
@@ -1946,7 +1938,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 
 			// Compute the initial shard for each tenant.
 			initial := map[int]ReplicationSet{}
-			for id := 0; id < numTenants; id++ {
+			for id := range numTenants {
 				set, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 				initial[id] = set
@@ -1973,7 +1965,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 			// Compute the update shard for each tenant and compare it with the initial one.
 			// If the "consistency" property is guaranteed, we expect no more then 1 different instance
 			// in the updated shard.
-			for id := 0; id < numTenants; id++ {
+			for id := range numTenants {
 				updated, err := ring.ShuffleShard(fmt.Sprintf("%d", id), s.shardSize).GetAllHealthy(Read)
 				require.NoError(t, err)
 
@@ -1988,7 +1980,7 @@ func TestRing_ShuffleShard_Consistency(t *testing.T) {
 func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 	// Create 30 instances in 3 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		name, desc := generateRingInstance(i, i%3, 128)
 		ringInstances[name] = desc
 	}
@@ -2069,7 +2061,7 @@ func TestRing_ShuffleShard_ConsistencyOnShardSizeChanged(t *testing.T) {
 func TestRing_ShuffleShardWithZoneStability_ConsistencyOnShardSizeChanged(t *testing.T) {
 	// Create 300 instances in 3 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		name, desc := generateRingInstance(i, i%3, 128)
 		ringInstances[name] = desc
 	}
@@ -2131,7 +2123,7 @@ func TestRing_ShuffleShardWithZoneStability_ConsistencyOnShardSizeChanged(t *tes
 func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 	// Create 20 instances in 2 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		name, desc := generateRingInstance(i, i%2, 128)
 		ringInstances[name] = desc
 	}
@@ -2208,7 +2200,7 @@ func TestRing_ShuffleShard_ConsistencyOnZonesChanged(t *testing.T) {
 func TestRing_ShuffleShardWithZoneStability_ConsistencyOnZonesChanged(t *testing.T) {
 	// Create 20 instances in 2 zones.
 	ringInstances := map[string]InstanceDesc{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		name, desc := generateRingInstance(i, i%2, 128)
 		ringInstances[name] = desc
 	}
@@ -2523,6 +2515,108 @@ func TestRing_ShuffleShardWithLookback(t *testing.T) {
 	}
 }
 
+func TestRing_ShuffleShardWithReadOnlyIngesters(t *testing.T) {
+	g := NewRandomTokenGenerator()
+
+	const (
+		userID = "user-1"
+	)
+
+	tests := map[string]struct {
+		ringInstances         map[string]InstanceDesc
+		ringReplicationFactor int
+		shardSize             int
+		expectedSize          int
+		op                    Operation
+		expectedToBePresent   []string
+	}{
+		"single zone, shard size = 1, default scenario": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             1,
+			expectedSize:          1,
+		},
+		"single zone, shard size = 1, not filter ReadOnly": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: READONLY, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             2,
+			expectedSize:          2,
+		},
+		"single zone, shard size = 4, do not filter other states": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: g.GenerateTokens(NewDesc(), "instance-1", "zone-a", 128, true)},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: JOINING, Tokens: g.GenerateTokens(NewDesc(), "instance-2", "zone-a", 128, true)},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", State: LEAVING, Tokens: g.GenerateTokens(NewDesc(), "instance-3", "zone-a", 128, true)},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: PENDING, Tokens: g.GenerateTokens(NewDesc(), "instance-4", "zone-a", 128, true)},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             4,
+			expectedSize:          4,
+		},
+		"single zone, shard size = 4, extend on readOnly": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{2}},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{4}},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{6}},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: READONLY, Tokens: []uint32{1, 3, 5}},
+			},
+			ringReplicationFactor: 1,
+			shardSize:             2,
+			expectedSize:          3,
+			expectedToBePresent:   []string{"instance-4"},
+		},
+		"rf = 3, shard size = 4, extend readOnly from different zones": {
+			ringInstances: map[string]InstanceDesc{
+				"instance-1": {Addr: "127.0.0.1", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{2}},
+				"instance-2": {Addr: "127.0.0.2", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{12}},
+				"instance-3": {Addr: "127.0.0.3", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{22}},
+				"instance-4": {Addr: "127.0.0.4", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{4}},
+				"instance-5": {Addr: "127.0.0.5", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{14}},
+				"instance-6": {Addr: "127.0.0.6", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{24}},
+				"instance-7": {Addr: "127.0.0.7", Zone: "zone-a", State: READONLY, Tokens: []uint32{1, 3}},
+				"instance-8": {Addr: "127.0.0.8", Zone: "zone-b", State: READONLY, Tokens: []uint32{11, 13}},
+				"instance-9": {Addr: "127.0.0.9", Zone: "zone-c", State: READONLY, Tokens: []uint32{21, 23}},
+			},
+			ringReplicationFactor: 3,
+			shardSize:             6,
+			expectedSize:          9,
+			expectedToBePresent:   []string{"instance-7", "instance-8", "instance-9"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Init the ring.
+			ringDesc := &Desc{Ingesters: testData.ringInstances}
+
+			ring := Ring{
+				cfg: Config{
+					ReplicationFactor: testData.ringReplicationFactor,
+				},
+				ringDesc:            ringDesc,
+				ringTokens:          ringDesc.GetTokens(),
+				ringTokensByZone:    ringDesc.getTokensByZone(),
+				ringInstanceByToken: ringDesc.getTokensInfo(),
+				ringZones:           getZones(ringDesc.getTokensByZone()),
+				strategy:            NewDefaultReplicationStrategy(),
+				KVClient:            &MockClient{},
+			}
+
+			shardRing := ring.ShuffleShard(userID, testData.shardSize)
+			assert.Equal(t, testData.expectedSize, shardRing.InstancesCount())
+			for _, expectedInstance := range testData.expectedToBePresent {
+				assert.True(t, shardRing.HasInstance(expectedInstance))
+			}
+		})
+	}
+}
+
 func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 	// The goal of this test is NOT to ensure that the minimum required number of instances
 	// are returned at any given time, BUT at least all required instances are returned.
@@ -2720,9 +2814,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		KVClient:             &MockClient{},
 	}
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		ring.ShuffleShard("tenant-1", shardSize)
 	}
 }
@@ -2752,9 +2844,7 @@ func BenchmarkRing_Get(b *testing.B) {
 	buf, bufHosts, bufZones := MakeBuffersForGet()
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		set, err := ring.Get(r.Uint32(), Write, buf, bufHosts, bufZones)
 		if err != nil || len(set.Instances) != replicationFactor {
 			b.Fatal()
@@ -2904,7 +2994,7 @@ func TestRingUpdates(t *testing.T) {
 			}
 
 			// Ensure the ring client got updated.
-			test.Poll(t, 1*time.Second, testData.expectedInstances, func() interface{} {
+			test.Poll(t, 1*time.Second, testData.expectedInstances, func() any {
 				return ring.InstancesCount()
 			})
 
@@ -2921,7 +3011,7 @@ func TestRingUpdates(t *testing.T) {
 
 				// Ensure there's no instance in an excluded zone.
 				if len(testData.excludedZones) > 0 {
-					assert.False(t, util.StringsContain(testData.excludedZones, ing.Zone))
+					assert.False(t, slices.Contains(testData.excludedZones, ing.Zone))
 				}
 			}
 
@@ -2931,7 +3021,7 @@ func TestRingUpdates(t *testing.T) {
 			}
 
 			// Ensure the ring client got updated.
-			test.Poll(t, 1*time.Second, 0, func() interface{} {
+			test.Poll(t, 1*time.Second, 0, func() any {
 				return ring.InstancesCount()
 			})
 		})
@@ -2996,14 +3086,14 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	const zones = 3
 
 	lcs := []*Lifecycler(nil)
-	for i := 0; i < numLifecyclers; i++ {
+	for i := range numLifecyclers {
 		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
 
 		lcs = append(lcs, lc)
 	}
 
 	// Wait until all instances in the ring are ACTIVE.
-	test.Poll(t, 5*time.Second, numLifecyclers, func() interface{} {
+	test.Poll(t, 5*time.Second, numLifecyclers, func() any {
 		active := 0
 		rs, _ := ring.GetReplicationSetForOperation(Read)
 		for _, ing := range rs.Instances {
@@ -3024,7 +3114,7 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	// Do 100 iterations over two seconds. Make sure we get the same subring.
 	const iters = 100
 	sleep := (2 * time.Second) / iters
-	for i := 0; i < iters; i++ {
+	for range iters {
 		newSubring := ring.ShuffleShard(user, shardSize)
 		require.True(t, subring == newSubring, "cached subring reused")
 		require.Equal(t, shardSize, subring.InstancesCount())
@@ -3044,11 +3134,11 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	}
 
 	// Now stop one lifecycler from each zone. Subring needs to be recomputed.
-	for i := 0; i < zones; i++ {
+	for i := range zones {
 		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
 	}
 
-	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() interface{} {
+	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() any {
 		return ring.InstancesCount()
 	})
 
@@ -3099,12 +3189,12 @@ func TestUpdateMetrics(t *testing.T) {
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3127,12 +3217,12 @@ func TestUpdateMetrics(t *testing.T) {
 			Expected: `
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3207,12 +3297,12 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 2
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 2
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
@@ -3244,12 +3334,130 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		ring_member_ownership_percent{member="A",name="test"} 1
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
-		ring_members{name="test",state="ACTIVE"} 1
-		ring_members{name="test",state="JOINING"} 0
-		ring_members{name="test",state="LEAVING"} 0
-		ring_members{name="test",state="PENDING"} 0
-		ring_members{name="test",state="READONLY"} 0
-		ring_members{name="test",state="Unhealthy"} 0
+		ring_members{name="test",state="ACTIVE",zone=""} 1
+		ring_members{name="test",state="JOINING",zone=""} 0
+		ring_members{name="test",state="LEAVING",zone=""} 0
+		ring_members{name="test",state="PENDING",zone=""} 0
+		ring_members{name="test",state="READONLY",zone=""} 0
+		ring_members{name="test",state="Unhealthy",zone=""} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 2
+	`))
+	assert.NoError(t, err)
+}
+
+func TestUpdateMetricsWithZone(t *testing.T) {
+	cfg := Config{
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
+	}
+
+	registry := prometheus.NewRegistry()
+
+	// create the ring to set up metrics, but do not start
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ringDesc := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Zone: "zone1", Tokens: []uint32{math.MaxUint32 / 6, (math.MaxUint32 / 6) * 4}},
+			"B": {Addr: "127.0.0.2", Timestamp: 11, Zone: "zone2", Tokens: []uint32{(math.MaxUint32 / 6) * 2, (math.MaxUint32 / 6) * 5}},
+			"C": {Addr: "127.0.0.3", Timestamp: 33, Zone: "zone3", Tokens: []uint32{(math.MaxUint32 / 6) * 3, math.MaxUint32}},
+		},
+	}
+	ring.updateRingState(&ringDesc)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 0.3333333332557231
+		ring_member_ownership_percent{member="B",name="test"} 0.3333333330228925
+		ring_member_ownership_percent{member="C",name="test"} 0.3333333337213844
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone2"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone3"} 1
+		ring_members{name="test",state="JOINING",zone="zone1"} 0
+		ring_members{name="test",state="JOINING",zone="zone2"} 0
+		ring_members{name="test",state="JOINING",zone="zone3"} 0
+		ring_members{name="test",state="LEAVING",zone="zone1"} 0
+		ring_members{name="test",state="LEAVING",zone="zone2"} 0
+		ring_members{name="test",state="LEAVING",zone="zone3"} 0
+		ring_members{name="test",state="PENDING",zone="zone1"} 0
+		ring_members{name="test",state="PENDING",zone="zone2"} 0
+		ring_members{name="test",state="PENDING",zone="zone3"} 0
+		ring_members{name="test",state="READONLY",zone="zone1"} 0
+		ring_members{name="test",state="READONLY",zone="zone2"} 0
+		ring_members{name="test",state="READONLY",zone="zone3"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone1"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone2"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone3"} 0
+		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
+		# TYPE ring_oldest_member_timestamp gauge
+		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 11
+		ring_oldest_member_timestamp{name="test",state="JOINING"} 0
+		ring_oldest_member_timestamp{name="test",state="LEAVING"} 0
+		ring_oldest_member_timestamp{name="test",state="PENDING"} 0
+		ring_oldest_member_timestamp{name="test",state="READONLY"} 0
+		ring_oldest_member_timestamp{name="test",state="Unhealthy"} 0
+		# HELP ring_tokens_owned The number of tokens in the ring owned by the member
+		# TYPE ring_tokens_owned gauge
+		ring_tokens_owned{member="A",name="test"} 2
+		ring_tokens_owned{member="B",name="test"} 2
+		ring_tokens_owned{member="C",name="test"} 2
+		# HELP ring_tokens_total Number of tokens in the ring
+		# TYPE ring_tokens_total gauge
+		ring_tokens_total{name="test"} 6
+	`))
+	require.NoError(t, err)
+
+	ringDescNew := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 22, Zone: "zone1", Tokens: []uint32{math.MaxUint32 / 6, (math.MaxUint32 / 6) * 4}},
+		},
+	}
+	ring.updateRingState(&ringDescNew)
+
+	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_member_ownership_percent The percent ownership of the ring by member
+		# TYPE ring_member_ownership_percent gauge
+		ring_member_ownership_percent{member="A",name="test"} 1
+		# HELP ring_members Number of members in the ring
+		# TYPE ring_members gauge
+		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
+		ring_members{name="test",state="ACTIVE",zone="zone2"} 0
+		ring_members{name="test",state="ACTIVE",zone="zone3"} 0
+		ring_members{name="test",state="JOINING",zone="zone1"} 0
+		ring_members{name="test",state="JOINING",zone="zone2"} 0
+		ring_members{name="test",state="JOINING",zone="zone3"} 0
+		ring_members{name="test",state="LEAVING",zone="zone1"} 0
+		ring_members{name="test",state="LEAVING",zone="zone2"} 0
+		ring_members{name="test",state="LEAVING",zone="zone3"} 0
+		ring_members{name="test",state="PENDING",zone="zone1"} 0
+		ring_members{name="test",state="PENDING",zone="zone2"} 0
+		ring_members{name="test",state="PENDING",zone="zone3"} 0
+		ring_members{name="test",state="READONLY",zone="zone1"} 0
+		ring_members{name="test",state="READONLY",zone="zone2"} 0
+		ring_members{name="test",state="READONLY",zone="zone3"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone1"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone2"} 0
+		ring_members{name="test",state="Unhealthy",zone="zone3"} 0
 		# HELP ring_oldest_member_timestamp Timestamp of the oldest member in the ring.
 		# TYPE ring_oldest_member_timestamp gauge
 		ring_oldest_member_timestamp{name="test",state="ACTIVE"} 22

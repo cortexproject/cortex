@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -42,11 +42,13 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-doc
       - name: Check White Noise.
         run: make BUILD_IN_CONTAINER=false check-white-noise
+      - name: Check Modernize
+        run: make BUILD_IN_CONTAINER=false check-modernize
 
   test:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -64,7 +66,7 @@ jobs:
   test-no-race:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -93,21 +95,21 @@ jobs:
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
+        uses: github/codeql-action/init@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
+        uses: github/codeql-action/autobuild@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@b6a472f63d85b9c78a3ac5e89422239fc15e9b3c # v3.28.1
+        uses: github/codeql-action/analyze@51f77329afa6477de8c49fc9c7046c15b9a4e79d # v3.29.5
 
   
   build:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -131,7 +133,7 @@ jobs:
           touch build-image/.uptodate
           make BUILD_IN_CONTAINER=false web-build
       - name: Upload Website Artifact
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: website public
           path: website/public/
@@ -143,7 +145,7 @@ jobs:
       - name: Create Docker Images Archive
         run: tar -cvf images.tar /tmp/images
       - name: Upload Docker Images Artifact
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Docker Images
           path: ./images.tar
@@ -162,11 +164,12 @@ jobs:
           - integration_querier
           - integration_ruler
           - integration_query_fuzz
+          - integration_remote_write_v2
     steps:
       - name: Upgrade golang
-        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
-          go-version: 1.23.2
+          go-version: 1.24.0
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Docker Client
@@ -176,7 +179,7 @@ jobs:
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
           sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifacts
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -210,8 +213,7 @@ jobs:
             docker pull quay.io/cortexproject/cortex:v1.18.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
             docker pull quay.io/cortexproject/cortex:v1.18.1 
-            docker pull quay.io/prometheus/prometheus:v2.51.0
-            docker pull quay.io/prometheus/prometheus:v2.55.1
+            docker pull quay.io/prometheus/prometheus:v3.5.0
           fi
           docker pull memcached:1.6.1
           docker pull redis:7.0.4-alpine
@@ -224,7 +226,7 @@ jobs:
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
           echo "Running integration tests with image: $CORTEX_IMAGE"
-          go test -tags=integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
+          go test -tags=slicelabels,integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 
@@ -237,7 +239,7 @@ jobs:
       - name: Install Docker Client
         run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -247,14 +249,14 @@ jobs:
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-03a8f8c98 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-59491e9aae TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
-    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -271,7 +273,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Website Artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: website public
           path: website/public
@@ -296,7 +298,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-03a8f8c98
+      image: quay.io/cortexproject/build-image:master-59491e9aae
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -312,7 +314,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: Docker Images
       - name: Extract Docker Images Archive

@@ -2,8 +2,12 @@ package ring
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 // ReplicationSet describes the instances to talk to for a given key, and how
@@ -23,9 +27,9 @@ type ReplicationSet struct {
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
 // results from zones that already reach quorum to improve performance.
-func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, f func(context.Context, *InstanceDesc) (interface{}, error)) ([]interface{}, error) {
+func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, *InstanceDesc) (any, error)) ([]any, error) {
 	type instanceResult struct {
-		res      interface{}
+		res      any
 		err      error
 		instance *InstanceDesc
 	}
@@ -68,12 +72,16 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		}(i, &r.Instances[i])
 	}
 
-	for !tracker.succeeded() {
+	for !tracker.succeeded() && !tracker.finished() {
 		select {
 		case res := <-ch:
 			tracker.done(res.instance, res.res, res.err)
 			if res.err != nil {
-				if tracker.failed() {
+				if tracker.failed() && (!partialDataEnabled || tracker.failedCompletely()) {
+					return nil, res.err
+				}
+
+				if validation.IsLimitError(res.err) {
 					return nil, res.err
 				}
 
@@ -86,6 +94,14 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
+	}
+
+	if partialDataEnabled && tracker.failed() {
+		finalErr := partialdata.ErrPartialData
+		for _, partialErr := range tracker.getErrors() {
+			finalErr = fmt.Errorf("%w: %w", finalErr, partialErr)
+		}
+		return tracker.getResults(), finalErr
 	}
 
 	return tracker.getResults(), nil
@@ -164,7 +180,7 @@ func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude fun
 	sort.Sort(ByAddr(beforeInstances))
 	sort.Sort(ByAddr(afterInstances))
 
-	for i := 0; i < len(beforeInstances); i++ {
+	for i := range beforeInstances {
 		b := beforeInstances[i]
 		a := afterInstances[i]
 

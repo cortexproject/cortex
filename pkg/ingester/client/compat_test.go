@@ -63,7 +63,7 @@ func matchersEqual(expected, actual []*labels.Matcher) bool {
 		return false
 	}
 
-	for i := 0; i < len(expected); i++ {
+	for i := range expected {
 		a := actual[i]
 		e := expected[i]
 		if a.Name != e.Name || a.Value != e.Value || a.Type != e.Type {
@@ -85,8 +85,8 @@ func benchmarkSeriesMap(numSeries int, b *testing.B) {
 	sm := make(map[string]int, numSeries)
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+
+	for b.Loop() {
 		for i, s := range series {
 			sm[LabelsToKeyString(s)] = i
 		}
@@ -106,7 +106,7 @@ func benchmarkSeriesMap(numSeries int, b *testing.B) {
 
 func makeSeries(n int) []labels.Labels {
 	series := make([]labels.Labels, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		series = append(series, labels.FromMap(map[string]string{
 			"label0": "value0",
 			"label1": "value1",

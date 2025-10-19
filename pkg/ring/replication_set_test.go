@@ -3,12 +3,16 @@ package ring
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestReplicationSet_GetAddresses(t *testing.T) {
@@ -87,9 +91,9 @@ var (
 )
 
 // Return a function that fails starting from failAfter times
-func failingFunctionAfter(failAfter int32, delay time.Duration) func(context.Context, *InstanceDesc) (interface{}, error) {
+func failingFunctionAfter(failAfter int32, delay time.Duration) func(context.Context, *InstanceDesc) (any, error) {
 	count := atomic.NewInt32(0)
-	return func(context.Context, *InstanceDesc) (interface{}, error) {
+	return func(context.Context, *InstanceDesc) (any, error) {
 		time.Sleep(delay)
 		if count.Inc() > failAfter {
 			return nil, errFailure
@@ -98,12 +102,10 @@ func failingFunctionAfter(failAfter int32, delay time.Duration) func(context.Con
 	}
 }
 
-func failingFunctionOnZones(zones ...string) func(context.Context, *InstanceDesc) (interface{}, error) {
-	return func(ctx context.Context, ing *InstanceDesc) (interface{}, error) {
-		for _, zone := range zones {
-			if ing.Zone == zone {
-				return nil, errZoneFailure
-			}
+func failingFunctionOnZones(zones ...string) func(context.Context, *InstanceDesc) (any, error) {
+	return func(ctx context.Context, ing *InstanceDesc) (any, error) {
+		if slices.Contains(zones, ing.Zone) {
+			return nil, errZoneFailure
 		}
 		return 1, nil
 	}
@@ -115,27 +117,29 @@ func TestReplicationSet_Do(t *testing.T) {
 		instances           []InstanceDesc
 		maxErrors           int
 		maxUnavailableZones int
-		f                   func(context.Context, *InstanceDesc) (interface{}, error)
+		f                   func(context.Context, *InstanceDesc) (any, error)
 		delay               time.Duration
 		cancelContextDelay  time.Duration
-		want                []interface{}
+		want                []any
 		expectedError       error
 		zoneResultsQuorum   bool
+		queryPartialData    bool
+		errStrContains      []string
 	}{
 		{
 			name: "max errors = 0, no errors no delay",
 			instances: []InstanceDesc{
 				{},
 			},
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+			f: func(c context.Context, id *InstanceDesc) (any, error) {
 				return 1, nil
 			},
-			want: []interface{}{1},
+			want: []any{1},
 		},
 		{
 			name:      "max errors = 0, should fail on 1 error out of 1 instance",
 			instances: []InstanceDesc{{}},
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+			f: func(c context.Context, id *InstanceDesc) (any, error) {
 				return nil, errFailure
 			},
 			want:          nil,
@@ -161,7 +165,7 @@ func TestReplicationSet_Do(t *testing.T) {
 			name:      "max errors = 1, should handle context canceled",
 			instances: []InstanceDesc{{}, {}, {}},
 			maxErrors: 1,
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+			f: func(c context.Context, id *InstanceDesc) (any, error) {
 				time.Sleep(300 * time.Millisecond)
 				return 1, nil
 			},
@@ -172,17 +176,17 @@ func TestReplicationSet_Do(t *testing.T) {
 		{
 			name:      "max errors = 0, should succeed on all successful instances",
 			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+			f: func(c context.Context, id *InstanceDesc) (any, error) {
 				return 1, nil
 			},
-			want: []interface{}{1, 1, 1},
+			want: []any{1, 1, 1},
 		},
 		{
 			name:                "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (3 instances)",
 			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 1,
-			want:                []interface{}{1, 1},
+			want:                []any{1, 1},
 		},
 		{
 			name:                "max unavailable zones = 1, should fail on instances failing in 2 out of 3 zones (3 instances)",
@@ -192,11 +196,47 @@ func TestReplicationSet_Do(t *testing.T) {
 			expectedError:       errZoneFailure,
 		},
 		{
+			name:      "with partial data enabled and max unavailable zones = 1, should succeed on instances failing in 2 out of 3 zones (6 instances)",
+			instances: []InstanceDesc{{Addr: "10.0.0.1", Zone: "zone1"}, {Addr: "10.0.0.2", Zone: "zone2"}, {Addr: "10.0.0.3", Zone: "zone3"}, {Addr: "10.0.0.4", Zone: "zone1"}, {Addr: "10.0.0.5", Zone: "zone2"}, {Addr: "10.0.0.6", Zone: "zone3"}},
+			f: func(ctx context.Context, ing *InstanceDesc) (any, error) {
+				if ing.Addr == "10.0.0.1" || ing.Addr == "10.0.0.2" {
+					return nil, errZoneFailure
+				}
+				return 1, nil
+			},
+			maxUnavailableZones: 1,
+			queryPartialData:    true,
+			want:                []any{1, 1, 1, 1},
+			expectedError:       partialdata.ErrPartialData,
+			errStrContains:      []string{"10.0.0.1", "10.0.0.2", "zone failed"},
+		},
+		{
+			name:                "with partial data enabled, should fail on instances failing in all zones",
+			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone2"}, {Zone: "zone3"}},
+			f:                   failingFunctionOnZones("zone1", "zone2", "zone3"),
+			maxUnavailableZones: 1,
+			expectedError:       errZoneFailure,
+			queryPartialData:    true,
+		},
+		{
+			name:      "with partial data enabled, should fail on instances returning 422",
+			instances: []InstanceDesc{{Addr: "1", Zone: "zone1"}, {Addr: "2", Zone: "zone2"}, {Addr: "3", Zone: "zone3"}, {Addr: "4", Zone: "zone1"}, {Addr: "5", Zone: "zone2"}, {Addr: "6", Zone: "zone3"}},
+			f: func(ctx context.Context, ing *InstanceDesc) (any, error) {
+				if ing.Addr == "1" || ing.Addr == "2" {
+					return nil, validation.LimitError("limit breached")
+				}
+				return 1, nil
+			},
+			maxUnavailableZones: 1,
+			expectedError:       validation.LimitError("limit breached"),
+			queryPartialData:    true,
+		},
+		{
 			name:                "max unavailable zones = 1, should succeed on instances failing in 1 out of 3 zones (6 instances)",
 			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone3"}},
 			f:                   failingFunctionOnZones("zone1"),
 			maxUnavailableZones: 1,
-			want:                []interface{}{1, 1, 1, 1},
+			want:                []any{1, 1, 1, 1},
 		},
 		{
 			name:                "max unavailable zones = 2, should fail on instances failing in 3 out of 5 zones (5 instances)",
@@ -210,16 +250,16 @@ func TestReplicationSet_Do(t *testing.T) {
 			instances:           []InstanceDesc{{Zone: "zone1"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone3"}, {Zone: "zone4"}, {Zone: "zone4"}, {Zone: "zone5"}, {Zone: "zone5"}},
 			f:                   failingFunctionOnZones("zone1", "zone5"),
 			maxUnavailableZones: 2,
-			want:                []interface{}{1, 1, 1, 1, 1, 1},
+			want:                []any{1, 1, 1, 1, 1, 1},
 		},
 		{
 			name:      "max unavailable zones = 1, zoneResultsQuorum = true, should contain 4 results (2 from zone1, 2 from zone2)",
 			instances: []InstanceDesc{{Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}, {Zone: "zone1"}, {Zone: "zone2"}, {Zone: "zone3"}},
-			f: func(c context.Context, id *InstanceDesc) (interface{}, error) {
+			f: func(c context.Context, id *InstanceDesc) (any, error) {
 				return 1, nil
 			},
 			maxUnavailableZones: 1,
-			want:                []interface{}{1, 1, 1, 1},
+			want:                []any{1, 1, 1, 1},
 			zoneResultsQuorum:   true,
 		},
 	}
@@ -242,9 +282,12 @@ func TestReplicationSet_Do(t *testing.T) {
 					cancel()
 				})
 			}
-			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.f)
+			got, err := r.Do(ctx, tt.delay, tt.zoneResultsQuorum, tt.queryPartialData, tt.f)
 			if tt.expectedError != nil {
-				assert.Equal(t, tt.expectedError, err)
+				assert.ErrorContains(t, err, tt.expectedError.Error())
+				for _, str := range tt.errStrContains {
+					assert.ErrorContains(t, err, str)
+				}
 			} else {
 				assert.NoError(t, err)
 			}

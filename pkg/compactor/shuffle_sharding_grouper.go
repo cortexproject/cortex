@@ -10,7 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -19,6 +19,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/compact"
 
 	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 type ShuffleShardingGrouper struct {
@@ -279,7 +280,8 @@ func (g *ShuffleShardingGrouper) isGroupVisited(blocks []*metadata.Meta, compact
 
 // Check whether this compactor exists on the subring based on user ID
 func (g *ShuffleShardingGrouper) checkSubringForCompactor() (bool, error) {
-	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+	shardSize := util.DynamicShardSize(g.limits.CompactorTenantShardSize(g.userID), g.ring.InstancesCount())
+	subRing := g.ring.ShuffleShard(g.userID, shardSize)
 
 	rs, err := subRing.GetAllHealthy(RingOp)
 	if err != nil {
@@ -506,6 +508,6 @@ func getRangeStart(m *metadata.Meta, tr int64) int64 {
 
 func sortMetasByMinTime(metas []*metadata.Meta) {
 	sort.Slice(metas, func(i, j int) bool {
-		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
+		return metas[i].MinTime < metas[j].MinTime
 	})
 }

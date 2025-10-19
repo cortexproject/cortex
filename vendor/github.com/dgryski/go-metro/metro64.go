@@ -1,4 +1,5 @@
-// +build noasm !amd64 gccgo
+//go:build noasm || !amd64 || !gc || purego
+// +build noasm !amd64 !gc purego
 
 package metro
 

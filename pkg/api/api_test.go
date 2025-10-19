@@ -21,7 +21,7 @@ const (
 
 type FakeLogger struct{}
 
-func (fl *FakeLogger) Log(keyvals ...interface{}) error {
+func (fl *FakeLogger) Log(keyvals ...any) error {
 	return nil
 }
 
@@ -89,6 +89,7 @@ func TestNewApiWithHeaderLogging(t *testing.T) {
 
 }
 
+// HTTPHeaderMiddleware should be added even if no headers are specified to log because it also handles request ID injection.
 func TestNewApiWithoutHeaderLogging(t *testing.T) {
 	cfg := Config{
 		HTTPRequestHeadersToLog: []string{},
@@ -102,7 +103,8 @@ func TestNewApiWithoutHeaderLogging(t *testing.T) {
 
 	api, err := New(cfg, serverCfg, server, &FakeLogger{})
 	require.NoError(t, err)
-	require.Nil(t, api.HTTPHeaderMiddleware)
+	require.NotNil(t, api.HTTPHeaderMiddleware)
+	require.Empty(t, api.HTTPHeaderMiddleware.TargetHeaders)
 
 }
 
@@ -185,12 +187,11 @@ func Benchmark_Compression(b *testing.B) {
 			req.Header.Set(acceptEncodingHeader, "gzip")
 
 			b.ReportAllocs()
-			b.ResetTimer()
 
 			// Reusing the array to read the body and avoid allocation on the test
 			encRespBody := make([]byte, len(respBody))
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				resp, err := client.Do(req)
 
 				require.NoError(b, err)

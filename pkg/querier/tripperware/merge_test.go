@@ -360,7 +360,6 @@ func TestMergeSampleStreams(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			output := make(map[string]SampleStream)
@@ -440,7 +439,6 @@ func TestSliceSamples(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			actual := sliceSamples(tc.samples, tc.minTs)
@@ -589,7 +587,6 @@ func TestSliceHistograms(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			actual := sliceHistograms(tc.histograms, tc.minTs)

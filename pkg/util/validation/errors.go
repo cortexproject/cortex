@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 )
@@ -241,6 +242,44 @@ func newHistogramBucketLimitExceededError(series []cortexpb.LabelAdapter, limit 
 
 func (e *histogramBucketLimitExceededError) Error() string {
 	return fmt.Sprintf("native histogram bucket count exceeded for metric (limit: %d) metric: %.200q", e.limit, formatLabelSet(e.series))
+}
+
+// nativeHistogramSchemaInvalidError is a ValidationError implementation for samples with native histogram
+// exceeding the valid schema range.
+type nativeHistogramSchemaInvalidError struct {
+	series         []cortexpb.LabelAdapter
+	receivedSchema int
+}
+
+func newNativeHistogramSchemaInvalidError(series []cortexpb.LabelAdapter, receivedSchema int) ValidationError {
+	return &nativeHistogramSchemaInvalidError{
+		series:         series,
+		receivedSchema: receivedSchema,
+	}
+}
+
+func (e *nativeHistogramSchemaInvalidError) Error() string {
+	return fmt.Sprintf("invalid native histogram schema %d for metric: %.200q. supported schema from %d to %d", e.receivedSchema, formatLabelSet(e.series), histogram.ExponentialSchemaMin, histogram.ExponentialSchemaMax)
+}
+
+// nativeHistogramSampleSizeBytesExceededError is a ValidationError implementation for samples with native histogram
+// exceeding the sample size bytes limit
+type nativeHistogramSampleSizeBytesExceededError struct {
+	nhSampleSizeBytes int
+	series            []cortexpb.LabelAdapter
+	limit             int
+}
+
+func newNativeHistogramSampleSizeBytesExceededError(series []cortexpb.LabelAdapter, nhSampleSizeBytes int, limit int) ValidationError {
+	return &nativeHistogramSampleSizeBytesExceededError{
+		nhSampleSizeBytes: nhSampleSizeBytes,
+		series:            series,
+		limit:             limit,
+	}
+}
+
+func (e *nativeHistogramSampleSizeBytesExceededError) Error() string {
+	return fmt.Sprintf("native histogram sample size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.nhSampleSizeBytes, e.limit, formatLabelSet(e.series))
 }
 
 // formatLabelSet formats label adapters as a metric name with labels, while preserving

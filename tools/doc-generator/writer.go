@@ -61,9 +61,10 @@ func (w *specWriter) writeConfigEntry(e *configEntry, indent int) {
 
 		// Specification
 		fieldDefault := e.fieldDefault
-		if e.fieldType == "string" {
+		switch e.fieldType {
+		case "string":
 			fieldDefault = strconv.Quote(fieldDefault)
-		} else if e.fieldType == "duration" {
+		case "duration":
 			fieldDefault = cleanupDuration(fieldDefault)
 		}
 
@@ -89,9 +90,9 @@ func (w *specWriter) writeComment(comment string, indent int) {
 	}
 
 	wrapped := strings.TrimSpace(wordwrap.WrapString(comment, uint(maxLineWidth-indent-2)))
-	lines := strings.Split(wrapped, "\n")
+	lines := strings.SplitSeq(wrapped, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		w.out.WriteString(pad(indent) + "# " + line + "\n")
 	}
 }

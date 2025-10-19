@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -24,7 +24,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 	)
 
 	wrongQuery := `up[`
-	_, parserErr := parser.ParseExpr(wrongQuery)
+	_, parserErr := cortexparser.ParseExpr(wrongQuery)
 
 	tests := map[string]struct {
 		maxQueryLength time.Duration
@@ -37,7 +37,7 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 		"even though failed to parse expression, should return no error since request will pass to next middleware": {
 			query:          `up[`,
 			maxQueryLength: thirtyDays,
-			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, parserErr.Error()).Error(),
+			expectedErr:    httpgrpc.Errorf(http.StatusBadRequest, "%s", parserErr.Error()).Error(),
 		},
 		"should succeed on a query not exceeding time range": {
 			query:          `up`,
@@ -68,7 +68,6 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 			req := &tripperware.PrometheusRequest{Query: testData.query}

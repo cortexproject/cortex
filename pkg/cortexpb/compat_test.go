@@ -23,7 +23,7 @@ func TestStdlibJsonMarshalForSample(t *testing.T) {
 	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type cortexpb.Sample: test sample")
 }
 
-func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
+func testMarshalling(t *testing.T, marshalFn func(v any) ([]byte, error), expectedError string) {
 	isTesting = true
 	defer func() { isTesting = false }()
 
@@ -51,7 +51,7 @@ func TestStdlibJsonUnmarshalForSample(t *testing.T) {
 	testUnmarshalling(t, json.Unmarshal, "test sample")
 }
 
-func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}) error, expectedError string) {
+func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v any) error, expectedError string) {
 	isTesting = true
 	defer func() { isTesting = false }()
 
@@ -104,26 +104,28 @@ func TestMetricMetadataToMetricTypeToMetricType(t *testing.T) {
 
 func TestFromLabelAdaptersToLabels(t *testing.T) {
 	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
+	expected := labels.FromStrings("hello", "world")
 	actual := FromLabelAdaptersToLabels(input)
 
 	assert.Equal(t, expected, actual)
 
-	// All strings must NOT be copied.
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
+	final := FromLabelsToLabelAdapters(actual)
+	// All strings must not be copied.
+	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&final[0].Name)))
+	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&final[0].Value)))
 }
 
 func TestFromLabelAdaptersToLabelsWithCopy(t *testing.T) {
 	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
+	expected := labels.FromStrings("hello", "world")
 	actual := FromLabelAdaptersToLabelsWithCopy(input)
 
 	assert.Equal(t, expected, actual)
 
+	final := FromLabelsToLabelAdapters(actual)
 	// All strings must be copied.
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
+	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&final[0].Name)))
+	assert.NotEqual(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&final[0].Value)))
 }
 
 func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
@@ -132,7 +134,7 @@ func BenchmarkFromLabelAdaptersToLabelsWithCopy(b *testing.B) {
 		{Name: "some label", Value: "and its value"},
 		{Name: "long long long long long label name", Value: "perhaps even longer label value, but who's counting anyway?"}}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		FromLabelAdaptersToLabelsWithCopy(input)
 	}
 }

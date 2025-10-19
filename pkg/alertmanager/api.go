@@ -52,6 +52,10 @@ var (
 	errPushOverUserKeyFileNotAllowed     = errors.New("setting PushOver user_key_file is not allowed")
 	errPushOverTokenFileNotAllowed       = errors.New("setting PushOver token_file is not allowed")
 	errTelegramBotTokenFileNotAllowed    = errors.New("setting Telegram bot_token_file is not allowed")
+	errMSTeamsWebhookUrlFileNotAllowed   = errors.New("setting MSTeams webhook_url_file is not allowed")
+	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
+	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
+	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -72,10 +76,10 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 	cfg, err := am.store.GetAlertConfig(r.Context(), userID)
 	if err != nil {
-		switch {
-		case err == alertspb.ErrNotFound:
+		switch err {
+		case alertspb.ErrNotFound:
 			http.Error(w, err.Error(), http.StatusNotFound)
-		case err == alertspb.ErrAccessDenied:
+		case alertspb.ErrAccessDenied:
 			http.Error(w, err.Error(), http.StatusForbidden)
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -279,7 +283,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 	}
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 
 	go func() {
 		util.StreamWriteYAMLResponse(w, iter, logger)
@@ -317,7 +321,7 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 // validateAlertmanagerConfig recursively scans the input config looking for data types for which
 // we have a specific validation and, whenever encountered, it runs their validation. Returns the
 // first error or nil if validation succeeds.
-func validateAlertmanagerConfig(cfg interface{}) error {
+func validateAlertmanagerConfig(cfg any) error {
 	v := reflect.ValueOf(cfg)
 	t := v.Type()
 
@@ -381,6 +385,18 @@ func validateAlertmanagerConfig(cfg interface{}) error {
 		}
 	case reflect.TypeOf(config.TelegramConfig{}):
 		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.MSTeamsConfig{}):
+		if err := validateMSTeamsConfig(v.Interface().(config.MSTeamsConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.MSTeamsV2Config{}):
+		if err := validateMSTeamsV2Config(v.Interface().(config.MSTeamsV2Config)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.RocketchatConfig{}):
+		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
 			return err
 		}
 	}
@@ -538,5 +554,37 @@ func validateTelegramConfig(cfg config.TelegramConfig) error {
 	if cfg.BotTokenFile != "" {
 		return errTelegramBotTokenFileNotAllowed
 	}
+	return nil
+}
+
+// validateMSTeamsConfig validates the MSTeams Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMSTeamsConfig(cfg config.MSTeamsConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errMSTeamsWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateMSTeamsV2Config validates the MSTeamsV2 Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMSTeamsV2Config(cfg config.MSTeamsV2Config) error {
+	if cfg.WebhookURLFile != "" {
+		return errMSTeamsV2WebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateRocketChatConfig validates the RocketChat Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateRocketChatConfig(cfg config.RocketchatConfig) error {
+	if cfg.TokenIDFile != "" {
+		return errRocketChatTokenIdFileNotAllowed
+	}
+
+	if cfg.TokenFile != "" {
+		return errRocketChatTokenFileNotAllowed
+	}
+
 	return nil
 }

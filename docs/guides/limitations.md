@@ -32,6 +32,14 @@ The following character sets are generally **safe for use in the tenant ID**:
 
 All other characters are not safe to use. In particular, slashes `/` and whitespaces (` `) are **not supported**.
 
+### Invalid tenant IDs
+The following tenant IDs are considered invalid in Cortex.
+
+- Current directory (`.`)
+- Parent directory (`..`)
+- Markers directory (`__markers__`)
+- User Index File (`user-index.json.gz`)
+
 ### Length
 
 The tenant ID length should not exceed 150 bytes/characters.

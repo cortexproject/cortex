@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -15,18 +17,19 @@ import (
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	promql_util "github.com/cortexproject/cortex/pkg/util/promql"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -70,6 +73,13 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 	return 0, nil
 }
 
+func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {}
+
+func (a *PusherAppender) AppendHistogramCTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// AppendHistogramCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+	return 0, nil
+}
+
 func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
 	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
@@ -89,7 +99,7 @@ func (a *PusherAppender) Commit() error {
 	_, err := a.pusher.Push(user.InjectOrgID(a.ctx, a.userID), req)
 	if err != nil {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
-		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 != 4 {
+		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 == 5 {
 			a.failedWrites.Inc()
 		}
 	}
@@ -148,7 +158,7 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
 	MaxQueryLength(userID string) time.Duration
-	RulerTenantShardSize(userID string) int
+	RulerTenantShardSize(userID string) float64
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerQueryOffset(userID string) time.Duration
@@ -164,7 +174,7 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
 		if maxQueryLength > 0 {
-			expr, err := parser.ParseExpr(qs)
+			expr, err := cortexparser.ParseExpr(qs)
 			// If failed to parse expression, skip checking select range.
 			// Fail the query in the engine.
 			if err == nil {
@@ -175,6 +185,10 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 				}
 			}
 		}
+
+		// Add request ID to the context so that it can be used in logs and metrics for split queries.
+		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
 
 		if frontendClient != nil {
 			v, err := frontendClient.InstantQuery(ctx, qs, t)
@@ -260,12 +274,12 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 			queryChunkBytes.Add(float64(queryStats.FetchedChunkBytes))
 			queryDataBytes.Add(float64(queryStats.FetchedDataBytes))
 			// Log ruler query stats.
-			logMessage := []interface{}{
+			logMessage := []any{
 				"msg", "query stats",
 				"component", "ruler",
 			}
 			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
-				queryLabels := origin.(map[string]interface{})
+				queryLabels := origin.(map[string]any)
 				rgMap := queryLabels["ruleGroup"].(map[string]string)
 				logMessage = append(logMessage,
 					"rule_group", rgMap["name"],
@@ -353,7 +367,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Context:                prometheusContext,
 			ExternalURL:            cfg.ExternalURL.URL,
 			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
-			Logger:                 log.With(logger, "user", userID),
+			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,
 			OutageTolerance:        cfg.OutageTolerance,
 			ForGracePeriod:         cfg.ForGracePeriod,
@@ -363,6 +377,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			DefaultRuleQueryOffset: func() time.Duration {
 				return overrides.RulerQueryOffset(userID)
 			},
+			RestoreNewRuleGroups: cfg.EnableSharding,
 		}), nil
 	}
 }

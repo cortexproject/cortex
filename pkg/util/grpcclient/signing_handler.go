@@ -27,7 +27,7 @@ type SignRequest interface {
 	VerifySign(context.Context, string) (bool, error)
 }
 
-func UnarySigningServerInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+func UnarySigningServerInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 	rs, ok := req.(SignRequest)
 	if !ok {
 		return handler(ctx, req)
@@ -58,7 +58,7 @@ func UnarySigningServerInterceptor(ctx context.Context, req interface{}, _ *grpc
 	return handler(ctx, req)
 }
 
-func UnarySigningClientInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func UnarySigningClientInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	rs, ok := req.(SignRequest)
 
 	if !ok {

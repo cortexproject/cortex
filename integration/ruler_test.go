@@ -28,7 +28,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore/providers/s3"
-	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -217,20 +216,15 @@ func TestRulerSharding(t *testing.T) {
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
 	for i := 0; i < numRulesGroups; i++ {
-		var recordNode yaml.Node
-		var exprNode yaml.Node
-
-		recordNode.SetString(fmt.Sprintf("rule_%d", i))
-		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
 		ruleGroups[i] = rulefmt.RuleGroup{
 			Name:     ruleName,
 			Interval: 60,
-			Rules: []rulefmt.RuleNode{{
-				Record: recordNode,
-				Expr:   exprNode,
+			Rules: []rulefmt.Rule{{
+				Record: fmt.Sprintf("rule_%d", i),
+				Expr:   strconv.Itoa(i),
 			}},
 		}
 	}
@@ -311,34 +305,42 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
+	groupLabels := map[string]string{
+		"group_label_1":   "val1",
+		"group_label_2":   "val2",
+		"duplicate_label": "group_val",
+	}
+	ruleLabels := map[string]string{
+		"rule_label_1":    "val1",
+		"rule_label_2":    "val2",
+		"duplicate_label": "rule_val",
+	}
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(100)
-		var ruleNode yaml.Node
-		var exprNode yaml.Node
-
-		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
-		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
-
 		expectedNames[i] = ruleName
 		if num%2 == 0 {
 			alertCount++
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Alert: ruleNode,
-					Expr:  exprNode,
+				Rules: []rulefmt.Rule{{
+					Alert:  fmt.Sprintf("rule_%d", i),
+					Expr:   strconv.Itoa(i),
+					Labels: ruleLabels,
 				}},
+				Labels: groupLabels,
 			}
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Record: ruleNode,
-					Expr:   exprNode,
+				Rules: []rulefmt.Rule{{
+					Record: fmt.Sprintf("rule_%d", i),
+					Labels: ruleLabels,
+					Expr:   strconv.Itoa(i),
 				}},
+				Labels: groupLabels,
 			}
 		}
 	}
@@ -487,6 +489,32 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				assert.Greater(t, alertsCount, 0, "Expected greater than 0 alerts but got %d", alertsCount)
 			},
 		},
+		"Filter Rules and verify Group Labels exist": {
+			filter: e2ecortex.RuleFilter{
+				RuleType: "alert",
+			},
+			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
+				for _, ruleGroup := range ruleGroups {
+					rule := ruleGroup.Rules[0].(map[string]interface{})
+					ruleType := rule["type"]
+					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
+					responseJson, err := json.Marshal(rule)
+					assert.NoError(t, err)
+					ar := &alertingRule{}
+					assert.NoError(t, json.Unmarshal(responseJson, ar))
+					if !ar.LastEvaluation.IsZero() {
+						// Labels will be merged only if groups are loaded to Prometheus rule manager
+						assert.Equal(t, 5, ar.Labels.Len())
+					}
+					ar.Labels.Range(func(l labels.Label) {
+						if l.Name == "duplicate_label" {
+							// rule label should override group label
+							assert.Equal(t, ruleLabels["duplicate_label"], l.Value)
+						}
+					})
+				}
+			},
+		},
 	}
 	// For each test case, fetch the rules with configured filters, and ensure the results match.
 	if enableRulesBackup {
@@ -525,11 +553,6 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	evalInterval, _ := model.ParseDuration("1s")
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(100)
-		var ruleNode yaml.Node
-		var exprNode yaml.Node
-
-		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
-		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -538,18 +561,18 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Alert: ruleNode,
-					Expr:  exprNode,
+				Rules: []rulefmt.Rule{{
+					Alert: fmt.Sprintf("rule_%d", i),
+					Expr:  strconv.Itoa(i),
 				}},
 			}
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Record: ruleNode,
-					Expr:   exprNode,
+				Rules: []rulefmt.Rule{{
+					Record: fmt.Sprintf("rule_%d", i),
+					Expr:   strconv.Itoa(i),
 				}},
 			}
 		}
@@ -696,11 +719,6 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 	evalInterval, _ := model.ParseDuration("1s")
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(100)
-		var ruleNode yaml.Node
-		var exprNode yaml.Node
-
-		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
-		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -709,18 +727,18 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Alert: ruleNode,
-					Expr:  exprNode,
+				Rules: []rulefmt.Rule{{
+					Alert: fmt.Sprintf("rule_%d", i),
+					Expr:  strconv.Itoa(i),
 				}},
 			}
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Record: ruleNode,
-					Expr:   exprNode,
+				Rules: []rulefmt.Rule{{
+					Record: fmt.Sprintf("rule_%d", i),
+					Expr:   strconv.Itoa(i),
 				}},
 			}
 		}
@@ -1402,11 +1420,6 @@ func TestRulerHAEvaluation(t *testing.T) {
 	evalInterval, _ := model.ParseDuration("2s")
 	for i := 0; i < numRulesGroups; i++ {
 		num := random.Intn(10)
-		var ruleNode yaml.Node
-		var exprNode yaml.Node
-
-		ruleNode.SetString(fmt.Sprintf("rule_%d", i))
-		exprNode.SetString(strconv.Itoa(i))
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -1415,18 +1428,18 @@ func TestRulerHAEvaluation(t *testing.T) {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Alert: ruleNode,
-					Expr:  exprNode,
+				Rules: []rulefmt.Rule{{
+					Alert: fmt.Sprintf("rule_%d", i),
+					Expr:  strconv.Itoa(i),
 				}},
 			}
 		} else {
 			ruleGroups[i] = rulefmt.RuleGroup{
 				Name:     ruleName,
 				Interval: evalInterval,
-				Rules: []rulefmt.RuleNode{{
-					Record: ruleNode,
-					Expr:   exprNode,
+				Rules: []rulefmt.Rule{{
+					Record: fmt.Sprintf("rule_%d", i),
+					Expr:   strconv.Itoa(i),
 				}},
 			}
 		}
@@ -1781,35 +1794,23 @@ func ruleGroupMatcher(user, namespace, groupName string) *labels.Matcher {
 
 func ruleGroupWithRule(groupName string, ruleName string, expression string) rulefmt.RuleGroup {
 	// Prepare rule group with invalid rule.
-	var recordNode = yaml.Node{}
-	var exprNode = yaml.Node{}
-
-	recordNode.SetString(ruleName)
-	exprNode.SetString(expression)
-
 	return rulefmt.RuleGroup{
 		Name:     groupName,
 		Interval: 10,
-		Rules: []rulefmt.RuleNode{{
-			Record: recordNode,
-			Expr:   exprNode,
+		Rules: []rulefmt.Rule{{
+			Record: ruleName,
+			Expr:   expression,
 		}},
 	}
 }
 
 func alertRuleWithKeepFiringFor(groupName string, ruleName string, expression string, keepFiring model.Duration) rulefmt.RuleGroup {
-	var recordNode = yaml.Node{}
-	var exprNode = yaml.Node{}
-
-	recordNode.SetString(ruleName)
-	exprNode.SetString(expression)
-
 	return rulefmt.RuleGroup{
 		Name:     groupName,
 		Interval: 10,
-		Rules: []rulefmt.RuleNode{{
-			Alert:         recordNode,
-			Expr:          exprNode,
+		Rules: []rulefmt.Rule{{
+			Alert:         ruleName,
+			Expr:          expression,
 			KeepFiringFor: keepFiring,
 		}},
 	}
@@ -1817,21 +1818,13 @@ func alertRuleWithKeepFiringFor(groupName string, ruleName string, expression st
 
 func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {
 	t.Helper()
-
-	var (
-		recordNode = yaml.Node{}
-		exprNode   = yaml.Node{}
-	)
-
-	recordNode.SetString("test_rule")
-	exprNode.SetString("up")
 	return rulefmt.RuleGroup{
 		Name:     "test_encoded_+\"+group_name/?",
 		Interval: 100,
-		Rules: []rulefmt.RuleNode{
+		Rules: []rulefmt.Rule{
 			{
-				Record: recordNode,
-				Expr:   exprNode,
+				Record: "test_rule",
+				Expr:   "up",
 			},
 		},
 	}

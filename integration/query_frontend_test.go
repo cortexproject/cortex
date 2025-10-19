@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -208,12 +210,31 @@ func TestQueryFrontendProtobufCodec(t *testing.T) {
 			require.NoError(t, s.StartAndWaitReady(minio))
 
 			flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
-				"-api.querier-default-codec":    "protobuf",
-				"-querier.response-compression": "gzip",
+				"-api.querier-default-codec": "protobuf",
 			})
 			return cortexConfigFile, flags
 		},
 	})
+}
+
+func TestQuerierToQueryFrontendCompression(t *testing.T) {
+	for _, compression := range []string{"gzip", "zstd", "snappy", ""} {
+		runQueryFrontendTest(t, queryFrontendTestConfig{
+			testMissingMetricName: false,
+			querySchedulerEnabled: true,
+			setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
+				require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
+
+				minio := e2edb.NewMinio(9000, BlocksStorageFlags()["-blocks-storage.s3.bucket-name"])
+				require.NoError(t, s.StartAndWaitReady(minio))
+
+				flags = mergeFlags(e2e.EmptyFlags(), map[string]string{
+					"-querier.response-compression": compression,
+				})
+				return cortexConfigFile, flags
+			},
+		})
+	}
 }
 
 func TestQueryFrontendRemoteRead(t *testing.T) {
@@ -843,4 +864,161 @@ func TestQueryFrontendQueryRejection(t *testing.T) {
 	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 	require.Contains(t, string(body), tripperware.QueryRejectErrorMessage)
 
+}
+
+func TestQueryFrontendStatsFromResultsCacheShouldBeSame(t *testing.T) {
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-querier.cache-results":                  "true",
+		"-querier.split-queries-by-interval":      "24h",
+		"-querier.query-ingesters-within":         "12h", // Required by the test on query /series out of ingesters time range
+		"-querier.per-step-stats-enabled":         strconv.FormatBool(true),
+		"-frontend.memcached.addresses":           "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-frontend.query-stats-enabled":           strconv.FormatBool(true),
+		"-frontend.cache-queryable-samples-stats": strconv.FormatBool(true),
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Start the query-scheduler
+	queryScheduler := e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryScheduler))
+	flags["-frontend.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+	flags["-querier.scheduler-address"] = queryScheduler.NetworkGRPCEndpoint()
+
+	// Start the query-frontend.
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	// Start all other services.
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, ingester, distributor))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Check if we're discovering memcache or not.
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Equals(1), "cortex_memcache_client_servers"))
+	require.NoError(t, queryFrontend.WaitSumMetrics(e2e.Greater(0), "cortex_dns_lookups_total"))
+
+	// Wait until both the distributor and querier have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Push some series to Cortex.
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	seriesTimestamp := time.Now().Add(-10 * time.Minute)
+	series2Timestamp := seriesTimestamp.Add(1 * time.Minute)
+	series1, _ := generateSeries("series_1", seriesTimestamp, prompb.Label{Name: "job", Value: "test"})
+	series2, _ := generateSeries("series_2", series2Timestamp, prompb.Label{Name: "job", Value: "test"})
+
+	res, err := c.Push(series1)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = c.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Query back the series.
+	c, err = e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// First request that will hit the datasource.
+	resp, _, err := c.QueryRangeRaw(`{job="test"}`, seriesTimestamp.Add(-1*time.Minute), series2Timestamp.Add(1*time.Minute), 30*time.Second, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	values, err := queryFrontend.SumMetrics([]string{"cortex_query_samples_scanned_total"})
+	require.NoError(t, err)
+	numSamplesScannedTotal := e2e.SumValues(values)
+
+	// We send the same query to hit the results cache.
+	resp, _, err = c.QueryRangeRaw(`{job="test"}`, seriesTimestamp.Add(-1*time.Minute), series2Timestamp.Add(1*time.Minute), 30*time.Second, map[string]string{})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	values, err = queryFrontend.SumMetrics([]string{"cortex_query_samples_scanned_total"})
+	require.NoError(t, err)
+	numSamplesScannedTotal2 := e2e.SumValues(values)
+
+	// we expect same amount of samples_scanned added to the metric despite the second query hit the cache.
+	require.Equal(t, numSamplesScannedTotal2, numSamplesScannedTotal*2)
+}
+
+func TestQueryFrontendResponseSizeLimit(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-frontend.max-query-response-size":  "4096",
+		"-querier.split-queries-by-interval": "1m",
+	})
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+
+	ingester := e2ecortex.NewIngesterWithConfigFile("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+	distributor := e2ecortex.NewDistributorWithConfigFile("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+
+	querier := e2ecortex.NewQuerierWithConfigFile("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), "", flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	startTime := time.Now().Add(-1 * time.Hour)
+	for i := 0; i < 10; i++ {
+		ts := startTime.Add(time.Duration(i) * time.Minute)
+		longLabelValue1 := strings.Repeat("long_label_value_1_", 100)
+		longLabelValue2 := strings.Repeat("long_label_value_2_", 100)
+		largeSeries, _ := generateSeries("large_series", ts, prompb.Label{Name: "label1", Value: longLabelValue1}, prompb.Label{Name: "label2", Value: longLabelValue2})
+		res, err := c.Push(largeSeries)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		smallSeries, _ := generateSeries("small_series", ts)
+		res, err = c.Push(smallSeries)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+	}
+
+	qfeClient, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	queryStart := startTime.Add(-1 * time.Minute)
+	queryEnd := startTime.Add(10 * time.Minute)
+
+	// Expect response size larger than limit (4 KB)
+	resp, body, err := qfeClient.QueryRangeRaw(`{__name__="large_series"}`, queryStart, queryEnd, 30*time.Second, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	require.Contains(t, string(body), "the query response size exceeds limit")
+
+	// Expect response size less than limit (4 KB)
+	resp, _, err = qfeClient.QueryRangeRaw(`{__name__="small_series"}`, queryStart, queryEnd, 30*time.Second, nil)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 }

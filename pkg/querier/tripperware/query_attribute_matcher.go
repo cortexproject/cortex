@@ -2,13 +2,14 @@ package tripperware
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -17,16 +18,16 @@ import (
 const QueryRejectErrorMessage = "This query does not perform well and has been rejected by the service operator."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
-	if limits == nil || !(limits.QueryPriority(userStr).Enabled || limits.QueryRejection(userStr).Enabled) {
+	if limits == nil || (!limits.QueryPriority(userStr).Enabled && !limits.QueryRejection(userStr).Enabled) {
 		return nil
 	}
 	op := getOperation(r)
 
 	if op == "query" || op == "query_range" {
 		query := r.FormValue("query")
-		expr, err := parser.ParseExpr(query)
+		expr, err := cortexparser.ParseExpr(query)
 		if err != nil {
-			return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+			return httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 		}
 		minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
 
@@ -159,13 +160,7 @@ func matchAttributeForMetadataQuery(attribute validation.QueryAttribute, op stri
 	if attribute.Regex != "" {
 		matched = true
 		if attribute.Regex != ".*" && attribute.CompiledRegex != nil {
-			atLeastOneMatched := false
-			for _, matcher := range r.Form["match[]"] {
-				if attribute.CompiledRegex.MatchString(matcher) {
-					atLeastOneMatched = true
-					break
-				}
-			}
+			atLeastOneMatched := slices.ContainsFunc(r.Form["match[]"], attribute.CompiledRegex.MatchString)
 			if !atLeastOneMatched {
 				return false
 			}

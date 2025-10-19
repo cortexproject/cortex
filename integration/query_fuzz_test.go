@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,7 +38,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 )
 
-var enabledFunctions []*parser.Function
+var (
+	enabledFunctions []*parser.Function
+	enabledAggrs     = []parser.ItemType{
+		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
+	}
+)
 
 func init() {
 	for _, f := range parser.Functions {
@@ -52,8 +58,103 @@ func init() {
 	}
 }
 
+func TestNativeHistogramFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(
+		baseFlags,
+		map[string]string{
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.tsdb.block-ranges-period":         "2h",
+			"-blocks-storage.tsdb.ship-interval":               "1h",
+			"-blocks-storage.bucket-store.sync-interval":       "1s",
+			"-blocks-storage.tsdb.retention-period":            "24h",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-querier.query-store-for-labels-enabled":          "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+	start := now.Add(-time.Hour * 2)
+	end := now.Add(-time.Hour)
+	numSeries := 10
+	numSamples := 60
+	lbls := make([]labels.Labels, 0, numSeries*2)
+	scrapeInterval := time.Minute
+	statusCodes := []string{"200", "400", "404", "500", "502"}
+	for i := 0; i < numSeries; i++ {
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
+	}
+
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	dir := filepath.Join(s.SharedDir(), "data")
+	err = os.MkdirAll(dir, os.ModePerm)
+	require.NoError(t, err)
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	bkt := bucket.NewUserBucketClient("user-1", storage.GetBucket(), nil)
+	id, err := e2e.CreateNHBlock(ctx, rnd, dir, lbls, numSamples, start.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Wait for querier and store to sync blocks.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
+
+	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
+	require.NoError(t, err)
+	prom := e2edb.NewPrometheus("", nil)
+	require.NoError(t, s.StartAndWaitReady(prom))
+
+	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
+	require.NoError(t, err)
+
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
+
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnableOffset(true),
+		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
+}
+
 func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
-	prometheusLatestImage := "quay.io/prometheus/prometheus:v2.55.1"
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -109,19 +210,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
@@ -148,7 +238,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 
 	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
 	require.NoError(t, err)
-	prom := e2edb.NewPrometheus(prometheusLatestImage, map[string]string{
+	prom := e2edb.NewPrometheus("", map[string]string{
 		"--enable-feature": "promql-experimental-functions",
 	})
 	require.NoError(t, s.StartAndWaitReady(prom))
@@ -162,11 +252,12 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 		promqlsmith.WithEnableExperimentalPromQLFunctions(true),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 func TestDisableChunkTrimmingFuzz(t *testing.T) {
@@ -267,6 +358,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
@@ -289,7 +381,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
 			// timestamp is a known function that break with disable chunk trimming.
-			if isValidQuery(expr, 5) && !strings.Contains(query, "timestamp") {
+			if isValidQuery(expr, false) && !strings.Contains(query, "timestamp") {
 				break
 			}
 		}
@@ -449,22 +541,25 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
 	// Create the queries with the original labels
 	testRun := 300
-	queries := make([]string, testRun)
-	matchers := make([]string, testRun)
+	queries := make([]string, 0, testRun)
+	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
 		expr := ps.WalkRangeQuery()
-		queries[i] = expr.Pretty(0)
-		matchers[i] = storepb.PromMatchersToString(
+		if isValidQuery(expr, true) {
+			break
+		}
+		queries = append(queries, expr.Pretty(0))
+		matchers = append(matchers, storepb.PromMatchersToString(
 			append(
 				ps.WalkSelectors(),
 				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
-			)...,
-		)
+			)...))
 	}
 
 	// Lets run multiples iterations and create new series every iteration
@@ -648,11 +743,12 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -677,10 +773,11 @@ func TestVerticalShardingFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 func TestProtobufCodecFuzz(t *testing.T) {
@@ -764,11 +861,12 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -793,10 +891,11 @@ func TestProtobufCodecFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, now, start, end, scrapeInterval, 1000, false)
 }
 
 var sampleNumComparer = cmp.Comparer(func(x, y model.Value) bool {
@@ -839,15 +938,55 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
 	}
+	compareHistogramBucket := func(l, r *model.HistogramBucket) bool {
+		return l == r || (l.Boundaries == r.Boundaries && compareFloats(float64(l.Lower), float64(r.Lower)) && compareFloats(float64(l.Upper), float64(r.Upper)) && compareFloats(float64(l.Count), float64(r.Count)))
+	}
+
+	compareHistogramBuckets := func(l, r model.HistogramBuckets) bool {
+		if len(l) != len(r) {
+			return false
+		}
+
+		for i := range l {
+			if !compareHistogramBucket(l[i], r[i]) {
+				return false
+			}
+		}
+		return true
+	}
+
+	compareHistograms := func(l, r *model.SampleHistogram) bool {
+		return l == r || (compareFloats(float64(l.Count), float64(r.Count)) && compareFloats(float64(l.Sum), float64(r.Sum)) && compareHistogramBuckets(l.Buckets, r.Buckets))
+	}
+
+	fetchValuesFromNH := func(nhString string) []float64 {
+		// Regex to match float numbers
+		re := regexp.MustCompile(`-?\d+(\.\d+)?`)
+
+		matches := re.FindAllString(nhString, -1)
+
+		var ret []float64
+		for _, match := range matches {
+			f, err := strconv.ParseFloat(match, 64)
+			if err != nil {
+				continue
+			}
+			ret = append(ret, f)
+		}
+		return ret
+	}
+
 	// count_values returns a metrics with one label {"value": "1.012321"}
+	// or {"value": "{count:114, sum:226.93333333333334, [-4,-2.82842712474619):12.333333333333332, [-2.82842712474619,-2):12.333333333333332, [-1.414213562373095,-1):13.333333333333334, [-1,-0.7071067811865475):12.333333333333332, [-0.001,0.001]:13.333333333333334, (0.7071067811865475,1]:12.333333333333332, (1,1.414213562373095]:13.333333333333334, (2,2.82842712474619]:12.333333333333332, (2.82842712474619,4]:12.333333333333332}"}}
 	compareValueMetrics := func(l, r model.Metric) (valueMetric bool, equals bool) {
 		lLabels := model.LabelSet(l).Clone()
 		rLabels := model.LabelSet(r).Clone()
 		var (
-			lVal, rVal     model.LabelValue
-			lFloat, rFloat float64
-			ok             bool
-			err            error
+			lVal, rVal       model.LabelValue
+			lFloats, rFloats []float64 // when NH, these contain float64 values in NH
+			lFloat, rFloat   float64
+			ok               bool
+			err              error
 		)
 
 		if lVal, ok = lLabels["value"]; !ok {
@@ -856,6 +995,24 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 
 		if rVal, ok = rLabels["value"]; !ok {
 			return false, false
+		}
+
+		if strings.Contains(string(lVal), "count") && strings.Contains(string(rVal), "count") {
+			// the values are histograms
+			lFloats = fetchValuesFromNH(string(lVal))
+			rFloats = fetchValuesFromNH(string(rVal))
+
+			if len(lFloats) != len(rFloats) {
+				return true, false
+			}
+
+			for i := 0; i < len(lFloats); i++ {
+				if !compareFloats(lFloats[i], rFloats[i]) {
+					return true, false
+				}
+			}
+
+			return true, true
 		}
 
 		if lFloat, err = strconv.ParseFloat(string(lVal), 64); err != nil {
@@ -904,6 +1061,9 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 			if !compareFloats(float64(vx[i].Value), float64(vy[i].Value)) {
 				return false
 			}
+			if !compareHistograms(vx[i].Histogram, vy[i].Histogram) {
+				return false
+			}
 		}
 		return true
 	}
@@ -937,6 +1097,21 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 					return false
 				}
 				if !compareFloats(float64(xps[j].Value), float64(yps[j].Value)) {
+					return false
+				}
+			}
+
+			xhs := mxs.Histograms
+			yhs := mys.Histograms
+
+			if len(xhs) != len(yhs) {
+				return false
+			}
+			for j := 0; j < len(xhs); j++ {
+				if xhs[j].Timestamp != yhs[j].Timestamp {
+					return false
+				}
+				if !compareHistograms(xhs[j].Histogram, yhs[j].Histogram) {
 					return false
 				}
 			}
@@ -1012,13 +1187,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbl := labels.Labels{
-			{Name: labels.MetricName, Value: metricName},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 200)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		}
-		lbls = append(lbls, lbl)
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
 	rnd := rand.New(rand.NewSource(time.Now().Unix()))
@@ -1170,13 +1339,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbl := labels.Labels{
-			{Name: labels.MetricName, Value: metricName},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 200)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		}
-		lbls = append(lbls, lbl)
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
 	rnd := rand.New(rand.NewSource(time.Now().Unix()))
@@ -1383,11 +1546,12 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	// Generate another set of series for testing binary expression and vector matching.
 	for i := numSeries; i < 2*numSeries; i++ {
 		prompbLabels := []prompb.Label{{Name: "job", Value: "test"}, {Name: "series", Value: strconv.Itoa(i)}}
-		if i%3 == 0 {
+		switch i % 3 {
+		case 0:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "200"})
-		} else if i%3 == 1 {
+		case 1:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "400"})
-		} else {
+		default:
 			prompbLabels = append(prompbLabels, prompb.Label{Name: "status_code", Value: "500"})
 		}
 		series := e2e.GenerateSeriesWithSamples("test_series_b", start, scrapeInterval, i*numSamples, numSamples, prompbLabels...)
@@ -1413,15 +1577,15 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, true)
 }
 
 // TestPrometheusCompatibilityQueryFuzz compares Cortex with latest Prometheus release.
 func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
-	prometheusLatestImage := "quay.io/prometheus/prometheus:v2.55.1"
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -1475,19 +1639,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
 	for i := 0; i < numSeries; i++ {
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_a"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa(i % 3)},
-			{Name: "status_code", Value: statusCodes[i%5]},
-		})
-
-		lbls = append(lbls, labels.Labels{
-			{Name: labels.MetricName, Value: "test_series_b"},
-			{Name: "job", Value: "test"},
-			{Name: "series", Value: strconv.Itoa((i + 1) % 3)},
-			{Name: "status_code", Value: statusCodes[(i+1)%5]},
-		})
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
@@ -1514,7 +1667,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 
 	err = writeFileToSharedDir(s, "prometheus.yml", []byte(""))
 	require.NoError(t, err)
-	prom := e2edb.NewPrometheus(prometheusLatestImage, map[string]string{})
+	prom := e2edb.NewPrometheus("", map[string]string{})
 	require.NoError(t, s.StartAndWaitReady(prom))
 
 	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
@@ -1526,10 +1679,11 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 		promqlsmith.WithEnableOffset(true),
 		promqlsmith.WithEnableAtModifier(true),
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 
-	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000)
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 }
 
 // waitUntilReady is a helper function to wait and check if both servers to test load the expected data.
@@ -1567,7 +1721,7 @@ func waitUntilReady(t *testing.T, ctx context.Context, c1, c2 *e2ecortex.Client,
 }
 
 // runQueryFuzzTestCases executes the fuzz test for the specified number of runs for both instant and range queries.
-func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2ecortex.Client, queryTime, start, end time.Time, step time.Duration, run int) {
+func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2ecortex.Client, queryTime, start, end time.Time, step time.Duration, run int, skipStdAggregations bool) {
 	type testCase struct {
 		query        string
 		res1, res2   model.Value
@@ -1583,7 +1737,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkInstantQuery()
-			if isValidQuery(expr, 5) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1604,7 +1758,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 	for i := 0; i < run; i++ {
 		for {
 			expr = ps.WalkRangeQuery()
-			if isValidQuery(expr, 5) {
+			if isValidQuery(expr, skipStdAggregations) {
 				query = expr.Pretty(0)
 				break
 			}
@@ -1639,7 +1793,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 				failures++
 			}
 		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, qt, tc.query, tc.res1.String(), tc.res2.String())
+			t.Logf("case %d results mismatch.\n%s: %s\nres1 len: %d data: %s\nres2 len: %d data: %s\n", i, qt, tc.query, resultLength(tc.res1), tc.res1.String(), resultLength(tc.res2), tc.res2.String())
 			failures++
 		}
 	}
@@ -1655,9 +1809,8 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
+func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
 	isValid := true
-	currentDepth := 0
 	// TODO(SungJin1212): Test limitk, limit_ratio
 	if strings.Contains(generatedQuery.String(), "limitk") {
 		// current skip the limitk
@@ -1667,13 +1820,24 @@ func isValidQuery(generatedQuery parser.Expr, maxDepth int) bool {
 		// current skip the limit_ratio
 		return false
 	}
-	parser.Inspect(generatedQuery, func(node parser.Node, path []parser.Node) error {
-		if currentDepth > maxDepth {
-			isValid = false
-			return fmt.Errorf("generated query has exceeded maxDepth of %d", maxDepth)
-		}
-		currentDepth = len(path) + 1
-		return nil
-	})
+	if skipStdAggregations && (strings.Contains(generatedQuery.String(), "stddev") || strings.Contains(generatedQuery.String(), "stdvar")) {
+		// The behavior of stdvar and stddev changes in https://github.com/prometheus/prometheus/pull/14941
+		// If skipStdAggregations enabled, we skip to evaluate for stddev and stdvar aggregations.
+		return false
+	}
 	return isValid
+}
+
+func resultLength(x model.Value) int {
+	vx, xvec := x.(model.Vector)
+	if xvec {
+		return vx.Len()
+	}
+
+	mx, xMatrix := x.(model.Matrix)
+	if xMatrix {
+		return mx.Len()
+	}
+	// Other type, return 0
+	return 0
 }

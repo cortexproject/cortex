@@ -36,7 +36,7 @@ func (a *Auditor) auditMatrix(x, y model.Matrix) (diff Diff, err error) {
 		return diff, errors.Errorf("different # of series: control=%d, other=%d", len(x), len(y))
 	}
 
-	for i := 0; i < len(x); i++ {
+	for i := range x {
 		xSeries, ySeries := x[i], y[i]
 		if !xSeries.Metric.Equal(ySeries.Metric) {
 			return diff, errors.Errorf("mismatched metrics: %v vs %v", xSeries.Metric, ySeries.Metric)
@@ -52,7 +52,7 @@ func (a *Auditor) auditMatrix(x, y model.Matrix) (diff Diff, err error) {
 			)
 		}
 
-		for j := 0; j < len(xVals); j++ {
+		for j := range xVals {
 			xSample, ySample := xVals[j], yVals[j]
 
 			if xSample.Timestamp != ySample.Timestamp {

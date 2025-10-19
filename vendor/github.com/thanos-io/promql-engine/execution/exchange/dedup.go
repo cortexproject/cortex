@@ -6,16 +6,14 @@ package exchange
 import (
 	"context"
 	"sync"
-	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type dedupSample struct {
@@ -33,8 +31,6 @@ type dedupCache []dedupSample
 // if multiple samples with the same ID are present in a StepVector, dedupOperator
 // will keep the last sample in that vector.
 type dedupOperator struct {
-	telemetry.OperatorTelemetry
-
 	once   sync.Once
 	series []labels.Labels
 
@@ -50,15 +46,10 @@ func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator, opts *q
 		next: next,
 		pool: pool,
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	d.once.Do(func() { err = d.loadSeries(ctx) })
 	if err != nil {
@@ -108,9 +99,6 @@ func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 }
 
 func (d *dedupOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	d.once.Do(func() { err = d.loadSeries(ctx) })
 	if err != nil {

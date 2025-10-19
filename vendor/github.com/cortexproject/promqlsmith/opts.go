@@ -15,6 +15,7 @@ var (
 		AggregateExpr,
 		SubQueryExpr,
 		CallExpr,
+		NumberLiteral,
 		UnaryExpr,
 	}
 
@@ -85,6 +86,8 @@ type options struct {
 	atModifierMaxTimestamp            int64
 
 	enforceLabelMatchers []*labels.Matcher
+
+	maxDepth int // Maximum depth of the query expression tree
 }
 
 func (o *options) applyDefaults() {
@@ -111,6 +114,10 @@ func (o *options) applyDefaults() {
 
 	if o.atModifierMaxTimestamp == 0 {
 		o.atModifierMaxTimestamp = time.Now().UnixMilli()
+	}
+
+	if o.maxDepth == 0 {
+		o.maxDepth = 5 // Default max depth
 	}
 }
 
@@ -182,5 +189,12 @@ func WithEnabledExprs(enabledExprs []ExprType) Option {
 func WithEnforceLabelMatchers(matchers []*labels.Matcher) Option {
 	return optionFunc(func(o *options) {
 		o.enforceLabelMatchers = matchers
+	})
+}
+
+// WithMaxDepth sets the maximum depth for generated query expressions
+func WithMaxDepth(depth int) Option {
+	return optionFunc(func(o *options) {
+		o.maxDepth = depth
 	})
 }

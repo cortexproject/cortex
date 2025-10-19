@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/promql"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -22,6 +22,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -30,14 +31,17 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
+	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -87,10 +91,11 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target      flagext.StringSliceCSV `yaml:"target"`
-	AuthEnabled bool                   `yaml:"auth_enabled"`
-	PrintConfig bool                   `yaml:"-"`
-	HTTPPrefix  string                 `yaml:"http_prefix"`
+	Target          flagext.StringSliceCSV  `yaml:"target"`
+	AuthEnabled     bool                    `yaml:"auth_enabled"`
+	PrintConfig     bool                    `yaml:"-"`
+	HTTPPrefix      string                  `yaml:"http_prefix"`
+	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
 	ExternalPusher    ruler.Pusher           `yaml:"-"`
@@ -110,6 +115,7 @@ type Config struct {
 	QueryRange       queryrange.Config               `yaml:"query_range"`
 	BlocksStorage    tsdb.BlocksStorageConfig        `yaml:"blocks_storage"`
 	Compactor        compactor.Config                `yaml:"compactor"`
+	ParquetConverter parquetconverter.Config         `yaml:"parquet_converter"`
 	StoreGateway     storegateway.Config             `yaml:"store_gateway"`
 	TenantFederation tenantfederation.Config         `yaml:"tenant_federation"`
 
@@ -157,8 +163,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.QueryRange.RegisterFlags(f)
 	c.BlocksStorage.RegisterFlags(f)
 	c.Compactor.RegisterFlags(f)
+	c.ParquetConverter.RegisterFlags(f)
 	c.StoreGateway.RegisterFlags(f)
 	c.TenantFederation.RegisterFlags(f)
+	c.ResourceMonitor.RegisterFlags(f)
 
 	c.Ruler.RegisterFlags(f)
 	c.RulerStorage.RegisterFlags(f)
@@ -197,8 +205,11 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
-	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels); err != nil {
+	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
 		return errors.Wrap(err, "invalid limits config")
+	}
+	if err := c.ResourceMonitor.Validate(); err != nil {
+		return errors.Wrap(err, "invalid resource-monitor config")
 	}
 	if err := c.Distributor.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
@@ -215,7 +226,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.QueryRange.Validate(c.Querier); err != nil {
 		return errors.Wrap(err, "invalid query_range config")
 	}
-	if err := c.StoreGateway.Validate(c.LimitsConfig); err != nil {
+	if err := c.StoreGateway.Validate(c.LimitsConfig, c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid store-gateway config")
 	}
 	if err := c.Compactor.Validate(c.LimitsConfig); err != nil {
@@ -228,7 +239,7 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid alertmanager config")
 	}
 
-	if err := c.Ingester.Validate(); err != nil {
+	if err := c.Ingester.Validate(c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid ingester config")
 	}
 
@@ -240,7 +251,7 @@ func (c *Config) Validate(log log.Logger) error {
 }
 
 func (c *Config) isModuleEnabled(m string) bool {
-	return util.StringsContain(c.Target, m)
+	return slices.Contains(c.Target, m)
 }
 
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
@@ -312,17 +323,19 @@ type Cortex struct {
 	QuerierQueryable         prom_storage.SampleAndChunkQueryable
 	ExemplarQueryable        prom_storage.ExemplarQueryable
 	MetadataQuerier          querier.MetadataQuerier
-	QuerierEngine            promql.QueryEngine
+	QuerierEngine            engine.QueryEngine
 	QueryFrontendTripperware tripperware.Tripperware
+	ResourceMonitor          *resource.Monitor
 
-	Ruler        *ruler.Ruler
-	RulerStorage rulestore.RuleStore
-	ConfigAPI    *configAPI.API
-	ConfigDB     db.DB
-	Alertmanager *alertmanager.MultitenantAlertmanager
-	Compactor    *compactor.Compactor
-	StoreGateway *storegateway.StoreGateway
-	MemberlistKV *memberlist.KVInitService
+	Ruler            *ruler.Ruler
+	RulerStorage     rulestore.RuleStore
+	ConfigAPI        *configAPI.API
+	ConfigDB         db.DB
+	Alertmanager     *alertmanager.MultitenantAlertmanager
+	Compactor        *compactor.Compactor
+	Parquetconverter *parquetconverter.Converter
+	StoreGateway     *storegateway.StoreGateway
+	MemberlistKV     *memberlist.KVInitService
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
@@ -344,13 +357,10 @@ func New(cfg Config) (*Cortex, error) {
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())
 	}
 
-	// Don't check auth header on TransferChunks, as we weren't originally
-	// sending it and this could cause transfers to fail on update.
 	cfg.API.HTTPAuthMiddleware = fakeauth.SetupAuthMiddleware(&cfg.Server, cfg.AuthEnabled,
 		// Also don't check auth for these gRPC methods, since single call is used for multiple users (or no user like health check).
 		[]string{
 			"/grpc.health.v1.Health/Check",
-			"/cortex.Ingester/TransferChunks",
 			"/frontend.Frontend/Process",
 			"/frontend.Frontend/NotifyClientShutdown",
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
@@ -370,6 +380,7 @@ func New(cfg Config) (*Cortex, error) {
 		return nil, err
 	}
 
+	cortex.setupPromQLFunctions()
 	return cortex, nil
 }
 
@@ -383,10 +394,8 @@ func (t *Cortex) setupThanosTracing() {
 // setupGRPCHeaderForwarding appends a gRPC middleware used to enable the propagation of
 // HTTP Headers through child gRPC calls
 func (t *Cortex) setupGRPCHeaderForwarding() {
-	if len(t.Cfg.API.HTTPRequestHeadersToLog) > 0 {
-		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
-		t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
-	}
+	t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcutil.HTTPHeaderPropagationServerInterceptor)
+	t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcutil.HTTPHeaderPropagationStreamServerInterceptor)
 }
 
 func (t *Cortex) setupRequestSigning() {
@@ -527,4 +536,10 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 
 		util.WriteTextResponse(w, "ready")
 	}
+}
+
+func (t *Cortex) setupPromQLFunctions() {
+	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
+	// The cortex supports holt_winters for users using this function.
+	querier.EnableExperimentalPromQLFunctions(t.Cfg.Querier.EnablePromQLExperimentalFunctions, true)
 }

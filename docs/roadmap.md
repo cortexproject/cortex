@@ -37,3 +37,15 @@ For more information tracking this, please see [issue #6075](https://github.com/
 This makes queries over long periods more efficient. It can reduce storage space slightly if the full-detail data is discarded.
 
 For more information tracking this, please see [issue #4322](https://github.com/cortexproject/cortex/issues/4322).
+
+## Changes to this Roadmap
+
+Changes to this roadmap will take the form of pull requests containing the suggested change. All such PRs must be posted to the [#cortex](https://cloud-native.slack.com/archives/CCYDASBLP) Slack channel in
+the [CNCF slack](https://communityinviter.com/apps/cloud-native/cncf) so that they're made visible to all other developers and maintainers.
+
+Significant changes to this document should be discussed in the [monthly meeting](https://github.com/cortexproject/cortex?tab=readme-ov-file#engage-with-our-community)
+before merging, to raise awareness of the change and to provide an opportunity for discussion. A significant change is one which meaningfully alters
+one of the roadmap items, adds a new item, or removes an item.
+
+Insignificant changes include updating links to issues, spelling fixes or minor rewordings which don't significantly change meanings. These insignificant changes
+don't need to be discussed in a meeting but should still be shared in Slack.

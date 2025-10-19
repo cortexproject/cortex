@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"strings"
@@ -23,7 +24,9 @@ import (
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
-var errMaxGlobalSeriesPerUserValidation = errors.New("The ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
+var errMaxGlobalSeriesPerUserValidation = errors.New("the ingester.max-global-series-per-user limit is unsupported if distributor.shard-by-all-labels is disabled")
+var errMaxGlobalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-global-native-histogram-series-per-user limit is unsupported if distributor.shard-by-all-labels or ingester.active-series-metrics-enabled is disabled")
+var errMaxLocalNativeHistogramSeriesPerUserValidation = errors.New("the ingester.max-local-native-histogram-series-per-user limit is unsupported if ingester.active-series-metrics-enabled is disabled")
 var errDuplicateQueryPriorities = errors.New("duplicate entry of priorities found. Make sure they are all unique, including the default priority")
 var errCompilingQueryPriorityRegex = errors.New("error compiling query priority regex")
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
@@ -48,6 +51,11 @@ type LimitError string
 
 func (e LimitError) Error() string {
 	return string(e)
+}
+
+func IsLimitError(e error) bool {
+	var limitError LimitError
+	return errors.As(e, &limitError)
 }
 
 type DisabledRuleGroup struct {
@@ -118,37 +126,43 @@ type LimitsPerLabelSet struct {
 // limits via flags, or per-user limits via yaml config.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRate             float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
-	IngestionRateStrategy     string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionBurstSize        int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
-	AcceptHASamples           bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
-	AcceptMixedHASamples      bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
-	HAClusterLabel            string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
-	HAReplicaLabel            string              `yaml:"ha_replica_label" json:"ha_replica_label"`
-	HAMaxClusters             int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
-	DropLabels                flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
-	MaxLabelNameLength        int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength       int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries    int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	MaxLabelsSizeBytes        int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
-	MaxMetadataLength         int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
-	RejectOldSamples          bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge    model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod       model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
-	EnforceMetadataMetricName bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
-	EnforceMetricName         bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
-	IngestionTenantShardSize  int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
-	MetricRelabelConfigs      []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
-	MaxNativeHistogramBuckets int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
-	PromoteResourceAttributes []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
+	IngestionRate                     float64             `yaml:"ingestion_rate" json:"ingestion_rate"`
+	NativeHistogramIngestionRate      float64             `yaml:"native_histogram_ingestion_rate" json:"native_histogram_ingestion_rate"`
+	IngestionRateStrategy             string              `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionBurstSize                int                 `yaml:"ingestion_burst_size" json:"ingestion_burst_size"`
+	NativeHistogramIngestionBurstSize int                 `yaml:"native_histogram_ingestion_burst_size" json:"native_histogram_ingestion_burst_size"`
+	AcceptHASamples                   bool                `yaml:"accept_ha_samples" json:"accept_ha_samples"`
+	AcceptMixedHASamples              bool                `yaml:"accept_mixed_ha_samples" json:"accept_mixed_ha_samples"`
+	HAClusterLabel                    string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
+	HAReplicaLabel                    string              `yaml:"ha_replica_label" json:"ha_replica_label"`
+	HAMaxClusters                     int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
+	DropLabels                        flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
+	MaxLabelNameLength                int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength               int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries            int                 `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	MaxLabelsSizeBytes                int                 `yaml:"max_labels_size_bytes" json:"max_labels_size_bytes"`
+	MaxNativeHistogramSampleSizeBytes int                 `yaml:"max_native_histogram_sample_size_bytes" json:"max_native_histogram_sample_size_bytes"`
+	MaxMetadataLength                 int                 `yaml:"max_metadata_length" json:"max_metadata_length"`
+	RejectOldSamples                  bool                `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge            model.Duration      `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod               model.Duration      `yaml:"creation_grace_period" json:"creation_grace_period"`
+	EnforceMetadataMetricName         bool                `yaml:"enforce_metadata_metric_name" json:"enforce_metadata_metric_name"`
+	EnforceMetricName                 bool                `yaml:"enforce_metric_name" json:"enforce_metric_name"`
+	IngestionTenantShardSize          int                 `yaml:"ingestion_tenant_shard_size" json:"ingestion_tenant_shard_size"`
+	MetricRelabelConfigs              []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
+	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
+	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser    int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric  int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxGlobalSeriesPerUser   int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	LimitsPerLabelSet        []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	MaxLocalSeriesPerUser                 int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric               int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxLocalNativeHistogramSeriesPerUser  int                 `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
+	MaxGlobalSeriesPerUser                int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric              int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxGlobalNativeHistogramSeriesPerUser int                 `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
+	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -168,9 +182,16 @@ type Limits struct {
 	MaxQueryLookback             model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
 	MaxQueryLength               model.Duration `yaml:"max_query_length" json:"max_query_length"`
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size" doc:"hidden"`
+	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
+	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+
+	// Parquet Queryable enforced limits.
+	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
+	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes"`
+	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -181,11 +202,12 @@ type Limits struct {
 
 	// Ruler defaults and limits.
 	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        int            `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
 	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
 	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -193,10 +215,14 @@ type Limits struct {
 
 	// Compactor.
 	CompactorBlocksRetentionPeriod   model.Duration `yaml:"compactor_blocks_retention_period" json:"compactor_blocks_retention_period"`
-	CompactorTenantShardSize         int            `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
+	CompactorTenantShardSize         float64        `yaml:"compactor_tenant_shard_size" json:"compactor_tenant_shard_size"`
 	CompactorPartitionIndexSizeBytes int64          `yaml:"compactor_partition_index_size_bytes" json:"compactor_partition_index_size_bytes"`
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
+	// Parquet converter
+	ParquetConverterEnabled         bool     `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled"`
+	ParquetConverterTenantShardSize float64  `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size"`
+	ParquetConverterSortColumns     []string `yaml:"parquet_converter_sort_columns" json:"parquet_converter_sort_columns"`
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
@@ -216,7 +242,11 @@ type Limits struct {
 	AlertmanagerMaxDispatcherAggregationGroups int                `yaml:"alertmanager_max_dispatcher_aggregation_groups" json:"alertmanager_max_dispatcher_aggregation_groups"`
 	AlertmanagerMaxAlertsCount                 int                `yaml:"alertmanager_max_alerts_count" json:"alertmanager_max_alerts_count"`
 	AlertmanagerMaxAlertsSizeBytes             int                `yaml:"alertmanager_max_alerts_size_bytes" json:"alertmanager_max_alerts_size_bytes"`
+	AlertmanagerMaxSilencesCount               int                `yaml:"alertmanager_max_silences_count" json:"alertmanager_max_silences_count"`
+	AlertmanagerMaxSilencesSizeBytes           int                `yaml:"alertmanager_max_silences_size_bytes" json:"alertmanager_max_silences_size_bytes"`
 	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
+
+	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme" json:"name_validation_scheme"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -225,8 +255,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.IngestionTenantShardSize, "distributor.ingestion-tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set both on ingesters and distributors. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 	f.Float64Var(&l.IngestionRate, "distributor.ingestion-rate-limit", 25000, "Per-user ingestion rate limit in samples per second.")
+	f.Float64Var(&l.NativeHistogramIngestionRate, "distributor.native-histogram-ingestion-rate-limit", float64(rate.Inf), "Per-user native histogram ingestion rate limit in samples per second. Disabled by default")
 	f.StringVar(&l.IngestionRateStrategy, "distributor.ingestion-rate-limit-strategy", "local", "Whether the ingestion rate limit should be applied individually to each distributor instance (local), or evenly shared across the cluster (global).")
 	f.IntVar(&l.IngestionBurstSize, "distributor.ingestion-burst-size", 50000, "Per-user allowed ingestion burst size (in number of samples).")
+	f.IntVar(&l.NativeHistogramIngestionBurstSize, "distributor.native-histogram-ingestion-burst-size", 0, "Per-user allowed native histogram ingestion burst size (in number of samples)")
 	f.BoolVar(&l.AcceptHASamples, "distributor.ha-tracker.enable-for-all-users", false, "Flag to enable, for all users, handling of samples with external labels identifying replicas in an HA Prometheus setup.")
 	f.BoolVar(&l.AcceptMixedHASamples, "experimental.distributor.ha-tracker.mixed-ha-samples", false, "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.")
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
@@ -238,6 +270,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
 	f.IntVar(&l.MaxLabelsSizeBytes, "validation.max-labels-size-bytes", 0, "Maximum combined size in bytes of all labels and label values accepted for a series. 0 to disable the limit.")
+	f.IntVar(&l.MaxNativeHistogramSampleSizeBytes, "validation.max-native-histogram-sample-size-bytes", 0, "Maximum size in bytes of a native histogram sample. 0 to disable the limit.")
 	f.IntVar(&l.MaxMetadataLength, "validation.max-metadata-length", 1024, "Maximum length accepted for metric metadata. Metadata refers to Metric Name, HELP and UNIT.")
 	f.BoolVar(&l.RejectOldSamples, "validation.reject-old-samples", false, "Reject old samples.")
 	_ = l.RejectOldSamplesMaxAge.Set("14d")
@@ -252,6 +285,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalSeriesPerUser, "ingester.max-global-series-per-user", 0, "The maximum number of active series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels is true.")
 	f.IntVar(&l.MaxGlobalSeriesPerMetric, "ingester.max-global-series-per-metric", 0, "The maximum number of active series per metric name, across the cluster before replication. 0 to disable.")
+	f.IntVar(&l.MaxLocalNativeHistogramSeriesPerUser, "ingester.max-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, per ingester. 0 to disable. Supported only if ingester.active-series-metrics-enabled is true.")
+	f.IntVar(&l.MaxGlobalNativeHistogramSeriesPerUser, "ingester.max-global-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels and ingester.active-series-metrics-enabled is true.")
+	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
 	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
 
@@ -267,6 +303,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
+	f.Int64Var(&l.MaxQueryResponseSize, "frontend.max-query-response-size", 0, "The maximum total uncompressed query response size. If the query was sharded the limit is applied to the total response size of all shards. This limit is enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
@@ -277,16 +314,25 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
-	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.Float64Var(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total rulers.")
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
 	f.Var(&l.RulerQueryOffset, "ruler.query-offset", "Duration to offset all rule evaluation queries per-tenant.")
 
 	f.Var(&l.CompactorBlocksRetentionPeriod, "compactor.blocks-retention-period", "Delete blocks containing samples older than the specified retention period. 0 to disable.")
-	f.IntVar(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
+	f.Float64Var(&l.CompactorTenantShardSize, "compactor.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the compactor. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 and > 0 the shard size will be a percentage of the total compactors")
 	// Default to 64GB because this is the hard limit of index size in Cortex
 	f.Int64Var(&l.CompactorPartitionIndexSizeBytes, "compactor.partition-index-size-bytes", 68719476736, "Index size limit in bytes for each compaction partition. 0 means no limit")
 	f.Int64Var(&l.CompactorPartitionSeriesCount, "compactor.partition-series-count", 0, "Time series count limit for each compaction partition. 0 means no limit")
+
+	f.Float64Var(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 and > 0 the shard size will be a percentage of the total parquet converters.")
+	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
+	f.Var((*flagext.StringSlice)(&l.ParquetConverterSortColumns), "parquet-converter.sort-columns", "Additional label names for specific tenants to sort by after metric name, in order of precedence. These are applied during Parquet file generation.")
+
+	// Parquet Queryable enforced limits.
+	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.")
+	f.IntVar(&l.ParquetMaxFetchedChunkBytes, "querier.parquet-queryable.max-fetched-chunk-bytes", 0, "The maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage. 0 to disable.")
+	f.IntVar(&l.ParquetMaxFetchedDataBytes, "querier.parquet-queryable.max-fetched-data-bytes", 0, "The maximum number of bytes that can be used to fetch all column pages when querying parquet storage. 0 to disable.")
 
 	// Store-gateway.
 	f.Float64Var(&l.StoreGatewayTenantShardSize, "store-gateway.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total store-gateways.")
@@ -308,19 +354,45 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.AlertmanagerMaxDispatcherAggregationGroups, "alertmanager.max-dispatcher-aggregation-groups", 0, "Maximum number of aggregation groups in Alertmanager's dispatcher that a tenant can have. Each active aggregation group uses single goroutine. When the limit is reached, dispatcher will not dispatch alerts that belong to additional aggregation groups, but existing groups will keep working properly. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxAlertsCount, "alertmanager.max-alerts-count", 0, "Maximum number of alerts that a single user can have. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxAlertsSizeBytes, "alertmanager.max-alerts-size-bytes", 0, "Maximum total size of alerts that a single user can have, alert size is the sum of the bytes of its labels, annotations and generatorURL. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxSilencesCount, "alertmanager.max-silences-count", 0, "Maximum number of silences that a single user can have, including expired silences. 0 = no limit.")
+	f.IntVar(&l.AlertmanagerMaxSilencesSizeBytes, "alertmanager.max-silences-size-bytes", 0, "Maximum size of individual silences that a single user can have. 0 = no limit.")
+
+	_ = l.NameValidationScheme.Set(model.LegacyValidation.String())
+	f.Var(&l.NameValidationScheme, "validation.name-validation-scheme", fmt.Sprintf("Name validation scheme for metric names and label names, Support values are: %s.", strings.Join([]string{model.LegacyValidation.String(), model.UTF8Validation.String()}, ", ")))
 }
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(shardByAllLabels bool) error {
+func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
 		return errMaxGlobalSeriesPerUserValidation
 	}
 
+	// The ingester.max-global-native-histograms-series-per-user metric is not supported
+	// if shard-by-all-labels is disabled
+	// or if active-series-metrics-enabled is disabled
+	if l.MaxGlobalNativeHistogramSeriesPerUser > 0 && (!shardByAllLabels || !activeSeriesMetricsEnabled) {
+		return errMaxGlobalNativeHistogramSeriesPerUserValidation
+	}
+
+	if l.MaxLocalNativeHistogramSeriesPerUser > 0 && !activeSeriesMetricsEnabled {
+		return errMaxLocalNativeHistogramSeriesPerUserValidation
+	}
+
+	var nameValidationScheme model.ValidationScheme
+	switch l.NameValidationScheme {
+	case model.LegacyValidation, model.UTF8Validation:
+		nameValidationScheme = l.NameValidationScheme
+	case model.UnsetValidation:
+		nameValidationScheme = model.LegacyValidation
+	default:
+		return fmt.Errorf("unsupported name validation scheme: %s", l.NameValidationScheme)
+	}
+
 	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
-		if !model.LabelName(l.Name).IsValid() {
+		if !nameValidationScheme.IsValidLabelName(l.Name) {
 			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
@@ -335,7 +407,7 @@ func (l *Limits) Validate(shardByAllLabels bool) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Limits) UnmarshalYAML(unmarshal func(any) error) error {
 	// We want to set l to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
@@ -410,9 +482,7 @@ func (l *Limits) calculateMaxSeriesPerLabelSetId() error {
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
 	l.NotificationRateLimitPerIntegration = make(map[string]float64, len(defaults))
-	for k, v := range defaults {
-		l.NotificationRateLimitPerIntegration[k] = v
-	}
+	maps.Copy(l.NotificationRateLimitPerIntegration, defaults)
 }
 
 func (l *Limits) hasQueryAttributeRegexChanged() bool {
@@ -543,16 +613,21 @@ type Overrides struct {
 }
 
 // NewOverrides makes a new Overrides.
-func NewOverrides(defaults Limits, tenantLimits TenantLimits) (*Overrides, error) {
+func NewOverrides(defaults Limits, tenantLimits TenantLimits) *Overrides {
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
-	}, nil
+	}
 }
 
 // IngestionRate returns the limit on ingester rate (samples per second).
 func (o *Overrides) IngestionRate(userID string) float64 {
 	return o.GetOverridesForUser(userID).IngestionRate
+}
+
+// NativeHistogramIngestionRate returns the limit on ingester rate (samples per second).
+func (o *Overrides) NativeHistogramIngestionRate(userID string) float64 {
+	return o.GetOverridesForUser(userID).NativeHistogramIngestionRate
 }
 
 // IngestionRateStrategy returns whether the ingestion rate limit should be individually applied
@@ -565,6 +640,11 @@ func (o *Overrides) IngestionRateStrategy() string {
 // IngestionBurstSize returns the burst size for ingestion rate.
 func (o *Overrides) IngestionBurstSize(userID string) int {
 	return o.GetOverridesForUser(userID).IngestionBurstSize
+}
+
+// NativeHistogramIngestionBurstSize returns the burst size for ingestion rate.
+func (o *Overrides) NativeHistogramIngestionBurstSize(userID string) int {
+	return o.GetOverridesForUser(userID).NativeHistogramIngestionBurstSize
 }
 
 // AcceptHASamples returns whether the distributor should track and accept samples from HA replicas for this user.
@@ -641,6 +721,11 @@ func (o *Overrides) MaxLocalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxLocalSeriesPerUser
 }
 
+// MaxLocalNativeHistogramSeriesPerUser returns the maximum number of native histogram series a user is allowed to store in a single ingester.
+func (o *Overrides) MaxLocalNativeHistogramSeriesPerUser(userID string) int {
+	return o.GetOverridesForUser(userID).MaxLocalNativeHistogramSeriesPerUser
+}
+
 // MaxLocalSeriesPerMetric returns the maximum number of series allowed per metric in a single ingester.
 func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
 	return o.GetOverridesForUser(userID).MaxLocalSeriesPerMetric
@@ -649,6 +734,16 @@ func (o *Overrides) MaxLocalSeriesPerMetric(userID string) int {
 // MaxGlobalSeriesPerUser returns the maximum number of series a user is allowed to store across the cluster.
 func (o *Overrides) MaxGlobalSeriesPerUser(userID string) int {
 	return o.GetOverridesForUser(userID).MaxGlobalSeriesPerUser
+}
+
+// MaxGlobalNativeHistogramSeriesPerUser returns the maximum number of native histogram series a user is allowed to store across the cluster.
+func (o *Overrides) MaxGlobalNativeHistogramSeriesPerUser(userID string) int {
+	return o.GetOverridesForUser(userID).MaxGlobalNativeHistogramSeriesPerUser
+}
+
+// EnableNativeHistograms returns whether the Ingester should accept native histogram samples from this user.
+func (o *Overrides) EnableNativeHistograms(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableNativeHistograms
 }
 
 // OutOfOrderTimeWindow returns the allowed time window for ingestion of out-of-order samples.
@@ -710,6 +805,11 @@ func (o *Overrides) MaxQueryLength(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxQueryLength)
 }
 
+// MaxQueryResponseSize returns the max total response size of a query in bytes.
+func (o *Overrides) MaxQueryResponseSize(userID string) int64 {
+	return o.GetOverridesForUser(userID).MaxQueryResponseSize
+}
+
 // MaxCacheFreshness returns the period after which results are cacheable,
 // to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
@@ -724,6 +824,11 @@ func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 // QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).QueryVerticalShardSize
+}
+
+// QueryPartialData returns whether query may be evaluated with data from a single zone, if other zones are not available.
+func (o *Overrides) QueryPartialData(userID string) bool {
+	return o.GetOverridesForUser(userID).QueryPartialData
 }
 
 // MaxQueryParallelism returns the limit to the number of split queries the
@@ -800,8 +905,38 @@ func (o *Overrides) CompactorBlocksRetentionPeriod(userID string) time.Duration 
 }
 
 // CompactorTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
-func (o *Overrides) CompactorTenantShardSize(userID string) int {
+func (o *Overrides) CompactorTenantShardSize(userID string) float64 {
 	return o.GetOverridesForUser(userID).CompactorTenantShardSize
+}
+
+// ParquetConverterTenantShardSize returns shard size (number of converters) used by this tenant when using shuffle-sharding strategy.
+func (o *Overrides) ParquetConverterTenantShardSize(userID string) float64 {
+	return o.GetOverridesForUser(userID).ParquetConverterTenantShardSize
+}
+
+// ParquetConverterEnabled returns true is parquet is enabled.
+func (o *Overrides) ParquetConverterEnabled(userID string) bool {
+	return o.GetOverridesForUser(userID).ParquetConverterEnabled
+}
+
+// ParquetConverterSortColumns returns the additional sort columns for parquet files.
+func (o *Overrides) ParquetConverterSortColumns(userID string) []string {
+	return o.GetOverridesForUser(userID).ParquetConverterSortColumns
+}
+
+// ParquetMaxFetchedRowCount returns the maximum number of rows that can be fetched when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedRowCount(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedRowCount
+}
+
+// ParquetMaxFetchedChunkBytes returns the maximum number of bytes that can be used to fetch chunk column pages when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedChunkBytes(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedChunkBytes
+}
+
+// ParquetMaxFetchedDataBytes returns the maximum number of bytes that can be used to fetch all column pages when querying parquet storage.
+func (o *Overrides) ParquetMaxFetchedDataBytes(userID string) int {
+	return o.GetOverridesForUser(userID).ParquetMaxFetchedDataBytes
 }
 
 // CompactorPartitionIndexSizeBytes returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
@@ -820,7 +955,7 @@ func (o *Overrides) MetricRelabelConfigs(userID string) []*relabel.Config {
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
-func (o *Overrides) RulerTenantShardSize(userID string) int {
+func (o *Overrides) RulerTenantShardSize(userID string) float64 {
 	return o.GetOverridesForUser(userID).RulerTenantShardSize
 }
 
@@ -843,6 +978,11 @@ func (o *Overrides) RulerQueryOffset(userID string) time.Duration {
 		return evaluationDelay
 	}
 	return ruleOffset
+}
+
+// RulesPartialData returns whether rule may be evaluated with data from a single zone, if other zones are not available.
+func (o *Overrides) RulesPartialData(userID string) bool {
+	return o.GetOverridesForUser(userID).RulesPartialData
 }
 
 // StoreGatewayTenantShardSize returns the store-gateway shard size for a given user.
@@ -957,6 +1097,14 @@ func (o *Overrides) AlertmanagerMaxAlertsCount(userID string) int {
 
 func (o *Overrides) AlertmanagerMaxAlertsSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxAlertsSizeBytes
+}
+
+func (o *Overrides) AlertmanagerMaxSilencesCount(userID string) int {
+	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesCount
+}
+
+func (o *Overrides) AlertmanagerMaxSilenceSizeBytes(userID string) int {
+	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesSizeBytes
 }
 
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
@@ -1074,11 +1222,16 @@ outer:
 			defaultPartitionIndex = i
 			continue
 		}
-		for _, lbl := range lbls.LabelSet {
+		found := true
+		lbls.LabelSet.Range(func(l labels.Label) {
 			// We did not find some of the labels on the set
-			if v := metric.Get(lbl.Name); v != lbl.Value {
-				continue outer
+			if v := metric.Get(l.Name); v != l.Value {
+				found = false
 			}
+		})
+
+		if !found {
+			continue outer
 		}
 		r = append(r, lbls)
 	}

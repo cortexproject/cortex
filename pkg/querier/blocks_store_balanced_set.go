@@ -4,19 +4,19 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/extprom"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
@@ -94,7 +94,7 @@ func (s *blocksStoreBalancedSet) GetClientsFor(_ string, blockIDs []ulid.ULID, e
 
 func getFirstNonExcludedAddr(addresses, exclude []string) string {
 	for _, addr := range addresses {
-		if !util.StringsContain(exclude, addr) {
+		if !slices.Contains(exclude, addr) {
 			return addr
 		}
 	}

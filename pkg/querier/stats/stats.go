@@ -21,6 +21,7 @@ type QueryStats struct {
 	Priority            int64
 	DataSelectMaxTime   int64
 	DataSelectMinTime   int64
+	SplitInterval       time.Duration
 	m                   sync.Mutex
 }
 
@@ -46,6 +47,16 @@ func IsEnabled(ctx context.Context) bool {
 	// When query statistics are enabled, the stats object is already initialised
 	// within the context, so we can just check it.
 	return FromContext(ctx) != nil
+}
+
+func (s *QueryStats) Copy() *QueryStats {
+	if s == nil {
+		return nil
+	}
+
+	copied := &QueryStats{}
+	copied.Merge(s)
+	return copied
 }
 
 // AddWallTime adds some time to the counter.
@@ -90,7 +101,7 @@ func (s *QueryStats) AddFetchedSeries(series uint64) {
 	atomic.AddUint64(&s.FetchedSeriesCount, series)
 }
 
-func (s *QueryStats) AddExtraFields(fieldsVals ...interface{}) {
+func (s *QueryStats) AddExtraFields(fieldsVals ...any) {
 	if s == nil {
 		return
 	}
@@ -113,15 +124,15 @@ func (s *QueryStats) AddExtraFields(fieldsVals ...interface{}) {
 	}
 }
 
-func (s *QueryStats) LoadExtraFields() []interface{} {
+func (s *QueryStats) LoadExtraFields() []any {
 	if s == nil {
-		return []interface{}{}
+		return []any{}
 	}
 
 	s.m.Lock()
 	defer s.m.Unlock()
 
-	r := make([]interface{}, 0, len(s.ExtraFields))
+	r := make([]any, 0, len(s.ExtraFields))
 	for k, v := range s.ExtraFields {
 		r = append(r, k, v)
 	}
@@ -285,6 +296,14 @@ func (s *QueryStats) LoadDataSelectMinTime() int64 {
 	}
 
 	return atomic.LoadInt64(&s.DataSelectMinTime)
+}
+
+func (s *QueryStats) LoadSplitInterval() time.Duration {
+	if s == nil {
+		return 0
+	}
+
+	return s.SplitInterval
 }
 
 func (s *QueryStats) AddStoreGatewayTouchedPostings(count uint64) {

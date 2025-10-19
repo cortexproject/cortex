@@ -12,12 +12,12 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/cortexproject/cortex/pkg/parser"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
@@ -86,16 +86,12 @@ func TestParseLegacyAlerts(t *testing.T) {
 		parsed,
 		5*time.Minute,
 		0,
-		labels.Labels{
-			labels.Label{Name: "severity", Value: "critical"},
-		},
-		labels.Labels{
-			labels.Label{Name: "message", Value: "I am a message"},
-		},
-		nil,
+		labels.FromStrings("severity", "critical"),
+		labels.FromStrings("message", "I am a message"),
+		labels.EmptyLabels(),
 		"",
 		true,
-		log.With(util_log.Logger, "alert", "TestAlert"),
+		util_log.GoKitLogToSlog(log.With(util_log.Logger, "alert", "TestAlert")),
 	)
 
 	for i, tc := range []struct {
@@ -138,7 +134,8 @@ groups:
 				require.Equal(t, err, tc.err)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expected, rules)
+				require.Equal(t, 1, len(rules["example;alerts.yaml"]))
+				require.Equal(t, tc.expected["example;alerts.yaml"][0].String(), rules["example;alerts.yaml"][0].String())
 			}
 		})
 	}
@@ -148,14 +145,10 @@ func TestParseFormatted(t *testing.T) {
 	dur, err := model.ParseDuration("5m")
 	require.NoError(t, err)
 
-	alertNode := yaml.Node{Line: 4, Column: 12}
-	alertNode.SetString("TestAlert")
-	exprNode := yaml.Node{Line: 5, Column: 11}
-	exprNode.SetString("up == 0")
-	rulesV2 := []rulefmt.RuleNode{
+	rulesV2 := []rulefmt.Rule{
 		{
-			Alert: alertNode,
-			Expr:  exprNode,
+			Alert: "TestAlert",
+			Expr:  "up == 0",
 			For:   dur,
 			Labels: map[string]string{
 				"severity": "critical",

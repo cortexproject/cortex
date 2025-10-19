@@ -15,7 +15,7 @@ import (
 
 // PrometheusGRPCUnaryInstrumentation records duration of gRPC requests client side.
 func PrometheusGRPCUnaryInstrumentation(metric *prometheus.HistogramVec) grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, resp interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	return func(ctx context.Context, method string, req, resp any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		start := time.Now()
 		err := invoker(ctx, method, req, resp, cc, opts...)
 		metric.WithLabelValues(method, errorCode(err)).Observe(time.Since(start).Seconds())
@@ -46,7 +46,7 @@ type instrumentedClientStream struct {
 	grpc.ClientStream
 }
 
-func (s *instrumentedClientStream) SendMsg(m interface{}) error {
+func (s *instrumentedClientStream) SendMsg(m any) error {
 	err := s.ClientStream.SendMsg(m)
 	if err == nil {
 		return err
@@ -61,7 +61,7 @@ func (s *instrumentedClientStream) SendMsg(m interface{}) error {
 	return err
 }
 
-func (s *instrumentedClientStream) RecvMsg(m interface{}) error {
+func (s *instrumentedClientStream) RecvMsg(m any) error {
 	err := s.ClientStream.RecvMsg(m)
 	if err == nil {
 		return err
@@ -80,6 +80,57 @@ func (s *instrumentedClientStream) Header() (metadata.MD, error) {
 	md, err := s.ClientStream.Header()
 	if err != nil {
 		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(s.start).Seconds())
+	}
+	return md, err
+}
+
+// PrometheusGRPCReusableStreamInstrumentation records duration of reusable streaming gRPC requests client side.
+func PrometheusGRPCReusableStreamInstrumentation(metric *prometheus.HistogramVec) grpc.StreamClientInterceptor {
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string,
+		streamer grpc.Streamer, opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		stream, err := streamer(ctx, desc, cc, method, opts...)
+		return &instrumentedReusableClientStream{
+			metric:       metric,
+			method:       method,
+			ClientStream: stream,
+		}, err
+	}
+}
+
+type instrumentedReusableClientStream struct {
+	metric *prometheus.HistogramVec
+	method string
+	grpc.ClientStream
+}
+
+func (s *instrumentedReusableClientStream) SendMsg(m any) error {
+	start := time.Now()
+	err := s.ClientStream.SendMsg(m)
+	if err != nil && err != io.EOF {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
+		return err
+	}
+	s.metric.WithLabelValues(s.method, errorCode(nil)).Observe(time.Since(start).Seconds())
+	return err
+}
+
+func (s *instrumentedReusableClientStream) RecvMsg(m any) error {
+	start := time.Now()
+	err := s.ClientStream.RecvMsg(m)
+	if err != nil && err != io.EOF {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
+		return err
+	}
+	s.metric.WithLabelValues(s.method, errorCode(nil)).Observe(time.Since(start).Seconds())
+	return err
+}
+
+func (s *instrumentedReusableClientStream) Header() (metadata.MD, error) {
+	start := time.Now()
+	md, err := s.ClientStream.Header()
+	if err != nil {
+		s.metric.WithLabelValues(s.method, errorCode(err)).Observe(time.Since(start).Seconds())
 	}
 	return md, err
 }

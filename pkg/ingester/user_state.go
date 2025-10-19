@@ -16,9 +16,10 @@ import (
 
 // DiscardedSamples metric labels
 const (
-	perUserSeriesLimit     = "per_user_series_limit"
-	perMetricSeriesLimit   = "per_metric_series_limit"
-	perLabelsetSeriesLimit = "per_labelset_series_limit"
+	perUserSeriesLimit                = "per_user_series_limit"
+	perUserNativeHistogramSeriesLimit = "per_user_native_histogram_series_limit"
+	perMetricSeriesLimit              = "per_metric_series_limit"
+	perLabelsetSeriesLimit            = "per_labelset_series_limit"
 )
 
 const numMetricCounterShards = 128
@@ -37,7 +38,7 @@ type metricCounter struct {
 
 func newMetricCounter(limiter *Limiter, ignoredMetricsForSeriesCount map[string]struct{}) *metricCounter {
 	shards := make([]metricCounterShard, 0, numMetricCounterShards)
-	for i := 0; i < numMetricCounterShards; i++ {
+	for range numMetricCounterShards {
 		shards = append(shards, metricCounterShard{
 			m: map[string]int{},
 		})
@@ -102,7 +103,7 @@ type labelSetCounter struct {
 
 func newLabelSetCounter(limiter *Limiter) *labelSetCounter {
 	shards := make([]*labelSetCounterShard, 0, numMetricCounterShards)
-	for i := 0; i < numMetricCounterShards; i++ {
+	for range numMetricCounterShards {
 		shards = append(shards, &labelSetCounterShard{
 			RWMutex:       &sync.RWMutex{},
 			valuesCounter: map[uint64]*labelSetCounterEntry{},
@@ -131,15 +132,14 @@ func (m *labelSetCounter) canAddSeriesForLabelSet(ctx context.Context, u *userTS
 
 func (m *labelSetCounter) backFillLimit(ctx context.Context, u *userTSDB, forceBackfill bool, allLimits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet, s *labelSetCounterShard) (int, error) {
 	s.Lock()
+	defer s.Unlock()
 	// If not force backfill, use existing counter value.
 	if !forceBackfill {
 		if r, ok := s.valuesCounter[limit.Hash]; ok {
-			s.Unlock()
 			return r.count, nil
 		}
 	}
 
-	defer s.Unlock()
 	ir, err := u.db.Head().Index()
 	if err != nil {
 		return 0, err
@@ -191,9 +191,9 @@ func getCardinalityForLimitsPerLabelSet(ctx context.Context, numSeries uint64, i
 }
 
 func getPostingForLabels(ctx context.Context, ir tsdb.IndexReader, lbls labels.Labels) (index.Postings, error) {
-	postings := make([]index.Postings, 0, len(lbls))
-	for _, lbl := range lbls {
-		p, err := ir.Postings(ctx, lbl.Name, lbl.Value)
+	postings := make([]index.Postings, 0, lbls.Len())
+	for name, value := range lbls.Map() {
+		p, err := ir.Postings(ctx, name, value)
 		if err != nil {
 			return nil, err
 		}
@@ -252,7 +252,7 @@ func (m *labelSetCounter) UpdateMetric(ctx context.Context, u *userTSDB, metrics
 	}
 
 	nonDefaultPartitionChanged := false
-	for i := 0; i < numMetricCounterShards; i++ {
+	for i := range numMetricCounterShards {
 		s := m.shards[i]
 		s.RLock()
 		for h, entry := range s.valuesCounter {

@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -71,7 +72,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	})
 
 	// Wait for frontend to connect to scheduler.
-	test.Poll(t, 1*time.Second, 1, func() interface{} {
+	test.Poll(t, 1*time.Second, 1, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 
@@ -182,6 +183,18 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 	require.True(t, strings.Contains(err.Error(), "failed to enqueue request"))
 }
 
+func TestFrontendEnqueueInternalError(t *testing.T) {
+	errorMsg := "Some error"
+	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
+		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR, Error: errorMsg}
+	}, 0)
+
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	require.NoError(t, err)
+	require.Equal(t, []byte(errorMsg), resp.Body)
+	require.Equal(t, int32(http.StatusInternalServerError), resp.Code)
+}
+
 func TestFrontendCancellation(t *testing.T) {
 	f, ms := setupFrontend(t, nil, 0)
 
@@ -193,7 +206,7 @@ func TestFrontendCancellation(t *testing.T) {
 	require.Nil(t, resp)
 
 	// We wait a bit to make sure scheduler receives the cancellation request.
-	test.Poll(t, time.Second, 2, func() interface{} {
+	test.Poll(t, time.Second, 2, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 

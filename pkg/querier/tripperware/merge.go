@@ -3,6 +3,7 @@ package tripperware
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/prometheus/common/model"
@@ -10,6 +11,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 const StatusSuccess = "success"
@@ -246,7 +248,7 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 		keys = append(keys, key)
 	}
 
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 
 	result := &PrometheusResponseStats{Samples: &PrometheusResponseSamplesStats{}}
 	for _, key := range keys {
@@ -284,7 +286,7 @@ func getSortValueFromPair(samples []*pair, i int) float64 {
 }
 
 func sortPlanForQuery(q string) (sortPlan, error) {
-	expr, err := promqlparser.ParseExpr(q)
+	expr, err := cortexparser.ParseExpr(q)
 	if err != nil {
 		return 0, err
 	}

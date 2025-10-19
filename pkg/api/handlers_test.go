@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+
+	"github.com/cortexproject/cortex/pkg/querier"
 )
 
 func TestIndexHandlerPrefix(t *testing.T) {
@@ -90,7 +92,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		name               string
 		expectedStatusCode int
 		expectedBody       string
-		actualConfig       func() interface{}
+		actualConfig       func() any
 	}{
 		{
 			name:               "no config parameters overridden",
@@ -99,7 +101,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "slice changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MySlice = append(c.MySlice, "value3")
 				return c
@@ -112,7 +114,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "string in nested struct changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MyNestedStruct.MyString = "string2"
 				return c
@@ -123,7 +125,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "bool in nested struct changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MyNestedStruct.MyBool = true
 				return c
@@ -134,7 +136,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "test invalid input",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := "x"
 				return &c
 			},
@@ -146,7 +148,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		defaultCfg := newDefaultDiffConfigMock()
 		t.Run(tc.name, func(t *testing.T) {
 
-			var actualCfg interface{}
+			var actualCfg any
 			if tc.actualConfig != nil {
 				actualCfg = tc.actualConfig()
 			} else {
@@ -171,7 +173,7 @@ func TestConfigDiffHandler(t *testing.T) {
 
 func TestConfigOverrideHandler(t *testing.T) {
 	cfg := &Config{
-		CustomConfigHandler: func(_ interface{}, _ interface{}) http.HandlerFunc {
+		CustomConfigHandler: func(_ any, _ any) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				_, err := w.Write([]byte("config"))
 				assert.NoError(t, err)
@@ -229,10 +231,11 @@ func TestBuildInfoAPI(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := Config{buildInfoEnabled: true}
+			querierConfig := querier.Config{}
 			version.Version = tc.version
 			version.Branch = tc.branch
 			version.Revision = tc.revision
-			handler := NewQuerierHandler(cfg, nil, nil, nil, nil, nil, &FakeLogger{})
+			handler := NewQuerierHandler(cfg, querierConfig, nil, nil, nil, nil, nil, &FakeLogger{})
 			writer := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/api/v1/status/buildinfo", nil)
 			req = req.WithContext(user.InjectOrgID(req.Context(), "test"))

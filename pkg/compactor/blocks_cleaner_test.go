@@ -10,10 +10,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,9 +20,11 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -49,7 +50,6 @@ func TestBlocksCleaner(t *testing.T) {
 		{concurrency: 2},
 		{concurrency: 10},
 	} {
-		options := options
 
 		t.Run(options.String(), func(t *testing.T) {
 			t.Parallel()
@@ -73,15 +73,21 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 			path.Join(userID, "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
 		},
 	}
+	createTSDBBlock(t, bkt, userID, 10, 20, nil)
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(mbucket, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, mbucket, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -89,13 +95,13 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 	}, append(commonLabels, reasonLabelName))
 	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
-	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", nil, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+	cleaner := NewBlocksCleaner(cfg, mbucket, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
 
 	// Clean User with no error
 	cleaner.bucketClient = bkt
 	userLogger := util_log.WithUserID(userID, cleaner.logger)
 	userBucket := bucket.NewUserBucketClient(userID, cleaner.bucketClient, cleaner.cfgProvider)
-	err := cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
+	err = cleaner.cleanUser(ctx, userLogger, userBucket, userID, false)
 	require.NoError(t, err)
 	s, err := bucketindex.ReadSyncStatus(ctx, bkt, userID, logger)
 	require.NoError(t, err)
@@ -156,10 +162,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createBlockVisitMarker(t, bucketClient, "user-1", block11)                                                // Partial block only has visit marker.
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
-	// Blocks for user-3, marked for deletion.
+	// Blocks for user-3, tenant marked for deletion.
 	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
+	createParquetMarker(t, bucketClient, "user-3", block10)
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
 	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
@@ -173,6 +180,12 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	block12 := createTSDBBlock(t, bucketClient, "user-5", 30, 50, nil)
 	createNoCompactionMark(t, bucketClient, "user-5", block12)
 
+	// Create Parquet marker
+	block13 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
+	// This block should be converted to Parquet format so counted as remaining.
+	block14 := createTSDBBlock(t, bucketClient, "user-6", 30, 50, nil)
+	createParquetMarker(t, bucketClient, "user-6", block13)
+
 	// The fixtures have been created. If the bucket client wasn't wrapped to write
 	// deletion marks to the global location too, then this is the right time to do it.
 	if options.markersMigrationEnabled {
@@ -185,12 +198,21 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		CleanupConcurrency:                 options.concurrency,
 		BlockDeletionMarksMigrationEnabled: options.markersMigrationEnabled,
 		TenantCleanupDelay:                 options.tenantDeletionDelay,
+		BlockRanges:                        (&tsdb.DurationList{2 * time.Hour}).ToMilliseconds(),
 	}
 
 	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
+	cfgProvider.parquetConverterEnabled = map[string]bool{
+		"user-3": true,
+		"user-5": true,
+		"user-6": true,
+	}
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
 		Help: blocksMarkedForDeletionHelp,
@@ -229,7 +251,10 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{path: path.Join("user-3", block9.String(), "index"), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), metadata.MetaFilename), expectedExists: false},
 		{path: path.Join("user-3", block10.String(), "index"), expectedExists: false},
+		{path: path.Join("user-3", block10.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 		{path: path.Join("user-4", block.DebugMetas, "meta.json"), expectedExists: options.user4FilesExist},
+		{path: path.Join("user-6", block13.String(), parquet.ConverterMarkerFileName), expectedExists: true},
+		{path: path.Join("user-6", block14.String(), parquet.ConverterMarkerFileName), expectedExists: false},
 	} {
 		exists, err := bucketClient.Exists(ctx, tc.path)
 		require.NoError(t, err)
@@ -249,11 +274,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(7), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(7), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	for _, tc := range []struct {
@@ -275,6 +300,11 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		}, {
 			userID:        "user-3",
 			expectedIndex: false,
+		}, {
+			userID:         "user-6",
+			expectedIndex:  true,
+			expectedBlocks: []ulid.ULID{block13, block14},
+			expectedMarks:  []ulid.ULID{},
 		},
 	} {
 		idx, err := bucketindex.ReadIndex(ctx, bucketClient, tc.userID, nil, logger)
@@ -297,23 +327,37 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_blocks_count{user="user-1"} 2
 		cortex_bucket_blocks_count{user="user-2"} 1
 		cortex_bucket_blocks_count{user="user-5"} 2
+		cortex_bucket_blocks_count{user="user-6"} 2
 		# HELP cortex_bucket_blocks_marked_for_deletion_count Total number of blocks marked for deletion in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_deletion_count gauge
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-1"} 1
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-2"} 0
 		cortex_bucket_blocks_marked_for_deletion_count{user="user-5"} 0
+		cortex_bucket_blocks_marked_for_deletion_count{user="user-6"} 0
 		# HELP cortex_bucket_blocks_marked_for_no_compaction_count Total number of blocks marked for no compaction in the bucket.
 		# TYPE cortex_bucket_blocks_marked_for_no_compaction_count gauge
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-1"} 0
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-2"} 0
 		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-5"} 1
+		cortex_bucket_blocks_marked_for_no_compaction_count{user="user-6"} 0
 		# HELP cortex_bucket_blocks_partials_count Total number of partial blocks.
 		# TYPE cortex_bucket_blocks_partials_count gauge
 		cortex_bucket_blocks_partials_count{user="user-1"} 2
 		cortex_bucket_blocks_partials_count{user="user-2"} 0
 		cortex_bucket_blocks_partials_count{user="user-5"} 0
+		cortex_bucket_blocks_partials_count{user="user-6"} 0
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_blocks_count{user="user-6"} 1
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-6"} 0
 	`),
 		"cortex_bucket_blocks_count",
+		"cortex_bucket_parquet_blocks_count",
+		"cortex_bucket_parquet_unconverted_blocks_count",
 		"cortex_bucket_blocks_marked_for_deletion_count",
 		"cortex_bucket_blocks_marked_for_no_compaction_count",
 		"cortex_bucket_blocks_partials_count",
@@ -348,10 +392,15 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -377,11 +426,11 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(2), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(2), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
@@ -413,10 +462,15 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		DeletionDelay:      deletionDelay,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	logger := log.NewNopLogger()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -441,11 +495,11 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 		assert.Equal(t, tc.expectedExists, exists, tc.path)
 	}
 
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
-	assert.Equal(t, float64(1), testutil.ToFloat64(cleaner.blocksCleanedTotal))
-	assert.Equal(t, float64(0), testutil.ToFloat64(cleaner.blocksFailedTotal))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 
 	// Check the updated bucket index.
 	idx, err := bucketindex.ReadIndex(ctx, bucketClient, userID, nil, logger)
@@ -470,12 +524,16 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
-	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -509,7 +567,11 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	))
 
 	// Override the users scanner to reconfigure it to only return a subset of users.
-	cleaner.usersScanner = tsdb.NewUsersScanner(bucketClient, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
+	cleaner.usersScanner, err = users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
+	cleaner.usersScanner = users.NewShardedScanner(cleaner.usersScanner, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
 
 	// Create new blocks, to double check expected metrics have changed.
 	createTSDBBlock(t, bucketClient, "user-1", 40, 50, nil)
@@ -612,12 +674,16 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 		DeletionDelay:      time.Hour,
 		CleanupInterval:    time.Minute,
 		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -832,6 +898,8 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	startTime := ts(-10)
 	endTime := ts(-8)
 	block1 := createTSDBBlock(t, bucketClient, userID, startTime, endTime, nil)
+	block2 := createTSDBBlock(t, bucketClient, userID, startTime, endTime, nil)
+	createNoCompactionMark(t, bucketClient, userID, block2)
 
 	cfg := BlocksCleanerConfig{
 		DeletionDelay:      time.Hour,
@@ -839,12 +907,16 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CleanupConcurrency: 1,
 		ShardingStrategy:   util.ShardingStrategyShuffle,
 		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
 	}
 
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner := tsdb.NewUsersScanner(bucketClient, tsdb.AllUsers, logger)
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
 	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,
@@ -862,7 +934,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		Partitions: []Partition{
 			{
 				PartitionID: 0,
-				Blocks:      []ulid.ULID{block1},
+				Blocks:      []ulid.ULID{block1, block2},
 			},
 		},
 		RangeStart:   startTime,
@@ -870,7 +942,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
 		Version:      PartitionedGroupInfoVersion1,
 	}
-	_, err := UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
 	require.NoError(t, err)
 
 	visitMarker := &partitionVisitMarker{
@@ -893,15 +965,306 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, block1DeletionMarkerExists)
 
+	block2DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block2.String(), metadata.DeletionMarkFilename))
+	require.NoError(t, err)
+	require.False(t, block2DeletionMarkerExists)
+}
+
+func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	userID := "user-1"
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
+		CompactionStrategy: util.CompactionStrategyPartitioning,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
+	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+
+	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
+
+	debugMetaFile := path.Join(block.DebugMetas, "meta.json")
+	require.NoError(t, userBucket.Upload(context.Background(), debugMetaFile, strings.NewReader("some random content here")))
+
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: 1234,
+		PartitionCount:     1,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+				Blocks:      []ulid.ULID{},
+			},
+		},
+		RangeStart:   0,
+		RangeEnd:     2,
+		CreationTime: time.Now().Add(-5 * time.Minute).Unix(),
+		Version:      PartitionedGroupInfoVersion1,
+	}
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	require.NoError(t, err)
+	partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupInfo.PartitionedGroupID)
+
+	err = cleaner.cleanUser(ctx, logger, userBucket, userID, false)
+	require.NoError(t, err)
+
+	_, err = bucketindex.ReadIndex(ctx, bucketClient, userID, cfgProvider, logger)
+	require.ErrorIs(t, err, bucketindex.ErrIndexNotFound)
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, bucketindex.SyncStatusFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, debugMetaFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
+
+	_, err = userBucket.WithExpectedErrs(userBucket.IsObjNotFoundErr).Get(ctx, partitionedGroupFile)
+	require.True(t, userBucket.IsObjNotFoundErr(err))
+}
+
+func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
+	// Create metrics
+	reg := prometheus.NewPedanticRegistry()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cortex_compactor_blocks_marked_for_deletion_total",
+			Help: "Total number of blocks marked for deletion in compactor.",
+		},
+		[]string{"user", "reason"},
+	)
+	remainingPlannedCompactions := promauto.With(reg).NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cortex_compactor_remaining_planned_compactions",
+			Help: "Total number of remaining planned compactions.",
+		},
+		[]string{"user"},
+	)
+
+	// Create the blocks cleaner
+	cleaner := NewBlocksCleaner(
+		BlocksCleanerConfig{
+			BlockRanges: (&tsdb.DurationList{
+				2 * time.Hour,
+				12 * time.Hour,
+			}).ToMilliseconds(),
+		},
+		nil, // bucket not needed
+		nil, // usersScanner not needed
+		0,
+		&mockConfigProvider{
+			parquetConverterEnabled: map[string]bool{
+				"user1": true,
+			},
+		},
+		log.NewNopLogger(),
+		"test",
+		reg,
+		0,
+		0,
+		blocksMarkedForDeletion,
+		remainingPlannedCompactions,
+	)
+
+	// Create test blocks in the index
+	now := time.Now()
+	idx := &bucketindex.Index{
+		Blocks: bucketindex.Blocks{
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: &parquet.ConverterMarkMeta{},
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-3 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+			{
+				ID:      ulid.MustNew(ulid.Now(), rand.Reader),
+				MinTime: now.Add(-5 * time.Hour).UnixMilli(),
+				MaxTime: now.UnixMilli(),
+				Parquet: nil,
+			},
+		},
+	}
+
+	// Update metrics
+	cleaner.updateBucketMetrics("user1", true, idx, 0, 0)
+
+	// Verify metrics
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_blocks_count Total number of parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_blocks_count gauge
+		cortex_bucket_parquet_blocks_count{user="user1"} 1
+	`)))
+
+	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetUnConvertedBlocks, strings.NewReader(`
+		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
+		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
+		cortex_bucket_parquet_unconverted_blocks_count{user="user1"} 2
+	`)))
+}
+
+func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+		ShardingStrategy:   util.ShardingStrategyShuffle,
+		CompactionStrategy: util.CompactionStrategyPartitioning,
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	registry := prometheus.NewPedanticRegistry()
+	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
+		Strategy: tsdb.UserScanStrategyList,
+	}, bucketClient, logger, registry)
+	require.NoError(t, err)
+	cfgProvider := newMockConfigProvider()
+	dummyCounterVec := prometheus.NewCounterVec(prometheus.CounterOpts{}, []string{"test"})
+	remainingPlannedCompactions := promauto.With(registry).NewGaugeVec(prometheus.GaugeOpts{
+		Name: "cortex_compactor_remaining_planned_compactions",
+		Help: "Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy",
+	}, commonLabels)
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 15*time.Minute, cfgProvider, logger, "test-cleaner", registry, time.Minute, 30*time.Second, dummyCounterVec, remainingPlannedCompactions)
+
+	ts := func(hours int) int64 {
+		return time.Now().Add(time.Duration(hours)*time.Hour).Unix() * 1000
+	}
+
+	userID := "user-1"
+	partitionedGroupID := uint32(123)
+	partitionCount := 5
+	startTime := ts(-10)
+	endTime := ts(-8)
+	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionCount:     partitionCount,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+			},
+			{
+				PartitionID: 1,
+			},
+			{
+				PartitionID: 2,
+			},
+			{
+				PartitionID: 3,
+			},
+			{
+				PartitionID: 4,
+			},
+		},
+		RangeStart:   startTime,
+		RangeEnd:     endTime,
+		CreationTime: time.Now().Add(-1 * time.Hour).Unix(),
+		Version:      PartitionedGroupInfoVersion1,
+	}
+	_, err = UpdatePartitionedGroupInfo(ctx, userBucket, logger, partitionedGroupInfo)
+	require.NoError(t, err)
+
+	//InProgress with valid VisitTime
+	v0 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        0,
+		Status:             InProgress,
+		VisitTime:          time.Now().Add(-2 * time.Minute).Unix(),
+	}
+	v0Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v0)
+	err = v0Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	//InProgress with expired VisitTime
+	v1 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        1,
+		Status:             InProgress,
+		VisitTime:          time.Now().Add(-30 * time.Minute).Unix(),
+	}
+	v1Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v1)
+	err = v1Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	//V2 and V3 are pending
+	//V4 is completed
+	v4 := &partitionVisitMarker{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionID:        4,
+		Status:             Completed,
+		VisitTime:          time.Now().Add(-20 * time.Minute).Unix(),
+	}
+	v4Manager := NewVisitMarkerManager(userBucket, logger, "dummy-cleaner", v4)
+	err = v4Manager.updateVisitMarker(ctx)
+	require.NoError(t, err)
+
+	cleaner.emitUserParititionMetrics(ctx, logger, userBucket, userID)
+
+	metricNames := []string{
+		"cortex_compactor_remaining_planned_compactions",
+		"cortex_compactor_in_progress_compactions",
+		"cortex_compactor_oldest_partition_offset",
+	}
+
+	// Check tracked Prometheus metrics
+	expectedMetrics := `
+        # HELP cortex_compactor_in_progress_compactions Total number of in progress compactions. Only available with shuffle-sharding strategy and partitioning compaction strategy
+		# TYPE cortex_compactor_in_progress_compactions gauge
+		cortex_compactor_in_progress_compactions{user="user-1"} 1
+		# HELP cortex_compactor_oldest_partition_offset Time in seconds between now and the oldest created partition group not completed. Only available with shuffle-sharding strategy and partitioning compaction strategy
+		# TYPE cortex_compactor_oldest_partition_offset gauge
+		cortex_compactor_oldest_partition_offset{user="user-1"} 3600
+        # HELP cortex_compactor_remaining_planned_compactions Total number of plans that remain to be compacted. Only available with shuffle-sharding strategy
+		# TYPE cortex_compactor_remaining_planned_compactions gauge
+		cortex_compactor_remaining_planned_compactions{user="user-1"} 3
+	`
+
+	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(expectedMetrics), metricNames...))
 }
 
 type mockConfigProvider struct {
-	userRetentionPeriods map[string]time.Duration
+	userRetentionPeriods    map[string]time.Duration
+	parquetConverterEnabled map[string]bool
+}
+
+func (m *mockConfigProvider) ParquetConverterEnabled(userID string) bool {
+	if result, ok := m.parquetConverterEnabled[userID]; ok {
+		return result
+	}
+	return false
 }
 
 func newMockConfigProvider() *mockConfigProvider {
 	return &mockConfigProvider{
-		userRetentionPeriods: make(map[string]time.Duration),
+		userRetentionPeriods:    make(map[string]time.Duration),
+		parquetConverterEnabled: make(map[string]bool),
 	}
 }
 

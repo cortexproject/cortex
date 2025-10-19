@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +20,13 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
-	"github.com/thanos-io/promql-engine/engine"
-	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
+	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -79,27 +80,40 @@ type Config struct {
 	// The maximum number of times we attempt fetching missing blocks from different Store Gateways.
 	StoreGatewayConsistencyCheckMaxAttempts int `yaml:"store_gateway_consistency_check_max_attempts"`
 
+	// The maximum number of times we attempt fetching data from Ingesters.
+	IngesterQueryMaxAttempts int `yaml:"ingester_query_max_attempts"`
+
 	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
 
-	// Experimental. Use https://github.com/thanos-io/promql-engine rather than
-	// the Prometheus query engine.
-	ThanosEngine bool `yaml:"thanos_engine"`
+	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 
 	// Ignore max query length check at Querier.
 	IgnoreMaxQueryLength              bool `yaml:"ignore_max_query_length"`
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
+
+	// Query Parquet files if available
+	EnableParquetQueryable            bool   `yaml:"enable_parquet_queryable"`
+	ParquetQueryableShardCacheSize    int    `yaml:"parquet_queryable_shard_cache_size"`
+	ParquetQueryableDefaultBlockStore string `yaml:"parquet_queryable_default_block_store"`
+	ParquetQueryableFallbackDisabled  bool   `yaml:"parquet_queryable_fallback_disabled"`
+
+	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
 
 var (
 	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
 	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
 	errEmptyTimeRange                                 = errors.New("empty time range")
-	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip' and '' (disable compression)")
+	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
 	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
+	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
+	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.ThanosEngine.RegisterFlagsWithPrefix("querier.", f)
+
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "querier.ingester-streaming", "Deprecated: Use streaming RPCs to query ingester. QueryStream is always enabled and the flag is not effective anymore.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
@@ -117,7 +131,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
-	f.StringVar(&cfg.ResponseCompression, "querier.response-compression", "gzip", "Use compression for metrics query API or instant and range query APIs. Supports 'gzip' and '' (disable compression)")
+	f.StringVar(&cfg.ResponseCompression, "querier.response-compression", "gzip", "Use compression for metrics query API or instant and range query APIs. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
 	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
@@ -125,12 +139,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.BoolVar(&cfg.StoreGatewayQueryStatsEnabled, "querier.store-gateway-query-stats-enabled", true, "If enabled, store gateway query stats will be logged using `info` log level.")
 	f.IntVar(&cfg.StoreGatewayConsistencyCheckMaxAttempts, "querier.store-gateway-consistency-check-max-attempts", maxFetchSeriesAttempts, "The maximum number of times we attempt fetching missing blocks from different store-gateways. If no more store-gateways are left (ie. due to lower replication factor) than we'll end the retries earlier")
+	f.IntVar(&cfg.IngesterQueryMaxAttempts, "querier.ingester-query-max-attempts", 1, "The maximum number of times we attempt fetching data from ingesters for retryable errors (ex. partial data returned).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
-	f.BoolVar(&cfg.ThanosEngine, "querier.thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
+	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
+	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
+	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
+	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
+	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 }
 
 // Validate the config
@@ -142,7 +161,7 @@ func (cfg *Config) Validate() error {
 		}
 	}
 
-	if cfg.ResponseCompression != "" && cfg.ResponseCompression != "gzip" {
+	if cfg.ResponseCompression != "" && cfg.ResponseCompression != "gzip" && cfg.ResponseCompression != "snappy" && cfg.ResponseCompression != "zstd" {
 		return errUnsupportedResponseCompression
 	}
 
@@ -154,6 +173,20 @@ func (cfg *Config) Validate() error {
 
 	if cfg.StoreGatewayConsistencyCheckMaxAttempts < 1 {
 		return errInvalidConsistencyCheckAttempts
+	}
+
+	if cfg.IngesterQueryMaxAttempts < 1 {
+		return errInvalidIngesterQueryMaxAttempts
+	}
+
+	if cfg.EnableParquetQueryable {
+		if !slices.Contains(validBlockStoreTypes, blockStoreType(cfg.ParquetQueryableDefaultBlockStore)) {
+			return errInvalidParquetQueryableDefaultBlockStore
+		}
+	}
+
+	if err := cfg.ThanosEngine.Validate(); err != nil {
+		return err
 	}
 
 	return nil
@@ -172,10 +205,10 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, promql.QueryEngine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, cfg.QueryIngestersWithin)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, cfg.QueryIngestersWithin, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {
@@ -203,12 +236,8 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	})
 	maxConcurrentMetric.Set(float64(cfg.MaxConcurrent))
 
-	// set EnableExperimentalFunctions
-	parser.EnableExperimentalFunctions = cfg.EnablePromQLExperimentalFunctions
-
-	var queryEngine promql.QueryEngine
 	opts := promql.EngineOpts{
-		Logger:               logger,
+		Logger:               util_log.GoKitLogToSlog(logger),
 		Reg:                  reg,
 		ActiveQueryTracker:   createActiveQueryTracker(cfg, logger),
 		MaxSamples:           cfg.MaxSamples,
@@ -221,15 +250,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			return cfg.DefaultEvaluationInterval.Milliseconds()
 		},
 	}
-	if cfg.ThanosEngine {
-		queryEngine = engine.New(engine.Opts{
-			EngineOpts:        opts,
-			LogicalOptimizers: logicalplan.AllOptimizers,
-			EnableAnalysis:    true,
-		})
-	} else {
-		queryEngine = promql.NewEngine(opts)
-	}
+	queryEngine := engine.New(opts, cfg.ThanosEngine, reg)
 	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
 }
 
@@ -251,7 +272,7 @@ func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
 	}
 
 	return nil
@@ -361,7 +382,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	}()
 
 	log, ctx := spanlogger.New(ctx, "querier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	if sp != nil {
 		level.Debug(log).Log("start", util.TimeFromMillis(sp.Start).UTC().String(), "end", util.TimeFromMillis(sp.End).UTC().String(), "step", sp.Step, "matchers", matchers)
@@ -435,12 +456,12 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	return storage.NewMergeSeriesSet(result, storage.ChainedSeriesMerge)
+	return storage.NewMergeSeriesSet(result, 0, storage.ChainedSeriesMerge)
 }
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -450,6 +471,12 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label values queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelValues(ctx, name, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
@@ -473,7 +500,6 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Values are sorted in Cortex already.
 			myValues, myWarnings, err := querier.LabelValues(ctx, name, hints, matchers...)
@@ -503,7 +529,7 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
-	ctx, stats, userID, mint, maxt, _, queriers, err := q.setupFromCtx(ctx)
+	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
 	} else if err != nil {
@@ -513,6 +539,12 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	defer func() {
 		stats.AddQueryStorageWallTime(time.Since(startT))
 	}()
+
+	// For label names queries without specifying the start time, we prefer to
+	// only query ingesters and not to query maxQueryLength to avoid OOM kill.
+	if mint == 0 {
+		return metadataQuerier.LabelNames(ctx, hints, matchers...)
+	}
 
 	startTime := model.Time(mint)
 	endTime := model.Time(maxt)
@@ -536,7 +568,6 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 
 	for _, querier := range queriers {
 		// Need to reassign as the original variable will change and can't be relied on in a goroutine.
-		querier := querier
 		g.Go(func() error {
 			// NB: Names are sorted in Cortex already.
 			myNames, myWarnings, err := querier.LabelNames(ctx, hints, matchers...)
@@ -663,4 +694,16 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 	}
 
 	return int64(startTime), int64(endTime), nil
+}
+
+func EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, enableHoltWinters bool) {
+	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
+
+	if enableHoltWinters {
+		holtWinters := *parser.Functions["double_exponential_smoothing"]
+		holtWinters.Experimental = false
+		holtWinters.Name = "holt_winters"
+		parser.Functions["holt_winters"] = &holtWinters
+		promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
+	}
 }

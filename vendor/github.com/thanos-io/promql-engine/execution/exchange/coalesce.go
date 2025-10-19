@@ -8,15 +8,13 @@ import (
 	"math"
 	"sync"
 	"sync/atomic"
-	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type errorChan chan error
@@ -36,8 +34,6 @@ func (c errorChan) getError() error {
 // coalesce guarantees that samples from different input vectors will be added to the output in the same order
 // as the input vectors themselves are provided in NewCoalesce.
 type coalesce struct {
-	telemetry.OperatorTelemetry
-
 	once   sync.Once
 	series []labels.Labels
 
@@ -53,6 +49,9 @@ type coalesce struct {
 }
 
 func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, operators ...model.VectorOperator) model.VectorOperator {
+	if len(operators) == 1 {
+		return operators[0]
+	}
 	oper := &coalesce{
 		pool:          pool,
 		sampleOffsets: make([]uint64, len(operators)),
@@ -61,9 +60,7 @@ func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, o
 		batchSize:     batchSize,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (c *coalesce) Explain() (next []model.VectorOperator) {
@@ -79,9 +76,6 @@ func (c *coalesce) GetPool() *model.VectorPool {
 }
 
 func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
@@ -91,9 +85,6 @@ func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 }
 
 func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { c.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -161,7 +152,7 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 
 		if len(vectors) > 0 && out == nil {
 			out = c.pool.GetVectorBatch()
-			for i := 0; i < len(vectors); i++ {
+			for i := range vectors {
 				out = append(out, c.pool.GetStepVector(vectors[i].T))
 			}
 		}
@@ -187,7 +178,7 @@ func (c *coalesce) loadSeries(ctx context.Context) error {
 	var numSeries uint64
 	allSeries := make([][]labels.Labels, len(c.operators))
 	errChan := make(errorChan, len(c.operators))
-	for i := 0; i < len(c.operators); i++ {
+	for i := range c.operators {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

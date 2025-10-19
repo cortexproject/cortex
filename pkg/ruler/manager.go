@@ -64,6 +64,8 @@ type DefaultMultiTenantManager struct {
 	ruleCache    map[string][]*promRules.Group
 	ruleCacheMtx sync.RWMutex
 	syncRuleMtx  sync.Mutex
+
+	ruleGroupIterationFunc promRules.GroupEvalIterationFunc
 }
 
 func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
@@ -122,13 +124,23 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 			Name:      "ruler_config_updates_total",
 			Help:      "Total number of config updates triggered by a user",
 		}, []string{"user"}),
-		registry: reg,
-		logger:   logger,
+		registry:               reg,
+		logger:                 logger,
+		ruleGroupIterationFunc: defaultRuleGroupIterationFunc,
 	}
 	if cfg.RulesBackupEnabled() {
 		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
 	}
 	return m, nil
+}
+
+func NewDefaultMultiTenantManagerWithIterationFunc(iterFunc promRules.GroupEvalIterationFunc, cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
+	manager, err := NewDefaultMultiTenantManager(cfg, limits, managerFactory, evalMetrics, reg, logger)
+	if err != nil {
+		return nil, err
+	}
+	manager.ruleGroupIterationFunc = iterFunc
+	return manager, nil
 }
 
 func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGroups map[string]rulespb.RuleGroupList) {
@@ -214,7 +226,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		if (rulesUpdated || externalLabelsUpdated) && existing {
 			r.updateRuleCache(user, manager.RuleGroups())
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, r.cfg.ExternalURL.String(), ruleGroupIterationFunc)
+		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, r.cfg.ExternalURL.String(), r.ruleGroupIterationFunc)
 		r.deleteRuleCache(user)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -257,9 +269,8 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 	return manager
 }
 
-func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-	logMessage := []interface{}{
-		"msg", "evaluating rule group",
+func defaultRuleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+	logMessage := []any{
 		"component", "ruler",
 		"rule_group", g.Name(),
 		"namespace", g.File(),
@@ -269,7 +280,7 @@ func ruleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimesta
 		"eval_time", evalTimestamp,
 	}
 
-	level.Info(g.Logger()).Log(logMessage...)
+	g.Logger().Info("evaluating rule group", logMessage...)
 	promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
 }
 
@@ -446,12 +457,12 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate() {
+		for _, err := range r.Validate(rulefmt.RuleNode{}) {
 			var ruleName string
-			if r.Alert.Value != "" {
-				ruleName = r.Alert.Value
+			if r.Alert != "" {
+				ruleName = r.Alert
 			} else {
-				ruleName = r.Record.Value
+				ruleName = r.Record
 			}
 			errs = append(errs, &rulefmt.Error{
 				Group:    g.Name,

@@ -59,12 +59,17 @@ Currently experimental features are:
 - Distributor:
   - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
   - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
+  - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
 - Blocks storage bucket index
   - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
   - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
+- Blocks storage user index
 - Querier: tenant federation
+  - `-tenant-federation.enabled`
+  - `-tenant-federation.regex-matcher-enabled`
+  - `-tenant-federation.user-sync-interval`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
 - Instance limits in ingester and distributor
@@ -112,6 +117,8 @@ Currently experimental features are:
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
+  - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
+  - Add `__type__` and `__unit__` labels (`-distributor.otlp.enable-type-and-unit-labels`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms
@@ -120,3 +127,11 @@ Currently experimental features are:
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
 - Querier: protobuf codec (`-api.querier-default-codec`)
+- Query-frontend: dynamic query splits
+  - `querier.max-shards-per-query` (int) CLI flag
+  - `querier.max-fetched-data-duration-per-query` (duration) CLI flag
+- Ingester/Store-Gateway: Query rejection
+  - `-ingester.query-protection.rejection`
+  - `-store-gateway.query-protection.rejection`
+- Distributor/Ingester: Stream push connection
+  - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.

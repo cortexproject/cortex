@@ -24,12 +24,15 @@ import (
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
 
+	"github.com/cortexproject/cortex/pkg/engine"
+	"github.com/cortexproject/cortex/pkg/querier"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
-	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -215,7 +218,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResponseBodySizeExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusRequestEntityTooLarge,
@@ -231,7 +234,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManyRequests, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusTooManyRequests,
@@ -247,7 +250,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTooManySamples, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -263,7 +266,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonTimeRangeExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -279,7 +282,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -295,7 +298,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -311,7 +314,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -327,7 +330,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -343,7 +346,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -359,7 +362,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
@@ -375,10 +378,44 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, tripperware.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonBytesLimitStoreGateway, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
+		},
+		{
+			name:            "test handler with reasonResourceExhausted",
+			cfg:             HandlerConfig{QueryStatsEnabled: true},
+			expectedMetrics: 6,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				resourceLimitReachedErr := limiter.ErrResourceLimitReached
+				return &http.Response{
+					StatusCode: http.StatusServiceUnavailable,
+					Body:       io.NopCloser(strings.NewReader(resourceLimitReachedErr.Error())),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonResourceExhausted, requestmeta.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusServiceUnavailable,
+		},
+		{
+			name:            "test cortex_slow_queries_total",
+			cfg:             HandlerConfig{QueryStatsEnabled: true, LogQueriesLongerThan: time.Second * 2},
+			expectedMetrics: 7,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				time.Sleep(time.Second * 4)
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader("mock")),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.slowQueries.WithLabelValues(requestmeta.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusOK,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -402,6 +439,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				"cortex_query_fetched_chunks_bytes_total",
 				"cortex_query_samples_scanned_total",
 				"cortex_query_peak_samples",
+				"cortex_slow_queries_total",
 			)
 
 			assert.NoError(t, err)
@@ -417,7 +455,6 @@ func TestHandler_ServeHTTP(t *testing.T) {
 func TestReportQueryStatsFormat(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 	userID := "fake"
 	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
 	resp := &http.Response{ContentLength: 1000}
@@ -425,20 +462,24 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	statusCode := http.StatusOK
 
 	type testCase struct {
-		queryString url.Values
-		queryStats  *querier_stats.QueryStats
-		header      http.Header
-		responseErr error
-		expectedLog string
+		queryString               url.Values
+		queryStats                *querier_stats.QueryStats
+		header                    http.Header
+		responseErr               error
+		expectedLog               string
+		enabledRulerQueryStatsLog bool
+		source                    string
 	}
 
 	tests := map[string]testCase{
 		"should not include query and header details if empty": {
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query length and string at the end": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 param_query=up`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 param_query=up`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -454,15 +495,28 @@ func TestReportQueryStatsFormat(t *testing.T) {
 					SplitQueries:         10,
 				},
 			},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 query_storage_wall_time_seconds=6000`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 query_storage_wall_time_seconds=6000`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include user agent": {
 			header:      http.Header{"User-Agent": []string{"Grafana"}},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 user_agent=Grafana`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 user_agent=Grafana`,
+			source:      requestmeta.SourceAPI,
+		},
+		"should include engine type": {
+			header:      http.Header{http.CanonicalHeaderKey(engine.TypeHeader): []string{string(engine.Thanos)}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 engine_type=thanos`,
+			source:      requestmeta.SourceAPI,
+		},
+		"should include block store type": {
+			header:      http.Header{http.CanonicalHeaderKey(querier.BlockStoreTypeHeader): []string{"parquet"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 block_store_type=parquet`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include response error": {
 			responseErr: errors.New("foo_err"),
-			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 error=foo_err`,
+			expectedLog: `level=error msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 error=foo_err`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query priority": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -470,7 +524,8 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				Priority:         99,
 				PriorityAssigned: true,
 			},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 query_length=2 priority=99 param_query=up`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 query_length=2 priority=99 param_query=up`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include data fetch min and max time": {
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
@@ -478,7 +533,8 @@ func TestReportQueryStatsFormat(t *testing.T) {
 				DataSelectMaxTime: 1704153600000,
 				DataSelectMinTime: 1704067200000,
 			},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 data_select_max_time=1704153600 data_select_min_time=1704067200 query_length=2 param_query=up`,
+			source:      requestmeta.SourceAPI,
 		},
 		"should include query stats with store gateway stats": {
 			queryStats: &querier_stats.QueryStats{
@@ -496,17 +552,74 @@ func TestReportQueryStatsFormat(t *testing.T) {
 					StoreGatewayTouchedPostingBytes:  200,
 				},
 			},
-			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 store_gateway_touched_postings_count=20 store_gateway_touched_posting_bytes=200 query_storage_wall_time_seconds=6000`,
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=3 response_series_count=100 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10 status_code=200 response_size=1000 samples_scanned=0 store_gateway_touched_postings_count=20 store_gateway_touched_posting_bytes=200 query_storage_wall_time_seconds=6000`,
+			source:      requestmeta.SourceAPI,
+		},
+		"should not report a log": {
+			expectedLog:               ``,
+			source:                    requestmeta.SourceRuler,
+			enabledRulerQueryStatsLog: false,
+		},
+		"should report a log": {
+			expectedLog:               `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0`,
+			source:                    requestmeta.SourceRuler,
+			enabledRulerQueryStatsLog: true,
 		},
 	}
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, EnabledRulerQueryStatsLog: testData.enabledRulerQueryStatsLog}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
 			req.Header = testData.header
-			handler.reportQueryStats(req, tripperware.SourceAPI, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
+			req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), testData.source))
+			handler.reportQueryStats(req, testData.source, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
 			data, err := io.ReadAll(outputBuf)
 			require.NoError(t, err)
-			require.Equal(t, testData.expectedLog+"\n", string(data))
+			if testData.expectedLog == "" {
+				require.Empty(t, string(data))
+			} else {
+				require.Equal(t, testData.expectedLog+"\n", string(data))
+			}
+		})
+	}
+}
+
+func Test_ExtractTenantIDs(t *testing.T) {
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+
+	tests := []struct {
+		name               string
+		orgId              string
+		expectedStatusCode int
+	}{
+		{
+			name:               "invalid tenantID",
+			orgId:              "aaa\\/",
+			expectedStatusCode: http.StatusBadRequest,
+		},
+		{
+			name:               "valid tenantID",
+			orgId:              "user-1",
+			expectedStatusCode: http.StatusOK,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, roundTripper, log.NewNopLogger(), nil)
+			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
+
+			req := httptest.NewRequest("GET", "http://fake", nil)
+			req.Header.Set("X-Scope-OrgId", test.orgId)
+			resp := httptest.NewRecorder()
+
+			handlerWithAuth.ServeHTTP(resp, req)
+			require.Equal(t, test.expectedStatusCode, resp.Code)
 		})
 	}
 }
@@ -589,7 +702,7 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(HandlerConfig{}, test.cfg, roundTripper, log.NewNopLogger(), nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, test.cfg, roundTripper, log.NewNopLogger(), nil)
 			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
 
 			req := httptest.NewRequest("GET", "http://fake", nil)
@@ -604,9 +717,129 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 			if test.expectedErrMsg != "" {
 				require.Contains(t, string(body), test.expectedErrMsg)
+
+				if strings.Contains(test.expectedErrMsg, "too many tenants") {
+					v := promtest.ToFloat64(handler.rejectedQueries.WithLabelValues(reasonTooManyTenants, requestmeta.SourceAPI, test.orgId))
+					assert.Equal(t, float64(1), v)
+				}
 			}
 		})
 	}
+}
+
+func TestHandlerMetricsCleanup(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, log.NewNopLogger(), reg)
+
+	user1 := "user1"
+	user2 := "user2"
+	source := "api"
+
+	// Simulate activity for user1
+	handler.querySeconds.WithLabelValues(source, user1).Add(1.0)
+	handler.queryFetchedSeries.WithLabelValues(source, user1).Add(100)
+	handler.queryFetchedSamples.WithLabelValues(source, user1).Add(1000)
+	handler.queryScannedSamples.WithLabelValues(source, user1).Add(2000)
+	handler.queryPeakSamples.WithLabelValues(source, user1).Observe(500)
+	handler.queryChunkBytes.WithLabelValues(source, user1).Add(1024)
+	handler.queryDataBytes.WithLabelValues(source, user1).Add(2048)
+	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user1).Add(5)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user1).Add(5)
+
+	// Simulate activity for user2
+	handler.querySeconds.WithLabelValues(source, user2).Add(2.0)
+	handler.queryFetchedSeries.WithLabelValues(source, user2).Add(200)
+	handler.queryFetchedSamples.WithLabelValues(source, user2).Add(2000)
+	handler.queryScannedSamples.WithLabelValues(source, user2).Add(4000)
+	handler.queryPeakSamples.WithLabelValues(source, user2).Observe(1000)
+	handler.queryChunkBytes.WithLabelValues(source, user2).Add(2048)
+	handler.queryDataBytes.WithLabelValues(source, user2).Add(4096)
+	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user2).Add(10)
+	handler.getOrCreateSlowQueryMetric().WithLabelValues(source, user2).Add(10)
+
+	// Verify initial state - both users should have metrics
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_seconds_total Total amount of wall clock time spend processing queries.
+		# TYPE cortex_query_seconds_total counter
+		cortex_query_seconds_total{source="api",user="user1"} 1
+		cortex_query_seconds_total{source="api",user="user2"} 2
+		# HELP cortex_query_fetched_series_total Number of series fetched to execute a query.
+		# TYPE cortex_query_fetched_series_total counter
+		cortex_query_fetched_series_total{source="api",user="user1"} 100
+		cortex_query_fetched_series_total{source="api",user="user2"} 200
+		# HELP cortex_query_samples_total Number of samples fetched to execute a query.
+		# TYPE cortex_query_samples_total counter
+		cortex_query_samples_total{source="api",user="user1"} 1000
+		cortex_query_samples_total{source="api",user="user2"} 2000
+		# HELP cortex_query_samples_scanned_total Number of samples scanned to execute a query.
+		# TYPE cortex_query_samples_scanned_total counter
+		cortex_query_samples_scanned_total{source="api",user="user1"} 2000
+		cortex_query_samples_scanned_total{source="api",user="user2"} 4000
+		# HELP cortex_query_peak_samples Highest count of samples considered to execute a query.
+		# TYPE cortex_query_peak_samples histogram
+		cortex_query_peak_samples_bucket{source="api",user="user1",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user1"} 500
+		cortex_query_peak_samples_count{source="api",user="user1"} 1
+		cortex_query_peak_samples_bucket{source="api",user="user2",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user2"} 1000
+		cortex_query_peak_samples_count{source="api",user="user2"} 1
+		# HELP cortex_query_fetched_chunks_bytes_total Size of all chunks fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_chunks_bytes_total counter
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user1"} 1024
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user2"} 2048
+		# HELP cortex_query_fetched_data_bytes_total Size of all data fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_data_bytes_total counter
+		cortex_query_fetched_data_bytes_total{source="api",user="user1"} 2048
+		cortex_query_fetched_data_bytes_total{source="api",user="user2"} 4096
+		# HELP cortex_rejected_queries_total The total number of queries that were rejected.
+		# TYPE cortex_rejected_queries_total counter
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user1"} 5
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+		# HELP cortex_slow_queries_total The total number of slow queries.
+		# TYPE cortex_slow_queries_total counter
+		cortex_slow_queries_total{source="api",user="user1"} 5
+		cortex_slow_queries_total{source="api",user="user2"} 10
+	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
+		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
+
+	// Clean up metrics for user1
+	handler.cleanupMetricsForInactiveUser(user1)
+
+	// Verify final state - only user2 should have metrics
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_seconds_total Total amount of wall clock time spend processing queries.
+		# TYPE cortex_query_seconds_total counter
+		cortex_query_seconds_total{source="api",user="user2"} 2
+		# HELP cortex_query_fetched_series_total Number of series fetched to execute a query.
+		# TYPE cortex_query_fetched_series_total counter
+		cortex_query_fetched_series_total{source="api",user="user2"} 200
+		# HELP cortex_query_samples_total Number of samples fetched to execute a query.
+		# TYPE cortex_query_samples_total counter
+		cortex_query_samples_total{source="api",user="user2"} 2000
+		# HELP cortex_query_samples_scanned_total Number of samples scanned to execute a query.
+		# TYPE cortex_query_samples_scanned_total counter
+		cortex_query_samples_scanned_total{source="api",user="user2"} 4000
+		# HELP cortex_query_peak_samples Highest count of samples considered to execute a query.
+		# TYPE cortex_query_peak_samples histogram
+		cortex_query_peak_samples_bucket{source="api",user="user2",le="+Inf"} 1
+		cortex_query_peak_samples_sum{source="api",user="user2"} 1000
+		cortex_query_peak_samples_count{source="api",user="user2"} 1
+		# HELP cortex_query_fetched_chunks_bytes_total Size of all chunks fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_chunks_bytes_total counter
+		cortex_query_fetched_chunks_bytes_total{source="api",user="user2"} 2048
+		# HELP cortex_query_fetched_data_bytes_total Size of all data fetched to execute a query in bytes.
+		# TYPE cortex_query_fetched_data_bytes_total counter
+		cortex_query_fetched_data_bytes_total{source="api",user="user2"} 4096
+		# HELP cortex_rejected_queries_total The total number of queries that were rejected.
+		# TYPE cortex_rejected_queries_total counter
+		cortex_rejected_queries_total{reason="too_many_samples",source="api",user="user2"} 10
+		# HELP cortex_slow_queries_total The total number of slow queries.
+		# TYPE cortex_slow_queries_total counter
+		cortex_slow_queries_total{source="api",user="user2"} 10
+	`), "cortex_query_seconds_total", "cortex_query_fetched_series_total", "cortex_query_samples_total",
+		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
+		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
 }
 
 func TestHandler_RemoteReadRequest_DoesNotParseQueryString(t *testing.T) {

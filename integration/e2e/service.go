@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/util/backoff"
@@ -427,9 +428,10 @@ func NewHTTPReadinessProbe(port int, path string, expectedStatusRangeStart, expe
 
 func (p *HTTPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	endpoint := service.Endpoint(p.port)
-	if endpoint == "" {
+	switch endpoint {
+	case "":
 		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
-	} else if endpoint == "stopped" {
+	case "stopped":
 		return errors.New("service has stopped")
 	}
 
@@ -467,9 +469,10 @@ func NewTCPReadinessProbe(port int) *TCPReadinessProbe {
 
 func (p *TCPReadinessProbe) Ready(service *ConcreteService) (err error) {
 	endpoint := service.Endpoint(p.port)
-	if endpoint == "" {
+	switch endpoint {
+	case "":
 		return fmt.Errorf("cannot get service endpoint for port %d", p.port)
-	} else if endpoint == "stopped" {
+	case "stopped":
 		return errors.New("service has stopped")
 	}
 
@@ -501,7 +504,7 @@ type LinePrefixLogger struct {
 }
 
 func (w *LinePrefixLogger) Write(p []byte) (n int, err error) {
-	for _, line := range strings.Split(string(p), "\n") {
+	for line := range strings.SplitSeq(string(p), "\n") {
 		// Skip empty lines
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -621,7 +624,7 @@ func (s *HTTPService) SumMetrics(metricNames []string, opts ...MetricsOption) ([
 		return nil, err
 	}
 
-	var tp expfmt.TextParser
+	tp := expfmt.NewTextParser(model.LegacyValidation)
 	families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
 	if err != nil {
 		return nil, err
@@ -668,7 +671,7 @@ func (s *HTTPService) WaitRemovedMetric(metricName string, opts ...MetricsOption
 		}
 
 		// Parse metrics.
-		var tp expfmt.TextParser
+		tp := expfmt.NewTextParser(model.LegacyValidation)
 		families, err := tp.TextToMetricFamilies(strings.NewReader(metrics))
 		if err != nil {
 			return err
@@ -696,7 +699,7 @@ func (s *HTTPService) WaitRemovedMetric(metricName string, opts ...MetricsOption
 func parseDockerIPv4Port(out string) (int, error) {
 	// The "docker port" output may be multiple lines if both IPv4 and IPv6 are supported,
 	// so we need to parse each line.
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		matches := dockerIPv4PortPattern.FindStringSubmatch(strings.TrimSpace(line))
 		if len(matches) != 2 {
 			continue

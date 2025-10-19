@@ -4,7 +4,10 @@
 package ringbuffer
 
 import (
+	"context"
 	"math"
+
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 
 	"github.com/prometheus/prometheus/model/histogram"
 )
@@ -20,8 +23,10 @@ type Sample struct {
 }
 
 type GenericRingBuffer struct {
-	items []Sample
-	tail  []Sample
+	ctx      context.Context
+	items    []Sample
+	tail     []Sample
+	subquery bool
 
 	currentStep int64
 	offset      int64
@@ -30,21 +35,35 @@ type GenericRingBuffer struct {
 	call        FunctionCall
 }
 
-func New(size int, selectRange, offset int64, call FunctionCall) *GenericRingBuffer {
-	return NewWithExtLookback(size, selectRange, offset, 0, call)
+func New(ctx context.Context, size int, selectRange, offset int64, call FunctionCall, subquery bool) *GenericRingBuffer {
+	return NewWithExtLookback(ctx, size, selectRange, offset, 0, call, subquery)
 }
 
-func NewWithExtLookback(size int, selectRange, offset, extLookback int64, call FunctionCall) *GenericRingBuffer {
+func NewWithExtLookback(ctx context.Context, size int, selectRange, offset, extLookback int64, call FunctionCall, subquery bool) *GenericRingBuffer {
 	return &GenericRingBuffer{
+		ctx:         ctx,
 		items:       make([]Sample, 0, size),
 		selectRange: selectRange,
 		offset:      offset,
 		extLookback: extLookback,
 		call:        call,
+		subquery:    subquery,
 	}
 }
 
 func (r *GenericRingBuffer) Len() int { return len(r.items) }
+
+func (r *GenericRingBuffer) SampleCount() int {
+	c := 0
+	for _, s := range r.items {
+		if s.V.H != nil {
+			c += telemetry.CalculateHistogramSampleCount(s.V.H)
+			continue
+		}
+		c++
+	}
+	return c
+}
 
 // MaxT returns the maximum timestamp of the ring buffer.
 // If the ring buffer is empty, it returns math.MinInt64.
@@ -73,7 +92,29 @@ func (r *GenericRingBuffer) Push(t int64, v Value) {
 	r.items[n].V.F = v.F
 	if v.H != nil {
 		if r.items[n].V.H == nil {
-			r.items[n].V.H = v.H.Copy()
+			h := v.H.Copy()
+			if r.subquery {
+				// Set any "NotCounterReset" and "CounterReset" hints in native
+				// histograms to "UnknownCounterReset" because we might
+				// otherwise miss a counter reset happening in samples not
+				// returned by the subquery, or we might over-detect counter
+				// resets if the sample with a counter reset is returned
+				// multiple times by a high-res subquery. This intentionally
+				// does not attempt to be clever (like detecting if we are
+				// really missing underlying samples or returning underlying
+				// samples multiple times) because subqueries on counters are
+				// inherently problematic WRT counter reset handling, so we
+				// cannot really solve the problem for good. We only want to
+				// avoid problems that happen due to the explicitly set counter
+				// reset hints and go back to the behavior we already know from
+				// float samples.
+				switch h.CounterResetHint {
+				case histogram.NotCounterReset, histogram.CounterReset:
+					h.CounterResetHint = histogram.UnknownCounterReset
+				}
+			}
+			r.items[n].V.H = h
+
 		} else {
 			v.H.CopyTo(r.items[n].V.H)
 		}
@@ -84,12 +125,12 @@ func (r *GenericRingBuffer) Push(t int64, v Value) {
 
 func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.currentStep = evalt
-	if len(r.items) == 0 || r.items[len(r.items)-1].T < mint {
+	if r.extLookback == 0 && (len(r.items) == 0 || r.items[len(r.items)-1].T < mint) {
 		r.items = r.items[:0]
 		return
 	}
 	var drop int
-	for drop = 0; drop < len(r.items) && r.items[drop].T < mint; drop++ {
+	for drop = 0; drop < len(r.items) && r.items[drop].T <= mint; drop++ {
 	}
 	if r.extLookback > 0 && drop > 0 && r.items[drop-1].T >= mint-r.extLookback {
 		drop--
@@ -103,13 +144,15 @@ func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.items = r.items[:keep]
 }
 
-func (r *GenericRingBuffer) Eval(scalarArg float64, metricAppearedTs *int64) (float64, *histogram.FloatHistogram, bool, error) {
+func (r *GenericRingBuffer) Eval(ctx context.Context, scalarArg float64, scalarArg2 float64, metricAppearedTs *int64) (float64, *histogram.FloatHistogram, bool, error) {
 	return r.call(FunctionArgs{
+		ctx:              ctx,
 		Samples:          r.items,
 		StepTime:         r.currentStep,
 		SelectRange:      r.selectRange,
 		Offset:           r.offset,
 		ScalarPoint:      scalarArg,
+		ScalarPoint2:     scalarArg2, // only for double_exponential_smoothing
 		MetricAppearedTs: metricAppearedTs,
 	})
 }

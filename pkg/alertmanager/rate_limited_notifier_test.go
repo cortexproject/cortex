@@ -44,15 +44,16 @@ func runNotifications(t *testing.T, rateLimitedNotifier *rateLimitedNotifier, co
 	success := 0
 	rateLimited := 0
 
-	for i := 0; i < count; i++ {
+	for range count {
 		retry, err := rateLimitedNotifier.Notify(context.Background(), &types.Alert{})
 
-		if err == nil {
+		switch err {
+		case nil:
 			success++
-		} else if err == errRateLimited {
+		case errRateLimited:
 			rateLimited++
 			assert.False(t, retry)
-		} else {
+		default:
 			assert.NotNil(t, err)
 		}
 	}

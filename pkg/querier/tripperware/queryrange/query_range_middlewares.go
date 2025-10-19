@@ -22,9 +22,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -34,11 +36,14 @@ const day = 24 * time.Hour
 
 // Config for query_range middleware chain.
 type Config struct {
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
-	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
-	ResultsCacheConfig     `yaml:"results_cache"`
-	CacheResults           bool `yaml:"cache_results"`
-	MaxRetries             int  `yaml:"max_retries"`
+	// Query splits config
+	SplitQueriesByInterval   time.Duration            `yaml:"split_queries_by_interval"`
+	DynamicQuerySplitsConfig DynamicQuerySplitsConfig `yaml:"dynamic_query_splits"`
+
+	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   `yaml:"results_cache"`
+	CacheResults         bool `yaml:"cache_results"`
+	MaxRetries           int  `yaml:"max_retries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 
@@ -54,6 +59,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
+	cfg.DynamicQuerySplitsConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -66,7 +72,25 @@ func (cfg *Config) Validate(qCfg querier.Config) error {
 			return errors.Wrap(err, "invalid ResultsCache config")
 		}
 	}
+	if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedDataDurationPerQuery > 0 {
+		if cfg.SplitQueriesByInterval <= 0 {
+			return errors.New("configs under dynamic-query-splits requires that a value for split-queries-by-interval is set.")
+		}
+	}
 	return nil
+}
+
+type DynamicQuerySplitsConfig struct {
+	MaxShardsPerQuery              int           `yaml:"max_shards_per_query"`
+	MaxFetchedDataDurationPerQuery time.Duration `yaml:"max_fetched_data_duration_per_query"`
+	EnableDynamicVerticalSharding  bool          `yaml:"enable_dynamic_vertical_sharding"`
+}
+
+// RegisterFlags registers flags foy dynamic query splits
+func (cfg *DynamicQuerySplitsConfig) RegisterFlags(f *flag.FlagSet) {
+	f.IntVar(&cfg.MaxShardsPerQuery, "querier.max-shards-per-query", 0, "[EXPERIMENTAL] Maximum number of shards for a query, 0 disables it. Dynamically uses a multiple of split interval to maintain a total number of shards below the set value. If vertical sharding is enabled for a query, the combined total number of interval splits and vertical shards is kept below this value.")
+	f.DurationVar(&cfg.MaxFetchedDataDurationPerQuery, "querier.max-fetched-data-duration-per-query", 0, "[EXPERIMENTAL] Max total duration of data fetched from storage by all query shards, 0 disables it. Dynamically uses a multiple of split interval to maintain a total fetched duration of data lower than the value set. It takes into account additional duration fetched by matrix selectors and subqueries.")
+	f.BoolVar(&cfg.EnableDynamicVerticalSharding, "querier.enable-dynamic-vertical-sharding", false, "[EXPERIMENTAL] Dynamically adjust vertical shard size to maximize the total combined number of query shards and splits.")
 }
 
 // Middlewares returns list of middlewares that should be applied for range query.
@@ -80,6 +104,9 @@ func Middlewares(
 	prometheusCodec tripperware.Codec,
 	shardedPrometheusCodec tripperware.Codec,
 	lookbackDelta time.Duration,
+	defaultEvaluationInterval time.Duration,
+	distributedExecEnabled bool,
+	localOptimizers []logicalplan.Optimizer,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -89,8 +116,11 @@ func Middlewares(
 		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("step_align", metrics), StepAlignMiddleware)
 	}
 	if cfg.SplitQueriesByInterval != 0 {
-		staticIntervalFn := func(_ tripperware.Request) time.Duration { return cfg.SplitQueriesByInterval }
-		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(staticIntervalFn, limits, prometheusCodec, registerer))
+		intervalFn := staticIntervalFn(cfg)
+		if cfg.DynamicQuerySplitsConfig.MaxShardsPerQuery > 0 || cfg.DynamicQuerySplitsConfig.MaxFetchedDataDurationPerQuery > 0 {
+			intervalFn = dynamicIntervalFn(cfg, limits, queryAnalyzer, lookbackDelta)
+		}
+		queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("split_by_interval", metrics), SplitByIntervalMiddleware(intervalFn, limits, prometheusCodec, registerer, lookbackDelta))
 	}
 
 	var c cache.Cache
@@ -101,7 +131,8 @@ func Middlewares(
 			}
 			return false
 		}
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, constSplitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
+
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, splitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -110,6 +141,13 @@ func Middlewares(
 	}
 
 	queryRangeMiddleware = append(queryRangeMiddleware, tripperware.InstrumentMiddleware("shardBy", metrics), tripperware.ShardByMiddleware(log, limits, shardedPrometheusCodec, queryAnalyzer))
+
+	if distributedExecEnabled {
+		queryRangeMiddleware = append(queryRangeMiddleware,
+			tripperware.InstrumentMiddleware("range_logical_plan_gen", metrics),
+			tripperware.DistributedQueryMiddleware(defaultEvaluationInterval, lookbackDelta,
+				append(localOptimizers, &distributed_execution.DistributedOptimizer{})))
+	}
 
 	return queryRangeMiddleware, c, nil
 }

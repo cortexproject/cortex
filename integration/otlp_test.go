@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore/providers/s3"
+	"go.opentelemetry.io/collector/pdata/pmetric"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -61,14 +62,21 @@ func TestOTLP(t *testing.T) {
 
 	// Push some series to Cortex.
 	now := time.Now()
-	series, expectedVector := generateSeries("series_1", now, prompb.Label{Name: "foo", Value: "bar"})
+	series, expectedVector := generateSeries("series_1_total", now, prompb.Label{Name: "foo", Value: "bar"})
 
-	res, err := c.OTLP(series)
+	metadata := []prompb.MetricMetadata{
+		{
+			Help: "help",
+			Unit: "total",
+		},
+	}
+
+	res, err := c.OTLP(series, metadata)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
 	// Query the series.
-	result, err := c.Query("series_1", now)
+	result, err := c.Query("series_1_total", now)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	assert.Equal(t, expectedVector, result.(model.Vector))
@@ -81,13 +89,17 @@ func TestOTLP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"__name__", "foo"}, labelNames)
 
+	metadataResult, err := c.Metadata("series_1_total", "")
+	require.NoError(t, err)
+	require.Equal(t, 1, len(metadataResult))
+
 	// Check that a range query does not return an error to sanity check the queryrange tripperware.
 	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)
 	require.NoError(t, err)
 
 	i := rand.Uint32()
 	histogramSeries := e2e.GenerateHistogramSeries("histogram_series", now, i, false, prompb.Label{Name: "job", Value: "test"})
-	res, err = c.OTLP(histogramSeries)
+	res, err = c.OTLP(histogramSeries, nil)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
@@ -96,7 +108,7 @@ func TestOTLP(t *testing.T) {
 	require.Equal(t, model.ValVector, result.Type())
 	v := result.(model.Vector)
 	require.Equal(t, 1, v.Len())
-	expectedHistogram := tsdbutil.GenerateTestHistogram(int(i))
+	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(i))
 	require.NotNil(t, v[0].Histogram)
 	require.Equal(t, float64(expectedHistogram.Count), float64(v[0].Histogram.Count))
 	require.Equal(t, expectedHistogram.Sum, float64(v[0].Histogram.Sum))
@@ -138,7 +150,7 @@ func TestOTLPIngestExemplar(t *testing.T) {
 	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	res, err := c.OTLPPushExemplar("exemplar_1")
+	res, err := c.OTLPPushExemplar("exemplar_1", "", pmetric.AggregationTemporalityCumulative)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
@@ -230,15 +242,15 @@ func TestOTLPPromoteResourceAttributesPerTenant(t *testing.T) {
 		{Name: "attr3", Value: "value"},
 	}
 
-	res, err := c1.OTLPPushExemplar("series_1", labels...)
+	res, err := c1.OTLPPushExemplar("series_1", "", pmetric.AggregationTemporalityCumulative, labels...)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	res, err = c2.OTLPPushExemplar("series_1", labels...)
+	res, err = c2.OTLPPushExemplar("series_1", "", pmetric.AggregationTemporalityCumulative, labels...)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	res, err = c3.OTLPPushExemplar("series_1", labels...)
+	res, err = c3.OTLPPushExemplar("series_1", "", pmetric.AggregationTemporalityCumulative, labels...)
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
@@ -253,4 +265,117 @@ func TestOTLPPromoteResourceAttributesPerTenant(t *testing.T) {
 	labelSet3, err := c3.LabelNames(now.Add(-time.Minute*5), now, "series_1")
 	require.NoError(t, err)
 	require.Equal(t, labelSet3, []string{"__name__", "attr1", "attr2", "attr3", "instance", "job"})
+}
+
+func TestOTLPEnableTypeAndUnitLabels(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-auth.enabled": "true",
+
+		// OTLP
+		"-distributor.otlp.enable-type-and-unit-labels": "true",
+
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	})
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
+
+	// start cortex and assert runtime-config is loaded correctly
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, flags, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	now := time.Now()
+
+	labels := []prompb.Label{
+		{Name: "service.name", Value: "test-service"},
+		{Name: "attr1", Value: "value"},
+	}
+
+	res, err := c.OTLPPushExemplar("series_1", "seconds", pmetric.AggregationTemporalityCumulative, labels...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	value, err := c.Query("series_1_seconds", now)
+	require.NoError(t, err)
+	vector, ok := value.(model.Vector)
+	fmt.Println("vector", vector)
+	require.True(t, ok)
+	require.Equal(t, 1, len(vector))
+
+	metric := vector[0].Metric
+	require.Equal(t, model.LabelValue("seconds"), metric["__unit__"])
+	require.Equal(t, model.LabelValue("gauge"), metric["__type__"])
+}
+
+func TestOTLPPushDeltaTemporality(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Configure the blocks storage to frequently compact TSDB head
+	// and ship blocks to the storage.
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-auth.enabled": "true",
+
+		// OTLP
+		"-distributor.otlp.allow-delta-temporality": "true",
+
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	})
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks-local.yaml", cortexConfigFile))
+
+	// start cortex and assert runtime-config is loaded correctly
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex", cortexConfigFile, flags, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	// Push some series to Cortex.
+	now := time.Now()
+
+	labels := []prompb.Label{
+		{Name: "service.name", Value: "test-service"},
+		{Name: "attr1", Value: "value"},
+	}
+
+	res, err := c.OTLPPushExemplar("series_1", "", pmetric.AggregationTemporalityDelta, labels...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	value, err := c.Query("series_1", now)
+	require.NoError(t, err)
+	vector, ok := value.(model.Vector)
+	require.True(t, ok)
+	require.Equal(t, 1, len(vector))
 }

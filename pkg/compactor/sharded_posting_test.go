@@ -44,17 +44,13 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 	expectedSymbols[ConstLabelName] = false
 	expectedSymbols[ConstLabelValue] = false
 	expectedSeriesCount := 10
-	for i := 0; i < expectedSeriesCount; i++ {
+	for range expectedSeriesCount {
 		labelValue := strconv.Itoa(r.Int())
-		series = append(series, labels.Labels{
-			metricName,
-			{Name: ConstLabelName, Value: ConstLabelValue},
-			{Name: TestLabelName, Value: labelValue},
-		})
+		series = append(series, labels.FromStrings(metricName.Name, metricName.Value, ConstLabelName, ConstLabelValue, TestLabelName, labelValue))
 		expectedSymbols[TestLabelName] = false
 		expectedSymbols[labelValue] = false
 	}
-	blockID, err := e2eutil.CreateBlock(context.Background(), tmpdir, series, 10, time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().UnixMilli(), nil, 0, metadata.NoneFunc)
+	blockID, err := e2eutil.CreateBlock(context.Background(), tmpdir, series, 10, time.Now().Add(-10*time.Minute).UnixMilli(), time.Now().UnixMilli(), labels.EmptyLabels(), 0, metadata.NoneFunc, nil)
 	require.NoError(t, err)
 
 	var closers []io.Closer
@@ -64,8 +60,8 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 		}
 	}()
 	seriesCount := 0
-	for partitionID := 0; partitionID < partitionCount; partitionID++ {
-		ir, err := index.NewFileReader(filepath.Join(tmpdir, blockID.String(), "index"))
+	for partitionID := range partitionCount {
+		ir, err := index.NewFileReader(filepath.Join(tmpdir, blockID.String(), "index"), index.DecodePostingsRaw)
 		closers = append(closers, ir)
 		require.NoError(t, err)
 		k, v := index.AllPostingsKey()
@@ -82,10 +78,10 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, uint64(partitionID), builder.Labels().Hash()%uint64(partitionCount))
 			seriesCount++
-			for _, label := range builder.Labels() {
-				expectedShardedSymbols[label.Name] = struct{}{}
-				expectedShardedSymbols[label.Value] = struct{}{}
-			}
+			builder.Labels().Range(func(l labels.Label) {
+				expectedShardedSymbols[l.Name] = struct{}{}
+				expectedShardedSymbols[l.Value] = struct{}{}
+			})
 		}
 		err = ir.Close()
 		if err == nil {

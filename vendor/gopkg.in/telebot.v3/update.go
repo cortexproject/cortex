@@ -6,20 +6,24 @@ import "strings"
 type Update struct {
 	ID int `json:"update_id"`
 
-	Message           *Message          `json:"message,omitempty"`
-	EditedMessage     *Message          `json:"edited_message,omitempty"`
-	ChannelPost       *Message          `json:"channel_post,omitempty"`
-	EditedChannelPost *Message          `json:"edited_channel_post,omitempty"`
-	Callback          *Callback         `json:"callback_query,omitempty"`
-	Query             *Query            `json:"inline_query,omitempty"`
-	InlineResult      *InlineResult     `json:"chosen_inline_result,omitempty"`
-	ShippingQuery     *ShippingQuery    `json:"shipping_query,omitempty"`
-	PreCheckoutQuery  *PreCheckoutQuery `json:"pre_checkout_query,omitempty"`
-	Poll              *Poll             `json:"poll,omitempty"`
-	PollAnswer        *PollAnswer       `json:"poll_answer,omitempty"`
-	MyChatMember      *ChatMemberUpdate `json:"my_chat_member,omitempty"`
-	ChatMember        *ChatMemberUpdate `json:"chat_member,omitempty"`
-	ChatJoinRequest   *ChatJoinRequest  `json:"chat_join_request,omitempty"`
+	Message              *Message              `json:"message,omitempty"`
+	EditedMessage        *Message              `json:"edited_message,omitempty"`
+	ChannelPost          *Message              `json:"channel_post,omitempty"`
+	EditedChannelPost    *Message              `json:"edited_channel_post,omitempty"`
+	MessageReaction      *MessageReaction      `json:"message_reaction"`
+	MessageReactionCount *MessageReactionCount `json:"message_reaction_count"`
+	Callback             *Callback             `json:"callback_query,omitempty"`
+	Query                *Query                `json:"inline_query,omitempty"`
+	InlineResult         *InlineResult         `json:"chosen_inline_result,omitempty"`
+	ShippingQuery        *ShippingQuery        `json:"shipping_query,omitempty"`
+	PreCheckoutQuery     *PreCheckoutQuery     `json:"pre_checkout_query,omitempty"`
+	Poll                 *Poll                 `json:"poll,omitempty"`
+	PollAnswer           *PollAnswer           `json:"poll_answer,omitempty"`
+	MyChatMember         *ChatMemberUpdate     `json:"my_chat_member,omitempty"`
+	ChatMember           *ChatMemberUpdate     `json:"chat_member,omitempty"`
+	ChatJoinRequest      *ChatJoinRequest      `json:"chat_join_request,omitempty"`
+	Boost                *BoostUpdated         `json:"chat_boost"`
+	BoostRemoved         *BoostRemoved         `json:"removed_chat_boost"`
 }
 
 // ProcessUpdate processes a single incoming update.
@@ -306,6 +310,16 @@ func (b *Bot) ProcessUpdate(u Update) {
 
 	if u.ChatJoinRequest != nil {
 		b.handle(OnChatJoinRequest, c)
+		return
+	}
+
+	if u.Boost != nil {
+		b.handle(OnBoost, c)
+		return
+	}
+
+	if u.BoostRemoved != nil {
+		b.handle(OnBoostRemoved, c)
 		return
 	}
 }

@@ -20,7 +20,7 @@ type LabelSetTracker struct {
 // NewLabelSetTracker initializes a LabelSetTracker to keep track of active labelset limits.
 func NewLabelSetTracker() *LabelSetTracker {
 	shards := make([]*labelSetCounterShard, 0, numMetricShards)
-	for i := 0; i < numMetricShards; i++ {
+	for range numMetricShards {
 		shards = append(shards, &labelSetCounterShard{
 			RWMutex:       &sync.RWMutex{},
 			userLabelSets: map[string]map[uint64]labels.Labels{},
@@ -53,7 +53,7 @@ func (m *LabelSetTracker) Track(userId string, hash uint64, labelSet labels.Labe
 // It takes a function for user to customize the metrics cleanup logic when either a user or
 // a specific label set is removed. If a user is removed then removeUser is set to true.
 func (m *LabelSetTracker) UpdateMetrics(userSet map[string]map[uint64]struct{}, deleteMetricFunc func(user, labelSetStr string, removeUser bool)) {
-	for i := 0; i < numMetricShards; i++ {
+	for i := range numMetricShards {
 		shard := m.shards[i]
 		shard.Lock()
 
@@ -98,7 +98,7 @@ func (m *LabelSetTracker) labelSetExists(userId string, hash uint64, labelSet la
 
 // userExists is used for testing only to check the existence of a user.
 func (m *LabelSetTracker) userExists(userId string) bool {
-	for i := 0; i < numMetricShards; i++ {
+	for i := range numMetricShards {
 		shard := m.shards[i]
 		shard.RLock()
 		defer shard.RUnlock()

@@ -26,16 +26,20 @@ func TestActiveSeries_UpdateSeries(t *testing.T) {
 
 	c := NewActiveSeries()
 	assert.Equal(t, 0, c.Active())
+	assert.Equal(t, 0, c.ActiveNativeHistogram())
 	labels1Hash := fromLabelToLabels(ls1).Hash()
 	labels2Hash := fromLabelToLabels(ls2).Hash()
-	c.UpdateSeries(ls1, labels1Hash, time.Now(), copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
-	c.UpdateSeries(ls1, labels1Hash, time.Now(), copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
-	c.UpdateSeries(ls2, labels2Hash, time.Now(), copyFn)
+	c.UpdateSeries(fromLabelToLabels(ls2), labels2Hash, time.Now(), true, copyFn)
 	assert.Equal(t, 2, c.Active())
+	assert.Equal(t, 2, c.ActiveNativeHistogram())
 }
 
 func TestActiveSeries_Purge(t *testing.T) {
@@ -48,11 +52,11 @@ func TestActiveSeries_Purge(t *testing.T) {
 	}
 
 	// Run the same test for increasing TTL values
-	for ttl := 0; ttl < len(series); ttl++ {
+	for ttl := range series {
 		c := NewActiveSeries()
 
-		for i := 0; i < len(series); i++ {
-			c.UpdateSeries(series[i], fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), copyFn)
+		for i := range series {
+			c.UpdateSeries(fromLabelToLabels(series[i]), fromLabelToLabels(series[i]).Hash(), time.Unix(int64(i), 0), true, copyFn)
 		}
 
 		c.Purge(time.Unix(int64(ttl+1), 0))
@@ -61,6 +65,7 @@ func TestActiveSeries_Purge(t *testing.T) {
 
 		exp := len(series) - (ttl + 1)
 		assert.Equal(t, exp, c.Active())
+		assert.Equal(t, exp, c.ActiveNativeHistogram())
 	}
 }
 
@@ -71,23 +76,26 @@ func TestActiveSeries_PurgeOpt(t *testing.T) {
 	c := NewActiveSeries()
 
 	now := time.Now()
-	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-2*time.Minute), copyFn)
-	c.UpdateSeries(ls2, ls2.Hash(), now, copyFn)
+	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-2*time.Minute), true, copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now, true, copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
-	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-1*time.Minute), copyFn)
-	c.UpdateSeries(ls2, ls2.Hash(), now, copyFn)
+	c.UpdateSeries(ls1, ls1.Hash(), now.Add(-1*time.Minute), true, copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now, true, copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
 	// This will *not* update the series, since there is already newer timestamp.
-	c.UpdateSeries(ls2, ls2.Hash(), now.Add(-1*time.Minute), copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), now.Add(-1*time.Minute), true, copyFn)
 	c.Purge(now)
 
 	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
 }
 
 var activeSeriesTestGoroutines = []int{50, 100, 500}
@@ -101,9 +109,7 @@ func BenchmarkActiveSeriesTest_single_series(b *testing.B) {
 }
 
 func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) {
-	series := labels.Labels{
-		{Name: "a", Value: "a"},
-	}
+	series := labels.FromStrings("a", "a")
 
 	c := NewActiveSeries()
 
@@ -111,7 +117,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 	start := make(chan struct{})
 	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
 	labelhash := series.Hash()
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -119,9 +125,9 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 
 			now := time.Now()
 
-			for ix := 0; ix < max; ix++ {
+			for ix := range max {
 				now = now.Add(time.Duration(ix) * time.Millisecond)
-				c.UpdateSeries(series, labelhash, now, copyFn)
+				c.UpdateSeries(series, labelhash, now, false, copyFn)
 			}
 		}()
 	}
@@ -136,23 +142,22 @@ func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
 
 	// Prepare series
 	nameBuf := bytes.Buffer{}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		nameBuf.WriteString("abcdefghijklmnopqrstuvzyx")
 	}
 	name := nameBuf.String()
 
 	series := make([]labels.Labels, b.N)
 	labelhash := make([]uint64, b.N)
-	for s := 0; s < b.N; s++ {
-		series[s] = labels.Labels{{Name: name, Value: name + strconv.Itoa(s)}}
+	for s := 0; b.Loop(); s++ {
+		series[s] = labels.FromStrings(name, name+strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 
 	now := time.Now().UnixNano()
 
-	b.ResetTimer()
-	for ix := 0; ix < b.N; ix++ {
-		c.UpdateSeries(series[ix], labelhash[ix], time.Unix(0, now+int64(ix)), copyFn)
+	for ix := 0; b.Loop(); ix++ {
+		c.UpdateSeries(series[ix], labelhash[ix], time.Unix(0, now+int64(ix)), false, copyFn)
 	}
 }
 
@@ -173,20 +178,20 @@ func benchmarkPurge(b *testing.B, twice bool) {
 
 	series := [numSeries]labels.Labels{}
 	labelhash := [numSeries]uint64{}
-	for s := 0; s < numSeries; s++ {
-		series[s] = labels.Labels{{Name: "a", Value: strconv.Itoa(s)}}
+	for s := range numSeries {
+		series[s] = labels.FromStrings("a", strconv.Itoa(s))
 		labelhash[s] = series[s].Hash()
 	}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		b.StopTimer()
 
 		// Prepare series
 		for ix, s := range series {
 			if ix < numExpiresSeries {
-				c.UpdateSeries(s, labelhash[ix], now.Add(-time.Minute), copyFn)
+				c.UpdateSeries(s, labelhash[ix], now.Add(-time.Minute), false, copyFn)
 			} else {
-				c.UpdateSeries(s, labelhash[ix], now, copyFn)
+				c.UpdateSeries(s, labelhash[ix], now, false, copyFn)
 			}
 		}
 

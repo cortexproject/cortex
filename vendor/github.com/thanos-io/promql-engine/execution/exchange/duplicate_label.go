@@ -6,22 +6,18 @@ package exchange
 import (
 	"context"
 	"sync"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type pair struct{ a, b int }
 
 type duplicateLabelCheckOperator struct {
-	telemetry.OperatorTelemetry
-
 	once sync.Once
 	next model.VectorOperator
 
@@ -33,15 +29,10 @@ func NewDuplicateLabelCheck(next model.VectorOperator, opts *query.Options) mode
 	oper := &duplicateLabelCheckOperator{
 		next: next,
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (d *duplicateLabelCheckOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -85,13 +76,14 @@ func (d *duplicateLabelCheckOperator) Next(ctx context.Context) ([]model.StepVec
 }
 
 func (d *duplicateLabelCheckOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { d.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := d.init(ctx); err != nil {
 		return nil, err
 	}
-	return d.next.Series(ctx)
+	series, err := d.next.Series(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return series, nil
 }
 
 func (d *duplicateLabelCheckOperator) GetPool() *model.VectorPool {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
@@ -15,6 +15,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 )
 
 const (
@@ -23,8 +24,9 @@ const (
 
 var (
 	MarkersMap = map[string]func(ulid.ULID) string{
-		metadata.DeletionMarkFilename:  BlockDeletionMarkFilepath,
-		metadata.NoCompactMarkFilename: NoCompactMarkFilenameMarkFilepath,
+		metadata.DeletionMarkFilename:   BlockDeletionMarkFilepath,
+		metadata.NoCompactMarkFilename:  NoCompactMarkFilenameMarkFilepath,
+		parquet.ConverterMarkerFileName: ConverterMarkFilePath,
 	}
 )
 
@@ -38,6 +40,10 @@ func BlockDeletionMarkFilepath(blockID ulid.ULID) string {
 // of a block no compact mark in the bucket markers location.
 func NoCompactMarkFilenameMarkFilepath(blockID ulid.ULID) string {
 	return fmt.Sprintf("%s/%s-%s", MarkersPathname, blockID.String(), metadata.NoCompactMarkFilename)
+}
+
+func ConverterMarkFilePath(blockID ulid.ULID) string {
+	return fmt.Sprintf("%s/%s-%s", parquet.ConverterMarkerPrefix, blockID.String(), parquet.ConverterMarkerFileName)
 }
 
 // IsBlockDeletionMarkFilename returns whether the input filename matches the expected pattern
@@ -68,6 +74,24 @@ func IsBlockNoCompactMarkFilename(name string) (ulid.ULID, bool) {
 
 	// Ensure the 2nd part matches the block deletion mark filename.
 	if parts[1] != metadata.NoCompactMarkFilename {
+		return ulid.ULID{}, false
+	}
+
+	// Ensure the 1st part is a valid block ID.
+	id, err := ulid.Parse(filepath.Base(parts[0]))
+	return id, err == nil
+}
+
+// IsBlockParquetConverterMarkFilename returns whether the input filename matches the expected pattern
+// of block parquet converter markers stored in the markers location.
+func IsBlockParquetConverterMarkFilename(name string) (ulid.ULID, bool) {
+	parts := strings.SplitN(name, "-", 2)
+	if len(parts) != 2 {
+		return ulid.ULID{}, false
+	}
+
+	// Ensure the 2nd part matches the parquet converter mark filename.
+	if parts[1] != parquet.ConverterMarkerFileName {
 		return ulid.ULID{}, false
 	}
 

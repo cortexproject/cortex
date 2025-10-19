@@ -8,22 +8,18 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
 	prommodel "github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type relabelOperator struct {
-	telemetry.OperatorTelemetry
-
 	next     model.VectorOperator
 	funcExpr *logicalplan.FunctionCall
 	once     sync.Once
@@ -34,14 +30,12 @@ func newRelabelOperator(
 	next model.VectorOperator,
 	funcExpr *logicalplan.FunctionCall,
 	opts *query.Options,
-) *relabelOperator {
+) model.VectorOperator {
 	oper := &relabelOperator{
 		next:     next,
 		funcExpr: funcExpr,
 	}
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *relabelOperator) String() string {
@@ -53,9 +47,6 @@ func (o *relabelOperator) Explain() (next []model.VectorOperator) {
 }
 
 func (o *relabelOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	o.once.Do(func() { err = o.loadSeries(ctx) })
 	return o.series, err
@@ -66,9 +57,6 @@ func (o *relabelOperator) GetPool() *model.VectorPool {
 }
 
 func (o *relabelOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	return o.next.Next(ctx)
 }
 
@@ -152,6 +140,11 @@ func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) erro
 	if err != nil {
 		return errors.Newf("invalid regular expression in label_replace(): %s", labelReplaceRegexVal)
 	}
+
+	if !prommodel.LabelNameRE.MatchString(labelReplaceDst) {
+		return errors.Newf("invalid destination label name in label_replace(): %s", labelReplaceDst)
+	}
+
 	for i, s := range series {
 		lbls := s
 

@@ -15,7 +15,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 )
 
@@ -64,9 +63,9 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 
 	// Mock some blocks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	testutil.MockStorageBlock(t, bkt, userID, 10, 20)
-	testutil.MockStorageBlock(t, bkt, userID, 20, 30)
-	testutil.MockStorageDeletionMark(t, bkt, userID, testutil.MockStorageBlock(t, bkt, userID, 30, 40))
+	cortex_testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	cortex_testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+	cortex_testutil.MockStorageDeletionMark(t, bkt, userID, cortex_testutil.MockStorageBlock(t, bkt, userID, 30, 40))
 
 	// Write the index.
 	u := NewUpdater(bkt, userID, nil, logger)
@@ -116,14 +115,14 @@ func BenchmarkReadIndex(b *testing.B) {
 
 	// Mock some blocks and deletion marks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	for i := 0; i < numBlocks; i++ {
+	for i := range numBlocks {
 		minT := int64(i * 10)
 		maxT := int64((i + 1) * 10)
 
-		block := testutil.MockStorageBlock(b, bkt, userID, minT, maxT)
+		block := cortex_testutil.MockStorageBlock(b, bkt, userID, minT, maxT)
 
 		if i < numBlockDeletionMarks {
-			testutil.MockStorageDeletionMark(b, bkt, userID, block)
+			cortex_testutil.MockStorageDeletionMark(b, bkt, userID, block)
 		}
 	}
 
@@ -139,9 +138,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	require.Len(b, idx.Blocks, numBlocks)
 	require.Len(b, idx.BlockDeletionMarks, numBlockDeletionMarks)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err := ReadIndex(ctx, bkt, userID, nil, logger)
 		require.NoError(b, err)
 	}

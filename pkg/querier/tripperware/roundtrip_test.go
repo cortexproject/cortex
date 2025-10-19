@@ -28,7 +28,7 @@ import (
 
 const (
 	queryRange                    = "/api/v1/query_range?end=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29&start=1536673680&stats=all&step=120"
-	query                         = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29"
+	queryAll                      = "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29"
 	queryNonShardable             = "/api/v1/query?time=1536716898&query=container_memory_rss"
 	queryExemplar                 = "/api/v1/query_exemplars?query=test_exemplar_metric_total&start=2020-09-14T15:22:25.479Z&end=2020-09-14T15:23:25.479Z'"
 	querySubqueryStepSizeTooSmall = "/api/v1/query?query=up%5B30d%3A%5D"
@@ -38,6 +38,8 @@ const (
 	labelNamesQuery               = "/api/v1/labels"
 	labelValuesQuery              = "/api/v1/label/label/values"
 	metadataQuery                 = "/api/v1/metadata"
+	formatQuery                   = "/api/v1/format_query?query=foo/bar"
+	parseQuery                    = "/api/v1/parse_query?query=foo/bar"
 
 	responseBody        = `{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
 	instantResponseBody = `{"status":"success","data":{"resultType":"vector","result":[{"metric":{"foo":"bar"},"values":[[1536673680,"137"],[1536673780,"137"]]}]}}`
@@ -87,8 +89,20 @@ func (m mockMiddleware) Do(_ context.Context, req Request) (Response, error) {
 	return &mockResponse{resp: r.resp}, nil
 }
 
+var (
+	instantMiddlewares = []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
+	rangeMiddlewares = []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return mockMiddleware{}
+		}),
+	}
+)
+
 func TestRoundTrip(t *testing.T) {
-	t.Parallel()
 	s := httptest.NewServer(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, err := w.Write([]byte("bar"))
@@ -107,27 +121,14 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	instantMiddlewares := []Middleware{
-		MiddlewareFunc(func(next Handler) Handler {
-			return mockMiddleware{}
-		}),
-	}
-	rangeMiddlewares := []Middleware{
-		MiddlewareFunc(func(next Handler) Handler {
-			return mockMiddleware{}
-		}),
-	}
-
 	limits := validation.Limits{
 		MaxQueryLength: model.Duration(time.Hour * 24 * 60),
 	}
 	flagext.DefaultValues(&limits)
-	defaultOverrides, err := validation.NewOverrides(limits, nil)
-	require.NoError(t, err)
+	defaultOverrides := validation.NewOverrides(limits, nil)
 
 	limitsWithVerticalSharding := validation.Limits{QueryVerticalShardSize: 3}
-	shardingOverrides, err := validation.NewOverrides(limitsWithVerticalSharding, nil)
-	require.NoError(t, err)
+	shardingOverrides := validation.NewOverrides(limitsWithVerticalSharding, nil)
 	for _, tc := range []struct {
 		path, expectedBody string
 		expectedErr        error
@@ -233,7 +234,31 @@ cortex_query_frontend_queries_total{op="query_range", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             formatQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="format_query", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             parseQuery,
+			expectedBody:     "bar",
+			limits:           defaultOverrides,
+			maxSubQuerySteps: 11000,
+			userAgent:        "dummyUserAgent/1.2",
+			expectedMetric: `
+# HELP cortex_query_frontend_queries_total Total queries sent per tenant.
+# TYPE cortex_query_frontend_queries_total counter
+cortex_query_frontend_queries_total{op="parse_query", source="api", user="1"} 1
+`,
+		},
+		{
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           defaultOverrides,
 			maxSubQuerySteps: 11000,
@@ -257,7 +282,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 `,
 		},
 		{
-			path:             query,
+			path:             queryAll,
 			expectedBody:     instantResponseBody,
 			limits:           shardingOverrides,
 			maxSubQuerySteps: 11000,
@@ -322,7 +347,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			//parallel testing causes data race
-			req, err := http.NewRequest("GET", tc.path, http.NoBody)
+			req, err := http.NewRequest("POST", tc.path, http.NoBody)
 			require.NoError(t, err)
 
 			// query-frontend doesn't actually authenticate requests, we rely on
@@ -348,7 +373,6 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 				time.Minute,
 				tc.maxSubQuerySteps,
 				0,
-				false,
 			)
 			resp, err := tw(downstream).RoundTrip(req)
 			if tc.expectedErr == nil {

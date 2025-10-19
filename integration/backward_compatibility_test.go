@@ -5,17 +5,21 @@ package integration
 
 import (
 	"fmt"
+	"path"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 type versionsImagesFlags struct {
@@ -75,6 +79,7 @@ var (
 		"quay.io/cortexproject/cortex:v1.17.1": nil,
 		"quay.io/cortexproject/cortex:v1.18.0": nil,
 		"quay.io/cortexproject/cortex:v1.18.1": nil,
+		"quay.io/cortexproject/cortex:v1.19.0": nil,
 	}
 )
 
@@ -116,6 +121,195 @@ func TestNewDistributorsCanPushToOldIngestersWithReplication(t *testing.T) {
 			runNewDistributorsCanPushToOldIngestersWithReplication(t, previousImage, flags, flagsForNewImage)
 		})
 	}
+}
+
+// Test for #6744. When the querier is running on an older version, while the ingester is running on a newer
+// version, the ingester should return all metadata.
+func TestMetadataAPIWhenDeployment(t *testing.T) {
+	oldImage := "quay.io/cortexproject/cortex:v1.19.0"
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+
+	minio := e2edb.NewMinio(9000, baseFlags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	oldFlags := mergeFlags(baseFlags, map[string]string{
+		// alert manager
+		"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		// consul
+		"-ring.store":      "consul",
+		"-consul.hostname": consul.NetworkHTTPEndpoint(),
+	})
+
+	newFlags := mergeFlags(oldFlags, map[string]string{
+		// ingester
+		"-ingester.skip-metadata-limits": "true",
+	})
+
+	// Start Cortex components
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), newFlags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), newFlags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), oldFlags, oldImage)
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
+
+	// Wait until distributor has updated the ring.
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	// Wait until querier has updated the ring.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	metadataMetricNum := 5
+	metadataPerMetrics := 2
+	metadata := make([]prompb.MetricMetadata, 0, metadataMetricNum)
+	for i := 0; i < metadataMetricNum; i++ {
+		for j := 0; j < metadataPerMetrics; j++ {
+			metadata = append(metadata, prompb.MetricMetadata{
+				MetricFamilyName: fmt.Sprintf("metadata_name_%d", i),
+				Help:             fmt.Sprintf("metadata_help_%d_%d", i, j),
+				Unit:             fmt.Sprintf("metadata_unit_%d_%d", i, j),
+			})
+		}
+	}
+	res, err := client.Push(nil, metadata...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// should return all metadata regardless of the limit
+	maxLimit := metadataMetricNum * metadataPerMetrics
+	for i := -1; i <= maxLimit; i++ {
+		result, err := client.Metadata("", strconv.Itoa(i))
+		require.NoError(t, err)
+		require.Equal(t, metadataMetricNum, len(result))
+		for _, metadata := range result {
+			require.Equal(t, metadataPerMetrics, len(metadata))
+		}
+	}
+}
+
+// Test cortex which uses Prometheus v3.x can support holt_winters function
+func TestCanSupportHoltWintersFunc(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.tsdb.block-ranges-period":          "2h",
+			"-blocks-storage.tsdb.ship-interval":                "1h",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.tsdb.retention-period":             "2h",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// enable experimental promQL funcs
+			"-querier.enable-promql-experimental-functions": "true",
+		},
+	)
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	// Push some series to Cortex.
+	start := now.Add(-time.Minute * 120)
+	end := now
+	scrapeInterval := 30 * time.Second
+
+	numSeries := 10
+	numSamples := 240
+	serieses := make([]prompb.TimeSeries, numSeries)
+	lbls := make([]labels.Labels, numSeries)
+	for i := 0; i < numSeries; i++ {
+		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
+		serieses[i] = series
+
+		builder := labels.NewBuilder(labels.EmptyLabels())
+		for _, lbl := range series.Labels {
+			builder.Set(lbl.Name, lbl.Value)
+		}
+		lbls[i] = builder.Labels()
+	}
+
+	res, err := c.Push(serieses)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Test holt_winters range query
+	hQuery := "holt_winters(test_series[2h], 0.5, 0.5)"
+	hRangeResult, err := c.QueryRange(hQuery, start, end, scrapeInterval)
+	require.NoError(t, err)
+	hMatrix, ok := hRangeResult.(model.Matrix)
+	require.True(t, ok)
+	require.True(t, hMatrix.Len() > 0)
+
+	// Test holt_winters instant query
+	hInstantResult, err := c.Query(hQuery, now)
+	require.NoError(t, err)
+	hVector, ok := hInstantResult.(model.Vector)
+	require.True(t, ok)
+	require.True(t, hVector.Len() > 0)
+
+	// Test double_exponential_smoothing range query
+	dQuery := "double_exponential_smoothing(test_series[2h], 0.5, 0.5)"
+	dRangeResult, err := c.QueryRange(dQuery, start, end, scrapeInterval)
+	require.NoError(t, err)
+	dMatrix, ok := dRangeResult.(model.Matrix)
+	require.True(t, ok)
+	require.True(t, dMatrix.Len() > 0)
+
+	// Test double_exponential_smoothing instant query
+	dInstantResult, err := c.Query(dQuery, now)
+	require.NoError(t, err)
+	dVector, ok := dInstantResult.(model.Vector)
+	require.True(t, ok)
+	require.True(t, dVector.Len() > 0)
+
+	// compare lengths of query results
+	require.True(t, hMatrix.Len() == dMatrix.Len())
+	require.True(t, hVector.Len() == dVector.Len())
 }
 
 func blocksStorageFlagsWithFlushOnShutdown() map[string]string {

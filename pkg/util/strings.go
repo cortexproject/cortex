@@ -17,17 +17,6 @@ const (
 	internerLruCacheTTL = time.Hour * 2
 )
 
-// StringsContain returns true if the search value is within the list of input values.
-func StringsContain(values []string, search string) bool {
-	for _, v := range values {
-		if search == v {
-			return true
-		}
-	}
-
-	return false
-}
-
 // StringsMap returns a map where keys are input values.
 func StringsMap(values []string) map[string]bool {
 	out := make(map[string]bool, len(values))
@@ -157,10 +146,19 @@ type Interner interface {
 
 // NewLruInterner returns a new Interner to be used to intern strings.
 // The interner will use a LRU cache to return the deduplicated strings
-func NewLruInterner() Interner {
+func NewLruInterner(enabled bool) Interner {
+	if !enabled {
+		return &noOpInterner{}
+	}
 	return &pool{
 		lru: expirable.NewLRU[string, string](maxInternerLruCacheSize, nil, internerLruCacheTTL),
 	}
+}
+
+type noOpInterner struct{}
+
+func (n noOpInterner) Intern(s string) string {
+	return s
 }
 
 type pool struct {

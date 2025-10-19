@@ -27,6 +27,17 @@ var (
 	errInvalidTokensGeneratorStrategy = errors.New("invalid token generator strategy")
 )
 
+type LifecyclerDelegate interface {
+	// OnRingInstanceHeartbeat is called while the instance is updating its heartbeat
+	// in the ring.
+	OnRingInstanceHeartbeat(lifecycler *Lifecycler, ringDesc *Desc)
+}
+
+type DefaultLifecyclerDelegate struct{}
+
+func (d DefaultLifecyclerDelegate) OnRingInstanceHeartbeat(lifecycler *Lifecycler, ringDesc *Desc) {
+}
+
 // LifecyclerConfig is the config to build a Lifecycler.
 type LifecyclerConfig struct {
 	RingConfig Config `yaml:"ring"`
@@ -108,6 +119,7 @@ type Lifecycler struct {
 	cfg             LifecyclerConfig
 	flushTransferer FlushTransferer
 	KVStore         kv.Client
+	delegate        LifecyclerDelegate
 
 	actorChan    chan func()
 	autojoinChan chan struct{}
@@ -148,6 +160,22 @@ type Lifecycler struct {
 	logger            log.Logger
 
 	tg TokenGenerator
+}
+
+func NewLifecyclerWithDelegate(
+	cfg LifecyclerConfig,
+	flushTransferer FlushTransferer,
+	ringName, ringKey string,
+	autoJoinOnStartup, flushOnShutdown bool,
+	logger log.Logger,
+	reg prometheus.Registerer,
+	delegate LifecyclerDelegate,
+) (*Lifecycler, error) {
+	l, err := NewLifecycler(cfg, flushTransferer, ringName, ringKey, autoJoinOnStartup, flushOnShutdown, logger, reg)
+	if l != nil {
+		l.delegate = delegate
+	}
+	return l, err
 }
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
@@ -209,6 +237,7 @@ func NewLifecycler(
 		lifecyclerMetrics:    NewLifecyclerMetrics(ringName, reg),
 		logger:               logger,
 		tg:                   tg,
+		delegate:             &DefaultLifecyclerDelegate{},
 	}
 
 	l.lifecyclerMetrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -363,7 +392,7 @@ func (i *Lifecycler) setPreviousState(state InstanceState) {
 	i.stateMtx.Lock()
 	defer i.stateMtx.Unlock()
 
-	if !(state == ACTIVE || state == READONLY) {
+	if !(state == ACTIVE || state == READONLY) { //nolint:staticcheck
 		level.Error(i.logger).Log("msg", "cannot store unsupported state to disk", "new_state", state, "old_state", i.tokenFile.PreviousState)
 		return
 	}
@@ -417,10 +446,10 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	fn := func() {
 		var tokens Tokens
 
-		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
+		claimTokens := func(in any) (out any, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
 			if !ok || ringDesc == nil {
-				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
+				return nil, false, fmt.Errorf("cannot claim tokens in an empty ring")
 			}
 
 			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
@@ -626,10 +655,15 @@ func (i *Lifecycler) stopping(runningError error) error {
 		i.setPreviousState(currentState)
 	}
 
-	// Mark ourselved as Leaving so no more samples are send to us.
-	err := i.changeState(context.Background(), LEAVING)
-	if err != nil {
-		level.Error(i.logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+	// We dont need to mark us as leaving if READONLY. There is not request sent to us.
+	// Also important to avoid this change so we dont have resharding(for querier) happen when READONLY restart as we extended shard on READONLY but not on LEAVING
+	// Query also keeps calling pods on LEAVING or JOINING not causing any difference if left on READONLY
+	if i.GetState() != READONLY {
+		// Mark ourselved as Leaving so no more samples are send to us.
+		err := i.changeState(context.Background(), LEAVING)
+		if err != nil {
+			level.Error(i.logger).Log("msg", "failed to set state to LEAVING", "ring", i.RingName, "err", err)
+		}
 	}
 
 	// Do the transferring / flushing on a background goroutine so we can continue
@@ -688,7 +722,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
-	err = i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err = i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -787,7 +821,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 	if ratio > 1 {
 		ratio = 1
 	}
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return in, false, nil
 		}
@@ -803,7 +837,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 		ringTokens, _ := ringDesc.TokensFor(i.ID)
 
 		// Removing random tokens
-		for i := 0; i < tokensToBeRenewed; i++ {
+		for range tokensToBeRenewed {
 			if len(ringTokens) == 0 {
 				break
 			}
@@ -835,7 +869,7 @@ func (i *Lifecycler) RenewTokens(ratio float64, ctx context.Context) {
 func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 	result := false
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		var ringDesc *Desc
 		if in == nil {
 			ringDesc = NewDesc()
@@ -886,7 +920,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 		return false
 	}
 
-	for i := 0; i < len(tokens); i++ {
+	for i := range tokens {
 		if tokens[i] != fromRing[i] {
 			return false
 		}
@@ -898,7 +932,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -953,7 +987,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
 	var ringDesc *Desc
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {
@@ -973,6 +1007,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 			instanceDesc.RegisteredTimestamp = i.getRegisteredAt().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
 		}
+		i.delegate.OnRingInstanceHeartbeat(i, ringDesc)
 
 		return ringDesc, true, nil
 	})
@@ -990,6 +1025,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
+	//nolint:staticcheck
 	if !((currState == PENDING && state == JOINING) ||
 		(currState == JOINING && state == PENDING) ||
 		(currState == JOINING && state == ACTIVE) ||
@@ -1000,11 +1036,17 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 		(currState == ACTIVE && state == READONLY) || // triggered by ingester mode
 		(currState == READONLY && state == ACTIVE) || // triggered by ingester mode
 		(currState == READONLY && state == LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
+		return fmt.Errorf("changing instance state from %v -> %v is disallowed", currState, state)
 	}
 
 	level.Info(i.logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
 	i.setState(state)
+
+	//The instances is rejoining the ring. It should reset its registered time.
+	if currState == READONLY && state == ACTIVE {
+		registeredAt := time.Now()
+		i.setRegisteredAt(registeredAt)
+	}
 	return i.updateConsul(ctx)
 }
 
@@ -1079,7 +1121,7 @@ func (i *Lifecycler) processShutdown(ctx context.Context) {
 func (i *Lifecycler) unregister(ctx context.Context) error {
 	level.Debug(i.logger).Log("msg", "unregistering instance from ring", "ring", i.RingName)
 
-	return i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	return i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}

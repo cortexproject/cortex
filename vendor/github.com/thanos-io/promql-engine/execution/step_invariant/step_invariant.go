@@ -6,16 +6,14 @@ package step_invariant
 import (
 	"context"
 	"sync"
-	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type stepInvariantOperator struct {
@@ -33,7 +31,6 @@ type stepInvariantOperator struct {
 	step        int64
 	currentStep int64
 	stepsBatch  int
-	telemetry.OperatorTelemetry
 }
 
 func (u *stepInvariantOperator) Explain() (next []model.VectorOperator) {
@@ -61,7 +58,6 @@ func NewStepInvariantOperator(
 		stepsBatch:  opts.StepsBatch,
 		cacheResult: true,
 	}
-	u.OperatorTelemetry = telemetry.NewStepInvariantTelemetry(u, opts)
 	if u.step == 0 {
 		u.step = 1
 	}
@@ -72,13 +68,10 @@ func NewStepInvariantOperator(
 		u.cacheResult = false
 	}
 
-	return u, nil
+	return telemetry.NewOperator(telemetry.NewStepInvariantTelemetry(u, opts), u), nil
 }
 
 func (u *stepInvariantOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
-
 	var err error
 	u.seriesOnce.Do(func() {
 		u.series, err = u.next.Series(ctx)
@@ -95,9 +88,6 @@ func (u *stepInvariantOperator) GetPool() *model.VectorPool {
 }
 
 func (u *stepInvariantOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { u.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

@@ -8,24 +8,23 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type subqueryOperator struct {
-	telemetry.OperatorTelemetry
+	telemetry telemetry.OperatorTelemetry
 
-	next    model.VectorOperator
-	paramOp model.VectorOperator
+	next     model.VectorOperator
+	paramOp  model.VectorOperator
+	paramOp2 model.VectorOperator
 
 	pool        *model.VectorPool
 	call        ringbuffer.FunctionCall
@@ -47,10 +46,13 @@ type subqueryOperator struct {
 	buffers       []*ringbuffer.GenericRingBuffer
 
 	// params holds the function parameter for each step.
-	params []float64
+	// quantile_over time and predict_linear use one parameter (params)
+	// double_exponential_smoothing uses two (params, params2) for (sf, tf)
+	params  []float64
+	params2 []float64
 }
 
-func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
+func NewSubqueryOperator(pool *model.VectorPool, next, paramOp, paramOp2 model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
 	call, err := ringbuffer.NewRangeVectorFunc(funcExpr.Func.Name)
 	if err != nil {
 		return nil, err
@@ -63,6 +65,7 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 	o := &subqueryOperator{
 		next:          next,
 		paramOp:       paramOp,
+		paramOp2:      paramOp2,
 		call:          call,
 		pool:          pool,
 		funcExpr:      funcExpr,
@@ -75,10 +78,10 @@ func NewSubqueryOperator(pool *model.VectorPool, next, paramOp model.VectorOpera
 		stepsBatch:    opts.StepsBatch,
 		lastCollected: -1,
 		params:        make([]float64, opts.StepsBatch),
+		params2:       make([]float64, opts.StepsBatch),
 	}
-	o.OperatorTelemetry = telemetry.NewSubqueryTelemetry(o, opts)
-
-	return o, nil
+	o.telemetry = telemetry.NewSubqueryTelemetry(o, opts)
+	return telemetry.NewOperator(o.telemetry, o), nil
 }
 
 func (o *subqueryOperator) String() string {
@@ -89,6 +92,8 @@ func (o *subqueryOperator) Explain() (next []model.VectorOperator) {
 	switch o.funcExpr.Func.Name {
 	case "quantile_over_time", "predict_linear":
 		return []model.VectorOperator{o.paramOp, o.next}
+	case "double_exponential_smoothing":
+		return []model.VectorOperator{o.paramOp, o.paramOp2, o.next}
 	default:
 		return []model.VectorOperator{o.next}
 	}
@@ -97,9 +102,6 @@ func (o *subqueryOperator) Explain() (next []model.VectorOperator) {
 func (o *subqueryOperator) GetPool() *model.VectorPool { return o.pool }
 
 func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -127,9 +129,24 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 		o.paramOp.GetPool().PutVectors(args)
 	}
 
+	if o.paramOp2 != nil { // double_exponential_smoothing
+		args, err := o.paramOp2.Next(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for i := range args {
+			o.params2[i] = math.NaN()
+			if len(args[i].Samples) == 1 {
+				o.params2[i] = args[i].Samples[0]
+			}
+			o.paramOp2.GetPool().PutStepVector(args[i])
+		}
+		o.paramOp2.GetPool().PutVectors(args)
+	}
+
 	res := o.pool.GetVectorBatch()
 	for i := 0; o.currentStep <= o.maxt && i < o.stepsBatch; i++ {
-		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds()
+		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds() + 1
 		maxt := o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
 		for _, b := range o.buffers {
 			b.Reset(mint, maxt+o.subQuery.Offset.Milliseconds())
@@ -171,7 +188,7 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 
 		sv := o.pool.GetStepVector(o.currentStep)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok, err := rangeSamples.Eval(o.params[i], nil)
+			f, h, ok, err := rangeSamples.Eval(ctx, o.params[i], o.params2[i], nil)
 			if err != nil {
 				return nil, err
 			}
@@ -182,12 +199,12 @@ func (o *subqueryOperator) Next(ctx context.Context) ([]model.StepVector, error)
 					sv.AppendSample(o.pool, uint64(sampleId), f)
 				}
 			}
-			o.IncrementSamplesAtTimestamp(rangeSamples.Len(), sv.T)
+			o.telemetry.IncrementSamplesAtTimestamp(rangeSamples.SampleCount(), sv.T)
 		}
 		res = append(res, sv)
-
 		o.currentStep += o.step
 	}
+
 	return res, nil
 }
 
@@ -214,9 +231,6 @@ func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 }
 
 func (o *subqueryOperator) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.OperatorTelemetry.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.initSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -235,7 +249,7 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		o.series = make([]labels.Labels, len(series))
 		o.buffers = make([]*ringbuffer.GenericRingBuffer, len(series))
 		for i := range o.buffers {
-			o.buffers[i] = ringbuffer.New(8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
+			o.buffers[i] = ringbuffer.New(ctx, 8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call, true)
 		}
 		var b labels.ScratchBuilder
 		for i, s := range series {

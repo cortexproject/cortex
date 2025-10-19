@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -46,7 +47,7 @@ func TestPreCompactionCallback(t *testing.T) {
 		log.NewNopLogger(),
 		nil,
 		testGroupKey,
-		nil,
+		labels.EmptyLabels(),
 		0,
 		true,
 		true,

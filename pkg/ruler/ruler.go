@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -29,6 +30,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/engine"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
@@ -172,11 +175,13 @@ type Config struct {
 
 	EnableHAEvaluation   bool          `yaml:"enable_ha_evaluation"`
 	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
+
+	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 }
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -196,9 +201,14 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errInvalidMaxConcurrentEvals
 	}
 
-	if !util.StringsContain(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
+	if !slices.Contains(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
 		return errInvalidQueryResponseFormat
 	}
+
+	if err := cfg.ThanosEngine.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -208,6 +218,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("ruler.frontendClient", "", f)
 	cfg.Ring.RegisterFlags(f)
 	cfg.Notifier.RegisterFlags(f)
+	cfg.ThanosEngine.RegisterFlagsWithPrefix("ruler.", f)
 
 	// Deprecated Flags that will be maintained to avoid user disruption
 
@@ -254,7 +265,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
 	f.DurationVar(&cfg.LivenessCheckTimeout, "ruler.liveness-check-timeout", 1*time.Second, "Timeout duration for non-primary rulers during liveness checks. If the check times out, the non-primary ruler will evaluate the rule group. Applicable when ruler.enable-ha-evaluation is true.")
-
 	cfg.RingCheckPeriod = 5 * time.Second
 }
 
@@ -586,6 +596,9 @@ func ownsRuleGroupOrDisable(g *rulespb.RuleGroupDesc, disabledRuleGroups validat
 }
 
 func (r *Ruler) LivenessCheck(_ context.Context, request *LivenessCheckRequest) (*LivenessCheckResponse, error) {
+	if r.lifecycler.ServiceContext() == nil {
+		return nil, errors.New("ruler is not yet ready")
+	}
 	if r.lifecycler.ServiceContext().Err() != nil || r.subservices.IsStopped() {
 		return nil, errors.New("ruler's context is canceled and might be stopping soon")
 	}
@@ -609,7 +622,7 @@ func (r *Ruler) nonPrimaryInstanceOwnsRuleGroup(g *rulespb.RuleGroupDesc, replic
 	ctx, cancel := context.WithTimeout(ctx, r.cfg.LivenessCheckTimeout)
 	defer cancel()
 
-	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+	err := concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job any) error {
 		addr := job.(string)
 		rulerClient, err := r.GetClientFor(addr)
 		if err != nil {
@@ -681,13 +694,21 @@ func (r *Ruler) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
-	r.syncRules(ctx, rulerSyncReasonInitial)
+	syncRuleErrMsg := func(syncRulesErr error) {
+		level.Error(r.logger).Log("msg", "failed to sync rules", "err", syncRulesErr)
+	}
+
+	initialSyncErr := r.syncRules(ctx, rulerSyncReasonInitial)
+	if initialSyncErr != nil {
+		syncRuleErrMsg(initialSyncErr)
+	}
 	for {
+		var syncRulesErr error
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-tick.C:
-			r.syncRules(ctx, rulerSyncReasonPeriodic)
+			syncRulesErr = r.syncRules(ctx, rulerSyncReasonPeriodic)
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
@@ -695,15 +716,18 @@ func (r *Ruler) run(ctx context.Context) error {
 
 			if ring.HasReplicationSetChanged(ringLastState, currRingState) {
 				ringLastState = currRingState
-				r.syncRules(ctx, rulerSyncReasonRingChange)
+				syncRulesErr = r.syncRules(ctx, rulerSyncReasonRingChange)
 			}
 		case err := <-r.subservicesWatcher.Chan():
 			return errors.Wrap(err, "ruler subservice failed")
 		}
+		if syncRulesErr != nil {
+			syncRuleErrMsg(syncRulesErr)
+		}
 	}
 }
 
-func (r *Ruler) syncRules(ctx context.Context, reason string) {
+func (r *Ruler) syncRules(ctx context.Context, reason string) error {
 	level.Info(r.logger).Log("msg", "syncing rules", "reason", reason)
 	r.rulerSync.WithLabelValues(reason).Inc()
 	timer := prometheus.NewTimer(nil)
@@ -715,12 +739,12 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 
 	loadedConfigs, backupConfigs, err := r.loadRuleGroups(ctx)
 	if err != nil {
-		return
+		return err
 	}
 
 	if ctx.Err() != nil {
 		level.Info(r.logger).Log("msg", "context is canceled. not syncing rules")
-		return
+		return err
 	}
 	// This will also delete local group files for users that are no longer in 'configs' map.
 	r.manager.SyncRuleGroups(ctx, loadedConfigs)
@@ -728,6 +752,8 @@ func (r *Ruler) syncRules(ctx context.Context, reason string) {
 	if r.cfg.RulesBackupEnabled() {
 		r.manager.BackUpRuleGroups(ctx, backupConfigs)
 	}
+
+	return nil
 }
 
 func (r *Ruler) loadRuleGroups(ctx context.Context) (map[string]rulespb.RuleGroupList, map[string]rulespb.RuleGroupList, error) {
@@ -855,7 +881,7 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	userRings := map[string]ring.ReadRing{}
 	for _, u := range users {
 		if shardSize := r.limits.RulerTenantShardSize(u); shardSize > 0 {
-			subRing := r.ring.ShuffleShard(u, shardSize)
+			subRing := r.ring.ShuffleShard(u, r.getShardSizeForUser(u))
 
 			// Include the user only if it belongs to this ruler shard.
 			if subRing.HasInstance(r.lifecycler.GetInstanceID()) {
@@ -885,13 +911,10 @@ func (r *Ruler) listRulesShuffleSharding(ctx context.Context) (map[string]rulesp
 	gLock := sync.Mutex{}
 	ruleGroupCounts := make(map[string]int, len(userRings))
 
-	concurrency := loadRulesConcurrency
-	if len(userRings) < concurrency {
-		concurrency = len(userRings)
-	}
+	concurrency := min(len(userRings), loadRulesConcurrency)
 
 	g, gctx := errgroup.WithContext(ctx)
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		g.Go(func() error {
 			for userID := range userCh {
 				groups, err := r.store.ListRuleGroupsForUserAndNamespace(gctx, userID, "")
@@ -1255,6 +1278,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 				User:        userID,
 				Limit:       group.Limit,
 				QueryOffset: group.QueryOffset,
+				Labels:      group.Labels,
 			},
 			// We are keeping default value for EvaluationTimestamp and EvaluationDuration since the backup is not evaluating
 		}
@@ -1275,7 +1299,7 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 			}
 
 			var ruleDesc *RuleStateDesc
-			query, err := parser.ParseExpr(r.GetExpr())
+			query, err := cortexparser.ParseExpr(r.GetExpr())
 			if err != nil {
 				return nil, errors.Errorf("failed to parse rule query '%v'", r.GetExpr())
 			}
@@ -1323,11 +1347,18 @@ func (r *Ruler) ruleGroupListToGroupStateDesc(userID string, backupGroups rulesp
 	return groupDescs, nil
 }
 
+func (r *Ruler) getShardSizeForUser(userID string) int {
+	newShardSize := util.DynamicShardSize(r.limits.RulerTenantShardSize(userID), r.ring.InstancesCount())
+
+	// We want to guarantee that shard size will be at least replication factor
+	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
+}
+
 func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-		ring = r.ring.ShuffleShard(userID, shardSize)
+		ring = r.ring.ShuffleShard(userID, r.getShardSizeForUser(userID))
 	}
 
 	rulers, failedZones, err := GetReplicationSetForListRule(ring, &r.cfg.Ring)
@@ -1354,7 +1385,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 	}
 	// Concurrently fetch rules from all rulers.
 	jobs := concurrency.CreateJobsFromStrings(rulers.GetAddresses())
-	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job interface{}) error {
+	err = concurrency.ForEach(ctx, jobs, len(jobs), func(ctx context.Context, job any) error {
 		addr := job.(string)
 
 		rulerClient, err := r.clientsPool.GetClientFor(addr)
@@ -1500,7 +1531,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 
 	go func() {
 		util.StreamWriteYAMLV3Response(w, iter, logger)

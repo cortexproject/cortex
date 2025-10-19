@@ -224,7 +224,7 @@ func viewKey(w http.ResponseWriter, store map[string]valueDesc, key string, form
 	formatValue(w, store[key].value, format)
 }
 
-func formatValue(w http.ResponseWriter, val interface{}, format string) {
+func formatValue(w http.ResponseWriter, val any, format string) {
 
 	w.WriteHeader(200)
 	w.Header().Add("content-type", "text/plain")

@@ -5,6 +5,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/histogram"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/stats"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
@@ -99,25 +100,27 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 	sampleStreamsLen := len(data.Result.(promql.Matrix))
 	sampleStreams := make([]tripperware.SampleStream, sampleStreamsLen)
 
-	for i := 0; i < sampleStreamsLen; i++ {
+	for i := range sampleStreamsLen {
 		sampleStream := data.Result.(promql.Matrix)[i]
-		labelsLen := len(sampleStream.Metric)
-		var labels []cortexpb.LabelAdapter
+		labelsLen := sampleStream.Metric.Len()
+		var lbls []cortexpb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
-			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
-					Name:  sampleStream.Metric[j].Name,
-					Value: sampleStream.Metric[j].Value,
+			lbls = make([]cortexpb.LabelAdapter, labelsLen)
+			j := 0
+			sampleStream.Metric.Range(func(l labels.Label) {
+				lbls[j] = cortexpb.LabelAdapter{
+					Name:  l.Name,
+					Value: l.Value,
 				}
-			}
+				j++
+			})
 		}
 
 		samplesLen := len(sampleStream.Floats)
 		var samples []cortexpb.Sample
 		if samplesLen > 0 {
 			samples = make([]cortexpb.Sample, samplesLen)
-			for j := 0; j < samplesLen; j++ {
+			for j := range samplesLen {
 				samples[j] = cortexpb.Sample{
 					Value:       sampleStream.Floats[j].F,
 					TimestampMs: sampleStream.Floats[j].T,
@@ -129,25 +132,23 @@ func getMatrixSampleStreams(data *v1.QueryData) *[]tripperware.SampleStream {
 		var histograms []tripperware.SampleHistogramPair
 		if histogramsLen > 0 {
 			histograms = make([]tripperware.SampleHistogramPair, histogramsLen)
-			for j := 0; j < histogramsLen; j++ {
+			for j := range histogramsLen {
 				bucketsLen := len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets)
 				if sampleStream.Histograms[j].H.ZeroCount > 0 {
 					bucketsLen = len(sampleStream.Histograms[j].H.NegativeBuckets) + len(sampleStream.Histograms[j].H.PositiveBuckets) + 1
 				}
-				buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 				it := sampleStream.Histograms[j].H.AllBucketIterator()
-				getBuckets(buckets, it)
 				histograms[j] = tripperware.SampleHistogramPair{
 					TimestampMs: sampleStream.Histograms[j].T,
 					Histogram: tripperware.SampleHistogram{
 						Count:   sampleStream.Histograms[j].H.Count,
 						Sum:     sampleStream.Histograms[j].H.Sum,
-						Buckets: buckets,
+						Buckets: getBuckets(bucketsLen, it),
 					},
 				}
 			}
 		}
-		sampleStreams[i] = tripperware.SampleStream{Labels: labels, Samples: samples, Histograms: histograms}
+		sampleStreams[i] = tripperware.SampleStream{Labels: lbls, Samples: samples, Histograms: histograms}
 	}
 	return &sampleStreams
 }
@@ -156,20 +157,22 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 	vectorSamplesLen := len(data.Result.(promql.Vector))
 	vectorSamples := make([]tripperware.Sample, vectorSamplesLen)
 
-	for i := 0; i < vectorSamplesLen; i++ {
+	for i := range vectorSamplesLen {
 		sample := data.Result.(promql.Vector)[i]
-		labelsLen := len(sample.Metric)
-		var labels []cortexpb.LabelAdapter
+		labelsLen := sample.Metric.Len()
+		var lbls []cortexpb.LabelAdapter
 		if labelsLen > 0 {
-			labels = make([]cortexpb.LabelAdapter, labelsLen)
-			for j := 0; j < labelsLen; j++ {
-				labels[j] = cortexpb.LabelAdapter{
-					Name:  sample.Metric[j].Name,
-					Value: sample.Metric[j].Value,
+			lbls = make([]cortexpb.LabelAdapter, labelsLen)
+			j := 0
+			sample.Metric.Range(func(l labels.Label) {
+				lbls[j] = cortexpb.LabelAdapter{
+					Name:  l.Name,
+					Value: l.Value,
 				}
-			}
+				j++
+			})
 		}
-		vectorSamples[i].Labels = labels
+		vectorSamples[i].Labels = lbls
 
 		// Float samples only.
 		if sample.H == nil {
@@ -192,22 +195,21 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 		if sample.H.ZeroCount > 0 {
 			bucketsLen = len(sample.H.NegativeBuckets) + len(sample.H.PositiveBuckets) + 1
 		}
-		buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 		it := sample.H.AllBucketIterator()
-		getBuckets(buckets, it)
 		vectorSamples[i].Histogram = &tripperware.SampleHistogramPair{
 			TimestampMs: sample.T,
 			Histogram: tripperware.SampleHistogram{
 				Count:   sample.H.Count,
 				Sum:     sample.H.Sum,
-				Buckets: buckets,
+				Buckets: getBuckets(bucketsLen, it),
 			},
 		}
 	}
 	return &vectorSamples
 }
 
-func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketIterator[float64]) {
+func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []*tripperware.HistogramBucket {
+	buckets := make([]*tripperware.HistogramBucket, bucketsLen)
 	bucketIdx := 0
 	for it.Next() {
 		bucket := it.At()
@@ -226,7 +228,7 @@ func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketI
 				boundaries = 0 // Inclusive only on upper end AKA left open.
 			}
 		}
-		bucketsList[bucketIdx] = &tripperware.HistogramBucket{
+		buckets[bucketIdx] = &tripperware.HistogramBucket{
 			Boundaries: int32(boundaries),
 			Lower:      bucket.Lower,
 			Upper:      bucket.Upper,
@@ -234,12 +236,14 @@ func getBuckets(bucketsList []*tripperware.HistogramBucket, it histogram.BucketI
 		}
 		bucketIdx += 1
 	}
+	buckets = buckets[:bucketIdx]
+	return buckets
 }
 
 func getStats(builtin *stats.BuiltinStats) *tripperware.PrometheusResponseSamplesStats {
 	queryableSamplesStatsPerStepLen := len(builtin.Samples.TotalQueryableSamplesPerStep)
 	queryableSamplesStatsPerStep := make([]*tripperware.PrometheusResponseQueryableSamplesStatsPerStep, queryableSamplesStatsPerStepLen)
-	for i := 0; i < queryableSamplesStatsPerStepLen; i++ {
+	for i := range queryableSamplesStatsPerStepLen {
 		queryableSamplesStatsPerStep[i] = &tripperware.PrometheusResponseQueryableSamplesStatsPerStep{
 			Value:       builtin.Samples.TotalQueryableSamplesPerStep[i].V,
 			TimestampMs: builtin.Samples.TotalQueryableSamplesPerStep[i].T,

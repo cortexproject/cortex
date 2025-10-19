@@ -75,8 +75,8 @@ func (p *mockPropagator) Extract(ctx context.Context, carrier propagation.TextMa
 func TestCortexBridgeTracerWrapper_Inject(t *testing.T) {
 	tests := []struct {
 		name         string
-		format       interface{}
-		carrier      interface{}
+		format       any
+		carrier      any
 		wantedValues map[string]string
 	}{
 		{

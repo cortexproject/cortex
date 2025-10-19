@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -17,9 +18,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/util/annotations"
@@ -42,6 +44,7 @@ import (
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
@@ -424,6 +427,16 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", allUsers, nil)
+			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter("user-1/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockIter("user-2/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockIter("user-3/", []string{}, nil)
+			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-3", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-3", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
@@ -436,8 +449,39 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 			})
 
 			assert.NoError(t, err)
-			bucketClient.AssertNumberOfCalls(t, "Iter", 1)
+			bucketClient.AssertNumberOfCalls(t, "Iter", 2)
 			assert.Equal(t, storesCount.Load(), testData.expectedStores)
+		})
+	}
+}
+
+func TestBucketStores_scanUsers(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		scanner     *mockScanner
+		expectedRes []string
+	}{
+		"should return unique users only": {
+			scanner: &mockScanner{
+				res: []string{"user-1", "user-2", "user-1"},
+			},
+			expectedRes: []string{"user-1", "user-2"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			stores := &BucketStores{
+				userScanner: testData.scanner,
+			}
+
+			users, err := stores.scanUsers(context.Background())
+
+			assert.NoError(t, err)
+			assert.ElementsMatch(t, testData.expectedRes, users)
 		})
 	}
 }
@@ -559,6 +603,80 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 	assert.Equal(t, 1, len(series))
 }
 
+func TestBucketStores_SyncBlocksWithIgnoreBlocksBefore(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user-1"
+	const metricName = "test_metric"
+
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+
+	// Configure IgnoreBlocksBefore to filter out blocks older than 2 hours
+	cfg.BucketStore.IgnoreBlocksBefore = 2 * time.Hour
+
+	storageDir := t.TempDir()
+
+	// Create blocks with different timestamps
+	now := time.Now()
+
+	// Block 1: Very old block (should be ignored - time-excluded)
+	oldBlockTime := now.Add(-5 * time.Hour)
+	generateStorageBlock(t, storageDir, userID, metricName+"_old",
+		oldBlockTime.UnixMilli(), oldBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	// Block 2: Recent block (should be synced)
+	recentBlockTime := now.Add(-1 * time.Hour)
+	generateStorageBlock(t, storageDir, userID, metricName+"_recent",
+		recentBlockTime.UnixMilli(), recentBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	// Block 3: Current block (should be synced)
+	currentBlockTime := now.Add(-30 * time.Minute)
+	generateStorageBlock(t, storageDir, userID, metricName+"_current",
+		currentBlockTime.UnixMilli(), currentBlockTime.Add(time.Hour).UnixMilli(), 15)
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	reg := prometheus.NewPedanticRegistry()
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil),
+		objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Perform initial sync
+	require.NoError(t, stores.InitialSync(ctx))
+
+	// Verify that only recent and current blocks are loaded
+	// The old block should be filtered out by IgnoreBlocksBefore (time-excluded)
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_blocks_meta_synced Reflects current state of synced blocks (over all tenants).
+		# TYPE cortex_blocks_meta_synced gauge
+		cortex_blocks_meta_synced{state="corrupted-meta-json"} 0
+		cortex_blocks_meta_synced{state="duplicate"} 0
+		cortex_blocks_meta_synced{state="failed"} 0
+		cortex_blocks_meta_synced{state="label-excluded"} 0
+		cortex_blocks_meta_synced{state="loaded"} 2
+		cortex_blocks_meta_synced{state="marked-for-deletion"} 0
+		cortex_blocks_meta_synced{state="marked-for-no-compact"} 0
+		cortex_blocks_meta_synced{state="no-meta-json"} 0
+		cortex_blocks_meta_synced{state="parquet-migrated"} 0
+		cortex_blocks_meta_synced{state="time-excluded"} 1
+		cortex_blocks_meta_synced{state="too-fresh"} 0
+		# HELP cortex_blocks_meta_syncs_total Total blocks metadata synchronization attempts
+		# TYPE cortex_blocks_meta_syncs_total counter
+		cortex_blocks_meta_syncs_total 3
+		# HELP cortex_bucket_store_blocks_meta_sync_failures_total Total blocks metadata synchronization failures
+		# TYPE cortex_bucket_store_blocks_meta_sync_failures_total counter
+		cortex_bucket_store_blocks_meta_sync_failures_total 0
+		# HELP cortex_bucket_store_block_loads_total Total number of remote block loading attempts.
+		# TYPE cortex_bucket_store_block_loads_total counter
+		cortex_bucket_store_block_loads_total 2
+		# HELP cortex_bucket_store_blocks_loaded Number of currently loaded blocks.
+		# TYPE cortex_bucket_store_blocks_loaded gauge
+		cortex_bucket_store_blocks_loaded{user="user-1"} 2
+	`), "cortex_bucket_store_block_loads_total", "cortex_bucket_store_blocks_loaded", "cortex_blocks_meta_synced"))
+}
+
 func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
@@ -578,13 +696,13 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 	// then it will be snapshotted to the storage directory.
 	tmpDir := t.TempDir()
 
-	db, err := tsdb.Open(tmpDir, log.NewNopLogger(), nil, tsdb.DefaultOptions(), nil)
+	db, err := tsdb.Open(tmpDir, promslog.NewNopLogger(), nil, tsdb.DefaultOptions(), nil)
 	require.NoError(t, err)
 	defer func() {
 		require.NoError(t, db.Close())
 	}()
 
-	series := labels.Labels{labels.Label{Name: labels.MetricName, Value: metricName}}
+	series := labels.FromStrings(labels.MetricName, metricName)
 
 	app := db.Appender(context.Background())
 	for ts := minT; ts < maxT; ts += int64(step) {
@@ -879,7 +997,7 @@ func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 }
 
 func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return nil
 	}
 
@@ -890,7 +1008,7 @@ func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 }
 
 func (u *userShardingStrategy) OwnBlock(userID string, _ thanos_metadata.Meta) (bool, error) {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return true, nil
 	}
 
@@ -910,4 +1028,12 @@ func (f *failFirstGetBucket) Get(ctx context.Context, name string) (io.ReadClose
 	}
 
 	return f.Bucket.Get(ctx, name)
+}
+
+type mockScanner struct {
+	res []string
+}
+
+func (m *mockScanner) ScanUsers(_ context.Context) (active, deleting, deleted []string, err error) {
+	return m.res, nil, nil, nil
 }

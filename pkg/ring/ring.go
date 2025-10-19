@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"sync"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -201,7 +201,8 @@ type Ring struct {
 
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
-	ringZones []string
+	ringZones         []string
+	previousRingZones []string
 
 	// Cache of shuffle-sharded subrings per identifier. Invalidated when topology changes.
 	// If set to nil, no caching is done (used by tests, and subrings).
@@ -262,7 +263,7 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
 			ConstLabels: map[string]string{"name": name}},
-			[]string{"state"}),
+			[]string{"state", "zone"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
@@ -306,7 +307,7 @@ func (r *Ring) loop(ctx context.Context) error {
 	r.updateRingMetrics(Different)
 	r.mtx.Unlock()
 
-	r.KVClient.WatchKey(ctx, r.key, func(value interface{}) bool {
+	r.KVClient.WatchKey(ctx, r.key, func(value any) bool {
 		if value == nil {
 			level.Info(r.logger).Log("msg", "ring doesn't exist in KV store yet")
 			return true
@@ -326,19 +327,23 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	// Filter out all instances belonging to excluded zones.
 	if len(r.cfg.ExcludedZones) > 0 {
 		for instanceID, instance := range ringDesc.Ingesters {
-			if util.StringsContain(r.cfg.ExcludedZones, instance.Zone) {
+			if slices.Contains(r.cfg.ExcludedZones, instance.Zone) {
 				delete(ringDesc.Ingesters, instanceID)
 			}
 		}
 	}
 
 	rc := prevRing.RingCompare(ringDesc)
-	if rc == Equal || rc == EqualButStatesAndTimestamps {
+	if rc == Equal || rc == EqualButStatesAndTimestamps || rc == EqualButReadOnly {
 		// No need to update tokens or zones. Only states and timestamps
 		// have changed. (If Equal, nothing has changed, but that doesn't happen
 		// when watching the ring for updates).
 		r.mtx.Lock()
 		r.ringDesc = ringDesc
+		if rc == EqualButReadOnly && r.shuffledSubringCache != nil {
+			// Invalidate all cached subrings.
+			r.shuffledSubringCache = make(map[subringCacheKey]*Ring)
+		}
 		r.updateRingMetrics(rc)
 		r.mtx.Unlock()
 		return
@@ -358,6 +363,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.ringTokensByZone = ringTokensByZone
 	r.ringInstanceByToken = ringInstanceByToken
 	r.ringInstanceIdByAddr = ringInstanceByAddr
+	r.previousRingZones = r.ringZones
 	r.ringZones = ringZones
 	r.lastTopologyChange = now
 	if r.shuffledSubringCache != nil {
@@ -405,7 +411,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		}
 
 		// We want n *distinct* instances.
-		if util.StringsContain(distinctHosts, info.InstanceID) {
+		if slices.Contains(distinctHosts, info.InstanceID) {
 			continue
 		}
 
@@ -583,10 +589,7 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	} else {
 		// Calculate the number of required instances;
 		// ensure we always require at least RF-1 when RF=3.
-		numRequired := len(r.ringDesc.Ingesters)
-		if numRequired < r.cfg.ReplicationFactor {
-			numRequired = r.cfg.ReplicationFactor
-		}
+		numRequired := max(len(r.ringDesc.Ingesters), r.cfg.ReplicationFactor)
 		// We can tolerate this many failures
 		numRequired -= r.cfg.ReplicationFactor / 2
 
@@ -661,12 +664,19 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		return
 	}
 
-	numByState := map[string]int{}
+	numByStateByZone := map[string]map[string]int{}
 	oldestTimestampByState := map[string]int64{}
 
 	// Initialized to zero so we emit zero-metrics (instead of not emitting anything)
 	for _, s := range []string{unhealthy, ACTIVE.String(), LEAVING.String(), PENDING.String(), JOINING.String(), READONLY.String()} {
-		numByState[s] = 0
+		numByStateByZone[s] = map[string]int{}
+		// make sure removed zones got zero value
+		for _, zone := range r.previousRingZones {
+			numByStateByZone[s][zone] = 0
+		}
+		for _, zone := range r.ringZones {
+			numByStateByZone[s][zone] = 0
+		}
 		oldestTimestampByState[s] = 0
 	}
 
@@ -675,14 +685,19 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		if !r.IsHealthy(&instance, Reporting, r.KVClient.LastUpdateTime(r.key)) {
 			s = unhealthy
 		}
-		numByState[s]++
+		if _, ok := numByStateByZone[s]; !ok {
+			numByStateByZone[s] = map[string]int{}
+		}
+		numByStateByZone[s][instance.Zone]++
 		if oldestTimestampByState[s] == 0 || instance.Timestamp < oldestTimestampByState[s] {
 			oldestTimestampByState[s] = instance.Timestamp
 		}
 	}
 
-	for state, count := range numByState {
-		r.numMembersGaugeVec.WithLabelValues(state).Set(float64(count))
+	for state, zones := range numByStateByZone {
+		for zone, count := range zones {
+			r.numMembersGaugeVec.WithLabelValues(state, zone).Set(float64(count))
+		}
 	}
 	for state, timestamp := range oldestTimestampByState {
 		r.oldestTimestampGaugeVec.WithLabelValues(state).Set(float64(timestamp))
@@ -852,7 +867,9 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 				// If the lookback is enabled and this instance has been registered within the lookback period
 				// then we should include it in the subring but continuing selecting instances.
-				if lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil {
+				// If an instance is in READONLY we should always extend. The write path will filter it out when GetRing.
+				// The read path should extend to get new ingester used on write
+				if (lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil) || instance.State == READONLY {
 					continue
 				}
 
@@ -1023,3 +1040,14 @@ func (op Operation) ShouldExtendReplicaSetOnState(s InstanceState) bool {
 
 // All states are healthy, no states extend replica set.
 var allStatesRingOperation = Operation(0x0000ffff)
+
+func AutoForgetFromRing(ringDesc *Desc, forgetPeriod time.Duration, logger log.Logger) {
+	for id, instance := range ringDesc.Ingesters {
+		lastHeartbeat := time.Unix(instance.GetTimestamp(), 0)
+
+		if time.Since(lastHeartbeat) > forgetPeriod {
+			level.Warn(logger).Log("msg", "auto-forgetting instance from the ring because it is unhealthy for a long time", "instance", id, "last_heartbeat", lastHeartbeat.String(), "forget_period", forgetPeriod)
+			ringDesc.RemoveIngester(id)
+		}
+	}
+}

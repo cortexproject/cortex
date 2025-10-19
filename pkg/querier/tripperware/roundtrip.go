@@ -27,14 +27,14 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 const (
@@ -46,6 +46,8 @@ const (
 	opTypeLabelValues    = "label_values"
 	opTypeMetadata       = "metadata"
 	opTypeQueryExemplars = "query_exemplars"
+	opTypeFormatQuery    = "format_query"
+	opTypeParseQuery     = "parse_query"
 )
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -116,11 +118,7 @@ func NewQueryTripperware(
 	defaultSubQueryInterval time.Duration,
 	maxSubQuerySteps int64,
 	lookbackDelta time.Duration,
-	enablePromQLExperimentalFunctions bool,
 ) Tripperware {
-
-	// set EnableExperimentalFunctions
-	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
 
 	// Per tenant query metrics.
 	queriesPerTenant := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
@@ -156,6 +154,8 @@ func NewQueryTripperware(
 				isLabelValues := strings.HasSuffix(r.URL.Path, "/values")
 				isMetadata := strings.HasSuffix(r.URL.Path, "/metadata")
 				isQueryExemplars := strings.HasSuffix(r.URL.Path, "/query_exemplars")
+				isFormatQuery := strings.HasSuffix(r.URL.Path, "/format_query")
+				isParseQuery := strings.HasSuffix(r.URL.Path, "/parse_query")
 
 				op := opTypeQuery
 				switch {
@@ -173,17 +173,21 @@ func NewQueryTripperware(
 					op = opTypeMetadata
 				case isQueryExemplars:
 					op = opTypeQueryExemplars
+				case isFormatQuery:
+					op = opTypeFormatQuery
+				case isParseQuery:
+					op = opTypeParseQuery
 				}
 
 				tenantIDs, err := tenant.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
-					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 				now := time.Now()
 				userStr := tenant.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
-				source := GetSource(r.Header.Get("User-Agent"))
+				source := GetSource(r)
 				queriesPerTenant.WithLabelValues(op, source, userStr).Inc()
 
 				if maxSubQuerySteps > 0 && (isQuery || isQueryRange) {
@@ -192,6 +196,16 @@ func NewQueryTripperware(
 					if err := SubQueryStepSizeCheck(query, defaultSubQueryInterval, maxSubQuerySteps); err != nil {
 						return nil, err
 					}
+				}
+
+				var maxResponseSize int64 = 0
+				if limits != nil {
+					maxResponseSize = limits.MaxQueryResponseSize(userStr)
+				}
+				if maxResponseSize > 0 && (isQuery || isQueryRange) {
+					responseSizeLimiter := limiter.NewResponseSizeLimiter(maxResponseSize)
+					context := limiter.AddResponseSizeLimiterToContext(r.Context(), responseSizeLimiter)
+					r = r.WithContext(context)
 				}
 
 				if err := rejectQueryOrSetPriority(r, now, lookbackDelta, limits, userStr, rejectedQueriesPerTenant); err != nil {
@@ -249,12 +263,12 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 		return nil, err
 	}
 
-	if headerMap := util_log.HeaderMapFromContext(ctx); headerMap != nil {
-		util_log.InjectHeadersIntoHTTPRequest(headerMap, request)
+	if requestMetadataMap := requestmeta.MapFromContext(ctx); requestMetadataMap != nil {
+		requestmeta.InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap, request)
 	}
 
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 	}
 
 	response, err := q.next.RoundTrip(request)
@@ -269,11 +283,13 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	return q.codec.DecodeResponse(ctx, response, r)
 }
 
-func GetSource(userAgent string) string {
-	if strings.Contains(userAgent, RulerUserAgent) {
+func GetSource(r *http.Request) string {
+	// check it for backwards compatibility
+	userAgent := r.Header.Get("User-Agent")
+	if strings.Contains(userAgent, RulerUserAgent) || requestmeta.RequestFromRuler(r.Context()) {
 		// caller is ruler
-		return SourceRuler
+		return requestmeta.SourceRuler
 	}
 
-	return SourceAPI
+	return requestmeta.SourceAPI
 }

@@ -4,11 +4,11 @@
 package logicalplan
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/util/annotations"
-
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // PassthroughOptimizer optimizes queries which can be simply passed
@@ -52,6 +52,7 @@ func (m PassthroughOptimizer) Optimize(plan Node, opts *query.Options) (Node, an
 			Engine:          engines[0],
 			Query:           plan.Clone(),
 			QueryRangeStart: opts.Start,
+			QueryRangeEnd:   opts.End,
 		}, nil
 	}
 
@@ -78,6 +79,7 @@ func (m PassthroughOptimizer) Optimize(plan Node, opts *query.Options) (Node, an
 			Engine:          matchingLabelsEngines[0],
 			Query:           plan.Clone(),
 			QueryRangeStart: opts.Start,
+			QueryRangeEnd:   opts.End,
 		}, nil
 	}
 

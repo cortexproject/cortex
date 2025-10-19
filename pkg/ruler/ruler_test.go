@@ -6,13 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,7 @@ import (
 	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -86,7 +88,7 @@ func defaultRulerConfig(t testing.TB) Config {
 
 type ruleLimits struct {
 	mtx                  sync.RWMutex
-	tenantShard          int
+	tenantShard          float64
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
 	disabledRuleGroups   validation.DisabledRuleGroups
@@ -101,7 +103,7 @@ func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
 	r.mtx.Unlock()
 }
 
-func (r *ruleLimits) RulerTenantShardSize(_ string) int {
+func (r *ruleLimits) RulerTenantShardSize(_ string) float64 {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.tenantShard
@@ -222,8 +224,8 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 		// disable active query tracking for test
 		querierTestConfig.Cfg.ActiveQueryTrackerDir = ""
 
-		overrides, _ := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger)
+		overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+		q, _, _ := querier.New(querierTestConfig.Cfg, overrides, querierTestConfig.Distributor, querierTestConfig.Stores, reg, logger, nil)
 		return func(mint, maxt int64) (storage.Querier, error) {
 			return q.Querier(mint, maxt)
 		}
@@ -235,7 +237,7 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 }
 
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
-	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, log.NewNopLogger())
+	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, promslog.NewNopLogger())
 
 	timeout := time.Minute * 2
 
@@ -339,6 +341,26 @@ func buildRuler(t *testing.T, rulerConfig Config, querierTestConfig *querier.Tes
 	return ruler, manager
 }
 
+func buildRulerWithIterFunc(t *testing.T, rulerConfig Config, querierTestConfig *querier.TestConfig, store rulestore.RuleStore, rulerAddrMap map[string]*Ruler, ruleGroupIterFunc promRules.GroupEvalIterationFunc) (*Ruler, *DefaultMultiTenantManager) {
+	engine, queryable, pusher, logger, overrides, reg := testSetup(t, querierTestConfig)
+	metrics := NewRuleEvalMetrics(rulerConfig, reg)
+	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, metrics, reg)
+	manager, err := NewDefaultMultiTenantManagerWithIterationFunc(ruleGroupIterFunc, rulerConfig, &ruleLimits{}, managerFactory, metrics, reg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ruler, err := newRuler(
+		rulerConfig,
+		manager,
+		reg,
+		logger,
+		store,
+		overrides,
+		newMockClientsPool(rulerConfig, logger, reg, rulerAddrMap),
+	)
+	require.NoError(t, err)
+	return ruler, manager
+}
+
 func newTestRuler(t *testing.T, rulerConfig Config, store rulestore.RuleStore, querierTestConfig *querier.TestConfig) *Ruler {
 	ruler, _ := buildRuler(t, rulerConfig, querierTestConfig, store, nil)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ruler))
@@ -393,7 +415,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	n.Send(&notifier.Alert{
-		Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+		Labels: labels.FromStrings("alertname", "testalert"),
 	})
 
 	wg.Wait()
@@ -429,7 +451,7 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 	cfg := defaultRulerConfig(t)
 	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
-	cfg.ExternalLabels = []labels.Label{{Name: "region", Value: "us-east-1"}}
+	cfg.ExternalLabels = labels.FromStrings("region", "us-east-1")
 	limits := &ruleLimits{}
 	engine, queryable, pusher, logger, _, reg := testSetup(t, nil)
 	metrics := NewRuleEvalMetrics(cfg, nil)
@@ -460,20 +482,19 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 		},
 		{
 			name:                   "local labels without overriding",
-			userExternalLabels:     labels.FromStrings("mylabel", "local"),
+			userExternalLabels:     []labels.Label{{Name: "mylabel", Value: "local"}},
 			expectedExternalLabels: []labels.Label{{Name: "region", Value: "us-east-1"}, {Name: "mylabel", Value: "local"}},
 		},
 		{
 			name:                   "local labels that override globals",
-			userExternalLabels:     labels.FromStrings("region", "cloud", "mylabel", "local"),
+			userExternalLabels:     []labels.Label{{Name: "region", Value: "cloud"}, {Name: "mylabel", Value: "local"}},
 			expectedExternalLabels: []labels.Label{{Name: "region", Value: "cloud"}, {Name: "mylabel", Value: "local"}},
 		},
 	}
 	for _, test := range tests {
-		test := test
 
 		t.Run(test.name, func(t *testing.T) {
-			limits.setRulerExternalLabels(test.userExternalLabels)
+			limits.setRulerExternalLabels(labels.New(test.userExternalLabels...))
 			manager.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{
 				userID: {&rulespb.RuleGroupDesc{Name: "group", Namespace: "ns", Interval: time.Minute, User: userID}},
 			})
@@ -485,7 +506,7 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 			}, 10*time.Second, 10*time.Millisecond)
 
 			n.notifier.Send(&notifier.Alert{
-				Labels: labels.Labels{labels.Label{Name: "alertname", Value: "testalert"}},
+				Labels: labels.FromStrings("alertname", "testalert"),
 			})
 			select {
 			case <-time.After(5 * time.Second):
@@ -629,7 +650,7 @@ func TestGetRules(t *testing.T) {
 	type testCase struct {
 		sharding                   bool
 		shardingStrategy           string
-		shuffleShardSize           int
+		shuffleShardSize           float64
 		rulesRequest               RulesRequest
 		expectedCount              map[string]int
 		expectedClientCallCount    int
@@ -1298,7 +1319,7 @@ func TestGetRules(t *testing.T) {
 			}
 
 			if tc.sharding {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -1321,12 +1342,13 @@ func TestGetRules(t *testing.T) {
 
 			// Sync Rules
 			forEachRuler(func(_ string, r *Ruler) {
-				r.syncRules(context.Background(), rulerSyncReasonInitial)
+				err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+				require.NoError(t, err)
 			})
 
 			if tc.sharding {
 				// update the State of the rulers in the ring based on tc.rulerStateMap
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -1359,11 +1381,7 @@ func TestGetRules(t *testing.T) {
 					if tc.sharding {
 						mockPoolClient := r.clientsPool.(*mockRulerClientsPool)
 
-						if tc.shardingStrategy == util.ShardingStrategyShuffle {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						} else {
-							require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
-						}
+						require.Equal(t, int32(tc.expectedClientCallCount), mockPoolClient.numberOfCalls.Load())
 						mockPoolClient.numberOfCalls.Store(0)
 					}
 				})
@@ -1533,7 +1551,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 	}
 
-	err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -1555,11 +1573,12 @@ func TestGetRulesFromBackup(t *testing.T) {
 
 	// Sync Rules
 	forEachRuler(func(_ string, r *Ruler) {
-		r.syncRules(context.Background(), rulerSyncReasonInitial)
+		err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+		require.NoError(t, err)
 	})
 
 	// update the State of the rulers in the ring based on tc.rulerStateMap
-	err = kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err = kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -1749,7 +1768,7 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			}
 		}
 
-		err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 			d, _ := in.(*ring.Desc)
 			if d == nil {
 				d = ring.NewDesc()
@@ -1771,11 +1790,12 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 
 		// Sync Rules
 		forEachRuler(func(_ string, r *Ruler) {
-			r.syncRules(context.Background(), rulerSyncReasonInitial)
+			err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+			require.NoError(t, err)
 		})
 
 		// update the State of the rulers in the ring based on tc.rulerStateMap
-		err = kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		err = kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 			d, _ := in.(*ring.Desc)
 			if d == nil {
 				d = ring.NewDesc()
@@ -1789,13 +1809,15 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 		// Wait a bit to make sure ruler's ring is updated.
 		time.Sleep(100 * time.Millisecond)
 
-		rulerAddrMap["ruler1"].Service.StopAsync()
-		if err := rulerAddrMap["ruler1"].Service.AwaitTerminated(context.Background()); err != nil {
+		rulerAddrMap["ruler1"].StopAsync()
+		if err := rulerAddrMap["ruler1"].AwaitTerminated(context.Background()); err != nil {
 			t.Errorf("ruler %s was not terminated with error %s", "ruler1", err.Error())
 		}
 
-		rulerAddrMap["ruler2"].syncRules(context.Background(), rulerSyncReasonPeriodic)
-		rulerAddrMap["ruler3"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		err = rulerAddrMap["ruler2"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		require.NoError(t, err)
+		err = rulerAddrMap["ruler3"].syncRules(context.Background(), rulerSyncReasonPeriodic)
+		require.NoError(t, err)
 
 		requireGroupStateEqual := func(a *GroupStateDesc, b *GroupStateDesc) {
 			require.Equal(t, a.Group.Interval, b.Group.Interval)
@@ -1890,7 +1912,7 @@ func TestSharding(t *testing.T) {
 		sharding            bool
 		shardingStrategy    string
 		replicationFactor   int
-		shuffleShardSize    int
+		shuffleShardSize    float64
 		setupRing           func(*ring.Desc)
 		enabledUsers        []string
 		disabledUsers       []string
@@ -2354,7 +2376,7 @@ func TestSharding(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -2422,9 +2444,7 @@ func userToken(user string, skip int) uint32 {
 }
 
 func sortTokens(tokens []uint32) []uint32 {
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
+	slices.Sort(tokens)
 	return tokens
 }
 
@@ -2483,7 +2503,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r1))
 	t.Cleanup(r1.StopAsync)
 
-	err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -2494,7 +2514,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 
 	require.NoError(t, err)
 
-	test.Poll(t, time.Second*5, true, func() interface{} {
+	test.Poll(t, time.Second*5, true, func() any {
 		return len(r1.manager.GetRules(user2)) > 0 &&
 			len(r1.manager.GetRules(user3)) > 0
 	})
@@ -2663,8 +2683,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ValidUntil:  time.Unix(3, 0),
@@ -2672,8 +2692,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
@@ -2683,8 +2703,8 @@ func TestSendAlerts(t *testing.T) {
 		{
 			in: []*promRules.Alert{
 				{
-					Labels:      []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations: []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
 					ActiveAt:    time.Unix(1, 0),
 					FiredAt:     time.Unix(2, 0),
 					ResolvedAt:  time.Unix(4, 0),
@@ -2692,8 +2712,8 @@ func TestSendAlerts(t *testing.T) {
 			},
 			exp: []*notifier.Alert{
 				{
-					Labels:       []labels.Label{{Name: "l1", Value: "v1"}},
-					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
@@ -2706,7 +2726,6 @@ func TestSendAlerts(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
@@ -2779,9 +2798,12 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 		querier.UseAlwaysQueryable(newEmptyQueryable()),
 	}
 
-	// create a ruler but don't start it. instead, we'll evaluate the rule groups manually.
-	r, _ := buildRuler(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil)
-	r.syncRules(context.Background(), rulerSyncReasonInitial)
+	// Define a no-op GroupEvalIterationFunc to avoid races between the scheduled Eval() execution and the evaluations invoked by this test.
+	evalFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {}
+
+	r, _ := buildRulerWithIterFunc(t, rulerCfg, &querier.TestConfig{Cfg: querierConfig, Distributor: d, Stores: queryables}, store, nil, evalFunc)
+	err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+	require.NoError(t, err)
 
 	// assert initial state of rule group
 	ruleGroup := r.manager.GetRules("user1")[0]
@@ -3028,7 +3050,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -3062,9 +3084,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 					if loaded == nil {
 						loaded = map[string]rulespb.RuleGroupList{}
 					}
-					for k, v := range loaded {
-						actualRules[k] = v
-					}
+					maps.Copy(actualRules, loaded)
 				}
 			}
 
@@ -3106,4 +3126,152 @@ func TestRuler_QueryOffset(t *testing.T) {
 	// test group query offset is set
 	gotOffset = rg.GetGroup().QueryOffset
 	require.Equal(t, time.Minute*2, *gotOffset)
+}
+
+func TestGetShardSizeForUser(t *testing.T) {
+	tests := []struct {
+		name               string
+		userID             string
+		replicationFactor  int
+		rulerInstanceCount int
+		tenantShardSize    float64
+		expectedShardSize  int
+	}{
+		{
+			name:               "User with fixed shard size with 10 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			replicationFactor:  1,
+			tenantShardSize:    2,
+			expectedShardSize:  2,
+		},
+		{
+			name:               "User with fixed shard size with 50 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 50,
+			replicationFactor:  1,
+			tenantShardSize:    30,
+			expectedShardSize:  30,
+		},
+		{
+			name:               "User with percentage shard size with 10 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			replicationFactor:  1,
+			tenantShardSize:    0.6,
+			expectedShardSize:  6,
+		},
+		{
+			name:               "User with percentage shard size with 80 ruler instances",
+			userID:             "user1",
+			rulerInstanceCount: 80,
+			replicationFactor:  1,
+			tenantShardSize:    0.25,
+			expectedShardSize:  20,
+		},
+		{
+			name:               "Ensure shard size is at least replication factor",
+			userID:             "user1",
+			rulerInstanceCount: 10,
+			replicationFactor:  3,
+			tenantShardSize:    0.1,
+			expectedShardSize:  3,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+
+			rulerStateMap := make(map[string]ring.InstanceState)
+			rulerAZEvenSpread := make(map[string]string)
+			rulerIDs := make([]string, tc.rulerInstanceCount)
+
+			for i := 0; i < tc.rulerInstanceCount; i++ {
+				rulerID := fmt.Sprintf("ruler%d", i+1)
+				rulerIDs[i] = rulerID
+				rulerStateMap[rulerID] = ring.ACTIVE
+				rulerAZEvenSpread[rulerID] = string(rune('a' + i%3))
+			}
+
+			kvStore, cleanUp := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, cleanUp.Close()) })
+			allRulesByUser := map[string]rulespb.RuleGroupList{}
+			allTokensByRuler := map[string][]uint32{}
+			rulerAddrMap := map[string]*Ruler{}
+
+			createRuler := func(id string) *Ruler {
+				store := newMockRuleStore(allRulesByUser, nil)
+				cfg := defaultRulerConfig(t)
+
+				cfg.ShardingStrategy = util.ShardingStrategyShuffle
+				cfg.EnableSharding = true
+				cfg.EnableHAEvaluation = false
+				cfg.EvaluationInterval = 5 * time.Minute
+
+				cfg.Ring = RingConfig{
+					InstanceID:   id,
+					InstanceAddr: id,
+					KVStore: kv.Config{
+						Mock: kvStore,
+					},
+					ReplicationFactor:    tc.replicationFactor,
+					ZoneAwarenessEnabled: true,
+					InstanceZone:         rulerAZEvenSpread[id],
+				}
+
+				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				r.limits = &ruleLimits{tenantShard: tc.tenantShardSize}
+				rulerAddrMap[id] = r
+				if r.ring != nil {
+					require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.ring))
+					t.Cleanup(r.ring.StopAsync)
+				}
+				return r
+			}
+
+			var testRuler *Ruler
+			// Create rulers and ensure they join the ring
+			for _, rID := range rulerIDs {
+				r := createRuler(rID)
+				testRuler = r
+				require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.lifecycler))
+			}
+
+			err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
+				d, _ := in.(*ring.Desc)
+				if d == nil {
+					d = ring.NewDesc()
+				}
+				for rID, tokens := range allTokensByRuler {
+					d.AddIngester(rID, rulerAddrMap[rID].lifecycler.GetInstanceAddr(), rulerAddrMap[rID].lifecycler.GetInstanceZone(), tokens, ring.ACTIVE, time.Now())
+				}
+				return d, true, nil
+			})
+			require.NoError(t, err)
+			// Wait a bit to make sure ruler's ring is updated.
+			time.Sleep(100 * time.Millisecond)
+
+			// Check the ring state
+			ringDesc, err := kvStore.Get(context.Background(), ringKey)
+			require.NoError(t, err)
+			require.NotNil(t, ringDesc)
+			desc := ringDesc.(*ring.Desc)
+			require.Equal(t, tc.rulerInstanceCount, len(desc.Ingesters))
+
+			forEachRuler := func(f func(rID string, r *Ruler)) {
+				for rID, r := range rulerAddrMap {
+					f(rID, r)
+				}
+			}
+
+			// Sync Rules
+			forEachRuler(func(_ string, r *Ruler) {
+				err := r.syncRules(context.Background(), rulerSyncReasonInitial)
+				require.NoError(t, err)
+			})
+
+			result := testRuler.getShardSizeForUser(tc.userID)
+			assert.Equal(t, tc.expectedShardSize, result)
+		})
+	}
 }

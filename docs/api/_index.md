@@ -37,6 +37,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Instant query](#instant-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query` |
 | [Range query](#range-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_range` |
 | [Exemplar query](#exemplar-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/query_exemplars` |
+| [Format query](#format-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/format_query` |
+| [Parse query](#parse-query) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/parse_query` |
 | [Get series by label matchers](#get-series-by-label-matchers) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/series` |
 | [Get label names](#get-label-names) | Querier, Query-frontend || `GET,POST <prometheus-http-prefix>/api/v1/labels` |
 | [Get label values](#get-label-values) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/label/{name}/values` |
@@ -331,6 +333,7 @@ GET,POST <legacy-http-prefix>/api/v1/query
 ```
 
 Prometheus-compatible instant query endpoint.
+PromQL engine can be selected using `X-PromQL-EngineType` header with values `prometheus` (default) and `thanos`.
 
 _For more information, please check out the Prometheus [instant query](https://prometheus.io/docs/prometheus/latest/querying/api/#instant-queries) documentation._
 
@@ -346,6 +349,7 @@ GET,POST <legacy-http-prefix>/api/v1/query_range
 ```
 
 Prometheus-compatible range query endpoint. When the request is sent through the query-frontend, the query will be accelerated by query-frontend (results caching and execution parallelisation).
+PromQL engine can be selected using `X-PromQL-EngineType` header with values `prometheus` (default) and `thanos`.
 
 _For more information, please check out the Prometheus [range query](https://prometheus.io/docs/prometheus/latest/querying/api/#range-queries) documentation._
 
@@ -363,6 +367,36 @@ GET,POST <legacy-http-prefix>/api/v1/query_exemplars
 Prometheus-compatible exemplar query endpoint.
 
 _For more information, please check out the Prometheus [exemplar query](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-exemplars) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Format query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/format_query
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/format_query
+```
+
+Prometheus-compatible format query endpoint. The endpoint formats a PromQL expression in a prettified way.
+
+_For more information, please check out the Prometheus [fomatting query expressions](https://prometheus.io/docs/prometheus/latest/querying/api/#formatting-query-expressions) documentation._
+
+_Requires [authentication](#authentication)._
+
+### Parse query
+
+```
+GET,POST <prometheus-http-prefix>/api/v1/parse_query
+
+# Legacy
+GET,POST <legacy-http-prefix>/api/v1/parse_query
+```
+
+Prometheus-compatible parse query endpoint. This endpoint is **experimental**, it parses a PromQL expression and returns it as a JSON-formatted AST (abstract syntax tree) representation.
+
+_For more information, please check out the Prometheus [Parsing query expressions](https://prometheus.io/docs/prometheus/latest/querying/api/#parsing-a-promql-expressions-into-a-abstract-syntax-tree-ast) documentation._
 
 _Requires [authentication](#authentication)._
 
@@ -390,7 +424,7 @@ GET,POST <prometheus-http-prefix>/api/v1/labels
 GET,POST <legacy-http-prefix>/api/v1/labels
 ```
 
-Get label names of ingested series. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label names from either ingester, store gateway or both.
+Get label names of ingested series. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label names from either ingester, store gateway or both. The special case is that if `start` param is not specified, Cortex currently fetches labels from data stored in the ingesters.
 
 _For more information, please check out the Prometheus [get label names](https://prometheus.io/docs/prometheus/latest/querying/api/#getting-label-names) documentation._
 
@@ -405,7 +439,7 @@ GET <prometheus-http-prefix>/api/v1/label/{name}/values
 GET <legacy-http-prefix>/api/v1/label/{name}/values
 ```
 
-Get label values for a given label name. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label values from either ingester, store gateway or both.
+Get label values for a given label name. Starting from release v1.18.0, Cortex by default honors the `start` and `end` request parameters and fetches label values from either ingester, store gateway or both. The special case is that if `start` param is not specified, Cortex currently fetches label values from data stored in the ingesters.
 
 _For more information, please check out the Prometheus [get label values](https://prometheus.io/docs/prometheus/latest/querying/api/#querying-label-values) documentation._
 

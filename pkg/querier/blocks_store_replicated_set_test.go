@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -555,7 +555,6 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
@@ -566,7 +565,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-			require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+			require.NoError(t, ringStore.CAS(ctx, "test", func(in any) (any, bool, error) {
 				d := ring.NewDesc()
 				testData.setup(d)
 				return d, true, nil
@@ -591,7 +590,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
 			// Wait until the ring client has initialised the state.
-			test.Poll(t, time.Second, true, func() interface{} {
+			test.Poll(t, time.Second, true, func() any {
 				all, err := r.GetAllHealthy(ring.Read)
 				return err == nil && len(all.Instances) > 0
 			})
@@ -629,7 +628,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, "test", func(in any) (any, bool, error) {
 		d := ring.NewDesc()
 		for n := 1; n <= numInstances; n++ {
 			d.AddIngester(fmt.Sprintf("instance-%d", n), fmt.Sprintf("127.0.0.%d", n), "", []uint32{uint32(n)}, ring.ACTIVE, registeredAt)
@@ -653,7 +652,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
 	// Wait until the ring client has initialised the state.
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		all, err := r.GetAllHealthy(ring.Read)
 		return err == nil && len(all.Instances) > 0
 	})
@@ -662,7 +661,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ShouldSupportRandomLoadBalancin
 	// requests across store-gateways is balanced.
 	distribution := map[string]int{}
 
-	for n := 0; n < numRuns; n++ {
+	for range numRuns {
 		clients, err := s.GetClientsFor(userID, []ulid.ULID{block1}, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, clients, 1)
@@ -697,7 +696,7 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ZoneAwareness(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
-	require.NoError(t, ringStore.CAS(ctx, "test", func(in interface{}) (interface{}, bool, error) {
+	require.NoError(t, ringStore.CAS(ctx, "test", func(in any) (any, bool, error) {
 		d := ring.NewDesc()
 		for n := 1; n <= numInstances; n++ {
 			zone := strconv.Itoa((n-1)%3 + 1)
@@ -722,14 +721,14 @@ func TestBlocksStoreReplicationSet_GetClientsFor_ZoneAwareness(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, s) //nolint:errcheck
 
 	// Wait until the ring client has initialised the state.
-	test.Poll(t, time.Second, true, func() interface{} {
+	test.Poll(t, time.Second, true, func() any {
 		all, err := r.GetAllHealthy(ring.Read)
 		return err == nil && len(all.Instances) > 0
 	})
 
 	// Target hit shouldn't exist in the blocksMap.
 	targets := [3]int{3, 2, 1}
-	for i := 0; i < numRuns; i++ {
+	for i := range numRuns {
 		blocksMap := [3]map[string]int{
 			{"1": 1, "2": 1},
 			{"1": 1, "3": 1},

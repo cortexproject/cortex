@@ -195,14 +195,18 @@ compactor:
 
   sharding_ring:
     kvstore:
-      # Backend storage to use for the ring. Supported values are: consul, etcd,
-      # inmemory, memberlist, multi.
+      # Backend storage to use for the ring. Supported values are: consul,
+      # dynamodb, etcd, inmemory, memberlist, multi.
       # CLI flag: -compactor.ring.store
       [store: <string> | default = "consul"]
 
       # The prefix for the keys in the store. Should end with a /.
       # CLI flag: -compactor.ring.prefix
       [prefix: <string> | default = "collectors/"]
+
+      # The consul_config configures the consul client.
+      # The CLI flags prefix for this block config is: compactor.ring
+      [consul: <consul_config>]
 
       dynamodb:
         # Region to access dynamodb.
@@ -225,9 +229,9 @@ compactor:
         # CLI flag: -compactor.ring.dynamodb.max-cas-retries
         [max_cas_retries: <int> | default = 10]
 
-      # The consul_config configures the consul client.
-      # The CLI flags prefix for this block config is: compactor.ring
-      [consul: <consul_config>]
+        # Timeout of dynamoDbClient requests. Default is 2m.
+        # CLI flag: -compactor.ring.dynamodb.timeout
+        [timeout: <duration> | default = 2m]
 
       # The etcd_config configures the etcd client.
       # The CLI flags prefix for this block config is: compactor.ring
@@ -258,6 +262,17 @@ compactor:
     # within the ring. 0 = never (timeout disabled).
     # CLI flag: -compactor.ring.heartbeat-timeout
     [heartbeat_timeout: <duration> | default = 1m]
+
+    # Time since last heartbeat before compactor will be removed from ring. 0 to
+    # disable
+    # CLI flag: -compactor.auto-forget-delay
+    [auto_forget_delay: <duration> | default = 2m]
+
+    # Set to true to enable ring detailed metrics. These metrics provide
+    # detailed information, such as token count and ownership per tenant.
+    # Disabling them can significantly decrease the number of metrics emitted.
+    # CLI flag: -compactor.ring.detailed-metrics-enabled
+    [detailed_metrics_enabled: <boolean> | default = true]
 
     # Minimum time to wait for ring stability at startup. 0 to disable.
     # CLI flag: -compactor.ring.wait-stability-min-duration
@@ -324,4 +339,8 @@ compactor:
   # service, which serves as the source of truth for block status
   # CLI flag: -compactor.caching-bucket-enabled
   [caching_bucket_enabled: <boolean> | default = false]
+
+  # When enabled, caching bucket will be used for cleaner
+  # CLI flag: -compactor.cleaner-caching-bucket-enabled
+  [cleaner_caching_bucket_enabled: <boolean> | default = false]
 ```

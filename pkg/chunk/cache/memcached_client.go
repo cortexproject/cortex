@@ -141,7 +141,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 		}),
 	}
 	if cfg.CBFailures > 0 {
-		newClient.Client.DialContext = newClient.dialViaCircuitBreaker
+		newClient.DialContext = newClient.dialViaCircuitBreaker
 	}
 
 	if len(cfg.Addresses) > 0 {
@@ -180,7 +180,7 @@ func (c *memcachedClient) dialViaCircuitBreaker(_ context.Context, network, addr
 	}
 	c.Unlock()
 
-	conn, err := cb.Execute(func() (interface{}, error) {
+	conn, err := cb.Execute(func() (any, error) {
 		return net.DialTimeout(network, address, c.cbTimeout)
 	})
 	if err != nil {

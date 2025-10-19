@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -64,7 +64,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 		return 0, 0, nil
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		go func() {
 			defer wg.Done()
 			cache.getPromiseForKey("key1", fetchFunc)
@@ -126,7 +126,7 @@ func TestFifoCacheExpire(t *testing.T) {
 			timeNow := time.Now
 			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
 
-			for i := 0; i < numberOfKeys; i++ {
+			for i := range numberOfKeys {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 				p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
 					return 1, 8, nil
@@ -143,7 +143,7 @@ func TestFifoCacheExpire(t *testing.T) {
 
 			totalCacheSize := 0
 
-			for i := 0; i < numberOfKeys; i++ {
+			for i := range numberOfKeys {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 				if cache.contains(key) {
 					totalCacheSize++
@@ -167,7 +167,7 @@ func TestFifoCacheExpire(t *testing.T) {
 					return timeNow().Add(2 * c.cfg.Ttl)
 				}
 
-				for i := 0; i < numberOfKeys; i++ {
+				for i := range numberOfKeys {
 					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
 					originalSize := cache.cachedBytes
 					p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
@@ -213,10 +213,10 @@ func Test_memHashString(test *testing.T) {
 	numberOfMetrics := 100
 	occurrences := map[uint64]int{}
 
-	for k := 0; k < 10; k++ {
-		for j := 0; j < numberOfMetrics; j++ {
+	for range 10 {
+		for j := range numberOfMetrics {
 			metricName := fmt.Sprintf("metricName%v", j)
-			for i := 0; i < numberOfTenants; i++ {
+			for i := range numberOfTenants {
 				userId := fmt.Sprintf("user%v", i)
 				occurrences[memHashString(userId, metricName)]++
 			}

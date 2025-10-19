@@ -9,18 +9,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
-
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 type vectorScanner struct {
@@ -30,7 +28,7 @@ type vectorScanner struct {
 }
 
 type vectorSelector struct {
-	telemetry.OperatorTelemetry
+	telemetry telemetry.OperatorTelemetry
 
 	storage  SeriesSelector
 	scanners []vectorScanner
@@ -84,7 +82,6 @@ func NewVectorSelector(
 
 		selectTimestamp: selectTimestamp,
 	}
-	o.OperatorTelemetry = telemetry.NewTelemetry(o, queryOpts)
 
 	// For instant queries, set the step to a positive value
 	// so that the operator can terminate.
@@ -92,7 +89,8 @@ func NewVectorSelector(
 		o.step = 1
 	}
 
-	return o
+	o.telemetry = telemetry.NewTelemetry(o, queryOpts)
+	return telemetry.NewOperator(o.telemetry, o)
 }
 
 func (o *vectorSelector) String() string {
@@ -104,9 +102,6 @@ func (o *vectorSelector) Explain() (next []model.VectorOperator) {
 }
 
 func (o *vectorSelector) Series(ctx context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	if err := o.loadSeries(ctx); err != nil {
 		return nil, err
 	}
@@ -118,9 +113,6 @@ func (o *vectorSelector) GetPool() *model.VectorPool {
 }
 
 func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -141,10 +133,11 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		ts += o.step
 	}
 
-	var currStepSamples uint64
+	var currStepSamples int
 	// Reset the current timestamp.
 	ts = o.currentStep
 	fromSeries := o.currentSeries
+
 	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < int64(len(o.scanners)); o.currentSeries++ {
 		var (
 			series   = o.scanners[o.currentSeries]
@@ -162,15 +155,17 @@ func (o *vectorSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			if ok {
 				if h != nil && !o.selectTimestamp {
 					vectors[currStep].AppendHistogram(o.vectorPool, series.signature, h)
+					currStepSamples += telemetry.CalculateHistogramSampleCount(h)
 				} else {
 					vectors[currStep].AppendSample(o.vectorPool, series.signature, v)
+					currStepSamples++
 				}
-				currStepSamples++
 			}
-			o.IncrementSamplesAtTimestamp(int(currStepSamples), seriesTs)
+			o.telemetry.IncrementSamplesAtTimestamp(currStepSamples, seriesTs)
 			seriesTs += o.step
 		}
 	}
+
 	if o.currentSeries == int64(len(o.scanners)) {
 		o.currentStep += o.step * int64(o.numSteps)
 		o.currentSeries = 0
@@ -237,7 +232,7 @@ func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset i
 	if valueType == chunkenc.ValNone || t > refTime {
 		var ok bool
 		t, v, fh, ok = it.PeekPrev()
-		if !ok || t < refTime-lookbackDelta {
+		if !ok || t <= refTime-lookbackDelta {
 			return 0, 0, nil, false, nil
 		}
 	}

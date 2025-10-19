@@ -10,8 +10,13 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+const GlobalMarkersDir = "__markers__"
+
 var (
-	errTenantIDTooLong = errors.New("tenant ID is too long: max 150 characters")
+	errTenantIDTooLong   = errors.New("tenant ID is too long: max 150 characters")
+	errTenantIDUnsafe    = errors.New("tenant ID is '.' or '..'")
+	errTenantIDMarkers   = errors.New("tenant ID '__markers__' is not allowed")
+	errTenantIDUserIndex = errors.New("tenant ID 'user-index.json.gz' is not allowed")
 )
 
 type errTenantIDUnsupportedCharacter struct {
@@ -29,7 +34,7 @@ func (e *errTenantIDUnsupportedCharacter) Error() string {
 
 const tenantIDsLabelSeparator = "|"
 
-// NormalizeTenantIDs is creating a normalized form by sortiing and de-duplicating the list of tenantIDs
+// NormalizeTenantIDs is creating a normalized form by sorting and de-duplicating the list of tenantIDs
 func NormalizeTenantIDs(tenantIDs []string) []string {
 	sort.Strings(tenantIDs)
 
@@ -49,7 +54,7 @@ func NormalizeTenantIDs(tenantIDs []string) []string {
 	return tenantIDs[0:posOut]
 }
 
-// ValidTenantID
+// ValidTenantID validate tenantID
 func ValidTenantID(s string) error {
 	// check if it contains invalid runes
 	for pos, r := range s {
@@ -61,8 +66,38 @@ func ValidTenantID(s string) error {
 		}
 	}
 
+	if err := CheckTenantIDLength(s); err != nil {
+		return err
+	}
+
+	if err := CheckTenantIDIsSupported(s); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func CheckTenantIDLength(s string) error {
 	if len(s) > 150 {
 		return errTenantIDTooLong
+	}
+
+	return nil
+}
+
+func CheckTenantIDIsSupported(s string) error {
+	// check tenantID is "__markers__"
+	if s == GlobalMarkersDir {
+		return errTenantIDMarkers
+	}
+
+	if s == "user-index.json.gz" {
+		return errTenantIDUserIndex
+	}
+
+	// check tenantID is "." or ".."
+	if containsUnsafePathSegments(s) {
+		return errTenantIDUnsafe
 	}
 
 	return nil

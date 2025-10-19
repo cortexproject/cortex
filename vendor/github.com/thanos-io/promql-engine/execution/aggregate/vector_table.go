@@ -8,15 +8,15 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 type vectorTable struct {
@@ -26,7 +26,7 @@ type vectorTable struct {
 
 func newVectorizedTables(stepsBatch int, a parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		acc, err := newVectorAccumulator(a)
 		if err != nil {
 			return nil, err
@@ -48,9 +48,9 @@ func (t *vectorTable) timestamp() int64 {
 	return t.ts
 }
 
-func (t *vectorTable) aggregate(vector model.StepVector) error {
+func (t *vectorTable) aggregate(ctx context.Context, vector model.StepVector) error {
 	t.ts = vector.T
-	return t.accumulator.AddVector(vector.Samples, vector.Histograms)
+	return t.accumulator.AddVector(ctx, vector.Samples, vector.Histograms)
 }
 
 func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
@@ -96,7 +96,7 @@ func newVectorAccumulator(expr parser.ItemType) (vectorAccumulator, error) {
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
 }
 
-func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
+func histogramSum(ctx context.Context, current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 	if len(histograms) == 0 {
 		return current, nil
 	}
@@ -112,15 +112,31 @@ func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.Flo
 	}
 
 	var err error
-	for i := 0; i < len(histograms); i++ {
+	for i := range histograms {
 		if histograms[i].Schema >= histSum.Schema {
 			histSum, err = histSum.Add(histograms[i])
 			if err != nil {
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+					warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+					warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
 				return nil, err
 			}
 		} else {
 			t := histograms[i].Copy()
 			if histSum, err = t.Add(histSum); err != nil {
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+					warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
+				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+					warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+					return nil, nil
+				}
 				return nil, err
 			}
 		}

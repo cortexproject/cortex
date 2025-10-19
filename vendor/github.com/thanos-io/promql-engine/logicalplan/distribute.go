@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thanos-io/promql-engine/api"
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/api"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 var (
@@ -83,6 +83,7 @@ type RemoteExecution struct {
 	Engine          api.RemoteEngine
 	Query           Node
 	QueryRangeStart time.Time
+	QueryRangeEnd   time.Time
 }
 
 func (r RemoteExecution) Clone() Node {
@@ -95,7 +96,7 @@ func (r RemoteExecution) String() string {
 	if r.QueryRangeStart.UnixMilli() == 0 {
 		return fmt.Sprintf("remote(%s)", r.Query)
 	}
-	return fmt.Sprintf("remote(%s) [%s]", r.Query, r.QueryRangeStart.UTC().String())
+	return fmt.Sprintf("remote(%s) [%s, %s]", r.Query, r.QueryRangeStart.UTC().String(), r.QueryRangeEnd.UTC().String())
 }
 
 func (r RemoteExecution) Type() NodeType { return RemoteExecutionNode }
@@ -140,13 +141,15 @@ func (r Noop) Type() NodeType { return NoopNode }
 // distributiveAggregations are all PromQL aggregations which support
 // distributed execution.
 var distributiveAggregations = map[parser.ItemType]struct{}{
-	parser.SUM:     {},
-	parser.MIN:     {},
-	parser.MAX:     {},
-	parser.GROUP:   {},
-	parser.COUNT:   {},
-	parser.BOTTOMK: {},
-	parser.TOPK:    {},
+	parser.SUM:         {},
+	parser.MIN:         {},
+	parser.MAX:         {},
+	parser.GROUP:       {},
+	parser.COUNT:       {},
+	parser.BOTTOMK:     {},
+	parser.TOPK:        {},
+	parser.LIMITK:      {},
+	parser.LIMIT_RATIO: {},
 }
 
 // DistributedExecutionOptimizer produces a logical plan suitable for
@@ -165,7 +168,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 	labelRanges := make(labelSetRanges)
 	engineLabels := make(map[string]struct{})
 	for _, e := range engines {
-		for _, lset := range e.LabelSets() {
+		for _, lset := range e.PartitionLabelSets() {
 			lsetKey := lset.String()
 			labelRanges.addRange(lsetKey, timeRange{
 				start: time.UnixMilli(e.MinT()),
@@ -202,7 +205,7 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 				VectorMatching: &parser.VectorMatching{
 					Include:        aggr.Grouping,
 					MatchingLabels: aggr.Grouping,
-					On:             true,
+					On:             !aggr.Without,
 				},
 			}
 			return true
@@ -282,7 +285,7 @@ func newRemoteAggregation(rootAggregation *Aggregation, engines []api.RemoteEngi
 	}
 
 	for _, engine := range engines {
-		for _, lbls := range engine.LabelSets() {
+		for _, lbls := range engine.PartitionLabelSets() {
 			lbls.Range(func(lbl labels.Label) {
 				if rootAggregation.Without {
 					delete(groupingSet, lbl.Name)
@@ -316,6 +319,21 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *Node, engines []api
 		return *expr
 	}
 
+	// Selectors in queries can be scoped to a single timestamp. This case is hard to
+	// distribute properly and can lead to flaky results.
+	// We only do it if all engines have sufficient scope for the full range of the query,
+	// adjusted for the timestamp.
+	// Otherwise, we fall back to the default mode of not executing the query remotely.
+	if timestamps := getQueryTimestamps(expr); len(timestamps) > 0 {
+		for _, e := range engines {
+			for _, ts := range timestamps {
+				if e.MinT() > ts-startOffset.Milliseconds() || e.MaxT() < ts {
+					return *expr
+				}
+			}
+		}
+	}
+
 	var globalMinT int64 = math.MaxInt64
 	for _, e := range engines {
 		if e.MinT() < globalMinT {
@@ -344,6 +362,7 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *Node, engines []api
 			Engine:          e,
 			Query:           (*expr).Clone(),
 			QueryRangeStart: start,
+			QueryRangeEnd:   opts.End,
 		})
 	}
 
@@ -369,6 +388,7 @@ func (m DistributedExecutionOptimizer) distributeAbsent(expr Node, engines []api
 			Engine:          engines[i],
 			Query:           expr.Clone(),
 			QueryRangeStart: opts.Start,
+			QueryRangeEnd:   opts.End,
 		})
 	}
 	// We need to make sure that absent is at least evaluated against one engine.
@@ -380,6 +400,7 @@ func (m DistributedExecutionOptimizer) distributeAbsent(expr Node, engines []api
 			Engine:          engines[len(engines)-1],
 			Query:           expr,
 			QueryRangeStart: opts.Start,
+			QueryRangeEnd:   opts.End,
 		}
 	}
 
@@ -464,8 +485,10 @@ func calculateStartOffset(expr *Node, lookbackDelta time.Duration) time.Duration
 		return lookbackDelta
 	}
 
-	var selectRange time.Duration
-	var offset time.Duration
+	var (
+		selectRange time.Duration
+		offset      time.Duration
+	)
 	Traverse(expr, func(node *Node) {
 		switch n := (*node).(type) {
 		case *Subquery:
@@ -477,6 +500,25 @@ func calculateStartOffset(expr *Node, lookbackDelta time.Duration) time.Duration
 		}
 	})
 	return maxDuration(offset+selectRange, lookbackDelta)
+}
+
+func getQueryTimestamps(expr *Node) []int64 {
+	var timestamps []int64
+	Traverse(expr, func(node *Node) {
+		switch n := (*node).(type) {
+		case *Subquery:
+			if n.Timestamp != nil {
+				timestamps = append(timestamps, *n.Timestamp)
+				return
+			}
+		case *VectorSelector:
+			if n.Timestamp != nil {
+				timestamps = append(timestamps, *n.Timestamp)
+				return
+			}
+		}
+	})
+	return timestamps
 }
 
 func numSteps(start, end time.Time, step time.Duration) int64 {
@@ -511,6 +553,12 @@ func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string
 				warns.Add(RewrittenExternalLabelWarning)
 				return false
 			}
+		}
+		// scalar() returns NaN if the vector selector returns nothing
+		// so it's not possible to know which result is correct. Hence,
+		// it is not distributive.
+		if e.Func.Name == "scalar" {
+			return false
 		}
 	}
 

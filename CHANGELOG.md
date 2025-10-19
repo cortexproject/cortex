@@ -1,6 +1,105 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
+* [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
+* [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727
+* [FEATURE] Distributor: Add an experimental `-distributor.otlp.enable-type-and-unit-labels` flag to add `__type__` and `__unit__` labels for OTLP metrics. #6969
+* [FEATURE] Distributor: Add an experimental `-distributor.otlp.allow-delta-temporality` flag to ingest delta temporality otlp metrics. #6934
+* [FEATURE] Query Frontend: Add dynamic interval size for query splitting. This is enabled by configuring experimental flags `querier.max-shards-per-query` and/or `querier.max-fetched-data-duration-per-query`. The split interval size is dynamically increased to maintain a number of shards and total duration fetched below the configured values. #6458
+* [FEATURE] Querier/Ruler: Add `query_partial_data` and `rules_partial_data` limits to allow queries/rules to be evaluated with data from a single zone, if other zones are not available. #6526
+* [FEATURE] Update prometheus alertmanager version to v0.28.0 and add new integration msteamsv2, jira, and rocketchat. #6590
+* [FEATURE] Ingester/StoreGateway: Add `ResourceMonitor` module in Cortex, and add `ResourceBasedLimiter` in Ingesters and StoreGateways. #6674
+* [FEATURE] Support Prometheus remote write 2.0. #6330
+* [FEATURE] Ingester: Support out-of-order native histogram ingestion. It automatically enabled when `-ingester.out-of-order-time-window > 0` and `-blocks-storage.tsdb.enable-native-histograms=true`. #6626 #6663
+* [FEATURE] Ruler: Add support for percentage based sharding for rulers. #6680
+* [FEATURE] Ruler: Add support for group labels. #6665
+* [FEATURE] Query federation: Introduce a regex tenant resolver to allow regex in `X-Scope-OrgID` value. #6713
+- Add an experimental `tenant-federation.regex-matcher-enabled` flag. If it enabled, user can input regex to `X-Scope-OrgId`, the matched tenantIDs are automatically involved. The user discovery is based on scanning block storage, so new users can get queries after uploading a block (generally 2h).
+- Add an experimental `tenant-federation.user-sync-interval` flag, it specifies how frequently to scan users. The scanned users are used to calculate matched tenantIDs.
+* [FEATURE] Experimental Support Parquet format: Implement parquet converter service to convert a TSDB block into Parquet and Parquet Queryable. #6716 #6743
+* [FEATURE] Distributor/Ingester: Implemented experimental feature to use gRPC stream connection for push requests. This can be enabled by setting `-distributor.use-stream-push=true`. #6580
+* [FEATURE] Compactor: Add support for percentage based sharding for compactors. #6738
+* [FEATURE] Querier: Allow choosing PromQL engine via header. #6777
+* [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
+* [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
+* [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
+* [ENHANCEMENT] Distributor: Emit an error with a 400 status code when empty labels are found before the relabelling or label dropping process. #7052
+* [ENHANCEMENT] Parquet Storage: Add support for additional sort columns during Parquet file generation #7003
+* [ENHANCEMENT] Modernizes the entire codebase by using go modernize tool. #7005
+* [ENHANCEMENT] Overrides Exporter: Expose all fields that can be converted to float64. Also, the label value `max_local_series_per_metric` got renamed to `max_series_per_metric`, and `max_local_series_per_user` got renamed to `max_series_per_user`. #6979
+* [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_wal_replay_unknown_refs_total` and `cortex_ingester_tsdb_wbl_replay_unknown_refs_total` metrics to track unknown series references during wal/wbl replaying. #6945
+* [ENHANCEMENT] Ruler: Emit an error message when the rule synchronization fails. #6902
+* [ENHANCEMENT] Querier: Support snappy and zstd response compression for `-querier.response-compression` flag. #6848
+* [ENHANCEMENT] Tenant Federation: Add a # of query result limit logic when the `-tenant-federation.regex-matcher-enabled` is enabled. #6845
+* [ENHANCEMENT] Query Frontend: Add a `cortex_slow_queries_total` metric to track # of slow queries per user. #6859
+* [ENHANCEMENT] Query Frontend: Change to return 400 when the tenant resolving fail. #6715
+* [ENHANCEMENT] Querier: Support query parameters to metadata api (/api/v1/metadata) to allow user to limit metadata to return. Add a `-ingester.return-all-metadata` flag to make the metadata API run when the deployment. Please set this flag to `false` to use the metadata API with the limits later. #6681 #6744
+* [ENHANCEMENT] Ingester: Add a `cortex_ingester_active_native_histogram_series` metric to track # of active NH series. #6695
+* [ENHANCEMENT] Query Frontend: Add new limit `-frontend.max-query-response-size` for total query response size after decompression in query frontend. #6607
+* [ENHANCEMENT] Alertmanager: Add nflog and silences maintenance metrics. #6659
+* [ENHANCEMENT] Querier: limit label APIs to query only ingesters if `start` param is not been specified. #6618
+* [ENHANCEMENT] Alertmanager: Add new limits `-alertmanager.max-silences-count` and `-alertmanager.max-silences-size-bytes` for limiting silences per tenant. #6605
+* [ENHANCEMENT] Update prometheus version to v3.1.0. #6583
+* [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533
+* [ENHANCEMENT] StoreGateway: Emit more histogram buckets on the `cortex_querier_storegateway_refetches_per_query` metric. #6570
+* [ENHANCEMENT] Querier: Apply bytes limiter to LabelNames and LabelValuesForLabelNames. #6568
+* [ENHANCEMENT] Query Frontend: Add a `too_many_tenants` reason label value to `cortex_rejected_queries_total` metric to track the rejected query count due to the # of tenant limits. #6569
+* [ENHANCEMENT] Alertmanager: Add receiver validations for msteamsv2 and rocketchat. #6606
+* [ENHANCEMENT] Query Frontend: Add a `-frontend.enabled-ruler-query-stats` flag to configure whether to report the query stats log for queries coming from the Ruler. #6504
+* [ENHANCEMENT] OTLP: Support otlp metadata ingestion. #6617
+* [ENHANCEMENT] AlertManager: Add `keep_instance_in_the_ring_on_shutdown` and `tokens_file_path` configs for alertmanager ring. #6628
+* [ENHANCEMENT] Querier: Add metric and enhanced logging for query partial data. #6676
+* [ENHANCEMENT] Ingester: Push request should fail when label set is out of order #6746
+* [ENHANCEMENT] Querier: Add `querier.ingester-query-max-attempts` to retry on partial data. #6714
+* [ENHANCEMENT] Distributor: Add min/max schema validation for Native Histogram. #6766
+* [ENHANCEMENT] Ingester: Handle runtime errors in query path #6769
+* [ENHANCEMENT] Compactor: Support metadata caching bucket for Cleaner. Can be enabled via `-compactor.cleaner-caching-bucket-enabled` flag. #6778
+* [ENHANCEMENT] Distributor: Add ingestion rate limit for Native Histogram. #6794 and #6994
+* [ENHANCEMENT] Ingester: Add active series limit specifically for Native Histogram. #6796
+* [ENHANCEMENT] Compactor, Store Gateway: Introduce user scanner strategy and user index. #6780
+* [ENHANCEMENT] Querier: Support chunks cache for parquet queryable. #6805
+* [ENHANCEMENT] Parquet Storage: Add some metrics for parquet blocks and converter. #6809 #6821
+* [ENHANCEMENT] Compactor: Optimize cleaner run time. #6815
+* [ENHANCEMENT] Parquet Storage: Allow percentage based dynamic shard size for Parquet Converter. #6817
+* [ENHANCEMENT] Query Frontend: Enhance the performance of the JSON codec. #6816
+* [ENHANCEMENT] Compactor: Emit partition metrics separate from cleaner job. #6827
+* [ENHANCEMENT] Metadata Cache: Support inmemory and multi level cache backend. #6829
+* [ENHANCEMENT] Store Gateway: Allow to ignore syncing blocks older than certain time using `ignore_blocks_before`. #6830
+* [ENHANCEMENT] Distributor: Add native histograms max sample size bytes limit validation. #6834
+* [ENHANCEMENT] Querier: Support caching parquet labels file in parquet queryable. #6835
+* [ENHANCEMENT] Querier: Support query limits in parquet queryable. #6870
+* [ENHANCEMENT] Ring: Add zone label to ring_members metric. #6900
+* [ENHANCEMENT] Ingester: Add new metric `cortex_ingester_push_errors_total` to track reasons for ingester request failures. #6901
+* [ENHANCEMENT] Ring: Expose `detailed_metrics_enabled` for all rings. Default true. #6926
+* [ENHANCEMENT] Parquet Storage: Allow Parquet Queryable to disable fallback to Store Gateway. #6920
+* [ENHANCEMENT] Query Frontend: Add a `format_query` and `parse_query` labels value to the `op` label at `cortex_query_frontend_queries_total` metric. #6925 #6990
+* [ENHANCEMENT] API: add request ID injection to context to enable tracking requests across downstream services. #6895
+* [ENHANCEMENT] gRPC: Add gRPC Channelz monitoring. #6950
+* [ENHANCEMENT] Upgrade build image and Go version to 1.24.6. #6970 #6976
+* [ENHANCEMENT] Implement versioned transactions for writes to DynamoDB ring. #6986
+* [ENHANCEMENT] Add source metadata to requests(api vs ruler) #6947
+* [ENHANCEMENT] Add new metric `cortex_discarded_series` and `cortex_discarded_series_per_labelset` to track number of series that have a discarded sample. #6995
+* [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
+* [BUGFIX] Ingester: Fix labelset data race condition. #6573
+* [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576
+* [BUGFIX] Compactor: Cleaner would delete bucket index when there is no block in bucket store. #6577
+* [BUGFIX] Querier: Fix marshal native histogram with empty bucket when protobuf codec is enabled. #6595
+* [BUGFIX] Query Frontend: Fix samples scanned and peak samples query stats when query hits results cache. #6591
+* [BUGFIX] Query Frontend: Fix panic caused by nil pointer dereference. #6609
+* [BUGFIX] Ingester: Add check to avoid query 5xx when closing tsdb. #6616
+* [BUGFIX] Querier: Fix panic when marshaling QueryResultRequest. #6601
+* [BUGFIX] Ingester: Avoid resharding for query when restart readonly ingesters. #6642
+* [BUGFIX] Query Frontend: Fix query frontend per `user` metrics clean up. #6698
+* [BUGFIX] Add `__markers__` tenant ID validation. #6761
+* [BUGFIX] Ring: Fix nil pointer exception when token is shared. #6768
+* [BUGFIX] Fix race condition in active user. #6773
+* [BUGFIX] Ruler: Prevent counting 2xx and 4XX responses as failed writes. #6785
+* [BUGFIX] Ingester: Allow shipper to skip corrupted blocks. #6786
+* [BUGFIX] Compactor: Delete the prefix `blocks_meta` from the metadata fetcher metrics. #6832
+* [BUGFIX] Store Gateway: Avoid race condition by deduplicating entries in bucket stores user scan. #6863
+* [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
+* [BUGFIX] Distributor: Fix the `/distributor/all_user_stats` api to work during rolling updates on ingesters. #7026
 
 ## 1.19.1 2025-09-20
 
@@ -18,15 +117,6 @@
 * [CHANGE] Enable Compactor and Alertmanager in target all. #6204
 * [CHANGE] Update the `cortex_ingester_inflight_push_requests` metric to represent the maximum number of inflight requests recorded in the last minute. #6437
 * [CHANGE] gRPC Client: Expose connection timeout and set default to value to 5s. #6523
-* [CHANGE] Enable analysis on Thanos PromQL engine #6472
-* [CHANGE] Log grafana headers along with query request before query execution #6391
-* [CHANGE] Log query requests in QFE before query execution #6390
-* [CHANGE] Log when a request starts running in querier #6525
-* [CHANGE] Remove openstack swfit experimental in blocks storage #6322
-* [CHANGE] Remove openstack swift experimental #6316
-* [CHANGE] Replace `cespare/xxhash` with `cespare/xxhash/v2` #6467
-* [CHANGE] Stop using global instant query codec #6328
-* [CHANGE] Unify query frontend instant and range protos #6180
 * [FEATURE] Ruler: Add an experimental flag `-ruler.query-response-format` to retrieve query response as a proto format. #6345
 * [FEATURE] Ruler: Pagination support for List Rules API. #6299
 * [FEATURE] Query Frontend/Querier: Add protobuf codec `-api.querier-default-codec` and the option to choose response compression type `-querier.response-compression`. #5527
@@ -39,13 +129,6 @@
 * [FEATURE] Query Frontend: Support a metadata federated query when `-tenant-federation.enabled=true`. #6461
 * [FEATURE] Query Frontend: Support an exemplar federated query when `-tenant-federation.enabled=true`. #6455
 * [FEATURE] Ingester/StoreGateway: Add support for cache regex query matchers via `-ingester.matchers-cache-max-items` and `-blocks-storage.bucket-store.matchers-cache-max-items`. #6477 #6491
-* [FEATURE] Add reason why the key was evicted in the `cortex_ingester_expanded_postings_cache_evicts` metric #6318
-* [FEATURE] Create feature flag to switch between current shuffle sharding group planner and partition compaction group planner #6141
-* [FEATURE] Hook up partition compaction end to end implementation #6510
-* [FEATURE] Implement partition compaction grouper #6172
-* [FEATURE] Implement partition compaction planner #6469
-* [FEATURE] Make LivenessCheck Timeout Configurable #6227
-* [FEATURE] Querier: Add day range limit for LabelNames and LabelValues #6233
 * [ENHANCEMENT] Query Frontend: Add more operation label values to the `cortex_query_frontend_queries_total` metric. #6519
 * [ENHANCEMENT] Query Frontend: Add a `source` label to query stat metrics. #6470
 * [ENHANCEMENT] Query Frontend: Add a flag `-tenant-federation.max-tenant` to limit the number of tenants for federated query. #6493
@@ -86,50 +169,15 @@
 * [ENHANCEMENT] Distributor: Added `cortex_distributor_received_samples_per_labelset_total` metric to calculate ingestion rate per label set. #6443
 * [ENHANCEMENT] Added metric name in limiter per-metric exceeded errors. #6416
 * [ENHANCEMENT] StoreGateway: Added `cortex_bucket_store_indexheader_load_duration_seconds` and `cortex_bucket_store_indexheader_download_duration_seconds` metrics for time of downloading and loading index header files. #6445
-* [ENHANCEMENT] Add cleaner logic to clean partition compaction blocks and related files #6507
-* [ENHANCEMENT] Add support for native histograms in querier protobuf codec #6368
-* [ENHANCEMENT] Add timeout on lifecycler heartbeat #6212
-* [ENHANCEMENT] Added UserReplicaGroupMetrics #6463
 * [ENHANCEMENT] Blocks Storage: Allow use of non-dualstack endpoints for S3 blocks storage via `-blocks-storage.s3.disable-dualstack`. #6522
-* [ENHANCEMENT] Discarded samples per labelset metrics for throttle by labelset #6492
-* [ENHANCEMENT] Expanded Postings Cache can cache results without the nearly created series under high load. #6417
-* [ENHANCEMENT] Ingester: Disable chunk trimming. #6270
-* [ENHANCEMENT] Improve consistency check warn log #6366
-* [ENHANCEMENT] Improve streaming on MetricsForLabelMatchersStream method #6436
-* [ENHANCEMENT] Improve validation metrics for discarded samples and exemplars #6218
-* [ENHANCEMENT] Query Frontend: add new field for dense native histogram format #6199
-* [ENHANCEMENT] Return 503 on hitting distributor instance limits #6387
-* [ENHANCEMENT] Reusing Batch Iterators #6403
-* [ENHANCEMENT] Reusing the grpc client to peform healthcheck #6260
-* [ENHANCEMENT] Store Gateway: Add pre add block ownership check #6483
-* [ENHANCEMENT] Use slice pooling to populate the query stream response #6466
-* [ENHANCEMENT] Using a single seed array for expanded postings cache on ingesters #6365
 * [BUGFIX] Runtime-config: Handle absolute file paths when working directory is not / #6224
 * [BUGFIX] Ruler: Allow rule evaluation to complete during shutdown. #6326
-* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled. #6271
+* [BUGFIX] Ring: update ring with new ip address when instance is lost, rejoins, but heartbeat is disabled.  #6271
 * [BUGFIX] Ingester: Fix regression on usage of cortex_ingester_queried_chunks. #6398
 * [BUGFIX] Ingester: Fix possible race condition when `active series per LabelSet` is configured. #6409
 * [BUGFIX] Query Frontend: Fix @ modifier not being applied correctly on sub queries. #6450
 * [BUGFIX] Cortex Redis flags with multiple dots #6476
-* [BUGFIX] Bug fix on JSON Tag #6339
-* [BUGFIX] Calculate # of concurrency only once at the runner #6506
-* [BUGFIX] Clean up ingester per labelset metrics #6439
-* [BUGFIX] Cleanup dangling request queue metrics #6433
-* [BUGFIX] Fix BenchmarkDistributor_Push benchmark #6309
-* [BUGFIX] Fix data race on expanded postings Cache #6369
-* [BUGFIX] Fix lazy postings merge bug #6415
-* [BUGFIX] Fix race on chunks multilevel cache + Optimize to avoid refetching already found keys. #6312
-* [BUGFIX] Fix race on the string interning #6408
-* [BUGFIX] Fix race that can cause nil reference when using expanded postings #6518
-* [BUGFIX] Fix regression of query range result cache unable to parse old cached results #6196
-* [BUGFIX] Fix typo in usage message for querier.split-queries-by-interval flag #6305
-* [BUGFIX] Fix: PostingCache promise should fetch data only once #6314
-* [BUGFIX] Fix: fix slice init length #6237
-* [BUGFIX] Fixed bug that blocks cannot be fully deleted from TSDB #6231
-* [BUGFIX] Fixed ingester ReadOnly state related bugs #6208
-* [BUGFIX] Preserve ingester state on restart #6301
-* [BUGFIX] Purge expired postings cache items due inactivity #6502
-* [BUGFIX] Util: Check context every N iterations #6250
+* [BUGFIX] ThanosEngine: Only enable default optimizers. #6776
 
 ## 1.18.1 2024-10-14
 
@@ -1229,7 +1277,7 @@ Note the blocks storage compactor runs a migration task at startup in this versi
 * [ENHANCEMENT] Improve performance of QueryStream() in ingesters. #3177
 * [ENHANCEMENT] Modules included in "All" target are now visible in output of `-modules` CLI flag. #3155
 * [ENHANCEMENT] Added `/debug/fgprof` endpoint to debug running Cortex process using `fgprof`. This adds up to the existing `/debug/...` endpoints. #3131
-* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. #2976
+* [ENHANCEMENT] Blocks storage: optimised `/api/v1/series` for blocks storage. (#2976)
 * [BUGFIX] Ruler: when loading rules from "local" storage, check for directory after resolving symlink. #3137
 * [BUGFIX] Query-frontend: Fixed rounding for incoming query timestamps, to be 100% Prometheus compatible. #2990
 * [BUGFIX] Querier: Merge results from chunks and blocks ingesters when using streaming of results. #3013

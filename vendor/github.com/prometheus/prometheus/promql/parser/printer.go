@@ -14,8 +14,10 @@
 package parser
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -91,13 +93,20 @@ func (node *AggregateExpr) getAggOpStr() string {
 }
 
 func joinLabels(ss []string) string {
+	var bytea [1024]byte // On stack to avoid memory allocation while building the output.
+	b := bytes.NewBuffer(bytea[:0])
+
 	for i, s := range ss {
-		// If the label is already quoted, don't quote it again.
-		if s[0] != '"' && s[0] != '\'' && s[0] != '`' && !model.IsValidLegacyMetricName(string(model.LabelValue(s))) {
-			ss[i] = fmt.Sprintf("\"%s\"", s)
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		if !model.IsValidLegacyMetricName(string(model.LabelValue(s))) {
+			b.Write(strconv.AppendQuote(b.AvailableBuffer(), s))
+		} else {
+			b.WriteString(s)
 		}
 	}
-	return strings.Join(ss, ", ")
+	return b.String()
 }
 
 func (node *BinaryExpr) returnBool() string {
@@ -137,6 +146,39 @@ func (node *BinaryExpr) getMatchingStr() string {
 	return matching
 }
 
+func (node *DurationExpr) String() string {
+	var expr string
+	switch {
+	case node.Op == STEP:
+		expr = "step()"
+	case node.Op == MIN:
+		expr = fmt.Sprintf("min(%s, %s)", node.LHS, node.RHS)
+	case node.Op == MAX:
+		expr = fmt.Sprintf("max(%s, %s)", node.LHS, node.RHS)
+	case node.LHS == nil:
+		// This is a unary duration expression.
+		switch node.Op {
+		case SUB:
+			expr = fmt.Sprintf("%s%s", node.Op, node.RHS)
+		case ADD:
+			expr = node.RHS.String()
+		default:
+			// This should never happen.
+			panic(fmt.Sprintf("unexpected unary duration expression: %s", node.Op))
+		}
+	default:
+		expr = fmt.Sprintf("%s %s %s", node.LHS, node.Op, node.RHS)
+	}
+	if node.Wrapped {
+		return fmt.Sprintf("(%s)", expr)
+	}
+	return expr
+}
+
+func (node *DurationExpr) ShortString() string {
+	return node.Op.String()
+}
+
 func (node *Call) String() string {
 	return fmt.Sprintf("%s(%s)", node.Func.Name, node.Args)
 }
@@ -150,6 +192,8 @@ func (node *MatrixSelector) atOffset() (string, string) {
 	vecSelector := node.VectorSelector.(*VectorSelector)
 	offset := ""
 	switch {
+	case vecSelector.OriginalOffsetExpr != nil:
+		offset = fmt.Sprintf(" offset %s", vecSelector.OriginalOffsetExpr)
 	case vecSelector.OriginalOffset > time.Duration(0):
 		offset = fmt.Sprintf(" offset %s", model.Duration(vecSelector.OriginalOffset))
 	case vecSelector.OriginalOffset < time.Duration(0):
@@ -172,21 +216,30 @@ func (node *MatrixSelector) String() string {
 	// Copy the Vector selector before changing the offset
 	vecSelector := *node.VectorSelector.(*VectorSelector)
 	// Do not print the @ and offset twice.
-	offsetVal, atVal, preproc := vecSelector.OriginalOffset, vecSelector.Timestamp, vecSelector.StartOrEnd
+	offsetVal, offsetExprVal, atVal, preproc := vecSelector.OriginalOffset, vecSelector.OriginalOffsetExpr, vecSelector.Timestamp, vecSelector.StartOrEnd
 	vecSelector.OriginalOffset = 0
+	vecSelector.OriginalOffsetExpr = nil
 	vecSelector.Timestamp = nil
 	vecSelector.StartOrEnd = 0
 
-	str := fmt.Sprintf("%s[%s]%s%s", vecSelector.String(), model.Duration(node.Range), at, offset)
+	rangeStr := model.Duration(node.Range).String()
+	if node.RangeExpr != nil {
+		rangeStr = node.RangeExpr.String()
+	}
+	str := fmt.Sprintf("%s[%s]%s%s", vecSelector.String(), rangeStr, at, offset)
 
-	vecSelector.OriginalOffset, vecSelector.Timestamp, vecSelector.StartOrEnd = offsetVal, atVal, preproc
+	vecSelector.OriginalOffset, vecSelector.OriginalOffsetExpr, vecSelector.Timestamp, vecSelector.StartOrEnd = offsetVal, offsetExprVal, atVal, preproc
 
 	return str
 }
 
 func (node *MatrixSelector) ShortString() string {
 	at, offset := node.atOffset()
-	return fmt.Sprintf("[%s]%s%s", model.Duration(node.Range), at, offset)
+	rangeStr := model.Duration(node.Range).String()
+	if node.RangeExpr != nil {
+		rangeStr = node.RangeExpr.String()
+	}
+	return fmt.Sprintf("[%s]%s%s", rangeStr, at, offset)
 }
 
 func (node *SubqueryExpr) String() string {
@@ -202,9 +255,13 @@ func (node *SubqueryExpr) getSubqueryTimeSuffix() string {
 	step := ""
 	if node.Step != 0 {
 		step = model.Duration(node.Step).String()
+	} else if node.StepExpr != nil {
+		step = node.StepExpr.String()
 	}
 	offset := ""
 	switch {
+	case node.OriginalOffsetExpr != nil:
+		offset = fmt.Sprintf(" offset %s", node.OriginalOffsetExpr)
 	case node.OriginalOffset > time.Duration(0):
 		offset = fmt.Sprintf(" offset %s", model.Duration(node.OriginalOffset))
 	case node.OriginalOffset < time.Duration(0):
@@ -219,11 +276,21 @@ func (node *SubqueryExpr) getSubqueryTimeSuffix() string {
 	case node.StartOrEnd == END:
 		at = " @ end()"
 	}
-	return fmt.Sprintf("[%s:%s]%s%s", model.Duration(node.Range), step, at, offset)
+	rangeStr := model.Duration(node.Range).String()
+	if node.RangeExpr != nil {
+		rangeStr = node.RangeExpr.String()
+	}
+	return fmt.Sprintf("[%s:%s]%s%s", rangeStr, step, at, offset)
 }
 
 func (node *NumberLiteral) String() string {
-	return fmt.Sprint(node.Val)
+	if node.Duration {
+		if node.Val < 0 {
+			return fmt.Sprintf("-%s", model.Duration(-node.Val*1e9).String())
+		}
+		return model.Duration(node.Val * 1e9).String()
+	}
+	return strconv.FormatFloat(node.Val, 'f', -1, 64)
 }
 
 func (node *ParenExpr) String() string {
@@ -256,6 +323,8 @@ func (node *VectorSelector) String() string {
 	}
 	offset := ""
 	switch {
+	case node.OriginalOffsetExpr != nil:
+		offset = fmt.Sprintf(" offset %s", node.OriginalOffsetExpr)
 	case node.OriginalOffset > time.Duration(0):
 		offset = fmt.Sprintf(" offset %s", model.Duration(node.OriginalOffset))
 	case node.OriginalOffset < time.Duration(0):

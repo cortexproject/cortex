@@ -9,16 +9,16 @@ import (
 	"math"
 	"sort"
 
+	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/execution/warnings"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/model"
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 )
 
 // aggregateTable is a table that aggregates input samples into
@@ -28,7 +28,7 @@ type aggregateTable interface {
 	// If the table is empty, it returns math.MinInt64.
 	timestamp() int64
 	// aggregate aggregates the given vector into the table.
-	aggregate(vector model.StepVector) error
+	aggregate(ctx context.Context, vector model.StepVector) error
 	// toVector writes out the accumulated result to the given vector and
 	// resets the table.
 	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
@@ -46,7 +46,7 @@ type scalarTable struct {
 
 func newScalarTables(stepsBatch int, inputCache []uint64, outputCache []*model.Series, aggregation parser.ItemType) ([]aggregateTable, error) {
 	tables := make([]aggregateTable, stepsBatch)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		table, err := newScalarTable(inputCache, outputCache, aggregation)
 		if err != nil {
 			return nil, err
@@ -62,7 +62,7 @@ func (t *scalarTable) timestamp() int64 {
 
 func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregation parser.ItemType) (*scalarTable, error) {
 	accumulators := make([]accumulator, len(outputs))
-	for i := 0; i < len(accumulators); i++ {
+	for i := range accumulators {
 		acc, err := newScalarAccumulator(aggregation)
 		if err != nil {
 			return nil, err
@@ -77,34 +77,34 @@ func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregatio
 	}, nil
 }
 
-func (t *scalarTable) aggregate(vector model.StepVector) error {
+func (t *scalarTable) aggregate(ctx context.Context, vector model.StepVector) error {
 	t.ts = vector.T
 
 	for i := range vector.Samples {
-		if err := t.addSample(vector.SampleIDs[i], vector.Samples[i]); err != nil {
+		if err := t.addSample(ctx, vector.SampleIDs[i], vector.Samples[i]); err != nil {
 			return err
 		}
 	}
 	for i := range vector.Histograms {
-		if err := t.addHistogram(vector.HistogramIDs[i], vector.Histograms[i]); err != nil {
+		if err := t.addHistogram(ctx, vector.HistogramIDs[i], vector.Histograms[i]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (t *scalarTable) addSample(sampleID uint64, sample float64) error {
+func (t *scalarTable) addSample(ctx context.Context, sampleID uint64, sample float64) error {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	return t.accumulators[output.ID].Add(sample, nil)
+	return t.accumulators[output.ID].Add(ctx, sample, nil)
 }
 
-func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) error {
+func (t *scalarTable) addHistogram(ctx context.Context, sampleID uint64, h *histogram.FloatHistogram) error {
 	outputSampleID := t.inputs[sampleID]
 	output := t.outputs[outputSampleID]
 
-	return t.accumulators[output.ID].Add(0, h)
+	return t.accumulators[output.ID].Add(ctx, 0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
@@ -171,6 +171,17 @@ func hashMetric(
 	})
 	key, _ := metric.HashForLabels(buf, grouping...)
 	return key, builder.Labels()
+}
+
+// doing it the prometheus way
+// https://github.com/prometheus/prometheus/blob/f379e2eac7134dea12ae1d93ebdcb8109db3a5ef/promql/engine.go#L3809C1-L3833C2
+// if ratioLimit > 0 and sampleOffset turns out to be < ratioLimit add sample to the result
+// else if ratioLimit < 0 then do ratioLimit+1(switch to positive axis), therefore now we will be taking those samples whose sampleOffset >= 1+ratioLimit (inverting the logic from previous case).
+func addRatioSample(ratioLimit float64, series labels.Labels) bool {
+	sampleOffset := float64(series.Hash()) / float64(math.MaxUint64)
+
+	return (ratioLimit >= 0 && sampleOffset < ratioLimit) ||
+		(ratioLimit < 0 && sampleOffset >= (1.0+ratioLimit))
 }
 
 func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {

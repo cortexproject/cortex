@@ -79,8 +79,7 @@ func TestMetricCounter(t *testing.T) {
 
 			limits := validation.Limits{MaxLocalSeriesPerMetric: tc.localLimit}
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// We're testing code that's not dependent on sharding strategy, replication factor, etc. To simplify the test,
 			// we use local limit only.
@@ -321,6 +320,18 @@ type mockIndexReader struct {
 	postings map[string]map[string]index.Postings
 }
 
+func (ir *mockIndexReader) PostingsForAllLabelValues(ctx context.Context, name string) index.Postings {
+	var postings []index.Postings
+	if entries, ok := ir.postings[name]; ok {
+		for _, entry := range entries {
+			postings = append(postings, entry)
+		}
+		return index.Intersect(postings...)
+	} else {
+		return index.EmptyPostings()
+	}
+}
+
 func (ir *mockIndexReader) Postings(ctx context.Context, name string, values ...string) (index.Postings, error) {
 	if entries, ok := ir.postings[name]; ok {
 		if postings, ok2 := entries[values[0]]; ok2 {
@@ -332,11 +343,11 @@ func (ir *mockIndexReader) Postings(ctx context.Context, name string, values ...
 
 func (ir *mockIndexReader) Symbols() index.StringIter { return nil }
 
-func (ir *mockIndexReader) SortedLabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *mockIndexReader) SortedLabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (ir *mockIndexReader) LabelValues(ctx context.Context, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (ir *mockIndexReader) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 

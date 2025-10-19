@@ -43,9 +43,9 @@ type DB struct {
 }
 
 type dbProxy interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
-	Query(query string, args ...interface{}) (*sql.Rows, error)
-	QueryRow(query string, args ...interface{}) *sql.Row
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
 	Prepare(query string) (*sql.Stmt, error)
 }
 
@@ -215,7 +215,7 @@ func (d DB) SetRulesConfig(ctx context.Context, userID string, oldConfig, newCon
 		// The supplied oldConfig must match the current config. If no config
 		// exists, then oldConfig must be nil. Otherwise, it must exactly
 		// equal the existing config.
-		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) {
+		if !((err == sql.ErrNoRows && oldConfig.Files == nil) || oldConfig.Equal(current.Config.RulesConfig)) { //nolint:staticcheck
 			return nil
 		}
 		new := userconfig.Config{

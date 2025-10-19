@@ -20,6 +20,13 @@ const (
 const (
 	sampleMetricTypeFloat     = "float"
 	sampleMetricTypeHistogram = "histogram"
+
+	typeSeries     = "series"
+	typeSamples    = "samples"
+	typeExemplars  = "exemplars"
+	typeHistograms = "histograms"
+	typeMetadata   = "metadata"
+	typeTombstones = "tombstones"
 )
 
 type ingesterMetrics struct {
@@ -31,6 +38,7 @@ type ingesterMetrics struct {
 	ingestedHistogramsFail  prometheus.Counter
 	ingestedExemplarsFail   prometheus.Counter
 	ingestedMetadataFail    prometheus.Counter
+	oooLabelsTotal          *prometheus.CounterVec
 	queries                 prometheus.Counter
 	queriedSamples          prometheus.Histogram
 	queriedExemplars        prometheus.Histogram
@@ -43,10 +51,12 @@ type ingesterMetrics struct {
 	memMetadataCreatedTotal *prometheus.CounterVec
 	memSeriesRemovedTotal   *prometheus.CounterVec
 	memMetadataRemovedTotal *prometheus.CounterVec
+	pushErrorsTotal         *prometheus.CounterVec
 
-	activeSeriesPerUser *prometheus.GaugeVec
-	limitsPerLabelSet   *prometheus.GaugeVec
-	usagePerLabelSet    *prometheus.GaugeVec
+	activeSeriesPerUser   *prometheus.GaugeVec
+	activeNHSeriesPerUser *prometheus.GaugeVec
+	limitsPerLabelSet     *prometheus.GaugeVec
+	usagePerLabelSet      *prometheus.GaugeVec
 
 	// Global limit metrics
 	maxUsersGauge           prometheus.GaugeFunc
@@ -111,6 +121,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_metadata_failures_total",
 			Help: "The total number of metadata that errored on ingestion.",
 		}),
+		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_out_of_order_labels_total",
+			Help: "The total number of out of order label found per user.",
+		}, []string{"user"}),
 		queries: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_queries_total",
 			Help: "The total number of queries the ingester has handled.",
@@ -159,6 +173,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_memory_metadata_removed_total",
 			Help: "The total number of metadata that were removed per user.",
 		}, []string{"user"}),
+		pushErrorsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_push_errors_total",
+			Help: "The total number of push errors per user.",
+		}, []string{"user", "reason"}),
 
 		maxUsersGauge: promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
 			Name:        instanceLimits,
@@ -249,6 +267,12 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_series",
 			Help: "Number of currently active series per user.",
 		}, []string{"user"}),
+
+		// Not registered automatically, but only if activeSeriesEnabled is true.
+		activeNHSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_active_native_histogram_series",
+			Help: "Number of currently active native histogram series per user.",
+		}, []string{"user"}),
 	}
 
 	if postingsCacheEnabled && r != nil {
@@ -257,6 +281,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 
 	if activeSeriesEnabled && r != nil {
 		r.MustRegister(m.activeSeriesPerUser)
+		r.MustRegister(m.activeNHSeriesPerUser)
 	}
 
 	if createMetricsConflictingWithTSDB {
@@ -275,11 +300,14 @@ func newIngesterMetrics(r prometheus.Registerer,
 }
 
 func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
+	m.oooLabelsTotal.DeleteLabelValues(userID)
 	m.memMetadataCreatedTotal.DeleteLabelValues(userID)
 	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
 	m.activeSeriesPerUser.DeleteLabelValues(userID)
+	m.activeNHSeriesPerUser.DeleteLabelValues(userID)
 	m.usagePerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
+	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)
@@ -297,6 +325,7 @@ type tsdbMetrics struct {
 	dirSyncFailures *prometheus.Desc // sum(thanos_shipper_dir_sync_failures_total)
 	uploads         *prometheus.Desc // sum(thanos_shipper_uploads_total)
 	uploadFailures  *prometheus.Desc // sum(thanos_shipper_upload_failures_total)
+	corruptedBlocks *prometheus.Desc // sum(thanos_shipper_corrupted_blocks_total)
 
 	// Metrics aggregated from TSDB.
 	tsdbCompactionsTotal               *prometheus.Desc
@@ -308,6 +337,8 @@ type tsdbMetrics struct {
 	tsdbWALTruncateTotal               *prometheus.Desc
 	tsdbWALTruncateDuration            *prometheus.Desc
 	tsdbWALCorruptionsTotal            *prometheus.Desc
+	tsdbWALReplayUnknownRefsTotal      *prometheus.Desc
+	tsdbWBLReplayUnknownRefsTotal      *prometheus.Desc
 	tsdbWALWritesFailed                *prometheus.Desc
 	tsdbHeadTruncateFail               *prometheus.Desc
 	tsdbHeadTruncateTotal              *prometheus.Desc
@@ -375,6 +406,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_shipper_upload_failures_total",
 			"Total number of TSDB block upload failures",
 			nil, nil),
+		corruptedBlocks: prometheus.NewDesc(
+			"cortex_ingester_shipper_corrupted_blocks_total",
+			"Total number of TSDB blocks corrupted",
+			nil, nil),
 		tsdbCompactionsTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_compactions_total",
 			"Total number of TSDB compactions that were executed.",
@@ -411,6 +446,14 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_corruptions_total",
 			"Total number of TSDB WAL corruptions.",
 			nil, nil),
+		tsdbWALReplayUnknownRefsTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_replay_unknown_refs_total",
+			"Total number of unknown series references encountered during TSDB WAL replay.",
+			[]string{"type"}, nil),
+		tsdbWBLReplayUnknownRefsTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wbl_replay_unknown_refs_total",
+			"Total number of unknown series references encountered during TSDB WBL replay.",
+			[]string{"type"}, nil),
 		tsdbWALWritesFailed: prometheus.NewDesc(
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
@@ -564,6 +607,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.dirSyncFailures
 	out <- sm.uploads
 	out <- sm.uploadFailures
+	out <- sm.corruptedBlocks
 
 	out <- sm.tsdbCompactionsTotal
 	out <- sm.tsdbCompactionDuration
@@ -574,6 +618,8 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbWALTruncateTotal
 	out <- sm.tsdbWALTruncateDuration
 	out <- sm.tsdbWALCorruptionsTotal
+	out <- sm.tsdbWALReplayUnknownRefsTotal
+	out <- sm.tsdbWBLReplayUnknownRefsTotal
 	out <- sm.tsdbWALWritesFailed
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
@@ -621,6 +667,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.dirSyncFailures, "thanos_shipper_dir_sync_failures_total")
 	data.SendSumOfCounters(out, sm.uploads, "thanos_shipper_uploads_total")
 	data.SendSumOfCounters(out, sm.uploadFailures, "thanos_shipper_upload_failures_total")
+	data.SendSumOfCounters(out, sm.corruptedBlocks, "thanos_shipper_corrupted_blocks_total")
 
 	data.SendSumOfCounters(out, sm.tsdbCompactionsTotal, "prometheus_tsdb_compactions_total")
 	data.SendSumOfHistograms(out, sm.tsdbCompactionDuration, "prometheus_tsdb_compaction_duration_seconds")
@@ -631,6 +678,8 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbWALTruncateTotal, "prometheus_tsdb_wal_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbWALTruncateDuration, "prometheus_tsdb_wal_truncate_duration_seconds")
 	data.SendSumOfCounters(out, sm.tsdbWALCorruptionsTotal, "prometheus_tsdb_wal_corruptions_total")
+	data.SendSumOfCountersWithLabels(out, sm.tsdbWALReplayUnknownRefsTotal, "prometheus_tsdb_wal_replay_unknown_refs_total", "type")
+	data.SendSumOfCountersWithLabels(out, sm.tsdbWBLReplayUnknownRefsTotal, "prometheus_tsdb_wbl_replay_unknown_refs_total", "type")
 	data.SendSumOfCounters(out, sm.tsdbWALWritesFailed, "prometheus_tsdb_wal_writes_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateFail, "prometheus_tsdb_head_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")

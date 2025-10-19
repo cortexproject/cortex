@@ -3,14 +3,16 @@ package bucketindex
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util"
 )
@@ -51,17 +53,44 @@ func (idx *Index) GetUpdatedAt() time.Time {
 func (idx *Index) RemoveBlock(id ulid.ULID) {
 	for i := 0; i < len(idx.Blocks); i++ {
 		if idx.Blocks[i].ID == id {
-			idx.Blocks = append(idx.Blocks[:i], idx.Blocks[i+1:]...)
+			idx.Blocks = slices.Delete(idx.Blocks, i, i+1)
 			break
 		}
 	}
 
 	for i := 0; i < len(idx.BlockDeletionMarks); i++ {
 		if idx.BlockDeletionMarks[i].ID == id {
-			idx.BlockDeletionMarks = append(idx.BlockDeletionMarks[:i], idx.BlockDeletionMarks[i+1:]...)
+			idx.BlockDeletionMarks = slices.Delete(idx.BlockDeletionMarks, i, i+1)
 			break
 		}
 	}
+}
+
+func (idx *Index) IsEmpty() bool {
+	return len(idx.Blocks) == 0 && len(idx.BlockDeletionMarks) == 0
+}
+
+// ParquetBlocks returns all blocks that are available in Parquet format.
+func (idx *Index) ParquetBlocks() []*Block {
+	blocks := make([]*Block, 0, len(idx.Blocks))
+	for _, b := range idx.Blocks {
+		if b.Parquet != nil {
+			blocks = append(blocks, b)
+		}
+	}
+	return blocks
+}
+
+// NonParquetBlocks returns all blocks that are not available in Parquet format.
+func (idx *Index) NonParquetBlocks() []*Block {
+	blocks := make([]*Block, 0, len(idx.Blocks))
+	for _, b := range idx.Blocks {
+		if b.Parquet != nil {
+			continue
+		}
+		blocks = append(blocks, b)
+	}
+	return blocks
 }
 
 // Block holds the information about a block in the index.
@@ -87,6 +116,9 @@ type Block struct {
 	// UploadedAt is a unix timestamp (seconds precision) of when the block has been completed to be uploaded
 	// to the storage.
 	UploadedAt int64 `json:"uploaded_at"`
+
+	// Parquet metadata if exists. If doesn't exist it will be nil.
+	Parquet *parquet.ConverterMarkMeta `json:"parquet,omitempty"`
 }
 
 // Within returns whether the block contains samples within the provided range.

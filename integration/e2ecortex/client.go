@@ -20,10 +20,12 @@ import (
 	"github.com/prometheus/alertmanager/types"
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
+	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/prompb"
+	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/storage/remote"
 	yaml "gopkg.in/yaml.v3"
@@ -32,6 +34,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 
+	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ruler"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 )
@@ -49,6 +52,7 @@ type Client struct {
 	distributorAddress  string
 	timeout             time.Duration
 	httpClient          *http.Client
+	remoteWriteAPI      *remoteapi.API
 	querierClient       promv1.API
 	orgID               string
 }
@@ -70,6 +74,17 @@ func NewClient(
 		return nil, err
 	}
 
+	client := &http.Client{
+		Transport: &addOrgIDRoundTripper{orgID: orgID, next: http.DefaultTransport},
+	}
+	remoteWriteAPI, err := remoteapi.NewAPI(fmt.Sprintf("http://%s", distributorAddress),
+		remoteapi.WithAPIHTTPClient(client),
+		remoteapi.WithAPIPath("/api/prom/push"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	c := &Client{
 		distributorAddress:  distributorAddress,
 		querierAddress:      querierAddress,
@@ -78,6 +93,7 @@ func NewClient(
 		timeout:             30 * time.Second,
 		httpClient:          &http.Client{},
 		querierClient:       promv1.NewAPI(querierAPIClient),
+		remoteWriteAPI:      remoteWriteAPI,
 		orgID:               orgID,
 	}
 
@@ -114,10 +130,44 @@ func NewPromQueryClient(address string) (*Client, error) {
 	return c, nil
 }
 
+func (c *Client) AllUserStats() ([]ingester.UserIDStats, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s/distributor/all_user_stats", c.distributorAddress), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Execute HTTP request
+	res, err := c.httpClient.Do(req.WithContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, err
+	}
+
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	userStats := make([]ingester.UserIDStats, 0)
+	err = json.Unmarshal(bodyBytes, &userStats)
+	if err != nil {
+		return nil, err
+	}
+
+	return userStats, nil
+}
+
 // Push the input timeseries to the remote endpoint
-func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
+func (c *Client) Push(timeseries []prompb.TimeSeries, metadata ...prompb.MetricMetadata) (*http.Response, error) {
 	// Create write request
-	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: timeseries})
+	data, err := proto.Marshal(&prompb.WriteRequest{Timeseries: timeseries, Metadata: metadata})
 	if err != nil {
 		return nil, err
 	}
@@ -145,6 +195,15 @@ func (c *Client) Push(timeseries []prompb.TimeSeries) (*http.Response, error) {
 
 	defer res.Body.Close()
 	return res, nil
+}
+
+// PushV2 the input timeseries to the remote endpoint
+func (c *Client) PushV2(symbols []string, timeseries []writev2.TimeSeries) (remoteapi.WriteResponseStats, error) {
+	// Create write request
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	return c.remoteWriteAPI.Write(ctx, remoteapi.WriteV2MessageType, &writev2.Request{Symbols: symbols, Timeseries: timeseries})
 }
 
 func getNameAndAttributes(ts prompb.TimeSeries) (string, map[string]any) {
@@ -215,14 +274,18 @@ func convertBucketLayout(bucket pmetric.ExponentialHistogramDataPointBuckets, sp
 }
 
 // Convert Timeseries to Metrics
-func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics {
+func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries, metadata []prompb.MetricMetadata) pmetric.Metrics {
 	metrics := pmetric.NewMetrics()
-	for _, ts := range timeseries {
+	for i, ts := range timeseries {
 		metricName, attributes := getNameAndAttributes(ts)
 		newMetric := metrics.ResourceMetrics().AppendEmpty().ScopeMetrics().AppendEmpty().Metrics().AppendEmpty()
 		newMetric.SetName(metricName)
-		//TODO Set description for new metric
-		//TODO Set unit for new metric
+
+		if metadata != nil {
+			newMetric.SetDescription(metadata[i].GetHelp())
+			newMetric.SetUnit(metadata[i].GetUnit())
+		}
+
 		if len(ts.Samples) > 0 {
 			createDataPointsGauge(newMetric, attributes, ts.Samples)
 		} else if len(ts.Histograms) > 0 {
@@ -232,7 +295,7 @@ func convertTimeseriesToMetrics(timeseries []prompb.TimeSeries) pmetric.Metrics 
 	return metrics
 }
 
-func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportRequest {
+func otlpWriteRequest(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) pmetricotlp.ExportRequest {
 	d := pmetric.NewMetrics()
 
 	// Generate One Counter, One Gauge, One Histogram, One Exponential-Histogram
@@ -254,10 +317,11 @@ func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportReq
 	// Generate One Counter
 	counterMetric := scopeMetric.Metrics().AppendEmpty()
 	counterMetric.SetName(name)
+	counterMetric.SetUnit(unit)
 	counterMetric.SetDescription("test-counter-description")
 
 	counterMetric.SetEmptySum()
-	counterMetric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	counterMetric.Sum().SetAggregationTemporality(temporality)
 
 	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
 	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
@@ -272,8 +336,8 @@ func otlpWriteRequest(name string, labels ...prompb.Label) pmetricotlp.ExportReq
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
-func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Response, error) {
-	data, err := otlpWriteRequest(name, labels...).MarshalProto()
+func (c *Client) OTLPPushExemplar(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) (*http.Response, error) {
+	data, err := otlpWriteRequest(name, unit, temporality, labels...).MarshalProto()
 	if err != nil {
 		return nil, err
 	}
@@ -302,9 +366,9 @@ func (c *Client) OTLPPushExemplar(name string, labels ...prompb.Label) (*http.Re
 }
 
 // Push series to OTLP endpoint
-func (c *Client) OTLP(timeseries []prompb.TimeSeries) (*http.Response, error) {
+func (c *Client) OTLP(timeseries []prompb.TimeSeries, metadata []prompb.MetricMetadata) (*http.Response, error) {
 
-	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries)).MarshalProto()
+	data, err := pmetricotlp.NewExportRequestFromMetrics(convertTimeseriesToMetrics(timeseries, metadata)).MarshalProto()
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +418,12 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 		retries.Wait()
 	}
 	return value, err
+}
+
+// Metadata runs a metadata query
+func (c *Client) Metadata(name, limit string) (map[string][]promv1.Metadata, error) {
+	metadata, err := c.querierClient.Metadata(context.Background(), name, limit)
+	return metadata, err
 }
 
 // QueryExemplars runs an exemplars query

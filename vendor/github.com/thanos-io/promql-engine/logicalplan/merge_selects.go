@@ -4,10 +4,12 @@
 package logicalplan
 
 import (
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/util/annotations"
+	"slices"
 
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // MergeSelectsOptimizer optimizes a binary expression where
@@ -35,6 +37,9 @@ func extractSelectors(selectors matcherHeap, expr Node) {
 		if !ok {
 			return
 		}
+		if !emptyProjection(e) {
+			return
+		}
 		for _, l := range e.LabelMatchers {
 			if l.Name == labels.MetricName {
 				selectors.add(l.Value, e.LabelMatchers)
@@ -48,6 +53,9 @@ func replaceMatchers(selectors matcherHeap, expr *Node) {
 		var matchers []*labels.Matcher
 		switch e := (*node).(type) {
 		case *VectorSelector:
+			if !emptyProjection(e) {
+				return
+			}
 			matchers = e.LabelMatchers
 		default:
 			return
@@ -67,18 +75,8 @@ func replaceMatchers(selectors matcherHeap, expr *Node) {
 			filters := make([]*labels.Matcher, len(matchers))
 			copy(filters, matchers)
 
-			// All replacements are done on metrics name only,
-			// so we can drop the explicit metric name selector.
-			filters = dropMatcher(labels.MetricName, filters)
-
-			// Drop filters which are already present as matchers in the replacement selector.
-			for _, s := range replacement {
-				for _, f := range filters {
-					if s.Name == f.Name && s.Value == f.Value && s.Type == f.Type {
-						filters = dropMatcher(f.Name, filters)
-					}
-				}
-			}
+			// Drop filters which are already present as matchers in the replacement selector including metric name selector.
+			filters = dropMatcher(replacement, filters)
 
 			switch e := (*node).(type) {
 			case *VectorSelector:
@@ -91,22 +89,30 @@ func replaceMatchers(selectors matcherHeap, expr *Node) {
 	})
 }
 
-func dropMatcher(matcherName string, originalMatchers []*labels.Matcher) []*labels.Matcher {
+func dropMatcher(toDrop []*labels.Matcher, original []*labels.Matcher) []*labels.Matcher {
+	res := slices.Clone(original)
 	i := 0
-	for i < len(originalMatchers) {
-		l := originalMatchers[i]
-		if l.Name == matcherName {
-			originalMatchers = append(originalMatchers[:i], originalMatchers[i+1:]...)
+	for i < len(res) {
+		l := res[i]
+		remove := false
+		for _, m := range toDrop {
+			if l.Name == m.Name && l.Type == m.Type && l.Value == m.Value {
+				remove = true
+				break
+			}
+		}
+		if remove {
+			res = slices.Delete(res, i, i+1)
 		} else {
 			i++
 		}
 	}
-	return originalMatchers
+	return res
 }
 
 func matcherToMap(matchers []*labels.Matcher) map[string]*labels.Matcher {
 	r := make(map[string]*labels.Matcher, len(matchers))
-	for i := 0; i < len(matchers); i++ {
+	for i := range matchers {
 		r[matchers[i].Name] = matchers[i]
 	}
 	return r
@@ -159,4 +165,11 @@ func (m matcherHeap) findReplacement(metricName string, matcher []*labels.Matche
 	}
 
 	return top, true
+}
+
+func emptyProjection(vs *VectorSelector) bool {
+	if vs.Projection == nil {
+		return true
+	}
+	return !vs.Projection.Include && len(vs.Projection.Labels) == 0
 }

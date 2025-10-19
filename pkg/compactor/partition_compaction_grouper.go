@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 var (
@@ -146,7 +147,8 @@ func (g *PartitionCompactionGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta)
 
 // Check whether this compactor exists on the subring based on user ID
 func (g *PartitionCompactionGrouper) checkSubringForCompactor() (bool, error) {
-	subRing := g.ring.ShuffleShard(g.userID, g.limits.CompactorTenantShardSize(g.userID))
+	shardSize := util.DynamicShardSize(g.limits.CompactorTenantShardSize(g.userID), g.ring.InstancesCount())
+	subRing := g.ring.ShuffleShard(g.userID, shardSize)
 
 	rs, err := subRing.GetAllHealthy(RingOp)
 	if err != nil {
@@ -407,7 +409,7 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 	}
 
 	partitions := make([]Partition, partitionCount)
-	for partitionID := 0; partitionID < partitionCount; partitionID++ {
+	for partitionID := range partitionCount {
 		partitionedGroup := partitionedGroups[partitionID]
 		blockIDs := make([]ulid.ULID, len(partitionedGroup.blocks))
 		for i, m := range partitionedGroup.blocks {
@@ -466,10 +468,7 @@ func (g *PartitionCompactionGrouper) calculatePartitionCount(group blocksGroupWi
 	if seriesCountLimit > 0 && totalSeriesCount > seriesCountLimit {
 		partitionNumberBasedOnSeries = g.findNearestPartitionNumber(float64(totalSeriesCount), float64(seriesCountLimit))
 	}
-	partitionNumber := partitionNumberBasedOnIndex
-	if partitionNumberBasedOnSeries > partitionNumberBasedOnIndex {
-		partitionNumber = partitionNumberBasedOnSeries
-	}
+	partitionNumber := max(partitionNumberBasedOnSeries, partitionNumberBasedOnIndex)
 	level.Info(g.logger).Log("msg", "calculated partition number for group", "partitioned_group_id", groupHash, "partition_number", partitionNumber, "total_index_size", totalIndexSizeInBytes, "index_size_limit", indexSizeLimit, "total_series_count", totalSeriesCount, "series_count_limit", seriesCountLimit, "group", group.String())
 	return partitionNumber
 }
@@ -818,7 +817,7 @@ func NewCompletenessChecker(blocks map[ulid.ULID]*metadata.Meta, groups []blocks
 					}
 				}
 			}
-			status.canTakeCompaction = !(previousTrBlocks == 0 || (previousTrBlocks == 1 && status.numActiveBlocks == 0))
+			status.canTakeCompaction = !(previousTrBlocks == 0 || (previousTrBlocks == 1 && status.numActiveBlocks == 0)) //nolint:staticcheck
 		}
 		previousTimeRanges = append(previousTimeRanges, tr)
 	}

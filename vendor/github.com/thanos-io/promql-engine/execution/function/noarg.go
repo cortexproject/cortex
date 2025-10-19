@@ -5,19 +5,14 @@ package function
 
 import (
 	"context"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/logicalplan"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 type noArgFunctionOperator struct {
-	telemetry.OperatorTelemetry
-
 	mint        int64
 	maxt        int64
 	step        int64
@@ -39,9 +34,6 @@ func (o *noArgFunctionOperator) String() string {
 }
 
 func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	return o.series, nil
 }
 
@@ -50,9 +42,6 @@ func (o *noArgFunctionOperator) GetPool() *model.VectorPool {
 }
 
 func (o *noArgFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

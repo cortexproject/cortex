@@ -75,17 +75,14 @@ func (j JsonDecoder) Decode(body []byte) (promql.Vector, Warnings, error) {
 func (j JsonDecoder) vectorToPromQLVector(vector model.Vector) promql.Vector {
 	v := make([]promql.Sample, 0, len(vector))
 	for _, sample := range vector {
-		metric := make([]labels.Label, 0, len(sample.Metric))
+		builder := labels.NewBuilder(labels.EmptyLabels())
 		for k, v := range sample.Metric {
-			metric = append(metric, labels.Label{
-				Name:  string(k),
-				Value: string(v),
-			})
+			builder.Set(string(k), string(v))
 		}
 		v = append(v, promql.Sample{
 			T:      int64(sample.Timestamp),
 			F:      float64(sample.Value),
-			Metric: metric,
+			Metric: builder.Labels(),
 		})
 	}
 	return v

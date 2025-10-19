@@ -153,7 +153,7 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *stor
 		return queriers[0].LabelValues(ctx, name, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelValues")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 
@@ -194,7 +194,7 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints
 		return queriers[0].LabelNames(ctx, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelNames")
-	defer log.Span.Finish()
+	defer log.Finish()
 
 	matchedTenants, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
 
@@ -244,7 +244,7 @@ type stringSliceFuncJob struct {
 // It doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
 func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, f stringSliceFunc, tenants map[string]struct{}, ids []string, queriers []storage.Querier) ([]string, annotations.Annotations, error) {
-	var jobs []interface{}
+	var jobs []any
 
 	for pos, id := range ids {
 		if tenants != nil {
@@ -260,7 +260,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 	}
 
 	parentCtx := ctx
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*stringSliceFuncJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
@@ -337,9 +337,9 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	}
 
 	log, ctx := spanlogger.New(ctx, "mergeQuerier.Select")
-	defer log.Span.Finish()
+	defer log.Finish()
 	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
-	var jobs = make([]interface{}, len(matchedValues))
+	var jobs = make([]any, len(matchedValues))
 	var seriesSets = make([]storage.SeriesSet, len(matchedValues))
 	var jobPos int
 	for labelPos := range ids {
@@ -355,7 +355,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	}
 
 	parentCtx := ctx
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*selectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
@@ -364,12 +364,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		newCtx := user.InjectOrgID(parentCtx, job.id)
 		seriesSets[job.pos] = &addLabelsSeriesSet{
 			upstream: job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
-			labels: labels.Labels{
-				{
-					Name:  m.idLabelName,
-					Value: job.id,
-				},
-			},
+			labels:   labels.FromStrings(m.idLabelName, job.id),
 		}
 		return nil
 	}
@@ -378,7 +373,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		return storage.ErrSeriesSet(err)
 	}
 
-	return storage.NewMergeSeriesSet(seriesSets, storage.ChainedSeriesMerge)
+	return storage.NewMergeSeriesSet(seriesSets, 0, storage.ChainedSeriesMerge)
 }
 
 // filterValuesByMatchers applies matchers to inputed `idLabelName` and
@@ -442,7 +437,7 @@ func (m *addLabelsSeriesSet) At() storage.Series {
 		upstream := m.upstream.At()
 		m.currSeries = &addLabelsSeries{
 			upstream: upstream,
-			labels:   setLabelsRetainExisting(upstream.Labels(), m.labels...),
+			labels:   setLabelsRetainExisting(upstream.Labels(), m.labels),
 		}
 	}
 	return m.currSeries
@@ -471,11 +466,11 @@ func rewriteLabelName(s string) string {
 }
 
 // this outputs a more readable error format
-func labelsToString(labels labels.Labels) string {
-	parts := make([]string, len(labels))
-	for pos, l := range labels {
-		parts[pos] = rewriteLabelName(l.Name) + " " + l.Value
-	}
+func labelsToString(lbls labels.Labels) string {
+	parts := make([]string, 0, lbls.Len())
+	lbls.Range(func(l labels.Label) {
+		parts = append(parts, rewriteLabelName(l.Name)+" "+l.Value)
+	})
 	return strings.Join(parts, ", ")
 }
 
@@ -496,17 +491,17 @@ func (a *addLabelsSeries) Iterator(it chunkenc.Iterator) chunkenc.Iterator {
 
 // this sets a label and preserves an existing value a new label prefixed with
 // original_. It doesn't do this recursively.
-func setLabelsRetainExisting(src labels.Labels, additionalLabels ...labels.Label) labels.Labels {
+func setLabelsRetainExisting(src labels.Labels, additionalLabels labels.Labels) labels.Labels {
 	lb := labels.NewBuilder(src)
 
-	for _, additionalL := range additionalLabels {
-		if oldValue := src.Get(additionalL.Name); oldValue != "" {
+	for name, value := range additionalLabels.Map() {
+		if oldValue := src.Get(name); oldValue != "" {
 			lb.Set(
-				retainExistingPrefix+additionalL.Name,
+				retainExistingPrefix+name,
 				oldValue,
 			)
 		}
-		lb.Set(additionalL.Name, additionalL.Value)
+		lb.Set(name, value)
 	}
 
 	return lb.Labels()

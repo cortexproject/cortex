@@ -29,6 +29,18 @@ In addition, you can configure gRPC client (Ruler -> Query Frontend) config, ple
 You can configure the query response format via `-ruler.query-response-format`. It is used to retrieve query results from the Query Frontend.
 The supported values are `protobuf` and `json`. We recommend using `protobuf`(default) because the retrieved query results containing native histograms are only supported on `protobuf`.
 
+## How to track query stat log and metric
+When the `-ruler.frontend-address` is configured, the values of query stats for rule evaluation logs and metrics are all `0` in the Ruler.
+You can look at the logs at the Query Frontend via enabling `-frontend.enabled-ruler-query-stats` (disabled by default).
+
+Also, there are alternative metrics; you can see right-side metrics instead:
+```
+`cortex_ruler_query_seconds_total` -> `cortex_query_seconds_total{source="ruler"}`
+`cortex_ruler_fetched_series_total` -> `cortex_query_fetched_series_total{source="ruler"}`
+`cortex_ruler_samples_total` -> `cortex_query_samples_total{source="ruler"}`
+`cortex_ruler_fetched_chunks_bytes_total` -> `cortex_query_fetched_chunks_bytes_total{source="ruler"}`
+`cortex_ruler_fetched_data_bytes_total` -> `cortex_query_fetched_data_bytes_total{source="ruler"}`
+```
 
 ## Pros and Cons
 If this feature is enabled, the query execute path is as follows:

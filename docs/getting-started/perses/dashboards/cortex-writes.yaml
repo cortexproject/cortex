@@ -1,0 +1,910 @@
+kind: Dashboard
+metadata:
+    name: cortex___writes
+    createdAt: 2025-03-24T19:15:47.468680767Z
+    updatedAt: 2025-03-24T19:43:53.000136362Z
+    version: 12
+    project: default
+spec:
+    display:
+        name: Cortex / Writes
+    variables:
+        - kind: TextVariable
+          spec:
+            display:
+                name: Datasource
+                hidden: false
+            value: cortex
+            name: Datasource
+        - kind: TextVariable
+          spec:
+            display:
+                name: job
+                hidden: false
+            value: cortex
+            name: job
+    panels:
+        Text:
+            kind: Panel
+            spec:
+                display:
+                    name: ' '
+                plugin:
+                    kind: Markdown
+                    spec:
+                        text: |
+                            <p>
+                              This dashboard shows various health metrics for the Cortex write path.
+                              It is broken into sections for each service on the write path,
+                              and organized by the order in which the write request flows.
+                              <br/>
+                              Incoming metrics data travels from the gateway → distributor → ingester.
+                              <br/>
+                              For each service, there are 3 panels showing
+                              (1) requests per second to that service,
+                              (2) average, median, and p99 latency of requests to that service, and
+                              (3) p99 latency of requests to each instance of that service.
+                            </p>
+                            <p>
+                              It also includes metrics for the key-value (KV) stores used to manage
+                              the high-availability tracker and the ingesters.
+                            </p>    
+        SamplesPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Samples per sec
+                plugin:
+                    kind: StatChart
+                    spec:
+                        calculation: last-number
+                        format:
+                            unit: decimal
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: sum(cluster_namespace_job:cortex_distributor_received_samples:rate5m{job=~"$job"})
+        ActiveSeries:
+            kind: Panel
+            spec:
+                display:
+                    name: Active series
+                plugin:
+                    kind: StatChart
+                    spec:
+                        calculation: last-number
+                        format:
+                            unit: decimal
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(cortex_ingester_memory_series{job=~"$job"}
+                                    / on(cluster, namespace) group_left
+                                    max by (cluster, namespace) (cortex_distributor_replication_factor{job=~"$job"}))
+        Tenants:
+            kind: Panel
+            spec:
+                display:
+                    name: Tenants
+                plugin:
+                    kind: StatChart
+                    spec:
+                        calculation: last-number
+                        format:
+                            unit: decimal
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: count(count by(user) (cortex_ingester_active_series{job=~"$job"}))
+        RequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: StatChart
+                    spec:
+                        calculation: last-number
+                        format:
+                            unit: decimal
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: sum(rate(cortex_request_duration_seconds_count{job=~"$job", route=~"api_(v1|prom)_push"}[5m]))                                
+        GatewayRequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum by (status) (
+                                      label_replace(label_replace(rate(cortex_request_duration_seconds_count{job=~"$job", route=~"api_(v1|prom)_push"}[5m]),
+                                      "status", "${1}xx", "status_code", "([0-9]).."),
+                                      "status", "${1}", "status_code", "([a-zA-Z]+)"))
+                                seriesNameFormat: '{{status}}'
+        GatewayLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route=~"api_(v1|prom)_push"})) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route=~"api_(v1|prom)_push"})) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    1e3 * sum(cluster_job_route:cortex_request_duration_seconds_sum:sum_rate{job=~"$job", route=~"api_(v1|prom)_push"}) /
+                                    sum(cluster_job_route:cortex_request_duration_seconds_count:sum_rate{job=~"$job", route=~"api_(v1|prom)_push"})
+                                seriesNameFormat: Average
+        GatewayLatencyPerPod:
+            kind: Panel
+            spec:
+                display:
+                    name: Per pod p99 Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by(le, pod) (rate(cortex_request_duration_seconds_bucket{job=~"$job", route=~"api_(v1|prom)_push"}[$__rate_interval])))
+                                seriesNameFormat: '{{status}}'
+        DistributorRequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum by (status) (
+                                      label_replace(label_replace(rate(cortex_request_duration_seconds_count{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"}[$__rate_interval]),
+                                      "status", "${1}xx", "status_code", "([0-9]).."),
+                                      "status", "${1}", "status_code", "([a-zA-Z]+)"))
+                                seriesNameFormat: '{{status}}'
+        DistributorLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"})) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"})) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    1e3 * sum(cluster_job_route:cortex_request_duration_seconds_sum:sum_rate{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"}) /
+                                    sum(cluster_job_route:cortex_request_duration_seconds_count:sum_rate{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"})
+                                seriesNameFormat: Average
+        DistributorLatencyPerPod:
+            kind: Panel
+            spec:
+                display:
+                    name: Per pod p99 Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by(le, pod) (rate(cortex_request_duration_seconds_bucket{job=~"$job", route=~"/distributor.Distributor/Push|/httpgrpc.*|api_(v1|prom)_push"}[$__rate_interval])))
+                                seriesNameFormat: '{{status}}'
+        HARequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum by (status) (
+                                    label_replace(label_replace(rate(cortex_kv_request_duration_seconds_count{job=~"$job"}[$__rate_interval]),
+                                    "status", "${1}xx", "status_code", "([0-9]).."),
+                                    "status", "${1}", "status_code", "([a-zA-Z]+)"))
+                                seriesNameFormat: '{{status}}'
+        HALatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by (le) (cluster_job:cortex_kv_request_duration_seconds_bucket:sum_rate{job=~"$job"})) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum by (le) (cluster_job:cortex_kv_request_duration_seconds_bucket:sum_rate{job=~"$job"})) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    1e3 * sum(cluster_job:cortex_kv_request_duration_seconds_sum:sum_rate{job=~"$job"}) / sum(cluster_job:cortex_kv_request_duration_seconds_count:sum_rate{job=~"$job"})
+                                seriesNameFormat: Average
+        IngesterRequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum by (status) (
+                                    label_replace(label_replace(rate(cortex_request_duration_seconds_count{job=~"$job",route="/cortex.Ingester/Push"}[$__rate_interval]),
+                                    "status", "${1}xx", "status_code", "([0-9]).."),
+                                    "status", "${1}", "status_code", "([a-zA-Z]+)"))
+                                seriesNameFormat: '{{status}}'
+        IngesterLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route="/cortex.Ingester/Push"})) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum by (le) (cluster_job_route:cortex_request_duration_seconds_bucket:sum_rate{job=~"$job", route="/cortex.Ingester/Push"})) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    1e3 * sum(cluster_job_route:cortex_request_duration_seconds_sum:sum_rate{job=~"$job", route="/cortex.Ingester/Push"}) /
+                                    sum(cluster_job_route:cortex_request_duration_seconds_count:sum_rate{job=~"$job", route="/cortex.Ingester/Push"})
+                                seriesNameFormat: Average
+        IngesterLatencyPerPod:
+            kind: Panel
+            spec:
+                display:
+                    name: Per pod p99 Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by(le, pod) (rate(cortex_request_duration_seconds_bucket{job=~"$job", route="/cortex.Ingester/Push"}[$__rate_interval])))
+                                seriesNameFormat: '{{status}}'
+        IngesterRingRequestsPerSec:
+            kind: Panel
+            spec:
+                display:
+                    name: Requests / sec
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum by (status) (
+                                    label_replace(label_replace(rate(cortex_kv_request_duration_seconds_count{job=~"$job"}[$__rate_interval]),
+                                    "status", "${1}xx", "status_code", "([0-9]).."),
+                                    "status", "${1}", "status_code", "([a-zA-Z]+)"))
+                                seriesNameFormat: '{{status}}'
+        IngesterRingLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Latency
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum by (le) (cluster_job:cortex_kv_request_duration_seconds_bucket:sum_rate{job=~"$job"})) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum by (le) (cluster_job:cortex_kv_request_duration_seconds_bucket:sum_rate{job=~"$job"})) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    1e3 * sum(cluster_job:cortex_kv_request_duration_seconds_sum:sum_rate{job=~"$job"}) / sum(cluster_job:cortex_kv_request_duration_seconds_count:sum_rate{job=~"$job"})
+                                seriesNameFormat: Average
+        IngesterUploadPerSecond:
+            kind: Panel
+            spec:
+                display:
+                    name: Uploaded blocks / sec
+                    description: |
+                      The rate of blocks being uploaded from the ingesters
+                      to object storage.
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_shipper_uploads_total{job=~"$job"}[$__rate_interval])) - sum(rate(cortex_ingester_shipper_upload_failures_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: successful
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_shipper_upload_failures_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: failed
+        IngesterUploadLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Upload latency
+                    description: |
+                      The average, median (50th percentile), and 99th percentile time
+                      the ingesters take to upload blocks to object storage.
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~"$job",component="ingester",operation="upload"}[$__rate_interval])) by (le)) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum(rate(thanos_objstore_bucket_operation_duration_seconds_bucket{job=~"$job",component="ingester",operation="upload"}[$__rate_interval])) by (le)) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(thanos_objstore_bucket_operation_duration_seconds_sum{job=~"$job",component="ingester",operation="upload"}[$__rate_interval])) * 1e3 /
+                                    sum(rate(thanos_objstore_bucket_operation_duration_seconds_count{job=~"$job",component="ingester",operation="upload"}[$__rate_interval]))
+                                seriesNameFormat: Average                                
+        IngesterTSDBHeadCompactionsPerSecond:
+            kind: Panel
+            spec:
+                display:
+                    name: Compactions / sec
+                    description: |
+                        Ingesters maintain a local TSDB per-tenant on disk. Each TSDB maintains a head block for each
+                        active time series; these blocks get periodically compacted (by default, every 2h).
+                        This panel shows the rate of compaction operations across all TSDBs on all ingesters.
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_shipper_uploads_total{job=~"$job"}[$__rate_interval])) - sum(rate(cortex_ingester_shipper_upload_failures_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: successful
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_shipper_upload_failures_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: failed
+        IngesterTSDBCompactionLatency:
+            kind: Panel
+            spec:
+                display:
+                    name: Compactions latency
+                    description: |
+                      The average, median (50th percentile), and 99th percentile time ingesters take to compact TSDB head blocks
+                      on the local filesystem.
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.99, sum(rate(cortex_ingester_tsdb_compaction_duration_seconds_bucket{job=~"$job"}[$__rate_interval])) by (le)) * 1e3
+                                seriesNameFormat: 99th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    histogram_quantile(0.50, sum(rate(cortex_ingester_tsdb_compaction_duration_seconds_bucket{job=~"$job"}[$__rate_interval])) by (le)) * 1e3
+                                seriesNameFormat: 50th percentile
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_tsdb_compaction_duration_seconds_sum{job=~"$job"}[$__rate_interval])) * 1e3 / 
+                                    sum(rate(cortex_ingester_tsdb_compaction_duration_seconds_count{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: Average
+        IngesterWALTruncationsPerSecond:
+            kind: Panel
+            spec:
+                display:
+                    name: WAL truncations / sec
+                    description: |
+                      The WAL is truncated each time a new TSDB block is written.
+                      This panel measures the rate of truncations.
+                plugin:
+                    kind: TimeSeriesChart
+                    spec: {}
+                queries:
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_tsdb_wal_truncations_total{job=~"$job"}[$__rate_interval])) - 
+                                    sum(rate(cortex_ingester_tsdb_wal_truncations_failed_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: successful
+                    - kind: TimeSeriesQuery
+                      spec:
+                        plugin:
+                            kind: PrometheusTimeSeriesQuery
+                            spec:
+                                query: |
+                                    sum(rate(cortex_ingester_tsdb_wal_truncations_failed_total{job=~"$job"}[$__rate_interval]))
+                                seriesNameFormat: failed
+        IngesterCheckpointsCreatedPerSecond:
+          kind: Panel
+          spec:
+              display:
+                  name: Checkpoints created / sec
+                  description: |
+                    Checkpoints are created as part of the WAL truncation process.
+                    This metric measures the rate of checkpoint creation.
+              plugin:
+                  kind: TimeSeriesChart
+                  spec: {}
+              queries:
+                  - kind: TimeSeriesQuery
+                    spec:
+                      plugin:
+                          kind: PrometheusTimeSeriesQuery
+                          spec:
+                              query: |
+                                  sum(rate(cortex_ingester_tsdb_checkpoint_creations_total{job=~"$job"}[$__rate_interval])) - 
+                                  sum(rate(cortex_ingester_tsdb_checkpoint_creations_failed_total{job=~"$job"}[$__rate_interval]))
+                              seriesNameFormat: successful
+                  - kind: TimeSeriesQuery
+                    spec:
+                      plugin:
+                          kind: PrometheusTimeSeriesQuery
+                          spec:
+                              query: |
+                                  sum(rate(cortex_ingester_tsdb_checkpoint_creations_failed_total{job=~"$job"}[$__rate_interval]))
+                              seriesNameFormat: failed
+        IngesterWALTruncationsLatency:
+          kind: Panel
+          spec:
+              display:
+                  name: WAL truncations latency (includes checkpointing)
+                  description: |
+                    Average time taken to perform a full WAL truncation,
+                    including the time taken for the checkpointing to complete.
+              plugin:
+                  kind: TimeSeriesChart
+                  spec: {}
+              queries:
+                  - kind: TimeSeriesQuery
+                    spec:
+                      plugin:
+                          kind: PrometheusTimeSeriesQuery
+                          spec:
+                              query: |
+                                  sum(rate(cortex_ingester_tsdb_wal_truncate_duration_seconds_sum{job=~"$job"}[$__rate_interval])) / 
+                                  sum(rate(cortex_ingester_tsdb_wal_truncate_duration_seconds_count{job=~"$job"}[$__rate_interval]))
+                              seriesNameFormat: avg
+        IngesterCorruptionsPerSecond:
+          kind: Panel
+          spec:
+              display:
+                  name: Corruptions / sec
+              plugin:
+                  kind: TimeSeriesChart
+                  spec: {}
+              queries:
+                  - kind: TimeSeriesQuery
+                    spec:
+                      plugin:
+                          kind: PrometheusTimeSeriesQuery
+                          spec:
+                              query: |
+                                  sum(rate(cortex_ingester_wal_corruptions_total{job=~"$job"}[$__rate_interval]))
+                              seriesNameFormat: WAL
+                  - kind: TimeSeriesQuery
+                    spec:
+                      plugin:
+                          kind: PrometheusTimeSeriesQuery
+                          spec:
+                              query: |
+                                  sum(rate(cortex_ingester_tsdb_mmap_chunk_corruptions_total{job=~"$job"}[$__rate_interval]))
+                              seriesNameFormat: 'mmap-ed chunks'
+
+    layouts:
+        - kind: Grid
+          spec:
+            display:
+                title: Writes dashboard description
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 24
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/Text'
+        - kind: Grid
+          spec:
+            display:
+                title: Headlines
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/SamplesPerSec'
+                - x: 6
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/ActiveSeries'
+                - x: 12
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/Tenants'
+                - x: 18
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/RequestsPerSec'
+        - kind: Grid
+          spec:
+            display:
+                title: Gateway
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/GatewayRequestsPerSec'
+                - x: 8
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/GatewayLatency'
+                - x: 16
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/GatewayLatencyPerPod'
+        - kind: Grid
+          spec:
+            display:
+                title: Distributor
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/DistributorRequestsPerSec'
+                - x: 8
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/DistributorLatency'
+                - x: 16
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/DistributorLatencyPerPod'
+        - kind: Grid
+          spec:
+            display:
+                title: Key-value store for high-availability (HA) deduplication
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/HARequestsPerSec'
+                - x: 12
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/HALatency'                    
+        - kind: Grid
+          spec:
+            display:
+                title: Ingester
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterRequestsPerSec'
+                - x: 8
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterLatency'
+                - x: 16
+                  "y": 0
+                  width: 8
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterLatencyPerPod'            
+        - kind: Grid
+          spec:
+            display:
+                title: Key-value store for the ingesters ring
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterRingRequestsPerSec'
+                - x: 12
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterRingLatency'
+        - kind: Grid
+          spec:
+            display:
+                title: Ingester - Blocks storage - Shipper
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterUploadPerSecond'
+                - x: 12
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterUploadLatency'
+        - kind: Grid
+          spec:
+            display:
+                title: Ingester - Blocks storage - TSDB Head
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterTSDBHeadCompactionsPerSecond'
+                - x: 12
+                  "y": 0
+                  width: 12
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterTSDBCompactionLatency'
+        - kind: Grid
+          spec:
+            display:
+                title: Ingester - Blocks storage - TSDB write ahead log (WAL)
+                collapse:
+                    open: true
+            items:
+                - x: 0
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterWALTruncationsPerSecond'
+                - x: 6
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterCheckpointsCreatedPerSecond'
+                - x: 12
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterWALTruncationsLatency'
+                - x: 18
+                  "y": 0
+                  width: 6
+                  height: 6
+                  content:
+                    $ref: '#/spec/panels/IngesterCorruptionsPerSecond'
+    duration: 1h
+        

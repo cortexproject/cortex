@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -46,10 +47,11 @@ type rulerNotifier struct {
 
 func newRulerNotifier(o *notifier.Options, l gklog.Logger, registerer prometheus.Registerer, sdMetrics map[string]discovery.DiscovererMetrics) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
+	slogger := util_log.GoKitLogToSlog(l)
 	return &rulerNotifier{
-		notifier:  notifier.NewManager(o, l),
+		notifier:  notifier.NewManager(o, slogger),
 		sdCancel:  sdCancel,
-		sdManager: discovery.NewManager(sdCtx, l, registerer, sdMetrics),
+		sdManager: discovery.NewManager(sdCtx, slogger, registerer, sdMetrics),
 		logger:    l,
 	}
 }

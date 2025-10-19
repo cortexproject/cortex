@@ -18,19 +18,18 @@ func genLabels(
 	l := labelSet[0]
 	rest := genLabels(labelSet[1:], labelBuckets)
 
-	for i := 0; i < labelBuckets; i++ {
+	for i := range labelBuckets {
 		x := labels.Label{
 			Name:  l,
 			Value: fmt.Sprintf("%d", i),
 		}
 		if len(rest) == 0 {
-			set := labels.Labels{x}
-			result = append(result, set)
+			result = append(result, labels.FromStrings(x.Name, x.Value))
 			continue
 		}
 		for _, others := range rest {
-			set := append(others, x)
-			result = append(result, set)
+			builder := labels.NewBuilder(others).Set(x.Name, x.Value)
+			result = append(result, builder.Labels())
 		}
 	}
 	return result

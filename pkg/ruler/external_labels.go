@@ -20,7 +20,7 @@ func newUserExternalLabels(global labels.Labels, limits RulesLimits) *userExtern
 	return &userExternalLabels{
 		global:  global,
 		limits:  limits,
-		builder: labels.NewBuilder(nil),
+		builder: labels.NewBuilder(labels.EmptyLabels()),
 
 		mtx:   sync.Mutex{},
 		users: map[string]labels.Labels{},
@@ -41,9 +41,9 @@ func (e *userExternalLabels) update(userID string) (labels.Labels, bool) {
 	defer e.mtx.Unlock()
 
 	e.builder.Reset(e.global)
-	for _, l := range lset {
+	lset.Range(func(l labels.Label) {
 		e.builder.Set(l.Name, l.Value)
-	}
+	})
 	lset = e.builder.Labels()
 
 	if !labels.Equal(e.users[userID], lset) {

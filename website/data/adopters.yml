@@ -9,6 +9,9 @@ adopters:
   - name: Buoyant
     url: https://buoyant.io/
     logo: buoyant.svg
+  - name: Cabify
+    url: https://tech.cabify.com/
+    logo: cabify.svg
   - name: DigitalOcean
     url: https://www.digitalocean.com/
     logo: digital_ocean.png

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,6 +163,99 @@ func TestLoadRuntimeConfigFromCloudStorage(t *testing.T) {
 	require.Equal(t, 3, (*runtimeConfig.TenantLimits["tenant3"]).MaxExemplars)
 
 	require.NoError(t, s.Stop(cortexSvc))
+}
+
+// Verify components are successfully started with `-distributor.shard-by-all-labels=false`
+// except for "distributor", "querier", and "ruler"
+// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
+func Test_VerifyComponentsAreSuccessfullyStarted_WithRuntimeConfigLoad(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	runtimeConfigYamlFile := `
+overrides:
+  'user-1':
+    max_global_series_per_user: 15000
+`
+
+	require.NoError(t, writeFileToSharedDir(s, runtimeConfigFile, []byte(runtimeConfigYamlFile)))
+	filePath := filepath.Join(e2e.ContainerSharedDir, runtimeConfigFile)
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-runtime-config.file":    filePath,
+		"-runtime-config.backend": "filesystem",
+
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+
+		// store-gateway
+		"-querier.store-gateway-addresses": "localhost:12345",
+
+		// distributor.shard-by-all-labels is false
+		"-distributor.shard-by-all-labels": "false",
+	})
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	// Ingester and Store gateway start
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, storeGateway))
+
+	// Querier start, but fail with "-distributor.shard-by-all-labels": "false"
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+	}), "")
+	require.Error(t, s.StartAndWaitReady(querier))
+
+	// Start Query frontend
+	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	// Querier start, should success with "-distributor.shard-by-all-labels": "true"
+	querier = e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
+		"-distributor.shard-by-all-labels": "true",
+		"-querier.frontend-address":        queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+
+	// Ruler start, but fail with "-distributor.shard-by-all-labels": "false"
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(flags, RulerFlags()), "")
+	require.Error(t, s.StartAndWaitReady(ruler))
+
+	// Ruler start, should success with "-distributor.shard-by-all-labels": "true"
+	ruler = e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(flags, RulerFlags(), map[string]string{
+		"-distributor.shard-by-all-labels": "true",
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(ruler))
+
+	// Start the query-scheduler
+	queryScheduler := e2ecortex.NewQueryScheduler("query-scheduler", flags, "")
+	require.NoError(t, s.StartAndWaitReady(queryScheduler))
+
+	// Start Alertmanager
+	alertmanager := e2ecortex.NewAlertmanager("alertmanager", mergeFlags(flags, AlertmanagerFlags()), "")
+	require.NoError(t, s.StartAndWaitReady(alertmanager))
+
+	// Distributor start, but fail with "-distributor.shard-by-all-labels": "false"
+	distributor := e2ecortex.NewQuerier("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{}), "")
+	require.Error(t, s.StartAndWaitReady(distributor))
+
+	// Distributor start, should success with "-distributor.shard-by-all-labels": "true"
+	distributor = e2ecortex.NewQuerier("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-distributor.shard-by-all-labels": "true",
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(distributor))
 }
 
 func assertRuntimeConfigLoadedCorrectly(t *testing.T, cortexSvc *e2ecortex.CortexService) {

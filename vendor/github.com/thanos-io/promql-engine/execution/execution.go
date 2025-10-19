@@ -21,11 +21,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
-	promstorage "github.com/prometheus/prometheus/storage"
-
 	"github.com/thanos-io/promql-engine/execution/aggregate"
 	"github.com/thanos-io/promql-engine/execution/binary"
 	"github.com/thanos-io/promql-engine/execution/exchange"
@@ -40,6 +35,11 @@ import (
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/storage"
+
+	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
+	promstorage "github.com/prometheus/prometheus/storage"
 )
 
 // New creates new physical query execution for a given query expression which represents logical plan.
@@ -178,7 +178,7 @@ func newRangeVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, t 
 	// TODO(saswatamcode): Range vector result might need new operator
 	// before it can be non-nested. https://github.com/thanos-io/promql-engine/issues/39
 	milliSecondRange := t.Range.Milliseconds()
-	if function.IsExtFunction(e.Func.Name) {
+	if parse.IsExtFunction(e.Func.Name) {
 		milliSecondRange += opts.ExtLookbackDelta.Milliseconds()
 	}
 
@@ -213,6 +213,7 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 	}
 
 	var scalarArg model.VectorOperator
+	var scalarArg2 model.VectorOperator
 	switch e.Func.Name {
 	case "quantile_over_time":
 		// quantile_over_time(scalar, range-vector)
@@ -226,9 +227,19 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		if err != nil {
 			return nil, err
 		}
+	case "double_exponential_smoothing":
+		// double_exponential_smoothing(range-vector, scalar, scalar)
+		scalarArg, err = newOperator(ctx, e.Args[1], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
+		scalarArg2, err = newOperator(ctx, e.Args[2], storage, opts, hints)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, &outerOpts, e, t)
+	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, scalarArg2, &outerOpts, e, t)
 }
 
 func newInstantVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -262,16 +273,16 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 		return aggregate.NewCountValues(model.NewVectorPool(opts.StepsBatch), next, param, !e.Without, e.Grouping, opts), nil
 	}
 
-	// parameter is only required for count_values, quantile, topk and bottomk.
+	// parameter is only required for count_values, quantile, topk, bottomk, limitk, and limit_ratio.
 	var paramOp model.VectorOperator
 	switch e.Op {
-	case parser.QUANTILE, parser.TOPK, parser.BOTTOMK:
+	case parser.QUANTILE, parser.TOPK, parser.BOTTOMK, parser.LIMITK, parser.LIMIT_RATIO:
 		paramOp, err = newOperator(ctx, e.Param, scanners, opts, hints)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK {
+	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
 		next, err = aggregate.NewKHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
 	} else {
 		next, err = aggregate.NewHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
@@ -376,7 +387,7 @@ func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners s
 
 func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	// Create a new remote query scoped to the calculated start time.
-	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, opts.End, opts.Step)
+	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, e.QueryRangeEnd, opts.Step)
 	if err != nil {
 		return nil, err
 	}
@@ -386,7 +397,7 @@ func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts
 	// We need to set the lookback for the selector to 0 since the remote query already applies one lookback.
 	selectorOpts := *opts
 	selectorOpts.LookbackDelta = 0
-	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.Engine.LabelSets(), &selectorOpts, hints)
+	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
 	return exchange.NewConcurrent(remoteExec, 2, opts), nil
 }
 
@@ -407,9 +418,9 @@ func getTimeRangesForVectorSelector(n *logicalplan.VectorSelector, opts *query.O
 		end = *n.Timestamp
 	}
 	if evalRange == 0 {
-		start -= opts.LookbackDelta.Milliseconds()
+		start -= opts.LookbackDelta.Milliseconds() - 1
 	} else {
-		start -= evalRange
+		start -= evalRange - 1
 	}
 	offset := n.OriginalOffset.Milliseconds()
 	return start - offset, end - offset

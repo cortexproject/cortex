@@ -7,14 +7,12 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
-
-	"github.com/thanos-io/promql-engine/execution/telemetry"
-
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // numberLiteralSelector returns []model.StepVector with same sample value across time range.
@@ -30,10 +28,9 @@ type numberLiteralSelector struct {
 	once        sync.Once
 
 	val float64
-	telemetry.OperatorTelemetry
 }
 
-func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val float64) *numberLiteralSelector {
+func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val float64) model.VectorOperator {
 	oper := &numberLiteralSelector{
 		vectorPool:  pool,
 		numSteps:    opts.NumSteps(),
@@ -44,8 +41,7 @@ func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val f
 		val:         val,
 	}
 
-	oper.OperatorTelemetry = telemetry.NewTelemetry(oper, opts)
-	return oper
+	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (o *numberLiteralSelector) Explain() (next []model.VectorOperator) {
@@ -57,9 +53,6 @@ func (o *numberLiteralSelector) String() string {
 }
 
 func (o *numberLiteralSelector) Series(context.Context) ([]labels.Labels, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	o.loadSeries()
 	return o.series, nil
 }
@@ -69,9 +62,6 @@ func (o *numberLiteralSelector) GetPool() *model.VectorPool {
 }
 
 func (o *numberLiteralSelector) Next(ctx context.Context) ([]model.StepVector, error) {
-	start := time.Now()
-	defer func() { o.AddExecutionTimeTaken(time.Since(start)) }()
-
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -49,6 +48,19 @@ func TestLimiter_maxSeriesPerUser(t *testing.T) {
 
 	runMaxFn := func(limiter *Limiter) int {
 		return limiter.maxSeriesPerUser("test")
+	}
+
+	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
+}
+
+func TestLimiter_maxNativeHistogramsSeriesPerUser(t *testing.T) {
+	applyLimits := func(limits *validation.Limits, localLimit, globalLimit int) {
+		limits.MaxLocalNativeHistogramSeriesPerUser = localLimit
+		limits.MaxGlobalNativeHistogramSeriesPerUser = globalLimit
+	}
+
+	runMaxFn := func(limiter *Limiter) int {
+		return limiter.maxNativeHistogramSeriesPerUser("test")
 	}
 
 	runLimiterMaxFunctionTest(t, applyLimits, runMaxFn, false)
@@ -209,7 +221,6 @@ func runLimiterMaxFunctionTest(
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -221,8 +232,7 @@ func runLimiterMaxFunctionTest(
 			limits := validation.Limits{IngestionTenantShardSize: testData.shardSize}
 			applyLimits(&limits, testData.localLimit, testData.globalLimit)
 
-			overrides, err := validation.NewOverrides(limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(limits, nil)
 
 			// Assert on default sharding strategy.
 			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
@@ -277,7 +287,6 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -286,11 +295,10 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerMetric:  testData.maxLocalSeriesPerMetric,
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
@@ -339,7 +347,6 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -348,11 +355,10 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalMetadataPerMetric:  testData.maxLocalMetadataPerMetric,
 				MaxGlobalMetadataPerMetric: testData.maxGlobalMetadataPerMetric,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
@@ -402,7 +408,6 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -411,14 +416,74 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalSeriesPerUser:  testData.maxLocalSeriesPerUser,
 				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
+
+			assert.Equal(t, testData.expected, actual)
+		})
+	}
+}
+
+func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
+	tests := map[string]struct {
+		maxLocalNativeHistogramsSeriesPerUser  int
+		maxGlobalNativeHistogramsSeriesPerUser int
+		ringReplicationFactor                  int
+		ringIngesterCount                      int
+		shardByAllLabels                       bool
+		series                                 int
+		expected                               error
+	}{
+		"both local and global limit are disabled": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 0,
+			ringReplicationFactor:                  1,
+			ringIngesterCount:                      1,
+			shardByAllLabels:                       false,
+			series:                                 100,
+			expected:                               nil,
+		},
+		"current number of series is below the limit": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 1000,
+			ringReplicationFactor:                  3,
+			ringIngesterCount:                      10,
+			shardByAllLabels:                       true,
+			series:                                 299,
+			expected:                               nil,
+		},
+		"current number of series is above the limit": {
+			maxLocalNativeHistogramsSeriesPerUser:  0,
+			maxGlobalNativeHistogramsSeriesPerUser: 1000,
+			ringReplicationFactor:                  3,
+			ringIngesterCount:                      10,
+			shardByAllLabels:                       true,
+			series:                                 300,
+			expected:                               errMaxNativeHistogramSeriesPerUserLimitExceeded,
+		},
+	}
+
+	for testName, testData := range tests {
+
+		t.Run(testName, func(t *testing.T) {
+			// Mock the ring
+			ring := &ringCountMock{}
+			ring.On("HealthyInstancesCount").Return(testData.ringIngesterCount)
+			ring.On("ZonesCount").Return(1)
+
+			// Mock limits
+			limits := validation.NewOverrides(validation.Limits{
+				MaxLocalNativeHistogramSeriesPerUser:  testData.maxLocalNativeHistogramsSeriesPerUser,
+				MaxGlobalNativeHistogramSeriesPerUser: testData.maxGlobalNativeHistogramsSeriesPerUser,
+			}, nil)
+
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			actual := limiter.AssertMaxNativeHistogramSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
 		})
@@ -456,7 +521,7 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 			ringIngesterCount:     10,
 			series:                200,
 			shardByAllLabels:      true,
-			expected:              errMaxSeriesPerLabelSetLimitExceeded{globalLimit: 10, localLimit: 3},
+			expected:              errMaxSeriesPerLabelSetLimitExceeded{globalLimit: 10, actualLocalLimit: 3},
 			limits: validation.Limits{
 				LimitsPerLabelSet: []validation.LimitsPerLabelSet{
 					{
@@ -487,7 +552,6 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -496,8 +560,7 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(testData.limits, nil)
-			require.NoError(t, err)
+			limits := validation.NewOverrides(testData.limits, nil)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxSeriesPerLabelSet("test", labels.FromStrings("foo", "bar"), func(limits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
@@ -549,7 +612,6 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			// Mock the ring
@@ -558,11 +620,10 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 			ring.On("ZonesCount").Return(1)
 
 			// Mock limits
-			limits, err := validation.NewOverrides(validation.Limits{
+			limits := validation.NewOverrides(validation.Limits{
 				MaxLocalMetricsWithMetadataPerUser:  testData.maxLocalMetadataPerUser,
 				MaxGlobalMetricsWithMetadataPerUser: testData.maxGlobalMetadataPerUser,
 			}, nil)
-			require.NoError(t, err)
 
 			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
 			actual := limiter.AssertMaxMetricsWithMetadataPerUser("test", testData.metadata)
@@ -579,19 +640,22 @@ func TestLimiter_FormatError(t *testing.T) {
 	ring.On("ZonesCount").Return(1)
 
 	// Mock limits
-	limits, err := validation.NewOverrides(validation.Limits{
-		MaxGlobalSeriesPerUser:              100,
-		MaxGlobalSeriesPerMetric:            20,
-		MaxGlobalMetricsWithMetadataPerUser: 10,
-		MaxGlobalMetadataPerMetric:          3,
+	limits := validation.NewOverrides(validation.Limits{
+		MaxGlobalSeriesPerUser:                100,
+		MaxGlobalNativeHistogramSeriesPerUser: 100,
+		MaxGlobalSeriesPerMetric:              20,
+		MaxGlobalMetricsWithMetadataPerUser:   10,
+		MaxGlobalMetadataPerMetric:            3,
 	}, nil)
-	require.NoError(t, err)
 
 	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
 	lbls := labels.FromStrings(labels.MetricName, "testMetric")
 
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-user series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
+
+	actual = limiter.FormatError("user-1", errMaxNativeHistogramSeriesPerUserLimitExceeded, lbls)
+	assert.EqualError(t, actual, "per-user native histogram series limit of 100 exceeded, please contact administrator to raise it (local limit: 0 global limit: 100 actual local limit: 100)")
 
 	actual = limiter.FormatError("user-1", errMaxSeriesPerMetricLimitExceeded, lbls)
 	assert.EqualError(t, actual, "per-metric series limit of 20 exceeded for metric testMetric, please contact administrator to raise it (local limit: 0 global limit: 20 actual local limit: 20)")
@@ -643,7 +707,6 @@ func TestLimiter_minNonZero(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			assert.Equal(t, testData.expected, minNonZero(testData.first, testData.second))

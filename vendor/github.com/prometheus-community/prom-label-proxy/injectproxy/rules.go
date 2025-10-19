@@ -17,13 +17,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"golang.org/x/exp/slices"
 )
 
 type apiResponse struct {
@@ -126,24 +126,30 @@ func (r *rule) UnmarshalJSON(b []byte) error {
 }
 
 type alertingRule struct {
-	Name        string        `json:"name"`
-	Query       string        `json:"query"`
-	Duration    float64       `json:"duration"`
-	Labels      labels.Labels `json:"labels"`
-	Annotations labels.Labels `json:"annotations"`
-	Alerts      []*alert      `json:"alerts"`
-	Health      string        `json:"health"`
-	LastError   string        `json:"lastError,omitempty"`
+	State          string        `json:"state"`
+	Name           string        `json:"name"`
+	Query          string        `json:"query"`
+	Duration       float64       `json:"duration"`
+	KeepFiringFor  float64       `json:"keepFiringFor"`
+	Labels         labels.Labels `json:"labels"`
+	Annotations    labels.Labels `json:"annotations"`
+	Alerts         []*alert      `json:"alerts"`
+	Health         string        `json:"health"`
+	LastError      string        `json:"lastError,omitempty"`
+	EvaluationTime float64       `json:"evaluationTime"`
+	LastEvaluation time.Time     `json:"lastEvaluation"`
 	// Type of an alertingRule is always "alerting".
 	Type string `json:"type"`
 }
 
 type recordingRule struct {
-	Name      string        `json:"name"`
-	Query     string        `json:"query"`
-	Labels    labels.Labels `json:"labels,omitempty"`
-	Health    string        `json:"health"`
-	LastError string        `json:"lastError,omitempty"`
+	Name           string        `json:"name"`
+	Query          string        `json:"query"`
+	Labels         labels.Labels `json:"labels,omitempty"`
+	Health         string        `json:"health"`
+	LastError      string        `json:"lastError,omitempty"`
+	EvaluationTime float64       `json:"evaluationTime"`
+	LastEvaluation time.Time     `json:"lastEvaluation"`
 	// Type of a recordingRule is always "recording".
 	Type string `json:"type"`
 }
@@ -153,17 +159,22 @@ type alertsData struct {
 }
 
 type alert struct {
-	Labels      labels.Labels `json:"labels"`
-	Annotations labels.Labels `json:"annotations"`
-	State       string        `json:"state"`
-	ActiveAt    *time.Time    `json:"activeAt,omitempty"`
-	Value       string        `json:"value"`
+	Labels          labels.Labels `json:"labels"`
+	Annotations     labels.Labels `json:"annotations"`
+	State           string        `json:"state"`
+	ActiveAt        *time.Time    `json:"activeAt,omitempty"`
+	KeepFiringSince *time.Time    `json:"keepFiringSince,omitempty"`
+	Value           string        `json:"value"`
 }
+
+// errModifyResponseFailed is returned when the proxy failed to modify the
+// response from the backend.
+var errModifyResponseFailed = errors.New("failed to process the API response")
 
 // modifyAPIResponse unwraps the Prometheus API response, passes the enforced
 // label value and the response to the given function and finally replaces the
 // result in the response.
-func modifyAPIResponse(f func([]string, *apiResponse) (interface{}, error)) func(*http.Response) error {
+func modifyAPIResponse(f func([]string, *http.Request, *apiResponse) (interface{}, error)) func(*http.Response) error {
 	return func(resp *http.Response) error {
 		if resp.StatusCode != http.StatusOK {
 			// Pass non-200 responses as-is.
@@ -172,23 +183,24 @@ func modifyAPIResponse(f func([]string, *apiResponse) (interface{}, error)) func
 
 		apir, err := getAPIResponse(resp)
 		if err != nil {
-			return fmt.Errorf("can't decode API response: %w", err)
+			return fmt.Errorf("can't decode the response: %w", err)
 		}
 
-		v, err := f(MustLabelValues(resp.Request.Context()), apir)
+		v, err := f(MustLabelValues(resp.Request.Context()), resp.Request, apir)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", errModifyResponseFailed, err)
 		}
 
 		b, err := json.Marshal(v)
 		if err != nil {
-			return fmt.Errorf("can't replace data: %w", err)
+			return fmt.Errorf("can't encode the data: %w", err)
 		}
+
 		apir.Data = json.RawMessage(b)
 
 		var buf bytes.Buffer
 		if err = json.NewEncoder(&buf).Encode(apir); err != nil {
-			return fmt.Errorf("can't encode API response: %w", err)
+			return fmt.Errorf("can't encode the response: %w", err)
 		}
 		resp.Body = io.NopCloser(&buf)
 		resp.Header["Content-Length"] = []string{fmt.Sprint(buf.Len())}
@@ -197,20 +209,68 @@ func modifyAPIResponse(f func([]string, *apiResponse) (interface{}, error)) func
 	}
 }
 
-func (r *routes) filterRules(lvalues []string, resp *apiResponse) (interface{}, error) {
+func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiResponse) (interface{}, error) {
 	var rgs rulesData
 	if err := json.Unmarshal(resp.Data, &rgs); err != nil {
 		return nil, fmt.Errorf("can't decode rules data: %w", err)
 	}
 
+	m, err := r.newLabelMatcher(lvalues...)
+	if err != nil {
+		return nil, err
+	}
+
 	filtered := []*ruleGroup{}
 	for _, rg := range rgs.RuleGroups {
 		var rules []rule
-		for _, rule := range rg.Rules {
-			if lval := rule.Labels().Get(r.label); lval != "" && slices.Contains(lvalues, lval) {
-				rules = append(rules, rule)
+		for _, rgr := range rg.Rules {
+			if lval := rgr.Labels().Get(r.label); lval != "" && m.Matches(lval) {
+				rules = append(rules, rgr)
+				continue
+			}
+
+			if !r.rulesWithActiveAlerts || rgr.alertingRule == nil {
+				continue
+			}
+
+			var ar *alertingRule
+			for i := range rgr.Alerts {
+				if lval := rgr.Alerts[i].Labels.Get(r.label); lval == "" || !m.Matches(lval) {
+					continue
+				}
+
+				if ar == nil {
+					ar = &alertingRule{
+						Name:           rgr.alertingRule.Name,
+						Query:          rgr.alertingRule.Query,
+						Duration:       rgr.Duration,
+						KeepFiringFor:  rgr.KeepFiringFor,
+						Labels:         rgr.alertingRule.Labels.Copy(),
+						Annotations:    rgr.Annotations.Copy(),
+						Health:         rgr.alertingRule.Health,
+						LastError:      rgr.alertingRule.LastError,
+						EvaluationTime: rgr.alertingRule.EvaluationTime,
+						LastEvaluation: rgr.alertingRule.LastEvaluation,
+						Type:           rgr.alertingRule.Type,
+					}
+				}
+
+				ar.Alerts = append(ar.Alerts, rgr.Alerts[i])
+				switch ar.State {
+				case "pending":
+					if rgr.alertingRule.Alerts[i].State == "firing" {
+						ar.State = rgr.alertingRule.Alerts[i].State
+					}
+				case "":
+					ar.State = rgr.alertingRule.Alerts[i].State
+				}
+			}
+
+			if ar != nil {
+				rules = append(rules, rule{alertingRule: ar})
 			}
 		}
+
 		if len(rules) > 0 {
 			rg.Rules = rules
 			filtered = append(filtered, rg)
@@ -220,15 +280,20 @@ func (r *routes) filterRules(lvalues []string, resp *apiResponse) (interface{}, 
 	return &rulesData{RuleGroups: filtered}, nil
 }
 
-func (r *routes) filterAlerts(lvalues []string, resp *apiResponse) (interface{}, error) {
+func (r *routes) filterAlerts(lvalues []string, _ *http.Request, resp *apiResponse) (interface{}, error) {
 	var data alertsData
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		return nil, fmt.Errorf("can't decode alerts data: %w", err)
 	}
 
+	m, err := r.newLabelMatcher(lvalues...)
+	if err != nil {
+		return nil, err
+	}
+
 	filtered := []*alert{}
 	for _, alert := range data.Alerts {
-		if lval := alert.Labels.Get(r.label); lval != "" && slices.Contains(lvalues, lval) {
+		if lval := alert.Labels.Get(r.label); lval != "" && m.Matches(lval) {
 			filtered = append(filtered, alert)
 		}
 	}

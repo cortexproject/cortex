@@ -6,11 +6,11 @@ package engine
 import (
 	"sync"
 
-	"github.com/prometheus/prometheus/promql"
-
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/logicalplan"
+
+	"github.com/prometheus/prometheus/promql"
 )
 
 type ExplainableQuery interface {
@@ -69,7 +69,7 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 				// Skip aggregating samples for subquery
 			case *logicalplan.StepInvariantExpr:
 				childSamples := child.TotalSamples()
-				for i := 0; i < len(a.totalSamplesPerStep); i++ {
+				for i := range a.totalSamplesPerStep {
 					a.totalSamples += childSamples
 					a.totalSamplesPerStep[i] += childSamples
 				}

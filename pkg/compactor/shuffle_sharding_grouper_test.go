@@ -2,13 +2,12 @@ package compactor
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"path"
 	"testing"
 	"time"
 
-	"github.com/oklog/ulid"
+	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -330,8 +329,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 			}
 
 			limits := &validation.Limits{}
-			overrides, err := validation.NewOverrides(*limits, nil)
-			require.NoError(t, err)
+			overrides := validation.NewOverrides(*limits, nil)
 
 			// Setup mocking of the ring so that the grouper will own all the shards
 			rs := ring.ReplicationSet{
@@ -339,11 +337,11 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 					{Addr: "test-addr"},
 				},
 			}
-			subring := &RingMock{}
+			subring := &ring.RingMock{}
 			subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
 			subring.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rs, nil)
 
-			ring := &RingMock{}
+			ring := &ring.RingMock{}
 			ring.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
 
 			registerer := prometheus.NewPedanticRegistry()
@@ -381,8 +379,7 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 				return testData.noCompactBlocks
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 			g := NewShuffleShardingGrouper(
 				ctx,
 				nil,
@@ -738,74 +735,3 @@ func TestBlocksGroup_overlaps(t *testing.T) {
 		assert.Equal(t, tc.expected, tc.second.overlaps(tc.first))
 	}
 }
-
-type RingMock struct {
-	mock.Mock
-}
-
-func (r *RingMock) GetInstanceIdByAddr(addr string) (string, error) {
-	return "", nil
-}
-
-func (r *RingMock) Collect(ch chan<- prometheus.Metric) {}
-
-func (r *RingMock) Describe(ch chan<- *prometheus.Desc) {}
-
-func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDesc, bufHosts []string, bufZones map[string]int) (ring.ReplicationSet, error) {
-	args := r.Called(key, op, bufDescs, bufHosts, bufZones)
-	return args.Get(0).(ring.ReplicationSet), args.Error(1)
-}
-
-func (r *RingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
-	args := r.Called(op)
-	return args.Get(0).(ring.ReplicationSet), args.Error(1)
-}
-
-func (r *RingMock) GetInstanceDescsForOperation(op ring.Operation) (map[string]ring.InstanceDesc, error) {
-	args := r.Called(op)
-	return args.Get(0).(map[string]ring.InstanceDesc), args.Error(1)
-}
-
-func (r *RingMock) GetAllInstanceDescs(op ring.Operation) ([]ring.InstanceDesc, []ring.InstanceDesc, error) {
-	args := r.Called(op)
-	return args.Get(0).([]ring.InstanceDesc), make([]ring.InstanceDesc, 0), args.Error(1)
-}
-
-func (r *RingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
-	args := r.Called(op)
-	return args.Get(0).(ring.ReplicationSet), args.Error(1)
-}
-
-func (r *RingMock) ReplicationFactor() int {
-	return 0
-}
-
-func (r *RingMock) InstancesCount() int {
-	return 0
-}
-
-func (r *RingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
-	args := r.Called(identifier, size)
-	return args.Get(0).(ring.ReadRing)
-}
-
-func (r *RingMock) ShuffleShardWithZoneStability(identifier string, size int) ring.ReadRing {
-	args := r.Called(identifier, size)
-	return args.Get(0).(ring.ReadRing)
-}
-
-func (r *RingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
-	args := r.Called(instanceID)
-	return args.Get(0).(ring.InstanceState), args.Error(1)
-}
-
-func (r *RingMock) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
-	args := r.Called(identifier, size, lookbackPeriod, now)
-	return args.Get(0).(ring.ReadRing)
-}
-
-func (r *RingMock) HasInstance(instanceID string) bool {
-	return true
-}
-
-func (r *RingMock) CleanupShuffleShardCache(identifier string) {}

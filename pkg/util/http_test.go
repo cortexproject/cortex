@@ -123,7 +123,7 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 	go func() {
 		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
 		close(done)
@@ -168,14 +168,14 @@ func TestParseProtoReader(t *testing.T) {
 		expectErr      bool
 		useBytesBuffer bool
 	}{
-		{"rawSnappy", util.RawSnappy, 53, false, false},
-		{"noCompression", util.NoCompression, 53, false, false},
+		{"rawSnappy", util.RawSnappy, 57, false, false},
+		{"noCompression", util.NoCompression, 57, false, false},
 		{"too big rawSnappy", util.RawSnappy, 10, true, false},
 		{"too big decoded rawSnappy", util.RawSnappy, 50, true, false},
 		{"too big noCompression", util.NoCompression, 10, true, false},
 
-		{"bytesbuffer rawSnappy", util.RawSnappy, 53, false, true},
-		{"bytesbuffer noCompression", util.NoCompression, 53, false, true},
+		{"bytesbuffer rawSnappy", util.RawSnappy, 57, false, true},
+		{"bytesbuffer noCompression", util.NoCompression, 57, false, true},
 		{"bytesbuffer too big rawSnappy", util.RawSnappy, 10, true, true},
 		{"bytesbuffer too big decoded rawSnappy", util.RawSnappy, 50, true, true},
 		{"bytesbuffer too big noCompression", util.NoCompression, 10, true, true},

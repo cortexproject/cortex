@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thanos-io/promql-engine/execution/parse"
+	"github.com/thanos-io/promql-engine/query"
+
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/annotations"
-
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/query"
 )
 
 var (
@@ -56,8 +56,11 @@ func New(root Node, queryOpts *query.Options, planOpts PlanOptions) Plan {
 	}
 }
 
-func NewFromAST(ast parser.Expr, queryOpts *query.Options, planOpts PlanOptions) Plan {
-	ast = promql.PreprocessExpr(ast, queryOpts.Start, queryOpts.End)
+func NewFromAST(ast parser.Expr, queryOpts *query.Options, planOpts PlanOptions) (Plan, error) {
+	ast, err := promql.PreprocessExpr(ast, queryOpts.Start, queryOpts.End, queryOpts.Step)
+	if err != nil {
+		return nil, err
+	}
 	setOffsetForAtModifier(queryOpts.Start.UnixMilli(), ast)
 	setOffsetForInnerSubqueries(ast, queryOpts)
 
@@ -70,15 +73,11 @@ func NewFromAST(ast parser.Expr, queryOpts *query.Options, planOpts PlanOptions)
 	// best effort evaluate constant expressions
 	expr = reduceConstantExpressions(expr)
 
-	// some parameters are implicitly step invariant, i.e. topk(scalar(SERIES), X)
-	// morally that should be done by PreprocessExpr but we can also fix it here
-	expr = preprocessAggregationParameters(expr)
-
 	return &plan{
 		expr:     expr,
 		opts:     queryOpts,
 		planOpts: planOpts,
-	}
+	}, nil
 }
 
 // NewFromBytes creates a new logical plan from a byte slice created with Marshal.
@@ -244,6 +243,12 @@ func replacePrometheusNodes(plan parser.Expr) Node {
 	case *parser.NumberLiteral:
 		return &NumberLiteral{Val: t.Val}
 	case *parser.StepInvariantExpr:
+		// We expect functions to be pushed down into matrix selectors. This means that
+		// parents of matrixselector nodes are always expected to be functions, not step invariant
+		// operators.
+		if m, ok := t.Expr.(*parser.MatrixSelector); ok {
+			return replacePrometheusNodes(m)
+		}
 		return &StepInvariantExpr{Expr: replacePrometheusNodes(t.Expr)}
 	case *parser.MatrixSelector:
 		return &MatrixSelector{
@@ -324,18 +329,6 @@ func replacePrometheusNodes(plan parser.Expr) Node {
 		return nil
 	}
 	panic("Unrecognized AST node")
-}
-
-func preprocessAggregationParameters(expr Node) Node {
-	Traverse(&expr, func(node *Node) {
-		switch t := (*node).(type) {
-		case *Aggregation:
-			if t.Param != nil {
-				t.Param = &StepInvariantExpr{Expr: t.Param}
-			}
-		}
-	})
-	return expr
 }
 
 func trimSorts(expr Node) Node {

@@ -3,11 +3,17 @@ package storegateway
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/oklog/ulid"
+	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -302,25 +308,66 @@ func TestParquetBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReach
 	assert.Empty(t, warnings)
 }
 
-//func TestParquetBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
-//	cfg := prepareStorageConfig(t)
-//	cfg.BucketStore.BucketStoreType = string(ParquetBucketStore)
-//	reg := prometheus.NewPedanticRegistry()
-//	storageDir := t.TempDir()
-//	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
-//	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
-//	require.NoError(t, err)
-//
-//	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
-//	require.NoError(t, err)
-//	require.NoError(t, stores.InitialSync(context.Background()))
-//
-//	parquetStores := stores.(*ParquetBucketStores)
-//	// Set inflight requests to the limit (max_inflight_request is set to 0 by default = disabled)
-//	for i := 0; i < 10; i++ {
-//		parquetStores.inflightRequests.Inc()
-//	}
-//	series, _, err := querySeriesWithBlockIDs(stores, "user_id", "series_1", 0, 100)
-//	require.NoError(t, err)
-//	assert.Equal(t, 1, len(series))
-//}
+func TestParquetBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	reg := prometheus.NewPedanticRegistry()
+	storageDir := t.TempDir()
+	userId := "user_id"
+	generateStorageBlock(t, storageDir, userId, "series_1", 0, 100, 15)
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(context.Background()))
+
+	parquetStores := stores.(*ParquetBucketStores)
+	// Set inflight requests to the limit (max_inflight_request is set to 0 by default = disabled)for range 10 {
+	for range 10 {
+		parquetStores.inflightRequests.Inc()
+	}
+
+	userPath := fmt.Sprintf("%s/%s", storageDir, userId)
+
+	limits := validation.Limits{}
+	overrides := validation.NewOverrides(limits, nil)
+	uBucket := bucket.NewUserBucketClient(userId, bkt, overrides)
+	blockIds, err := convertToParquetBlocksForTesting(userPath, uBucket)
+	require.NoError(t, err)
+
+	series, _, err := querySeries(stores, userId, "series_1", 0, 100, blockIds...)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(series))
+}
+
+func convertToParquetBlocksForTesting(userPath string, userBkt objstore.InstrumentedBucket) ([]string, error) {
+	var blockIDs []string
+
+	pool := chunkenc.NewPool()
+	userDir, err := os.ReadDir(userPath)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range userDir {
+		_, err := ulid.Parse(file.Name())
+		if err != nil {
+			continue
+		}
+		blockIDs = append(blockIDs, file.Name())
+		bdir := filepath.Join(userPath, file.Name())
+
+		tsdbBlock, err := tsdb.OpenBlock(nil, bdir, pool, tsdb.DefaultPostingsDecoderFactory)
+		if err != nil {
+			return nil, err
+		}
+		converterOptions := []convert.ConvertOption{convert.WithName(file.Name())}
+		_, err = convert.ConvertTSDBBlock(context.Background(), userBkt, tsdbBlock.MinTime(), tsdbBlock.MaxTime(), []convert.Convertible{tsdbBlock}, converterOptions...)
+		if err != nil {
+			return nil, err
+		}
+		_ = tsdbBlock.Close()
+	}
+	return blockIDs, nil
+}

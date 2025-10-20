@@ -6473,13 +6473,13 @@ sharding_ring:
 
   # Minimum time to wait for ring stability at startup. 0 to disable.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-min-duration
-  [wait_stability_min_duration: <duration> | default = 0s]
+  [wait_stability_min_duration: <duration> | default = 1m]
 
   # Maximum time to wait for ring stability at startup. If the store-gateway
   # ring keeps changing after this period of time, the store-gateway will start
   # anyway.
   # CLI flag: -store-gateway.sharding-ring.wait-stability-max-duration
-  [wait_stability_max_duration: <duration> | default = 5s]
+  [wait_stability_max_duration: <duration> | default = 5m]
 
   # Timeout for waiting on store-gateway to become desired state in the ring.
   # CLI flag: -store-gateway.sharding-ring.wait-instance-state-timeout

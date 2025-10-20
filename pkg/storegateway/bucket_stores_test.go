@@ -748,7 +748,7 @@ func querySeries(stores BucketStores, userID, metricName string, minT, maxT int6
 			return nil, nil, err
 		}
 	}
-	
+
 	req := &storepb.SeriesRequest{
 		MinTime: minT,
 		MaxTime: maxT,

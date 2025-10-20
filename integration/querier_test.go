@@ -307,9 +307,10 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				memcached := e2ecache.NewMemcached()
 				redis := e2ecache.NewRedis()
 				require.NoError(t, s.StartAndWaitReady(consul, minio, memcached, redis))
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					flags["-blocks-storage.bucket-store.index-cache.backend"] = testCfg.indexCacheBackend
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					flags["-parquet-converter.enabled"] = "true"
 					flags["-parquet-converter.conversion-interval"] = "1s"
 					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
@@ -414,7 +415,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					require.NoError(t, s.StartAndWaitReady(compactor))
 				}
 
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled
 					// we don't known which store-gateway instance will synch the blocks, so we need to wait on
 					// metrics extracted from all instances.
@@ -438,7 +440,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 						// Wait until the querier has discovered the uploaded blocks.
 						require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
 					}
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
 				}
@@ -471,7 +473,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					if numberOfCacheBackends > 1 {
 						// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
 						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
@@ -496,7 +499,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))
 					}
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendInMemory) {
 						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))
 					}
@@ -669,9 +672,10 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					},
 				)
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					flags["-blocks-storage.bucket-store.index-cache.backend"] = testCfg.indexCacheBackend
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					flags["-parquet-converter.enabled"] = "true"
 					flags["-parquet-converter.conversion-interval"] = "1s"
 					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
@@ -762,7 +766,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					require.NoError(t, s.StartAndWaitReady(compactor))
 				}
 
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
 					// may be greater than expected if the compactor is running (there may have been compacted).
 					const shippedBlocks = 2
@@ -777,7 +782,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
 							labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 					}
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_parquet_converter_blocks_converted_total"))
 				}
@@ -814,10 +819,11 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				if testCfg.bucketStorageType == "tsdb" {
+				switch testCfg.bucketStorageType {
+				case "tsdb":
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((12+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
-				} else if testCfg.bucketStorageType == "parquet" {
+				case "parquet":
 					switch testCfg.parquetLabelsCache {
 					case tsdb.CacheBackendInMemory:
 						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))

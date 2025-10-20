@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/types"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,6 +33,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -726,7 +728,27 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 	require.NoError(t, db.Snapshot(userDir, true))
 }
 
-func querySeries(stores BucketStores, userID, metricName string, minT, maxT int64) ([]*storepb.Series, annotations.Annotations, error) {
+func querySeries(stores BucketStores, userID, metricName string, minT, maxT int64, blockIDs ...string) ([]*storepb.Series, annotations.Annotations, error) {
+	var (
+		anyHints *types.Any
+		err      error
+	)
+	if len(blockIDs) > 0 {
+		hints := &hintspb.SeriesRequestHints{
+			BlockMatchers: []storepb.LabelMatcher{
+				{
+					Type:  storepb.LabelMatcher_RE,
+					Name:  block.BlockIDLabel,
+					Value: strings.Join(blockIDs, "|"),
+				},
+			},
+		}
+		anyHints, err = types.MarshalAny(hints)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	
 	req := &storepb.SeriesRequest{
 		MinTime: minT,
 		MaxTime: maxT,
@@ -736,11 +758,12 @@ func querySeries(stores BucketStores, userID, metricName string, minT, maxT int6
 			Value: metricName,
 		}},
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		Hints:                   anyHints,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
 	srv := newBucketStoreSeriesServer(ctx)
-	err := stores.Series(req, srv)
+	err = stores.Series(req, srv)
 
 	return srv.SeriesSet, srv.Warnings, err
 }

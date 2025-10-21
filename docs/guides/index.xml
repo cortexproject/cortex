@@ -476,9 +476,59 @@ If you have set &lt;code>-querier.query-store-after&lt;/code>, then that is also
 &lt;p>If you run with &lt;code>-distributor.shard-by-all-labels=true&lt;/code>,
 no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;h2 id="scaling-down">Scaling down&lt;/h2>
-&lt;p>A running ingester holds several hours of time series data in memory before they&amp;rsquo;re flushed to the long-term storage. When an ingester shuts down because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
-&lt;p>Ingesters don&amp;rsquo;t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
-&lt;p>Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven&amp;rsquo;t been discovered yet.&lt;/p>
+&lt;p>A running ingester holds several hours of time series data in memory before they’re flushed to the long-term storage. When an ingester shuts down because of a scale down operation, the in-memory data must not be discarded in order to avoid any data loss.&lt;/p>
+&lt;p>Ingesters don’t flush series to blocks at shutdown by default. However, Cortex ingesters expose an API endpoint &lt;a href="/docs/api/#shutdown">&lt;code>/shutdown&lt;/code>&lt;/a> that can be called to flush series to blocks and upload blocks to the long-term storage before the ingester terminates.&lt;/p>
+&lt;p>Even if ingester blocks are compacted and shipped to the storage at shutdown, it takes some time for queriers and store-gateways to discover the newly uploaded blocks. This is due to the fact that the blocks storage runs a periodic scanning of the storage bucket to discover blocks. If two or more ingesters are scaled down in a short period of time, queriers may miss some data at query time due to series that were stored in the terminated ingesters but their blocks haven’t been discovered yet.&lt;/p>
+&lt;h3 id="new-gradual-scaling-approach-recommended">New Gradual Scaling Approach (Recommended)&lt;/h3>
+&lt;p>Starting with Cortex 1.19.0, a new &lt;strong>READONLY&lt;/strong> state for ingesters was introduced that enables gradual, safe scaling down without data loss or performance impact. This approach eliminates the need for complex configuration changes and allows for more flexible scaling operations.&lt;/p>
+&lt;h4 id="how-the-readonly-state-works">How the READONLY State Works&lt;/h4>
+&lt;p>The READONLY state allows ingesters to:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Stop accepting new writes&lt;/strong> - Push requests will be rejected and redistributed to other ingesters&lt;/li>
+&lt;li>&lt;strong>Continue serving queries&lt;/strong> - Existing data remains available for queries, maintaining performance&lt;/li>
+&lt;li>&lt;strong>Gradually age out data&lt;/strong> - As time passes, data naturally ages out according to your retention settings&lt;/li>
+&lt;li>&lt;strong>Be safely removed&lt;/strong> - Once data has aged out, ingesters can be terminated without any impact&lt;/li>
+&lt;/ul>
+&lt;h4 id="step-by-step-scaling-process">Step-by-Step Scaling Process&lt;/h4>
+&lt;ol>
+&lt;li>
+&lt;p>&lt;strong>Set ingesters to READONLY mode&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Transition ingester to READONLY state&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-2:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-3:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Monitor data aging&lt;/strong> (Optional but recommended)&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check user statistics and loaded blocks on the ingester&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl http://ingester-1:8080/ingester/all_user_stats
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Wait for safe removal window&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Immediate removal&lt;/strong> (after step 1): Safe once queries no longer need the ingester&amp;rsquo;s data&lt;/li>
+&lt;li>&lt;strong>Conservative approach&lt;/strong>: Wait for &lt;code>querier.query-ingesters-within&lt;/code> duration (e.g., 5 hours)&lt;/li>
+&lt;li>&lt;strong>Complete data aging&lt;/strong>: Wait for full retention period to ensure all blocks are removed&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Remove ingesters&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Terminate the ingester processes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl delete pod ingester-1 ingester-2 ingester-3
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;/li>
+&lt;/ol>
+&lt;h4 id="timeline-example">Timeline Example&lt;/h4>
+&lt;p>For a cluster with &lt;code>querier.query-ingesters-within=5h&lt;/code>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>T0&lt;/strong>: Set ingesters 5, 6, 7 to READONLY state&lt;/li>
+&lt;li>&lt;strong>T1&lt;/strong>: Ingesters stop receiving new data but continue serving queries&lt;/li>
+&lt;li>&lt;strong>T2 (T0 + 5h)&lt;/strong>: Ingesters no longer receive query requests (safe to remove)&lt;/li>
+&lt;li>&lt;strong>T3 (T0 + retention_period)&lt;/strong>: All blocks naturally removed from ingesters&lt;/li>
+&lt;li>&lt;strong>T4&lt;/strong>: Remove ingesters from cluster&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Any time after T2 is safe for removal without service impact.&lt;/strong>&lt;/p>
+&lt;h3 id="legacy-approach-for-older-versions">Legacy Approach (For Older Versions)&lt;/h3>
+&lt;p>If you’re running an older version of Cortex that doesn’t support the READONLY state, you’ll need to follow the legacy approach.&lt;/p>
 &lt;p>The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:&lt;/p>
 &lt;ul>
 &lt;li>Configure queriers and rulers to always query the storage

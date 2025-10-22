@@ -277,7 +277,7 @@ func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cort
 
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
-func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool) ValidationError {
+func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool, nameValidationScheme model.ValidationScheme) ValidationError {
 	if limits.EnforceMetricName {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
@@ -285,7 +285,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 			return newNoMetricNameError()
 		}
 
-		if !limits.NameValidationScheme.IsValidLabelName(unsafeMetricName) {
+		if !nameValidationScheme.IsValidLabelName(unsafeMetricName) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
 			return newInvalidMetricNameError(unsafeMetricName)
 		}
@@ -304,7 +304,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	labelsSizeBytes := 0
 
 	for _, l := range ls {
-		if !skipLabelNameValidation && !limits.NameValidationScheme.IsValidLabelName(l.Name) {
+		if !skipLabelNameValidation && !nameValidationScheme.IsValidLabelName(l.Name) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {

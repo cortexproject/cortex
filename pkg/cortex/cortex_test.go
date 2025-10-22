@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
@@ -216,6 +217,24 @@ func TestConfigValidation(t *testing.T) {
 				return configuration
 			},
 			expectedError: nil,
+		},
+		{
+			name: "should pass utf8 name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = model.UTF8Validation
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should fail unset name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = model.UnsetValidation
+				return configuration
+			},
+			expectedError: fmt.Errorf("unsupported name validation scheme: unset"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

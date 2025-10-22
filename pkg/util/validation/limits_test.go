@@ -49,6 +49,7 @@ func TestLimits_Validate(t *testing.T) {
 		shardByAllLabels           bool
 		activeSeriesMetricsEnabled bool
 		expected                   error
+		nameValidationScheme       model.ValidationScheme
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -124,15 +125,15 @@ func TestLimits_Validate(t *testing.T) {
 			expected: errInvalidLabelValue,
 		},
 		"utf8: external-labels utf8 label name and value": {
-			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
+			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
 			expected: nil,
 		},
 		"utf8: external-labels invalid label name": {
-			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
+			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
 			expected: errInvalidLabelName,
 		},
 		"utf8: external-labels invalid label value": {
-			limits:   Limits{NameValidationScheme: model.UTF8Validation, RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
+			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
 			expected: errInvalidLabelValue,
 		},
 	}
@@ -140,7 +141,7 @@ func TestLimits_Validate(t *testing.T) {
 	for testName, testData := range tests {
 
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
+			assert.ErrorIs(t, testData.limits.Validate(testData.nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }

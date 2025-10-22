@@ -101,6 +101,7 @@
 * [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
 * [BUGFIX] Frontend: Fix remote read snappy input due to request string logging when query stats enabled. #7025
 * [BUGFIX] Distributor: Fix the `/distributor/all_user_stats` api to work during rolling updates on ingesters. #7026
+* [BUGFIX] Runtime-config: Fix panic when the runtime config is `null`. #7062
 
 ## 1.19.0 2025-02-27
 

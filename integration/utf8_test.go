@@ -137,23 +137,23 @@ overrides:
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	groupLabels := map[string]string{
-		"group_label": "group_value",
+		"group.label.😄": "group.value",
 	}
 	ruleLabels := map[string]string{
-		"rule_label": "rule_value",
+		"rule.label.😄": "rule.value",
 	}
 
 	interval, _ := model.ParseDuration("1s")
 
 	ruleGroup := rulefmt.RuleGroup{
-		Name:     "rule",
+		Name:     "rule.utf8.😄",
 		Interval: interval,
 		Rules: []rulefmt.Rule{{
-			Alert:  "alert_rule",
+			Alert:  "alert.rule.😄",
 			Expr:   "up",
 			Labels: ruleLabels,
 		}, {
-			Record: "record_rule",
+			Record: "record.rule.😄",
 			Expr:   "up",
 			Labels: ruleLabels,
 		}},
@@ -163,7 +163,6 @@ overrides:
 	c, err := e2ecortex.NewClient("", "", "", cortex.HTTPEndpoint(), "user-1")
 	require.NoError(t, err)
 
-	// Set rule group to user-1
 	err = c.SetRuleGroup(ruleGroup, "namespace")
 	require.NoError(t, err)
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ruler_managers_total"}), e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")))

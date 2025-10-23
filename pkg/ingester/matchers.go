@@ -1,8 +1,10 @@
 package ingester
 
-import "slices"
+import (
+	"slices"
 
-import "github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/labels"
+)
 
 // optimizeMatchers categorizes input matchers to matchers used in select and matchers applied lazily
 // when scanning series.

@@ -85,9 +85,11 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 		if strings.Contains(targetStr, target) {
 			// only check if target is `all`, `distributor`, "querier", and "ruler"
 			// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
-			for _, ul := range overrides.TenantLimits {
-				if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
-					return nil, err
+			if overrides != nil {
+				for _, ul := range overrides.TenantLimits {
+					if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}

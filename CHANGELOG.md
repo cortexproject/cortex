@@ -91,6 +91,7 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_stale_series` metric to keep track of number of stale series on head. #7071
 * [ENHANCEMENT] Expose more Go runtime metrics. #7070
 * [ENHANCEMENT] Distributor: Filter out label with empty value. #7069
+* [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [BUGFIX] Ingester: Avoid error or early throttling when READONLY ingesters are present in the ring #6517
 * [BUGFIX] Ingester: Fix labelset data race condition. #6573
 * [BUGFIX] Compactor: Cleaner should not put deletion marker for blocks with no-compact marker. #6576

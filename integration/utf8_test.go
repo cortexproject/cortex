@@ -133,7 +133,7 @@ overrides:
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	// Start Cortex.
-	cortex := e2ecortex.NewSingleBinary("cortex", flags, "", 9009, 9095)
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	groupLabels := map[string]string{
@@ -215,9 +215,9 @@ func Test_PushQuery_UTF8(t *testing.T) {
 
 	metadata := []prompb.MetricMetadata{
 		{
-			MetricFamilyName: fmt.Sprintf("metadata.name"),
-			Help:             fmt.Sprintf("metadata.help"),
-			Unit:             fmt.Sprintf("metadata.unit"),
+			MetricFamilyName: "metadata.name",
+			Help:             "metadata.help",
+			Unit:             "metadata.unit",
 		},
 	}
 

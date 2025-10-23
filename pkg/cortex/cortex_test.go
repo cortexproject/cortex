@@ -46,6 +46,7 @@ func TestCortex(t *testing.T) {
 		// these values are set as defaults but since we aren't registering them, we
 		// need to include the defaults here. These were hardcoded in a previous version
 		// of weaveworks server.
+		NameValidationScheme: model.LegacyValidation,
 		Server: server.Config{
 			GRPCListenNetwork: server.DefaultNetwork,
 			HTTPListenNetwork: server.DefaultNetwork,
@@ -252,9 +253,10 @@ func TestGrpcAuthMiddleware(t *testing.T) {
 	prepareGlobalMetricsRegistry(t)
 
 	cfg := Config{
-		AuthEnabled: true, // We must enable this to enable Auth middleware for gRPC server.
-		Server:      getServerConfig(t),
-		Target:      []string{API}, // Something innocent that doesn't require much config.
+		AuthEnabled:          true, // We must enable this to enable Auth middleware for gRPC server.
+		Server:               getServerConfig(t),
+		Target:               []string{API}, // Something innocent that doesn't require much config.
+		NameValidationScheme: model.LegacyValidation,
 	}
 
 	msch := &mockGrpcServiceHandler{}

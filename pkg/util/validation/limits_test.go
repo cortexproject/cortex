@@ -125,23 +125,29 @@ func TestLimits_Validate(t *testing.T) {
 			expected: errInvalidLabelValue,
 		},
 		"utf8: external-labels utf8 label name and value": {
-			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
-			expected: nil,
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
+			expected:             nil,
+			nameValidationScheme: model.UTF8Validation,
 		},
 		"utf8: external-labels invalid label name": {
-			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
-			expected: errInvalidLabelName,
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
+			expected:             errInvalidLabelName,
+			nameValidationScheme: model.UTF8Validation,
 		},
 		"utf8: external-labels invalid label value": {
-			limits:   Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
-			expected: errInvalidLabelValue,
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
+			expected:             errInvalidLabelValue,
+			nameValidationScheme: model.UTF8Validation,
 		},
 	}
 
 	for testName, testData := range tests {
-
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
+			nameValidationScheme := model.LegacyValidation
+			if testData.nameValidationScheme == model.UTF8Validation {
+				nameValidationScheme = testData.nameValidationScheme
+			}
+			assert.ErrorIs(t, testData.limits.Validate(nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }

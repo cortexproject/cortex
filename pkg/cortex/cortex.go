@@ -383,7 +383,7 @@ func New(cfg Config) (*Cortex, error) {
 	}
 
 	// set name validation scheme
-	model.NameValidationScheme = cfg.NameValidationScheme
+	model.NameValidationScheme = cfg.NameValidationScheme //nolint:staticcheck
 
 	cortex.setupThanosTracing()
 	cortex.setupGRPCHeaderForwarding()

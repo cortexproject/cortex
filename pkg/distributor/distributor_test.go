@@ -3198,8 +3198,6 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		if cfg.nameValidationScheme == model.UTF8Validation {
 			distributorCfg.NameValidationScheme = cfg.nameValidationScheme
 		}
-		// set name validation scheme
-		model.NameValidationScheme = distributorCfg.NameValidationScheme
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle

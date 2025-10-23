@@ -51,11 +51,17 @@ func HTTPHeaderPropagationStreamServerInterceptor(srv any, ss grpc.ServerStream,
 // extractForwardedRequestMetadataFromMetadata implements HTTPHeaderPropagationServerInterceptor by placing forwarded
 // headers into incoming context
 func extractForwardedRequestMetadataFromMetadata(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
+	headersSlice := metadata.ValueFromIncomingContext(ctx, requestmeta.PropagationStringForRequestMetadata)
+	if headersSlice == nil {
+		// we want to check old key if no data
+		headersSlice = metadata.ValueFromIncomingContext(ctx, requestmeta.HeaderPropagationStringForRequestLogging)
+	}
+
+	if headersSlice == nil {
 		return ctx
 	}
-	return requestmeta.ContextWithRequestMetadataMapFromMetadata(ctx, md)
+
+	return requestmeta.ContextWithRequestMetadataMapFromHeaderSlice(ctx, headersSlice)
 }
 
 // HTTPHeaderPropagationClientInterceptor allows for propagation of HTTP Request headers across gRPC calls - works

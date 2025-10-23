@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/signals"
@@ -31,7 +32,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs"
 	configAPI "github.com/cortexproject/cortex/pkg/configs/api"
 	"github.com/cortexproject/cortex/pkg/configs/db"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortex/storage"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
@@ -91,10 +91,12 @@ var (
 
 // Config is the root config for Cortex.
 type Config struct {
-	Target          flagext.StringSliceCSV  `yaml:"target"`
-	AuthEnabled     bool                    `yaml:"auth_enabled"`
-	PrintConfig     bool                    `yaml:"-"`
-	HTTPPrefix      string                  `yaml:"http_prefix"`
+	Target               flagext.StringSliceCSV `yaml:"target"`
+	AuthEnabled          bool                   `yaml:"auth_enabled"`
+	PrintConfig          bool                   `yaml:"-"`
+	HTTPPrefix           string                 `yaml:"http_prefix"`
+	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme"`
+
 	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
 
 	ExternalQueryable prom_storage.Queryable `yaml:"-"`
@@ -145,6 +147,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"Use '-modules' command line flag to get a list of available modules, and to see which modules are included in 'all'.")
 
 	f.BoolVar(&c.AuthEnabled, "auth.enabled", true, "Set to false to disable auth.")
+	_ = c.NameValidationScheme.Set(model.LegacyValidation.String())
+	f.Var(&c.NameValidationScheme, "name-validation-scheme", fmt.Sprintf("Name validation scheme for metric names and label names, Support values are: %s.", strings.Join([]string{model.LegacyValidation.String(), model.UTF8Validation.String()}, ", ")))
 	f.BoolVar(&c.PrintConfig, "print.config", false, "Print the config and exit.")
 	f.StringVar(&c.HTTPPrefix, "http.prefix", "/api/prom", "HTTP path prefix for Cortex API.")
 
@@ -186,6 +190,12 @@ func (c *Config) Validate(log log.Logger) error {
 		return err
 	}
 
+	switch c.NameValidationScheme {
+	case model.LegacyValidation, model.UTF8Validation:
+	default:
+		return fmt.Errorf("unsupported name validation scheme: %s", c.NameValidationScheme)
+	}
+
 	if c.HTTPPrefix != "" && !strings.HasPrefix(c.HTTPPrefix, "/") {
 		return errInvalidHTTPPrefix
 	}
@@ -205,7 +215,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
-	if err := c.LimitsConfig.Validate(c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.ResourceMonitor.Validate(); err != nil {
@@ -371,6 +381,9 @@ func New(cfg Config) (*Cortex, error) {
 	cortex := &Cortex{
 		Cfg: cfg,
 	}
+
+	// set name validation scheme
+	model.NameValidationScheme = cfg.NameValidationScheme //nolint:staticcheck
 
 	cortex.setupThanosTracing()
 	cortex.setupGRPCHeaderForwarding()

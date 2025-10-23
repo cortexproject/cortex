@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
@@ -33,7 +32,6 @@ func TestValidateLabels_UTF8(t *testing.T) {
 	cfg.MaxLabelNamesPerSeries = 2
 	cfg.MaxLabelsSizeBytes = 90
 	cfg.EnforceMetricName = true
-	cfg.NameValidationScheme = model.UTF8Validation
 
 	tests := []struct {
 		description             string
@@ -78,7 +76,7 @@ func TestValidateLabels_UTF8(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation)
+			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation, model.UTF8Validation)
 			assert.Equal(t, test.expectedErr, err, "wrong error")
 		})
 	}
@@ -96,7 +94,6 @@ func TestValidateLabels(t *testing.T) {
 	cfg.MaxLabelNamesPerSeries = 2
 	cfg.MaxLabelsSizeBytes = 90
 	cfg.EnforceMetricName = true
-	cfg.NameValidationScheme = model.LegacyValidation
 	cfg.LimitsPerLabelSet = []LimitsPerLabelSet{
 		{
 			Limits: LimitsPerLabelSetEntry{MaxSeries: 0},
@@ -180,7 +177,7 @@ func TestValidateLabels(t *testing.T) {
 			nil,
 		},
 	} {
-		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation)
+		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation, model.LegacyValidation)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
@@ -335,7 +332,6 @@ func TestValidateLabelOrder(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
-	cfg.NameValidationScheme = model.LegacyValidation
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
@@ -344,7 +340,7 @@ func TestValidateLabelOrder(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
-	}, false)
+	}, false, model.LegacyValidation)
 	expected := newLabelsNotSortedError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
@@ -364,7 +360,6 @@ func TestValidateLabelDuplication(t *testing.T) {
 	cfg.MaxLabelNameLength = 10
 	cfg.MaxLabelNamesPerSeries = 10
 	cfg.MaxLabelValueLength = 10
-	cfg.NameValidationScheme = model.LegacyValidation
 	reg := prometheus.NewRegistry()
 	validateMetrics := NewValidateMetrics(reg)
 	userID := "testUser"
@@ -372,7 +367,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
-	}, false)
+	}, false, model.LegacyValidation)
 	expected := newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
@@ -383,7 +378,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
-	}, false)
+	}, false, model.LegacyValidation)
 	expected = newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},

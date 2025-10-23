@@ -185,6 +185,9 @@ type Config struct {
 
 	// OTLPConfig
 	OTLPConfig OTLPConfig `yaml:"otlp"`
+
+	// Inject from global config
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 type InstanceLimits struct {
@@ -629,7 +632,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme); err != nil {
 		return emptyPreallocSeries, err
 	}
 

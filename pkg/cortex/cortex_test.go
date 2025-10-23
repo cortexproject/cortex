@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
@@ -45,6 +46,7 @@ func TestCortex(t *testing.T) {
 		// these values are set as defaults but since we aren't registering them, we
 		// need to include the defaults here. These were hardcoded in a previous version
 		// of weaveworks server.
+		NameValidationScheme: model.LegacyValidation,
 		Server: server.Config{
 			GRPCListenNetwork: server.DefaultNetwork,
 			HTTPListenNetwork: server.DefaultNetwork,
@@ -217,6 +219,24 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: nil,
 		},
+		{
+			name: "should pass utf8 name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = model.UTF8Validation
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should fail unset name validation scheme",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.NameValidationScheme = model.UnsetValidation
+				return configuration
+			},
+			expectedError: fmt.Errorf("unsupported name validation scheme: unset"),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)
@@ -233,9 +253,10 @@ func TestGrpcAuthMiddleware(t *testing.T) {
 	prepareGlobalMetricsRegistry(t)
 
 	cfg := Config{
-		AuthEnabled: true, // We must enable this to enable Auth middleware for gRPC server.
-		Server:      getServerConfig(t),
-		Target:      []string{API}, // Something innocent that doesn't require much config.
+		AuthEnabled:          true, // We must enable this to enable Auth middleware for gRPC server.
+		Server:               getServerConfig(t),
+		Target:               []string{API}, // Something innocent that doesn't require much config.
+		NameValidationScheme: model.LegacyValidation,
 	}
 
 	msch := &mockGrpcServiceHandler{}

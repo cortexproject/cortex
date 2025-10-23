@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -3079,6 +3078,7 @@ type prepConfig struct {
 	errFail                      error
 	tokens                       [][]uint32
 	useStreamPush                bool
+	nameValidationScheme         model.ValidationScheme
 }
 
 type prepState struct {
@@ -3194,6 +3194,10 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 		distributorCfg.UseStreamPush = cfg.useStreamPush
+		distributorCfg.NameValidationScheme = model.LegacyValidation
+		if cfg.nameValidationScheme == model.UTF8Validation {
+			distributorCfg.NameValidationScheme = cfg.nameValidationScheme
+		}
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -4107,6 +4111,7 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 		inputSeries          []labels.Labels
 		expectedSeries       labels.Labels
 		metricRelabelConfigs []*relabel.Config
+		nameValidationScheme model.ValidationScheme
 	}
 
 	cases := []testcase{
@@ -4160,11 +4165,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 				limits.MetricRelabelConfigs = tc.metricRelabelConfigs
 
 				ds, ingesters, _, _ := prepare(t, prepConfig{
-					numIngesters:     2,
-					happyIngesters:   2,
-					numDistributors:  1,
-					shardByAllLabels: true,
-					limits:           &limits,
+					numIngesters:         2,
+					happyIngesters:       2,
+					numDistributors:      1,
+					shardByAllLabels:     true,
+					limits:               &limits,
+					nameValidationScheme: tc.nameValidationScheme,
 				})
 
 				// Push the series to the distributor

@@ -245,8 +245,6 @@ type Limits struct {
 	AlertmanagerMaxSilencesCount               int                `yaml:"alertmanager_max_silences_count" json:"alertmanager_max_silences_count"`
 	AlertmanagerMaxSilencesSizeBytes           int                `yaml:"alertmanager_max_silences_size_bytes" json:"alertmanager_max_silences_size_bytes"`
 	DisabledRuleGroups                         DisabledRuleGroups `yaml:"disabled_rule_groups" json:"disabled_rule_groups" doc:"nocli|description=list of rule groups to disable"`
-
-	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme" json:"name_validation_scheme"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -356,14 +354,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.AlertmanagerMaxAlertsSizeBytes, "alertmanager.max-alerts-size-bytes", 0, "Maximum total size of alerts that a single user can have, alert size is the sum of the bytes of its labels, annotations and generatorURL. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxSilencesCount, "alertmanager.max-silences-count", 0, "Maximum number of silences that a single user can have, including expired silences. 0 = no limit.")
 	f.IntVar(&l.AlertmanagerMaxSilencesSizeBytes, "alertmanager.max-silences-size-bytes", 0, "Maximum size of individual silences that a single user can have. 0 = no limit.")
-
-	_ = l.NameValidationScheme.Set(model.LegacyValidation.String())
-	f.Var(&l.NameValidationScheme, "validation.name-validation-scheme", fmt.Sprintf("Name validation scheme for metric names and label names, Support values are: %s.", strings.Join([]string{model.LegacyValidation.String(), model.UTF8Validation.String()}, ", ")))
 }
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
+func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
@@ -379,16 +374,6 @@ func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool
 
 	if l.MaxLocalNativeHistogramSeriesPerUser > 0 && !activeSeriesMetricsEnabled {
 		return errMaxLocalNativeHistogramSeriesPerUserValidation
-	}
-
-	var nameValidationScheme model.ValidationScheme
-	switch l.NameValidationScheme {
-	case model.LegacyValidation, model.UTF8Validation:
-		nameValidationScheme = l.NameValidationScheme
-	case model.UnsetValidation:
-		nameValidationScheme = model.LegacyValidation
-	default:
-		return fmt.Errorf("unsupported name validation scheme: %s", l.NameValidationScheme)
 	}
 
 	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {

@@ -13,7 +13,10 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/featurecontrol"
+	"github.com/prometheus/alertmanager/matcher/compat"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
@@ -225,6 +228,7 @@ func (t *Cortex) initOverridesExporter() (services.Service, error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
+	t.Cfg.Distributor.NameValidationScheme = t.Cfg.NameValidationScheme
 	t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsEnabled = t.Cfg.Distributor.SignWriteRequestsEnabled
 
 	// Check whether the distributor can join the distributors ring, which is
@@ -722,6 +726,22 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	var featureControlMode string
+	switch t.Cfg.NameValidationScheme {
+	case model.LegacyValidation:
+		featureControlMode = featurecontrol.FeatureClassicMode
+	case model.UTF8Validation:
+		featureControlMode = featurecontrol.FeatureUTF8StrictMode
+	default:
+		return nil, fmt.Errorf("invalid validation scheme: %s", t.Cfg.NameValidationScheme)
+	}
+
+	features, err := featurecontrol.NewFlags(util_log.SLogger, featureControlMode)
+	if err != nil {
+		return
+	}
+	compat.InitFromFlags(util_log.SLogger, features)
 
 	// Initialise the store.
 	store, err := alertstore.NewAlertStore(context.Background(), t.Cfg.AlertmanagerStorage, t.Overrides, util_log.Logger, prometheus.DefaultRegisterer)

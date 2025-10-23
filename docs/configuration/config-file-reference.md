@@ -68,6 +68,11 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+# Name validation scheme for metric names and label names, Support values are:
+# legacy, utf8.
+# CLI flag: -name-validation-scheme
+[name_validation_scheme: <int> | default = legacy]
+
 resource_monitor:
   # Comma-separated list of resources to monitor. Supported values are cpu and
   # heap, which tracks metrics from github.com/prometheus/procfs and
@@ -4344,11 +4349,6 @@ query_rejection:
 
 # list of rule groups to disable
 [disabled_rule_groups: <list of DisabledRuleGroup> | default = []]
-
-# Name validation scheme for metric names and label names, Support values are:
-# legacy, utf8.
-# CLI flag: -validation.name-validation-scheme
-[name_validation_scheme: <int> | default = legacy]
 ```
 
 ### `memberlist_config`

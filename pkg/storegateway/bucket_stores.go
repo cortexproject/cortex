@@ -786,16 +786,10 @@ func (u *BucketStores) getTokensToRetrieve(tokens uint64, dataType store.StoreDa
 }
 
 func getUserIDFromGRPCContext(ctx context.Context) string {
-	meta, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
+	values := metadata.ValueFromIncomingContext(ctx, tsdb.TenantIDExternalLabel)
+	if values == nil || len(values) != 1 {
 		return ""
 	}
-
-	values := meta.Get(tsdb.TenantIDExternalLabel)
-	if len(values) != 1 {
-		return ""
-	}
-
 	return values[0]
 }
 

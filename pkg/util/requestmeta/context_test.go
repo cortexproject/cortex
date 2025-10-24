@@ -111,3 +111,85 @@ func TestInjectMetadataIntoHTTPRequestHeaders(t *testing.T) {
 	require.Equal(t, "ContentsOfTestHeader2", header2[0])
 
 }
+
+func TestContextWithRequestMetadataMapFromHeaderSlice(t *testing.T) {
+	tests := []struct {
+		name           string
+		headerSlice    []string
+		expectedResult map[string]string
+	}{
+		{
+			name:           "empty header slice",
+			headerSlice:    []string{},
+			expectedResult: map[string]string{},
+		},
+		{
+			name:           "nil header slice",
+			headerSlice:    nil,
+			expectedResult: map[string]string{},
+		},
+		{
+			name:           "odd number of elements",
+			headerSlice:    []string{"header1", "value1", "header2"},
+			expectedResult: nil,
+		},
+		{
+			name:        "single key-value pair",
+			headerSlice: []string{"header1", "value1"},
+			expectedResult: map[string]string{
+				"header1": "value1",
+			},
+		},
+		{
+			name:        "multiple key-value pairs",
+			headerSlice: []string{"header1", "value1", "header2", "value2", "header3", "value3"},
+			expectedResult: map[string]string{
+				"header1": "value1",
+				"header2": "value2",
+				"header3": "value3",
+			},
+		},
+		{
+			name:        "duplicate keys (last value wins)",
+			headerSlice: []string{"header1", "value1", "header1", "value2"},
+			expectedResult: map[string]string{
+				"header1": "value2",
+			},
+		},
+		{
+			name:        "empty values",
+			headerSlice: []string{"header1", "", "header2", "value2"},
+			expectedResult: map[string]string{
+				"header1": "",
+				"header2": "value2",
+			},
+		},
+		{
+			name:        "special characters in keys and values",
+			headerSlice: []string{"header-1", "value with spaces", "header_2", "value-with-dashes"},
+			expectedResult: map[string]string{
+				"header-1": "value with spaces",
+				"header_2": "value-with-dashes",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			result := ContextWithRequestMetadataMapFromHeaderSlice(ctx, tt.headerSlice)
+			metadataMap := MapFromContext(result)
+
+			if tt.expectedResult == nil {
+				require.Nil(t, metadataMap)
+			} else {
+				require.NotNil(t, metadataMap)
+				require.Equal(t, len(tt.expectedResult), len(metadataMap))
+				for key, expectedValue := range tt.expectedResult {
+					require.Contains(t, metadataMap, key)
+					require.Equal(t, expectedValue, metadataMap[key])
+				}
+			}
+		})
+	}
+}

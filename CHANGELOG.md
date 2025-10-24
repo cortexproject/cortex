@@ -103,6 +103,7 @@
 * [BUGFIX] Runtime-config: Change to check tenant limit validation when loading runtime config only for `all`, `distributor`, `querier`, and `ruler` targets. #6880
 * [BUGFIX] Distributor: Fix the `/distributor/all_user_stats` api to work during rolling updates on ingesters. #7026
 * [BUGFIX] Runtime-config: Fix panic when the runtime config is `null`. #7062
+* [BUGFIX] Scheduler: Avoid all queriers reserved for prioritized requests. #7057
 
 ## 1.19.1 2025-09-20
 

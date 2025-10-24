@@ -3963,6 +3963,13 @@ func BenchmarkIngester_QueryStreamChunks_MatcherOptimization(b *testing.B) {
 			},
 			description: "Metric name with != \"\" matchers",
 		},
+		"metric name with sparse label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "sparse_label", ".+"),
+			},
+			description: "Metric name with sparse label matcher",
+		},
 		"complex matchers": {
 			matchers: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
@@ -4001,17 +4008,25 @@ func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatch
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 
-	for s := 0; s < 1000; s++ {
-		lbls := labels.FromStrings(
+	for s := range 1000 {
+		// Create base labels
+		labelPairs := []string{
 			labels.MetricName, "test_metric",
 			"region", fmt.Sprintf("region-%d", s%10),
 			"job", fmt.Sprintf("job-%d", s%20),
 			"env", fmt.Sprintf("env-%d", s%5),
 			"pod", fmt.Sprintf("pod-%d", s%1000),
-		)
+		}
+
+		// Add sparse label only for half of the series
+		if s%2 == 0 {
+			labelPairs = append(labelPairs, "sparse_label", fmt.Sprintf("sparse-%d", s%50))
+		}
+
+		lbls := labels.FromStrings(labelPairs...)
 
 		samples := make([]cortexpb.Sample, 0, 5)
-		for t := 0; t < 5; t++ {
+		for t := range 5 {
 			samples = append(samples, cortexpb.Sample{
 				Value:       float64(s + t),
 				TimestampMs: int64(s*5 + t),

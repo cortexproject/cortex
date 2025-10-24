@@ -15,9 +15,9 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func Test_RegexResolver(t *testing.T) {
@@ -80,16 +80,16 @@ func Test_RegexResolver(t *testing.T) {
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", tc.existingTenants, nil)
 			bucketClient.MockIter("__markers__", []string{}, nil)
-			for _, tenant := range tc.existingTenants {
-				bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenant), false, nil)
-				bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenant), false, nil)
+			for _, existingTenant := range tc.existingTenants {
+				bucketClient.MockExists(users.GetGlobalDeletionMarkPath(existingTenant), false, nil)
+				bucketClient.MockExists(users.GetLocalDeletionMarkPath(existingTenant), false, nil)
 			}
 
 			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
 				return bucketClient, nil
 			}
 
-			usersScannerConfig := cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}
+			usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
 			tenantFederationConfig := Config{UserSyncInterval: time.Second, MaxTenant: tc.maxTenants}
 			regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 			require.NoError(t, err)

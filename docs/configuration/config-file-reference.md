@@ -3738,6 +3738,12 @@ instance_limits:
 # CLI flag: -ingester.skip-metadata-limits
 [skip_metadata_limits: <boolean> | default = true]
 
+# Enable optimization of label matchers when query chunks. When enabled,
+# matchers with low selectivity such as =~.+ are applied lazily during series
+# scanning instead of being used for postings matching.
+# CLI flag: -ingester.enable-matcher-optimization
+[enable_matcher_optimization: <boolean> | default = false]
+
 query_protection:
   rejection:
     threshold:

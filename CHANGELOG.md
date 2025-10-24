@@ -31,7 +31,6 @@
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
-* [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [ENHANCEMENT] Upgrade the Prometheus version to 3.6.0 and add a `-name-validation-scheme` flag to support UTF-8. #7040 #7056
 * [ENHANCEMENT] Distributor: Emit an error with a 400 status code when empty labels are found before the relabelling or label dropping process. #7052
 * [ENHANCEMENT] Parquet Storage: Add support for additional sort columns during Parquet file generation #7003

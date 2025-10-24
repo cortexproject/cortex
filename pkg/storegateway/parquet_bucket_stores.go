@@ -57,8 +57,7 @@ type ParquetBucketStores struct {
 
 	inflightRequests *cortex_util.InflightRequestTracker
 
-	cortexBucketStoreMetrics *CortexBucketStoreMetrics
-	userScanner              users.Scanner
+	userScanner users.Scanner
 
 	userTokenBuckets map[string]*cortex_util.TokenBucket
 }
@@ -72,16 +71,15 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 	}
 
 	u := &ParquetBucketStores{
-		logger:                   logger,
-		cfg:                      cfg,
-		limits:                   limits,
-		bucket:                   cachingBucket,
-		stores:                   map[string]*parquetBucketStore{},
-		storesErrors:             map[string]error{},
-		chunksDecoder:            schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
-		inflightRequests:         cortex_util.NewInflightRequestTracker(),
-		cortexBucketStoreMetrics: NewCortexBucketStoreMetrics(reg),
-		userTokenBuckets:         make(map[string]*cortex_util.TokenBucket),
+		logger:           logger,
+		cfg:              cfg,
+		limits:           limits,
+		bucket:           cachingBucket,
+		stores:           map[string]*parquetBucketStore{},
+		storesErrors:     map[string]error{},
+		chunksDecoder:    schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
+		inflightRequests: cortex_util.NewInflightRequestTracker(),
+		userTokenBuckets: make(map[string]*cortex_util.TokenBucket),
 	}
 	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
 	if err != nil {

@@ -11,45 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCortexBucketStoreMetrics(t *testing.T) {
-	t.Parallel()
-	reg := prometheus.NewPedanticRegistry()
-
-	metrics := NewCortexBucketStoreMetrics(reg)
-	metrics.syncTimes.Observe(0.1)
-	metrics.syncLastSuccess.Set(1759923308)
-	metrics.tenantsSynced.Set(1)
-	metrics.tenantsDiscovered.Set(1)
-
-	err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-			# HELP cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds Unix timestamp of the last successful blocks sync.
-			# TYPE cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds gauge
-			cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds 1.759923308e+09
-			# HELP cortex_bucket_stores_blocks_sync_seconds The total time it takes to perform a sync stores
-			# TYPE cortex_bucket_stores_blocks_sync_seconds histogram
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="0.1"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="1"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="10"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="30"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="60"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="120"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="300"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="600"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="900"} 1
-			cortex_bucket_stores_blocks_sync_seconds_bucket{le="+Inf"} 1
-			cortex_bucket_stores_blocks_sync_seconds_sum 0.1
-			cortex_bucket_stores_blocks_sync_seconds_count 1
-			# HELP cortex_bucket_stores_tenants_discovered Number of tenants discovered in the bucket.
-			# TYPE cortex_bucket_stores_tenants_discovered gauge
-			cortex_bucket_stores_tenants_discovered 1
-			# HELP cortex_bucket_stores_tenants_synced Number of tenants synced.
-			# TYPE cortex_bucket_stores_tenants_synced gauge
-			cortex_bucket_stores_tenants_synced 1
-`,
-	))
-	require.NoError(t, err)
-}
-
 func TestBucketStoreMetrics(t *testing.T) {
 	t.Parallel()
 	mainReg := prometheus.NewPedanticRegistry()

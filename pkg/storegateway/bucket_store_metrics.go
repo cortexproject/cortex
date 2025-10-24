@@ -2,40 +2,9 @@ package storegateway
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util"
 )
-
-// CortexBucketStoreMetrics common metrics in thanos and parquet block stores (in future)
-type CortexBucketStoreMetrics struct {
-	syncTimes         prometheus.Histogram
-	syncLastSuccess   prometheus.Gauge
-	tenantsDiscovered prometheus.Gauge
-	tenantsSynced     prometheus.Gauge
-}
-
-func NewCortexBucketStoreMetrics(reg prometheus.Registerer) *CortexBucketStoreMetrics {
-	return &CortexBucketStoreMetrics{
-		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_bucket_stores_blocks_sync_seconds",
-			Help:    "The total time it takes to perform a sync stores",
-			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
-		}),
-		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
-			Help: "Unix timestamp of the last successful blocks sync.",
-		}),
-		tenantsDiscovered: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_tenants_discovered",
-			Help: "Number of tenants discovered in the bucket.",
-		}),
-		tenantsSynced: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Name: "cortex_bucket_stores_tenants_synced",
-			Help: "Number of tenants synced.",
-		}),
-	}
-}
 
 // BucketStoreMetrics aggregates metrics exported by Thanos Bucket Store
 // and re-exports those aggregates as Cortex metrics.
@@ -91,7 +60,7 @@ type BucketStoreMetrics struct {
 }
 
 func NewBucketStoreMetrics() *BucketStoreMetrics {
-	m := &BucketStoreMetrics{
+	return &BucketStoreMetrics{
 		regs: util.NewUserRegistries(),
 
 		blockLoads: prometheus.NewDesc(
@@ -264,8 +233,6 @@ func NewBucketStoreMetrics() *BucketStoreMetrics {
 			"Total number of series size in bytes overfetched due to posting lazy expansion.",
 			nil, nil),
 	}
-
-	return m
 }
 
 func (m *BucketStoreMetrics) AddUserRegistry(user string, reg *prometheus.Registry) {

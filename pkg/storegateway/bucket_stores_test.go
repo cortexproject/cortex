@@ -266,7 +266,7 @@ func TestBucketStores_InitialSync(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
@@ -327,7 +327,7 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -398,7 +398,7 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 	))
 
 	thanosStores := stores.(*ThanosBucketStores)
-	assert.Greater(t, testutil.ToFloat64(thanosStores.cortexBucketStoreMetrics.syncLastSuccess), float64(0))
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {

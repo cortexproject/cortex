@@ -4192,6 +4192,53 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 	}
 }
 
+func TestRemoveEmptyLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []cortexpb.LabelAdapter
+		expected []cortexpb.LabelAdapter
+	}{
+		{
+			name:     "no empty labels",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+		},
+		{
+			name:     "empty label at beginning",
+			input:    []cortexpb.LabelAdapter{{Name: "empty", Value: ""}, {Name: "job", Value: "test"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+		{
+			name:     "empty label in middle",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "empty", Value: ""}, {Name: "instance", Value: "localhost"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+		},
+		{
+			name:     "empty label at end",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "empty", Value: ""}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+		{
+			name:     "multiple empty labels - removes all empty ones",
+			input:    []cortexpb.LabelAdapter{{Name: "empty1", Value: ""}, {Name: "job", Value: "test"}, {Name: "empty2", Value: ""}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Make a copy of the input to avoid modifying the original
+			input := make([]cortexpb.LabelAdapter, len(tt.input))
+			copy(input, tt.input)
+
+			removeEmptyLabels(&input)
+			assert.Equal(t, tt.expected, input)
+		})
+	}
+}
+
 func TestDistributor_Push_EmptyLabel(t *testing.T) {
 	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "pushEmptyLabel")
@@ -4255,6 +4302,10 @@ func TestDistributor_Push_EmptyLabel(t *testing.T) {
 				timeseries := ingesters[i].series()
 				if len(timeseries) > 0 {
 					ingesterWithSeries++
+					// Assert on the expected series
+					for _, v := range timeseries {
+						assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+					}
 				}
 			}
 			assert.Equal(t, 1, ingesterWithSeries)

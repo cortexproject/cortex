@@ -343,6 +343,7 @@ type tsdbMetrics struct {
 	tsdbHeadTruncateFail               *prometheus.Desc
 	tsdbHeadTruncateTotal              *prometheus.Desc
 	tsdbHeadGcDuration                 *prometheus.Desc
+	tsdbHeadStaleSeries                *prometheus.Desc
 	tsdbActiveAppenders                *prometheus.Desc
 	tsdbSeriesNotFound                 *prometheus.Desc
 	tsdbChunks                         *prometheus.Desc
@@ -470,6 +471,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_head_gc_duration_seconds",
 			"Runtime of garbage collection in the TSDB head.",
 			nil, nil),
+		tsdbHeadStaleSeries: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_stale_series",
+			"Total number of stale series in the head block.",
+			[]string{"user"}, nil),
 		tsdbActiveAppenders: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_active_appenders",
 			"Number of currently active TSDB appender transactions.",
@@ -623,6 +628,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbWALWritesFailed
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
+	out <- sm.tsdbHeadStaleSeries
 	out <- sm.tsdbHeadGcDuration
 	out <- sm.tsdbActiveAppenders
 	out <- sm.tsdbSeriesNotFound
@@ -684,6 +690,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateFail, "prometheus_tsdb_head_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbHeadGcDuration, "prometheus_tsdb_head_gc_duration_seconds")
+	data.SendSumOfGaugesPerUser(out, sm.tsdbHeadStaleSeries, "prometheus_tsdb_head_stale_series")
 	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
 	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
 	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")

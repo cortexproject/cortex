@@ -428,6 +428,11 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_exemplars_in_storage 30
+			# HELP cortex_ingester_tsdb_head_stale_series Total number of stale series in the head block.
+			# TYPE cortex_ingester_tsdb_head_stale_series gauge
+			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
+			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
+			cortex_ingester_tsdb_head_stale_series{user="user3"} 30969
 	`))
 	require.NoError(t, err)
 }
@@ -691,6 +696,10 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_exemplars_in_storage 20
+			# HELP cortex_ingester_tsdb_head_stale_series Total number of stale series in the head block.
+			# TYPE cortex_ingester_tsdb_head_stale_series gauge
+			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
+			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
 	`))
 	require.NoError(t, err)
 }
@@ -1017,6 +1026,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of out of order exemplar ingestion failed attempts.",
 	})
 	exemplarsOutOfOrderTotal.Add(3)
+
+	headStaleSeries := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_stale_series",
+		Help: "Total number of stale series in the head block.",
+	})
+	headStaleSeries.Set(31 * base)
 
 	return r
 }

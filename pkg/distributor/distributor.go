@@ -600,6 +600,18 @@ func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 	}
 }
 
+// Remove all labels with empty values from a slice of LabelPairs.
+func removeEmptyLabels(labels *[]cortexpb.LabelAdapter) {
+	i := 0
+	for j := 0; j < len(*labels); j++ {
+		if (*labels)[j].Value != "" {
+			(*labels)[i] = (*labels)[j]
+			i++
+		}
+	}
+	*labels = (*labels)[:i]
+}
+
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
@@ -1079,6 +1091,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		for _, labelName := range limits.DropLabels {
 			removeLabel(labelName, &ts.Labels)
 		}
+
+		// Make sure no label with empty value is sent to the Ingester.
+		removeEmptyLabels(&ts.Labels)
 
 		if len(ts.Labels) == 0 {
 			d.validateMetrics.DiscardedSamples.WithLabelValues(

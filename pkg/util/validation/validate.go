@@ -2,6 +2,8 @@ package validation
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -60,6 +62,9 @@ const (
 	nativeHistogramBucketCountLimitExceeded = "native_histogram_buckets_exceeded"
 	nativeHistogramInvalidSchema            = "native_histogram_invalid_schema"
 	nativeHistogramSampleSizeBytesExceeded  = "native_histogram_sample_size_bytes_exceeded"
+	nativeHistogramNegativeCount            = "native_histogram_negative_count"
+	nativeHistogramNegativeBucketCount      = "native_histogram_negative_bucket_count"
+	nativeHistogramMisMatchCount            = "native_histogram_mismatch_count"
 
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
@@ -368,7 +373,6 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 }
 
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
-
 	// sample size validation for native histogram
 	if limits.MaxNativeHistogramSampleSizeBytes > 0 && histogramSample.Size() > limits.MaxNativeHistogramSampleSizeBytes {
 		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSampleSizeBytesExceeded, userID).Inc()
@@ -381,6 +385,56 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 		return cortexpb.Histogram{}, newNativeHistogramSchemaInvalidError(ls, int(histogramSample.Schema))
 	}
 
+	var nCount, pCount uint64
+	if histogramSample.IsFloatHistogram() {
+		if err, c := checkHistogramBuckets(histogramSample.GetNegativeCounts(), &nCount, false); err != nil {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
+		}
+
+		if err, c := checkHistogramBuckets(histogramSample.GetPositiveCounts(), &pCount, false); err != nil {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
+		}
+
+		if histogramSample.GetZeroCountFloat() < 0 {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, histogramSample.GetZeroCountFloat())
+		}
+
+		if histogramSample.GetCountFloat() < 0 {
+			// validate if float histogram has negative count
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeCountError(ls, histogramSample.GetCountFloat())
+		}
+	} else {
+		if err, c := checkHistogramBuckets(histogramSample.GetNegativeDeltas(), &nCount, true); err != nil {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
+		}
+
+		if err, c := checkHistogramBuckets(histogramSample.GetPositiveDeltas(), &pCount, true); err != nil {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
+		}
+
+		// validate if there is mismatch between count with observations in buckets
+		observations := nCount + pCount + histogramSample.GetZeroCountInt()
+		count := histogramSample.GetCountInt()
+
+		if math.IsNaN(histogramSample.Sum) {
+			if observations > count {
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramMisMatchCount, userID).Inc()
+				return cortexpb.Histogram{}, newNativeHistogramMisMatchedCountError(ls, observations, count)
+			}
+		} else {
+			if observations != count {
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramMisMatchCount, userID).Inc()
+				return cortexpb.Histogram{}, newNativeHistogramMisMatchedCountError(ls, observations, count)
+			}
+		}
+	}
+
 	if limits.MaxNativeHistogramBuckets == 0 {
 		return histogramSample, nil
 	}
@@ -388,6 +442,7 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	var (
 		exceedLimit bool
 	)
+
 	if histogramSample.IsFloatHistogram() {
 		// Initial check to see if the bucket limit is exceeded or not. If not, we can avoid type casting.
 		exceedLimit = len(histogramSample.PositiveCounts)+len(histogramSample.NegativeCounts) > limits.MaxNativeHistogramBuckets
@@ -399,6 +454,7 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
+
 		fh := cortexpb.FloatHistogramProtoToFloatHistogram(histogramSample)
 		oBuckets := len(fh.PositiveBuckets) + len(fh.NegativeBuckets)
 		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
@@ -437,8 +493,33 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	if oBuckets != len(h.PositiveBuckets)+len(h.NegativeBuckets) {
 		validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
 	}
+
 	// If resolution reduced, convert new histogram to protobuf type again.
 	return cortexpb.HistogramToHistogramProto(histogramSample.TimestampMs, h), nil
+}
+
+// copy from https://github.com/prometheus/prometheus/blob/v3.6.0/model/histogram/generic.go#L399-L420
+func checkHistogramBuckets[BC histogram.BucketCount, IBC histogram.InternalBucketCount](buckets []IBC, count *BC, deltas bool) (error, float64) {
+	if len(buckets) == 0 {
+		return nil, 0
+	}
+
+	var last IBC
+	for i := range buckets {
+		var c IBC
+		if deltas {
+			c = last + buckets[i]
+		} else {
+			c = buckets[i]
+		}
+		if c < 0 {
+			return fmt.Errorf("bucket number %d has observation count of %v", i+1, c), float64(c)
+		}
+		last = c
+		*count += BC(c)
+	}
+
+	return nil, 0
 }
 
 func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID string, log log.Logger) {

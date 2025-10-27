@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -412,6 +413,31 @@ func TestValidateNativeHistogram(t *testing.T) {
 	exceedMaxRangeSchemaFloatHistogram.Schema = 20
 	exceedMaxSampleSizeBytesLimitFloatHistogram := tsdbutil.GenerateTestFloatHistogram(100)
 
+	negativeBucketCountInNBucketsFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeBucketCountInNBucketsFH.NegativeBuckets = []float64{-1.1, -1.2, -1.3, -1.4}
+
+	negativeBucketCountInPBucketsFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeBucketCountInPBucketsFH.PositiveBuckets = []float64{-1.1, -1.2, -1.3, -1.4}
+
+	negativeCountFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeCountFloatHistogram.Count = -1.2345
+
+	negativeZeroCountFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeZeroCountFloatHistogram.ZeroCount = -1.2345
+
+	negativeBucketCountInNBucketsH := tsdbutil.GenerateTestHistogram(0)
+	negativeBucketCountInNBucketsH.NegativeBuckets = []int64{-1, -2, -3, -4}
+
+	negativeBucketCountInPBucketsH := tsdbutil.GenerateTestHistogram(0)
+	negativeBucketCountInPBucketsH.PositiveBuckets = []int64{-1, -2, -3, -4}
+
+	countMisMatchSumIsNaN := tsdbutil.GenerateTestHistogram(0)
+	countMisMatchSumIsNaN.Sum = math.NaN()
+	countMisMatchSumIsNaN.Count = 11
+
+	countMisMatch := tsdbutil.GenerateTestHistogram(0)
+	countMisMatch.Count = 11
+
 	for _, tc := range []struct {
 		name                                   string
 		bucketLimit                            int
@@ -524,6 +550,54 @@ func TestValidateNativeHistogram(t *testing.T) {
 			expectedErr:                            newNativeHistogramSampleSizeBytesExceededError(lbls, 126, 100),
 			discardedSampleLabelValue:              nativeHistogramSampleSizeBytesExceeded,
 			maxNativeHistogramSampleSizeBytesLimit: 100,
+		},
+		{
+			name:                      "negative observations count in negative buckets for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeBucketCountInNBucketsFH.Copy()),
+			expectedErr:               newNativeHistogramNegativeBucketCountError(lbls, negativeBucketCountInNBucketsFH.NegativeBuckets[0]),
+			discardedSampleLabelValue: nativeHistogramNegativeBucketCount,
+		},
+		{
+			name:                      "negative observations count in positive buckets for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeBucketCountInPBucketsFH.Copy()),
+			expectedErr:               newNativeHistogramNegativeBucketCountError(lbls, negativeBucketCountInPBucketsFH.PositiveBuckets[0]),
+			discardedSampleLabelValue: nativeHistogramNegativeBucketCount,
+		},
+		{
+			name:                      "count is negative for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeCountFloatHistogram.Copy()),
+			expectedErr:               newNativeHistogramNegativeCountError(lbls, negativeCountFloatHistogram.Count),
+			discardedSampleLabelValue: nativeHistogramNegativeCount,
+		},
+		{
+			name:                      "zero count is negative for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeZeroCountFloatHistogram.Copy()),
+			expectedErr:               newNativeHistogramNegativeBucketCountError(lbls, negativeZeroCountFloatHistogram.ZeroCount),
+			discardedSampleLabelValue: nativeHistogramNegativeBucketCount,
+		},
+		{
+			name:                      "negative observations count in negative buckets for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeBucketCountInNBucketsH.Copy()),
+			expectedErr:               newNativeHistogramNegativeBucketCountError(lbls, float64(negativeBucketCountInNBucketsH.NegativeBuckets[0])),
+			discardedSampleLabelValue: nativeHistogramNegativeBucketCount,
+		},
+		{
+			name:                      "negative observations count in positive buckets for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeBucketCountInPBucketsH.Copy()),
+			expectedErr:               newNativeHistogramNegativeBucketCountError(lbls, float64(negativeBucketCountInPBucketsH.PositiveBuckets[0])),
+			discardedSampleLabelValue: nativeHistogramNegativeBucketCount,
+		},
+		{
+			name:                      "mismatch between observations count with count field when sum is NaN",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, countMisMatchSumIsNaN.Copy()),
+			expectedErr:               newNativeHistogramMisMatchedCountError(lbls, 12, 11),
+			discardedSampleLabelValue: nativeHistogramMisMatchCount,
+		},
+		{
+			name:                      "mismatch between observations count with count field",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, countMisMatch.Copy()),
+			expectedErr:               newNativeHistogramMisMatchedCountError(lbls, 12, 11),
+			discardedSampleLabelValue: nativeHistogramMisMatchCount,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

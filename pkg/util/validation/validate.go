@@ -387,12 +387,12 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 
 	var nCount, pCount uint64
 	if histogramSample.IsFloatHistogram() {
-		if err, c := checkHistogramBuckets(histogramSample.GetNegativeCounts(), &nCount, false); err != nil {
+		if c, err := checkHistogramBuckets(histogramSample.GetNegativeCounts(), &nCount, false); err != nil {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
 			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
 		}
 
-		if err, c := checkHistogramBuckets(histogramSample.GetPositiveCounts(), &pCount, false); err != nil {
+		if c, err := checkHistogramBuckets(histogramSample.GetPositiveCounts(), &pCount, false); err != nil {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
 			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
 		}
@@ -408,12 +408,12 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 			return cortexpb.Histogram{}, newNativeHistogramNegativeCountError(ls, histogramSample.GetCountFloat())
 		}
 	} else {
-		if err, c := checkHistogramBuckets(histogramSample.GetNegativeDeltas(), &nCount, true); err != nil {
+		if c, err := checkHistogramBuckets(histogramSample.GetNegativeDeltas(), &nCount, true); err != nil {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
 			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
 		}
 
-		if err, c := checkHistogramBuckets(histogramSample.GetPositiveDeltas(), &pCount, true); err != nil {
+		if c, err := checkHistogramBuckets(histogramSample.GetPositiveDeltas(), &pCount, true); err != nil {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramNegativeBucketCount, userID).Inc()
 			return cortexpb.Histogram{}, newNativeHistogramNegativeBucketCountError(ls, c)
 		}
@@ -499,9 +499,9 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 }
 
 // copy from https://github.com/prometheus/prometheus/blob/v3.6.0/model/histogram/generic.go#L399-L420
-func checkHistogramBuckets[BC histogram.BucketCount, IBC histogram.InternalBucketCount](buckets []IBC, count *BC, deltas bool) (error, float64) {
+func checkHistogramBuckets[BC histogram.BucketCount, IBC histogram.InternalBucketCount](buckets []IBC, count *BC, deltas bool) (float64, error) {
 	if len(buckets) == 0 {
-		return nil, 0
+		return 0, nil
 	}
 
 	var last IBC
@@ -513,13 +513,13 @@ func checkHistogramBuckets[BC histogram.BucketCount, IBC histogram.InternalBucke
 			c = buckets[i]
 		}
 		if c < 0 {
-			return fmt.Errorf("bucket number %d has observation count of %v", i+1, c), float64(c)
+			return float64(c), fmt.Errorf("bucket number %d has observation count of %v", i+1, c)
 		}
 		last = c
 		*count += BC(c)
 	}
 
-	return nil, 0
+	return 0, nil
 }
 
 func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID string, log log.Logger) {

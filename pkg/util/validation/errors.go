@@ -282,6 +282,62 @@ func (e *nativeHistogramSampleSizeBytesExceededError) Error() string {
 	return fmt.Sprintf("native histogram sample size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.nhSampleSizeBytes, e.limit, formatLabelSet(e.series))
 }
 
+// nativeHistogramMisMatchCountError is a ValidationError implementation for native histogram
+// where the Count does not match the sum of observations in the buckets.
+type nativeHistogramMisMatchCountError struct {
+	series       []cortexpb.LabelAdapter
+	observations uint64
+	count        uint64
+}
+
+func newNativeHistogramMisMatchedCountError(series []cortexpb.LabelAdapter, observations, count uint64) ValidationError {
+	return &nativeHistogramMisMatchCountError{
+		series:       series,
+		observations: observations,
+		count:        count,
+	}
+}
+
+func (e *nativeHistogramMisMatchCountError) Error() string {
+	return fmt.Sprintf("native histogram bucket count mismatch: count is %d, but observations found in buckets is %d, metric: %.200q", e.count, e.observations, formatLabelSet(e.series))
+}
+
+// nativeHistogramNegativeCountError is a ValidationError implementation for float native histogram
+// where the Count field is negative.
+type nativeHistogramNegativeCountError struct {
+	series []cortexpb.LabelAdapter
+	count  float64
+}
+
+func newNativeHistogramNegativeCountError(series []cortexpb.LabelAdapter, count float64) ValidationError {
+	return &nativeHistogramNegativeCountError{
+		series: series,
+		count:  count,
+	}
+}
+
+func (e *nativeHistogramNegativeCountError) Error() string {
+	return fmt.Sprintf("native histogram observation count %.2f is negative, metric: %.200q", e.count, formatLabelSet(e.series))
+}
+
+// nativeHistogramNegativeBucketCountError is a ValidationError implementation for float native histogram
+// where the count in buckets is negative.
+type nativeHistogramNegativeBucketCountError struct {
+	series []cortexpb.LabelAdapter
+	count  float64
+}
+
+func newNativeHistogramNegativeBucketCountError(series []cortexpb.LabelAdapter, count float64) ValidationError {
+	return &nativeHistogramNegativeBucketCountError{
+		series: series,
+		count:  count,
+	}
+}
+
+func (e *nativeHistogramNegativeBucketCountError) Error() string {
+	return fmt.Sprintf("native histogram buckets have a negative count: %.2f, metric: %.200q", e.count, formatLabelSet(e.series))
+}
+
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.

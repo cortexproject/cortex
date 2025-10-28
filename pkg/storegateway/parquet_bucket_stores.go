@@ -30,7 +30,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -56,10 +55,6 @@ type ParquetBucketStores struct {
 	matcherCache storecache.MatchersCache
 
 	inflightRequests *cortex_util.InflightRequestTracker
-
-	userScanner users.Scanner
-
-	userTokenBuckets map[string]*cortex_util.TokenBucket
 }
 
 // newParquetBucketStores creates a new multi-tenant parquet bucket stores
@@ -79,11 +74,6 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		storesErrors:     map[string]error{},
 		chunksDecoder:    schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
 		inflightRequests: cortex_util.NewInflightRequestTracker(),
-		userTokenBuckets: make(map[string]*cortex_util.TokenBucket),
-	}
-	u.userScanner, err = users.NewScanner(cfg.UsersScanner, bucketClient, logger, reg)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
 	if cfg.BucketStore.MatchersCacheMaxItems > 0 {

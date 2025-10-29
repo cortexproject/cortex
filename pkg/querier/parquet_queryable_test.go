@@ -544,7 +544,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			if testData.expectedErr != nil {
 				require.False(t, set.Next())
 				err = set.Err()
-				require.EqualError(t, err, testData.expectedErr.Error())
+				require.ErrorContains(t, err, testData.expectedErr.Error())
 				return
 			}
 

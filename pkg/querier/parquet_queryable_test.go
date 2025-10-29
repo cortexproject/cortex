@@ -3,7 +3,6 @@ package querier
 import (
 	"context"
 	"fmt"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"math/rand"
 	"path/filepath"
 	"strconv"
@@ -40,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )

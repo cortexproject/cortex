@@ -33,20 +33,12 @@ func UnarySigningServerInterceptor(ctx context.Context, req any, _ *grpc.UnarySe
 		return handler(ctx, req)
 	}
 
-	md, ok := metadata.FromIncomingContext(ctx)
-
-	if !ok {
-		return nil, ErrSignatureNotPresent
-	}
-
-	sig, ok := md[reqSignHeaderName]
-
-	if !ok || len(sig) != 1 {
+	sig := metadata.ValueFromIncomingContext(ctx, reqSignHeaderName)
+	if sig == nil || len(sig) != 1 {
 		return nil, ErrSignatureNotPresent
 	}
 
 	valid, err := rs.VerifySign(ctx, sig[0])
-
 	if err != nil {
 		return nil, err
 	}

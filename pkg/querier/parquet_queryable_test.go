@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"math/rand"
 	"path/filepath"
 	"strconv"
@@ -570,6 +571,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 		tsdbBlock.MinTime(),
 		tsdbBlock.MaxTime(),
 		[]convert.Convertible{tsdbBlock},
+		util_log.SLogger,
 		converterOpts...,
 	)
 	require.NoError(t, err)

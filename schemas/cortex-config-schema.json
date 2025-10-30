@@ -5363,6 +5363,12 @@
           "description": "Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.",
           "type": "boolean"
         },
+        "rw_2_enable_type_and_unit_labels": {
+          "default": false,
+          "description": "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This only applies to remote write v2 requests.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.rw2-enable-type-and-unit-labels"
+        },
         "s3_sse_kms_encryption_context": {
           "description": "S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set.",
           "type": "string"

@@ -303,6 +303,7 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 
 	// Create a new converter with test configuration
 	cfg := Config{
+		MaxRowsPerRowGroup:  1e6,
 		MetaSyncConcurrency: 1,
 		DataDir:             t.TempDir(),
 	}

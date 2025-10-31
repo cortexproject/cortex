@@ -126,4 +126,4 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;ACTIVE&amp;#34;}&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="conclusion">Conclusion&lt;/h2>
 &lt;p>The READONLY state improves Cortex&amp;rsquo;s operational capabilities. This feature makes scaling operations safer, simpler, more flexible, and more performant than the traditional approach. Configuration changes across multiple components are no longer required - set ingesters to READONLY and remove them when convenient.&lt;/p>
-&lt;p>For detailed information and examples, check out our &lt;a href="../../docs/guides/ingesters-scaling-up-and-down/">Ingesters Scaling Guide&lt;/a>.&lt;/p></description></item></channel></rss>
+&lt;p>For detailed information and examples, check out our &lt;a href="../../../../../docs/guides/ingesters-scaling-up-and-down/">Ingesters Scaling Guide&lt;/a>.&lt;/p></description></item></channel></rss>

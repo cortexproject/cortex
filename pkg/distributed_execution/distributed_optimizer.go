@@ -1,10 +1,9 @@
 package distributed_execution
 
 import (
-	"github.com/thanos-io/promql-engine/query"
-
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/promql-engine/query"
 )
 
 // This is a simplified implementation that only handles binary aggregation cases
@@ -18,6 +17,7 @@ type DistributedOptimizer struct{}
 func (d *DistributedOptimizer) Optimize(root logicalplan.Node, opts *query.Options) (logicalplan.Node, annotations.Annotations) {
 	warns := annotations.New()
 
+	// insert remote nodes
 	logicalplan.TraverseBottomUp(nil, &root, func(parent, current *logicalplan.Node) bool {
 
 		if (*current).Type() == logicalplan.BinaryNode && d.hasAggregation(current) {

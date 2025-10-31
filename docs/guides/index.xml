@@ -620,8 +620,7 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_global_series_per_user&lt;/span>: &lt;span style="color:#ae81ff">300000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_metric&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_user&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_samples_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_fetched_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>overrides-exporter&lt;/code> is configured to run as follows:&lt;/p>
 &lt;pre tabindex="0">&lt;code>cortex -target overrides-exporter -runtime-config.file runtime.yaml -server.http-listen-port=8080
 &lt;/code>&lt;/pre>&lt;p>After the &lt;code>overrides-exporter&lt;/code> starts, you can use &lt;code>curl&lt;/code> to inspect the tenant overrides.&lt;/p>
@@ -635,7 +634,6 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_local_series_per_metric&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_series_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
 before they exceed them.&lt;/p></description></item><item><title>Docs: Use Partition Compaction in Cortex</title><link>/docs/guides/partition-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/partition-compaction/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>

@@ -9882,11 +9882,10 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant1&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ingestion_rate&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_metric&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_fetched_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant2&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_samples_per_query&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_metric&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_fetched_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">multi_kv_config&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">mirror_enabled&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
@@ -9904,11 +9903,10 @@ Update the timestamp in the KV store for a given cluster/replica only after this
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant1&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ingestion_rate&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_metric&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_fetched_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant2&lt;/span>:
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_samples_per_query&lt;/span>: &lt;span style="color:#ae81ff">1000000&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_metric&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">max_fetched_series_per_query&lt;/span>: &lt;span style="color:#ae81ff">100000&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Valid per-tenant limits are (with their corresponding flags for default values):&lt;/p>
 &lt;ul>
 &lt;li>

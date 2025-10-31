@@ -1065,6 +1065,12 @@
               },
               "type": "object"
             },
+            "bucket_store_type": {
+              "default": "tsdb",
+              "description": "Type of bucket store to use (tsdb or parquet).",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.bucket-store.bucket-store-type"
+            },
             "chunks_cache": {
               "properties": {
                 "attributes_ttl": {

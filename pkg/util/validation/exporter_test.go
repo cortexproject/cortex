@@ -108,6 +108,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="ruler_query_offset",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="rules_partial_data",user="tenant-a"} 0
+		cortex_overrides{limit_name="rw_2_enable_type_and_unit_labels",user="tenant-a"} 0
 		cortex_overrides{limit_name="store_gateway_tenant_shard_size",user="tenant-a"} 0
 	`), "cortex_overrides"))
 }

@@ -3988,6 +3988,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.promote-resource-attributes
 [promote_resource_attributes: <list of string> | default = ]
 
+# EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics.
+# This only applies to remote write v2 requests.
+# CLI flag: -distributor.rw2-enable-type-and-unit-labels
+[rw_2_enable_type_and_unit_labels: <boolean> | default = false]
+
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]

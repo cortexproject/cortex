@@ -31,10 +31,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -131,7 +131,7 @@ func NewQueryTripperware(
 		Help: "Total rejected queries per tenant.",
 	}, []string{"op", "user"})
 
-	activeUsers := util.NewActiveUsersCleanupWithDefaultValues(func(user string) {
+	activeUsers := users.NewActiveUsersCleanupWithDefaultValues(func(user string) {
 		err := util.DeleteMatchingLabels(queriesPerTenant, map[string]string{"user": user})
 		if err != nil {
 			level.Warn(log).Log("msg", "failed to remove cortex_query_frontend_queries_total metric for user", "user", user)
@@ -179,13 +179,13 @@ func NewQueryTripperware(
 					op = opTypeParseQuery
 				}
 
-				tenantIDs, err := tenant.TenantIDs(r.Context())
+				tenantIDs, err := users.TenantIDs(r.Context())
 				// This should never happen anyways because we have auth middleware before this.
 				if err != nil {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 				}
 				now := time.Now()
-				userStr := tenant.JoinTenantIDs(tenantIDs)
+				userStr := users.JoinTenantIDs(tenantIDs)
 				activeUsers.UpdateUserTimestamp(userStr, now)
 				source := GetSource(r)
 				queriesPerTenant.WithLabelValues(op, source, userStr).Inc()

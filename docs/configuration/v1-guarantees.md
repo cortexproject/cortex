@@ -35,6 +35,8 @@ Cortex is an actively developed project and we want to encourage the introductio
 
 Currently experimental features are:
 
+- Overrides API
+  - Runtime configuration API for managing tenant limits
 - Ruler
   - Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address`).
   - When `-ruler.frontend-address` is specified, the response format can be specified (via `-ruler.query-response-format`).

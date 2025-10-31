@@ -87,7 +87,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
-	github.com/prometheus-community/parquet-common v0.0.0-20250827225610-65f0b68d35e6
+	github.com/prometheus-community/parquet-common v0.0.0-20251023184424-4f977ece2a46
 	github.com/prometheus/client_golang/exp v0.0.0-20250914183048-a974e0d45e0a
 	github.com/prometheus/procfs v0.16.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
@@ -230,7 +230,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus-community/prom-label-proxy v0.11.1 // indirect
 	github.com/prometheus/exporter-toolkit v0.14.0 // indirect
-	github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588 // indirect
+	github.com/prometheus/otlptranslator v0.0.2 // indirect
 	github.com/prometheus/sigv4 v0.2.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rantav/go-grpc-channelz v0.0.4 // indirect
@@ -334,3 +334,6 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.71.2
 
 // See https://github.com/envoyproxy/go-control-plane/issues/1083 as this version introduces checksum mismatch.
 exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3
+
+// TODO: update it in next PR
+replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588

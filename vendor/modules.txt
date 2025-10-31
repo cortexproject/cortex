@@ -967,8 +967,8 @@ github.com/planetscale/vtprotobuf/types/known/wrapperspb
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus-community/parquet-common v0.0.0-20250827225610-65f0b68d35e6
-## explicit; go 1.23.4
+# github.com/prometheus-community/parquet-common v0.0.0-20251023184424-4f977ece2a46
+## explicit; go 1.24.0
 github.com/prometheus-community/parquet-common/convert
 github.com/prometheus-community/parquet-common/queryable
 github.com/prometheus-community/parquet-common/schema
@@ -1071,7 +1071,7 @@ github.com/prometheus/common/version
 # github.com/prometheus/exporter-toolkit v0.14.0
 ## explicit; go 1.22
 github.com/prometheus/exporter-toolkit/web
-# github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
+# github.com/prometheus/otlptranslator v0.0.2 => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
 ## explicit; go 1.23.0
 github.com/prometheus/otlptranslator
 # github.com/prometheus/procfs v0.16.1
@@ -2009,3 +2009,4 @@ sigs.k8s.io/yaml/goyaml.v3
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # google.golang.org/grpc => google.golang.org/grpc v1.71.2
+# github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588

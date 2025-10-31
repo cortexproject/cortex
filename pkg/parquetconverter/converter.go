@@ -444,6 +444,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			tsdbBlock.MinTime(),
 			tsdbBlock.MaxTime(),
 			[]convert.Convertible{tsdbBlock},
+			util_log.GoKitLogToSlog(logger),
 			converterOpts...,
 		)
 

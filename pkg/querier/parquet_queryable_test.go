@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -543,7 +544,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			if testData.expectedErr != nil {
 				require.False(t, set.Next())
 				err = set.Err()
-				require.EqualError(t, err, testData.expectedErr.Error())
+				require.ErrorContains(t, err, testData.expectedErr.Error())
 				return
 			}
 
@@ -570,6 +571,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 		tsdbBlock.MinTime(),
 		tsdbBlock.MaxTime(),
 		[]convert.Convertible{tsdbBlock},
+		util_log.SLogger,
 		converterOpts...,
 	)
 	require.NoError(t, err)

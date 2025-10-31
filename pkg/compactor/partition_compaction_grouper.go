@@ -639,6 +639,19 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 			level.Info(partitionedGroupLogger).Log("msg", "skipping group because partition is visited")
 			continue
 		}
+
+		// Validate that the partition group still exists before creating a visit marker
+		// This prevents the race condition where the cleaner deletes the partition group
+		// between the visit marker check and the visit marker creation
+		if _, err := ReadPartitionedGroupInfo(g.ctx, g.bkt, g.logger, partitionedGroupID); err != nil {
+			if errors.Is(err, ErrorPartitionedGroupInfoNotFound) {
+				level.Info(partitionedGroupLogger).Log("msg", "skipping group because partition group was deleted by cleaner", "partitioned_group_id", partitionedGroupID)
+			} else {
+				level.Warn(partitionedGroupLogger).Log("msg", "unable to read partition group info", "err", err, "partitioned_group_id", partitionedGroupID)
+			}
+			continue
+		}
+
 		partitionedGroupKey := createGroupKeyWithPartitionID(groupHash, partitionID, *partitionedGroup)
 
 		level.Info(partitionedGroupLogger).Log("msg", "found compactable group for user", "group", partitionedGroup.String())

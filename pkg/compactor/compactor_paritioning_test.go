@@ -1826,3 +1826,157 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFrom
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
 }
+
+func TestPartitionCompactionRaceCondition(t *testing.T) {
+	t.Run("planner_detects_missing_partition_group", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(12345)
+
+		// Create a planner that will try to process blocks but find missing partition group
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(time.Now().Unix())
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.Error(t, err, "Planner should fail when partition group is missing")
+		require.Nil(t, result, "Should not return any result when partition group is missing")
+		require.ErrorIs(t, err, plannerCompletedPartitionError, "Error should be completed partition error when partition group is missing")
+	})
+
+	t.Run("planner_detects_creation_time_mismatch", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(54321)
+		originalCreationTime := time.Now().Unix()
+
+		// Create initial partition group
+		partitionedGroupInfo := setup.createPartitionedGroupInfo(originalCreationTime)
+		_, err := UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *partitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Simulate cleaner deleting partition group
+		partitionGroupFile := GetPartitionedGroupFile(setup.partitionedGroupID)
+		err = setup.bucket.Delete(setup.ctx, partitionGroupFile)
+		require.NoError(t, err)
+
+		// Create new partition group with same ID but different creation time
+		newCreationTime := time.Now().Unix() + 200
+		newPartitionedGroupInfo := setup.createPartitionedGroupInfo(newCreationTime)
+		_, err = UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *newPartitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Test planner creation time validation
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(originalCreationTime) // OLD creation time
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.Error(t, err, "Planner should detect creation time mismatch")
+		require.ErrorIs(t, err, plannerCompletedPartitionError, "Should abort with completed partition error")
+		require.Nil(t, result, "Should not return any result when aborting")
+	})
+
+	t.Run("normal_operation_with_matching_creation_time", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(99999)
+		creationTime := time.Now().Unix()
+
+		// Create partition group
+		partitionedGroupInfo := setup.createPartitionedGroupInfo(creationTime)
+		_, err := UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *partitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Create planner and test with matching creation time
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(creationTime) // MATCHING creation time
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.NoError(t, err, "Should not fail when creation times match")
+		require.NotNil(t, result, "Should return result when creation times match")
+	})
+}
+
+// raceConditionTestSetup provides common setup for race condition tests
+type raceConditionTestSetup struct {
+	ctx                context.Context
+	logger             log.Logger
+	bucket             objstore.InstrumentedBucket
+	userID             string
+	partitionedGroupID uint32
+	partitionID        int
+	partitionCount     int
+	ranges             []int64
+	noCompBlocksFunc   func() map[ulid.ULID]*metadata.NoCompactMark
+}
+
+func newRaceConditionTestSetup(partitionedGroupID uint32) *raceConditionTestSetup {
+	return &raceConditionTestSetup{
+		ctx:                context.Background(),
+		logger:             log.NewNopLogger(),
+		bucket:             objstore.WithNoopInstr(objstore.NewInMemBucket()),
+		userID:             "test-user",
+		partitionedGroupID: partitionedGroupID,
+		partitionID:        0,
+		partitionCount:     2,
+		ranges:             []int64{2 * 60 * 60 * 1000}, // 2 hours in milliseconds
+		noCompBlocksFunc:   func() map[ulid.ULID]*metadata.NoCompactMark { return nil },
+	}
+}
+
+func (s *raceConditionTestSetup) createPartitionedGroupInfo(creationTime int64) *PartitionedGroupInfo {
+	return &PartitionedGroupInfo{
+		PartitionedGroupID: s.partitionedGroupID,
+		PartitionCount:     s.partitionCount,
+		Partitions: []Partition{
+			{PartitionID: 0, Blocks: []ulid.ULID{ulid.MustNew(ulid.Now(), nil)}},
+			{PartitionID: 1, Blocks: []ulid.ULID{ulid.MustNew(ulid.Now(), nil)}},
+		},
+		RangeStart:   0,
+		RangeEnd:     2 * 60 * 60 * 1000,
+		CreationTime: creationTime,
+		Version:      PartitionedGroupInfoVersion1,
+	}
+}
+
+func (s *raceConditionTestSetup) createPlanner() *PartitionCompactionPlanner {
+	// Use the same metrics pattern as other tests
+	registerer := prometheus.NewPedanticRegistry()
+	metrics := newCompactorMetrics(registerer)
+
+	return NewPartitionCompactionPlanner(
+		s.ctx,
+		s.bucket,
+		s.logger,
+		s.ranges,
+		s.noCompBlocksFunc,
+		"test-compactor",
+		s.userID,
+		time.Second,
+		10*time.Minute,
+		time.Minute,
+		metrics,
+	)
+}
+
+func (s *raceConditionTestSetup) createCortexMetaExtensions(creationTime int64) *cortex_tsdb.CortexMetaExtensions {
+	return &cortex_tsdb.CortexMetaExtensions{
+		PartitionInfo: &cortex_tsdb.PartitionInfo{
+			PartitionedGroupID:           s.partitionedGroupID,
+			PartitionCount:               s.partitionCount,
+			PartitionID:                  s.partitionID,
+			PartitionedGroupCreationTime: creationTime,
+		},
+	}
+}
+
+func (s *raceConditionTestSetup) createTestMetadata() []*metadata.Meta {
+	return []*metadata.Meta{
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    ulid.MustNew(ulid.Now(), nil),
+				MinTime: 0,
+				MaxTime: 2 * 60 * 60 * 1000,
+			},
+		},
+	}
+}

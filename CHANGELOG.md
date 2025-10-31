@@ -2,6 +2,9 @@
 
 ## master / unreleased
 
+* [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
+
+
 ## 1.20.0 in progress
 
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603

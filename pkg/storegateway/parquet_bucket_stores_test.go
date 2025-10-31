@@ -12,6 +12,7 @@ import (
 	"github.com/oklog/ulid"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -363,7 +364,7 @@ func convertToParquetBlocksForTesting(userPath string, userBkt objstore.Instrume
 			return nil, err
 		}
 		converterOptions := []convert.ConvertOption{convert.WithName(file.Name())}
-		_, err = convert.ConvertTSDBBlock(context.Background(), userBkt, tsdbBlock.MinTime(), tsdbBlock.MaxTime(), []convert.Convertible{tsdbBlock}, converterOptions...)
+		_, err = convert.ConvertTSDBBlock(context.Background(), userBkt, tsdbBlock.MinTime(), tsdbBlock.MaxTime(), []convert.Convertible{tsdbBlock}, promslog.NewNopLogger(), converterOptions...)
 		if err != nil {
 			return nil, err
 		}

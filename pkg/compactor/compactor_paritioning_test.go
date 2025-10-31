@@ -1299,7 +1299,24 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
 			groupHashes[groupHash]++
-			bucketClient.MockGet(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", "", nil)
+
+			// Create mock partitioned group info for the new validation check
+			partitionedGroupInfo := PartitionedGroupInfo{
+				PartitionedGroupID: groupHash,
+				PartitionCount:     1,
+				Partitions: []Partition{
+					{
+						PartitionID: 0,
+						Blocks:      []ulid.ULID{ulid.MustParse(blockID)},
+					},
+				},
+				RangeStart:   blockTimes["startTime"],
+				RangeEnd:     blockTimes["endTime"],
+				CreationTime: time.Now().Unix(),
+				Version:      PartitionedGroupInfoVersion1,
+			}
+			partitionedGroupInfoContent, _ := json.Marshal(partitionedGroupInfo)
+			bucketClient.MockGet(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", string(partitionedGroupInfoContent), nil)
 			bucketClient.MockUpload(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", nil)
 		}
 

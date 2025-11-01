@@ -1,5 +1,4 @@
 //go:build integration_memberlist
-// +build integration_memberlist
 
 package integration
 

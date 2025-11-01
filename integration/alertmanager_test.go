@@ -1,5 +1,4 @@
 //go:build integration_alertmanager
-// +build integration_alertmanager
 
 package integration
 

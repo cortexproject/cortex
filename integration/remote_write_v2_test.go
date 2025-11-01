@@ -1,5 +1,4 @@
 //go:build integration_remote_write_v2
-// +build integration_remote_write_v2
 
 package integration
 

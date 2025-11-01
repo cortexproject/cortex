@@ -1,5 +1,4 @@
 //go:build integration_query_fuzz
-// +build integration_query_fuzz
 
 package integration
 

@@ -1,5 +1,4 @@
 //go:build integration_querier
-// +build integration_querier
 
 package integration
 

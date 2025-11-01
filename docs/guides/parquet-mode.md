@@ -19,7 +19,7 @@ Traditional TSDB format and Store Gateway architecture face significant challeng
 
 ### TSDB Format Limitations
 - **Random Read Intensive**: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage
-- **Overfetching**: To reduce object storage requests, data that are close together are merged in a sigle request, leading to higher bandwidth usage and overfetching
+- **Overfetching**: To reduce object storage requests, data that are close together are merged in a single request, leading to higher bandwidth usage and overfetching
 - **High Cardinality Bottlenecks**: Index postings can become a major bottleneck for high cardinality data
 
 ### Store Gateway Operational Challenges

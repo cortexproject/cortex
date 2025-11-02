@@ -42,6 +42,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -3938,6 +3939,134 @@ func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
 		b.Run(fmt.Sprintf("samplesCount=%v; seriesCount=%v", c.samplesCount, c.seriesCount), func(b *testing.B) {
 			benchmarkQueryStream(b, c.samplesCount, c.seriesCount)
 		})
+	}
+}
+
+func BenchmarkIngester_QueryStreamChunks_MatcherOptimization(b *testing.B) {
+	tests := map[string]struct {
+		matchers    []*labels.Matcher
+		description string
+	}{
+		"metric name with regex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+			},
+			description: "Metric name with .+ regex matchers",
+		},
+		"metric name with not equal empty": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", ""),
+				labels.MustNewMatcher(labels.MatchNotEqual, "pod", ""),
+			},
+			description: "Metric name with != \"\" matchers",
+		},
+		"metric name with sparse label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "sparse_label", ".+"),
+			},
+			description: "Metric name with sparse label matcher",
+		},
+		"complex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "env", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "pod", ".+"),
+			},
+			description: "Complex matchers with .+ regex",
+		},
+	}
+
+	for testName, testData := range tests {
+		b.Run(testName+"_optimization_disabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, false, testData.matchers, testData.description+" without optimization")
+		})
+		b.Run(testName+"_optimization_enabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, true, testData.matchers, testData.description+" with optimization")
+		})
+	}
+}
+
+func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatcherOptimization bool, matchers []*labels.Matcher, description string) {
+	cfg := defaultIngesterTestConfig(b)
+	cfg.EnableMatcherOptimization = enableMatcherOptimization
+
+	i, err := prepareIngesterWithBlocksStorage(b, cfg, prometheus.NewRegistry())
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for s := range 1000 {
+		// Create base labels
+		labelPairs := []string{
+			labels.MetricName, "test_metric",
+			"region", fmt.Sprintf("region-%d", s%10),
+			"job", fmt.Sprintf("job-%d", s%20),
+			"env", fmt.Sprintf("env-%d", s%5),
+			"pod", fmt.Sprintf("pod-%d", s%1000),
+		}
+
+		// Add sparse label only for half of the series
+		if s%2 == 0 {
+			labelPairs = append(labelPairs, "sparse_label", fmt.Sprintf("sparse-%d", s%50))
+		}
+
+		lbls := labels.FromStrings(labelPairs...)
+
+		samples := make([]cortexpb.Sample, 0, 5)
+		for t := range 5 {
+			samples = append(samples, cortexpb.Sample{
+				Value:       float64(s + t),
+				TimestampMs: int64(s*5 + t),
+			})
+		}
+
+		// Create labels slice with same length as samples
+		labelsSlice := make([]labels.Labels, len(samples))
+		for j := range labelsSlice {
+			labelsSlice[j] = lbls
+		}
+
+		req := cortexpb.ToWriteRequest(labelsSlice, samples, nil, nil, cortexpb.API)
+		_, err = i.Push(ctx, req)
+		require.NoError(b, err)
+	}
+
+	db, err := i.getTSDB(userID)
+	require.NoError(b, err)
+	require.NotNil(b, db)
+
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+	sm := (&storepb.ShardInfo{
+		TotalShards: 0,
+	}).Matcher(nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		numSeries, numSamples, _, numChunks, err := i.queryStreamChunks(
+			ctx, db, 0, 5000, matchers, sm, mockStream)
+
+		require.NoError(b, err)
+		require.Greater(b, numSeries, 0)
+		require.Greater(b, numSamples, 0)
+		require.Greater(b, numChunks, 0)
+
+		// Reset the mock stream for next iteration
+		mockStream.series = mockStream.series[:0]
 	}
 }
 

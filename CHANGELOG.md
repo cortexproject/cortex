@@ -2,8 +2,8 @@
 
 ## master / unreleased
 
+* [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
-
 
 ## 1.20.0 in progress
 

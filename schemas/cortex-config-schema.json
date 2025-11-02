@@ -4466,6 +4466,12 @@
           "type": "boolean",
           "x-cli-flag": "ingester.disable-chunk-trimming"
         },
+        "enable_matcher_optimization": {
+          "default": false,
+          "description": "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.enable-matcher-optimization"
+        },
         "ignore_series_limit_for_metric_names": {
           "description": "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.",
           "type": "string",

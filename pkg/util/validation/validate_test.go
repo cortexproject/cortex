@@ -1,6 +1,8 @@
 package validation
 
 import (
+	"errors"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
@@ -412,6 +414,55 @@ func TestValidateNativeHistogram(t *testing.T) {
 	exceedMaxRangeSchemaFloatHistogram.Schema = 20
 	exceedMaxSampleSizeBytesLimitFloatHistogram := tsdbutil.GenerateTestFloatHistogram(100)
 
+	bucketNumMisMatchInPSpanFH := tsdbutil.GenerateTestFloatHistogram(0)
+	bucketNumMisMatchInPSpanFH.PositiveSpans[0].Length = 3
+
+	negativeSpanOffsetInPSpansFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeSpanOffsetInPSpansFH.PositiveSpans[1].Offset = -1
+
+	bucketNumMisMatchInNSpanFH := tsdbutil.GenerateTestFloatHistogram(0)
+	bucketNumMisMatchInNSpanFH.NegativeSpans[0].Length = 3
+
+	negativeSpanOffsetInNSpansFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeSpanOffsetInNSpansFH.NegativeSpans[1].Offset = -1
+
+	negativeBucketCountInNBucketsFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeBucketCountInNBucketsFH.NegativeBuckets = []float64{-1.1, -1.2, -1.3, -1.4}
+
+	negativeBucketCountInPBucketsFH := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeBucketCountInPBucketsFH.PositiveBuckets = []float64{-1.1, -1.2, -1.3, -1.4}
+
+	negativeCountFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeCountFloatHistogram.Count = -1.2345
+
+	negativeZeroCountFloatHistogram := tsdbutil.GenerateTestFloatHistogram(0)
+	negativeZeroCountFloatHistogram.ZeroCount = -1.2345
+
+	bucketNumMisMatchInPSpanH := tsdbutil.GenerateTestHistogram(0)
+	bucketNumMisMatchInPSpanH.PositiveSpans[0].Length = 3
+
+	negativeSpanOffsetInPSpansH := tsdbutil.GenerateTestHistogram(0)
+	negativeSpanOffsetInPSpansH.PositiveSpans[1].Offset = -1
+
+	bucketNumMisMatchInNSpanH := tsdbutil.GenerateTestHistogram(0)
+	bucketNumMisMatchInNSpanH.NegativeSpans[0].Length = 3
+
+	negativeSpanOffsetInNSpansH := tsdbutil.GenerateTestHistogram(0)
+	negativeSpanOffsetInNSpansH.NegativeSpans[1].Offset = -1
+
+	negativeBucketCountInNBucketsH := tsdbutil.GenerateTestHistogram(0)
+	negativeBucketCountInNBucketsH.NegativeBuckets = []int64{-1, -2, -3, -4}
+
+	negativeBucketCountInPBucketsH := tsdbutil.GenerateTestHistogram(0)
+	negativeBucketCountInPBucketsH.PositiveBuckets = []int64{-1, -2, -3, -4}
+
+	countMisMatchSumIsNaN := tsdbutil.GenerateTestHistogram(0)
+	countMisMatchSumIsNaN.Sum = math.NaN()
+	countMisMatchSumIsNaN.Count = 11
+
+	countMisMatch := tsdbutil.GenerateTestHistogram(0)
+	countMisMatch.Count = 11
+
 	for _, tc := range []struct {
 		name                                   string
 		bucketLimit                            int
@@ -525,6 +576,90 @@ func TestValidateNativeHistogram(t *testing.T) {
 			discardedSampleLabelValue:              nativeHistogramSampleSizeBytesExceeded,
 			maxNativeHistogramSampleSizeBytesLimit: 100,
 		},
+		{
+			name:                      "bucket number mismatch in positive spans for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, bucketNumMisMatchInPSpanFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: spans need 5 buckets, have 4 buckets: histogram spans specify different number of buckets than provided")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative span offset found in positive spans for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeSpanOffsetInPSpansFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: span number 2 with offset -1: histogram has a span whose offset is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "bucket number mismatch in negative spans for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, bucketNumMisMatchInNSpanFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: spans need 5 buckets, have 4 buckets: histogram spans specify different number of buckets than provided")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative spans offset found in negative spans for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeSpanOffsetInNSpansFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: span number 2 with offset -1: histogram has a span whose offset is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative observations count in negative buckets for float native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeBucketCountInNBucketsFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: bucket number 1 has observation count of -1.1: histogram has a bucket whose observation count is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative observations count in positive buckets for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeBucketCountInPBucketsH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: bucket number 1 has observation count of -1: histogram has a bucket whose observation count is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "bucket number mismatch in positive spans for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, bucketNumMisMatchInPSpanH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: spans need 5 buckets, have 4 buckets: histogram spans specify different number of buckets than provided")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative span offset found in positive spans for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeSpanOffsetInPSpansH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: span number 2 with offset -1: histogram has a span whose offset is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "bucket number mismatch in negative spans for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, bucketNumMisMatchInNSpanH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: spans need 5 buckets, have 4 buckets: histogram spans specify different number of buckets than provided")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative spans offset found in negative spans for native histogram",
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, negativeSpanOffsetInNSpansFH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: span number 2 with offset -1: histogram has a span whose offset is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative observations count in negative buckets for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeBucketCountInNBucketsH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("negative side: bucket number 1 has observation count of -1: histogram has a bucket whose observation count is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "negative observations count in positive buckets for native histogram",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, negativeBucketCountInPBucketsH.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("positive side: bucket number 1 has observation count of -1: histogram has a bucket whose observation count is negative")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "mismatch between observations count with count field when sum is NaN",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, countMisMatchSumIsNaN.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("12 observations found in buckets, but the Count field is 11: histogram's observation count should be at least the number of observations found in the buckets")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:                      "mismatch between observations count with count field",
+			histogram:                 cortexpb.HistogramToHistogramProto(0, countMisMatch.Copy()),
+			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("12 observations found in buckets, but the Count field is 11: histogram's observation count should equal the number of observations found in the buckets (in absence of NaN)")),
+			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reg := prometheus.NewRegistry()
@@ -534,7 +669,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 			limits.MaxNativeHistogramSampleSizeBytes = tc.maxNativeHistogramSampleSizeBytesLimit
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
-				require.Equal(t, tc.expectedErr, actualErr)
+				require.Equal(t, tc.expectedErr.Error(), actualErr.Error())
 				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(tc.discardedSampleLabelValue, userID)))
 				// Should never increment if error was returned
 				require.Equal(t, float64(0), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))

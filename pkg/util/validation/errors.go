@@ -282,6 +282,22 @@ func (e *nativeHistogramSampleSizeBytesExceededError) Error() string {
 	return fmt.Sprintf("native histogram sample size bytes exceeded for metric (actual: %d, limit: %d) metric: %.200q", e.nhSampleSizeBytes, e.limit, formatLabelSet(e.series))
 }
 
+type nativeHistogramInvalidError struct {
+	nhValidationErr error
+	series          []cortexpb.LabelAdapter
+}
+
+func newNativeHistogramInvalidError(series []cortexpb.LabelAdapter, nhValidationErr error) ValidationError {
+	return &nativeHistogramInvalidError{
+		series:          series,
+		nhValidationErr: nhValidationErr,
+	}
+}
+
+func (e *nativeHistogramInvalidError) Error() string {
+	return fmt.Sprintf("invalid native histogram, validation err: %v, metric: %.200q", e.nhValidationErr, formatLabelSet(e.series))
+}
+
 // formatLabelSet formats label adapters as a metric name with labels, while preserving
 // label order, and keeping duplicates. If there are multiple "__name__" labels, only
 // first one is used as metric name, other ones will be included as regular labels.

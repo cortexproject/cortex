@@ -263,6 +263,43 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 	})
 }
 
+func Test_WatchKey_NoRetries(t *testing.T) {
+	// Test that WatchKey uses MaxRetries=0 instead of CAS backoff config
+	casBackoffConfig := backoff.Config{
+		MinBackoff: 1 * time.Millisecond,
+		MaxBackoff: 1 * time.Millisecond,
+		MaxRetries: 5, // CAS should retry, but WatchKey should not
+	}
+
+	ddbMock := NewDynamodbClientMock()
+	codecMock := &CodecMock{}
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, casBackoffConfig)
+
+	// Mock Query to always fail
+	ddbMock.On("Query").Return(map[string]dynamodbItem{}, errors.Errorf("query failed"))
+
+	// WatchKey should not retry on failure (MaxRetries=0), so it should only call Query once
+	// and then fall back to stale data
+	staleData := &DescMock{}
+	staleData.On("Clone").Return(staleData).Once()
+
+	// Set up some stale data first
+	c.updateStaleData(key, staleData, time.Now())
+
+	callCount := 0
+	c.WatchKey(context.TODO(), key, func(i any) bool {
+		callCount++
+		// Should only be called once with stale data after the first query fails
+		require.EqualValues(t, staleData, i)
+		return false // Stop watching
+	})
+
+	// Verify that Query was called exactly 11 times (1 initial + 10 retries due to hardcoded limit in WatchKey)
+	// This confirms WatchKey has its own retry logic separate from backoff MaxRetries
+	ddbMock.AssertNumberOfCalls(t, "Query", 11)
+	require.Equal(t, 1, callCount, "Callback should be called once with stale data")
+}
+
 func Test_CAS_UpdateStale(t *testing.T) {
 	ddbMock := NewDynamodbClientMock()
 	codecMock := &CodecMock{}

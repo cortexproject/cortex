@@ -134,7 +134,7 @@ func TestValidateLabels(t *testing.T) {
 			}, "foo "),
 		},
 		{
-			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"},
+			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid:name"},
 			false,
 			nil,
 		},
@@ -201,7 +201,7 @@ func TestValidateLabels(t *testing.T) {
 			# HELP cortex_label_size_bytes The combined size in bytes of all labels and label values for a time series.
 			# TYPE cortex_label_size_bytes histogram
 			cortex_label_size_bytes_bucket{user="testUser",le="+Inf"} 3
-			cortex_label_size_bytes_sum{user="testUser"} 148
+			cortex_label_size_bytes_sum{user="testUser"} 153
 			cortex_label_size_bytes_count{user="testUser"} 3
 	`), "cortex_label_size_bytes"))
 

@@ -4,7 +4,7 @@
 
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
-* [ENHANCEMENT] Distributor: Add count validations for native histogram. #7072
+* [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
 * [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
 
 ## 1.20.0 in progress

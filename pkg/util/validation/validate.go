@@ -2,7 +2,6 @@ package validation
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -458,30 +457,6 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 
 	// If resolution reduced, convert new histogram to protobuf type again.
 	return cortexpb.HistogramToHistogramProto(histogramSample.TimestampMs, h), nil
-}
-
-// copy from https://github.com/prometheus/prometheus/blob/v3.6.0/model/histogram/generic.go#L399-L420
-func checkHistogramBuckets[BC histogram.BucketCount, IBC histogram.InternalBucketCount](buckets []IBC, count *BC, deltas bool) (float64, error) {
-	if len(buckets) == 0 {
-		return 0, nil
-	}
-
-	var last IBC
-	for i := range buckets {
-		var c IBC
-		if deltas {
-			c = last + buckets[i]
-		} else {
-			c = buckets[i]
-		}
-		if c < 0 {
-			return float64(c), fmt.Errorf("bucket number %d has observation count of %v", i+1, c)
-		}
-		last = c
-		*count += BC(c)
-	}
-
-	return 0, nil
 }
 
 func DeletePerUserValidationMetrics(validateMetrics *ValidateMetrics, userID string, log log.Logger) {

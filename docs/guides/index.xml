@@ -1095,7 +1095,7 @@ promote_resource_attributes: [&amp;#34;attr1&amp;#34;, &amp;#34;attr2&amp;#34;]
 &lt;h3 id="tsdb-format-limitations">TSDB Format Limitations&lt;/h3>
 &lt;ul>
 &lt;li>&lt;strong>Random Read Intensive&lt;/strong>: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage&lt;/li>
-&lt;li>&lt;strong>Overfetching&lt;/strong>: To reduce object storage requests, data that are close together are merged in a sigle request, leading to higher bandwidth usage and overfetching&lt;/li>
+&lt;li>&lt;strong>Overfetching&lt;/strong>: To reduce object storage requests, data that are close together are merged in a single request, leading to higher bandwidth usage and overfetching&lt;/li>
 &lt;li>&lt;strong>High Cardinality Bottlenecks&lt;/strong>: Index postings can become a major bottleneck for high cardinality data&lt;/li>
 &lt;/ul>
 &lt;h3 id="store-gateway-operational-challenges">Store Gateway Operational Challenges&lt;/h3>

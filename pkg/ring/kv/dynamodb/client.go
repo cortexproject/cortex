@@ -274,7 +274,9 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 }
 
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
-	bo := backoff.New(ctx, c.backoffConfig)
+	watchBackoffConfig := c.backoffConfig
+	watchBackoffConfig.MaxRetries = 0
+	bo := backoff.New(ctx, watchBackoffConfig)
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{

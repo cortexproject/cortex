@@ -263,8 +263,7 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 	})
 }
 
-func Test_WatchKey_NoRetries(t *testing.T) {
-	// Test that WatchKey uses MaxRetries=0 instead of CAS backoff config
+func Test_WatchKey_AlwaysRetry(t *testing.T) {
 	casBackoffConfig := backoff.Config{
 		MinBackoff: 1 * time.Millisecond,
 		MaxBackoff: 1 * time.Millisecond,

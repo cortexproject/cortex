@@ -109,6 +109,8 @@
 * [BUGFIX] Distributor: Fix `/distributor/all_user_stats` api to work during rolling updates on ingesters. #7026
 * [BUGFIX] Runtime-config: Fix panic when the runtime config is `null`. #7062
 * [BUGFIX] Scheduler: Avoid all queriers reserved for prioritized requests. #7057
+* [BUGFIX] Fix bug where validating metric names uses the wrong validation logic. #7086
+* [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
 
 ## 1.19.1 2025-09-20
 

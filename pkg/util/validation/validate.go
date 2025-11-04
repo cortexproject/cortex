@@ -285,7 +285,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 			return newNoMetricNameError()
 		}
 
-		if !nameValidationScheme.IsValidLabelName(unsafeMetricName) {
+		if !nameValidationScheme.IsValidMetricName(unsafeMetricName) {
 			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
 			return newInvalidMetricNameError(unsafeMetricName)
 		}

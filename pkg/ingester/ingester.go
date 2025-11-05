@@ -2203,6 +2203,7 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 // Streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
+	defer req.Free()
 
 	if err = i.checkRunning(); err != nil {
 		return err

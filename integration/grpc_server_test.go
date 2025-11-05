@@ -35,6 +35,7 @@ type mockGprcServer struct {
 func (m mockGprcServer) QueryStream(req *ingester_client.QueryRequest, streamServer ingester_client.Ingester_QueryStreamServer) error {
 	md, _ := metadata.FromIncomingContext(streamServer.Context())
 	i, _ := strconv.Atoi(md["i"][0])
+	defer req.Free()
 	return streamServer.Send(createStreamResponse(i))
 }
 
@@ -72,7 +73,7 @@ func (m mockGprcServer) Push(ctx context.Context, request *cortexpb.WriteRequest
 	return &cortexpb.WriteResponse{}, nil
 }
 
-func run(t *testing.T, cfg server.Config, register func(s *grpc.Server), validate func(t *testing.T, con *grpc.ClientConn)) {
+func run(t testing.TB, cfg server.Config, register func(s *grpc.Server), validate func(t testing.TB, con *grpc.ClientConn)) {
 	savedRegistry := prometheus.DefaultRegisterer
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 	defer func() {
@@ -107,6 +108,7 @@ func run(t *testing.T, cfg server.Config, register func(s *grpc.Server), validat
 
 	clientConfig := grpcclient.Config{}
 	clientConfig.RegisterFlags(flag.NewFlagSet("fake", flag.ContinueOnError))
+	clientConfig.GRPCCompression = "zstd"
 
 	dialOptions, err := clientConfig.DialOption(nil, nil)
 	assert.NoError(t, err)
@@ -117,6 +119,28 @@ func run(t *testing.T, cfg server.Config, register func(s *grpc.Server), validat
 	validate(t, conn)
 }
 
+func BenchmarkGrpcCalls(b *testing.B) {
+	cfg := server.Config{}
+	(&cfg).RegisterFlags(flag.NewFlagSet("fake", flag.ContinueOnError))
+	register := func(s *grpc.Server) {
+		d := &mockGprcServer{}
+		ingester_client.RegisterIngesterServer(s, d)
+	}
+	run(b, cfg, register, func(t testing.TB, conn *grpc.ClientConn) {
+		ctx := context.Background()
+		ctx = metadata.NewOutgoingContext(ctx, metadata.MD{"i": []string{strconv.Itoa(0)}})
+		client := ingester_client.NewIngesterClient(conn)
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			s, err := client.QueryStream(ctx, &ingester_client.QueryRequest{})
+			require.NoError(t, err)
+			_, err = s.Recv()
+			require.NoError(t, err)
+		}
+	})
+}
+
 func TestConcurrentGrpcCalls(t *testing.T) {
 	cfg := server.Config{}
 	(&cfg).RegisterFlags(flag.NewFlagSet("fake", flag.ContinueOnError))
@@ -124,7 +148,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 	tc := map[string]struct {
 		cfg      server.Config
 		register func(s *grpc.Server)
-		validate func(t *testing.T, con *grpc.ClientConn)
+		validate func(t testing.TB, con *grpc.ClientConn)
 	}{
 		"distributor": {
 			cfg: cfg,
@@ -132,7 +156,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				d := &mockGprcServer{}
 				distributorpb.RegisterDistributorServer(s, d)
 			},
-			validate: func(t *testing.T, conn *grpc.ClientConn) {
+			validate: func(t testing.TB, conn *grpc.ClientConn) {
 				client := distributorpb.NewDistributorClient(conn)
 				wg := sync.WaitGroup{}
 				n := 10000
@@ -156,7 +180,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				d := &mockGprcServer{}
 				ingester_client.RegisterIngesterServer(s, d)
 			},
-			validate: func(t *testing.T, conn *grpc.ClientConn) {
+			validate: func(t testing.TB, conn *grpc.ClientConn) {
 				ctx := context.Background()
 				client := ingester_client.NewIngesterClient(conn)
 				wg := sync.WaitGroup{}
@@ -188,7 +212,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				d := &mockGprcServer{}
 				ingester_client.RegisterIngesterServer(s, d)
 			},
-			validate: func(t *testing.T, conn *grpc.ClientConn) {
+			validate: func(t testing.TB, conn *grpc.ClientConn) {
 				client := ingester_client.NewIngesterClient(conn)
 				wg := sync.WaitGroup{}
 				n := 10000

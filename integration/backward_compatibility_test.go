@@ -29,49 +29,9 @@ type versionsImagesFlags struct {
 var (
 	// If you change the image tag, remember to update it in the preloading done
 	// by GitHub Actions too (see .github/workflows/test-build-deploy.yml).
+	// Per https://cortexmetrics.io/docs/configuration/v1guarantees/#flags-config-and-minor-version-upgrades,
+	// we only need to support backward compatibility for the last 3 minor versions.
 	previousVersionImages = map[string]*versionsImagesFlags{
-		"quay.io/cortexproject/cortex:v1.13.1": {
-			flagsForOldImage: func(m map[string]string) map[string]string {
-				m["-ingester.stream-chunks-when-using-blocks"] = "true"
-				return m
-			},
-			flagsForNewImage: func(m map[string]string) map[string]string {
-				m["-ingester.client.grpc-compression"] = "snappy"
-				return m
-			},
-		},
-		"quay.io/cortexproject/cortex:v1.13.2": {
-			flagsForOldImage: func(m map[string]string) map[string]string {
-				m["-ingester.stream-chunks-when-using-blocks"] = "true"
-				return m
-			},
-			flagsForNewImage: func(m map[string]string) map[string]string {
-				m["-ingester.client.grpc-compression"] = "snappy"
-				return m
-			},
-		},
-		"quay.io/cortexproject/cortex:v1.14.0": {
-			flagsForOldImage: func(m map[string]string) map[string]string {
-				return m
-			},
-			flagsForNewImage: func(m map[string]string) map[string]string {
-				m["-ingester.client.grpc-compression"] = "snappy"
-				return m
-			},
-		},
-		"quay.io/cortexproject/cortex:v1.14.1": {
-			flagsForOldImage: func(m map[string]string) map[string]string {
-				return m
-			},
-			flagsForNewImage: func(m map[string]string) map[string]string {
-				m["-ingester.client.grpc-compression"] = "snappy"
-				return m
-			},
-		},
-		"quay.io/cortexproject/cortex:v1.15.0": nil,
-		"quay.io/cortexproject/cortex:v1.15.1": nil,
-		"quay.io/cortexproject/cortex:v1.15.2": nil,
-		"quay.io/cortexproject/cortex:v1.15.3": nil,
 		"quay.io/cortexproject/cortex:v1.16.0": nil,
 		"quay.io/cortexproject/cortex:v1.16.1": nil,
 		"quay.io/cortexproject/cortex:v1.17.0": nil,

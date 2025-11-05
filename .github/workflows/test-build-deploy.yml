@@ -197,6 +197,15 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_remote_write_v2
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_query_fuzz
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_backward_compatibility
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_querier
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -229,20 +238,13 @@ jobs:
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.13.1
-            docker pull quay.io/cortexproject/cortex:v1.13.2
-            docker pull quay.io/cortexproject/cortex:v1.14.0
-            docker pull quay.io/cortexproject/cortex:v1.14.1
-            docker pull quay.io/cortexproject/cortex:v1.15.0
-            docker pull quay.io/cortexproject/cortex:v1.15.1
-            docker pull quay.io/cortexproject/cortex:v1.15.2
-            docker pull quay.io/cortexproject/cortex:v1.15.3
             docker pull quay.io/cortexproject/cortex:v1.16.0
             docker pull quay.io/cortexproject/cortex:v1.16.1
             docker pull quay.io/cortexproject/cortex:v1.17.0
             docker pull quay.io/cortexproject/cortex:v1.17.1
             docker pull quay.io/cortexproject/cortex:v1.18.0
             docker pull quay.io/cortexproject/cortex:v1.18.1
+            docker pull quay.io/cortexproject/cortex:v1.19.0
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
             docker pull quay.io/cortexproject/cortex:v1.18.1 
             docker pull quay.io/prometheus/prometheus:v3.6.0

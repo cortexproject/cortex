@@ -2,7 +2,6 @@ package compactor
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -186,7 +185,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 					case chunkenc.EncXOR:
 						meta.Stats.NumFloatSamples += samples
 					default:
-						return errors.Wrap(err, fmt.Sprintf("unknown chunk encoding %s", chk.Chunk.Encoding().String()))
+						return errors.Wrapf(err, "unknown chunk encoding %s", chk.Chunk.Encoding().String())
 					}
 				}
 

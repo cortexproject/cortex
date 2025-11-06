@@ -56,6 +56,8 @@ var (
 	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
 	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
 	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
+	errDiscordWebhookUrlFileNotAllowed   = errors.New("setting Discord webhook_url_file is not allowed")
+	errEmailAuthPasswordFileNotAllowed   = errors.New("setting Email auth_password_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs

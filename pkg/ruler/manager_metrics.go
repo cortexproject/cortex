@@ -255,7 +255,7 @@ func NewRuleEvalMetrics(cfg Config, reg prometheus.Registerer) *RuleEvalMetrics 
 			Help: "Number of failed queries by ruler.",
 		}, []string{"user"}),
 	}
-	if cfg.EnableQueryStats {
+	if cfg.EnableQueryStats && cfg.FrontendAddress == "" {
 		m.RulerQuerySeconds = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ruler_query_seconds_total",
 			Help: "Total amount of wall clock time spent processing queries by the ruler.",

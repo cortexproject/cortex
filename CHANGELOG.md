@@ -53,6 +53,7 @@
 * [ENHANCEMENT] Query Frontend: Add new limit `-frontend.max-query-response-size` for total query response size after decompression in query frontend. #6607
 * [ENHANCEMENT] Alertmanager: Add nflog and silences maintenance metrics. #6659
 * [ENHANCEMENT] Querier: limit label APIs to query only ingesters if `start` param is not been specified. #6618
+* [ENHANCEMENT] Ruler: Add rule information (group name, namespace, name, and kind) to query parameters sent to the Query Frontend to leave rule information logs on query stats. #6539
 * [ENHANCEMENT] Alertmanager: Add new limits `-alertmanager.max-silences-count` and `-alertmanager.max-silences-size-bytes` for limiting silences per tenant. #6605
 * [ENHANCEMENT] Update prometheus version to v3.1.0. #6583
 * [ENHANCEMENT] Add `compactor.auto-forget-delay` for compactor to auto forget compactors after X minutes without heartbeat. #6533

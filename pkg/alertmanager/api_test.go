@@ -710,7 +710,7 @@ alertmanager_config: |
   receivers:
     - name: default-receiver
       discord_configs:
-        - webhook_url_file: /tokenFile
+        - webhook_url_file: /urlFile
   route:
     receiver: 'default-receiver'
 `,

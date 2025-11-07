@@ -7065,7 +7065,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Additional API around pushing metrics (under &lt;code>/api/push&lt;/code>).&lt;/li>
 &lt;li>Additional API endpoints for management of Cortex itself, such as the ring. These APIs are not part of the any compatibility guarantees.&lt;/li>
 &lt;/ul>
-&lt;p>&lt;em>For more information, please refer to the &lt;a href="/docs/guides/limitations/">limitations&lt;/a> doc.&lt;/em>&lt;/p>
 &lt;h2 id="experimental-features">Experimental features&lt;/h2>
 &lt;p>Cortex is an actively developed project and we want to encourage the introduction of new features and capability. As such, not everything in each release of Cortex is considered &amp;ldquo;production-ready&amp;rdquo;. We don&amp;rsquo;t provide any backwards compatibility guarantees on these and the config and flags might break.&lt;/p>
 &lt;p>Currently experimental features are:&lt;/p>

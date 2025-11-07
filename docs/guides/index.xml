@@ -220,7 +220,7 @@ to the string &lt;code>fake&lt;/code> for every request.&lt;/p>
 &lt;p>Note that the tenant ID that is used to write the series to the datastore
 should be the same as the one you use to query the data. If they don&amp;rsquo;t match,
 you won&amp;rsquo;t see any data. As of now, you can&amp;rsquo;t see series from other tenants.&lt;/p>
-&lt;p>For more information regarding the tenant ID limits, refer to: &lt;a href="/docs/guides/limitations/#tenant-id-naming">Tenant ID limitations&lt;/a>&lt;/p>
+&lt;p>For more information regarding the tenant ID naming conventions, refer to: &lt;a href="/docs/guides/tenant-id-naming-conventions/#tenant-id-naming">Tenant ID naming conventions&lt;/a>&lt;/p>
 &lt;h3 id="cortex-tenant">Cortex-Tenant&lt;/h3>
 &lt;p>One way to add &lt;code>X-Scope-OrgID&lt;/code> to Prometheus requests is to use a &lt;a href="https://github.com/blind-oracle/cortex-tenant">cortex-tenant&lt;/a>
 proxy which is able to extract the tenant ID from Prometheus labels.&lt;/p>
@@ -1367,11 +1367,12 @@ enabled: true
 threshold:
 cpu_utilization: 0.8
 heap_utilization: 0.8
-&lt;/code>&lt;/pre>&lt;p>See &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection">https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection&lt;/a> for details.&lt;/p></description></item><item><title>Docs: Limitations</title><link>/docs/guides/limitations/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/limitations/</guid><description>
+&lt;/code>&lt;/pre>&lt;p>See &lt;a href="https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection">https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection&lt;/a> for details.&lt;/p></description></item><item><title>Docs: Tenant ID Naming Conventions</title><link>/docs/guides/tenant-id-naming-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tenant-id-naming-conventions/</guid><description>
 &lt;h2 id="tenant-id-naming">Tenant ID naming&lt;/h2>
-&lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn&amp;rsquo;t make any assumptions on its format/content, but its naming has two limitations:&lt;/p>
+&lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn&amp;rsquo;t make any assumptions on its format/content, but its naming has three limitations:&lt;/p>
 &lt;ol>
 &lt;li>Supported characters&lt;/li>
+&lt;li>Invalid tenant IDs&lt;/li>
 &lt;li>Length&lt;/li>
 &lt;/ol>
 &lt;h3 id="supported-characters">Supported characters&lt;/h3>
@@ -1450,7 +1451,7 @@ node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;user&am
 &lt;p>For more information, please refer to:&lt;/p>
 &lt;ul>
 &lt;li>&lt;a href="/docs/api/#authentication">HTTP API authentication&lt;/a>&lt;/li>
-&lt;li>&lt;a href="/docs/guides/limitations/#tenant-id-naming">Tenant ID limitations&lt;/a>&lt;/li>
+&lt;li>&lt;a href="/docs/guides/tenant-id-naming-conventions/#tenant-id-naming">Tenant ID naming conventions&lt;/a>&lt;/li>
 &lt;/ul>
 &lt;h3 id="time-series">Time series&lt;/h3>
 &lt;p>&lt;em>See &lt;a href="#series">Series&lt;/a>.&lt;/em>&lt;/p>

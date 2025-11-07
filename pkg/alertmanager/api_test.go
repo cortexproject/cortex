@@ -726,7 +726,7 @@ alertmanager_config: |
         - to: user@example.com
           from: admin@example.com
           smarthost: example.com:25
-          auth_password_file: /tokenFile
+          auth_password_file: /passwordFile
   route:
     receiver: 'default-receiver'
 `,

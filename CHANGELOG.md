@@ -9,6 +9,7 @@
 * [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
 * [BUGFIX] Fix bug where validating metric names uses the wrong validation logic. #7086
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinetly for WatchKey. #7088
+* [BUGFIX] Add alertmanager receiver validation for discord and email. #7097
 
 ## 1.20.0 in progress
 

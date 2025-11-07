@@ -905,7 +905,7 @@ func Test_Cache_LRUEviction(t *testing.T) {
 	val2 := cache.Get("key2") // miss
 	require.Equal(t, "", val2)
 
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(fmt.Sprintf(`
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
 		# TYPE cortex_parquet_queryable_cache_evictions_total counter
 		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
@@ -918,7 +918,7 @@ func Test_Cache_LRUEviction(t *testing.T) {
 		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
 		# TYPE cortex_parquet_queryable_cache_misses_total counter
 		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-`))))
+	`)))
 }
 
 func Test_Cache_TTLEvictionByGet(t *testing.T) {
@@ -940,7 +940,7 @@ func Test_Cache_TTLEvictionByGet(t *testing.T) {
 	val = cache.Get("key1")
 	require.Equal(t, "", val)
 
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(fmt.Sprintf(`
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
 		# TYPE cortex_parquet_queryable_cache_evictions_total counter
 		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
@@ -953,7 +953,7 @@ func Test_Cache_TTLEvictionByGet(t *testing.T) {
 		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
 		# TYPE cortex_parquet_queryable_cache_misses_total counter
 		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-`))))
+	`)))
 }
 
 func Test_Cache_TTLEvictionByLoop(t *testing.T) {
@@ -978,7 +978,7 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 		require.False(t, ok)
 	}
 
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(fmt.Sprintf(`
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
 		# TYPE cortex_parquet_queryable_cache_evictions_total counter
 		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
@@ -988,5 +988,5 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
 		# TYPE cortex_parquet_queryable_cache_item_count gauge
 		cortex_parquet_queryable_cache_item_count{name="test"} 0
-`))))
+	`)))
 }

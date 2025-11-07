@@ -111,6 +111,7 @@
 * [BUGFIX] Scheduler: Avoid all queriers reserved for prioritized requests. #7057
 * [BUGFIX] Fix bug where validating metric names uses the wrong validation logic. #7086
 * [BUGFIX] Compactor: Avoid race condition which allow a grouper to not compact all partitions. #7082
+* [BUGFIX] Add alertmanager receiver validation for discord and email. #7097
 
 ## 1.19.1 2025-09-20
 

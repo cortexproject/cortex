@@ -703,6 +703,35 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errRocketChatTokenFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "Should return error if Discord webhook_url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      discord_configs:
+        - webhook_url_file: /urlFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errDiscordWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if Email auth_password_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      email_configs:
+        - to: user@example.com
+          from: admin@example.com
+          smarthost: example.com:25
+          auth_password_file: /passwordFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errEmailAuthPasswordFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}

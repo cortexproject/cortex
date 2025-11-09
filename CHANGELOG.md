@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-## 1.20.0 in progress
+## 1.20.0 2025-11-10
 
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718

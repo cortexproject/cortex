@@ -1,16 +1,17 @@
 ---
-title: "Limitations"
-linkTitle: "Limitations"
+title: "Tenant ID Naming Conventions"
+linkTitle: "Tenant ID Naming Conventions"
 weight: 998
-slug: limitations
+slug: Tenant ID Naming Conventions
 ---
 
 ## Tenant ID naming
 
-The tenant ID (also called "user ID" or "org ID") is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn't make any assumptions on its format/content, but its naming has two limitations:
+The tenant ID (also called "user ID" or "org ID") is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn't make any assumptions on its format/content, but its naming has three limitations:
 
 1. Supported characters
-2. Length
+2. Invalid tenant IDs
+3. Length
 
 ### Supported characters
 

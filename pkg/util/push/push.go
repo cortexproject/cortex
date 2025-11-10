@@ -177,12 +177,19 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2) (cortexpb.Preall
 	b := labels.NewScratchBuilder(0)
 	symbols := req.Symbols
 	for _, v2Ts := range req.Timeseries {
-		lbs := v2Ts.ToLabels(&b, symbols)
+		lbs, err := v2Ts.ToLabels(&b, symbols)
+		if err != nil {
+			return v1Req, err
+		}
+		exemplars, err := convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars)
+		if err != nil {
+			return v1Req, err
+		}
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
 				Labels:     cortexpb.FromLabelsToLabelAdapters(lbs),
 				Samples:    v2Ts.Samples,
-				Exemplars:  convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars),
+				Exemplars:  exemplars,
 				Histograms: v2Ts.Histograms,
 			},
 		})
@@ -234,14 +241,18 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 	}
 }
 
-func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) []cortexpb.Exemplar {
+func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) ([]cortexpb.Exemplar, error) {
 	v1Exemplars := make([]cortexpb.Exemplar, 0, len(v2Exemplars))
 	for _, e := range v2Exemplars {
+		lbs, err := e.ToLabels(b, symbols)
+		if err != nil {
+			return nil, err
+		}
 		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
-			Labels:      cortexpb.FromLabelsToLabelAdapters(e.ToLabels(b, symbols)),
+			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
 			Value:       e.Value,
 			TimestampMs: e.Timestamp,
 		})
 	}
-	return v1Exemplars
+	return v1Exemplars, nil
 }

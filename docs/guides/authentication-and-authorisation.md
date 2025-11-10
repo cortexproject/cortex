@@ -37,7 +37,7 @@ Note that the tenant ID that is used to write the series to the datastore
 should be the same as the one you use to query the data. If they don't match,
 you won't see any data. As of now, you can't see series from other tenants.
 
-For more information regarding the tenant ID limits, refer to: [Tenant ID limitations](./limitations.md#tenant-id-naming)
+For more information regarding the tenant ID naming conventions, refer to: [Tenant ID naming conventions](tenantID-naming-conventions.md#tenant-id-naming)
 
 ### Cortex-Tenant
 

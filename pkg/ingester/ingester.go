@@ -162,6 +162,10 @@ type Config struct {
 	// If enabled, the metadata API returns all metadata regardless of the limits.
 	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
 
+	// When enabled, matchers with low selectivity are applied lazily during series scanning
+	// instead of being used for postings selection.
+	EnableMatcherOptimization bool `yaml:"enable_matcher_optimization"`
+
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
@@ -185,6 +189,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
+	f.BoolVar(&cfg.EnableMatcherOptimization, "ingester.enable-matcher-optimization", false, "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.")
 
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
@@ -2198,6 +2203,7 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 // Streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
+	defer req.Free()
 
 	if err = i.checkRunning(); err != nil {
 		return err
@@ -2295,6 +2301,10 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		End:             through,
 		DisableTrimming: i.cfg.DisableChunkTrimming,
 	}
+	var lazyMatchers []*labels.Matcher
+	if i.cfg.EnableMatcherOptimization {
+		matchers, lazyMatchers = optimizeMatchers(matchers)
+	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, hints, matchers...)
 	c()
@@ -2308,14 +2318,19 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	var it chunks.Iterator
 	for ss.Next() {
 		series := ss.At()
+		lbls := series.Labels()
 
-		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
+		if !labelsMatches(lbls, lazyMatchers) {
+			continue
+		}
+
+		if sm.IsSharded() && !sm.MatchesLabels(lbls) {
 			continue
 		}
 
 		// convert labels to LabelAdapter
 		ts := client.TimeSeriesChunk{
-			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
+			Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 		}
 
 		it := series.Iterator(it)

@@ -2,6 +2,12 @@
 
 ## master / unreleased
 
+* [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
+* [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
+* [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
+* [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
+* [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
+
 ## 1.20.0 2025-11-10
 
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603

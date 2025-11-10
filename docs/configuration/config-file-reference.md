@@ -2401,6 +2401,10 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
   [block_discovery_strategy: <string> | default = "concurrent"]
 
+  # Type of bucket store to use (tsdb or parquet).
+  # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+  [bucket_store_type: <string> | default = "tsdb"]
+
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
@@ -3737,6 +3741,12 @@ instance_limits:
 # If enabled, the metadata API returns all metadata regardless of the limits.
 # CLI flag: -ingester.skip-metadata-limits
 [skip_metadata_limits: <boolean> | default = true]
+
+# Enable optimization of label matchers when query chunks. When enabled,
+# matchers with low selectivity such as =~.+ are applied lazily during series
+# scanning instead of being used for postings matching.
+# CLI flag: -ingester.enable-matcher-optimization
+[enable_matcher_optimization: <boolean> | default = false]
 
 query_protection:
   rejection:

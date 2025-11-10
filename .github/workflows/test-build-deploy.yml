@@ -197,22 +197,16 @@ jobs:
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.13.1
             docker pull quay.io/cortexproject/cortex:v1.13.2
-            docker pull quay.io/cortexproject/cortex:v1.14.0
             docker pull quay.io/cortexproject/cortex:v1.14.1
-            docker pull quay.io/cortexproject/cortex:v1.15.0
-            docker pull quay.io/cortexproject/cortex:v1.15.1
-            docker pull quay.io/cortexproject/cortex:v1.15.2
             docker pull quay.io/cortexproject/cortex:v1.15.3
-            docker pull quay.io/cortexproject/cortex:v1.16.0
             docker pull quay.io/cortexproject/cortex:v1.16.1
-            docker pull quay.io/cortexproject/cortex:v1.17.0
             docker pull quay.io/cortexproject/cortex:v1.17.1
-            docker pull quay.io/cortexproject/cortex:v1.18.0
             docker pull quay.io/cortexproject/cortex:v1.18.1
+            docker pull quay.io/cortexproject/cortex:v1.19.1
+            docker pull quay.io/cortexproject/cortex:v1.20.0
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.18.1 
+            docker pull quay.io/cortexproject/cortex:v1.20.0 
             docker pull quay.io/prometheus/prometheus:v3.6.0
           fi
           docker pull memcached:1.6.1

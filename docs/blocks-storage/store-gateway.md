@@ -1815,6 +1815,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
     [block_discovery_strategy: <string> | default = "concurrent"]
 
+    # Type of bucket store to use (tsdb or parquet).
+    # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+    [bucket_store_type: <string> | default = "tsdb"]
+
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
     # The pool is shared across all tenants. 0 to disable the limit.
     # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes

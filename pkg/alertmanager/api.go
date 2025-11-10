@@ -56,6 +56,8 @@ var (
 	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
 	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
 	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
+	errDiscordWebhookUrlFileNotAllowed   = errors.New("setting Discord webhook_url_file is not allowed")
+	errEmailAuthPasswordFileNotAllowed   = errors.New("setting Email auth_password_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -399,6 +401,14 @@ func validateAlertmanagerConfig(cfg any) error {
 		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
 			return err
 		}
+	case reflect.TypeOf(config.DiscordConfig{}):
+		if err := validateDiscordConfig(v.Interface().(config.DiscordConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeOf(config.EmailConfig{}):
+		if err := validateEmailConfig(v.Interface().(config.EmailConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -586,5 +596,23 @@ func validateRocketChatConfig(cfg config.RocketchatConfig) error {
 		return errRocketChatTokenFileNotAllowed
 	}
 
+	return nil
+}
+
+// validateDiscordConfig validates the Discord Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateDiscordConfig(cfg config.DiscordConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errDiscordWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateEmailConfig validates the Email Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateEmailConfig(cfg config.EmailConfig) error {
+	if cfg.AuthPasswordFile != "" {
+		return errEmailAuthPasswordFileNotAllowed
+	}
 	return nil
 }

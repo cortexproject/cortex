@@ -1,5 +1,4 @@
 //go:build integration_ruler
-// +build integration_ruler
 
 package integration
 

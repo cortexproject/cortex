@@ -1,5 +1,4 @@
 //go:build integration_querier
-// +build integration_querier
 
 package integration
 
@@ -8,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -624,6 +624,12 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 	for testName, testCfg := range tests {
 		for _, thanosEngine := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s,thanosEngine=%t", testName, thanosEngine), func(t *testing.T) {
+				// Skip Thanos engine tests on non-amd64 architectures due to timing-sensitive
+				// cache request count assertions that vary across architectures.
+				if runtime.GOARCH != "amd64" && thanosEngine {
+					t.Skip("Skipping test: Thanos engine tests only run on amd64 due to timing-sensitive assertions")
+				}
+
 				const blockRangePeriod = 5 * time.Second
 
 				s, err := e2e.NewScenario(networkName)

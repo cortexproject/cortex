@@ -32,13 +32,11 @@ var (
 	// Per https://cortexmetrics.io/docs/configuration/v1guarantees/#flags-config-and-minor-version-upgrades,
 	// we only need to support backward compatibility for the last 3 minor versions.
 	previousVersionImages = map[string]*versionsImagesFlags{
-		"quay.io/cortexproject/cortex:v1.16.0": nil,
 		"quay.io/cortexproject/cortex:v1.16.1": nil,
-		"quay.io/cortexproject/cortex:v1.17.0": nil,
-		"quay.io/cortexproject/cortex:v1.17.1": nil,
-		"quay.io/cortexproject/cortex:v1.18.0": nil,
+		"quay.io/cortexproject/cortex:v1.17.2": nil,
 		"quay.io/cortexproject/cortex:v1.18.1": nil,
-		"quay.io/cortexproject/cortex:v1.19.0": nil,
+		"quay.io/cortexproject/cortex:v1.19.1": nil,
+		"quay.io/cortexproject/cortex:v1.20.0": nil,
 	}
 )
 

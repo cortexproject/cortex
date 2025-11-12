@@ -635,7 +635,18 @@ emitted.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_local_series_per_user&amp;#34;,user=&amp;#34;user1&amp;#34;} 0
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cortex_overrides{limit_name=&amp;#34;max_samples_per_query&amp;#34;,user=&amp;#34;user1&amp;#34;} 100000
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>With these metrics, you can set up alerts to know when tenants are close to hitting their limits
-before they exceed them.&lt;/p></description></item><item><title>Docs: Use Partition Compaction in Cortex</title><link>/docs/guides/partition-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/partition-compaction/</guid><description>
+before they exceed them.&lt;/p>
+&lt;h2 id="exposed-metrics">Exposed Metrics&lt;/h2>
+&lt;p>Prior to version v1.20.0, the exporter only exposed the fixed, hardcoded list of limits shown in the example section above.&lt;/p>
+&lt;p>As of version v1.20.0, the exporter automatically discovers and exposes all fields from the &lt;a href="/docs/configuration/configuration-file/#limits_config">limit_config&lt;/a> configuration
+that are numerically representable.&lt;/p>
+&lt;p>The exposes metrics based on the following rules:&lt;/p>
+&lt;ul>
+&lt;li>Numerical types (&lt;code>int&lt;/code>, &lt;code>int64&lt;/code>, &lt;code>uint&lt;/code>, &lt;code>uint64&lt;/code>, &lt;code>float64&lt;/code>) are converted directly to a &lt;code>float64&lt;/code>.&lt;/li>
+&lt;li>bool types are converted to 1.0 (for &lt;code>true&lt;/code>) or 0.0 (for &lt;code>false&lt;/code>).&lt;/li>
+&lt;li>model.Duration types (which are internally &lt;code>int64&lt;/code>) are converted to the total number of seconds as a &lt;code>float64&lt;/code> (e.g, 1h becomes 3600.0).&lt;/li>
+&lt;/ul>
+&lt;p>Fields with types such as &lt;code>string&lt;/code>, &lt;code>slice&lt;/code>, &lt;code>map&lt;/code>, or other nested structs (like &lt;code>metric_relabel_configs&lt;/code>) are ignored and not exported as metrics.&lt;/p></description></item><item><title>Docs: Use Partition Compaction in Cortex</title><link>/docs/guides/partition-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/partition-compaction/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
 &lt;p>Compactor is bounded by maximum 64GB of index file size. If compaction failed due to exceeding index file size limit, partition compaction can be enabled to allow compactor compacting into multiple blocks that have index file size stays within limit.&lt;/p>
 &lt;h2 id="enable-partition-compaction">Enable Partition Compaction&lt;/h2>

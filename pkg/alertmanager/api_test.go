@@ -732,6 +732,36 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errEmailAuthPasswordFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "Should return error if IncidentIO url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      incidentio_configs:
+        - send_resolved: true
+          url_file: /urlFile
+          alert_source_token: 'alertSourceToken'
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errIncidentIOURLFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if IncidentIO alert_source_token_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      incidentio_configs:
+        - send_resolved: true
+          url: https://example.com
+          alert_source_token_file: /alertSourceTokenFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errIncidentIOAlertSourceTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}

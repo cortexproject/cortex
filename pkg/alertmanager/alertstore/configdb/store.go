@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -32,6 +33,11 @@ func NewStore(c client.Client) *Store {
 		since:        0,
 		alertConfigs: make(map[string]alertspb.AlertConfigDesc),
 	}
+}
+
+// GetUserIndexUpdater implements alertstore.AlertStore.
+func (c *Store) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
 }
 
 // ListAllUsers implements alertstore.AlertStore.

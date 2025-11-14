@@ -16,7 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // ThanosBlockConverter converts blocks written by Thanos to make them readable by Cortex
@@ -63,7 +63,7 @@ func (c ThanosBlockConverter) Run(ctx context.Context) (Results, error) {
 
 	// Hardcode user scan strategy to list.
 	// We can safely ignore the error as it only fails if the strategy is not supported.
-	usersScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{Strategy: cortex_tsdb.UserScanStrategyList}, c.bkt, c.logger, nil)
+	usersScanner, _ := users.NewScanner(users.UsersScannerConfig{Strategy: users.UserScanStrategyList}, c.bkt, c.logger, nil)
 	// Only active users are considered.
 	users, _, _, err := usersScanner.ScanUsers(ctx)
 	if err != nil {

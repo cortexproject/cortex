@@ -49,3 +49,14 @@ func ListPrefixes(ctx context.Context, bkt objstore.Bucket, prefix string, logge
 	})
 	return keys, err
 }
+
+func IsOneOfTheExpectedErrors(f ...objstore.IsOpFailureExpectedFunc) objstore.IsOpFailureExpectedFunc {
+	return func(err error) bool {
+		for _, f := range f {
+			if f(err) {
+				return true
+			}
+		}
+		return false
+	}
+}

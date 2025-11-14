@@ -28,6 +28,7 @@ import (
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
 	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/incidentio"
 	"github.com/prometheus/alertmanager/notify/jira"
 	"github.com/prometheus/alertmanager/notify/msteams"
 	"github.com/prometheus/alertmanager/notify/msteamsv2"
@@ -64,7 +65,8 @@ import (
 
 const (
 	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
-	maintenancePeriod = 15 * time.Minute
+	maintenancePeriod          = 15 * time.Minute
+	defaultMaintenanceInterval = 30 * time.Second
 
 	// Filenames used within tenant-directory
 	notificationLogSnapshot = "notifications"
@@ -424,6 +426,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		pipeline,
 		am.groupMarker,
 		timeoutFunc,
+		defaultMaintenanceInterval, // TODO: add to config
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
 		am.dispatcherMetrics,
@@ -607,6 +610,12 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 			return rocketchat.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
 		})
 	}
+	for i, c := range nc.IncidentioConfigs {
+		add("incidentio", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return incidentio.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {
 		return nil, &errs

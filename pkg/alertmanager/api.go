@@ -40,24 +40,26 @@ const (
 )
 
 var (
-	errPasswordFileNotAllowed            = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
-	errOAuth2SecretFileNotAllowed        = errors.New("setting OAuth2 client_secret_file is not allowed")
-	errTLSFileNotAllowed                 = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
-	errSlackAPIURLFileNotAllowed         = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
-	errVictorOpsAPIKeyFileNotAllowed     = errors.New("setting VictorOps api_key_file is not allowed")
-	errOpsGenieAPIKeyFileNotAllowed      = errors.New("setting OpsGenie api_key_file is not allowed")
-	errPagerDutyRoutingKeyFileNotAllowed = errors.New("setting PagerDuty routing_key_file is not allowed")
-	errPagerDutyServiceKeyFileNotAllowed = errors.New("setting PagerDuty service_key_file is not allowed")
-	errWebhookURLFileNotAllowed          = errors.New("setting Webhook url_file is not allowed")
-	errPushOverUserKeyFileNotAllowed     = errors.New("setting PushOver user_key_file is not allowed")
-	errPushOverTokenFileNotAllowed       = errors.New("setting PushOver token_file is not allowed")
-	errTelegramBotTokenFileNotAllowed    = errors.New("setting Telegram bot_token_file is not allowed")
-	errMSTeamsWebhookUrlFileNotAllowed   = errors.New("setting MSTeams webhook_url_file is not allowed")
-	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
-	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
-	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
-	errDiscordWebhookUrlFileNotAllowed   = errors.New("setting Discord webhook_url_file is not allowed")
-	errEmailAuthPasswordFileNotAllowed   = errors.New("setting Email auth_password_file is not allowed")
+	errPasswordFileNotAllowed                   = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
+	errOAuth2SecretFileNotAllowed               = errors.New("setting OAuth2 client_secret_file is not allowed")
+	errTLSFileNotAllowed                        = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
+	errSlackAPIURLFileNotAllowed                = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
+	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file is not allowed")
+	errOpsGenieAPIKeyFileNotAllowed             = errors.New("setting OpsGenie api_key_file is not allowed")
+	errPagerDutyRoutingKeyFileNotAllowed        = errors.New("setting PagerDuty routing_key_file is not allowed")
+	errPagerDutyServiceKeyFileNotAllowed        = errors.New("setting PagerDuty service_key_file is not allowed")
+	errWebhookURLFileNotAllowed                 = errors.New("setting Webhook url_file is not allowed")
+	errPushOverUserKeyFileNotAllowed            = errors.New("setting PushOver user_key_file is not allowed")
+	errPushOverTokenFileNotAllowed              = errors.New("setting PushOver token_file is not allowed")
+	errTelegramBotTokenFileNotAllowed           = errors.New("setting Telegram bot_token_file is not allowed")
+	errMSTeamsWebhookUrlFileNotAllowed          = errors.New("setting MSTeams webhook_url_file is not allowed")
+	errMSTeamsV2WebhookUrlFileNotAllowed        = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
+	errRocketChatTokenIdFileNotAllowed          = errors.New("setting RocketChat token_id_file is not allowed")
+	errRocketChatTokenFileNotAllowed            = errors.New("setting RocketChat token_file is not allowed")
+	errDiscordWebhookUrlFileNotAllowed          = errors.New("setting Discord webhook_url_file is not allowed")
+	errEmailAuthPasswordFileNotAllowed          = errors.New("setting Email auth_password_file is not allowed")
+	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
+	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -409,6 +411,10 @@ func validateAlertmanagerConfig(cfg any) error {
 		if err := validateEmailConfig(v.Interface().(config.EmailConfig)); err != nil {
 			return err
 		}
+	case reflect.TypeOf(config.IncidentioConfig{}):
+		if err := validateIncidentIOConfig(v.Interface().(config.IncidentioConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -614,5 +620,19 @@ func validateEmailConfig(cfg config.EmailConfig) error {
 	if cfg.AuthPasswordFile != "" {
 		return errEmailAuthPasswordFileNotAllowed
 	}
+	return nil
+}
+
+// validateIncidentIOConfig validates the IncidentIO Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
+	if cfg.URLFile != "" {
+		return errIncidentIOURLFileNotAllowed
+	}
+
+	if cfg.AlertSourceTokenFile != "" {
+		return errIncidentIOAlertSourceTokenFileNotAllowed
+	}
+
 	return nil
 }

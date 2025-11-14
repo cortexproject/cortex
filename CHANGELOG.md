@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
+* [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` which enables to add `__unit__` and `__type__` labels for remote write v2 and OTLP requests. The `-distributor.otlp.enable-type-and-unit-labels` flag has been consolidated into this flag. #7077
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
@@ -35,6 +36,7 @@
 * [FEATURE] Querier: Support for configuring query optimizers and enabling XFunctions in the Thanos engine. #6873
 * [FEATURE] Query Frontend: Add support /api/v1/format_query API for formatting queries. #6893
 * [FEATURE] Query Frontend: Add support for /api/v1/parse_query API (experimental) to parse a PromQL expression and return it as a JSON-formatted AST (abstract syntax tree). #6978
+* [FEATURE] Distributor: Add a per-tenant flag `-distributor.rw2-enable-type-and-unit-labels` which enables to add `__unit__` and `__type__` labels for remote write v2 requests. #7077
 * [ENHANCEMENT] Upgrade the Prometheus version to 3.6.0 and add a `-name-validation-scheme` flag to support UTF-8. #7040 #7056
 * [ENHANCEMENT] Distributor: Emit an error with a 400 status code when empty labels are found before the relabelling or label dropping process. #7052
 * [ENHANCEMENT] Parquet Storage: Add support for additional sort columns during Parquet file generation #7003

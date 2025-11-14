@@ -3,6 +3,7 @@ package cortexpb
 import (
 	"fmt"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -31,4 +32,27 @@ func desymbolizeLabels(b *labels.ScratchBuilder, labelRefs []uint32, symbols []s
 	}
 	b.Sort()
 	return b.Labels(), nil
+}
+
+func MetadataV2MetricTypeToMetricType(mt MetadataV2_MetricType) model.MetricType {
+	switch mt {
+	case METRIC_TYPE_UNSPECIFIED:
+		return model.MetricTypeUnknown
+	case METRIC_TYPE_COUNTER:
+		return model.MetricTypeCounter
+	case METRIC_TYPE_GAUGE:
+		return model.MetricTypeGauge
+	case METRIC_TYPE_HISTOGRAM:
+		return model.MetricTypeHistogram
+	case METRIC_TYPE_GAUGEHISTOGRAM:
+		return model.MetricTypeGaugeHistogram
+	case METRIC_TYPE_SUMMARY:
+		return model.MetricTypeSummary
+	case METRIC_TYPE_INFO:
+		return model.MetricTypeInfo
+	case METRIC_TYPE_STATESET:
+		return model.MetricTypeStateset
+	default:
+		return model.MetricTypeUnknown
+	}
 }

@@ -30,11 +30,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -146,19 +146,19 @@ func NewParquetQueryable(
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedRowCount(userID))
 		}),
 		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedChunkBytes(userID))
 		}),
 		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
 		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
@@ -196,7 +196,7 @@ func NewParquetQueryable(
 		}),
 	}
 	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
-		userID, err := tenant.TenantID(ctx)
+		userID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -551,7 +551,7 @@ func (q *parquetQuerierWithFallback) Close() error {
 }
 
 func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) ([]*bucketindex.Block, []*bucketindex.Block, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

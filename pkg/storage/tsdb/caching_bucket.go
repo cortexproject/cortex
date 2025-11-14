@@ -22,6 +22,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"github.com/thanos-io/thanos/pkg/model"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -273,7 +275,7 @@ func CreateCachingBucketForCompactor(metadataConfig MetadataCacheConfig, cleaner
 	matchers := NewMatchers()
 	// Do not cache block deletion marker for compactor
 	matchers.SetMetaFileMatcher(func(name string) bool {
-		return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)
+		return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+users.TenantDeletionMarkFile)
 	})
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false
@@ -463,7 +465,7 @@ func isParquetChunkFile(name string) bool { return strings.HasSuffix(name, "chun
 func isParquetLabelsFile(name string) bool { return strings.HasSuffix(name, "labels.parquet") }
 
 func isMetaFile(name string) bool {
-	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+TenantDeletionMarkFile)
+	return strings.HasSuffix(name, "/"+metadata.MetaFilename) || strings.HasSuffix(name, "/"+metadata.DeletionMarkFilename) || strings.HasSuffix(name, "/"+users.TenantDeletionMarkFile)
 }
 
 func isBlockIndexFile(name string) bool {

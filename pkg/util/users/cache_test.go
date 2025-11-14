@@ -8,8 +8,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestCachedScanner_ScanUsers(t *testing.T) {
@@ -73,7 +71,7 @@ func TestCachedScanner_ScanUsers(t *testing.T) {
 			t.Parallel()
 
 			reg := prometheus.NewRegistry()
-			cachedScanner := newCachedScanner(testData.scanner, tsdb.UsersScannerConfig{
+			cachedScanner := newCachedScanner(testData.scanner, UsersScannerConfig{
 				CacheTTL: testData.ttl,
 			}, reg)
 
@@ -123,7 +121,7 @@ func TestCachedScanner_ConcurrentAccess(t *testing.T) {
 		deleted:  []string{"user-3"},
 	}
 
-	cachedScanner := newCachedScanner(scanner, tsdb.UsersScannerConfig{
+	cachedScanner := newCachedScanner(scanner, UsersScannerConfig{
 		CacheTTL: 1 * time.Hour,
 	}, reg)
 

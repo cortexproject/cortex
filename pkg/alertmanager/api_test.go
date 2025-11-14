@@ -22,10 +22,12 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
+	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestAMConfigValidationAPI(t *testing.T) {
@@ -765,8 +767,10 @@ alertmanager_config: |
 	}
 
 	limits := &mockAlertManagerLimits{}
+	store, err := prepareInMemoryAlertStore()
+	require.NoError(t, err)
 	am := &MultitenantAlertmanager{
-		store:  prepareInMemoryAlertStore(),
+		store:  store,
 		logger: util_log.Logger,
 		limits: limits,
 	}
@@ -798,7 +802,12 @@ alertmanager_config: |
 
 func TestMultitenantAlertmanager_DeleteUserConfig(t *testing.T) {
 	storage := objstore.NewInMemBucket()
-	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
+	bkt := &alertstore.MockBucket{Bucket: storage}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	alertStore, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
 
 	am := &MultitenantAlertmanager{
 		store:  alertStore,
@@ -882,7 +891,12 @@ receivers:
 	}
 
 	storage := objstore.NewInMemBucket()
-	alertStore := bucketclient.NewBucketAlertStore(storage, nil, log.NewNopLogger())
+	bkt := &alertstore.MockBucket{Bucket: storage}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	alertStore, err := bucketclient.NewBucketAlertStore(bkt, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
 
 	for u, cfg := range testCases {
 		err := alertStore.SetAlertConfig(context.Background(), alertspb.AlertConfigDesc{
@@ -893,11 +907,10 @@ receivers:
 	}
 
 	externalURL := flagext.URLValue{}
-	err := externalURL.Set("http://localhost:8080/alertmanager")
+	err = externalURL.Set("http://localhost:8080/alertmanager")
 	require.NoError(t, err)
 
 	// Create the Multitenant Alertmanager.
-	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
 	am, err := createMultitenantAlertmanager(cfg, nil, nil, alertStore, nil, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)

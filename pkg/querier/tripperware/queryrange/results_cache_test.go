@@ -21,8 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -1578,9 +1578,9 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check cache and make sure we write response in old format even though the response is new format.
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	require.NoError(t, err)
-	key := splitter(day).GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), parsedRequest)
+	key := splitter(day).GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), parsedRequest)
 
 	cacheKey := cache.HashKey(key)
 	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})

@@ -40,13 +40,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -173,6 +173,7 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	// No user blocks stored in the bucket.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{userID}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D"}, nil)
@@ -185,8 +186,8 @@ func TestCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 
 	cfg := prepareConfig()
 	c, _, _, logs, _ := prepare(t, cfg, bucketClient, nil)
@@ -207,6 +208,7 @@ func TestCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	// No user blocks stored in the bucket.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	cfg := prepareConfig()
@@ -284,6 +286,7 @@ func TestCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersFromBucket
 	// Fail to iterate over the bucket while discovering users.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("__markers__", nil, errors.New("failed to iterate the bucket"))
 	bucketClient.MockIter("", nil, errors.New("failed to iterate the bucket"))
 
@@ -357,6 +360,7 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	userID := "test-user"
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{userID}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter(userID+"/", []string{userID + "/01DTVP434PA9VFXSW2JKB3392D", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX", userID + "/01DTVP434PA9VFXSW2JKB3392D/meta.json", userID + "/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
@@ -364,8 +368,8 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 	bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
@@ -414,10 +418,11 @@ func TestCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASingleTenant(
 func TestCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
@@ -464,12 +469,13 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -609,11 +615,12 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 
 	// Block that has just been marked for deletion. It will not be deleted just yet, and it also will not be compacted.
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -731,12 +738,13 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testing.T) {
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -817,11 +825,12 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{"__markers__/user-1/"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
-	bucketClient.MockGet(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), `{"deletion_time": 1}`, nil)
-	bucketClient.MockUpload(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), nil)
+	bucketClient.MockGet(users.GetGlobalDeletionMarkPath("user-1"), `{"deletion_time": 1}`, nil)
+	bucketClient.MockUpload(users.GetGlobalDeletionMarkPath("user-1"), nil)
 
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
@@ -913,7 +922,7 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 }
 
 func TestCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
-	bucketClient, tmpDir := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient, tmpDir := testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
@@ -981,12 +990,13 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 	// Mock the bucket to contain two users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -1092,6 +1102,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 	// Mock the bucket to contain all users, each one with one block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", userIDs, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	for _, userID := range userIDs {
@@ -1100,8 +1111,8 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 		bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 		bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 		bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-		bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-		bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
@@ -1203,6 +1214,7 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 	// Mock the bucket to contain all users, each one with five blocks, 2 sets of overlapping blocks and 1 separate block.
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", userIDs, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 
@@ -1238,8 +1250,8 @@ func TestCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingEnabledWit
 		bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 		bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 		bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-		bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-		bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 		bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
@@ -1567,7 +1579,8 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
-	storageCfg.UsersScanner.Strategy = cortex_tsdb.UserScanStrategyUserIndex
+	storageCfg.UsersScanner.Strategy = users.UserScanStrategyUserIndex
+	storageCfg.UsersScanner.CleanUpInterval = 100 * time.Millisecond // Short interval for testing
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()
@@ -1855,6 +1868,7 @@ func TestCompactor_ShouldFailCompactionOnTimeout(t *testing.T) {
 	// Mock the bucket
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("", []string{}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 
@@ -1956,6 +1970,7 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSync(t *tes
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
@@ -1963,8 +1978,8 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSync(t *tes
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), bucket.ErrKeyPermissionDenied)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", bucket.ErrKeyPermissionDenied)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", bucket.ErrKeyPermissionDenied)
@@ -2007,6 +2022,7 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFromBucket(t 
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
@@ -2014,8 +2030,8 @@ func TestCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFromBucket(t 
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
@@ -2058,6 +2074,7 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
@@ -2065,8 +2082,8 @@ func TestCompactor_FailedWithRetriableError(t *testing.T) {
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", nil, errors.New("test retriable error"))
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
@@ -2112,6 +2129,7 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
+	bucketClient.MockUpload(users.UserIndexCompressedFilename, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json"}, nil)
@@ -2119,8 +2137,8 @@ func TestCompactor_FailedWithHaltError(t *testing.T) {
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockIter("user-1/01DTVP434PA9VFXSW2JKB3392D", nil, compact.HaltError{})
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
@@ -2411,7 +2429,7 @@ func (l *mockTenantLimits) setLimits(userID string, limits *validation.Limits) {
 
 func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
 	// Prepare test dependencies
-	bucketClient, _ := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient, _ := testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
@@ -2422,7 +2440,6 @@ func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
 	cfg.ShardingRing.InstanceID = "compactor-1"
 	cfg.ShardingRing.InstanceAddr = "1.2.3.4"
 	cfg.ShardingRing.KVStore.Mock = ringStore
-	cfg.CleanupInterval = 100 * time.Millisecond // Short interval for testing
 
 	compactor, _, _, _, _ := prepare(t, cfg, bucketClient, &validation.Limits{})
 

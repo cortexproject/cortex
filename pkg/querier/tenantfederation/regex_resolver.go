@@ -19,10 +19,8 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -48,7 +46,7 @@ type RegexResolver struct {
 	discoveredUsers prometheus.Gauge
 }
 
-func NewRegexResolver(cfg tsdb.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
+func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
 	bucketClient, err := bucketClientFactory(context.Background())
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create the bucket client")
@@ -133,7 +131,7 @@ func (r *RegexResolver) TenantIDs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	return tenant.ValidateOrgIDs(orgIDs)
+	return users.ValidateOrgIDs(orgIDs)
 }
 
 func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
@@ -154,7 +152,7 @@ func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 	}
 
 	if len(matched) == 0 {
-		if err := tenant.ValidTenantID(orgID); err == nil {
+		if err := users.ValidTenantID(orgID); err == nil {
 			// when querying for a newly created orgID, the query may not
 			// work because it has not been uploaded to object storage.
 			// To make the query work (not breaking existing behavior),
@@ -195,11 +193,11 @@ func (r *RegexValidator) TenantID(ctx context.Context) (string, error) {
 		return "", errInvalidRegex
 	}
 
-	if err := tenant.CheckTenantIDLength(id); err != nil {
+	if err := users.CheckTenantIDLength(id); err != nil {
 		return "", err
 	}
 
-	if err := tenant.CheckTenantIDIsSupported(id); err != nil {
+	if err := users.CheckTenantIDIsSupported(id); err != nil {
 		return "", err
 	}
 

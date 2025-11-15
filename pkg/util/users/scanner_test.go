@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 func TestListScanner_ScanUsers(t *testing.T) {
@@ -36,12 +35,12 @@ func TestListScanner_ScanUsers(t *testing.T) {
 				// Marked for deletion users
 				b.MockIter("__markers__", []string{"__markers__/user-1/", "__markers__/user-4/", "__markers__/user-5/"}, nil)
 				// Deletion marks
-				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-1"), true, nil)
-				b.MockExists(tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-				b.MockExists(tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
-				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-3"), false, nil)
-				b.MockExists(tsdb.GetLocalDeletionMarkPath("user-3"), false, nil)
+				b.MockExists(GetGlobalDeletionMarkPath("user-1"), true, nil)
+				b.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
+				b.MockExists(GetGlobalDeletionMarkPath("user-2"), false, nil)
+				b.MockExists(GetLocalDeletionMarkPath("user-2"), false, nil)
+				b.MockExists(GetGlobalDeletionMarkPath("user-3"), false, nil)
+				b.MockExists(GetLocalDeletionMarkPath("user-3"), false, nil)
 			},
 			expectedActive:   []string{"user-2", "user-3"},
 			expectedDeleting: []string{"user-1"},
@@ -160,8 +159,8 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 				// Base scanner results
 				b.MockIter("", []string{"user-2/"}, nil)
 				b.MockIter("__markers__", []string{}, nil)
-				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-				b.MockExists(tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+				b.MockExists(GetGlobalDeletionMarkPath("user-2"), false, nil)
+				b.MockExists(GetLocalDeletionMarkPath("user-2"), false, nil)
 			},
 			maxStalePeriod:   1 * time.Hour,
 			expectedActive:   []string{"user-2"},
@@ -174,8 +173,8 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 				b.MockGet(UserIndexCompressedFilename, "", errors.New("failed to read index"))
 				b.MockIter("", []string{"user-1/"}, nil)
 				b.MockIter("__markers__", []string{}, nil)
-				b.MockExists(tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-				b.MockExists(tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+				b.MockExists(GetGlobalDeletionMarkPath("user-1"), false, nil)
+				b.MockExists(GetLocalDeletionMarkPath("user-1"), false, nil)
 			},
 			maxStalePeriod:   1 * time.Hour,
 			expectedActive:   []string{"user-1"},
@@ -193,7 +192,7 @@ func TestUserIndexScanner_ScanUsers(t *testing.T) {
 			testData.bucketSetup(bucketClient)
 
 			baseScanner := &listScanner{bkt: bucketClient}
-			scanner := newUserIndexScanner(baseScanner, tsdb.UsersScannerConfig{
+			scanner := newUserIndexScanner(baseScanner, UsersScannerConfig{
 				MaxStalePeriod: testData.maxStalePeriod,
 			}, bucketClient, logger, nil)
 

@@ -55,7 +55,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -66,6 +65,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -663,8 +663,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    *util.AllowedTenants // if nil, all tenants are allowed.
-	callback chan<- struct{}      // when compaction/shipping is finished, this channel is closed
+	users    *users.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}       // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -1174,7 +1174,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1683,7 +1683,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1787,7 +1787,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1881,7 +1881,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1986,7 +1986,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return cleanup, err
 	}
@@ -2076,7 +2076,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.stoppedMtx.RUnlock()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2105,7 +2105,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2212,7 +2212,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -2815,7 +2815,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -2848,7 +2848,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			// Even if check fails with error, we don't want to repeat it too often.
 			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
 
-			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			deletionMarkExists, err := users.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
@@ -2932,7 +2932,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.AllowedTenants) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -3242,7 +3242,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	allowedUsers := util.NewAllowedTenants(tenants, nil)
+	allowedUsers := users.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {

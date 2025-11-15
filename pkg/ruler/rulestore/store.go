@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -47,4 +48,7 @@ type RuleStore interface {
 	// DeleteNamespace lists rule groups for given user and namespace, and deletes all rule groups.
 	// If namespace is empty, deletes all rule groups for user.
 	DeleteNamespace(ctx context.Context, userID, namespace string) error
+
+	// GetUserIndexUpdater is getter for UserIndexUpdater
+	GetUserIndexUpdater() *users.UserIndexUpdater
 }

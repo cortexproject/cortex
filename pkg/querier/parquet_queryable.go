@@ -51,6 +51,8 @@ const (
 	parquetBlockStore blockStoreType = "parquet"
 )
 
+const defaultMaintenanceInterval = time.Minute
+
 var (
 	validBlockStoreTypes = []blockStoreType{tsdbBlockStore, parquetBlockStore}
 )
@@ -97,6 +99,7 @@ type parquetQueryableWithFallback struct {
 	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
+	cache                 cacheInterface[parquet_storage.ParquetShard]
 	blockStorageQueryable *BlocksStoreQueryable
 
 	finder BlocksFinder
@@ -132,7 +135,7 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
-	cache, err := newCache[parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
+	cache, err := newCache[parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, config.ParquetQueryableShardCacheTTL, defaultMaintenanceInterval, newCacheMetrics(reg))
 	if err != nil {
 		return nil, err
 	}
@@ -248,6 +251,7 @@ func NewParquetQueryable(
 		subservices:           manager,
 		blockStorageQueryable: blockStorageQueryable,
 		parquetQueryable:      parquetQueryable,
+		cache:                 cache,
 		queryStoreAfter:       config.QueryStoreAfter,
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
@@ -283,6 +287,10 @@ func (p *parquetQueryableWithFallback) running(ctx context.Context) error {
 }
 
 func (p *parquetQueryableWithFallback) stopping(_ error) error {
+	if p.cache != nil {
+		p.cache.Close()
+	}
+
 	return services.StopManagerAndAwaitStopped(context.Background(), p.subservices)
 }
 
@@ -613,6 +621,7 @@ func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHint
 type cacheInterface[T any] interface {
 	Get(path string) T
 	Set(path string, reader T)
+	Close()
 }
 
 type cacheMetrics struct {
@@ -643,17 +652,24 @@ func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
 	}
 }
 
-type Cache[T any] struct {
-	cache   *lru.Cache[string, T]
-	name    string
-	metrics *cacheMetrics
+type cacheEntry[T any] struct {
+	value     T
+	expiresAt time.Time
 }
 
-func newCache[T any](name string, size int, metrics *cacheMetrics) (cacheInterface[T], error) {
+type Cache[T any] struct {
+	cache   *lru.Cache[string, *cacheEntry[T]]
+	name    string
+	metrics *cacheMetrics
+	ttl     time.Duration
+	stopCh  chan struct{}
+}
+
+func newCache[T any](name string, size int, ttl, maintenanceInterval time.Duration, metrics *cacheMetrics) (cacheInterface[T], error) {
 	if size <= 0 {
 		return &noopCache[T]{}, nil
 	}
-	cache, err := lru.NewWithEvict(size, func(key string, value T) {
+	cache, err := lru.NewWithEvict(size, func(key string, value *cacheEntry[T]) {
 		metrics.evictions.WithLabelValues(name).Inc()
 		metrics.size.WithLabelValues(name).Dec()
 	})
@@ -661,17 +677,56 @@ func newCache[T any](name string, size int, metrics *cacheMetrics) (cacheInterfa
 		return nil, err
 	}
 
-	return &Cache[T]{
+	c := &Cache[T]{
 		cache:   cache,
 		name:    name,
 		metrics: metrics,
-	}, nil
+		ttl:     ttl,
+		stopCh:  make(chan struct{}),
+	}
+
+	if ttl > 0 {
+		go c.maintenanceLoop(maintenanceInterval)
+	}
+
+	return c, nil
+}
+
+func (c *Cache[T]) maintenanceLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			keys := c.cache.Keys()
+			for _, key := range keys {
+				if entry, ok := c.cache.Peek(key); ok {
+					// we use a Peek() because the Get() change LRU order.
+					if !entry.expiresAt.IsZero() && now.After(entry.expiresAt) {
+						c.cache.Remove(key)
+					}
+				}
+			}
+		case <-c.stopCh:
+			return
+		}
+	}
 }
 
 func (c *Cache[T]) Get(path string) (r T) {
-	if reader, ok := c.cache.Get(path); ok {
+	if entry, ok := c.cache.Get(path); ok {
+		isExpired := !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt)
+
+		if isExpired {
+			c.cache.Remove(path)
+			c.metrics.misses.WithLabelValues(c.name).Inc()
+			return
+		}
+
 		c.metrics.hits.WithLabelValues(c.name).Inc()
-		return reader
+		return entry.value
 	}
 	c.metrics.misses.WithLabelValues(c.name).Inc()
 	return
@@ -681,8 +736,22 @@ func (c *Cache[T]) Set(path string, reader T) {
 	if !c.cache.Contains(path) {
 		c.metrics.size.WithLabelValues(c.name).Inc()
 	}
-	c.metrics.misses.WithLabelValues(c.name).Inc()
-	c.cache.Add(path, reader)
+
+	var expiresAt time.Time
+	if c.ttl > 0 {
+		expiresAt = time.Now().Add(c.ttl)
+	}
+
+	entry := &cacheEntry[T]{
+		value:     reader,
+		expiresAt: expiresAt,
+	}
+
+	c.cache.Add(path, entry)
+}
+
+func (c *Cache[T]) Close() {
+	close(c.stopCh)
 }
 
 type noopCache[T any] struct {
@@ -693,6 +762,10 @@ func (n noopCache[T]) Get(_ string) (r T) {
 }
 
 func (n noopCache[T]) Set(_ string, _ T) {
+
+}
+
+func (n noopCache[T]) Close() {
 
 }
 

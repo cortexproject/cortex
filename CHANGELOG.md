@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
+* [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` which enables to add `__unit__` and `__type__` labels for remote write v2 and OTLP requests. The `-distributor.otlp.enable-type-and-unit-labels` flag has been consolidated into this flag. #7077
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074

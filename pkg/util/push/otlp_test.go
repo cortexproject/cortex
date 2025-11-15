@@ -80,8 +80,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
 			cfg := distributor.OTLPConfig{
-				EnableTypeAndUnitLabels: test.enableTypeAndUnitLabels,
-				AllowDeltaTemporality:   test.allowDeltaTemporality,
+				AllowDeltaTemporality: test.allowDeltaTemporality,
 			}
 			metrics := pmetric.NewMetrics()
 			rm := metrics.ResourceMetrics().AppendEmpty()
@@ -90,6 +89,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 			test.otlpSeries.CopyTo(sm.Metrics().AppendEmpty())
 
 			limits := validation.Limits{}
+			limits.EnableTypeAndUnitLabels = test.enableTypeAndUnitLabels
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.NoError(t, err)

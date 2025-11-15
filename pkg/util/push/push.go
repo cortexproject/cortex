@@ -9,14 +9,17 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/compression"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -36,7 +39,7 @@ const (
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -78,8 +81,13 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 		}
 
 		handlePRW2 := func() {
+			userID, err := tenant.TenantID(ctx)
+			if err != nil {
+				return
+			}
+
 			var req cortexpb.PreallocWriteRequestV2
-			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
+			err = util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -91,7 +99,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(&req)
+			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -169,7 +177,7 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2) (cortexpb.PreallocWriteRequest, error) {
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool) (cortexpb.PreallocWriteRequest, error) {
 	var v1Req cortexpb.PreallocWriteRequest
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
@@ -181,10 +189,25 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2) (cortexpb.Preall
 		if err != nil {
 			return v1Req, err
 		}
+
+		unit := symbols[v2Ts.Metadata.UnitRef]
+		metricType := v2Ts.Metadata.Type
+		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")
+		if shouldAttachTypeAndUnitLabels {
+			slb := labels.NewScratchBuilder(lbs.Len() + 2) // for __type__ and __unit__
+			lbs.Range(func(l labels.Label) {
+				slb.Add(l.Name, l.Value)
+			})
+			schema.Metadata{Type: cortexpb.MetadataV2MetricTypeToMetricType(metricType), Unit: unit}.AddToLabels(&slb)
+			slb.Sort()
+			lbs = slb.Labels()
+		}
+
 		exemplars, err := convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars)
 		if err != nil {
 			return v1Req, err
 		}
+
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
 				Labels:     cortexpb.FromLabelsToLabelAdapters(lbs),

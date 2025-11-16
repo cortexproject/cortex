@@ -187,7 +187,9 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		}
 
 		// Add request ID to the context so that it can be used in logs and metrics for split queries.
-		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		if requestmeta.RequestIdFromContext(ctx) == "" {
+			ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		}
 		ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
 
 		if frontendClient != nil {
@@ -265,6 +267,9 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 		queryStats, ctx := stats.ContextWithEmptyStats(ctx)
 		// If we've been passed a counter we want to record the wall time spent executing this request.
 		timer := prometheus.NewTimer(nil)
+
+		// Add request ID before logging so that it can be used in query stats logs.
+		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
 
 		defer func() {
 			querySeconds := timer.ObserveDuration().Seconds()

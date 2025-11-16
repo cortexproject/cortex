@@ -12,8 +12,8 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	cquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -38,7 +38,7 @@ type shardBy struct {
 }
 
 func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	stats := querier_stats.FromContext(ctx)
 
 	if err != nil {

@@ -36,5 +36,5 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 		return nil, err
 	}
 
-	return bucketclient.NewBucketRuleStore(bucketClient, cfgProvider, logger), nil
+	return bucketclient.NewBucketRuleStore(bucketClient, cfg.UsersScanner, cfgProvider, logger, reg)
 }

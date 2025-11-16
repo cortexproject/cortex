@@ -18,6 +18,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -68,10 +69,10 @@ var (
 //
 //nolint:revive
 type BlocksStorageConfig struct {
-	Bucket       bucket.Config      `yaml:",inline"`
-	BucketStore  BucketStoreConfig  `yaml:"bucket_store" doc:"description=This configures how the querier and store-gateway discover and synchronize blocks stored in the bucket."`
-	TSDB         TSDBConfig         `yaml:"tsdb"`
-	UsersScanner UsersScannerConfig `yaml:"users_scanner"`
+	Bucket       bucket.Config            `yaml:",inline"`
+	BucketStore  BucketStoreConfig        `yaml:"bucket_store" doc:"description=This configures how the querier and store-gateway discover and synchronize blocks stored in the bucket."`
+	TSDB         TSDBConfig               `yaml:"tsdb"`
+	UsersScanner users.UsersScannerConfig `yaml:"users_scanner"`
 }
 
 // DurationList is the block ranges for a tsdb
@@ -116,7 +117,7 @@ func (cfg *BlocksStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.Bucket.RegisterFlagsWithPrefix("blocks-storage.", f)
 	cfg.BucketStore.RegisterFlags(f)
 	cfg.TSDB.RegisterFlags(f)
-	cfg.UsersScanner.RegisterFlagsWithPrefix("blocks-storage", f)
+	cfg.UsersScanner.RegisterFlagsWithPrefix("blocks-storage.", f)
 }
 
 // Validate the config.

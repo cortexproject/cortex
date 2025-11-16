@@ -9,6 +9,7 @@
 * [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
+* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
 
 ## 1.20.0 2025-11-10
 

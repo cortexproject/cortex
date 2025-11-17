@@ -11,6 +11,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
@@ -193,9 +194,11 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			}
 			b.Reset(s.Labels())
 			// if we have pushed down a timestamp function into the scan we need to drop
-			// the __name__ label
+			// the reserved labels (__name__, __type__, __unit__)
 			if o.selectTimestamp {
 				b.Del(labels.MetricName)
+				b.Del(extlabels.MetricType)
+				b.Del(extlabels.MetricUnit)
 			}
 			o.series[i] = b.Labels()
 		}

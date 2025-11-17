@@ -232,9 +232,9 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 		}
 		o.series = make([]labels.Labels, len(series))
 
-		b := labels.ScratchBuilder{}
+		var b labels.ScratchBuilder
 		for i, s := range series {
-			lbls, _ := extlabels.DropMetricName(s, b)
+			lbls := extlabels.DropReserved(s, b)
 			o.series[i] = lbls
 		}
 	})

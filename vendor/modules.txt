@@ -1202,9 +1202,10 @@ github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20250924193140-e9123dc11264
+# github.com/thanos-io/promql-engine v0.0.0-20251117105526-bcec363c24e6
 ## explicit; go 1.24.0
 github.com/thanos-io/promql-engine/api
+github.com/thanos-io/promql-engine/compute
 github.com/thanos-io/promql-engine/engine
 github.com/thanos-io/promql-engine/execution
 github.com/thanos-io/promql-engine/execution/aggregate
@@ -1219,13 +1220,13 @@ github.com/thanos-io/promql-engine/execution/scan
 github.com/thanos-io/promql-engine/execution/step_invariant
 github.com/thanos-io/promql-engine/execution/telemetry
 github.com/thanos-io/promql-engine/execution/unary
-github.com/thanos-io/promql-engine/execution/warnings
 github.com/thanos-io/promql-engine/extlabels
 github.com/thanos-io/promql-engine/logicalplan
 github.com/thanos-io/promql-engine/query
 github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
+github.com/thanos-io/promql-engine/warnings
 # github.com/thanos-io/thanos v0.39.3-0.20250729120336-88d0ae8071cb
 ## explicit; go 1.24.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
@@ -1713,23 +1714,9 @@ golang.org/x/tools/internal/typesinternal
 golang.org/x/tools/internal/versions
 # gonum.org/v1/gonum v0.16.0
 ## explicit; go 1.23.0
-gonum.org/v1/gonum/blas
-gonum.org/v1/gonum/blas/blas64
-gonum.org/v1/gonum/blas/cblas128
-gonum.org/v1/gonum/blas/gonum
 gonum.org/v1/gonum/floats
 gonum.org/v1/gonum/floats/scalar
-gonum.org/v1/gonum/internal/asm/c128
-gonum.org/v1/gonum/internal/asm/c64
-gonum.org/v1/gonum/internal/asm/f32
 gonum.org/v1/gonum/internal/asm/f64
-gonum.org/v1/gonum/internal/cmplx64
-gonum.org/v1/gonum/internal/math32
-gonum.org/v1/gonum/lapack
-gonum.org/v1/gonum/lapack/gonum
-gonum.org/v1/gonum/lapack/lapack64
-gonum.org/v1/gonum/mat
-gonum.org/v1/gonum/stat
 # google.golang.org/api v0.239.0
 ## explicit; go 1.23.0
 google.golang.org/api/googleapi

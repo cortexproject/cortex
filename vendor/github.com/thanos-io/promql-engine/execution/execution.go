@@ -323,15 +323,7 @@ func newScalarBinaryOperator(ctx context.Context, e *logicalplan.Binary, storage
 		return nil, err
 	}
 
-	scalarSide := binary.ScalarSideRight
-	if e.LHS.ReturnType() == parser.ValueTypeScalar && e.RHS.ReturnType() == parser.ValueTypeScalar {
-		scalarSide = binary.ScalarSideBoth
-	} else if e.LHS.ReturnType() == parser.ValueTypeScalar {
-		rhs, lhs = lhs, rhs
-		scalarSide = binary.ScalarSideLeft
-	}
-
-	return binary.NewScalar(model.NewVectorPoolWithSize(opts.StepsBatch, 1), lhs, rhs, e.Op, scalarSide, e.ReturnBool, opts)
+	return binary.NewScalar(model.NewVectorPoolWithSize(opts.StepsBatch, 1), lhs, rhs, e.LHS.ReturnType(), e.RHS.ReturnType(), e.Op, e.ReturnBool, opts)
 }
 
 func newUnaryExpression(ctx context.Context, e *logicalplan.Unary, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

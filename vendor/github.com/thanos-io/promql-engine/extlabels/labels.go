@@ -6,15 +6,21 @@ package extlabels
 import (
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 )
 
 var (
 	ErrDuplicateLabelSet = errors.New("vector cannot contain metrics with the same labelset")
 )
 
-// DropMetricName removes the __name__ label and returns the dropped name and remaining labels.
-func DropMetricName(l labels.Labels, b labels.ScratchBuilder) (labels.Labels, labels.Label) {
-	return DropLabel(l, labels.MetricName, b)
+const (
+	MetricType = "__type__"
+	MetricUnit = "__unit__"
+)
+
+// DropReserved removes all reserved labels (__name__, __type__, __unit__) and returns the remaining labels.
+func DropReserved(l labels.Labels, b labels.ScratchBuilder) labels.Labels {
+	return DropLabels(l, schema.IsMetadataLabel, b)
 }
 
 // DropBucketLabel removes the le label and returns the dropped name and remaining labels.
@@ -42,4 +48,21 @@ func DropLabel(l labels.Labels, name string, b labels.ScratchBuilder) (labels.La
 	})
 
 	return b.Labels(), ret
+}
+
+// DropLabels removes labels from l based on the shouldDrop function and returns the remaining labels.
+func DropLabels(l labels.Labels, shouldDrop func(name string) bool, b labels.ScratchBuilder) labels.Labels {
+	if l.IsEmpty() {
+		return l
+	}
+
+	b.Reset()
+
+	l.Range(func(lbl labels.Label) {
+		if !shouldDrop(lbl.Name) {
+			b.Add(lbl.Name, lbl.Value)
+		}
+	})
+
+	return b.Labels()
 }

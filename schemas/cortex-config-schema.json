@@ -5928,6 +5928,12 @@
         },
         "thanos_engine": {
           "properties": {
+            "decoding_concurrency": {
+              "default": 0,
+              "description": "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.",
+              "type": "number",
+              "x-cli-flag": "querier.decoding-concurrency"
+            },
             "enable_x_functions": {
               "default": false,
               "description": "Enable xincrease, xdelta, xrate etc from Thanos engine.",
@@ -6943,6 +6949,12 @@
         },
         "thanos_engine": {
           "properties": {
+            "decoding_concurrency": {
+              "default": 0,
+              "description": "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.",
+              "type": "number",
+              "x-cli-flag": "ruler.decoding-concurrency"
+            },
             "enable_x_functions": {
               "default": false,
               "description": "Enable xincrease, xdelta, xrate etc from Thanos engine.",

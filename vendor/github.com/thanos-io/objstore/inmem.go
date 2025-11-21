@@ -34,6 +34,24 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
+// ChangeLastModified changes the last modified timestamp of the object at the given path.
+// If the object does not exist, it returns an error.
+// This method is useful for testing purposes to simulate updates to objects.
+func (b *InMemBucket) ChangeLastModified(path string, lastModified time.Time) error {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	if _, ok := b.objects[path]; !ok {
+		return errNotFound
+	}
+
+	attrs := b.attrs[path]
+	attrs.LastModified = lastModified
+	b.attrs[path] = attrs
+
+	return nil
+}
+
 func (b *InMemBucket) Provider() ObjProvider { return MEMORY }
 
 // Objects returns a copy of the internally stored objects.

@@ -7,6 +7,7 @@
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
 * [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
+* [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 

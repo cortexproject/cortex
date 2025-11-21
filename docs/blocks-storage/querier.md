@@ -269,6 +269,11 @@ querier:
     # CLI flag: -querier.optimizers
     [optimizers: <string> | default = "default"]
 
+    # Maximum number of goroutines that can be used to decode samples. 0
+    # defaults to GOMAXPROCS / 2.
+    # CLI flag: -querier.decoding-concurrency
+    [decoding_concurrency: <int> | default = 0]
+
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
   # evaluation like at Query Frontend or Ruler.

@@ -40,7 +40,7 @@ Response format:
 }
 ```
 
-#### 2. PUT /api/v1/user-overrides
+#### 2. POST /api/v1/user-overrides
 Updates overrides for a specific tenant. The request body should contain only the overrides that need to be updated.
 
 Request body:

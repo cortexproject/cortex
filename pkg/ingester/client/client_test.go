@@ -9,6 +9,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
@@ -115,10 +116,16 @@ func createTestIngesterClient(maxInflightPushRequests int64, currentInflightRequ
 
 type mockIngester struct {
 	IngesterClient
+	mock.Mock
 }
 
 func (m *mockIngester) Push(_ context.Context, _ *cortexpb.WriteRequest, _ ...grpc.CallOption) (*cortexpb.WriteResponse, error) {
 	return &cortexpb.WriteResponse{}, nil
+}
+
+func (m *mockIngester) PushStream(ctx context.Context, opts ...grpc.CallOption) (Ingester_PushStreamClient, error) {
+	args := m.Called(ctx, opts)
+	return args.Get(0).(Ingester_PushStreamClient), nil
 }
 
 type mockClientConn struct {
@@ -226,4 +233,41 @@ func TestClosableHealthAndIngesterClient_Close_WithPendingJobs(t *testing.T) {
 	// Verify jobs were cancelled
 	assert.True(t, job1Cancelled, "job1 should have been cancelled")
 	assert.True(t, job2Cancelled, "job2 should have been cancelled")
+}
+
+type mockClientStream struct {
+	mock.Mock
+	grpc.ClientStream
+}
+
+func (m *mockClientStream) Send(msg *cortexpb.StreamWriteRequest) error {
+	args := m.Called(msg)
+	return args.Error(0)
+}
+
+func (m *mockClientStream) Recv() (*cortexpb.WriteResponse, error) {
+	return &cortexpb.WriteResponse{}, nil
+}
+
+func TestClosableHealthAndIngesterClient_ShouldNotPanicWhenClose(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	streamChan := make(chan *streamWriteJob)
+
+	mockIngester := &mockIngester{}
+	mockStream := &mockClientStream{}
+	mockIngester.On("PushStream", mock.Anything, mock.Anything).Return(mockStream, nil).Once()
+
+	client := &closableHealthAndIngesterClient{
+		IngesterClient:       mockIngester,
+		conn:                 &mockClientConn{},
+		addr:                 "test-addr",
+		inflightPushRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"ingester"}),
+		streamCtx:            ctx,
+		streamCancel:         cancel,
+		streamPushChan:       streamChan,
+	}
+	require.NoError(t, client.worker(context.Background()))
+	require.NoError(t, client.Close())
+
+	time.Sleep(100 * time.Millisecond)
 }

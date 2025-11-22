@@ -231,7 +231,10 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return
-			case job := <-c.streamPushChan:
+			case job, ok := <-c.streamPushChan:
+				if !ok {
+					return
+				}
 				err = stream.Send(job.req)
 				if err == io.EOF {
 					job.resp = &cortexpb.WriteResponse{}

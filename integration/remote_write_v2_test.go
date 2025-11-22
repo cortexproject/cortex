@@ -204,6 +204,77 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	require.Empty(t, result)
 }
 
+func TestIngest_EnableTypeAndUnitLabels(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-querier.query-store-for-labels-enabled":           "true",
+			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":                "1s",
+			"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor":          "1",
+			"-distributor.remote-writev2-enabled":      "true",
+			"-distributor.enable-type-and-unit-labels": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// series push
+	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
+	writeStats, err := c.PushV2(symbols1, series)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 1, 0, 0)
+
+	value, err := c.Query("test_series", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, value.Type())
+	vec := value.(model.Vector)
+	require.True(t, vec[0].Metric["__unit__"] != "")
+	require.True(t, vec[0].Metric["__type__"] != "")
+}
+
 func TestIngest(t *testing.T) {
 	const blockRangePeriod = 5 * time.Second
 

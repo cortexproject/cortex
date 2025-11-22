@@ -7,7 +7,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/thanos-io/promql-engine/execution/aggregate"
+	"github.com/thanos-io/promql-engine/compute"
 
 	"github.com/prometheus/prometheus/model/histogram"
 )
@@ -337,7 +337,7 @@ func histogramStdDev(h *histogram.FloatHistogram) float64 {
 			}
 		}
 		delta := val - mean
-		variance, cVariance = aggregate.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
+		variance, cVariance = compute.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
 	}
 	variance += cVariance
 	variance /= h.Count
@@ -370,7 +370,7 @@ func histogramStdVar(h *histogram.FloatHistogram) float64 {
 			}
 		}
 		delta := val - mean
-		variance, cVariance = aggregate.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
+		variance, cVariance = compute.KahanSumInc(bucket.Count*delta*delta, variance, cVariance)
 	}
 	variance += cVariance
 	variance /= h.Count

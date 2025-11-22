@@ -9,6 +9,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/histogram"
@@ -54,8 +55,9 @@ func (u *unaryNegation) loadSeries(ctx context.Context) error {
 			return
 		}
 		u.series = make([]labels.Labels, len(series))
+		var b labels.ScratchBuilder
 		for i := range series {
-			lbls := labels.NewBuilder(series[i]).Del(labels.MetricName).Labels()
+			lbls := extlabels.DropReserved(series[i], b)
 			u.series[i] = lbls
 		}
 	})

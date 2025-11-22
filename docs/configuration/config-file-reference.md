@@ -4795,6 +4795,10 @@ thanos_engine:
 # need to make sure Parquet files are created before it is queryable.
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+# [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+# CLI flag: -querier.parquet-queryable-shard-cache-ttl
+[parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `query_frontend_config`

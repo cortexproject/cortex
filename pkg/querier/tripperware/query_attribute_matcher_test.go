@@ -59,10 +59,11 @@ func Test_rejectQueryOrSetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInval
 			path:                  "/api/v1/query?time=1536716898&query=",
 			expectedError:         httpgrpc.Errorf(http.StatusBadRequest, "unknown position: parse error: no expression found in input"),
 		},
-		"should miss if it's metadata query and only priority is enabled": {
+		"should set priority if it's metadata query and only priority is enabled": {
 			queryPriorityEnabled:  true,
 			queryRejectionEnabled: false,
 			path:                  "/api/v1/labels?match[]",
+			expectedPriority:      1,
 		},
 		"should set priority if regex match and rejection disabled": {
 			queryPriorityEnabled:  true,

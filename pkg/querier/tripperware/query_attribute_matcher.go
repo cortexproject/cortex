@@ -22,6 +22,7 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		return nil
 	}
 	op := getOperation(r)
+	reqStats := stats.FromContext(r.Context())
 
 	if op == "query" || op == "query_range" {
 		query := r.FormValue("query")
@@ -40,7 +41,6 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 			}
 		}
 
-		reqStats := stats.FromContext(r.Context())
 		reqStats.SetDataSelectMaxTime(maxTime)
 		reqStats.SetDataSelectMinTime(minTime)
 
@@ -54,6 +54,16 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 				}
 			}
 			reqStats.SetPriority(queryPriority.DefaultPriority)
+		}
+	} else {
+		if queryPriority := limits.QueryPriority(userStr); queryPriority.Enabled && len(queryPriority.Priorities) != 0 {
+			for _, priority := range queryPriority.Priorities {
+				for _, attribute := range priority.QueryAttributes {
+					if matchAttributeForMetadataQuery(attribute, op, r, now) {
+						reqStats.SetPriority(priority.Priority)
+					}
+				}
+			}
 		}
 	}
 
@@ -81,6 +91,8 @@ func getOperation(r *http.Request) string {
 		return "labels"
 	case strings.HasSuffix(r.URL.Path, "/values"):
 		return "label_values"
+	case strings.HasSuffix(r.URL.Path, "/metadata"):
+		return "metadata"
 	default:
 		return "other"
 	}

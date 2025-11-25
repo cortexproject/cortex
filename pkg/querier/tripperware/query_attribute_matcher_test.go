@@ -706,3 +706,45 @@ func Test_matchAttributeForExpressionQueryShouldMatchUserAgentRegex(t *testing.T
 	}
 
 }
+
+func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
+
+	limits := mockLimits{queryPriority: validation.QueryPriority{
+		Priorities: []validation.PriorityDef{
+			{
+				Priority: 7,
+				QueryAttributes: []validation.QueryAttribute{
+					{
+						ApiType: "metadata",
+					},
+				},
+			},
+		},
+	},
+	}
+
+	type testCase struct {
+		path             string
+		expectedPriority int64
+	}
+
+	tests := map[string]testCase{
+		"should set priority based on api type": {
+			path:             "/api/v1/targets/metadata?limit=1",
+			expectedPriority: 7,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req, err := http.NewRequest("GET", testData.path, http.NoBody)
+			require.NoError(t, err)
+			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
+			req = req.WithContext(ctx)
+			limits.queryPriority.Enabled = true
+			resultErr := rejectQueryOrSetPriority(req, time.Now(), time.Duration(1), limits, "", rejectedQueriesPerTenant)
+			assert.NoError(t, resultErr)
+			assert.Equal(t, testData.expectedPriority, reqStats.Priority)
+		})
+	}
+}

@@ -2,6 +2,17 @@
 
 ## master / unreleased
 
+* [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
+* [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
+* [ENHANCEMENT] Querier: Add a `-querier.parquet-queryable-shard-cache-ttl` flag to add TTL to parquet shard cache. #7098
+* [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
+* [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
+* [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
+* [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
+* [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
+* [BUGFIX] Ruler: Add XFunctions validation support. #7111
+* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
+
 ## 1.20.0 2025-11-10
 
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603

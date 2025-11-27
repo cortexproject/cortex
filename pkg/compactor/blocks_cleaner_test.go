@@ -925,7 +925,24 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
 
 	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
-
+	idx := &bucketindex.Index{
+		Blocks: bucketindex.Blocks{
+			{
+				ID:      block1,
+				MinTime: startTime,
+				MaxTime: endTime,
+				Parquet: &parquet.ConverterMarkMeta{},
+			},
+			{
+				ID:      block2,
+				MinTime: startTime,
+				MaxTime: endTime,
+				Parquet: &parquet.ConverterMarkMeta{},
+			},
+		},
+	}
+	err = bucketindex.WriteIndex(ctx, bucketClient, userID, nil, idx)
+	require.NoError(t, err)
 	userBucket := bucket.NewUserBucketClient(userID, bucketClient, cfgProvider)
 
 	partitionedGroupInfo := PartitionedGroupInfo{
@@ -955,11 +972,17 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	err = visitMarkerManager.updateVisitMarker(ctx)
 	require.NoError(t, err)
 
-	cleaner.cleanPartitionedGroupInfo(ctx, userBucket, logger, userID)
+	// first cleaning cycle deletes only the blocks
+	err = cleaner.cleanUser(ctx, logger, userBucket, userID, false)
+	require.NoError(t, err)
+
+	idx, err = bucketindex.ReadIndex(ctx, bucketClient, userID, cfgProvider, logger)
+	require.NoError(t, err)
+	require.Equal(t, []ulid.ULID{block1}, idx.BlockDeletionMarks.GetULIDs())
 
 	partitionedGroupFileExists, err := userBucket.Exists(ctx, GetPartitionedGroupFile(partitionedGroupID))
 	require.NoError(t, err)
-	require.False(t, partitionedGroupFileExists)
+	require.True(t, partitionedGroupFileExists)
 
 	block1DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block1.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
@@ -968,6 +991,14 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	block2DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block2.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
 	require.False(t, block2DeletionMarkerExists)
+
+	// second cleaning cycle deletes the partition group info after all blocks are deleted
+	err = cleaner.cleanUser(ctx, logger, userBucket, userID, false)
+	require.NoError(t, err)
+
+	partitionedGroupFileExists, err = userBucket.Exists(ctx, GetPartitionedGroupFile(partitionedGroupID))
+	require.NoError(t, err)
+	require.False(t, partitionedGroupFileExists)
 }
 
 func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {

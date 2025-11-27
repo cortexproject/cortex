@@ -11,6 +11,7 @@
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
+* [BUGFIX] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
 
 ## 1.20.0 2025-11-10
 

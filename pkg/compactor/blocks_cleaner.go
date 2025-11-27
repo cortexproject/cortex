@@ -756,7 +756,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 
 	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
 		begin = time.Now()
-		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
+		c.cleanPartitionedGroupInfo(ctx, w, userBucket, idx, userLogger, userID)
 		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 	return nil
@@ -780,35 +780,51 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 	}
 }
 
-func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
+func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, bucketUpdater *bucketindex.Updater, userBucket objstore.InstrumentedBucket, userIndex *bucketindex.Index, userLogger log.Logger, userID string) {
 	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
 
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
+		isPartitionGroupInfoDeleted := false
 		partitionedGroupInfoFile := extraInfo.path
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
-				if err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID); err != nil {
+				deletedBlocksCount, err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
+				if err != nil {
 					level.Warn(userLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 					// if one block can not be marked for deletion, we should
 					// skip delete this partitioned group. next iteration
 					// would try it again.
 					continue
 				}
-			}
-
-			if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
-				level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
-			} else {
-				level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+				if deletedBlocksCount > 0 {
+					idx, _, _, err := (*bucketUpdater).UpdateIndex(ctx, userIndex)
+					if err != nil {
+						level.Warn(userLogger).Log("msg", "unable to update bucket index with deleted blocks for partition group", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
+						continue
+					}
+					if err = bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
+						level.Warn(userLogger).Log("msg", "unable to write updated bucket index with deleted blocks", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
+						continue
+					}
+					level.Info(userLogger).Log("msg", "updated index to include deleted blocks for completed partition group", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				} else {
+					level.Info(userLogger).Log("msg", "deleting partition group now that all associated blocks have been deleted", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+					if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
+						level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+					} else {
+						level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+						isPartitionGroupInfoDeleted = true
+					}
+				}
 			}
 		}
 
-		if extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker {
+		if isPartitionGroupInfoDeleted && (extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker) {
 			// Remove partition visit markers
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
 				level.Warn(userLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile, "err", err)

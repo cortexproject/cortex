@@ -197,9 +197,10 @@ type InstanceLimits struct {
 }
 
 type OTLPConfig struct {
-	ConvertAllAttributes  bool `yaml:"convert_all_attributes"`
-	DisableTargetInfo     bool `yaml:"disable_target_info"`
-	AllowDeltaTemporality bool `yaml:"allow_delta_temporality"`
+	ConvertAllAttributes    bool `yaml:"convert_all_attributes"`
+	DisableTargetInfo       bool `yaml:"disable_target_info"`
+	AllowDeltaTemporality   bool `yaml:"allow_delta_temporality"`
+	EnableTypeAndUnitLabels bool `yaml:"enable_type_and_unit_labels"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -228,6 +229,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
+	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
 }
 
 // Validate config and returns error on failure

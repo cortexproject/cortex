@@ -3861,6 +3861,12 @@
               "description": "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.disable-target-info"
+            },
+            "enable_type_and_unit_labels": {
+              "default": false,
+              "description": "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
             }
           },
           "type": "object"

@@ -747,7 +747,11 @@ func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
 			level.Error(r.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
 			return
 		case <-ticker.C:
-			owned := r.isUserOwned(userID)
+			owned, err := r.isUserOwned(userID)
+			if err != nil {
+				level.Error(r.logger).Log("msg", "failed to check if ruler owns updating user index", "err", err)
+				continue
+			}
 			if !owned {
 				continue
 			}
@@ -760,20 +764,38 @@ func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
 	}
 }
 
-func (r *Ruler) isUserOwned(userID string) bool {
+func (r *Ruler) isUserOwned(userID string) (bool, error) {
+	if !r.allowedTenants.IsAllowed(userID) {
+		return false, nil
+	}
+
 	// If sharding is disabled, any ruler instance owns all users.
 	if !r.cfg.EnableSharding {
-		return true
+		return true, nil
+	}
+
+	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := r.getShardSizeForUser(userID)
+		subRing := r.ring.ShuffleShard(userID, shardSize)
+
+		rs, err := subRing.GetAllHealthy(RingOp)
+		if err != nil {
+			r.ringCheckErrors.Inc()
+			level.Error(r.logger).Log("msg", "failed to get rulers from ring", "user", userID, "err", err)
+			return false, err
+		}
+
+		return rs.Includes(r.lifecycler.GetInstanceAddr()), nil
 	}
 
 	rulers, err := r.ring.Get(users.ShardByUser(userID), RingOp, nil, nil, nil)
 	if err != nil {
 		r.ringCheckErrors.Inc()
 		level.Error(r.logger).Log("msg", "failed to get rulers from ring", "user", userID, "err", err)
-		return false
+		return false, err
 	}
 
-	return rulers.Includes(r.lifecycler.GetInstanceAddr())
+	return rulers.Includes(r.lifecycler.GetInstanceAddr()), nil
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) error {

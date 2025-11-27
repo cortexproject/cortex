@@ -801,10 +801,6 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 
 	// Filter out users not owned by this shard.
 	for _, userID := range allUserIDs {
-		if !am.allowedTenants.IsAllowed(userID) {
-			level.Debug(am.logger).Log("msg", "ignoring alertmanager for user, not allowed", "user", userID)
-			continue
-		}
 		if am.isUserOwned(userID) {
 			ownedUserIDs = append(ownedUserIDs, userID)
 		}
@@ -823,6 +819,10 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 }
 
 func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
+	if !am.allowedTenants.IsAllowed(userID) {
+		return false
+	}
+
 	// If sharding is disabled, any alertmanager instance owns all users.
 	if !am.cfg.ShardingEnabled {
 		return true

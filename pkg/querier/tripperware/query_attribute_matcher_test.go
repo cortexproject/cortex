@@ -720,6 +720,14 @@ func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
 					},
 				},
 			},
+			{
+				Priority: 6,
+				QueryAttributes: []validation.QueryAttribute{
+					{
+						ApiType: "series",
+					},
+				},
+			},
 		},
 	},
 	}
@@ -730,9 +738,13 @@ func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
 	}
 
 	tests := map[string]testCase{
-		"should set priority based on api type": {
+		"should set priority based on api type for metadata": {
 			path:             "/api/v1/targets/metadata?limit=1",
 			expectedPriority: 7,
+		},
+		"should set priority based on api type for series": {
+			path:             "/api/v1/targets/series",
+			expectedPriority: 6,
 		},
 	}
 

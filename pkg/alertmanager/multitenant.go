@@ -91,8 +91,6 @@ type MultitenantAlertmanagerConfig struct {
 
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
-
-	CleanUpInterval time.Duration `yaml:"-"`
 }
 
 type ClusterConfig struct {

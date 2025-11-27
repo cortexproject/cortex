@@ -697,7 +697,7 @@ func (r *Ruler) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
-	if r.cfg.EnableSharding && r.userIndexUpdater != nil {
+	if r.userIndexUpdater != nil {
 		go r.userIndexUpdateLoop(ctx)
 	}
 

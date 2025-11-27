@@ -670,7 +670,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
-	if am.cfg.ShardingEnabled && am.userIndexUpdater != nil {
+	if am.userIndexUpdater != nil {
 		go am.userIndexUpdateLoop(ctx)
 	}
 

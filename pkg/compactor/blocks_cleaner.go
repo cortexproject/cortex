@@ -609,6 +609,12 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		c.tenantCleanDuration.WithLabelValues(userID).Set(time.Since(startTime).Seconds())
 	}()
 
+	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		begin := time.Now()
+		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
+		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
+	}
+
 	// Migrate block deletion marks to the global markers location. This operation is a best-effort.
 	if firstRun && c.cfg.BlockDeletionMarksMigrationEnabled {
 		if err := bucketindex.MigrateBlockDeletionMarksToGlobalLocation(ctx, c.bucketClient, userID, c.cfgProvider); err != nil {
@@ -753,12 +759,6 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction))
-
-	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-		begin = time.Now()
-		c.cleanPartitionedGroupInfo(ctx, w, userBucket, idx, userLogger, userID)
-		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
-	}
 	return nil
 }
 
@@ -780,7 +780,7 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 	}
 }
 
-func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, bucketUpdater *bucketindex.Updater, userBucket objstore.InstrumentedBucket, userIndex *bucketindex.Index, userLogger log.Logger, userID string) {
+func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, userID string) {
 	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
@@ -802,16 +802,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, bucketUpd
 					continue
 				}
 				if deletedBlocksCount > 0 {
-					idx, _, _, err := (*bucketUpdater).UpdateIndex(ctx, userIndex)
-					if err != nil {
-						level.Warn(userLogger).Log("msg", "unable to update bucket index with deleted blocks for partition group", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
-						continue
-					}
-					if err = bucketindex.WriteIndex(ctx, c.bucketClient, userID, c.cfgProvider, idx); err != nil {
-						level.Warn(userLogger).Log("msg", "unable to write updated bucket index with deleted blocks", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
-						continue
-					}
-					level.Info(userLogger).Log("msg", "updated index to include deleted blocks for completed partition group", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+					level.Info(userLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 				} else {
 					level.Info(userLogger).Log("msg", "deleting partition group now that all associated blocks have been deleted", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 					if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {

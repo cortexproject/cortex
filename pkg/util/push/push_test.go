@@ -141,7 +141,7 @@ func Benchmark_Handler(b *testing.B) {
 			for b.Loop() {
 				resp := httptest.NewRecorder()
 				handler.ServeHTTP(resp, req)
-				assert.Equal(b, http.StatusOK, resp.Code)
+				assert.Equal(b, http.StatusNoContent, resp.Code)
 				req.Body.(*resetReader).Reset()
 			}
 		})

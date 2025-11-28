@@ -93,6 +93,7 @@ func createPrometheusQueryResponse(resp *v1.Response, cortexInternal bool) (*tri
 		ErrorType: string(resp.ErrorType),
 		Error:     resp.Error,
 		Warnings:  resp.Warnings,
+		Infos:     resp.Infos,
 	}, nil
 }
 

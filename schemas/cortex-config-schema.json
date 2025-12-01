@@ -914,7 +914,7 @@
             },
             "clean_up_interval": {
               "default": "15m0s",
-              "description": "How frequently user index file is updated, it only take effect when user scan stratehy is user_index.",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.users-scanner.user-index.cleanup-interval",
               "x-format": "duration"
@@ -3116,7 +3116,7 @@
             },
             "clean_up_interval": {
               "default": "15m0s",
-              "description": "How frequently user index file is updated, it only take effect when user scan stratehy is user_index.",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
               "type": "string",
               "x-cli-flag": "blocks-storage.users-scanner.user-index.cleanup-interval",
               "x-format": "duration"
@@ -7427,7 +7427,7 @@
             },
             "clean_up_interval": {
               "default": "15m0s",
-              "description": "How frequently user index file is updated, it only take effect when user scan stratehy is user_index.",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
               "type": "string",
               "x-cli-flag": "ruler-storage.users-scanner.user-index.cleanup-interval",
               "x-format": "duration"

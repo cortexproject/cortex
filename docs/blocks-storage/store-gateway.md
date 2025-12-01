@@ -2017,8 +2017,8 @@ blocks_storage:
     # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
 
-    # How frequently user index file is updated, it only take effect when user
-    # scan stratehy is user_index.
+    # How frequently user index file is updated. It only takes effect when user
+    # scan strategy is user_index.
     # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
     [clean_up_interval: <duration> | default = 15m]
 

@@ -33,12 +33,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -137,7 +137,7 @@ func TestConverter(t *testing.T) {
 	require.Contains(t, syncedTenants, user)
 
 	// Mark user as deleted
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, users.NewTenantDeletionMark(time.Now())))
 
 	// Should clean sync folders
 	test.Poll(t, time.Minute, 0, func() any {
@@ -190,8 +190,8 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 
 	overrides := validation.NewOverrides(*limits, tenantLimits)
 
-	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy: cortex_tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, registry)
 	require.NoError(t, err)
 	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)

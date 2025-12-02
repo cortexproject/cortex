@@ -7,6 +7,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -133,4 +134,8 @@ func (c *ConfigRuleStore) DeleteRuleGroup(ctx context.Context, userID, namespace
 // DeleteNamespace is not implemented
 func (c *ConfigRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
 	return errors.New("not implemented by the config service rule store")
+}
+
+func (c *ConfigRuleStore) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
 }

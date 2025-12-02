@@ -15,10 +15,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
-	"github.com/cortexproject/cortex/pkg/storage/parquet"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
-
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
@@ -151,7 +149,7 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 	metaFile := path.Join(id.String(), block.MetaFilename)
 
 	// Get the block's meta.json file.
-	r, err := w.bkt.ReaderWithExpectedErrs(tsdb.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Get(ctx, metaFile)
+	r, err := w.bkt.ReaderWithExpectedErrs(bucket.IsOneOfTheExpectedErrors(w.bkt.IsObjNotFoundErr, w.bkt.IsAccessDeniedErr)).Get(ctx, metaFile)
 	if w.bkt.IsObjNotFoundErr(err) {
 		return nil, ErrBlockMetaNotFound
 	}

@@ -20,13 +20,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -536,7 +535,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	level.Info(userLogger).Log("msg", "completed deleting blocks for tenant marked for deletion", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
-	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
+	mark, err := users.ReadTenantDeletionMark(ctx, c.bucketClient, userID, userLogger)
 	if err != nil {
 		return errors.Wrap(err, "failed to read tenant deletion mark")
 	}
@@ -549,7 +548,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	if deletedBlocks.Load() > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
-		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
+		return errors.Wrap(users.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
 	}
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
 		return nil
@@ -567,7 +566,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
+	if err := users.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
 		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
 	return nil

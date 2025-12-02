@@ -45,10 +45,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestBucketStores_CustomerKeyError(t *testing.T) {
@@ -408,14 +407,14 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	tests := map[string]struct {
 		shardingStrategy ShardingStrategy
 		expectedStores   int32
-		allowedTenants   *util.AllowedTenants
+		allowedTenants   *users.AllowedTenants
 	}{
 		"when sharding is disabled all users should be synced": {
 			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), nil),
 			expectedStores:   3,
 		},
 		"sharding disabled, user-1 disabled": {
-			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), util.NewAllowedTenants(nil, []string{"user-1"})),
+			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), users.NewAllowedTenants(nil, []string{"user-1"})),
 			expectedStores:   2,
 		},
 		"when sharding is enabled only stores for filtered users should be created": {
@@ -435,16 +434,16 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", allUsers, nil)
-			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 			bucketClient.MockIter("user-1/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-1", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-1", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-2/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-2", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-2", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-3/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-3", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-3", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-3", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-3", "markers", users.TenantDeletionMarkFile), false, nil)
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)

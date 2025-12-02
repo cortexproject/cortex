@@ -7,8 +7,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
 // cachedScanner is a scanner that caches the result of the underlying scanner.
@@ -25,7 +23,7 @@ type cachedScanner struct {
 	hits     prometheus.Counter
 }
 
-func newCachedScanner(scanner Scanner, cfg tsdb.UsersScannerConfig, reg prometheus.Registerer) *cachedScanner {
+func newCachedScanner(scanner Scanner, cfg UsersScannerConfig, reg prometheus.Registerer) *cachedScanner {
 	return &cachedScanner{
 		scanner: scanner,
 		ttl:     cfg.CacheTTL,

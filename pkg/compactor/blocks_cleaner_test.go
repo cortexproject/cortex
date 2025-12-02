@@ -23,11 +23,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type testBlocksCleanerOptions struct {
@@ -84,8 +84,8 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, mbucket, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -163,15 +163,15 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	createDeletionMark(t, bucketClient, "user-2", block7, now.Add(-deletionDelay).Add(-time.Hour))            // Block reached the deletion threshold.
 
 	// Blocks for user-3, tenant marked for deletion.
-	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), bucketClient, "user-3", users.NewTenantDeletionMark(time.Now())))
 	block9 := createTSDBBlock(t, bucketClient, "user-3", 10, 30, nil)
 	block10 := createTSDBBlock(t, bucketClient, "user-3", 30, 50, nil)
 	createParquetMarker(t, bucketClient, "user-3", block10)
 
 	// User-4 with no more blocks, but couple of mark and debug files. Should be fully deleted.
-	user4Mark := tsdb.NewTenantDeletionMark(time.Now())
+	user4Mark := users.NewTenantDeletionMark(time.Now())
 	user4Mark.FinishedTime = time.Now().Unix() - 60 // Set to check final user cleanup.
-	require.NoError(t, tsdb.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), bucketClient, "user-4", user4Mark))
 	user4DebugMetaFile := path.Join("user-4", block.DebugMetas, "meta.json")
 	require.NoError(t, bucketClient.Upload(context.Background(), user4DebugMetaFile, strings.NewReader("some random content here")))
 
@@ -203,8 +203,8 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 
 	reg := prometheus.NewPedanticRegistry()
 	logger := log.NewNopLogger()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -269,7 +269,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		{"user-3", true},
 		{"user-4", options.user4FilesExist},
 	} {
-		exists, err := tsdb.TenantDeletionMarkExists(ctx, bucketClient, tc.user)
+		exists, err := users.TenantDeletionMarkExists(ctx, bucketClient, tc.user)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedExists, exists, tc.user)
 	}
@@ -397,8 +397,8 @@ func TestBlocksCleaner_ShouldContinueOnBlockDeletionFailure(t *testing.T) {
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -467,8 +467,8 @@ func TestBlocksCleaner_ShouldRebuildBucketIndexOnCorruptedOne(t *testing.T) {
 
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -530,8 +530,8 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -567,8 +567,8 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	))
 
 	// Override the users scanner to reconfigure it to only return a subset of users.
-	cleaner.usersScanner, err = users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	cleaner.usersScanner, err = users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cleaner.usersScanner = users.NewShardedScanner(cleaner.usersScanner, func(userID string) (bool, error) { return userID == "user-1", nil }, logger)
@@ -680,8 +680,8 @@ func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -913,8 +913,8 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -1019,8 +1019,8 @@ func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewPedanticRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, reg)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()
@@ -1171,8 +1171,8 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 	registry := prometheus.NewPedanticRegistry()
-	scanner, err := users.NewScanner(tsdb.UsersScannerConfig{
-		Strategy: tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, registry)
 	require.NoError(t, err)
 	cfgProvider := newMockConfigProvider()

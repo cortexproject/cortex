@@ -27,6 +27,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -195,8 +196,8 @@ func TestParquetBucketStoresWithCaching(t *testing.T) {
 
 	// Create storage configuration with caching enabled
 	storageCfg := cortex_tsdb.BlocksStorageConfig{
-		UsersScanner: cortex_tsdb.UsersScannerConfig{
-			Strategy: cortex_tsdb.UserScanStrategyList,
+		UsersScanner: users.UsersScannerConfig{
+			Strategy: users.UserScanStrategyList,
 		},
 		Bucket: bucket.Config{
 			Backend: "filesystem",

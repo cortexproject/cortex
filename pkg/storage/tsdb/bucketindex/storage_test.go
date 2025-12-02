@@ -14,12 +14,11 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
-
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
 )
 
 func TestReadIndex_ShouldReturnErrorIfIndexDoesNotExist(t *testing.T) {
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
 	require.Equal(t, ErrIndexNotFound, err)
@@ -30,7 +29,7 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 	const userID = "user-1"
 
 	ctx := context.Background()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	// Write a corrupted index.
 	require.NoError(t, bkt.Upload(ctx, path.Join(userID, IndexCompressedFilename), strings.NewReader("invalid!}")))
@@ -41,11 +40,11 @@ func TestReadIndex_ShouldReturnErrorIfIndexIsCorrupted(t *testing.T) {
 }
 
 func TestReadIndex_ShouldReturnErrorIfKeyAccessDeniedErr(t *testing.T) {
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bkt = &cortex_testutil.MockBucketFailure{
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+	bkt = &testutil.MockBucketFailure{
 		Bucket: bkt,
 		GetFailures: map[string]error{
-			path.Join("user-1", "bucket-index.json.gz"): cortex_testutil.ErrKeyAccessDeniedError,
+			path.Join("user-1", "bucket-index.json.gz"): testutil.ErrKeyAccessDeniedError,
 		},
 	}
 	idx, err := ReadIndex(context.Background(), bkt, "user-1", nil, log.NewNopLogger())
@@ -59,13 +58,13 @@ func TestReadIndex_ShouldReturnTheParsedIndexOnSuccess(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	// Mock some blocks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
-	cortex_testutil.MockStorageBlock(t, bkt, userID, 10, 20)
-	cortex_testutil.MockStorageBlock(t, bkt, userID, 20, 30)
-	cortex_testutil.MockStorageDeletionMark(t, bkt, userID, cortex_testutil.MockStorageBlock(t, bkt, userID, 30, 40))
+	testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+	testutil.MockStorageDeletionMark(t, bkt, userID, testutil.MockStorageBlock(t, bkt, userID, 30, 40))
 
 	// Write the index.
 	u := NewUpdater(bkt, userID, nil, logger)
@@ -85,9 +84,9 @@ func TestReadIndex_ShouldRetryUpload(t *testing.T) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
-	mBucket := &cortex_testutil.MockBucketFailure{
+	mBucket := &testutil.MockBucketFailure{
 		Bucket:         bkt,
 		UploadFailures: map[string]error{userID: errors.New("test")},
 	}
@@ -111,7 +110,7 @@ func BenchmarkReadIndex(b *testing.B) {
 	ctx := context.Background()
 	logger := log.NewNopLogger()
 
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(b)
+	bkt, _ := testutil.PrepareFilesystemBucket(b)
 
 	// Mock some blocks and deletion marks in the storage.
 	bkt = BucketWithGlobalMarkers(bkt)
@@ -119,10 +118,10 @@ func BenchmarkReadIndex(b *testing.B) {
 		minT := int64(i * 10)
 		maxT := int64((i + 1) * 10)
 
-		block := cortex_testutil.MockStorageBlock(b, bkt, userID, minT, maxT)
+		block := testutil.MockStorageBlock(b, bkt, userID, minT, maxT)
 
 		if i < numBlockDeletionMarks {
-			cortex_testutil.MockStorageDeletionMark(b, bkt, userID, block)
+			testutil.MockStorageDeletionMark(b, bkt, userID, block)
 		}
 	}
 
@@ -146,7 +145,7 @@ func BenchmarkReadIndex(b *testing.B) {
 
 func TestDeleteIndex_ShouldNotReturnErrorIfIndexDoesNotExist(t *testing.T) {
 	ctx := context.Background()
-	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
 
 	assert.NoError(t, DeleteIndex(ctx, bkt, "user-1", nil))
 }

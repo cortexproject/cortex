@@ -1,4 +1,4 @@
-package logical_plan
+package distributed_execution
 
 import (
 	"time"
@@ -44,7 +44,7 @@ func CreateTestLogicalPlan(qs string, start time.Time, end time.Time, step time.
 	if err != nil {
 		return nil, err
 	}
-	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
+	optimizedPlan, _ := logicalPlan.Optimize(append(logicalplan.DefaultOptimizers, &DistributedOptimizer{}))
 
 	return &optimizedPlan, nil
 }

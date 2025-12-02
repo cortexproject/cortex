@@ -11,8 +11,8 @@ import (
 	"github.com/go-kit/log/level"
 	"gopkg.in/yaml.v3"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -44,7 +44,7 @@ func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) 
 
 // GetOverrides retrieves overrides for a specific tenant
 func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -72,7 +72,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 
 // SetOverrides updates overrides for a specific tenant
 func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -118,7 +118,7 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 
 // DeleteOverrides removes tenant-specific overrides
 func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
-	userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return

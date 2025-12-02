@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
@@ -51,7 +52,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -72,7 +73,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.Nil(t, getManager(m, user))
 
 	// Make sure old manager was stopped.
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -94,7 +95,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.NotNil(t, newMgr)
 	require.True(t, mgr != newMgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 
@@ -107,7 +108,7 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	m.Stop()
 
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 }
@@ -167,7 +168,7 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 	groups := m.GetRules(user)
@@ -195,18 +196,18 @@ func TestSlowRuleGroupSyncDoesNotSlowdownListRules(t *testing.T) {
 	groups = m.GetRules(user)
 
 	require.Len(t, groups, len(groupsToReturn[0]), "expected %d but got %d", len(groupsToReturn[0]), len(groups))
-	test.Poll(t, 5*time.Second, len(groupsToReturn[1]), func() interface{} {
+	test.Poll(t, 5*time.Second, len(groupsToReturn[1]), func() any {
 		groups = m.GetRules(user)
 		return len(groups)
 	})
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
 	m.Stop()
 
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 }
@@ -360,4 +361,94 @@ func (m *mockRulesManager) Run() {
 func (m *mockRulesManager) Stop() {
 	m.running.Store(false)
 	close(m.done)
+}
+
+func TestValidateRuleGroup_AcceptsXFunctions(t *testing.T) {
+	manager := &DefaultMultiTenantManager{}
+
+	// Test rule with XFunction
+	ruleGroupWithXFunc := rulefmt.RuleGroup{
+		Name: "test_group",
+		Rules: []rulefmt.Rule{
+			{
+				Alert: "TestAlert",
+				Expr:  "xrate(cpu_usage[5m]) > 0.8", // XFunction
+			},
+		},
+	}
+
+	errs := manager.ValidateRuleGroup(ruleGroupWithXFunc)
+
+	// Should not have validation errors
+	if len(errs) != 0 {
+		t.Fatalf("Expected no validation errors for XFunction after fix, got: %v", errs)
+	}
+}
+
+func TestValidateRuleGroup_AcceptsStandardFunctions(t *testing.T) {
+	manager := &DefaultMultiTenantManager{}
+
+	// Test rule with standard function (should pass)
+	ruleGroupStandard := rulefmt.RuleGroup{
+		Name: "test_group",
+		Rules: []rulefmt.Rule{
+			{
+				Alert: "TestAlert",
+				Expr:  "rate(cpu_usage[5m]) > 0.8", // Standard function
+			},
+		},
+	}
+
+	errs := manager.ValidateRuleGroup(ruleGroupStandard)
+
+	// Should have no validation errors
+	if len(errs) != 0 {
+		t.Fatalf("Expected no validation errors for standard function, got: %v", errs)
+	}
+}
+
+func TestValidateRuleGroup_RejectsInvalidRules(t *testing.T) {
+	manager := &DefaultMultiTenantManager{}
+
+	// Test rule with invalid expression syntax
+	ruleGroupInvalid := rulefmt.RuleGroup{
+		Name: "test_group",
+		Rules: []rulefmt.Rule{
+			{
+				Alert: "TestAlert",
+				Expr:  "invalid_syntax_here >", // Invalid expression
+			},
+		},
+	}
+
+	errs := manager.ValidateRuleGroup(ruleGroupInvalid)
+
+	// Should have validation errors and they should be properly propagated
+	require.NotEmpty(t, errs, "Expected validation errors for invalid expression")
+	// Verify the error is a rulefmt.Error with proper group information
+	ruleErr, ok := errs[0].(*rulefmt.Error)
+	require.True(t, ok, "Error should be of type *rulefmt.Error")
+	require.Equal(t, "test_group", ruleErr.Group, "Error should contain correct group name")
+	require.Equal(t, "TestAlert", ruleErr.RuleName, "Error should contain correct rule name")
+}
+
+func TestValidateRuleGroup_RejectsEmptyGroupName(t *testing.T) {
+	manager := &DefaultMultiTenantManager{}
+
+	// Test rule group with empty name
+	ruleGroupEmptyName := rulefmt.RuleGroup{
+		Name: "", // Empty name
+		Rules: []rulefmt.Rule{
+			{
+				Alert: "TestAlert",
+				Expr:  "rate(cpu_usage[5m]) > 0.8",
+			},
+		},
+	}
+
+	errs := manager.ValidateRuleGroup(ruleGroupEmptyName)
+
+	// Should have validation errors
+	require.NotEmpty(t, errs, "Expected validation errors for empty group name")
+	require.Contains(t, errs[0].Error(), "rule group name must not be empty", "Error should mention empty group name")
 }

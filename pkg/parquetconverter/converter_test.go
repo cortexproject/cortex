@@ -33,12 +33,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -59,7 +59,19 @@ func TestConverter(t *testing.T) {
 	flagext.DefaultValues(limits)
 	limits.ParquetConverterEnabled = true
 
-	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits)
+	userSpecificSortColumns := []string{"cluster", "namespace"}
+
+	// Create a mock tenant limits implementation
+	tenantLimits := &mockTenantLimits{
+		limits: map[string]*validation.Limits{
+			user: {
+				ParquetConverterSortColumns: userSpecificSortColumns,
+				ParquetConverterEnabled:     true,
+			},
+		},
+	}
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, tenantLimits)
 
 	ctx := context.Background()
 
@@ -89,7 +101,7 @@ func TestConverter(t *testing.T) {
 
 	blocksConverted := []ulid.ULID{}
 
-	test.Poll(t, 3*time.Minute, 1, func() interface{} {
+	test.Poll(t, 3*time.Minute, 1, func() any {
 		blocksConverted = blocksConverted[:0]
 		for _, bIds := range blocks {
 			m, err := parquet.ReadConverterMark(ctx, bIds, userBucket, logger)
@@ -125,15 +137,15 @@ func TestConverter(t *testing.T) {
 	require.Contains(t, syncedTenants, user)
 
 	// Mark user as deleted
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, users.NewTenantDeletionMark(time.Now())))
 
 	// Should clean sync folders
-	test.Poll(t, time.Minute, 0, func() interface{} {
+	test.Poll(t, time.Minute, 0, func() any {
 		return len(c.listTenantsWithMetaSyncDirectories())
 	})
 
 	// Verify metrics after user deletion
-	test.Poll(t, time.Minute*10, true, func() interface{} {
+	test.Poll(t, time.Minute*10, true, func() any {
 		if testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)) != 0.0 {
 			return false
 		}
@@ -157,7 +169,7 @@ func prepareConfig() Config {
 	return cfg
 }
 
-func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits) (*Converter, log.Logger, prometheus.Gatherer) {
+func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits, tenantLimits validation.TenantLimits) (*Converter, log.Logger, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	blockRanges := cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
 	flagext.DefaultValues(&storageCfg)
@@ -176,10 +188,10 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 		flagext.DefaultValues(limits)
 	}
 
-	overrides := validation.NewOverrides(*limits, nil)
+	overrides := validation.NewOverrides(*limits, tenantLimits)
 
-	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy: cortex_tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, registry)
 	require.NoError(t, err)
 	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
@@ -235,6 +247,7 @@ func TestConverter_BlockConversionFailure(t *testing.T) {
 
 	// Create a new converter with test configuration
 	cfg := Config{
+		MaxRowsPerRowGroup:  1e6,
 		MetaSyncConcurrency: 1,
 		DataDir:             t.TempDir(),
 	}
@@ -290,6 +303,7 @@ func TestConverter_ShouldNotFailOnAccessDenyError(t *testing.T) {
 
 	// Create a new converter with test configuration
 	cfg := Config{
+		MaxRowsPerRowGroup:  1e6,
 		MetaSyncConcurrency: 1,
 		DataDir:             t.TempDir(),
 	}
@@ -383,4 +397,20 @@ func (r *RingMock) Get(key uint32, op ring.Operation, bufDescs []ring.InstanceDe
 			},
 		},
 	}, nil
+}
+
+// mockTenantLimits implements the validation.TenantLimits interface for testing
+type mockTenantLimits struct {
+	limits map[string]*validation.Limits
+}
+
+func (m *mockTenantLimits) ByUserID(userID string) *validation.Limits {
+	if limits, ok := m.limits[userID]; ok {
+		return limits
+	}
+	return nil
+}
+
+func (m *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return m.limits
 }

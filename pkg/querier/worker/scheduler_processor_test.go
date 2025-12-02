@@ -92,12 +92,12 @@ func (m *mockQuerierLoopClient) Context() context.Context {
 	return args.Get(0).(context.Context)
 }
 
-func (m *mockQuerierLoopClient) SendMsg(msg interface{}) error {
+func (m *mockQuerierLoopClient) SendMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }
 
-func (m *mockQuerierLoopClient) RecvMsg(msg interface{}) error {
+func (m *mockQuerierLoopClient) RecvMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }

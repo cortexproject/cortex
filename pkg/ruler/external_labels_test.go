@@ -39,11 +39,17 @@ func TestUserExternalLabels(t *testing.T) {
 			userExternalLabels:     labels.FromStrings("from", "cloud", "tag", "local"),
 			expectedExternalLabels: labels.FromStrings("from", "cloud", "tag", "local"),
 		},
+		{
+			name:                   "utf8",
+			removeBeforeTest:       true,
+			exists:                 false,
+			userExternalLabels:     labels.FromStrings("test.utf8.metric", "😄"),
+			expectedExternalLabels: labels.FromStrings("from", "cortex", "test.utf8.metric", "😄"),
+		},
 	}
 
 	const userID = "test-user"
 	for _, data := range tests {
-		data := data
 		t.Run(data.name, func(t *testing.T) {
 			if data.removeBeforeTest {
 				e.remove(userID)

@@ -42,6 +42,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -64,6 +65,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -145,15 +147,15 @@ func TestMatcherCache(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return ing.lifecycler.GetState()
 	})
 	ctx := user.InjectOrgID(context.Background(), userID)
 	// Lets have 1 key evicted
 	numberOfDifferentMatchers := cfg.MatchersCacheMaxItems + 1
 	callPerMatcher := 10
-	for j := 0; j < numberOfDifferentMatchers; j++ {
-		for i := 0; i < callPerMatcher; i++ {
+	for j := range numberOfDifferentMatchers {
+		for range callPerMatcher {
 			s := &mockQueryStreamServer{ctx: ctx}
 			err = ing.QueryStream(&client.QueryRequest{
 				StartTimestampMs: math.MinInt64,
@@ -212,7 +214,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return ing.lifecycler.GetState()
 	})
 
@@ -220,7 +222,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(numberOfTenants)
 
-	for i := 0; i < numberOfTenants; i++ {
+	for i := range numberOfTenants {
 		go func() {
 			defer wg.Done()
 			u := fmt.Sprintf("userId_%v", i)
@@ -236,8 +238,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 
 	wg.Wait()
 
-	ctx, c := context.WithCancel(context.Background())
-	defer c()
+	ctx := t.Context()
 
 	wg.Add(1)
 	go func() {
@@ -250,7 +251,7 @@ func TestIngesterDeletionRace(t *testing.T) {
 		ing.closeAndDeleteIdleUserTSDBs(ctx) //nolint:errcheck
 	}()
 
-	test.Poll(t, 5*time.Second, 0, func() interface{} {
+	test.Poll(t, 5*time.Second, 0, func() any {
 		return len(ing.getTSDBUsers())
 	})
 }
@@ -295,7 +296,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return ing.lifecycler.GetState()
 	})
 
@@ -418,7 +419,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	`), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset", "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Adding 5 metrics with only 1 label
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		lbls := []string{labels.MetricName, "metric_name", "comp1", "compValue1"}
 		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
@@ -427,7 +428,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 
 	// Adding 2 metrics with both labels (still below the limit)
 	lbls := []string{labels.MetricName, "metric_name", "comp1", "compValue1", "comp2", "compValue2"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 			[]labels.Labels{labels.FromStrings(append(lbls, "extraLabel", fmt.Sprintf("extraValue%v", i))...)}, samples, nil, nil, cortexpb.API))
 		require.NoError(t, err)
@@ -533,7 +534,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	tenantLimits.setLimits(userID, &limits)
 
 	lbls = []string{labels.MetricName, "test_default"}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		_, err = ing.Push(ctx, cortexpb.ToWriteRequest(
 			[]labels.Labels{labels.FromStrings(append(lbls, "series", strconv.Itoa(i))...)}, samples, nil, nil, cortexpb.API))
 		require.NoError(t, err)
@@ -696,7 +697,7 @@ func TestPushRace(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return ing.lifecycler.GetState()
 	})
 
@@ -710,8 +711,8 @@ func TestPushRace(t *testing.T) {
 	numberOfSeries := 100
 	wg := sync.WaitGroup{}
 	wg.Add(numberOfSeries * concurrentRequest)
-	for k := 0; k < numberOfSeries; k++ {
-		for i := 0; i < concurrentRequest; i++ {
+	for k := range numberOfSeries {
+		for range concurrentRequest {
 			go func() {
 				defer wg.Done()
 				_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels.FromStrings(labels.MetricName, "foo", "userId", userID, "k", strconv.Itoa(k))}, []cortexpb.Sample{sample1}, nil, nil, cortexpb.API))
@@ -789,7 +790,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
-		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		test.Poll(t, time.Second, ring.ACTIVE, func() any {
 			return ing.lifecycler.GetState()
 		})
 
@@ -900,7 +901,7 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
-		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		test.Poll(t, time.Second, ring.ACTIVE, func() any {
 			return ing.lifecycler.GetState()
 		})
 
@@ -957,7 +958,7 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 }
 
 func benchmarkData(nSeries int) (allLabels []labels.Labels, allSamples []cortexpb.Sample) {
-	for j := 0; j < nSeries; j++ {
+	for j := range nSeries {
 		lbls := chunk.BenchmarkLabels.Copy()
 
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -1015,7 +1016,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 		// Wait until it's ACTIVE
-		test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+		test.Poll(t, time.Second, ring.ACTIVE, func() any {
 			return ing.lifecycler.GetState()
 		})
 
@@ -2056,7 +2057,7 @@ func TestIngester_Push(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), userID)
 
 			// Wait until the ingester is ACTIVE
-			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -2286,7 +2287,7 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), userID)
 
 			// Wait until the ingester is ACTIVE
-			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -2325,7 +2326,7 @@ func TestIngester_Push_ShouldCorrectlyTrackMetricsInMultiTenantScenario(t *testi
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -2409,7 +2410,7 @@ func TestIngester_Push_DecreaseInactiveSeries(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -2472,7 +2473,7 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -2517,7 +2518,7 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 	defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return ingester.lifecycler.GetState()
 	})
 
@@ -2542,10 +2543,9 @@ func benchmarkIngesterPush(b *testing.B, limits validation.Limits, errorsExpecte
 
 	allLabels, allSamples := benchmarkData(series)
 
-	b.ResetTimer()
-	for iter := 0; iter < b.N; iter++ {
+	for iter := 0; b.Loop(); iter++ {
 		// Bump the timestamp on each of our test samples each time round the loop
-		for j := 0; j < samples; j++ {
+		for j := range samples {
 			for i := range allSamples {
 				allSamples[i].TimestampMs = startTime + int64(iter*samples+j+1)
 			}
@@ -2617,7 +2617,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				expectedErr := storage.ErrOutOfBounds.Error()
 
 				// Push out of bound samples.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
@@ -2628,7 +2628,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			prepareConfig: func(limits *validation.Limits, instanceLimits *InstanceLimits) bool { return true },
 			beforeBenchmark: func(b *testing.B, ingester *Ingester, numSeriesPerRequest int) {
 				// For each series, push a single sample with a timestamp greater than next pushes.
-				for i := 0; i < numSeriesPerRequest; i++ {
+				for i := range numSeriesPerRequest {
 					currTimeReq := cortexpb.ToWriteRequest(
 						[]labels.Labels{labels.FromStrings(labels.MetricName, metricName, "cardinality", strconv.Itoa(i))},
 						[]cortexpb.Sample{{Value: 1, TimestampMs: sampleTimestamp + 1}},
@@ -2644,7 +2644,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				expectedErr := storage.ErrOutOfOrderSample.Error()
 
 				// Push out of order samples.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 
 					verifyErrorString(b, err, expectedErr)
@@ -2669,7 +2669,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with a different name than the one already pushed.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-user series limit")
 				}
@@ -2693,7 +2693,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API)) // nolint:errcheck
 					verifyErrorString(b, err, "per-metric series limit")
 				}
@@ -2716,7 +2716,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "push rate reached")
 				}
@@ -2738,7 +2738,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
 				// Push series with different labels than the one already pushed.
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max tenants limit reached")
 				}
@@ -2757,7 +2757,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				require.NoError(b, err)
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "max series limit reached")
 				}
@@ -2775,7 +2775,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 				ingester.inflightPushRequests.Inc()
 			},
 			runBenchmark: func(b *testing.B, ingester *Ingester, metrics []labels.Labels, samples []cortexpb.Sample) {
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					_, err := ingester.Push(ctx, cortexpb.ToWriteRequest(metrics, samples, nil, nil, cortexpb.API))
 					verifyErrorString(b, err, "too many inflight push requests")
 				}
@@ -2817,7 +2817,7 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					defer services.StopAndAwaitTerminated(context.Background(), ingester) //nolint:errcheck
 
 					// Wait until the ingester is ACTIVE
-					test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+					test.Poll(b, 100*time.Millisecond, ring.ACTIVE, func() any {
 						return ingester.lifecycler.GetState()
 					})
 
@@ -2837,7 +2837,6 @@ func Benchmark_Ingester_PushOnError(b *testing.B) {
 					start := make(chan struct{})
 
 					b.ReportAllocs()
-					b.ResetTimer()
 
 					for c := 0; c < scenario.numConcurrentClients; c++ {
 						go func() {
@@ -2877,7 +2876,7 @@ func Test_Ingester_LabelNames(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -2938,7 +2937,7 @@ func Test_Ingester_LabelValues(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -2988,7 +2987,7 @@ func Test_Ingester_LabelValue_MaxInflightQueryRequest(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3104,7 +3103,7 @@ func Test_Ingester_Query(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3147,7 +3146,7 @@ func Test_Ingester_Query_MaxInflightQueryRequest(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3213,7 +3212,7 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3516,7 +3515,7 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3531,7 +3530,6 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 
 	// Run tests
 	for testName, testData := range tests {
-		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
 			req := &client.MetricsForLabelMatchersRequest{
@@ -3599,10 +3597,9 @@ func Benchmark_Ingester_MetricsForLabelMatchers(b *testing.B) {
 	// fetching labels from blocks.
 	i.Flush()
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		req := &client.MetricsForLabelMatchersRequest{
 			StartTimestampMs: math.MinInt64,
 			EndTimestampMs:   math.MaxInt64,
@@ -3630,7 +3627,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 	})
 
 	// Wait until it's ACTIVE.
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3645,7 +3642,7 @@ func createIngesterWithSeries(t testing.TB, userID string, numSeries, numSamples
 			metrics := make([]labels.Labels, 0, batchSize)
 			samples := make([]cortexpb.Sample, 0, batchSize)
 
-			for s := 0; s < batchSize; s++ {
+			for s := range batchSize {
 				metrics = append(metrics, labels.FromStrings("__name__", fmt.Sprintf("test_%d", o+s)))
 				samples = append(samples, cortexpb.Sample{
 					TimestampMs: ts,
@@ -3675,7 +3672,7 @@ func TestIngester_QueryStream(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 			// Wait until it's ACTIVE.
-			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -3759,7 +3756,7 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE.
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3769,7 +3766,7 @@ func TestIngester_QueryStreamManySamplesChunks(t *testing.T) {
 	const samplesCount = 1000000
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
-	for i := 0; i < samplesCount; i++ {
+	for i := range samplesCount {
 		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
 			TimestampMs: int64(i),
@@ -3946,6 +3943,134 @@ func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
 	}
 }
 
+func BenchmarkIngester_QueryStreamChunks_MatcherOptimization(b *testing.B) {
+	tests := map[string]struct {
+		matchers    []*labels.Matcher
+		description string
+	}{
+		"metric name with regex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+			},
+			description: "Metric name with .+ regex matchers",
+		},
+		"metric name with not equal empty": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", ""),
+				labels.MustNewMatcher(labels.MatchNotEqual, "pod", ""),
+			},
+			description: "Metric name with != \"\" matchers",
+		},
+		"metric name with sparse label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "sparse_label", ".+"),
+			},
+			description: "Metric name with sparse label matcher",
+		},
+		"complex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "env", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "pod", ".+"),
+			},
+			description: "Complex matchers with .+ regex",
+		},
+	}
+
+	for testName, testData := range tests {
+		b.Run(testName+"_optimization_disabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, false, testData.matchers, testData.description+" without optimization")
+		})
+		b.Run(testName+"_optimization_enabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, true, testData.matchers, testData.description+" with optimization")
+		})
+	}
+}
+
+func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatcherOptimization bool, matchers []*labels.Matcher, description string) {
+	cfg := defaultIngesterTestConfig(b)
+	cfg.EnableMatcherOptimization = enableMatcherOptimization
+
+	i, err := prepareIngesterWithBlocksStorage(b, cfg, prometheus.NewRegistry())
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for s := range 1000 {
+		// Create base labels
+		labelPairs := []string{
+			labels.MetricName, "test_metric",
+			"region", fmt.Sprintf("region-%d", s%10),
+			"job", fmt.Sprintf("job-%d", s%20),
+			"env", fmt.Sprintf("env-%d", s%5),
+			"pod", fmt.Sprintf("pod-%d", s%1000),
+		}
+
+		// Add sparse label only for half of the series
+		if s%2 == 0 {
+			labelPairs = append(labelPairs, "sparse_label", fmt.Sprintf("sparse-%d", s%50))
+		}
+
+		lbls := labels.FromStrings(labelPairs...)
+
+		samples := make([]cortexpb.Sample, 0, 5)
+		for t := range 5 {
+			samples = append(samples, cortexpb.Sample{
+				Value:       float64(s + t),
+				TimestampMs: int64(s*5 + t),
+			})
+		}
+
+		// Create labels slice with same length as samples
+		labelsSlice := make([]labels.Labels, len(samples))
+		for j := range labelsSlice {
+			labelsSlice[j] = lbls
+		}
+
+		req := cortexpb.ToWriteRequest(labelsSlice, samples, nil, nil, cortexpb.API)
+		_, err = i.Push(ctx, req)
+		require.NoError(b, err)
+	}
+
+	db, err := i.getTSDB(userID)
+	require.NoError(b, err)
+	require.NotNil(b, db)
+
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+	sm := (&storepb.ShardInfo{
+		TotalShards: 0,
+	}).Matcher(nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		numSeries, numSamples, _, numChunks, err := i.queryStreamChunks(
+			ctx, db, 0, 5000, matchers, sm, mockStream)
+
+		require.NoError(b, err)
+		require.Greater(b, numSeries, 0)
+		require.Greater(b, numSamples, 0)
+		require.Greater(b, numChunks, 0)
+
+		// Reset the mock stream for next iteration
+		mockStream.series = mockStream.series[:0]
+	}
+}
+
 func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
@@ -3956,7 +4081,7 @@ func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE.
-	test.Poll(b, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -3965,14 +4090,14 @@ func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 
 	samples := make([]cortexpb.Sample, 0, samplesCount)
 
-	for i := 0; i < samplesCount; i++ {
+	for i := range samplesCount {
 		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
 			TimestampMs: int64(i),
 		})
 	}
 
-	for s := 0; s < seriesCount; s++ {
+	for s := range seriesCount {
 		_, err = i.Push(ctx, writeRequestSingleSeries(labels.FromStrings("__name__", "foo", "l", strconv.Itoa(s)), samples))
 		require.NoError(b, err)
 	}
@@ -3990,10 +4115,9 @@ func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 
 	mockStream := &mockQueryStreamServer{ctx: ctx}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for ix := 0; ix < b.N; ix++ {
+	for b.Loop() {
 		err := i.QueryStream(req, mockStream)
 		require.NoError(b, err)
 	}
@@ -4336,7 +4460,7 @@ func TestIngester_shipBlocks(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -4382,7 +4506,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4395,7 +4519,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, users.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db, err := i.getTSDB(userID)
@@ -4428,14 +4552,14 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	bucket := objstore.NewInMemBucket()
 
 	// Write tenant deletion mark.
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, users.NewTenantDeletionMark(time.Now())))
 
 	i.TSDBState.bucket = bucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4473,7 +4597,7 @@ func TestIngester_sholdUpdateCacheShippedBlocks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4513,7 +4637,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4534,7 +4658,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 	go i.shipBlocks(ctx, nil)
 
 	// Wait until shipping starts.
-	test.Poll(t, 1*time.Second, activeShipping, func() interface{} {
+	test.Poll(t, 1*time.Second, activeShipping, func() any {
 		db.stateMtx.RLock()
 		defer db.stateMtx.RUnlock()
 		return db.state
@@ -4555,7 +4679,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4580,7 +4704,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 		}
 	}()
 
-	for k := 0; k < iterations; k++ {
+	for range iterations {
 		i.closeAndDeleteUserTSDBIfIdle(userID)
 	}
 
@@ -4608,7 +4732,7 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4657,7 +4781,7 @@ func TestIngester_ReadNotFailWhenTSDBIsBeingDeleted(t *testing.T) {
 			defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -4713,7 +4837,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -4731,7 +4855,7 @@ func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	lastUpdate := db.lastUpdate.Load()
 
 	// Wait until 1 second passes.
-	test.Poll(t, 1*time.Second, time.Now().Unix()+1, func() interface{} {
+	test.Poll(t, 1*time.Second, time.Now().Unix()+1, func() any {
 		return time.Now().Unix()
 	})
 
@@ -4952,7 +5076,7 @@ func TestIngester_flushing(t *testing.T) {
 			})
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -4979,7 +5103,7 @@ func TestIngester_ForFlush(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5048,7 +5172,7 @@ func Test_Ingester_UserStats(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5096,7 +5220,7 @@ func Test_Ingester_AllUserStats(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 	for _, series := range series {
@@ -5164,7 +5288,7 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 	for _, series := range series {
@@ -5240,7 +5364,7 @@ func TestIngesterCompactIdleBlock(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5322,7 +5446,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5363,7 +5487,7 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
     `), metricsToCheck...))
 
 	// Wait until TSDB has been closed and removed.
-	test.Poll(t, 10*time.Second, 0, func() interface{} {
+	test.Poll(t, 10*time.Second, 0, func() any {
 		i.stoppedMtx.Lock()
 		defer i.stoppedMtx.Unlock()
 		return len(i.TSDBState.dbs)
@@ -5467,7 +5591,7 @@ func TestHeadCompactionOnStartup(t *testing.T) {
 		head := db.Head()
 
 		l := labels.FromStrings("n", "v")
-		for i := 0; i < numFullChunks; i++ {
+		for i := range numFullChunks {
 			// Not using db.Appender() as it checks for compaction.
 			app := head.Appender(context.Background())
 			_, err := app.Append(0, l, int64(i)*chunkRange+1, 9.99)
@@ -5524,7 +5648,7 @@ func TestIngester_CloseTSDBsOnShutdown(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5563,7 +5687,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5575,7 +5699,7 @@ func TestIngesterNotDeleteUnshippedBlocks(t *testing.T) {
 
 	// Push some data to create 3 blocks.
 	ctx := user.InjectOrgID(context.Background(), userID)
-	for j := int64(0); j < 5; j++ {
+	for j := range int64(5) {
 		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "test"), 0, j*chunkRangeMilliSec)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
@@ -5665,7 +5789,7 @@ func TestIngesterPushErrorDuringForcedCompaction(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -5700,12 +5824,12 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	})
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
 	// Push few samples.
-	for j := 0; j < 5; j++ {
+	for range 5 {
 		pushSingleSampleWithMetadata(t, i)
 	}
 
@@ -5732,7 +5856,7 @@ func TestIngesterNoFlushWithInFlightRequest(t *testing.T) {
 	db.releaseAppendLock()
 
 	// Let's wait until all head series have been flushed.
-	test.Poll(t, 5*time.Second, uint64(0), func() interface{} {
+	test.Poll(t, 5*time.Second, uint64(0), func() any {
 		db, err := i.getTSDB(userID)
 		if err != nil || db == nil {
 			return false
@@ -5752,7 +5876,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 		limits          InstanceLimits
 		reqs            map[string][]*cortexpb.WriteRequest
 		expectedErr     error
-		expectedErrType interface{}
+		expectedErrType any
 	}{
 		"should succeed creating one user and series": {
 			limits: InstanceLimits{MaxInMemorySeries: 1, MaxInMemoryTenants: 1},
@@ -5861,7 +5985,7 @@ func TestIngester_PushInstanceLimits(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 			// Wait until the ingester is ACTIVE
-			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -5971,16 +6095,16 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
 	numberOfTenants := 100
 	wg := sync.WaitGroup{}
 
-	for k := 0; k < 10; k++ {
+	for k := range 10 {
 		wg.Add(numberOfTenants)
-		for j := 0; j < numberOfTenants; j++ {
+		for j := range numberOfTenants {
 			go func() {
 				defer wg.Done()
 				userId := fmt.Sprintf("user%v", j)
@@ -5994,7 +6118,7 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	}
 
 	wg.Add(numberOfTenants)
-	for j := 0; j < numberOfTenants; j++ {
+	for j := range numberOfTenants {
 		go func() {
 			defer wg.Done()
 			userId := fmt.Sprintf("user%v", j)
@@ -6032,7 +6156,7 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return ing.lifecycler.GetState()
 	})
 
@@ -6041,9 +6165,9 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	timeStamp := int64(60 * 1000)
 	seriesCreated := map[string]labels.Labels{}
 
-	for i := 0; i < numberOfMetricNames; i++ {
+	for i := range numberOfMetricNames {
 		metricName := fmt.Sprintf("metric_%v", i)
-		for j := 0; j < seriesPerMetricsNames; j++ {
+		for j := range seriesPerMetricsNames {
 			s := labels.FromStrings(labels.MetricName, metricName, "labelA", fmt.Sprintf("series_%v", j))
 			_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{s}, []cortexpb.Sample{{Value: 2, TimestampMs: timeStamp}}, nil, nil, cortexpb.API))
 			seriesCreated[s.String()] = s
@@ -6066,7 +6190,7 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 		Value: "metric_0",
 	}
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		tc := testCase{
 			matchers: []*client.LabelMatcher{nameMatcher},
 		}
@@ -6197,7 +6321,7 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 					db.postingCache.Clear()
 
 					// lets run 2 times to hit the cache
-					for i := 0; i < 2; i++ {
+					for range 2 {
 						verify(t, tc, r.startTs, r.endTs, r.hasSamples)
 					}
 
@@ -6323,7 +6447,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 			// Wait until the ingester is ACTIVE
-			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -6333,7 +6457,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 			totalSamples := 4 * 60
 			var samples = make([]cortexpb.Sample, 0, totalSamples)
 
-			for i := 0; i < totalSamples; i++ {
+			for i := range totalSamples {
 				samples = append(samples, cortexpb.Sample{
 					Value:       float64(i),
 					TimestampMs: int64(i * 60 * 1000),
@@ -6341,7 +6465,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 			}
 
 			lbls := make([]labels.Labels, 0, len(samples))
-			for j := 0; j < 10; j++ {
+			for j := range 10 {
 				for i := 0; i < len(samples); i++ {
 					lbls = append(lbls, labels.FromStrings(labels.MetricName, metricNames[i%len(metricNames)], "a", fmt.Sprintf("aaa%v", j)))
 				}
@@ -6499,7 +6623,7 @@ func TestExpendedPostingsCache(t *testing.T) {
 			require.Equal(t, int64(0), postingsForMatchersCalls.Load())
 
 			if c.shouldExpireDueInactivity {
-				test.Poll(t, c.cacheConfig.Blocks.Ttl+c.cacheConfig.Head.Ttl+cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval, 0, func() interface{} {
+				test.Poll(t, c.cacheConfig.Blocks.Ttl+c.cacheConfig.Head.Ttl+cfg.BlocksStorageConfig.TSDB.ExpandedCachingExpireInterval, 0, func() any {
 					size := 0
 					for _, userID := range i.getTSDBUsers() {
 						userDB, _ := i.getTSDB(userID)
@@ -6527,7 +6651,7 @@ func TestIngester_inflightPushRequests(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until the ingester is ACTIVE
-	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -6604,7 +6728,7 @@ func Test_Ingester_QueryExemplar_MaxInflightQueryRequest(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 
@@ -6627,7 +6751,7 @@ func generateSamplesForLabel(l labels.Labels, count int, sampleIntervalInMs int)
 	var lbls = make([]labels.Labels, 0, count)
 	var samples = make([]cortexpb.Sample, 0, count)
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		samples = append(samples, cortexpb.Sample{
 			Value:       float64(i),
 			TimestampMs: int64(i * sampleIntervalInMs),
@@ -6733,7 +6857,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 			// Wait until it's ACTIVE
-			test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 				return i.lifecycler.GetState()
 			})
 
@@ -6742,7 +6866,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 				require.NoError(t, err)
 
 				// Wait until initial state
-				test.Poll(t, 1*time.Second, testData.initialState, func() interface{} {
+				test.Poll(t, 1*time.Second, testData.initialState, func() any {
 					return i.lifecycler.GetState()
 				})
 			}
@@ -6758,7 +6882,7 @@ func Test_Ingester_ModeHandler(t *testing.T) {
 			require.Equal(t, testData.expectedState, i.lifecycler.GetState())
 			if testData.expectedIsReady {
 				// Wait for instance to own tokens
-				test.Poll(t, 1*time.Second, nil, func() interface{} {
+				test.Poll(t, 1*time.Second, nil, func() any {
 					return i.CheckReady(context.Background())
 				})
 				require.NoError(t, i.CheckReady(context.Background()))
@@ -6993,7 +7117,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 	// Add user ID.
@@ -7055,7 +7179,7 @@ func TestIngesterPanicHandling(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, i) //nolint:errcheck
 
 	// Wait until it's ACTIVE
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
 

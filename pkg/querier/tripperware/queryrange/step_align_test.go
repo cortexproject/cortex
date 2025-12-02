@@ -40,7 +40,6 @@ func TestStepAlign(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var result *tripperware.PrometheusRequest

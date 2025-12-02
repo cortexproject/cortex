@@ -15,9 +15,9 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -44,7 +44,7 @@ func NewQueryable(upstream storage.Queryable, maxConcurrent int, byPassWithSingl
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
 	return func(ctx context.Context, mint int64, maxt int64) ([]string, []storage.Querier, error) {
-		tenantIDs, err := tenant.TenantIDs(ctx)
+		tenantIDs, err := users.TenantIDs(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -244,7 +244,7 @@ type stringSliceFuncJob struct {
 // It doesn't require the output of the stringSliceFunc to be sorted, as results
 // of LabelValues are not sorted.
 func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, f stringSliceFunc, tenants map[string]struct{}, ids []string, queriers []storage.Querier) ([]string, annotations.Annotations, error) {
-	var jobs []interface{}
+	var jobs []any
 
 	for pos, id := range ids {
 		if tenants != nil {
@@ -260,7 +260,7 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 	}
 
 	parentCtx := ctx
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*stringSliceFuncJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)
@@ -339,7 +339,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	log, ctx := spanlogger.New(ctx, "mergeQuerier.Select")
 	defer log.Finish()
 	matchedValues, filteredMatchers := filterValuesByMatchers(m.idLabelName, ids, matchers...)
-	var jobs = make([]interface{}, len(matchedValues))
+	var jobs = make([]any, len(matchedValues))
 	var seriesSets = make([]storage.SeriesSet, len(matchedValues))
 	var jobPos int
 	for labelPos := range ids {
@@ -355,7 +355,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 	}
 
 	parentCtx := ctx
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*selectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

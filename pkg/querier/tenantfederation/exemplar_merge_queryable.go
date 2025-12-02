@@ -12,9 +12,9 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // NewExemplarQueryable returns a exemplarQueryable that iterates through all the
@@ -35,7 +35,7 @@ func NewExemplarQueryable(upstream storage.ExemplarQueryable, maxConcurrent int,
 
 func tenantExemplarQuerierCallback(exemplarQueryable storage.ExemplarQueryable) MergeExemplarQuerierCallback {
 	return func(ctx context.Context) ([]string, []storage.ExemplarQuerier, error) {
-		tenantIDs, err := tenant.TenantIDs(ctx)
+		tenantIDs, err := users.TenantIDs(ctx)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -144,7 +144,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 
 	// filter out tenants to query and unrelated matchers
 	allMatchedTenantIds, allUnrelatedMatchers := filterAllTenantsAndMatchers(m.idLabelName, m.tenantIds, matchers)
-	jobs := make([]interface{}, len(allMatchedTenantIds))
+	jobs := make([]any, len(allMatchedTenantIds))
 	results := make([][]exemplar.QueryResult, len(allMatchedTenantIds))
 
 	var jobPos int
@@ -162,7 +162,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 		jobPos++
 	}
 
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*exemplarSelectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

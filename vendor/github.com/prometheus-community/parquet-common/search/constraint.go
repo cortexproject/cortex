@@ -19,9 +19,11 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"sync"
 
 	"github.com/parquet-go/parquet-go"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus-community/parquet-common/storage"
@@ -31,12 +33,19 @@ import (
 type Constraint interface {
 	fmt.Stringer
 
-	// filter returns a set of non-overlapping increasing row indexes that may satisfy the constraint.
-	filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error)
 	// init initializes the constraint with respect to the file schema and projections.
 	init(f storage.ParquetFileView) error
+
 	// path is the path for the column that is constrained
 	path() string
+
+	// prefilter returns a set of non-overlapping increasing row indexes that may satisfy the constraint.
+	// This MUST be a superset of the real set of matching rows.
+	prefilter(rgIdx int, rr []RowRange) ([]RowRange, error)
+
+	// filter returns a set of non-overlapping increasing row indexes that do satisfy the constraint.
+	// This MUST be the precise set of matching rows.
+	filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error)
 }
 
 // MatchersToConstraints converts Prometheus label matchers into parquet search constraints.
@@ -154,23 +163,55 @@ func sortConstraintsBySortingColumns(cs []Constraint, sc []parquet.SortingColumn
 //
 // Returns a slice of RowRange that represent the rows satisfying all constraints,
 // or an error if any constraint fails to filter.
-func Filter(ctx context.Context, s storage.ParquetShard, rgIdx int, cs ...Constraint) ([]RowRange, error) {
-	rg := s.LabelsFile().RowGroups()[rgIdx]
+func Filter(ctx context.Context, f storage.ParquetShard, rgIdx int, cs ...Constraint) ([]RowRange, error) {
+	rg := f.LabelsFile().RowGroups()[rgIdx]
+
 	// Constraints for sorting columns are cheaper to evaluate, so we sort them first.
 	sc := rg.SortingColumns()
 
 	sortConstraintsBySortingColumns(cs, sc)
 
-	var err error
+	var (
+		err error
+		mu  sync.Mutex
+		g   errgroup.Group
+	)
+
+	// First pass prefilter with a quick index scan to find a superset of matching rows
 	rr := []RowRange{{From: int64(0), Count: rg.NumRows()}}
 	for i := range cs {
-		isPrimary := len(sc) > 0 && cs[i].path() == sc[0].Path()[0]
-		rr, err = cs[i].filter(ctx, rgIdx, isPrimary, rr)
+		rr, err = cs[i].prefilter(rgIdx, rr)
 		if err != nil {
-			return nil, fmt.Errorf("unable to filter with constraint %d: %w", i, err)
+			return nil, fmt.Errorf("unable to prefilter with constraint %d: %w", i, err)
 		}
 	}
-	return rr, nil
+	res := slices.Clone(rr)
+
+	if len(res) == 0 {
+		return nil, nil
+	}
+
+	// Second pass page filter find the real set of matching rows, done concurrently because it involves IO
+	for i := range cs {
+		g.Go(func() error {
+			isPrimary := len(sc) > 0 && cs[i].path() == sc[0].Path()[0]
+
+			srr, err := cs[i].filter(ctx, rgIdx, isPrimary, rr)
+			if err != nil {
+				return fmt.Errorf("unable to filter with constraint %d: %w", i, err)
+			}
+			mu.Lock()
+			res = intersectRowRanges(res, srr)
+			mu.Unlock()
+
+			return nil
+		})
+	}
+	if err = g.Wait(); err != nil {
+		return nil, fmt.Errorf("unable to do second pass filter: %w", err)
+	}
+
+	return res, nil
 }
 
 type PageToRead struct {
@@ -276,7 +317,7 @@ func (s *SymbolTable) ResetWithRange(pg parquet.Page, l, r int) {
 	}
 
 	sidx := 0
-	for i := 0; i < l; i++ {
+	for i := range l {
 		if s.defs[i] == 1 {
 			sidx++
 		}
@@ -288,6 +329,10 @@ func (s *SymbolTable) ResetWithRange(pg parquet.Page, l, r int) {
 		}
 	}
 	s.dict = dict
+}
+
+func Equal(path string, value parquet.Value) Constraint {
+	return &equalConstraint{pth: path, val: value}
 }
 
 type equalConstraint struct {
@@ -303,11 +348,7 @@ func (ec *equalConstraint) String() string {
 	return fmt.Sprintf("equal(%q,%q)", ec.pth, ec.val)
 }
 
-func Equal(path string, value parquet.Value) Constraint {
-	return &equalConstraint{pth: path, val: value}
-}
-
-func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error) {
+func (ec *equalConstraint) prefilter(rgIdx int, rr []RowRange) ([]RowRange, error) {
 	if len(rr) == 0 {
 		return nil, nil
 	}
@@ -320,7 +361,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		// If match empty, return rr (filter nothing)
 		// otherwise return empty
 		if ec.matches(parquet.ValueOf("")) {
-			return rr, nil
+			return slices.Clone(rr), nil
 		}
 		return []RowRange{}, nil
 	}
@@ -341,10 +382,90 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		return nil, fmt.Errorf("unable to read column index: %w", err)
 	}
 	res := make([]RowRange, 0)
+	for i := range cidx.NumPages() {
+		// If page does not intersect from, to; we can immediately discard it
+		pfrom := oidx.FirstRowIndex(i)
+		pcount := rg.NumRows() - pfrom
+		if i < oidx.NumPages()-1 {
+			pcount = oidx.FirstRowIndex(i+1) - pfrom
+		}
+		pto := pfrom + pcount
+		if pfrom > to {
+			break
+		}
+		if pto < from {
+			continue
+		}
+		// Page intersects [from, to] but we might be able to discard it with statistics
+		if cidx.NullPage(i) {
+			if ec.matches(parquet.ValueOf("")) {
+				res = append(res, RowRange{pfrom, pcount})
+			}
+			continue
+		}
 
-	readPgs := make([]PageToRead, 0, 10)
+		// If we are not matching the empty string ( which would be satisfied by Null too ), we can
+		// use page statistics to skip rows
+		minv, maxv := cidx.MinValue(i), cidx.MaxValue(i)
+		if !ec.matches(parquet.ValueOf("")) && !maxv.IsNull() && ec.comp(ec.val, maxv) > 0 {
+			if cidx.IsDescending() {
+				break
+			}
+			continue
+		}
+		if !ec.matches(parquet.ValueOf("")) && !minv.IsNull() && ec.comp(ec.val, minv) < 0 {
+			if cidx.IsAscending() {
+				break
+			}
+			continue
+		}
+		// We cannot discard the page through statistics but we might need to read it to see if it has the value
+		res = append(res, RowRange{From: pfrom, Count: pto - pfrom})
+	}
+	if len(res) == 0 {
+		return nil, nil
+	}
+	return intersectRowRanges(simplify(res), rr), nil
+}
 
-	for i := 0; i < cidx.NumPages(); i++ {
+func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error) {
+	if len(rr) == 0 {
+		return nil, nil
+	}
+	from, to := rr[0].From, rr[len(rr)-1].From+rr[len(rr)-1].Count
+
+	rg := ec.f.RowGroups()[rgIdx]
+
+	col, ok := rg.Schema().Lookup(ec.path())
+	if !ok {
+		// If match empty, return rr (filter nothing)
+		// otherwise return empty
+		if ec.matches(parquet.ValueOf("")) {
+			return slices.Clone(rr), nil
+		}
+		return []RowRange{}, nil
+	}
+
+	cc := rg.ColumnChunks()[col.ColumnIndex]
+	if skip, err := ec.skipByBloomfilter(cc); err != nil {
+		return nil, fmt.Errorf("unable to skip by bloomfilter: %w", err)
+	} else if skip {
+		return nil, nil
+	}
+
+	oidx, err := cc.OffsetIndex()
+	if err != nil {
+		return nil, fmt.Errorf("unable to read offset index: %w", err)
+	}
+	cidx, err := cc.ColumnIndex()
+	if err != nil {
+		return nil, fmt.Errorf("unable to read column index: %w", err)
+	}
+	var (
+		res     = make([]RowRange, 0)
+		readPgs = make([]PageToRead, 0, 10)
+	)
+	for i := range cidx.NumPages() {
 		poff, pcsz := oidx.Offset(i), oidx.CompressedPageSize(i)
 
 		// If page does not intersect from, to; we can immediately discard it
@@ -367,6 +488,7 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 			}
 			continue
 		}
+
 		// If we are not matching the empty string ( which would be satisfied by Null too ), we can
 		// use page statistics to skip rows
 		minv, maxv := cidx.MinValue(i), cidx.MaxValue(i)
@@ -386,7 +508,6 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		readPgs = append(readPgs, NewPageToRead(i, pfrom, pto, poff, pcsz))
 	}
 
-	// Did not find any pages
 	if len(readPgs) == 0 {
 		return intersectRowRanges(simplify(res), rr), nil
 	}
@@ -406,7 +527,6 @@ func (ec *equalConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if err != nil {
 		return nil, err
 	}
-
 	defer func() { _ = pgs.Close() }()
 
 	symbols := new(SymbolTable)
@@ -506,6 +626,7 @@ func (ec *equalConstraint) skipByBloomfilter(cc parquet.ColumnChunk) (bool, erro
 	return !ok, nil
 }
 
+// r MUST be a matcher of type Regex
 func Regex(path string, r *labels.Matcher) (Constraint, error) {
 	if r.Type != labels.MatchRegexp {
 		return nil, fmt.Errorf("unsupported matcher type: %s", r.Type)
@@ -537,7 +658,7 @@ func (rc *regexConstraint) String() string {
 	return fmt.Sprintf("regex(%v,%v)", rc.pth, rc.r.GetRegexString())
 }
 
-func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error) {
+func (rc *regexConstraint) prefilter(rgIdx int, rr []RowRange) ([]RowRange, error) {
 	if len(rr) == 0 {
 		return nil, nil
 	}
@@ -550,11 +671,11 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		// If match empty, return rr (filter nothing)
 		// otherwise return empty
 		if rc.matchesEmpty {
-			return rr, nil
+			return slices.Clone(rr), nil
 		}
 		return []RowRange{}, nil
 	}
-	cc := rg.ColumnChunks()[col.ColumnIndex]
+	cc := rg.ColumnChunks()[col.ColumnIndex].(*parquet.FileColumnChunk)
 
 	oidx, err := cc.OffsetIndex()
 	if err != nil {
@@ -565,12 +686,7 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 		return nil, fmt.Errorf("unable to read column index: %w", err)
 	}
 	res := make([]RowRange, 0)
-
-	readPgs := make([]PageToRead, 0, 10)
-
-	for i := 0; i < cidx.NumPages(); i++ {
-		poff, pcsz := uint64(oidx.Offset(i)), oidx.CompressedPageSize(i)
-
+	for i := range cidx.NumPages() {
 		// If page does not intersect from, to; we can immediately discard it
 		pfrom := oidx.FirstRowIndex(i)
 		pcount := rg.NumRows() - pfrom
@@ -608,20 +724,94 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 				continue
 			}
 		}
-
-		// We cannot discard the page through statistics but we might need to read it to see if it has the value
-		readPgs = append(readPgs, PageToRead{pfrom: pfrom, pto: pto, idx: i, off: int64(poff), csz: pcsz})
+		res = append(res, RowRange{From: pfrom, Count: pto - pfrom})
 	}
+	if len(res) == 0 {
+		return nil, nil
+	}
+	return intersectRowRanges(simplify(res), rr), nil
+}
 
-	// Did not find any pages
+func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, isPrimary bool, rr []RowRange) ([]RowRange, error) {
+	if len(rr) == 0 {
+		return nil, nil
+	}
+	from, to := rr[0].From, rr[len(rr)-1].From+rr[len(rr)-1].Count
+
+	rg := rc.f.RowGroups()[rgIdx]
+
+	col, ok := rg.Schema().Lookup(rc.path())
+	if !ok {
+		// If match empty, return rr (filter nothing)
+		// otherwise return empty
+		if rc.matchesEmpty {
+			return slices.Clone(rr), nil
+		}
+		return []RowRange{}, nil
+	}
+	cc := rg.ColumnChunks()[col.ColumnIndex].(*parquet.FileColumnChunk)
+
+	oidx, err := cc.OffsetIndex()
+	if err != nil {
+		return nil, fmt.Errorf("unable to read offset index: %w", err)
+	}
+	cidx, err := cc.ColumnIndex()
+	if err != nil {
+		return nil, fmt.Errorf("unable to read column index: %w", err)
+	}
+	var (
+		res     = make([]RowRange, 0)
+		readPgs = make([]PageToRead, 0, 10)
+	)
+	for i := range cidx.NumPages() {
+		poff, pcsz := oidx.Offset(i), oidx.CompressedPageSize(i)
+		// If page does not intersect from, to; we can immediately discard it
+		pfrom := oidx.FirstRowIndex(i)
+		pcount := rg.NumRows() - pfrom
+		if i < oidx.NumPages()-1 {
+			pcount = oidx.FirstRowIndex(i+1) - pfrom
+		}
+		pto := pfrom + pcount
+		if pfrom > to {
+			break
+		}
+		if pto < from {
+			continue
+		}
+		// Page intersects [from, to] but we might be able to discard it with statistics
+		if cidx.NullPage(i) {
+			if rc.matchesEmpty {
+				res = append(res, RowRange{pfrom, pcount})
+			}
+			continue
+		}
+		// If we have a special regular expression that works with statistics, we can use them to skip.
+		// This works for i.e.: 'pod_name=~"thanos-.*"' or 'status_code=~"403|404"'
+		minv, maxv := cidx.MinValue(i), cidx.MaxValue(i)
+		if !rc.minv.IsNull() && !rc.maxv.IsNull() {
+			if !rc.matchesEmpty && !maxv.IsNull() && rc.comp(rc.minv, maxv) > 0 {
+				if cidx.IsDescending() {
+					break
+				}
+				continue
+			}
+			if !rc.matchesEmpty && !minv.IsNull() && rc.comp(rc.maxv, minv) < 0 {
+				if cidx.IsAscending() {
+					break
+				}
+				continue
+			}
+		}
+		readPgs = append(readPgs, NewPageToRead(i, pfrom, pto, poff, pcsz))
+	}
 	if len(readPgs) == 0 {
 		return intersectRowRanges(simplify(res), rr), nil
 	}
 
 	dictOff, dictSz := rc.f.DictionaryPageBounds(rgIdx, col.ColumnIndex)
 
-	minOffset := uint64(readPgs[0].off)
-	maxOffset := readPgs[len(readPgs)-1].off + readPgs[len(readPgs)-1].csz
+	minOffset := uint64(readPgs[0].Offset())
+	maxOffset := readPgs[len(readPgs)-1].Offset() + readPgs[len(readPgs)-1].CompressedSize()
 
 	// If the gap between the first page and the dic page is less than PagePartitioningMaxGapSize,
 	// we include the dic to be read in the single read
@@ -633,7 +823,6 @@ func (rc *regexConstraint) filter(ctx context.Context, rgIdx int, primary bool, 
 	if err != nil {
 		return nil, err
 	}
-
 	defer func() { _ = pgs.Close() }()
 
 	symbols := new(SymbolTable)
@@ -705,8 +894,9 @@ func (rc *regexConstraint) init(f storage.ParquetFileView) error {
 		rc.maxv = slices.MaxFunc(sm, rc.comp)
 	} else if len(rc.r.Prefix()) > 0 {
 		rc.minv = parquet.ValueOf(rc.r.Prefix())
-		// 16 is the default prefix length, maybe we should read the actual value from somewhere?
-		rc.maxv = parquet.ValueOf(append([]byte(rc.r.Prefix()), bytes.Repeat([]byte{0xff}, 16)...))
+		// 16 is the default prefix length and the schema builder uses it by default, if we ever change it this would
+		//  break, and we'd need to read the length from the schema or from the metadata.
+		rc.maxv = parquet.ValueOf(append([]byte(rc.r.Prefix()), bytes.Repeat([]byte{0xff}, parquet.DefaultColumnIndexSizeLimit)...))
 	}
 
 	return nil
@@ -742,6 +932,12 @@ type notConstraint struct {
 
 func (nc *notConstraint) String() string {
 	return fmt.Sprintf("not(%v)", nc.c.String())
+}
+
+func (nc *notConstraint) prefilter(_ int, rr []RowRange) ([]RowRange, error) {
+	// NOT constraints cannot be prefiltered since the child constraint returns a superset of the matching row range,
+	// if we were to complement this row range the result here would be a subset and this would violate our interface.
+	return slices.Clone(rr), nil
 }
 
 func (nc *notConstraint) filter(ctx context.Context, rgIdx int, primary bool, rr []RowRange) ([]RowRange, error) {

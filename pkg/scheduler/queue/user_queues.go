@@ -374,7 +374,7 @@ func shuffleQueriersForUser(userSeed int64, queriersToSelect int, allSortedQueri
 	scratchpad = append(scratchpad, allSortedQueriers...)
 
 	last := len(scratchpad) - 1
-	for i := 0; i < queriersToSelect; i++ {
+	for range queriersToSelect {
 		r := rnd.Intn(last + 1)
 		queriers[scratchpad[r]] = struct{}{}
 		scratchpad[r], scratchpad[last] = scratchpad[last], scratchpad[r]
@@ -393,13 +393,13 @@ func getPriorityList(queryPriority validation.QueryPriority, totalQuerierCount i
 		for _, priority := range queryPriority.Priorities {
 			reservedQuerierShardSize := util.DynamicShardSize(priority.ReservedQueriers, totalQuerierCount)
 
-			for i := 0; i < reservedQuerierShardSize; i++ {
+			for range reservedQuerierShardSize {
 				priorityList = append(priorityList, priority.Priority)
 			}
 		}
 	}
 
-	if len(priorityList) > totalQuerierCount {
+	if len(priorityList) >= totalQuerierCount {
 		return []int64{}
 	}
 

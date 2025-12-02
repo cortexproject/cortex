@@ -34,13 +34,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_storage_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -206,8 +206,8 @@ func TestPartitionCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 	bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
 	bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 	bucketClient.MockIter(userID+"/"+PartitionedGroupDirectory, nil, nil)
 
 	cfg := prepareConfigForPartitioning()
@@ -215,7 +215,7 @@ func TestPartitionCompactor_SkipCompactionWhenCmkError(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -236,7 +236,7 @@ func TestPartitionCompactor_ShouldDoNothingOnNoUserBlocks(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -312,7 +312,7 @@ func TestPartitionCompactor_ShouldRetryCompactionOnFailureWhileDiscoveringUsersF
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -386,8 +386,8 @@ func TestPartitionCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASing
 	bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
 	bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
@@ -411,7 +411,7 @@ func TestPartitionCompactor_ShouldIncrementCompactionErrorIfFailedToCompactASing
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until all retry attempts have completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsFailed)
 	})
 
@@ -442,8 +442,8 @@ func TestPartitionCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
@@ -479,7 +479,7 @@ func TestPartitionCompactor_ShouldCompactAndRemoveUserFolder(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -498,10 +498,10 @@ func TestPartitionCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T)
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -557,7 +557,7 @@ func TestPartitionCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -650,8 +650,8 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ"}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 
 	// Block that has just been marked for deletion. It will not be deleted just yet, and it also will not be compacted.
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
@@ -693,7 +693,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -774,10 +774,10 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testin
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
 	bucketClient.MockIter("user-1/markers/", nil, nil)
@@ -834,7 +834,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksMarkedForSkipCompact(t *testin
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -868,8 +868,8 @@ func TestPartitionCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *t
 	bucketClient.MockIter("", []string{"user-1"}, nil)
 	bucketClient.MockIter("__markers__", []string{"__markers__/user-1/"}, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D"}, nil)
-	bucketClient.MockGet(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), `{"deletion_time": 1}`, nil)
-	bucketClient.MockUpload(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), nil)
+	bucketClient.MockGet(users.GetGlobalDeletionMarkPath("user-1"), `{"deletion_time": 1}`, nil)
+	bucketClient.MockUpload(users.GetGlobalDeletionMarkPath("user-1"), nil)
 
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
@@ -902,7 +902,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *t
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -965,7 +965,7 @@ func TestPartitionCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *t
 }
 
 func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
-	bucketClient, tmpDir := cortex_storage_testutil.PrepareFilesystemBucket(t)
+	bucketClient, tmpDir := testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 
 	b1 := createTSDBBlock(t, bucketClient, "user-1", 10, 20, map[string]string{"__name__": "Teste"})
@@ -1013,7 +1013,7 @@ func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
 		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
 			return true
 		}
@@ -1037,10 +1037,10 @@ func TestPartitionCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInst
 	bucketClient.MockGet(users.UserIndexCompressedFilename, "", nil)
 	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
 	bucketClient.MockIter("__markers__", []string{}, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-2"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-2"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-2"), false, nil)
 	bucketClient.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	//bucketClient.MockIterWithAttributes("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D", "user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "user-1/01FN6CDF3PNEWWRY5MPGJPE3EX/meta.json"}, nil)
 	bucketClient.MockIter("user-2/", []string{"user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ", "user-2/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", "user-2/01FN3V83ABR9992RF8WRJZ76ZQ/meta.json"}, nil)
@@ -1109,7 +1109,7 @@ func TestPartitionCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInst
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1162,8 +1162,8 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 		bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 		bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 		bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-		bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-		bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 		bucketClient.MockGet(userID+"/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
@@ -1214,7 +1214,7 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}
@@ -1299,7 +1299,24 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 
 			// Get all of the unique group hashes so that they can be used to ensure all groups were compacted
 			groupHashes[groupHash]++
-			bucketClient.MockGet(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", "", nil)
+
+			// Create mock partitioned group info for the new validation check
+			partitionedGroupInfo := PartitionedGroupInfo{
+				PartitionedGroupID: groupHash,
+				PartitionCount:     1,
+				Partitions: []Partition{
+					{
+						PartitionID: 0,
+						Blocks:      []ulid.ULID{ulid.MustParse(blockID)},
+					},
+				},
+				RangeStart:   blockTimes["startTime"],
+				RangeEnd:     blockTimes["endTime"],
+				CreationTime: time.Now().Unix(),
+				Version:      PartitionedGroupInfoVersion1,
+			}
+			partitionedGroupInfoContent, _ := json.Marshal(partitionedGroupInfo)
+			bucketClient.MockGet(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", string(partitionedGroupInfoContent), nil)
 			bucketClient.MockUpload(userID+"/partitioned-groups/"+fmt.Sprint(groupHash)+".json", nil)
 		}
 
@@ -1308,8 +1325,8 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 		bucketClient.MockGet(userID+"/markers/cleaner-visit-marker.json", "", nil)
 		bucketClient.MockUpload(userID+"/markers/cleaner-visit-marker.json", nil)
 		bucketClient.MockDelete(userID+"/markers/cleaner-visit-marker.json", nil)
-		bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(userID), false, nil)
-		bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(userID), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(userID), false, nil)
 		bucketClient.MockGet(userID+"/bucket-index.json.gz", "", nil)
 		bucketClient.MockUpload(userID+"/bucket-index.json.gz", nil)
 		bucketClient.MockUpload(userID+"/bucket-index-sync-status.json", nil)
@@ -1365,7 +1382,7 @@ func TestPartitionCompactor_ShouldCompactOnlyShardsOwnedByTheInstanceOnShardingE
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() interface{} {
+		cortex_testutil.Poll(t, 60*time.Second, 1.0, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 		})
 	}
@@ -1420,7 +1437,7 @@ func prepareForPartitioning(t *testing.T, compactorCfg Config, bucketClient objs
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
-	storageCfg.UsersScanner.Strategy = cortex_tsdb.UserScanStrategyUserIndex
+	storageCfg.UsersScanner.Strategy = users.UserScanStrategyUserIndex
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()
@@ -1594,7 +1611,7 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
 
 	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
 		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted) >= 1
 	})
 
@@ -1605,7 +1622,7 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
 	})
 
@@ -1676,8 +1693,8 @@ func TestPartitionCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
@@ -1712,7 +1729,7 @@ func TestPartitionCompactor_ShouldNotHangIfPlannerReturnNothing(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1736,8 +1753,8 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSy
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), bucket.ErrKeyPermissionDenied)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", bucket.ErrKeyPermissionDenied)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", bucket.ErrKeyPermissionDenied)
@@ -1766,7 +1783,7 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrDuringMetaSy
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
@@ -1790,8 +1807,8 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFrom
 	bucketClient.MockGet("user-1/markers/cleaner-visit-marker.json", "", nil)
 	bucketClient.MockUpload("user-1/markers/cleaner-visit-marker.json", nil)
 	bucketClient.MockDelete("user-1/markers/cleaner-visit-marker.json", nil)
-	bucketClient.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucketClient.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucketClient.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", mockBlockMetaJSON("01DTVP434PA9VFXSW2JKB3392D"), nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/deletion-mark.json", "", nil)
 	bucketClient.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/no-compact-mark.json", "", nil)
@@ -1820,9 +1837,163 @@ func TestPartitionCompactor_ShouldNotFailCompactionIfAccessDeniedErrReturnedFrom
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 
 	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() interface{} {
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
 		return prom_testutil.ToFloat64(c.CompactionRunsCompleted)
 	})
 
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+}
+
+func TestPartitionCompactionRaceCondition(t *testing.T) {
+	t.Run("planner_detects_missing_partition_group", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(12345)
+
+		// Create a planner that will try to process blocks but find missing partition group
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(time.Now().Unix())
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.Error(t, err, "Planner should fail when partition group is missing")
+		require.Nil(t, result, "Should not return any result when partition group is missing")
+		require.ErrorIs(t, err, plannerCompletedPartitionError, "Error should be completed partition error when partition group is missing")
+	})
+
+	t.Run("planner_detects_creation_time_mismatch", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(54321)
+		originalCreationTime := time.Now().Unix()
+
+		// Create initial partition group
+		partitionedGroupInfo := setup.createPartitionedGroupInfo(originalCreationTime)
+		_, err := UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *partitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Simulate cleaner deleting partition group
+		partitionGroupFile := GetPartitionedGroupFile(setup.partitionedGroupID)
+		err = setup.bucket.Delete(setup.ctx, partitionGroupFile)
+		require.NoError(t, err)
+
+		// Create new partition group with same ID but different creation time
+		newCreationTime := time.Now().Unix() + 200
+		newPartitionedGroupInfo := setup.createPartitionedGroupInfo(newCreationTime)
+		_, err = UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *newPartitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Test planner creation time validation
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(originalCreationTime) // OLD creation time
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.Error(t, err, "Planner should detect creation time mismatch")
+		require.ErrorIs(t, err, plannerCompletedPartitionError, "Should abort with completed partition error")
+		require.Nil(t, result, "Should not return any result when aborting")
+	})
+
+	t.Run("normal_operation_with_matching_creation_time", func(t *testing.T) {
+		setup := newRaceConditionTestSetup(99999)
+		creationTime := time.Now().Unix()
+
+		// Create partition group
+		partitionedGroupInfo := setup.createPartitionedGroupInfo(creationTime)
+		_, err := UpdatePartitionedGroupInfo(setup.ctx, setup.bucket, setup.logger, *partitionedGroupInfo)
+		require.NoError(t, err)
+
+		// Create planner and test with matching creation time
+		planner := setup.createPlanner()
+		cortexMetaExtensions := setup.createCortexMetaExtensions(creationTime) // MATCHING creation time
+		metasByMinTime := setup.createTestMetadata()
+
+		result, err := planner.PlanWithPartition(setup.ctx, metasByMinTime, cortexMetaExtensions, nil)
+
+		require.NoError(t, err, "Should not fail when creation times match")
+		require.NotNil(t, result, "Should return result when creation times match")
+	})
+}
+
+// raceConditionTestSetup provides common setup for race condition tests
+type raceConditionTestSetup struct {
+	ctx                context.Context
+	logger             log.Logger
+	bucket             objstore.InstrumentedBucket
+	userID             string
+	partitionedGroupID uint32
+	partitionID        int
+	partitionCount     int
+	ranges             []int64
+	noCompBlocksFunc   func() map[ulid.ULID]*metadata.NoCompactMark
+}
+
+func newRaceConditionTestSetup(partitionedGroupID uint32) *raceConditionTestSetup {
+	return &raceConditionTestSetup{
+		ctx:                context.Background(),
+		logger:             log.NewNopLogger(),
+		bucket:             objstore.WithNoopInstr(objstore.NewInMemBucket()),
+		userID:             "test-user",
+		partitionedGroupID: partitionedGroupID,
+		partitionID:        0,
+		partitionCount:     2,
+		ranges:             []int64{2 * 60 * 60 * 1000}, // 2 hours in milliseconds
+		noCompBlocksFunc:   func() map[ulid.ULID]*metadata.NoCompactMark { return nil },
+	}
+}
+
+func (s *raceConditionTestSetup) createPartitionedGroupInfo(creationTime int64) *PartitionedGroupInfo {
+	return &PartitionedGroupInfo{
+		PartitionedGroupID: s.partitionedGroupID,
+		PartitionCount:     s.partitionCount,
+		Partitions: []Partition{
+			{PartitionID: 0, Blocks: []ulid.ULID{ulid.MustNew(ulid.Now(), nil)}},
+			{PartitionID: 1, Blocks: []ulid.ULID{ulid.MustNew(ulid.Now(), nil)}},
+		},
+		RangeStart:   0,
+		RangeEnd:     2 * 60 * 60 * 1000,
+		CreationTime: creationTime,
+		Version:      PartitionedGroupInfoVersion1,
+	}
+}
+
+func (s *raceConditionTestSetup) createPlanner() *PartitionCompactionPlanner {
+	// Use the same metrics pattern as other tests
+	registerer := prometheus.NewPedanticRegistry()
+	metrics := newCompactorMetrics(registerer)
+
+	return NewPartitionCompactionPlanner(
+		s.ctx,
+		s.bucket,
+		s.logger,
+		s.ranges,
+		s.noCompBlocksFunc,
+		"test-compactor",
+		s.userID,
+		time.Second,
+		10*time.Minute,
+		time.Minute,
+		metrics,
+	)
+}
+
+func (s *raceConditionTestSetup) createCortexMetaExtensions(creationTime int64) *cortex_tsdb.CortexMetaExtensions {
+	return &cortex_tsdb.CortexMetaExtensions{
+		PartitionInfo: &cortex_tsdb.PartitionInfo{
+			PartitionedGroupID:           s.partitionedGroupID,
+			PartitionCount:               s.partitionCount,
+			PartitionID:                  s.partitionID,
+			PartitionedGroupCreationTime: creationTime,
+		},
+	}
+}
+
+func (s *raceConditionTestSetup) createTestMetadata() []*metadata.Meta {
+	return []*metadata.Meta{
+		{
+			BlockMeta: tsdb.BlockMeta{
+				ULID:    ulid.MustNew(ulid.Now(), nil),
+				MinTime: 0,
+				MaxTime: 2 * 60 * 60 * 1000,
+			},
+		},
+	}
 }

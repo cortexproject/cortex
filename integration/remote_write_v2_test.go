@@ -1,15 +1,14 @@
 //go:build integration_remote_write_v2
-// +build integration_remote_write_v2
 
 package integration
 
 import (
 	"math/rand"
-	"net/http"
 	"path"
 	"testing"
 	"time"
 
+	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -95,10 +94,9 @@ func TestIngesterRollingUpdate(t *testing.T) {
 
 	// series push
 	symbols1, series, expectedVector := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
-	res, err := c.PushV2(symbols1, series)
+	stats, err := c.PushV2(symbols1, series)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "1", "0", "0")
+	testPushHeader(t, stats, 1, 0, 0)
 
 	// sample
 	result, err := c.Query("test_series", now)
@@ -113,16 +111,14 @@ func TestIngesterRollingUpdate(t *testing.T) {
 	// histogram
 	histogramIdx := rand.Uint32()
 	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	res, err = c.PushV2(symbols2, histogramSeries)
+	writeStats, err := c.PushV2(symbols2, histogramSeries)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "1", "0")
+	testPushHeader(t, writeStats, 0, 1, 0)
 
 	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
-	res, err = c.PushV2(symbols3, histogramFloatSeries)
+	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "1", "0")
+	testPushHeader(t, writeStats, 0, 1, 0)
 
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
 	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
@@ -198,9 +194,9 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 
 	// series push
 	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
-	res, err := c.PushV2(symbols1, series)
-	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
+	_, err = c.PushV2(symbols1, series)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sent v2 request; got 2xx, but PRW 2.0 response header statistics indicate 0 samples, 0 histograms and 0 exemplars were accepted")
 
 	// sample
 	result, err := c.Query("test_series", now)
@@ -266,10 +262,9 @@ func TestIngest(t *testing.T) {
 
 	// series push
 	symbols1, series, expectedVector := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
-	res, err := c.PushV2(symbols1, series)
+	writeStats, err := c.PushV2(symbols1, series)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "1", "0", "0")
+	testPushHeader(t, writeStats, 1, 0, 0)
 
 	// sample
 	result, err := c.Query("test_series", now)
@@ -284,17 +279,15 @@ func TestIngest(t *testing.T) {
 	// histogram
 	histogramIdx := rand.Uint32()
 	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	res, err = c.PushV2(symbols2, histogramSeries)
+	writeStats, err = c.PushV2(symbols2, histogramSeries)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "1", "0")
+	testPushHeader(t, writeStats, 0, 1, 0)
 
 	// float histogram
 	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
-	res, err = c.PushV2(symbols3, histogramFloatSeries)
+	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "0", "1", "0")
+	testPushHeader(t, writeStats, 0, 1, 0)
 
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
 	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
@@ -379,10 +372,9 @@ func TestExemplar(t *testing.T) {
 		},
 	}
 
-	res, err := c.PushV2(symbols, timeseries)
+	writeStats, err := c.PushV2(symbols, timeseries)
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "1", "0", "1")
+	testPushHeader(t, writeStats, 1, 0, 1)
 
 	start := time.Now().Add(-time.Minute)
 	end := now.Add(time.Minute)
@@ -451,14 +443,13 @@ func Test_WriteStatWithReplication(t *testing.T) {
 	numSamples := 20
 	scrapeInterval := 30 * time.Second
 	symbols, series := e2e.GenerateV2SeriesWithSamples("test_series", start, scrapeInterval, 0, numSamples, prompb.Label{Name: "job", Value: "test"})
-	res, err := c.PushV2(symbols, []writev2.TimeSeries{series})
+	writeStats, err := c.PushV2(symbols, []writev2.TimeSeries{series})
 	require.NoError(t, err)
-	require.Equal(t, 200, res.StatusCode)
-	testPushHeader(t, res.Header, "20", "0", "0")
+	testPushHeader(t, writeStats, 20, 0, 0)
 }
 
-func testPushHeader(t *testing.T, header http.Header, expectedSamples, expectedHistogram, expectedExemplars string) {
-	require.Equal(t, expectedSamples, header.Get("X-Prometheus-Remote-Write-Samples-Written"))
-	require.Equal(t, expectedHistogram, header.Get("X-Prometheus-Remote-Write-Histograms-Written"))
-	require.Equal(t, expectedExemplars, header.Get("X-Prometheus-Remote-Write-Exemplars-Written"))
+func testPushHeader(t *testing.T, stats remoteapi.WriteResponseStats, expectedSamples, expectedHistogram, expectedExemplars int) {
+	require.Equal(t, expectedSamples, stats.Samples)
+	require.Equal(t, expectedHistogram, stats.Histograms)
+	require.Equal(t, expectedExemplars, stats.Exemplars)
 }

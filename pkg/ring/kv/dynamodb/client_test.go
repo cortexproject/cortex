@@ -38,7 +38,7 @@ func Test_CAS_ErrorNoRetry(t *testing.T) {
 	codecMock.On("DecodeMultiKey").Return(descMock, nil).Twice()
 	descMock.On("Clone").Return(descMock).Once()
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return nil, false, expectedErr
 	})
 
@@ -91,7 +91,7 @@ func Test_CAS_Backoff(t *testing.T) {
 			descMock.On("FindDifference", descMock).Return(descMock, []string{"childkey"}, nil).Times(tc.expectedBatchCalls)
 			codecMock.On("EncodeMultiKey").Return(map[string][]byte{}, nil).Times(tc.expectedBatchCalls)
 
-			err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 				return descMock, true, nil
 			})
 
@@ -115,7 +115,7 @@ func Test_CAS_Failed(t *testing.T) {
 
 	ddbMock.On("Query").Return(map[string]dynamodbItem{}, errors.Errorf("test"))
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return descMock, true, nil
 	})
 
@@ -145,7 +145,7 @@ func Test_CAS_Update(t *testing.T) {
 	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
 	ddbMock.On("Batch", context.TODO(), expectedBatch, []dynamodbKey{}).Return(false, nil).Once()
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return descMock, true, nil
 	})
 
@@ -172,7 +172,7 @@ func Test_CAS_Delete(t *testing.T) {
 	codecMock.On("EncodeMultiKey").Return(map[string][]byte{}, nil).Once()
 	ddbMock.On("Batch", context.TODO(), map[dynamodbKey]dynamodbItem{}, expectedBatch).Return(false, nil).Once()
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return descMock, true, nil
 	})
 
@@ -208,7 +208,7 @@ func Test_CAS_Update_Delete(t *testing.T) {
 	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
 	ddbMock.On("Batch", context.TODO(), expectedUpdateBatch, expectedDeleteBatch).Return(false, nil).Once()
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return descMock, true, nil
 	})
 
@@ -227,7 +227,7 @@ func Test_WatchKey(t *testing.T) {
 	ddbMock.On("Query").Return(map[string]dynamodbItem{}, nil)
 	codecMock.On("DecodeMultiKey").Return(descMock, nil)
 
-	c.WatchKey(context.TODO(), key, func(i interface{}) bool {
+	c.WatchKey(context.TODO(), key, func(i any) bool {
 		timesCalled++
 		ddbMock.AssertNumberOfCalls(t, "Query", timesCalled)
 		codecMock.AssertNumberOfCalls(t, "DecodeMultiKey", timesCalled)
@@ -245,7 +245,7 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 	ddbMock.On("Query").Return(map[string]dynamodbItem{}, nil).Once()
 	codecMock.On("DecodeMultiKey").Return(staleData, nil)
 
-	c.WatchKey(context.TODO(), key, func(i interface{}) bool {
+	c.WatchKey(context.TODO(), key, func(i any) bool {
 		ddbMock.AssertNumberOfCalls(t, "Query", 1)
 		codecMock.AssertNumberOfCalls(t, "DecodeMultiKey", 1)
 		require.EqualValues(t, staleData, i)
@@ -255,12 +255,48 @@ func Test_WatchKey_UpdateStale(t *testing.T) {
 	ddbMock.On("Query").Return(map[string]dynamodbItem{}, errors.Errorf("failed"))
 	staleData.On("Clone").Return(staleData).Once()
 
-	c.WatchKey(context.TODO(), key, func(i interface{}) bool {
+	c.WatchKey(context.TODO(), key, func(i any) bool {
 		ddbMock.AssertNumberOfCalls(t, "Query", 12)
 		codecMock.AssertNumberOfCalls(t, "DecodeMultiKey", 1)
 		require.EqualValues(t, staleData, i)
 		return false
 	})
+}
+
+func Test_WatchKey_AlwaysRetry(t *testing.T) {
+	casBackoffConfig := backoff.Config{
+		MinBackoff: 1 * time.Millisecond,
+		MaxBackoff: 1 * time.Millisecond,
+		MaxRetries: 5, // CAS should retry, but WatchKey should not
+	}
+
+	ddbMock := NewDynamodbClientMock()
+	codecMock := &CodecMock{}
+	c := NewClientMock(ddbMock, codecMock, TestLogger{}, prometheus.NewPedanticRegistry(), defaultPullTime, casBackoffConfig)
+
+	// Mock Query to always fail
+	ddbMock.On("Query").Return(map[string]dynamodbItem{}, errors.Errorf("query failed"))
+
+	// WatchKey should not retry on failure (MaxRetries=0), so it should only call Query once
+	// and then fall back to stale data
+	staleData := &DescMock{}
+	staleData.On("Clone").Return(staleData).Once()
+
+	// Set up some stale data first
+	c.updateStaleData(key, staleData, time.Now())
+
+	callCount := 0
+	c.WatchKey(context.TODO(), key, func(i any) bool {
+		callCount++
+		// Should only be called once with stale data after the first query fails
+		require.EqualValues(t, staleData, i)
+		return false // Stop watching
+	})
+
+	// Verify that Query was called exactly 11 times (1 initial + 10 retries due to hardcoded limit in WatchKey)
+	// This confirms WatchKey has its own retry logic separate from backoff MaxRetries
+	ddbMock.AssertNumberOfCalls(t, "Query", 11)
+	require.Equal(t, 1, callCount, "Callback should be called once with stale data")
 }
 
 func Test_CAS_UpdateStale(t *testing.T) {
@@ -288,7 +324,7 @@ func Test_CAS_UpdateStale(t *testing.T) {
 	codecMock.On("EncodeMultiKey").Return(expectedUpdated, nil).Once()
 	ddbMock.On("Batch", context.TODO(), expectedBatch, []dynamodbKey{}).Return(false, nil).Once()
 
-	err := c.CAS(context.TODO(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := c.CAS(context.TODO(), key, func(in any) (out any, retry bool, err error) {
 		return descMockResult, true, nil
 	})
 
@@ -310,7 +346,7 @@ func Test_WatchPrefix(t *testing.T) {
 	ddbMock.On("Query").Return(data, nil)
 	codecMock.On("Decode").Twice()
 
-	c.WatchPrefix(context.TODO(), key, func(key string, i interface{}) bool {
+	c.WatchPrefix(context.TODO(), key, func(key string, i any) bool {
 		require.EqualValues(t, string(data[key].data), i)
 		delete(data, key)
 		calls++
@@ -421,7 +457,7 @@ func (m *MockDynamodbClient) Batch(ctx context.Context, put map[dynamodbKey]dyna
 type TestLogger struct {
 }
 
-func (l TestLogger) Log(...interface{}) error {
+func (l TestLogger) Log(...any) error {
 	return nil
 }
 
@@ -435,23 +471,23 @@ func (*CodecMock) CodecID() string {
 }
 
 // Decode implements Codec.
-func (m *CodecMock) Decode(bytes []byte) (interface{}, error) {
+func (m *CodecMock) Decode(bytes []byte) (any, error) {
 	m.Called()
 	return string(bytes), nil
 }
 
 // Encode implements Codec.
-func (m *CodecMock) Encode(i interface{}) ([]byte, error) {
+func (m *CodecMock) Encode(i any) ([]byte, error) {
 	m.Called()
 	return []byte(i.(string)), nil
 }
 
-func (m *CodecMock) EncodeMultiKey(interface{}) (map[string][]byte, error) {
+func (m *CodecMock) EncodeMultiKey(any) (map[string][]byte, error) {
 	args := m.Called()
 	return args.Get(0).(map[string][]byte), nil
 }
 
-func (m *CodecMock) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+func (m *CodecMock) DecodeMultiKey(map[string][]byte) (any, error) {
 	args := m.Called()
 	var err error
 	if args.Get(1) != nil {
@@ -464,17 +500,17 @@ type DescMock struct {
 	mock.Mock
 }
 
-func (m *DescMock) Clone() interface{} {
+func (m *DescMock) Clone() any {
 	args := m.Called()
 	return args.Get(0)
 }
 
-func (m *DescMock) SplitByID() map[string]interface{} {
+func (m *DescMock) SplitByID() map[string]any {
 	args := m.Called()
-	return args.Get(0).(map[string]interface{})
+	return args.Get(0).(map[string]any)
 }
 
-func (m *DescMock) JoinIds(map[string]interface{}) {
+func (m *DescMock) JoinIds(map[string]any) {
 	m.Called()
 }
 
@@ -483,7 +519,7 @@ func (m *DescMock) GetItemFactory() proto.Message {
 	return args.Get(0).(proto.Message)
 }
 
-func (m *DescMock) FindDifference(that codec.MultiKey) (interface{}, []string, error) {
+func (m *DescMock) FindDifference(that codec.MultiKey) (any, []string, error) {
 	args := m.Called(that)
 	var err error
 	if args.Get(2) != nil {

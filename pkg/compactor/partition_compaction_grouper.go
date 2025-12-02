@@ -409,7 +409,7 @@ func (g *PartitionCompactionGrouper) partitionBlockGroup(group blocksGroupWithPa
 	}
 
 	partitions := make([]Partition, partitionCount)
-	for partitionID := 0; partitionID < partitionCount; partitionID++ {
+	for partitionID := range partitionCount {
 		partitionedGroup := partitionedGroups[partitionID]
 		blockIDs := make([]ulid.ULID, len(partitionedGroup.blocks))
 		for i, m := range partitionedGroup.blocks {
@@ -468,10 +468,7 @@ func (g *PartitionCompactionGrouper) calculatePartitionCount(group blocksGroupWi
 	if seriesCountLimit > 0 && totalSeriesCount > seriesCountLimit {
 		partitionNumberBasedOnSeries = g.findNearestPartitionNumber(float64(totalSeriesCount), float64(seriesCountLimit))
 	}
-	partitionNumber := partitionNumberBasedOnIndex
-	if partitionNumberBasedOnSeries > partitionNumberBasedOnIndex {
-		partitionNumber = partitionNumberBasedOnSeries
-	}
+	partitionNumber := max(partitionNumberBasedOnSeries, partitionNumberBasedOnIndex)
 	level.Info(g.logger).Log("msg", "calculated partition number for group", "partitioned_group_id", groupHash, "partition_number", partitionNumber, "total_index_size", totalIndexSizeInBytes, "index_size_limit", indexSizeLimit, "total_series_count", totalSeriesCount, "series_count_limit", seriesCountLimit, "group", group.String())
 	return partitionNumber
 }
@@ -642,6 +639,19 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 			level.Info(partitionedGroupLogger).Log("msg", "skipping group because partition is visited")
 			continue
 		}
+
+		// Validate that the partition group still exists before creating a visit marker
+		// This prevents the race condition where the cleaner deletes the partition group
+		// between the visit marker check and the visit marker creation
+		if _, err := ReadPartitionedGroupInfo(g.ctx, g.bkt, g.logger, partitionedGroupID); err != nil {
+			if errors.Is(err, ErrorPartitionedGroupInfoNotFound) {
+				level.Info(partitionedGroupLogger).Log("msg", "skipping group because partition group was deleted by cleaner", "partitioned_group_id", partitionedGroupID)
+			} else {
+				level.Warn(partitionedGroupLogger).Log("msg", "unable to read partition group info", "err", err, "partitioned_group_id", partitionedGroupID)
+			}
+			continue
+		}
+
 		partitionedGroupKey := createGroupKeyWithPartitionID(groupHash, partitionID, *partitionedGroup)
 
 		level.Info(partitionedGroupLogger).Log("msg", "found compactable group for user", "group", partitionedGroup.String())

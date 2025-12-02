@@ -6,13 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -51,11 +52,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore/bucketclient"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -391,7 +392,7 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 	// We do expect 1 API call for the user create with the getOrCreateNotifier()
 	wg.Add(1)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, "1")
 		wg.Done()
@@ -491,7 +492,6 @@ func TestNotifierSendExternalLabels(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		test := test
 
 		t.Run(test.name, func(t *testing.T) {
 			limits.setRulerExternalLabels(labels.New(test.userExternalLabels...))
@@ -1319,7 +1319,7 @@ func TestGetRules(t *testing.T) {
 			}
 
 			if tc.sharding {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -1348,7 +1348,7 @@ func TestGetRules(t *testing.T) {
 
 			if tc.sharding {
 				// update the State of the rulers in the ring based on tc.rulerStateMap
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -1551,7 +1551,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 	}
 
-	err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -1578,7 +1578,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 	})
 
 	// update the State of the rulers in the ring based on tc.rulerStateMap
-	err = kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err = kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -1768,7 +1768,7 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			}
 		}
 
-		err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 			d, _ := in.(*ring.Desc)
 			if d == nil {
 				d = ring.NewDesc()
@@ -1795,7 +1795,7 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 		})
 
 		// update the State of the rulers in the ring based on tc.rulerStateMap
-		err = kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+		err = kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 			d, _ := in.(*ring.Desc)
 			if d == nil {
 				d = ring.NewDesc()
@@ -2376,7 +2376,7 @@ func TestSharding(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -2444,9 +2444,7 @@ func userToken(user string, skip int) uint32 {
 }
 
 func sortTokens(tokens []uint32) []uint32 {
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
+	slices.Sort(tokens)
 	return tokens
 }
 
@@ -2505,7 +2503,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), r1))
 	t.Cleanup(r1.StopAsync)
 
-	err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 		d, _ := in.(*ring.Desc)
 		if d == nil {
 			d = ring.NewDesc()
@@ -2516,7 +2514,7 @@ func Test_LoadPartialGroups(t *testing.T) {
 
 	require.NoError(t, err)
 
-	test.Poll(t, time.Second*5, true, func() interface{} {
+	test.Poll(t, time.Second*5, true, func() any {
 		return len(r1.manager.GetRules(user2)) > 0 &&
 			len(r1.manager.GetRules(user3)) > 0
 	})
@@ -2619,7 +2617,10 @@ func verifyExpectedDeletedRuleGroupsForUser(t *testing.T, r *Ruler, userID strin
 
 func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*objstore.InMemBucket, rulestore.RuleStore) {
 	bucketClient := objstore.NewInMemBucket()
-	rs := bucketclient.NewBucketRuleStore(bucketClient, nil, log.NewNopLogger())
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	rs, err := bucketclient.NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
 
 	// "upload" rule groups
 	for _, key := range ruleGroups {
@@ -2728,7 +2729,6 @@ func TestSendAlerts(t *testing.T) {
 	}
 
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
@@ -3053,7 +3053,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -3087,9 +3087,7 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 					if loaded == nil {
 						loaded = map[string]rulespb.RuleGroupList{}
 					}
-					for k, v := range loaded {
-						actualRules[k] = v
-					}
+					maps.Copy(actualRules, loaded)
 				}
 			}
 
@@ -3242,7 +3240,7 @@ func TestGetShardSizeForUser(t *testing.T) {
 				require.NoError(t, services.StartAndAwaitRunning(context.Background(), r.lifecycler))
 			}
 
-			err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 				d, _ := in.(*ring.Desc)
 				if d == nil {
 					d = ring.NewDesc()

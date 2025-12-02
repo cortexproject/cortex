@@ -1,4 +1,4 @@
-
+# yaml-language-server: $schema=https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json
 # Configuration for running Cortex in single-process mode.
 # This should not be used in production.  It is only for getting started
 # and development.

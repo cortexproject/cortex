@@ -2,6 +2,7 @@ package querier
 
 import (
 	"context"
+	"maps"
 	"path"
 	"path/filepath"
 	"sort"
@@ -24,12 +25,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var (
@@ -257,17 +258,11 @@ pushJobsLoop:
 	} else {
 		// If an error occurred, we prefer to partially update the metas map instead of
 		// not updating it at all. At least we'll update blocks for the successful tenants.
-		for userID, metas := range resMetas {
-			d.userMetas[userID] = metas
-		}
+		maps.Copy(d.userMetas, resMetas)
 
-		for userID, metas := range resMetasLookup {
-			d.userMetasLookup[userID] = metas
-		}
+		maps.Copy(d.userMetasLookup, resMetasLookup)
 
-		for userID, deletionMarks := range resDeletionMarks {
-			d.userDeletionMarks[userID] = deletionMarks
-		}
+		maps.Copy(d.userDeletionMarks, resDeletionMarks)
 	}
 	d.userMx.Unlock()
 

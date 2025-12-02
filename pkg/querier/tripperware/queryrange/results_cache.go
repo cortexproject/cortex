@@ -32,10 +32,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -222,7 +222,7 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	respWithStats := r.GetStats() != "" && s.cacheQueryableSamplesStats
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -240,7 +240,7 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
-	key := s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+	key := s.splitter.GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), r)
 
 	var (
 		extents  []tripperware.Extent
@@ -293,11 +293,9 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, req tripperware.Request, r tripperware.Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
-	for _, v := range headerValues {
-		if v == noStoreValue {
-			level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
-			return false
-		}
+	if slices.Contains(headerValues, noStoreValue) {
+		level.Debug(util_log.WithContext(ctx, s.logger)).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+		return false
 	}
 
 	if !s.isAtModifierCachable(ctx, req, maxCacheTime) {

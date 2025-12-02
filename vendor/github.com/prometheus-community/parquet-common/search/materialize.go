@@ -146,10 +146,6 @@ func (m *Materializer) Materialize(ctx context.Context, hints *prom_storage.Sele
 		attribute.Int("row_ranges_count", len(rr)),
 	)
 
-	if err := m.checkRowCountQuota(rr); err != nil {
-		span.SetAttributes(attribute.String("quota_failure", "row_count"))
-		return nil, err
-	}
 	sLbls, err := m.MaterializeAllLabels(ctx, rgi, rr)
 	if err != nil {
 		return nil, errors.Wrapf(err, "error materializing labels")
@@ -393,6 +389,11 @@ func (m *Materializer) MaterializeAllLabels(ctx context.Context, rgi int, rr []R
 		attribute.Int64("total_rows_requested", totalRowsRequested),
 	)
 
+	if err := m.checkRowCountQuota(rr); err != nil {
+		span.SetAttributes(attribute.String("quota_failure", "row_count"))
+		return nil, err
+	}
+
 	// Get column indexes for all rows in the specified ranges
 	columnIndexes, err := m.getColumnIndexes(ctx, rgi, rr)
 	if err != nil {
@@ -535,6 +536,8 @@ func totalRows(rr []RowRange) int64 {
 	return res
 }
 
+// MaterializeChunks returns an iterator that materializes chunks for the given row ranges lazily.
+// It does not consume row count quotas, as opposed to the materialization of labels.
 func (m *Materializer) MaterializeChunks(ctx context.Context, rgi int, mint, maxt int64, rr []RowRange) (ChunksIteratorIterator, error) {
 	var err error
 	ctx, span := tracer.Start(ctx, "Materializer.MaterializeChunks")

@@ -71,7 +71,6 @@ func TestRequest(t *testing.T) {
 			expectedErr: queryapi.ErrStepTooSmall,
 		},
 	} {
-		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
 			r, err := http.NewRequest("POST", tc.url, http.NoBody)
@@ -265,7 +264,6 @@ func TestResponse(t *testing.T) {
 		},
 	}
 	for i, tc := range testCases {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
@@ -398,7 +396,6 @@ func TestResponseWithStats(t *testing.T) {
 			isProtobuf: false,
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			protobuf, err := proto.Marshal(tc.promBody)
@@ -1182,7 +1179,6 @@ func TestMergeAPIResponses(t *testing.T) {
 				},
 			},
 		}} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))

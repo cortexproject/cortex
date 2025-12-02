@@ -365,6 +365,7 @@ func (m *Metrics) InitializeFor(receiver map[string][]Integration) {
 		"webex",
 		"msteams",
 		"msteamsv2",
+		"incidentio",
 		"jira",
 		"rocketchat",
 	} {
@@ -637,7 +638,7 @@ type hashBuffer struct {
 }
 
 var hashBuffers = sync.Pool{
-	New: func() interface{} { return &hashBuffer{buf: make([]byte, 0, 1024)} },
+	New: func() any { return &hashBuffer{buf: make([]byte, 0, 1024)} },
 }
 
 func hashAlert(a *types.Alert) uint64 {
@@ -828,7 +829,7 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*types.A
 	}
 
 	for {
-		i++
+
 		// Always check the context first to not notify again.
 		select {
 		case <-ctx.Done():
@@ -852,6 +853,7 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*types.A
 		case <-tick.C:
 			now := time.Now()
 			retry, err := r.integration.Notify(ctx, sent...)
+			i++
 			dur := time.Since(now)
 			r.metrics.notificationLatencySeconds.WithLabelValues(r.labelValues...).Observe(dur.Seconds())
 			r.metrics.numNotificationRequestsTotal.WithLabelValues(r.labelValues...).Inc()

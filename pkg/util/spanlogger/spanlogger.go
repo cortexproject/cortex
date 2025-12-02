@@ -9,8 +9,8 @@ import (
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type loggerCtxMarker struct{}
@@ -30,16 +30,16 @@ type SpanLogger struct {
 }
 
 // New makes a new SpanLogger, where logs will be sent to the global logger.
-func New(ctx context.Context, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
+func New(ctx context.Context, method string, kvps ...any) (*SpanLogger, context.Context) {
 	return NewWithLogger(ctx, util_log.Logger, method, kvps...)
 }
 
 // NewWithLogger makes a new SpanLogger with a custom log.Logger to send logs
 // to. The provided context will have the logger attached to it and can be
 // retrieved with FromContext or FromContextWithFallback.
-func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
+func NewWithLogger(ctx context.Context, l log.Logger, method string, kvps ...any) (*SpanLogger, context.Context) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, method)
-	if ids, _ := tenant.TenantIDs(ctx); len(ids) > 0 {
+	if ids, _ := users.TenantIDs(ctx); len(ids) > 0 {
 		span.SetTag(TenantIDTagName, ids)
 	}
 	logger := &SpanLogger{
@@ -83,7 +83,7 @@ func FromContextWithFallback(ctx context.Context, fallback log.Logger) *SpanLogg
 
 // Log implements gokit's Logger interface; sends logs to underlying logger and
 // also puts the on the spans.
-func (s *SpanLogger) Log(kvps ...interface{}) error {
+func (s *SpanLogger) Log(kvps ...any) error {
 	s.Logger.Log(kvps...)
 	fields, err := otlog.InterleavedKVToFields(kvps...)
 	if err != nil {

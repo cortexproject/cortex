@@ -24,9 +24,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // In order to reimplement the prometheus rules API, a large amount of code was copied over
@@ -68,7 +68,7 @@ type RuleGroup struct {
 	Limit          int64     `json:"limit"`
 }
 
-type rule interface{}
+type rule any
 
 type alertingRule struct {
 	// State can be "pending", "firing", "inactive".
@@ -122,7 +122,7 @@ func NewAPI(r *Ruler, s rulestore.RuleStore, logger log.Logger) *API {
 
 func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		util_api.RespondError(logger, w, v1.ErrBadData, "no valid org id found", http.StatusBadRequest)
@@ -334,7 +334,7 @@ func parseExcludeAlerts(r *http.Request) (bool, error) {
 
 func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), a.logger)
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil || userID == "" {
 		level.Error(logger).Log("msg", "error extracting org id from context", "err", err)
 		util_api.RespondError(logger, w, v1.ErrBadData, "no valid org id found", http.StatusBadRequest)
@@ -404,7 +404,7 @@ var (
 	ErrBadRuleGroup = errors.New("unable to decoded rule group")
 )
 
-func marshalAndSend(output interface{}, w http.ResponseWriter, logger log.Logger) {
+func marshalAndSend(output any, w http.ResponseWriter, logger log.Logger) {
 	d, err := yaml.Marshal(&output)
 	if err != nil {
 		level.Error(logger).Log("msg", "error marshalling yaml rule groups", "err", err)
@@ -473,7 +473,7 @@ func parseGroupName(params map[string]string) (string, error) {
 // and returns them in that order. It also allows users to require a namespace or group name and return
 // an error if it they can not be parsed.
 func parseRequest(req *http.Request, requireNamespace, requireGroup bool) (string, string, string, error) {
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil {
 		return "", "", "", user.ErrNoOrgID
 	}

@@ -73,16 +73,15 @@ func TestMergeExemplars(t *testing.T) {
 				{Labels: labels2, Exemplars: []cortexpb.Exemplar{exemplar3, exemplar4}}},
 		},
 	} {
-		c := c
 		t.Run(fmt.Sprint("test", i), func(t *testing.T) {
 			t.Parallel()
 			rA := &ingester_client.ExemplarQueryResponse{Timeseries: c.seriesA}
 			rB := &ingester_client.ExemplarQueryResponse{Timeseries: c.seriesB}
-			e := mergeExemplarQueryResponses([]interface{}{rA, rB})
+			e := mergeExemplarQueryResponses([]any{rA, rB})
 			require.Equal(t, c.expected, e.Timeseries)
 			if !c.nonReversible {
 				// Check the other way round too
-				e = mergeExemplarQueryResponses([]interface{}{rB, rA})
+				e = mergeExemplarQueryResponses([]any{rB, rA})
 				require.Equal(t, c.expected, e.Timeseries)
 			}
 		})

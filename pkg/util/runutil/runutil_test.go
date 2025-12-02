@@ -16,7 +16,7 @@ func TestCloseWithLogOnErr(t *testing.T) {
 
 		CloseWithLogOnErr(&logger, closer, "closing failed")
 
-		assert.Equal(t, []interface{}{
+		assert.Equal(t, []any{
 			"level", level.WarnValue(), "msg", "detected close error", "err", "closing failed: an error",
 		}, logger.keyvals)
 	})
@@ -49,10 +49,10 @@ func (c fakeCloser) Close() error {
 }
 
 type fakeLogger struct {
-	keyvals []interface{}
+	keyvals []any
 }
 
-func (l *fakeLogger) Log(keyvals ...interface{}) error {
+func (l *fakeLogger) Log(keyvals ...any) error {
 	l.keyvals = keyvals
 	return nil
 }

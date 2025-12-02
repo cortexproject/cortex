@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -33,7 +34,6 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
@@ -42,6 +42,7 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -103,7 +104,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsersCleanupService
+	activeUsers *users.ActiveUsersCleanupService
 
 	ingestionRate          *util_math.EwmaRate
 	inflightPushRequests   atomic.Int64
@@ -184,6 +185,9 @@ type Config struct {
 
 	// OTLPConfig
 	OTLPConfig OTLPConfig `yaml:"otlp"`
+
+	// Inject from global config
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 type InstanceLimits struct {
@@ -230,7 +234,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate(limits validation.Limits) error {
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -454,7 +458,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	})
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
+	d.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
@@ -596,6 +600,18 @@ func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 	}
 }
 
+// Remove all labels with empty values from a slice of LabelPairs.
+func removeEmptyLabels(labels *[]cortexpb.LabelAdapter) {
+	i := 0
+	for j := 0; j < len(*labels); j++ {
+		if (*labels)[j].Value != "" {
+			(*labels)[i] = (*labels)[j]
+			i++
+		}
+	}
+	*labels = (*labels)[:i]
+}
+
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
@@ -628,7 +644,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -690,7 +706,15 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	var validationError = true
+	defer func() {
+		if validationError {
+			cortexpb.ReuseSlice(req.Timeseries)
+			req.Free()
+		}
+	}()
+
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -744,9 +768,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
-			// Ensure the request slice is reused if the series get deduped.
-			cortexpb.ReuseSlice(req.Timeseries)
-
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
@@ -757,7 +778,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
-
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
@@ -779,18 +799,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(nhSeriesKeys) == 0 && len(metadataKeys) == 0 {
-		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
@@ -827,6 +841,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	if len(keys) == 0 && nativeHistogramErr != nil {
 		return nil, nativeHistogramErr
 	}
+
+	//DoBatch will be responsible to call cleanup after all async ingester requests finish.
+	validationError = false
 
 	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
 	if err != nil {
@@ -1011,6 +1028,10 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
 	for _, ts := range req.Timeseries {
+		if len(ts.Labels) == 0 {
+			return nil, nil, nil, nil, 0, 0, 0, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", "empty labels found")
+		}
+
 		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
 			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
 			if cluster != "" && replica != "" {
@@ -1071,6 +1092,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		for _, labelName := range limits.DropLabels {
 			removeLabel(labelName, &ts.Labels)
 		}
+
+		// Make sure no label with empty value is sent to the Ingester.
+		removeEmptyLabels(&ts.Labels)
 
 		if len(ts.Labels) == 0 {
 			d.validateMetrics.DiscardedSamples.WithLabelValues(
@@ -1178,7 +1202,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1243,8 +1267,8 @@ func getErrorStatus(err error) string {
 }
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
-func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, ingester_client.IngesterClient) (interface{}, error)) ([]interface{}, error) {
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, zoneResultsQuorum, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (interface{}, error) {
+func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, ingester_client.IngesterClient) (any, error)) ([]any, error) {
+	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, zoneResultsQuorum, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -1254,7 +1278,7 @@ func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring
 	})
 }
 
-func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, limiter *limiter.QueryLimiter) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, to model.Time, labelName model.LabelName, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, limiter *limiter.QueryLimiter) ([]any, error), matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelValues", opentracing.Tags{
 		"name":  labelName,
 		"start": from.Unix(),
@@ -1296,8 +1320,8 @@ func (d *Distributor) LabelValuesForLabelNameCommon(ctx context.Context, from, t
 
 // LabelValuesForLabelName returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to model.Time, labelName model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]any, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			resp, err := client.LabelValues(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1312,8 +1336,8 @@ func (d *Distributor) LabelValuesForLabelName(ctx context.Context, from, to mode
 
 // LabelValuesForLabelNameStream returns all the label values that are associated with a given label name.
 func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, to model.Time, labelName model.LabelName, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	return d.LabelValuesForLabelNameCommon(ctx, from, to, labelName, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelValuesRequest, queryLimiter *limiter.QueryLimiter) ([]any, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			stream, err := client.LabelValuesStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1339,7 +1363,7 @@ func (d *Distributor) LabelValuesForLabelNameStream(ctx context.Context, from, t
 	}, matchers...)
 }
 
-func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, limiter *limiter.QueryLimiter) ([]interface{}, error), matchers ...*labels.Matcher) ([]string, error) {
+func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time, hints *storage.LabelHints, f func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, limiter *limiter.QueryLimiter) ([]any, error), matchers ...*labels.Matcher) ([]string, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Distributor.LabelNames", opentracing.Tags{
 		"start": from.Unix(),
 		"end":   to.Unix(),
@@ -1382,8 +1406,8 @@ func (d *Distributor) LabelNamesCommon(ctx context.Context, from, to model.Time,
 }
 
 func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time, hints *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, hints, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	return d.LabelNamesCommon(ctx, from, to, hints, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]any, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			stream, err := client.LabelNamesStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1411,8 +1435,8 @@ func (d *Distributor) LabelNamesStream(ctx context.Context, from, to model.Time,
 
 // LabelNames returns all the label names.
 func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint *storage.LabelHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]string, error) {
-	return d.LabelNamesCommon(ctx, from, to, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]interface{}, error) {
-		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	return d.LabelNamesCommon(ctx, from, to, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.LabelNamesRequest, queryLimiter *limiter.QueryLimiter) ([]any, error) {
+		return d.ForReplicationSet(ctx, rs, d.cfg.ZoneResultsQuorumMetadata, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			resp, err := client.LabelNames(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1429,7 +1453,7 @@ func (d *Distributor) LabelNames(ctx context.Context, from, to model.Time, hint 
 // MetricsForLabelMatchers gets the metrics that match said matchers
 func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			resp, err := client.MetricsForLabelMatchers(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1458,7 +1482,7 @@ func (d *Distributor) MetricsForLabelMatchers(ctx context.Context, from, through
 
 func (d *Distributor) MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	return d.metricsForLabelMatchersCommon(ctx, from, through, hint, func(ctx context.Context, rs ring.ReplicationSet, req *ingester_client.MetricsForLabelMatchersRequest, metrics *map[model.Fingerprint]labels.Labels, mutex *sync.Mutex, queryLimiter *limiter.QueryLimiter) error {
-		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		_, err := d.ForReplicationSet(ctx, rs, false, partialDataEnabled, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 			stream, err := client.MetricsForLabelMatchersStream(ctx, req)
 			if err != nil {
 				return nil, err
@@ -1533,7 +1557,7 @@ func (d *Distributor) MetricsMetadata(ctx context.Context, req *ingester_client.
 	}
 
 	// TODO(gotjosh): We only need to look in all the ingesters if shardByAllLabels is enabled.
-	resps, err := d.ForReplicationSet(ctx, replicationSet, d.cfg.ZoneResultsQuorumMetadata, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, d.cfg.ZoneResultsQuorumMetadata, false, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 		return client.MetricsMetadata(ctx, req)
 	})
 	if err != nil {
@@ -1575,7 +1599,7 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 	replicationSet.MaxErrors = 0
 
 	req := &ingester_client.UserStatsRequest{}
-	resps, err := d.ForReplicationSet(ctx, replicationSet, false, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+	resps, err := d.ForReplicationSet(ctx, replicationSet, false, false, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
 		return client.UserStats(ctx, req)
 	})
 	if err != nil {
@@ -1602,26 +1626,31 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 
 // AllUserStats returns statistics about all users.
 // Note it does not divide by the ReplicationFactor like UserStats()
-func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, error) {
+func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, int, error) {
 	// Add up by user, across all responses from ingesters
 	perUserTotals := make(map[string]ingester.UserStats)
+	queriedIngesterNum := 0
 
 	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
-	// Not using d.ForReplicationSet(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	for _, ingester := range replicationSet.Instances {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		resp, err := client.(ingester_client.IngesterClient).AllUserStats(ctx, req)
 		if err != nil {
-			return nil, err
+			// During an ingester rolling update, an ingester might be temporarily
+			// in stopping or starting state. Therefore, returning an error would
+			// cause the API to fail during the update. This is an expected error in
+			// that scenario, we continue the loop to work API.
+			continue
 		}
+		queriedIngesterNum++
 		for _, u := range resp.Stats {
 			s := perUserTotals[u.UserId]
 			s.IngestionRate += u.Data.IngestionRate
@@ -1630,6 +1659,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 			s.NumSeries += u.Data.NumSeries
 			s.ActiveSeries += u.Data.ActiveSeries
 			s.LoadedBlocks += u.Data.LoadedBlocks
+			s.QueriedIngesters += 1
 			perUserTotals[u.UserId] = s
 		}
 	}
@@ -1646,22 +1676,23 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 				NumSeries:         stats.NumSeries,
 				ActiveSeries:      stats.ActiveSeries,
 				LoadedBlocks:      stats.LoadedBlocks,
+				QueriedIngesters:  stats.QueriedIngesters,
 			},
 		})
 	}
 
-	return response, nil
+	return response, queriedIngesterNum, nil
 }
 
 // AllUserStatsHandler shows stats for all users.
 func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.AllUserStats(r.Context())
+	stats, queriedIngesterNum, err := d.AllUserStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor())
+	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor(), queriedIngesterNum)
 }
 
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {

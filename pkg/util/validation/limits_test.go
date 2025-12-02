@@ -49,6 +49,7 @@ func TestLimits_Validate(t *testing.T) {
 		shardByAllLabels           bool
 		activeSeriesMetricsEnabled bool
 		expected                   error
+		nameValidationScheme       model.ValidationScheme
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -123,13 +124,30 @@ func TestLimits_Validate(t *testing.T) {
 			limits:   Limits{RulerExternalLabels: labels.FromStrings("good", string([]byte{0xff, 0xfe, 0xfd}))},
 			expected: errInvalidLabelValue,
 		},
+		"utf8: external-labels utf8 label name and value": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
+			expected:             nil,
+			nameValidationScheme: model.UTF8Validation,
+		},
+		"utf8: external-labels invalid label name": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
+			expected:             errInvalidLabelName,
+			nameValidationScheme: model.UTF8Validation,
+		},
+		"utf8: external-labels invalid label value": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
+			expected:             errInvalidLabelValue,
+			nameValidationScheme: model.UTF8Validation,
+		},
 	}
 
 	for testName, testData := range tests {
-		testData := testData
-
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
+			nameValidationScheme := model.LegacyValidation
+			if testData.nameValidationScheme == model.UTF8Validation {
+				nameValidationScheme = testData.nameValidationScheme
+			}
+			assert.ErrorIs(t, testData.limits.Validate(nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }
@@ -217,7 +235,7 @@ func TestLimitsTagsYamlMatchJson(t *testing.T) {
 	n := limits.NumField()
 	var mismatch []string
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		field := limits.Field(i)
 
 		// Note that we aren't requiring YAML and JSON tags to match, just that
@@ -246,7 +264,7 @@ limits_per_label_set:
 	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
 	require.NoError(t, err)
 	require.Len(t, limitsYAML.LimitsPerLabelSet, 1)
-	require.Len(t, limitsYAML.LimitsPerLabelSet[0].LabelSet, 1)
+	require.Equal(t, 1, limitsYAML.LimitsPerLabelSet[0].LabelSet.Len())
 	require.Equal(t, limitsYAML.LimitsPerLabelSet[0].Limits.MaxSeries, 10)
 
 	duplicatedInputYAML := `
@@ -288,7 +306,7 @@ func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
 	n := limits.NumField()
 	var badDurationType []string
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		field := limits.Field(i)
 		if field.Type == stdlibDuration {
 			badDurationType = append(badDurationType, field.Name)

@@ -2,6 +2,7 @@ package memberlist
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -28,13 +29,7 @@ func (r ringBroadcast) Invalidates(old memberlist.Broadcast) bool {
 		// and this broadcast has resulted in a newer ring update, we can invalidate the old value
 
 		for _, oldName := range oldb.content {
-			found := false
-			for _, newName := range r.content {
-				if oldName == newName {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(r.content, oldName)
 
 			if !found {
 				return false

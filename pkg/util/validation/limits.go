@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"strings"
@@ -188,9 +189,9 @@ type Limits struct {
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Parquet Queryable enforced limits.
-	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count" doc:"hidden"`
-	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes" doc:"hidden"`
-	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes" doc:"hidden"`
+	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
+	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes"`
+	ParquetMaxFetchedDataBytes  int `yaml:"parquet_max_fetched_data_bytes" json:"parquet_max_fetched_data_bytes"`
 
 	// Query Frontend / Scheduler enforced limits.
 	MaxOutstandingPerTenant     int           `yaml:"max_outstanding_requests_per_tenant" json:"max_outstanding_requests_per_tenant"`
@@ -219,9 +220,9 @@ type Limits struct {
 	CompactorPartitionSeriesCount    int64          `yaml:"compactor_partition_series_count" json:"compactor_partition_series_count"`
 
 	// Parquet converter
-	ParquetConverterEnabled         bool    `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled" doc:"hidden"`
-	ParquetConverterTenantShardSize float64 `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size" doc:"hidden"`
-
+	ParquetConverterEnabled         bool     `yaml:"parquet_converter_enabled" json:"parquet_converter_enabled"`
+	ParquetConverterTenantShardSize float64  `yaml:"parquet_converter_tenant_shard_size" json:"parquet_converter_tenant_shard_size"`
+	ParquetConverterSortColumns     []string `yaml:"parquet_converter_sort_columns" json:"parquet_converter_sort_columns"`
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
@@ -324,6 +325,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.Float64Var(&l.ParquetConverterTenantShardSize, "parquet-converter.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by the parquet converter. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 and > 0 the shard size will be a percentage of the total parquet converters.")
 	f.BoolVar(&l.ParquetConverterEnabled, "parquet-converter.enabled", false, "If set, enables the Parquet converter to create the parquet files.")
+	f.Var((*flagext.StringSlice)(&l.ParquetConverterSortColumns), "parquet-converter.sort-columns", "Additional label names for specific tenants to sort by after metric name, in order of precedence. These are applied during Parquet file generation.")
 
 	// Parquet Queryable enforced limits.
 	f.IntVar(&l.ParquetMaxFetchedRowCount, "querier.parquet-queryable.max-fetched-row-count", 0, "The maximum number of rows that can be fetched when querying parquet storage. Each row maps to a series in a parquet file. This limit applies before materializing chunks. 0 to disable.")
@@ -356,7 +358,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
+func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
@@ -375,7 +377,7 @@ func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool
 	}
 
 	if err := l.RulerExternalLabels.Validate(func(l labels.Label) error {
-		if !model.LabelName(l.Name).IsValid() {
+		if !nameValidationScheme.IsValidLabelName(l.Name) {
 			return fmt.Errorf("%w: %q", errInvalidLabelName, l.Name)
 		}
 		if !model.LabelValue(l.Value).IsValid() {
@@ -390,7 +392,7 @@ func (l *Limits) Validate(shardByAllLabels bool, activeSeriesMetricsEnabled bool
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Limits) UnmarshalYAML(unmarshal func(any) error) error {
 	// We want to set l to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
@@ -465,9 +467,7 @@ func (l *Limits) calculateMaxSeriesPerLabelSetId() error {
 
 func (l *Limits) copyNotificationIntegrationLimits(defaults NotificationRateLimitMap) {
 	l.NotificationRateLimitPerIntegration = make(map[string]float64, len(defaults))
-	for k, v := range defaults {
-		l.NotificationRateLimitPerIntegration[k] = v
-	}
+	maps.Copy(l.NotificationRateLimitPerIntegration, defaults)
 }
 
 func (l *Limits) hasQueryAttributeRegexChanged() bool {
@@ -902,6 +902,11 @@ func (o *Overrides) ParquetConverterTenantShardSize(userID string) float64 {
 // ParquetConverterEnabled returns true is parquet is enabled.
 func (o *Overrides) ParquetConverterEnabled(userID string) bool {
 	return o.GetOverridesForUser(userID).ParquetConverterEnabled
+}
+
+// ParquetConverterSortColumns returns the additional sort columns for parquet files.
+func (o *Overrides) ParquetConverterSortColumns(userID string) []string {
+	return o.GetOverridesForUser(userID).ParquetConverterSortColumns
 }
 
 // ParquetMaxFetchedRowCount returns the maximum number of rows that can be fetched when querying parquet storage.

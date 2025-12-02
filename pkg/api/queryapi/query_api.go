@@ -250,7 +250,7 @@ func (q *QueryAPI) Wrap(f apiFunc) http.HandlerFunc {
 	}.ServeHTTP
 }
 
-func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data interface{}, warnings annotations.Annotations, query string) {
+func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data any, warnings annotations.Annotations, query string) {
 	warn, info := warnings.AsStrings(query, 10, 10)
 
 	resp := &v1.Response{

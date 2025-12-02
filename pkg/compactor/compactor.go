@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,12 +34,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -353,10 +354,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate(limits validation.Limits) error {
-	for _, blockRange := range cfg.BlockRanges {
-		if blockRange == 0 {
-			return errors.New("compactor block range period cannot be zero")
-		}
+	if slices.Contains(cfg.BlockRanges, 0) {
+		return errors.New("compactor block range period cannot be zero")
 	}
 	// Each block range period should be divisible by the previous one.
 	for i := 1; i < len(cfg.BlockRanges); i++ {
@@ -366,7 +365,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	// Make sure a valid sharding strategy is being used
-	if !util.StringsContain(supportedShardingStrategies, cfg.ShardingStrategy) {
+	if !slices.Contains(supportedShardingStrategies, cfg.ShardingStrategy) {
 		return errInvalidShardingStrategy
 	}
 
@@ -377,7 +376,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	}
 
 	// Make sure a valid compaction strategy is being used
-	if !util.StringsContain(supportedCompactionStrategies, cfg.CompactionStrategy) {
+	if !slices.Contains(supportedCompactionStrategies, cfg.CompactionStrategy) {
 		return errInvalidCompactionStrategy
 	}
 
@@ -404,7 +403,7 @@ type Compactor struct {
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
-	allowedTenants *util.AllowedTenants
+	allowedTenants *users.AllowedTenants
 	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
@@ -542,7 +541,7 @@ func newCompactor(
 		blocksCompactorFactory:             blocksCompactorFactory,
 		blockDeletableCheckerFactory:       blockDeletableCheckerFactory,
 		compactionLifecycleCallbackFactory: compactionLifecycleCallbackFactory,
-		allowedTenants:                     util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedTenants:                     users.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		CompactorStartDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_start_duration_seconds",
@@ -758,12 +757,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// If sharding is disabled, there is no need to have every compactor to run the user index updater
 	// as it will be the same to fallback to list strategy.
-	if c.compactorCfg.ShardingEnabled && c.storageCfg.UsersScanner.Strategy == cortex_tsdb.UserScanStrategyUserIndex {
+	if c.compactorCfg.ShardingEnabled && c.storageCfg.UsersScanner.Strategy == users.UserScanStrategyUserIndex {
 		// We hardcode strategy to be list so can ignore error.
-		baseScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-			Strategy: cortex_tsdb.UserScanStrategyList,
+		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
+			Strategy: users.UserScanStrategyList,
 		}, c.bucketClient, c.logger, c.registerer)
-		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner, c.registerer)
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, c.storageCfg.UsersScanner.CleanUpInterval, baseScanner, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 	}
 
 	return nil
@@ -847,25 +846,25 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	}()
 
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
-	users, err := c.discoverUsersWithRetries(ctx)
+	userIDs, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
 		return
 	}
 
-	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
-	c.CompactionRunDiscoveredTenants.Set(float64(len(users)))
+	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(userIDs))
+	c.CompactionRunDiscoveredTenants.Set(float64(len(userIDs)))
 
 	// When starting multiple compactor replicas nearly at the same time, running in a cluster with
 	// a large number of tenants, we may end up in a situation where the 1st user is compacted by
 	// multiple replicas at the same time. Shuffling users helps reduce the likelihood this will happen.
-	rand.Shuffle(len(users), func(i, j int) {
-		users[i], users[j] = users[j], users[i]
+	rand.Shuffle(len(userIDs), func(i, j int) {
+		userIDs[i], userIDs[j] = userIDs[j], userIDs[i]
 	})
 
 	// Keep track of users owned by this shard, so that we can delete the local files for all other users.
 	ownedUsers := map[string]struct{}{}
-	for _, userID := range users {
+	for _, userID := range userIDs {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			interrupted = true
@@ -895,7 +894,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		ownedUsers[userID] = struct{}{}
 
-		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
+		if markedForDeletion, err := users.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.CompactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 			continue
@@ -1203,7 +1202,7 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which compactor owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(c.storageCfg.UsersScanner.CleanUpInterval, 0.1))
 	defer ticker.Stop()
 
 	for {
@@ -1280,12 +1279,7 @@ func (c *Compactor) isCausedByPermissionDenied(err error) bool {
 		cause = errors.Unwrap(cause)
 	}
 	if multiErr, ok := cause.(errutil.NonNilMultiRootError); ok {
-		for _, err := range multiErr {
-			if c.isPermissionDeniedErr(err) {
-				return true
-			}
-		}
-		return false
+		return slices.ContainsFunc(multiErr, c.isPermissionDeniedErr)
 	}
 	return c.isPermissionDeniedErr(cause)
 }

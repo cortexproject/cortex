@@ -34,7 +34,7 @@ func TestUnmarshalWithLogicalPlan(t *testing.T) {
 
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
-				plan, _, err := CreateTestLogicalPlan(tc.query, start, end, step)
+				plan, err := CreateTestLogicalPlan(tc.query, start, end, step)
 				require.NoError(t, err)
 				require.NotNil(t, plan)
 
@@ -62,7 +62,7 @@ func verifyNodeStructure(t *testing.T, expected logicalplan.Node, actual logical
 
 	require.Equal(t, len(expectedChildren), len(actualChildren))
 
-	for i := 0; i < len(expectedChildren); i++ {
+	for i := range expectedChildren {
 		if expectedChildren[i] != nil && actualChildren[i] != nil {
 			verifyNodeStructure(t, *expectedChildren[i], *actualChildren[i])
 		}

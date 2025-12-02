@@ -1,5 +1,4 @@
 //go:build integration_alertmanager
-// +build integration_alertmanager
 
 package integration
 
@@ -67,6 +66,41 @@ func TestAlertmanager(t *testing.T) {
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, AlertManager, alertmanager)
+}
+
+func TestAlertmanagerWithUserIndexUpdater(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, alertsBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	baseFlags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
+	flags := mergeFlags(baseFlags, AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), 1), map[string]string{
+		"-alertmanager-storage.users-scanner.strategy":                    "user_index",
+		"-alertmanager-storage.users-scanner.user-index.cleanup-interval": "15s",
+		"-alertmanager.configs.poll-interval":                             "5s",
+	})
+
+	am := e2ecortex.NewAlertmanager(
+		"alertmanager",
+		flags,
+		"",
+	)
+
+	require.NoError(t, s.StartAndWaitReady(am))
+	// To make sure user index file is updated/scanned
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_user_index_last_successful_update_timestamp_seconds"}),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "alertmanager")),
+	)
+	require.NoError(t, am.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(float64(1)), []string{"cortex_user_index_scan_succeeded_total"}),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "alertmanager")),
+	)
 }
 
 func TestAlertmanagerStoreAPI(t *testing.T) {

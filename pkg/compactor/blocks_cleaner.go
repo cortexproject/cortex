@@ -20,13 +20,12 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -475,7 +474,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
 
-	var blocksToDelete []interface{}
+	var blocksToDelete []any
 	err := userBucket.Iter(ctx, "", func(name string) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -492,7 +491,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 
 	var deletedBlocks, failed atomic.Int64
-	err = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	err = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 		err := block.Delete(ctx, userLogger, userBucket, blockID)
 		if err != nil {
@@ -536,7 +535,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	level.Info(userLogger).Log("msg", "completed deleting blocks for tenant marked for deletion", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
-	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
+	mark, err := users.ReadTenantDeletionMark(ctx, c.bucketClient, userID, userLogger)
 	if err != nil {
 		return errors.Wrap(err, "failed to read tenant deletion mark")
 	}
@@ -549,7 +548,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	if deletedBlocks.Load() > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
-		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
+		return errors.Wrap(users.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
 	}
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
 		return nil
@@ -567,7 +566,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
+	if err := users.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
 		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
 	return nil
@@ -608,6 +607,12 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		c.tenantCleanDuration.WithLabelValues(userID).Set(time.Since(startTime).Seconds())
 	}()
+
+	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		begin := time.Now()
+		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
+		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
+	}
 
 	// Migrate block deletion marks to the global markers location. This operation is a best-effort.
 	if firstRun && c.cfg.BlockDeletionMarksMigrationEnabled {
@@ -697,7 +702,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 	// Delete blocks marked for deletion. We iterate over a copy of deletion marks because
 	// we'll need to manipulate the index (removing blocks which get deleted).
 	begin = time.Now()
-	blocksToDelete := make([]interface{}, 0, len(idx.BlockDeletionMarks))
+	blocksToDelete := make([]any, 0, len(idx.BlockDeletionMarks))
 	var mux sync.Mutex
 	for _, mark := range idx.BlockDeletionMarks.Clone() {
 		if time.Since(mark.GetDeletionTime()).Seconds() <= c.cfg.DeletionDelay.Seconds() {
@@ -709,7 +714,7 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 
 	// Concurrently deletes blocks marked for deletion, and removes blocks from index.
 	begin = time.Now()
-	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	_ = concurrency.ForEach(ctx, blocksToDelete, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 
 		if err := block.Delete(ctx, userLogger, userBucket, blockID); err != nil {
@@ -753,12 +758,6 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction))
-
-	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-		begin = time.Now()
-		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
-		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
-	}
 	return nil
 }
 
@@ -787,28 +786,35 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 	}
 
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
+		isPartitionGroupInfoDeleted := false
 		partitionedGroupInfoFile := extraInfo.path
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
-				if err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID); err != nil {
+				deletedBlocksCount, err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
+				if err != nil {
 					level.Warn(userLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 					// if one block can not be marked for deletion, we should
 					// skip delete this partitioned group. next iteration
 					// would try it again.
 					continue
 				}
-			}
-
-			if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
-				level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
-			} else {
-				level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+				if deletedBlocksCount > 0 {
+					level.Info(userLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				} else {
+					level.Info(userLogger).Log("msg", "deleting partition group now that all associated blocks have been deleted", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+					if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
+						level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+					} else {
+						level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+						isPartitionGroupInfoDeleted = true
+					}
+				}
 			}
 		}
 
-		if extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker {
+		if isPartitionGroupInfoDeleted && (extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker) {
 			// Remove partition visit markers
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
 				level.Warn(userLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
@@ -884,7 +890,7 @@ func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objs
 // and index are updated accordingly.
 func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, userID string, partials map[ulid.ULID]error, idx *bucketindex.Index, userBucket objstore.InstrumentedBucket, userLogger log.Logger) {
 	// Collect all blocks with missing meta.json into buffered channel.
-	blocks := make([]interface{}, 0, len(partials))
+	blocks := make([]any, 0, len(partials))
 
 	for blockID, blockErr := range partials {
 		// We can safely delete only blocks which are partial because the meta.json is missing.
@@ -896,7 +902,7 @@ func (c *BlocksCleaner) cleanUserPartialBlocks(ctx context.Context, userID strin
 
 	var mux sync.Mutex
 
-	_ = concurrency.ForEach(ctx, blocks, defaultDeleteBlocksConcurrency, func(ctx context.Context, job interface{}) error {
+	_ = concurrency.ForEach(ctx, blocks, defaultDeleteBlocksConcurrency, func(ctx context.Context, job any) error {
 		blockID := job.(ulid.ULID)
 		// We can safely delete only partial blocks with a deletion mark.
 		err := metadata.ReadMarker(ctx, userLogger, userBucket, blockID.String(), &metadata.DeletionMark{})

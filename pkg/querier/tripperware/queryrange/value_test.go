@@ -146,7 +146,6 @@ func TestFromValue(t *testing.T) {
 	}
 
 	for i, c := range testExpr {
-		c := c
 		t.Run(fmt.Sprintf("[%d]", i), func(t *testing.T) {
 			t.Parallel()
 			result, err := FromResult(c.input)

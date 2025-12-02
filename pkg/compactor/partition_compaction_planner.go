@@ -109,6 +109,34 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		}
 	}
 
+	// Double-check that the partition group still exists and is the same one we started with
+	// to prevent race condition with cleaner. If the cleaner deleted the partition group
+	// after we created the visit marker in the grouper, we should abort the compaction
+	// to avoid orphaned visit markers.
+	currentPartitionedGroupInfo, err := ReadPartitionedGroupInfo(p.ctx, p.bkt, p.logger, partitionedGroupID)
+	if err != nil {
+		if errors.Is(err, ErrorPartitionedGroupInfoNotFound) {
+			level.Warn(p.logger).Log("msg", "partition group was deleted by cleaner, aborting compaction", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+			return nil, plannerCompletedPartitionError
+		} else {
+			level.Warn(p.logger).Log("msg", "unable to read partition group info during planning", "err", err, "partitioned_group_id", partitionedGroupID, "partition_id", partitionID)
+			return nil, fmt.Errorf("unable to read partition group info for partition ID %d, partitioned group ID %d: %s", partitionID, partitionedGroupID, err.Error())
+		}
+	}
+
+	// Verify that this is the same partition group that the grouper created the visit marker for
+	// by comparing creation times. If they don't match, it means the cleaner deleted the old
+	// partition group and a new one was created with the same ID.
+	expectedCreationTime := partitionInfo.PartitionedGroupCreationTime
+	if currentPartitionedGroupInfo.CreationTime != expectedCreationTime {
+		level.Warn(p.logger).Log("msg", "partition group creation time mismatch, cleaner deleted old group and new one was created, aborting compaction",
+			"partitioned_group_id", partitionedGroupID,
+			"partition_id", partitionID,
+			"expected_creation_time", expectedCreationTime,
+			"current_creation_time", currentPartitionedGroupInfo.CreationTime)
+		return nil, plannerCompletedPartitionError
+	}
+
 	// Ensure all blocks fits within the largest range. This is a double check
 	// to ensure there's no bug in the previous blocks grouping, given this Plan()
 	// is just a pass-through.

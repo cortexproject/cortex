@@ -12,9 +12,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // NewMetadataQuerier returns a MetadataQuerier that merges metric
@@ -50,7 +50,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	log, ctx := spanlogger.New(ctx, "mergeMetadataQuerier.MetricsMetadata")
 	defer log.Finish()
 
-	tenantIds, err := tenant.TenantIDs(ctx)
+	tenantIds, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 		return m.upstream.MetricsMetadata(ctx, req)
 	}
 
-	jobs := make([]interface{}, len(tenantIds))
+	jobs := make([]any, len(tenantIds))
 	results := make([][]scrape.MetricMetadata, len(tenantIds))
 
 	var jobPos int
@@ -74,7 +74,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 		jobPos++
 	}
 
-	run := func(ctx context.Context, jobIntf interface{}) error {
+	run := func(ctx context.Context, jobIntf any) error {
 		job, ok := jobIntf.(*metadataSelectJob)
 		if !ok {
 			return fmt.Errorf("unexpected type %T", jobIntf)

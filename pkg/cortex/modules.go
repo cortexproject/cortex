@@ -13,7 +13,10 @@ import (
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/featurecontrol"
+	"github.com/prometheus/alertmanager/matcher/compat"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
@@ -52,13 +55,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/modules"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -240,6 +243,7 @@ func (t *Cortex) initOverridesExporter() (services.Service, error) {
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.ShuffleShardingLookbackPeriod = t.Cfg.Querier.ShuffleShardingIngestersLookbackPeriod
+	t.Cfg.Distributor.NameValidationScheme = t.Cfg.NameValidationScheme
 	t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsEnabled = t.Cfg.Distributor.SignWriteRequestsEnabled
 
 	// Check whether the distributor can join the distributors ring, which is
@@ -314,7 +318,7 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 			}
-			tenant.WithDefaultResolver(regexResolver)
+			users.WithDefaultResolver(regexResolver)
 
 			return regexResolver, nil
 		}
@@ -543,7 +547,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 
 	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
@@ -738,6 +742,22 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 	t.Cfg.Alertmanager.ShardingRing.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	var featureControlMode string
+	switch t.Cfg.NameValidationScheme {
+	case model.LegacyValidation:
+		featureControlMode = featurecontrol.FeatureClassicMode
+	case model.UTF8Validation:
+		featureControlMode = featurecontrol.FeatureUTF8StrictMode
+	default:
+		return nil, fmt.Errorf("invalid validation scheme: %s", t.Cfg.NameValidationScheme)
+	}
+
+	features, err := featurecontrol.NewFlags(util_log.SLogger, featureControlMode)
+	if err != nil {
+		return
+	}
+	compat.InitFromFlags(util_log.SLogger, features)
+
 	// Initialise the store.
 	store, err := alertstore.NewAlertStore(context.Background(), t.Cfg.AlertmanagerStorage, t.OverridesConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
@@ -829,7 +849,7 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
 	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		tenant.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
 	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.OverridesConfig, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.Querier.DistributedExecEnabled)

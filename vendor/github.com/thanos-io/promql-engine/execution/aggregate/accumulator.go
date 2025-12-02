@@ -39,9 +39,10 @@ type vectorAccumulator interface {
 }
 
 type sumAcc struct {
-	value       float64
-	histSum     *histogram.FloatHistogram
-	hasFloatVal bool
+	value        float64
+	compensation float64
+	histSum      *histogram.FloatHistogram
+	hasFloatVal  bool
 }
 
 func newSumAcc() *sumAcc {
@@ -50,7 +51,7 @@ func newSumAcc() *sumAcc {
 
 func (s *sumAcc) AddVector(ctx context.Context, float64s []float64, histograms []*histogram.FloatHistogram) error {
 	if len(float64s) > 0 {
-		s.value += SumCompensated(float64s)
+		s.value, s.compensation = KahanSumInc(SumCompensated(float64s), s.value, s.compensation)
 		s.hasFloatVal = true
 	}
 
@@ -64,7 +65,7 @@ func (s *sumAcc) AddVector(ctx context.Context, float64s []float64, histograms [
 func (s *sumAcc) Add(ctx context.Context, v float64, h *histogram.FloatHistogram) error {
 	if h == nil {
 		s.hasFloatVal = true
-		s.value += v
+		s.value, s.compensation = KahanSumInc(v, s.value, s.compensation)
 		return nil
 	}
 	if s.histSum == nil {
@@ -108,7 +109,7 @@ func (s *sumAcc) Value() (float64, *histogram.FloatHistogram) {
 	if s.histSum != nil {
 		s.histSum.Compact(0)
 	}
-	return s.value, s.histSum
+	return s.value + s.compensation, s.histSum
 }
 
 func (s *sumAcc) ValueType() ValueType {
@@ -125,6 +126,7 @@ func (s *sumAcc) Reset(_ float64) {
 	s.histSum = nil
 	s.hasFloatVal = false
 	s.value = 0
+	s.compensation = 0
 }
 
 func newMaxAcc() *maxAcc {

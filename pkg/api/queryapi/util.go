@@ -89,7 +89,7 @@ func returnAPIError(err error) *apiError {
 }
 
 type apiFuncResult struct {
-	data      interface{}
+	data      any
 	err       *apiError
 	warnings  annotations.Annotations
 	finalizer func()

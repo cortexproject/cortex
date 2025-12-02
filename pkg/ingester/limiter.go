@@ -21,9 +21,9 @@ var (
 
 type errMaxSeriesPerLabelSetLimitExceeded struct {
 	error
-	id          string
-	localLimit  int
-	globalLimit int
+	id               string
+	actualLocalLimit int
+	globalLimit      int
 }
 
 // RingCount is the interface exposed by a ring implementation which allows
@@ -130,9 +130,9 @@ func (l *Limiter) AssertMaxSeriesPerLabelSet(userID string, metric labels.Labels
 			return err
 		} else if u >= local {
 			return errMaxSeriesPerLabelSetLimitExceeded{
-				id:          limit.Id,
-				localLimit:  local,
-				globalLimit: limit.Limits.MaxSeries,
+				id:               limit.Id,
+				actualLocalLimit: local,
+				globalLimit:      limit.Limits.MaxSeries,
 			}
 		}
 	}
@@ -208,8 +208,8 @@ func (l *Limiter) formatMaxMetadataPerMetricError(userID string, metric string) 
 }
 
 func (l *Limiter) formatMaxSeriesPerLabelSetError(err errMaxSeriesPerLabelSetLimitExceeded) error {
-	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, local limit: %d global limit: %d actual)",
-		minNonZero(err.globalLimit, err.localLimit), err.id, err.localLimit, err.globalLimit)
+	return fmt.Errorf("per-labelset series limit of %d exceeded (labelSet: %s, global limit: %d actual local limit: %d)",
+		minNonZero(err.globalLimit, err.actualLocalLimit), err.id, err.globalLimit, err.actualLocalLimit)
 }
 
 func (l *Limiter) limitsPerLabelSets(userID string, metric labels.Labels) []validation.LimitsPerLabelSet {

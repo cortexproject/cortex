@@ -24,7 +24,7 @@ func TestUserStatsPageRendered(t *testing.T) {
 			},
 		},
 	}
-	AllUserStatsRender(res, req, userStats, 3)
+	AllUserStatsRender(res, req, userStats, 3, 3)
 	assert.Equal(t, http.StatusOK, res.Code)
 	body := res.Body.String()
 	assert.Regexp(t, "<td.+123.+/td>", body)

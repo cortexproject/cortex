@@ -21,8 +21,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -298,7 +298,6 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 			expectedResponse:           mkAPIResponseWithStats(0, 100, 10, false, false),
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := ResultsCacheConfig{
@@ -990,7 +989,6 @@ func TestPartition(t *testing.T) {
 			expectedScannedSamplesFromCachedResponse: getScannedSamples(100, 105, 10),
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := resultsCache{
@@ -1243,7 +1241,6 @@ func TestHandleHit(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			sut := resultsCache{
@@ -1373,7 +1370,6 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			expectedResponse: parsedResponse,
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var cfg ResultsCacheConfig
@@ -1477,7 +1473,6 @@ func TestSplitter_generateCacheKey(t *testing.T) {
 		{"3d5h", &tripperware.PrometheusRequest{Start: toMs(77 * time.Hour), Step: 10, Query: "foo{}"}, 24 * time.Hour, "fake:foo{}:10:3"},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(fmt.Sprintf("%s - %s", tt.name, tt.interval), func(t *testing.T) {
 			t.Parallel()
 			ctx := user.InjectOrgID(context.Background(), "1")
@@ -1526,7 +1521,6 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			calls := 0
@@ -1584,9 +1578,9 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check cache and make sure we write response in old format even though the response is new format.
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	require.NoError(t, err)
-	key := splitter(day).GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), parsedRequest)
+	key := splitter(day).GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), parsedRequest)
 
 	cacheKey := cache.HashKey(key)
 	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})

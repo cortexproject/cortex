@@ -1,5 +1,4 @@
 //go:build integration_querier
-// +build integration_querier
 
 package integration
 
@@ -8,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,106 +33,241 @@ import (
 
 func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 	tests := map[string]struct {
+		bucketStorageType      string
 		blocksShardingStrategy string // Empty means sharding is disabled.
 		tenantShardSize        int
 		indexCacheBackend      string
 		chunkCacheBackend      string
+		parquetLabelsCache     string
 		bucketIndexEnabled     bool
 	}{
-		"blocks sharding disabled, memcached index cache": {
+		// tsdb bucket storage
+		"[TSDB] blocks sharding disabled, memcached index cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
 			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks sharding disabled, multilevel index cache (inmemory, memcached)": {
+		"[TSDB] blocks sharding disabled, multilevel index cache (inmemory, memcached)": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
 			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks sharding disabled, redis index cache": {
+		"[TSDB] blocks sharding disabled, redis index cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 		},
-		"blocks sharding disabled, multilevel index cache (inmemory, redis)": {
+		"[TSDB] blocks sharding disabled, multilevel index cache (inmemory, redis)": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 		},
-		"blocks default sharding, inmemory index cache": {
+		"[TSDB] blocks default sharding, inmemory index cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
 		},
-		"blocks default sharding, memcached index cache": {
+		"[TSDB] blocks default sharding, memcached index cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
 			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks shuffle sharding, memcached index cache": {
+		"[TSDB] blocks shuffle sharding, memcached index cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
 			chunkCacheBackend:      tsdb.CacheBackendMemcached,
 		},
-		"blocks default sharding, inmemory index cache, bucket index enabled": {
+		"[TSDB] blocks default sharding, inmemory index cache, bucket index enabled": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
 			bucketIndexEnabled:     true,
 		},
-		"blocks shuffle sharding, memcached index cache, bucket index enabled": {
+		"[TSDB] blocks shuffle sharding, memcached index cache, bucket index enabled": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
 			bucketIndexEnabled:     true,
 		},
-		"blocks default sharding, redis index cache, bucket index enabled": {
+		"[TSDB] blocks default sharding, redis index cache, bucket index enabled": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 			bucketIndexEnabled:     true,
 		},
-		"blocks shuffle sharding, redis index cache, bucket index enabled": {
+		"[TSDB] blocks shuffle sharding, redis index cache, bucket index enabled": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
 			bucketIndexEnabled:     true,
 		},
-		"blocks sharding disabled, in-memory chunk cache": {
+		"[TSDB] blocks sharding disabled, in-memory chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
 			bucketIndexEnabled:     true,
 		},
-		"blocks default sharding, in-memory chunk cache": {
+		"[TSDB] blocks default sharding, in-memory chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
 			bucketIndexEnabled:     true,
 		},
-		"blocks shuffle sharding, in-memory chunk cache": {
+		"[TSDB] blocks shuffle sharding, in-memory chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
 			bucketIndexEnabled:     true,
 		},
-		"block sharding disabled, multi-level chunk cache": {
+		"[TSDB] block sharding disabled, multi-level chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
 			bucketIndexEnabled:     true,
 		},
-		"block default sharding, multi-level chunk cache": {
+		"[TSDB] block default sharding, multi-level chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
 			bucketIndexEnabled:     true,
 		},
-		"block shuffle sharding, multi-level chunk cache": {
+		"[TSDB] block shuffle sharding, multi-level chunk cache": {
+			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		//parquet bucket storage
+		"[Parquet] blocks sharding disabled, memcached parquet label cache, memcached chunks cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     tsdb.CacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks sharding disabled, multilevel parquet label cache (inmemory, memcached)": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     fmt.Sprintf("%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached),
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks sharding disabled, redis parquet label cache, redis chunks cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+		},
+		"[Parquet] blocks sharding disabled, multilevel parquet label cache cache (inmemory, redis), redis chunks cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     fmt.Sprintf("%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendRedis),
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+		},
+		"[Parquet] blocks default sharding, inmemory parquet label cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendInMemory,
+		},
+		"[Parquet] blocks default sharding, memcached parquet label cache, memcached chunks cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks shuffle sharding, memcached parquet label cache, memcached chunks cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			parquetLabelsCache:     tsdb.CacheBackendMemcached,
+			chunkCacheBackend:      tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks default sharding, inmemory parquet label cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks shuffle sharding, memcached parquet label cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			parquetLabelsCache:     tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks default sharding, redis parquet label cache, redis chunks cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks shuffle sharding, redis parquet label cache, redis chunks cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendRedis,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks sharding disabled, redis parquet label cache, in-memory chunks cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks default sharding, redis parquet label cache, in-memory chunk cache": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] blocks shuffle sharding, redis parquet label cache, in-memory chunk cache, bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      tsdb.CacheBackendInMemory,
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] block sharding disabled, redis parquet label cache, multi-level chunk cache (in-memory, memcached, redis), bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] block default sharding, redis parquet label cache, multi-level chunk cache (in-memory, memcached, redis), bucket index enabled": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "default",
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
+			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
+			bucketIndexEnabled:     true,
+		},
+		"[Parquet] block shuffle sharding, redis parquet label cache, multi-level chunk cache ((in-memory, memcached, redis), bucket index enabled)": {
+			bucketStorageType:      "parquet",
+			blocksShardingStrategy: "shuffle-sharding",
+			tenantShardSize:        1,
+			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
 			bucketIndexEnabled:     true,
 		},
@@ -156,7 +291,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-blocks-storage.tsdb.ship-interval":                "1s",
 					"-blocks-storage.bucket-store.sync-interval":        "1s",
 					"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-					"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
 					"-blocks-storage.bucket-store.chunks-cache.backend": testCfg.chunkCacheBackend,
 					"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
@@ -164,6 +298,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-querier.query-store-for-labels-enabled":           "true",
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
+					"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
 				})
 
 				// Start dependencies.
@@ -172,6 +307,16 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				memcached := e2ecache.NewMemcached()
 				redis := e2ecache.NewRedis()
 				require.NoError(t, s.StartAndWaitReady(consul, minio, memcached, redis))
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					flags["-blocks-storage.bucket-store.index-cache.backend"] = testCfg.indexCacheBackend
+				case "parquet":
+					flags["-parquet-converter.enabled"] = "true"
+					flags["-parquet-converter.conversion-interval"] = "1s"
+					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
+					flags["-compactor.block-ranges"] = "1ms,12h" // to convert all blocks to parquet blocks
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.backend"] = testCfg.parquetLabelsCache
+				}
 
 				// Add the cache address to the flags.
 				if strings.Contains(testCfg.indexCacheBackend, tsdb.IndexCacheBackendMemcached) {
@@ -186,6 +331,12 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.chunks-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
+				if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendMemcached) {
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+				}
+				if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendRedis) {
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
+				}
 
 				// Start Cortex components.
 				distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
@@ -194,6 +345,13 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				storeGateway2 := e2ecortex.NewStoreGateway("store-gateway-2", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 				storeGateways := e2ecortex.NewCompositeCortexService(storeGateway1, storeGateway2)
 				require.NoError(t, s.StartAndWaitReady(distributor, ingester, storeGateway1, storeGateway2))
+
+				var parquetConverter *e2ecortex.CortexService
+				if testCfg.bucketStorageType == "parquet" {
+					// start parquet converter
+					parquetConverter = e2ecortex.NewParquetConverter("parquet-converter", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+					require.NoError(t, s.StartAndWaitReady(parquetConverter))
+				}
 
 				// Start the querier with configuring store-gateway addresses if sharding is disabled.
 				if testCfg.blocksShardingStrategy == "" {
@@ -255,28 +413,36 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					// Start the compactor to have the bucket index created before querying.
 					compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
 					require.NoError(t, s.StartAndWaitReady(compactor))
-				} else {
-					// Wait until the querier has discovered the uploaded blocks.
-					require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
 				}
 
-				// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled
-				// we don't known which store-gateway instance will synch the blocks, so we need to wait on
-				// metrics extracted from all instances.
-				if testCfg.blocksShardingStrategy != "" {
-					// If shuffle sharding is enabled and we have tenant shard size set to 1,
-					// then the metric only appears in one store gateway instance.
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_bucket_store_blocks_loaded"}, e2e.SkipMissingMetrics))
-				} else {
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(2*storeGateways.NumInstances())), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
-				}
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled
+					// we don't known which store-gateway instance will synch the blocks, so we need to wait on
+					// metrics extracted from all instances.
+					if testCfg.blocksShardingStrategy != "" {
+						// If shuffle sharding is enabled and we have tenant shard size set to 1,
+						// then the metric only appears in one store gateway instance.
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_bucket_store_blocks_loaded"}, e2e.SkipMissingMetrics))
+					} else {
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(2*storeGateways.NumInstances())), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
+					}
 
-				// Check how many tenants have been discovered and synced by store-gateways.
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_discovered"))
-				if testCfg.blocksShardingStrategy == "shuffle-sharding" {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1)), "cortex_bucket_stores_tenants_synced"))
-				} else {
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_synced"))
+					// Check how many tenants have been discovered and synced by store-gateways.
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_discovered"))
+					if testCfg.blocksShardingStrategy == "shuffle-sharding" {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1)), "cortex_bucket_stores_tenants_synced"))
+					} else {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_synced"))
+					}
+
+					if !testCfg.bucketIndexEnabled {
+						// Wait until the querier has discovered the uploaded blocks.
+						require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+					}
+				case "parquet":
+					// Wait until the parquet-converter convert blocks
+					require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
 				}
 
 				// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
@@ -295,9 +461,11 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
-				// Check the in-memory index cache metrics (in the store-gateway).
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
+				if testCfg.bucketStorageType == "tedb" {
+					// Check the in-memory index cache metrics (in the store-gateway).
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
+				}
 
 				// Query back again the 1st series from storage. This time it should use the index cache.
 				result, err = c.Query("series_1", series1Timestamp)
@@ -305,30 +473,53 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				if numberOfCacheBackends > 1 {
-					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
-						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
-					)))
-					// In case of L0 cache hits, store gateway might send fewer requests. Should be within range 12 ~ 14.
-					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.EqualsAmong(float64(12), float64(14)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
-						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
-					)))
-					l1IndexCacheRequests, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
-						labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
-					))
-					require.NoError(t, err)
-					l0IndexCacheHits, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_hits_total"}, e2e.WithLabelMatchers(
-						labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
-					))
-					require.NoError(t, err)
-					// Make sure l1 cache requests + l0 cache hits is 14.
-					require.Equal(t, float64(14), l1IndexCacheRequests[0]+l0IndexCacheHits[0])
-				} else {
-					// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
-					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					if numberOfCacheBackends > 1 {
+						// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(6+5+3)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+							labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
+						)))
+						// In case of L0 cache hits, store gateway might send fewer requests. Should be within range 12 ~ 14.
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.EqualsAmong(float64(12), float64(14)), []string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+							labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
+						)))
+						l1IndexCacheRequests, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_requests_total"}, e2e.WithLabelMatchers(
+							labels.MustNewMatcher(labels.MatchEqual, "level", "L1"),
+						))
+						require.NoError(t, err)
+						l0IndexCacheHits, err := storeGateways.SumMetrics([]string{"thanos_store_index_cache_hits_total"}, e2e.WithLabelMatchers(
+							labels.MustNewMatcher(labels.MatchEqual, "level", "L0"),
+						))
+						require.NoError(t, err)
+						// Make sure l1 cache requests + l0 cache hits is 14.
+						require.Equal(t, float64(14), l1IndexCacheRequests[0]+l0IndexCacheHits[0])
+					} else {
+						// 6 requests for Expanded Postings, 5 for Postings and 3 for Series.
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(6+5+3)), "thanos_store_index_cache_requests_total"))
+					}
+					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
+				case "parquet":
+					if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendInMemory) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))
+					}
+					if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendMemcached) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_memcached_operations_total"))
+					}
+					if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendRedis) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_redis_requests_total"))
+					}
+
+					if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendInMemory) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))
+					}
+					if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendMemcached) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_memcached_operations_total"))
+					}
+					if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendRedis) {
+						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_redis_requests_total"))
+					}
 				}
-				require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(2), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 
 				// Query metadata.
 				testMetadataQueriesWithBlocksStorage(t, c, series1[0], series2[0], series3[0], blockRangePeriod)
@@ -346,38 +537,86 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 
 func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 	tests := map[string]struct {
+		bucketStorageType     string
 		blocksShardingEnabled bool
 		indexCacheBackend     string
+		parquetLabelsCache    string
 		bucketIndexEnabled    bool
 	}{
-		"blocks sharding enabled, inmemory index cache": {
+		// tsdb bucket storage
+		"[TSDB] blocks sharding enabled, inmemory index cache": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendInMemory,
 		},
-		"blocks sharding disabled, memcached index cache": {
+		"[TSDB] blocks sharding disabled, memcached index cache": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: false,
 			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
 		},
-		"blocks sharding enabled, memcached index cache": {
+		"[TSDB] blocks sharding enabled, memcached index cache": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
 		},
-		"blocks sharding enabled, memcached index cache, bucket index enabled": {
+		"[TSDB] blocks sharding enabled, memcached index cache, bucket index enabled": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
 			bucketIndexEnabled:    true,
 		},
-		"blocks sharding disabled,redis index cache": {
+		"[TSDB] blocks sharding disabled,redis index cache": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: false,
 			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
-		"blocks sharding enabled, redis index cache": {
+		"[TSDB] blocks sharding enabled, redis index cache": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
-		"blocks sharding enabled, redis index cache, bucket index enabled": {
+		"[TSDB] blocks sharding enabled, redis index cache, bucket index enabled": {
+			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
+			bucketIndexEnabled:    true,
+		},
+		// parquet bucket storage
+		"[Parquet] blocks sharding enabled, inmemory parquet labels cache": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: true,
+			parquetLabelsCache:    tsdb.CacheBackendInMemory,
+		},
+		"[Parquet] blocks sharding disabled, memcached parquet labels cache": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: false,
+			parquetLabelsCache:    tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks sharding enabled, memcached parquet labels cache": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: true,
+			parquetLabelsCache:    tsdb.CacheBackendMemcached,
+		},
+		"[Parquet] blocks sharding enabled, memcached parquet labels cache, bucket index enabled": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: true,
+			parquetLabelsCache:    tsdb.CacheBackendMemcached,
+			bucketIndexEnabled:    true,
+		},
+		"[Parquet] blocks sharding disabled, redis parquet labels cache": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: false,
+			parquetLabelsCache:    tsdb.CacheBackendRedis,
+		},
+		"[Parquet] blocks sharding enabled, redis parquet labels cache": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: true,
+			parquetLabelsCache:    tsdb.CacheBackendRedis,
+		},
+		"[Parquet] blocks sharding enabled, redis parquet labels cache, bucket index enabled": {
+			bucketStorageType:     "parquet",
+			blocksShardingEnabled: true,
+			parquetLabelsCache:    tsdb.CacheBackendRedis,
 			bucketIndexEnabled:    true,
 		},
 	}
@@ -385,6 +624,12 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 	for testName, testCfg := range tests {
 		for _, thanosEngine := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s,thanosEngine=%t", testName, thanosEngine), func(t *testing.T) {
+				// Skip Thanos engine tests on non-amd64 architectures due to timing-sensitive
+				// cache request count assertions that vary across architectures.
+				if runtime.GOARCH != "amd64" && thanosEngine {
+					t.Skip("Skipping test: Thanos engine tests only run on amd64 due to timing-sensitive assertions")
+				}
+
 				const blockRangePeriod = 5 * time.Second
 
 				s, err := e2e.NewScenario(networkName)
@@ -413,8 +658,8 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-blocks-storage.tsdb.ship-interval":                "1s",
 						"-blocks-storage.bucket-store.sync-interval":        "1s",
 						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-						"-blocks-storage.bucket-store.index-cache.backend":  testCfg.indexCacheBackend,
 						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
+						"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
 						"-querier.query-store-for-labels-enabled":           "true",
 						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 						"-querier.enable-x-functions":                       strconv.FormatBool(thanosEngine),
@@ -433,8 +678,18 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					},
 				)
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					flags["-blocks-storage.bucket-store.index-cache.backend"] = testCfg.indexCacheBackend
+				case "parquet":
+					flags["-parquet-converter.enabled"] = "true"
+					flags["-parquet-converter.conversion-interval"] = "1s"
+					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.backend"] = testCfg.parquetLabelsCache
+					flags["-compactor.block-ranges"] = "1ms,12h"
+				}
 
-				// Add the cache address to the flags.
+				// Add the index cache address to the flags.
 				switch testCfg.indexCacheBackend {
 				case tsdb.IndexCacheBackendMemcached:
 					flags["-blocks-storage.bucket-store.index-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
@@ -442,11 +697,25 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					flags["-blocks-storage.bucket-store.index-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
+				// Add the parquet label cache address
+				if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendMemcached) {
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+				}
+				if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendRedis) {
+					flags["-blocks-storage.bucket-store.parquet-labels-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
+				}
+
 				// Start Cortex replicas.
 				cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags, "")
 				cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags, "")
 				cluster := e2ecortex.NewCompositeCortexService(cortex1, cortex2)
 				require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
+
+				var parquetConverter *e2ecortex.CortexService
+				if testCfg.bucketStorageType == "parquet" {
+					parquetConverter = e2ecortex.NewParquetConverter("parquet-converter", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+					require.NoError(t, s.StartAndWaitReady(parquetConverter))
+				}
 
 				// Wait until Cortex replicas have updated the ring state.
 				for _, replica := range cluster.Instances() {
@@ -501,19 +770,27 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					// as a separate service because it's currently not part of the single binary.
 					compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
 					require.NoError(t, s.StartAndWaitReady(compactor))
-				} else {
-					// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
-						labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 				}
 
-				// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
-				// may be greater than expected if the compactor is running (there may have been compacted).
-				const shippedBlocks = 2
-				if testCfg.blocksShardingEnabled {
-					require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
-				} else {
-					require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
+					// may be greater than expected if the compactor is running (there may have been compacted).
+					const shippedBlocks = 2
+					if testCfg.blocksShardingEnabled {
+						require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor)), "cortex_bucket_store_blocks_loaded"))
+					} else {
+						require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
+					}
+
+					if !testCfg.bucketIndexEnabled {
+						// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
+						require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
+							labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
+					}
+				case "parquet":
+					// Wait until the parquet-converter convert blocks
+					require.NoError(t, parquetConverter.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_parquet_converter_blocks_converted_total"))
 				}
 
 				// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).
@@ -532,9 +809,11 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
-				// Check the in-memory index cache metrics (in the store-gateway).
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((5+5+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total")) // 5 for expanded postings and postings, 2 for series
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total"))                                            // no cache hit cause the cache was empty
+				if testCfg.bucketStorageType == "tsdb" {
+					// Check the in-memory index cache metrics (in the store-gateway).
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((5+5+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total")) // 5 for expanded postings and postings, 2 for series
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total"))                                            // no cache hit cause the cache was empty
+				}
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(21*seriesReplicationFactor)), "thanos_memcached_operations_total")) // 14 gets + 7 sets
@@ -546,8 +825,20 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector1, result.(model.Vector))
 
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((12+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
-				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
+				switch testCfg.bucketStorageType {
+				case "tsdb":
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((12+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
+					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
+				case "parquet":
+					switch testCfg.parquetLabelsCache {
+					case tsdb.CacheBackendInMemory:
+						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))
+					case tsdb.CacheBackendMemcached:
+						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_memcached_operations_total"))
+					case tsdb.CacheBackendRedis:
+						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_redis_requests_total"))
+					}
+				}
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((21+2)*seriesReplicationFactor)), "thanos_memcached_operations_total")) // as before + 2 gets

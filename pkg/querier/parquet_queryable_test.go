@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -14,6 +15,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -35,11 +37,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -50,7 +53,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 	maxT := util.TimeToMillis(time.Now())
 
 	createStore := func() *blocksStoreSetMock {
-		return &blocksStoreSetMock{mockedResponses: []interface{}{
+		return &blocksStoreSetMock{mockedResponses: []any{
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{
@@ -415,7 +418,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	ctx := context.Background()
 	seriesCount := 100
 	lbls := make([]labels.Labels, seriesCount)
-	for i := 0; i < seriesCount; i++ {
+	for i := range seriesCount {
 		lbls[i] = labels.FromStrings(labels.MetricName, metricName, "series", strconv.Itoa(i))
 	}
 
@@ -514,7 +517,6 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -544,7 +546,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 			if testData.expectedErr != nil {
 				require.False(t, set.Next())
 				err = set.Err()
-				require.EqualError(t, err, testData.expectedErr.Error())
+				require.ErrorContains(t, err, testData.expectedErr.Error())
 				return
 			}
 
@@ -571,6 +573,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 		tsdbBlock.MinTime(),
 		tsdbBlock.MaxTime(),
 		[]convert.Convertible{tsdbBlock},
+		util_log.SLogger,
 		converterOpts...,
 	)
 	require.NoError(t, err)
@@ -712,13 +715,13 @@ func TestMaterializedLabelsFilterCallbackConcurrent(t *testing.T) {
 		By:          true,
 		Labels:      []string{"__name__"},
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			defer wg.Done()
 			ctx := injectShardInfoIntoContext(context.Background(), si)
 			filter, exists := materializedLabelsFilterCallback(ctx, nil)
 			require.Equal(t, true, exists)
-			for j := 0; j < 1000; j++ {
+			for j := range 1000 {
 				filter.Filter(labels.FromStrings("__name__", "test_metric", "label_1", strconv.Itoa(j)))
 			}
 			filter.Close()
@@ -734,7 +737,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 	maxT := util.TimeToMillis(time.Now())
 
 	createStore := func() *blocksStoreSetMock {
-		return &blocksStoreSetMock{mockedResponses: []interface{}{
+		return &blocksStoreSetMock{mockedResponses: []any{
 			map[BlocksStoreClient][]ulid.ULID{
 				&storeGatewayClientMock{remoteAddr: "1.1.1.1",
 					mockedSeriesResponses: []*storepb.SeriesResponse{
@@ -879,4 +882,111 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			require.Len(t, mParquetQuerier.queriedBlocks, 2)
 		})
 	})
+}
+
+func Test_Cache_LRUEviction(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metrics := newCacheMetrics(reg)
+	cache, err := newCache[string]("test", 2, 0, time.Minute, metrics)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	cache.Set("key1", "value1")
+	cache.Set("key2", "value2")
+
+	_ = cache.Get("key1") // hit
+	// "key2" deleted by LRU eviction
+	cache.Set("key3", "value3")
+
+	val1 := cache.Get("key1") // hit
+	require.Equal(t, "value1", val1)
+	val3 := cache.Get("key3") // hit
+	require.Equal(t, "value3", val3)
+	val2 := cache.Get("key2") // miss
+	require.Equal(t, "", val2)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_queryable_cache_evictions_total counter
+		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_queryable_cache_hits_total counter
+		cortex_parquet_queryable_cache_hits_total{name="test"} 3
+		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_queryable_cache_item_count gauge
+		cortex_parquet_queryable_cache_item_count{name="test"} 2
+		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
+		# TYPE cortex_parquet_queryable_cache_misses_total counter
+		cortex_parquet_queryable_cache_misses_total{name="test"} 1
+	`)))
+}
+
+func Test_Cache_TTLEvictionByGet(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metrics := newCacheMetrics(reg)
+
+	cache, err := newCache[string]("test", 10, 100*time.Millisecond, time.Minute, metrics)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	cache.Set("key1", "value1")
+
+	val := cache.Get("key1")
+	require.Equal(t, "value1", val)
+
+	// sleep longer than TTL
+	time.Sleep(150 * time.Millisecond)
+
+	val = cache.Get("key1")
+	require.Equal(t, "", val)
+
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_queryable_cache_evictions_total counter
+		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_queryable_cache_hits_total counter
+		cortex_parquet_queryable_cache_hits_total{name="test"} 1
+		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_queryable_cache_item_count gauge
+		cortex_parquet_queryable_cache_item_count{name="test"} 0
+		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
+		# TYPE cortex_parquet_queryable_cache_misses_total counter
+		cortex_parquet_queryable_cache_misses_total{name="test"} 1
+	`)))
+}
+
+func Test_Cache_TTLEvictionByLoop(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	metrics := newCacheMetrics(reg)
+
+	cache, err := newCache[string]("test", 10, 100*time.Millisecond, 100*time.Millisecond, metrics)
+	require.NoError(t, err)
+	defer cache.Close()
+
+	cache.Set("key1", "value1")
+
+	val := cache.Get("key1")
+	require.Equal(t, "value1", val)
+
+	// sleep longer than TTL
+	time.Sleep(150 * time.Millisecond)
+
+	if c, ok := cache.(*Cache[string]); ok {
+		// should delete by maintenance loop
+		_, ok := c.cache.Peek("key1")
+		require.False(t, ok)
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_queryable_cache_evictions_total counter
+		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_queryable_cache_hits_total counter
+		cortex_parquet_queryable_cache_hits_total{name="test"} 1
+		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_queryable_cache_item_count gauge
+		cortex_parquet_queryable_cache_item_count{name="test"} 0
+	`)))
 }

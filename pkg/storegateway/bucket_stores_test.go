@@ -10,12 +10,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/types"
 	"github.com/gogo/status"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,6 +33,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/store"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
@@ -42,10 +45,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestBucketStores_CustomerKeyError(t *testing.T) {
@@ -132,17 +134,19 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			// Should set the error on user-1
 			require.NoError(t, stores.InitialSync(ctx))
 			if tc.mockInitialSync {
-				s, ok := status.FromError(stores.storesErrors["user-1"])
+				thanosStores := stores.(*ThanosBucketStores)
+				s, ok := status.FromError(thanosStores.storesErrors["user-1"])
 				require.True(t, ok)
 				require.Equal(t, s.Code(), codes.PermissionDenied)
-				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+				require.ErrorIs(t, thanosStores.storesErrors["user-2"], nil)
 			}
 			require.NoError(t, stores.SyncBlocks(context.Background()))
 			if tc.mockInitialSync {
-				s, ok := status.FromError(stores.storesErrors["user-1"])
+				thanosStores := stores.(*ThanosBucketStores)
+				s, ok := status.FromError(thanosStores.storesErrors["user-1"])
 				require.True(t, ok)
 				require.Equal(t, s.Code(), codes.PermissionDenied)
-				require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+				require.ErrorIs(t, thanosStores.storesErrors["user-2"], nil)
 			}
 
 			mBucket.GetFailures = tc.GetFailures
@@ -168,8 +172,9 @@ func TestBucketStores_CustomerKeyError(t *testing.T) {
 			// Cleaning the error
 			mBucket.GetFailures = map[string]error{}
 			require.NoError(t, stores.SyncBlocks(context.Background()))
-			require.ErrorIs(t, stores.storesErrors["user-1"], nil)
-			require.ErrorIs(t, stores.storesErrors["user-2"], nil)
+			thanosStores := stores.(*ThanosBucketStores)
+			require.ErrorIs(t, thanosStores.storesErrors["user-1"], nil)
+			require.ErrorIs(t, thanosStores.storesErrors["user-2"], nil)
 			_, _, err = querySeries(stores, "user-1", "series", 0, 100)
 			require.NoError(t, err)
 			_, _, err = querySeries(stores, "user-2", "series", 0, 100)
@@ -259,7 +264,8 @@ func TestBucketStores_InitialSync(t *testing.T) {
 		"cortex_bucket_stores_gate_queries_in_flight",
 	))
 
-	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
+	thanosStores := stores.(*ThanosBucketStores)
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
@@ -319,7 +325,8 @@ func TestBucketStores_InitialSyncShouldRetryOnFailure(t *testing.T) {
 		"cortex_bucket_store_blocks_loaded",
 	))
 
-	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
+	thanosStores := stores.(*ThanosBucketStores)
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_SyncBlocks(t *testing.T) {
@@ -389,7 +396,8 @@ func TestBucketStores_SyncBlocks(t *testing.T) {
 		"cortex_bucket_stores_gate_queries_in_flight",
 	))
 
-	assert.Greater(t, testutil.ToFloat64(stores.syncLastSuccess), float64(0))
+	thanosStores := stores.(*ThanosBucketStores)
+	assert.Greater(t, testutil.ToFloat64(thanosStores.syncLastSuccess), float64(0))
 }
 
 func TestBucketStores_syncUsersBlocks(t *testing.T) {
@@ -399,14 +407,14 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 	tests := map[string]struct {
 		shardingStrategy ShardingStrategy
 		expectedStores   int32
-		allowedTenants   *util.AllowedTenants
+		allowedTenants   *users.AllowedTenants
 	}{
 		"when sharding is disabled all users should be synced": {
 			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), nil),
 			expectedStores:   3,
 		},
 		"sharding disabled, user-1 disabled": {
-			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), util.NewAllowedTenants(nil, []string{"user-1"})),
+			shardingStrategy: NewNoShardingStrategy(log.NewNopLogger(), users.NewAllowedTenants(nil, []string{"user-1"})),
 			expectedStores:   2,
 		},
 		"when sharding is enabled only stores for filtered users should be created": {
@@ -426,23 +434,24 @@ func TestBucketStores_syncUsersBlocks(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", allUsers, nil)
-			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 			bucketClient.MockIter("user-1/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-1", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-1", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-2/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-2", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-2", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-3/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-3", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-3", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-3", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-3", "markers", users.TenantDeletionMarkFile), false, nil)
 
 			stores, err := NewBucketStores(cfg, testData.shardingStrategy, bucketClient, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
 			require.NoError(t, err)
 
 			// Sync user stores and count the number of times the callback is called.
 			var storesCount atomic.Int32
-			err = stores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
+			thanosStores := stores.(*ThanosBucketStores)
+			err = thanosStores.syncUsersBlocks(context.Background(), func(ctx context.Context, bs *store.BucketStore) error {
 				storesCount.Inc()
 				return nil
 			})
@@ -470,11 +479,10 @@ func TestBucketStores_scanUsers(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			stores := &BucketStores{
+			stores := &ThanosBucketStores{
 				userScanner: testData.scanner,
 			}
 
@@ -574,9 +582,11 @@ func TestBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *t
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
-	stores.inflightRequestMu.Lock()
-	stores.inflightRequestCnt = 10
-	stores.inflightRequestMu.Unlock()
+	thanosStores := stores.(*ThanosBucketStores)
+	// Set inflight requests to the limit
+	for range 10 {
+		thanosStores.inflightRequests.Inc()
+	}
 	series, warnings, err := querySeries(stores, "user_id", "series_1", 0, 100)
 	assert.ErrorIs(t, err, ErrTooManyInflightRequests)
 	assert.Empty(t, series)
@@ -595,9 +605,11 @@ func TestBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabl
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
-	stores.inflightRequestMu.Lock()
-	stores.inflightRequestCnt = 10 // max_inflight_request is set to 0 by default = disabled
-	stores.inflightRequestMu.Unlock()
+	thanosStores := stores.(*ThanosBucketStores)
+	// Set inflight requests to the limit (max_inflight_request is set to 0 by default = disabled)
+	for range 10 {
+		thanosStores.inflightRequests.Inc()
+	}
 	series, _, err := querySeries(stores, "user_id", "series_1", 0, 100)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(series))
@@ -715,7 +727,27 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 	require.NoError(t, db.Snapshot(userDir, true))
 }
 
-func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int64) ([]*storepb.Series, annotations.Annotations, error) {
+func querySeries(stores BucketStores, userID, metricName string, minT, maxT int64, blockIDs ...string) ([]*storepb.Series, annotations.Annotations, error) {
+	var (
+		anyHints *types.Any
+		err      error
+	)
+	if len(blockIDs) > 0 {
+		hints := &hintspb.SeriesRequestHints{
+			BlockMatchers: []storepb.LabelMatcher{
+				{
+					Type:  storepb.LabelMatcher_RE,
+					Name:  block.BlockIDLabel,
+					Value: strings.Join(blockIDs, "|"),
+				},
+			},
+		}
+		anyHints, err = types.MarshalAny(hints)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
 	req := &storepb.SeriesRequest{
 		MinTime: minT,
 		MaxTime: maxT,
@@ -725,16 +757,17 @@ func querySeries(stores *BucketStores, userID, metricName string, minT, maxT int
 			Value: metricName,
 		}},
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+		Hints:                   anyHints,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
 	srv := newBucketStoreSeriesServer(ctx)
-	err := stores.Series(req, srv)
+	err = stores.Series(req, srv)
 
 	return srv.SeriesSet, srv.Warnings, err
 }
 
-func queryLabelsNames(stores *BucketStores, userID, metricName string, start, end int64) (*storepb.LabelNamesResponse, error) {
+func queryLabelsNames(stores BucketStores, userID, metricName string, start, end int64) (*storepb.LabelNamesResponse, error) {
 	req := &storepb.LabelNamesRequest{
 		Start: start,
 		End:   end,
@@ -750,7 +783,7 @@ func queryLabelsNames(stores *BucketStores, userID, metricName string, start, en
 	return stores.LabelNames(ctx, req)
 }
 
-func queryLabelsValues(stores *BucketStores, userID, labelName, metricName string, start, end int64) (*storepb.LabelValuesResponse, error) {
+func queryLabelsValues(stores BucketStores, userID, labelName, metricName string, start, end int64) (*storepb.LabelValuesResponse, error) {
 	req := &storepb.LabelValuesRequest{
 		Start: start,
 		End:   end,
@@ -910,32 +943,34 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
 	stores, err := NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
-	assert.NotNil(t, stores.instanceTokenBucket)
+	thanosStores := stores.(*ThanosBucketStores)
+	assert.NotNil(t, thanosStores.instanceTokenBucket)
 
 	assert.NoError(t, stores.InitialSync(ctx))
-	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
-	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+	assert.NotNil(t, thanosStores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, thanosStores.getUserTokenBucket("user-2"))
 
 	sharding.users = []string{user1}
 	assert.NoError(t, stores.SyncBlocks(ctx))
-	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
-	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+	assert.NotNil(t, thanosStores.getUserTokenBucket("user-1"))
+	assert.Nil(t, thanosStores.getUserTokenBucket("user-2"))
 
 	sharding.users = []string{}
 	assert.NoError(t, stores.SyncBlocks(ctx))
-	assert.Nil(t, stores.getUserTokenBucket("user-1"))
-	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+	assert.Nil(t, thanosStores.getUserTokenBucket("user-1"))
+	assert.Nil(t, thanosStores.getUserTokenBucket("user-2"))
 
 	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDryRun)
 	sharding.users = []string{user1, user2}
 	reg = prometheus.NewPedanticRegistry()
 	stores, err = NewBucketStores(cfg, &sharding, objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
-	assert.NotNil(t, stores.instanceTokenBucket)
+	thanosStores = stores.(*ThanosBucketStores)
+	assert.NotNil(t, thanosStores.instanceTokenBucket)
 
 	assert.NoError(t, stores.InitialSync(ctx))
-	assert.NotNil(t, stores.getUserTokenBucket("user-1"))
-	assert.NotNil(t, stores.getUserTokenBucket("user-2"))
+	assert.NotNil(t, thanosStores.getUserTokenBucket("user-1"))
+	assert.NotNil(t, thanosStores.getUserTokenBucket("user-2"))
 
 	cfg.BucketStore.TokenBucketBytesLimiter.Mode = string(cortex_tsdb.TokenBucketBytesLimiterDisabled)
 	sharding.users = []string{user1, user2}
@@ -944,9 +979,10 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NoError(t, stores.InitialSync(ctx))
-	assert.Nil(t, stores.instanceTokenBucket)
-	assert.Nil(t, stores.getUserTokenBucket("user-1"))
-	assert.Nil(t, stores.getUserTokenBucket("user-2"))
+	thanosStores = stores.(*ThanosBucketStores)
+	assert.Nil(t, thanosStores.instanceTokenBucket)
+	assert.Nil(t, thanosStores.getUserTokenBucket("user-1"))
+	assert.Nil(t, thanosStores.getUserTokenBucket("user-2"))
 }
 
 func TestBucketStores_getTokensToRetrieve(t *testing.T) {
@@ -966,12 +1002,13 @@ func TestBucketStores_getTokensToRetrieve(t *testing.T) {
 	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	assert.NoError(t, err)
 
-	assert.Equal(t, int64(2), stores.getTokensToRetrieve(2, store.PostingsFetched))
-	assert.Equal(t, int64(4), stores.getTokensToRetrieve(2, store.PostingsTouched))
-	assert.Equal(t, int64(6), stores.getTokensToRetrieve(2, store.SeriesFetched))
-	assert.Equal(t, int64(8), stores.getTokensToRetrieve(2, store.SeriesTouched))
-	assert.Equal(t, int64(0), stores.getTokensToRetrieve(2, store.ChunksFetched))
-	assert.Equal(t, int64(1), stores.getTokensToRetrieve(2, store.ChunksTouched))
+	thanosStores := stores.(*ThanosBucketStores)
+	assert.Equal(t, int64(2), thanosStores.getTokensToRetrieve(2, store.PostingsFetched))
+	assert.Equal(t, int64(4), thanosStores.getTokensToRetrieve(2, store.PostingsTouched))
+	assert.Equal(t, int64(6), thanosStores.getTokensToRetrieve(2, store.SeriesFetched))
+	assert.Equal(t, int64(8), thanosStores.getTokensToRetrieve(2, store.SeriesTouched))
+	assert.Equal(t, int64(0), thanosStores.getTokensToRetrieve(2, store.ChunksFetched))
+	assert.Equal(t, int64(1), thanosStores.getTokensToRetrieve(2, store.ChunksTouched))
 }
 
 func getUsersInDir(t *testing.T, dir string) []string {
@@ -997,7 +1034,7 @@ func (u *userShardingStrategy) FilterUsers(ctx context.Context, userIDs []string
 }
 
 func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, metas map[ulid.ULID]*thanos_metadata.Meta, loaded map[ulid.ULID]struct{}, synced block.GaugeVec) error {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return nil
 	}
 
@@ -1008,7 +1045,7 @@ func (u *userShardingStrategy) FilterBlocks(ctx context.Context, userID string, 
 }
 
 func (u *userShardingStrategy) OwnBlock(userID string, _ thanos_metadata.Meta) (bool, error) {
-	if util.StringsContain(u.users, userID) {
+	if slices.Contains(u.users, userID) {
 		return true, nil
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
@@ -19,7 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type testGroup struct {
@@ -28,7 +30,7 @@ type testGroup struct {
 }
 
 func TestListRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup"}},
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup"}},
@@ -105,7 +107,10 @@ func TestListRules(t *testing.T) {
 func TestLoadPartialRules(t *testing.T) {
 	bucketClient := objstore.NewInMemBucket()
 	mockedBucketClient := &testutil.MockBucketFailure{Bucket: bucketClient, GetFailures: map[string]error{}}
-	bucketStore := NewBucketRuleStore(mockedBucketClient, nil, log.NewNopLogger())
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	bucketStore, err := NewBucketRuleStore(mockedBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
 
 	groups := []testGroup{
 		{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "second testGroup", Interval: model.Duration(2 * time.Minute)}},
@@ -132,7 +137,7 @@ func TestLoadPartialRules(t *testing.T) {
 }
 
 func TestLoadRules(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, _ any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "hello", ruleGroup: rulefmt.RuleGroup{Name: "first testGroup", Interval: model.Duration(time.Minute), Rules: []rulefmt.Rule{{
 				For:    model.Duration(5 * time.Minute),
@@ -201,7 +206,7 @@ func TestLoadRules(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, bucketClient interface{}) {
+	runForEachRuleStore(t, func(t *testing.T, rs rulestore.RuleStore, bucketClient any) {
 		groups := []testGroup{
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "1"}},
 			{user: "user1", namespace: "A", ruleGroup: rulefmt.RuleGroup{Name: "2"}},
@@ -261,13 +266,16 @@ func TestDelete(t *testing.T) {
 	})
 }
 
-func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient interface{})) {
+func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore.RuleStore, bucketClient any)) {
 	bucketClient := objstore.NewInMemBucket()
-	bucketStore := NewBucketRuleStore(bucketClient, nil, log.NewNopLogger())
+	reg := prometheus.NewPedanticRegistry()
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	bucketStore, err := NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	assert.NoError(t, err)
 
 	stores := map[string]struct {
 		store  rulestore.RuleStore
-		client interface{}
+		client any
 	}{
 		"bucket": {store: bucketStore, client: bucketClient},
 	}
@@ -279,7 +287,7 @@ func runForEachRuleStore(t *testing.T, testFn func(t *testing.T, store rulestore
 	}
 }
 
-func getSortedObjectKeys(bucketClient interface{}) []string {
+func getSortedObjectKeys(bucketClient any) []string {
 	if typed, ok := bucketClient.(*objstore.InMemBucket); ok {
 		var keys []string
 		for key := range typed.Objects() {
@@ -426,8 +434,11 @@ func TestListAllRuleGroupsWithNoNamespaceOrGroup(t *testing.T) {
 			"rules/user3/bnM=/Z3JvdXAx", // namespace "ns", group "group1"
 		},
 	}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
 
-	s := NewBucketRuleStore(obj, nil, log.NewNopLogger())
+	s, err := NewBucketRuleStore(obj, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
 	out, err := s.ListAllRuleGroups(context.Background())
 	require.NoError(t, err)
 

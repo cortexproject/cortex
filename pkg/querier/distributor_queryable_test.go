@@ -82,7 +82,6 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 
 	for _, streamingMetadataEnabled := range []bool{false, true} {
 		for testName, testData := range tests {
-			testData := testData
 			t.Run(fmt.Sprintf("%s (streaming metadata enabled: %t)", testName, streamingMetadataEnabled), func(t *testing.T) {
 				t.Parallel()
 

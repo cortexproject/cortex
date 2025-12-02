@@ -33,14 +33,14 @@ func IsGRPCContextCanceled(err error) bool {
 
 // HTTPHeaderPropagationServerInterceptor allows for propagation of HTTP Request headers across gRPC calls - works
 // alongside HTTPHeaderPropagationClientInterceptor
-func HTTPHeaderPropagationServerInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+func HTTPHeaderPropagationServerInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 	ctx = extractForwardedRequestMetadataFromMetadata(ctx)
 	h, err := handler(ctx, req)
 	return h, err
 }
 
 // HTTPHeaderPropagationStreamServerInterceptor does the same as HTTPHeaderPropagationServerInterceptor but for streams
-func HTTPHeaderPropagationStreamServerInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func HTTPHeaderPropagationStreamServerInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	ctx := extractForwardedRequestMetadataFromMetadata(ss.Context())
 	return handler(srv, wrappedServerStream{
 		ctx:          ctx,
@@ -51,16 +51,22 @@ func HTTPHeaderPropagationStreamServerInterceptor(srv interface{}, ss grpc.Serve
 // extractForwardedRequestMetadataFromMetadata implements HTTPHeaderPropagationServerInterceptor by placing forwarded
 // headers into incoming context
 func extractForwardedRequestMetadataFromMetadata(ctx context.Context) context.Context {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
+	headersSlice := metadata.ValueFromIncomingContext(ctx, requestmeta.PropagationStringForRequestMetadata)
+	if headersSlice == nil {
+		// we want to check old key if no data
+		headersSlice = metadata.ValueFromIncomingContext(ctx, requestmeta.HeaderPropagationStringForRequestLogging)
+	}
+
+	if headersSlice == nil {
 		return ctx
 	}
-	return requestmeta.ContextWithRequestMetadataMapFromMetadata(ctx, md)
+
+	return requestmeta.ContextWithRequestMetadataMapFromHeaderSlice(ctx, headersSlice)
 }
 
 // HTTPHeaderPropagationClientInterceptor allows for propagation of HTTP Request headers across gRPC calls - works
 // alongside HTTPHeaderPropagationServerInterceptor
-func HTTPHeaderPropagationClientInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn,
+func HTTPHeaderPropagationClientInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn,
 	invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	ctx = injectForwardedRequestMetadata(ctx)
 	return invoker(ctx, method, req, reply, cc, opts...)

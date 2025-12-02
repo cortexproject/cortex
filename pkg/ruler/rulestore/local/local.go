@@ -10,6 +10,7 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -121,6 +122,10 @@ func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, gro
 // DeleteRuleGroup implements RuleStore
 func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
 	return errors.New("DeleteRuleGroup unsupported in rule local store")
+}
+
+func (l *Client) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
 }
 
 // DeleteNamespace implements RulerStore

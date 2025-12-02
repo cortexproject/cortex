@@ -737,7 +737,6 @@ func (m *PrometheusResponseHeader) GetValues() []string {
 
 type PrometheusQueryResult struct {
 	// Types that are valid to be assigned to Result:
-	//
 	//	*PrometheusQueryResult_Vector
 	//	*PrometheusQueryResult_RawBytes
 	//	*PrometheusQueryResult_Matrix

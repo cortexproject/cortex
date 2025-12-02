@@ -269,6 +269,11 @@ querier:
     # CLI flag: -querier.optimizers
     [optimizers: <string> | default = "default"]
 
+    # Maximum number of goroutines that can be used to decode samples. 0
+    # defaults to GOMAXPROCS / 2.
+    # CLI flag: -querier.decoding-concurrency
+    [decoding_concurrency: <int> | default = 0]
+
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
   # evaluation like at Query Frontend or Ruler.
@@ -302,6 +307,10 @@ querier:
   # queryable.
   # CLI flag: -querier.parquet-queryable-fallback-disabled
   [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+  # [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+  # CLI flag: -querier.parquet-queryable-shard-cache-ttl
+  [parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `blocks_storage_config`
@@ -1729,6 +1738,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
     [block_discovery_strategy: <string> | default = "concurrent"]
 
+    # Type of bucket store to use (tsdb or parquet).
+    # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+    [bucket_store_type: <string> | default = "tsdb"]
+
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
     # The pool is shared across all tenants. 0 to disable the limit.
     # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
@@ -1926,6 +1939,11 @@ blocks_storage:
     # the base scanner if stale. Only valid when strategy is user_index.
     # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
+
+    # How frequently user index file is updated. It only takes effect when user
+    # scan strategy is user_index.
+    # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
+    [clean_up_interval: <duration> | default = 15m]
 
     # TTL of the cached users. 0 disables caching and relies on caching at
     # bucket client level.

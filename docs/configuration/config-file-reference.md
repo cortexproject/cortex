@@ -68,6 +68,11 @@ Where default_value is the value to use if the environment variable is undefined
 # CLI flag: -http.prefix
 [http_prefix: <string> | default = "/api/prom"]
 
+# Name validation scheme for metric names and label names, Support values are:
+# legacy, utf8.
+# CLI flag: -name-validation-scheme
+[name_validation_scheme: <int> | default = legacy]
+
 resource_monitor:
   # Comma-separated list of resources to monitor. Supported values are cpu and
   # heap, which tracks metrics from github.com/prometheus/procfs and
@@ -981,6 +986,26 @@ local:
   # Path at which alertmanager configurations are stored.
   # CLI flag: -alertmanager-storage.local.path
   [path: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -alertmanager-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `blocks_storage_config`
@@ -2396,6 +2421,10 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
   [block_discovery_strategy: <string> | default = "concurrent"]
 
+  # Type of bucket store to use (tsdb or parquet).
+  # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+  [bucket_store_type: <string> | default = "tsdb"]
+
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
   # CLI flag: -blocks-storage.bucket-store.max-chunk-pool-bytes
@@ -2592,6 +2621,11 @@ users_scanner:
   # base scanner if stale. Only valid when strategy is user_index.
   # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -3733,6 +3767,12 @@ instance_limits:
 # CLI flag: -ingester.skip-metadata-limits
 [skip_metadata_limits: <boolean> | default = true]
 
+# Enable optimization of label matchers when query chunks. When enabled,
+# matchers with low selectivity such as =~.+ are applied lazily during series
+# scanning instead of being used for postings matching.
+# CLI flag: -ingester.enable-matcher-optimization
+[enable_matcher_optimization: <boolean> | default = false]
+
 query_protection:
   rejection:
     threshold:
@@ -4126,6 +4166,22 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
 
+# The maximum number of rows that can be fetched when querying parquet storage.
+# Each row maps to a series in a parquet file. This limit applies before
+# materializing chunks. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-row-count
+[parquet_max_fetched_row_count: <int> | default = 0]
+
+# The maximum number of bytes that can be used to fetch chunk column pages when
+# querying parquet storage. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-chunk-bytes
+[parquet_max_fetched_chunk_bytes: <int> | default = 0]
+
+# The maximum number of bytes that can be used to fetch all column pages when
+# querying parquet storage. 0 to disable.
+# CLI flag: -querier.parquet-queryable.max-fetched-data-bytes
+[parquet_max_fetched_data_bytes: <int> | default = 0]
+
 # Maximum number of outstanding requests per tenant per request queue (either
 # query frontend or query scheduler); requests beyond this error with HTTP 429.
 # CLI flag: -frontend.max-outstanding-requests-per-tenant
@@ -4223,6 +4279,23 @@ query_rejection:
 # Time series count limit for each compaction partition. 0 means no limit
 # CLI flag: -compactor.partition-series-count
 [compactor_partition_series_count: <int> | default = 0]
+
+# If set, enables the Parquet converter to create the parquet files.
+# CLI flag: -parquet-converter.enabled
+[parquet_converter_enabled: <boolean> | default = false]
+
+# The default tenant's shard size when the shuffle-sharding strategy is used by
+# the parquet converter. When this setting is specified in the per-tenant
+# overrides, a value of 0 disables shuffle sharding for the tenant. If the value
+# is < 1 and > 0 the shard size will be a percentage of the total parquet
+# converters.
+# CLI flag: -parquet-converter.tenant-shard-size
+[parquet_converter_tenant_shard_size: <float> | default = 0]
+
+# Additional label names for specific tenants to sort by after metric name, in
+# order of precedence. These are applied during Parquet file generation.
+# CLI flag: -parquet-converter.sort-columns
+[parquet_converter_sort_columns: <list of string> | default = []]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -4710,6 +4783,11 @@ thanos_engine:
   # CLI flag: -querier.optimizers
   [optimizers: <string> | default = "default"]
 
+  # Maximum number of goroutines that can be used to decode samples. 0 defaults
+  # to GOMAXPROCS / 2.
+  # CLI flag: -querier.decoding-concurrency
+  [decoding_concurrency: <int> | default = 0]
+
 # If enabled, ignore max query length check at Querier select method. Users can
 # choose to ignore it since the validation can be done before Querier evaluation
 # like at Query Frontend or Ruler.
@@ -4742,6 +4820,10 @@ thanos_engine:
 # need to make sure Parquet files are created before it is queryable.
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+# [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+# CLI flag: -querier.parquet-queryable-shard-cache-ttl
+[parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `query_frontend_config`
@@ -5471,6 +5553,11 @@ thanos_engine:
   # sort-matchers, merge-selects, detect-histogram-stats
   # CLI flag: -ruler.optimizers
   [optimizers: <string> | default = "default"]
+
+  # Maximum number of goroutines that can be used to decode samples. 0 defaults
+  # to GOMAXPROCS / 2.
+  # CLI flag: -ruler.decoding-concurrency
+  [decoding_concurrency: <int> | default = 0]
 ```
 
 ### `ruler_storage_config`
@@ -5770,6 +5857,26 @@ local:
   # Directory to scan for rules
   # CLI flag: -ruler-storage.local.directory
   [directory: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -ruler-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -ruler-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `runtime_configuration_storage_config`

@@ -14,12 +14,10 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-
-	"github.com/cortexproject/cortex/pkg/util/validation"
-
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
@@ -121,7 +119,6 @@ func TestBucketIndexBlocksFinder_GetBlocks(t *testing.T) {
 	}
 
 	for testName, testData := range tests {
-		testData := testData
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
@@ -162,9 +159,7 @@ func BenchmarkBucketIndexBlocksFinder_GetBlocks(b *testing.B) {
 	require.NoError(b, bucketindex.WriteIndex(ctx, bkt, userID, nil, idx))
 	finder := prepareBucketIndexBlocksFinder(b, bkt)
 
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		blocks, marks, err := finder.GetBlocks(ctx, userID, 100, 200, nil)
 		if err != nil || len(blocks) != 11 || len(marks) != 11 {
 			b.Fail()

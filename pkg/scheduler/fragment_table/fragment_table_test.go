@@ -116,20 +116,20 @@ func TestFragmentTable_ConcurrentAccess(t *testing.T) {
 	wg.Add(numGoroutines * 2)
 
 	// start writers
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				ft.AddAddressByID(uint64(id), uint64(j), "addr")
 			}
 		}(i)
 	}
 
 	// start readers
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < numOperations; j++ {
+			for range numOperations {
 			}
 		}(i)
 	}

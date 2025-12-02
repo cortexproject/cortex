@@ -1,5 +1,4 @@
 //go:build integration_query_fuzz
-// +build integration_query_fuzz
 
 package integration
 
@@ -41,7 +40,7 @@ import (
 var (
 	enabledFunctions []*parser.Function
 	enabledAggrs     = []parser.ItemType{
-		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.COUNT_VALUES, parser.QUANTILE,
+		parser.SUM, parser.MIN, parser.MAX, parser.AVG, parser.GROUP, parser.COUNT, parser.QUANTILE,
 	}
 )
 

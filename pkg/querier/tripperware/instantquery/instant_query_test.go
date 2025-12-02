@@ -90,7 +90,6 @@ func TestRequest(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			t.Parallel()
 			r, err := http.NewRequest("POST", tc.url, http.NoBody)
@@ -434,7 +433,6 @@ func TestResponse(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 			var response *http.Response
@@ -709,7 +707,6 @@ func TestMergeResponse(t *testing.T) {
 			cancelBeforeMerge: true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
@@ -1722,7 +1719,6 @@ func TestMergeResponseProtobuf(t *testing.T) {
 			cancelBeforeMerge: true,
 		},
 	} {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx, cancelCtx := context.WithCancel(user.InjectOrgID(context.Background(), "1"))
@@ -1821,7 +1817,7 @@ func Benchmark_Decode(b *testing.B) {
 	maxSamplesCount := 1000000
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
-	for i := 0; i < maxSamplesCount; i++ {
+	for i := range maxSamplesCount {
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
@@ -1864,10 +1860,9 @@ func Benchmark_Decode(b *testing.B) {
 			body, err := json.Marshal(r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				response := &http.Response{
 					StatusCode: 200,
 					Body:       io.NopCloser(bytes.NewBuffer(body)),
@@ -1885,7 +1880,7 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 	maxSamplesCount := 1000000
 	samples := make([]tripperware.SampleStream, maxSamplesCount)
 
-	for i := 0; i < maxSamplesCount; i++ {
+	for i := range maxSamplesCount {
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample%v", i), Value: fmt.Sprintf("Value%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample2%v", i), Value: fmt.Sprintf("Value2%v", i)})
 		samples[i].Labels = append(samples[i].Labels, cortexpb.LabelAdapter{Name: fmt.Sprintf("Sample3%v", i), Value: fmt.Sprintf("Value3%v", i)})
@@ -1928,10 +1923,9 @@ func Benchmark_Decode_Protobuf(b *testing.B) {
 			body, err := proto.Marshal(&r)
 			require.NoError(b, err)
 
-			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				response := &http.Response{
 					StatusCode: 200,
 					Header:     http.Header{"Content-Type": []string{"application/x-protobuf"}},

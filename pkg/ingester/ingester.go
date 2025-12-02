@@ -55,7 +55,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -66,6 +65,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -162,6 +162,10 @@ type Config struct {
 	// If enabled, the metadata API returns all metadata regardless of the limits.
 	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
 
+	// When enabled, matchers with low selectivity are applied lazily during series scanning
+	// instead of being used for postings selection.
+	EnableMatcherOptimization bool `yaml:"enable_matcher_optimization"`
+
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
@@ -185,6 +189,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
+	f.BoolVar(&cfg.EnableMatcherOptimization, "ingester.enable-matcher-optimization", false, "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.")
 
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
@@ -213,7 +218,7 @@ func (cfg *Config) getIgnoreSeriesLimitForMetricNamesMap() map[string]struct{} {
 
 	result := map[string]struct{}{}
 
-	for _, s := range strings.Split(cfg.IgnoreSeriesLimitForMetricNames, ",") {
+	for s := range strings.SplitSeq(cfg.IgnoreSeriesLimitForMetricNames, ",") {
 		tr := strings.TrimSpace(s)
 		if tr != "" {
 			result[tr] = struct{}{}
@@ -658,8 +663,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    *util.AllowedTenants // if nil, all tenants are allowed.
-	callback chan<- struct{}      // when compaction/shipping is finished, this channel is closed
+	users    *users.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}       // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -1169,7 +1174,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1259,22 +1264,27 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			switch cause := errors.Cause(err); {
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfOrder, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
 				newValueForTimestampCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perUserSeriesLimit, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
@@ -1287,12 +1297,17 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
 				perMetricSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perMetricSeriesLimit, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
+				i.validateMetrics.DiscardedSeriesTracker.Track(perLabelsetSeriesLimit, userID, copiedLabels.Hash())
+				for _, matchedLabelset := range matchedLabelSetLimits {
+					i.validateMetrics.DiscardedSeriesPerLabelsetTracker.Track(userID, copiedLabels.Hash(), matchedLabelset.Hash, matchedLabelset.Id)
+				}
 				// We only track per labelset discarded samples for throttling by labelset limit.
 				reasonCounter.increment(matchedLabelSetLimits, perLabelsetSeriesLimit)
 				updateFirstPartial(func() error {
@@ -1668,7 +1683,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1745,10 +1760,7 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	}
 
 	for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
-		j := i + metadataStreamBatchSize
-		if j > len(resp.LabelValues) {
-			j = len(resp.LabelValues)
-		}
+		j := min(i+metadataStreamBatchSize, len(resp.LabelValues))
 		resp := &client.LabelValuesStreamResponse{
 			LabelValues: resp.LabelValues[i:j],
 		}
@@ -1775,7 +1787,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1842,10 +1854,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	}
 
 	for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
-		j := i + metadataStreamBatchSize
-		if j > len(resp.LabelNames) {
-			j = len(resp.LabelNames)
-		}
+		j := min(i+metadataStreamBatchSize, len(resp.LabelNames))
 		resp := &client.LabelNamesStreamResponse{
 			LabelNames: resp.LabelNames[i:j],
 		}
@@ -1872,7 +1881,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1977,7 +1986,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return cleanup, err
 	}
@@ -2067,7 +2076,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.stoppedMtx.RUnlock()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2096,7 +2105,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2139,7 +2148,7 @@ func (i *Ingester) userStats() []UserIDStats {
 func (i *Ingester) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
 	stats := i.userStats()
 
-	AllUserStatsRender(w, r, stats, 0)
+	AllUserStatsRender(w, r, stats, 0, 0)
 }
 
 // AllUserStats returns ingestion statistics for all users known to this ingester.
@@ -2194,6 +2203,7 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 // Streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
+	defer req.Free()
 
 	if err = i.checkRunning(); err != nil {
 		return err
@@ -2202,7 +2212,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return err
 	}
@@ -2291,6 +2301,10 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		End:             through,
 		DisableTrimming: i.cfg.DisableChunkTrimming,
 	}
+	var lazyMatchers []*labels.Matcher
+	if i.cfg.EnableMatcherOptimization {
+		matchers, lazyMatchers = optimizeMatchers(matchers)
+	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, hints, matchers...)
 	c()
@@ -2304,14 +2318,19 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	var it chunks.Iterator
 	for ss.Next() {
 		series := ss.At()
+		lbls := series.Labels()
 
-		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
+		if !labelsMatches(lbls, lazyMatchers) {
+			continue
+		}
+
+		if sm.IsSharded() && !sm.MatchesLabels(lbls) {
 			continue
 		}
 
 		// convert labels to LabelAdapter
 		ts := client.TimeSeriesChunk{
-			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
+			Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 		}
 
 		it := series.Iterator(it)
@@ -2612,7 +2631,6 @@ func (i *Ingester) closeAllTSDB() {
 
 	// Concurrently close all users TSDB
 	for userID, userDB := range i.TSDBState.dbs {
-		userID := userID
 
 		go func(db *userTSDB) {
 			defer wg.Done()
@@ -2797,7 +2815,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -2830,7 +2848,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			// Even if check fails with error, we don't want to repeat it too often.
 			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
 
-			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			deletionMarkExists, err := users.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
@@ -2914,7 +2932,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.AllowedTenants) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -3224,7 +3242,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	allowedUsers := util.NewAllowedTenants(tenants, nil)
+	allowedUsers := users.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {

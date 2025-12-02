@@ -12,8 +12,8 @@ import (
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	cquerysharding "github.com/cortexproject/cortex/pkg/querysharding"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -38,7 +38,7 @@ type shardBy struct {
 }
 
 func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	stats := querier_stats.FromContext(ctx)
 
 	if err != nil {
@@ -92,7 +92,7 @@ func (s shardBy) Do(ctx context.Context, r Request) (Response, error) {
 
 func (s shardBy) shardQuery(l log.Logger, verticalShardSize int, r Request, analysis querysharding.QueryAnalysis) []Request {
 	reqs := make([]Request, verticalShardSize)
-	for i := 0; i < verticalShardSize; i++ {
+	for i := range verticalShardSize {
 		q, err := cquerysharding.InjectShardingInfo(r.GetQuery(), &storepb.ShardInfo{
 			TotalShards: int64(verticalShardSize),
 			ShardIndex:  int64(i),

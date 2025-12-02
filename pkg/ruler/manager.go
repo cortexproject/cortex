@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
@@ -270,7 +272,7 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 }
 
 func defaultRuleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
-	logMessage := []interface{}{
+	logMessage := []any{
 		"component", "ruler",
 		"rule_group", g.Name(),
 		"namespace", g.File(),
@@ -457,19 +459,41 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate(rulefmt.RuleNode{}) {
-			var ruleName string
-			if r.Alert != "" {
-				ruleName = r.Alert
-			} else {
-				ruleName = r.Record
+		// Use Cortex parser for expression validation (supports XFunctions)
+		if r.Expr != "" {
+			if _, err := parser.ParseExpr(r.Expr); err != nil {
+				var ruleName string
+				if r.Alert != "" {
+					ruleName = r.Alert
+				} else {
+					ruleName = r.Record
+				}
+				errs = append(errs, &rulefmt.Error{
+					Group:    g.Name,
+					Rule:     i,
+					RuleName: ruleName,
+					Err:      rulefmt.WrappedError{},
+				})
 			}
-			errs = append(errs, &rulefmt.Error{
-				Group:    g.Name,
-				Rule:     i,
-				RuleName: ruleName,
-				Err:      err,
-			})
+		}
+
+		// Validate other rule fields using Prometheus validation
+		for _, err := range r.Validate(rulefmt.RuleNode{}) {
+			// Skip expression validation errors since we handle them above
+			if !strings.Contains(err.Error(), "could not parse expression") {
+				var ruleName string
+				if r.Alert != "" {
+					ruleName = r.Alert
+				} else {
+					ruleName = r.Record
+				}
+				errs = append(errs, &rulefmt.Error{
+					Group:    g.Name,
+					Rule:     i,
+					RuleName: ruleName,
+					Err:      err,
+				})
+			}
 		}
 	}
 

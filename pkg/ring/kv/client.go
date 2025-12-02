@@ -95,7 +95,7 @@ type Client interface {
 
 	// Get a specific key.  Will use a codec to deserialise key to appropriate type.
 	// If the key does not exist, Get will return nil and no error.
-	Get(ctx context.Context, key string) (interface{}, error)
+	Get(ctx context.Context, key string) (any, error)
 
 	// Delete a specific key. Deletions are best-effort and no error will
 	// be returned if the key does not exist.
@@ -108,13 +108,13 @@ type Client interface {
 	// with new value etc.  Guarantees that only a single concurrent CAS
 	// succeeds.  Callback can return nil to indicate it is happy with existing
 	// value.
-	CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
+	CAS(ctx context.Context, key string, f func(in any) (out any, retry bool, err error)) error
 
 	// WatchKey calls f whenever the value stored under key changes.
-	WatchKey(ctx context.Context, key string, f func(interface{}) bool)
+	WatchKey(ctx context.Context, key string, f func(any) bool)
 
 	// WatchPrefix calls f whenever any value stored under prefix changes.
-	WatchPrefix(ctx context.Context, prefix string, f func(string, interface{}) bool)
+	WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool)
 
 	// LastUpdateTime returns the time a key was last sync by the kv store
 	LastUpdateTime(key string) time.Time

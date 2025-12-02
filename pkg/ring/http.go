@@ -94,7 +94,7 @@ func init() {
 }
 
 func (r *Ring) forget(ctx context.Context, id string) error {
-	unregister := func(in interface{}) (out interface{}, retry bool, err error) {
+	unregister := func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			return nil, false, fmt.Errorf("found empty ring when trying to unregister")
 		}

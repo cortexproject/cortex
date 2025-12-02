@@ -42,6 +42,8 @@ jobs:
         run: make BUILD_IN_CONTAINER=false check-doc
       - name: Check White Noise.
         run: make BUILD_IN_CONTAINER=false check-white-noise
+      - name: Check Modernize
+        run: make BUILD_IN_CONTAINER=false check-modernize
 
   test:
     runs-on: ubuntu-24.04
@@ -150,19 +152,60 @@ jobs:
 
   integration:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        tags:
-          - requires_docker
-          - integration_alertmanager
-          - integration_backward_compatibility
-          - integration_memberlist
-          - integration_querier
-          - integration_ruler
-          - integration_query_fuzz
-          - integration_remote_write_v2
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: requires_docker
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_alertmanager
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_backward_compatibility
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_memberlist
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_querier
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_ruler
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_query_fuzz
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_remote_write_v2
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: requires_docker
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_alertmanager
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_memberlist
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_ruler
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_remote_write_v2
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_query_fuzz
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_backward_compatibility
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_querier
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
@@ -195,42 +238,43 @@ jobs:
           docker pull consul:1.8.4
           docker pull gcr.io/etcd-development/etcd:v3.4.7
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.13.1
-            docker pull quay.io/cortexproject/cortex:v1.13.2
-            docker pull quay.io/cortexproject/cortex:v1.14.0
-            docker pull quay.io/cortexproject/cortex:v1.14.1
-            docker pull quay.io/cortexproject/cortex:v1.15.0
-            docker pull quay.io/cortexproject/cortex:v1.15.1
-            docker pull quay.io/cortexproject/cortex:v1.15.2
-            docker pull quay.io/cortexproject/cortex:v1.15.3
-            docker pull quay.io/cortexproject/cortex:v1.16.0
             docker pull quay.io/cortexproject/cortex:v1.16.1
-            docker pull quay.io/cortexproject/cortex:v1.17.0
-            docker pull quay.io/cortexproject/cortex:v1.17.1
-            docker pull quay.io/cortexproject/cortex:v1.18.0
+            docker pull quay.io/cortexproject/cortex:v1.17.2
             docker pull quay.io/cortexproject/cortex:v1.18.1
+            docker pull quay.io/cortexproject/cortex:v1.19.1
+            docker pull quay.io/cortexproject/cortex:v1.20.0
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.18.1 
-            docker pull quay.io/prometheus/prometheus:v3.5.0
+            docker pull quay.io/cortexproject/cortex:v1.20.0 
+            docker pull quay.io/prometheus/prometheus:v3.6.0
           fi
           docker pull memcached:1.6.1
           docker pull redis:7.0.4-alpine
         env:
           TEST_TAGS: ${{ matrix.tags }}
       - name: Integration Tests
+        timeout-minutes: 45
         run: |
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
           export IMAGE_TAG=$(make image-tag)
-          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:$IMAGE_TAG-amd64"
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${IMAGE_TAG}-${{ matrix.arch }}"
           export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
-          echo "Running integration tests with image: $CORTEX_IMAGE"
+          echo "Running integration tests on ${{ matrix.arch }} with image: ${CORTEX_IMAGE}"
           go test -tags=slicelabels,integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 
   integration-configs-db:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
       - name: Checkout Repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -243,15 +287,17 @@ jobs:
       - name: Extract Docker Images Archive
         run: tar -xvf images.tar -C /
       - name: Run Integration Configs Tests
+        timeout-minutes: 15
         # Github Actions does not support TTY in their default runners yet
         run: |
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
+          echo "Running configs integration tests on ${{ matrix.arch }}"
           make BUILD_IMAGE=quay.io/cortexproject/build-image:master-59491e9aae TTY='' configs-integration-test
 
   deploy_website:
     needs: [build, test]
-    if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-59491e9aae

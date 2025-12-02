@@ -19,7 +19,7 @@ Traditional TSDB format and Store Gateway architecture face significant challeng
 
 ### TSDB Format Limitations
 - **Random Read Intensive**: TSDB index relies heavily on random reads, where each read becomes a separate request to object storage
-- **Overfetching**: To reduce object storage requests, data that are close together are merged in a sigle request, leading to higher bandwidth usage and overfetching
+- **Overfetching**: To reduce object storage requests, data that are close together are merged in a single request, leading to higher bandwidth usage and overfetching
 - **High Cardinality Bottlenecks**: Index postings can become a major bottleneck for high cardinality data
 
 ### Store Gateway Operational Challenges
@@ -106,6 +106,9 @@ limits:
 
   # Shard size for shuffle sharding (0 = disabled)
   parquet_converter_tenant_shard_size: 0.8
+
+  # Defines sort columns applied during Parquet file generation for specific tenants
+  parquet_converter_sort_columns: ["label1", "label2"]
 ```
 
 You can also configure per-tenant settings using runtime configuration:
@@ -115,6 +118,7 @@ overrides:
   tenant-1:
     parquet_converter_enabled: true
     parquet_converter_tenant_shard_size: 2
+    parquet_converter_sort_columns: ["cluster", "namespace"]
   tenant-2:
     parquet_converter_enabled: false
 ```
@@ -280,6 +284,7 @@ cortex_parquet_queryable_cache_misses_total
 1. **Row Group Size**: Adjust `max_rows_per_row_group` based on your query patterns
 2. **Cache Size**: Tune `parquet_queryable_shard_cache_size` based on available memory
 3. **Concurrency**: Adjust `meta_sync_concurrency` based on object storage performance
+4. **Sort Columns**: Configure `parquet_converter_sort_columns` based on your most common query filters to improve query performance
 
 ### Fallback Configuration
 

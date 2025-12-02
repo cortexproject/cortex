@@ -55,6 +55,19 @@ func InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap map[string]string, 
 	}
 }
 
+func ContextWithRequestMetadataMapFromHeaderSlice(ctx context.Context, headerSlice []string) context.Context {
+	if len(headerSlice)%2 == 1 {
+		return ctx
+	}
+
+	requestMetadataMap := make(map[string]string, len(headerSlice)/2)
+	for i := 0; i < len(headerSlice); i += 2 {
+		requestMetadataMap[headerSlice[i]] = headerSlice[i+1]
+	}
+
+	return ContextWithRequestMetadataMap(ctx, requestMetadataMap)
+}
+
 func ContextWithRequestMetadataMapFromMetadata(ctx context.Context, md metadata.MD) context.Context {
 	headersSlice, ok := md[PropagationStringForRequestMetadata]
 
@@ -63,14 +76,9 @@ func ContextWithRequestMetadataMapFromMetadata(ctx context.Context, md metadata.
 		headersSlice, ok = md[HeaderPropagationStringForRequestLogging]
 	}
 
-	if !ok || len(headersSlice)%2 == 1 {
+	if !ok {
 		return ctx
 	}
 
-	requestMetadataMap := make(map[string]string)
-	for i := 0; i < len(headersSlice); i += 2 {
-		requestMetadataMap[headersSlice[i]] = headersSlice[i+1]
-	}
-
-	return ContextWithRequestMetadataMap(ctx, requestMetadataMap)
+	return ContextWithRequestMetadataMapFromHeaderSlice(ctx, headersSlice)
 }

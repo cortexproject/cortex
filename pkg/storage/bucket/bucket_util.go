@@ -22,7 +22,7 @@ func DeletePrefix(ctx context.Context, bkt objstore.Bucket, prefix string, logge
 	}
 
 	result := atomic.NewInt32(0)
-	err = concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(keys), maxConcurrency, func(ctx context.Context, key interface{}) error {
+	err = concurrency.ForEach(ctx, concurrency.CreateJobsFromStrings(keys), maxConcurrency, func(ctx context.Context, key any) error {
 		name := key.(string)
 		if err := bkt.Delete(ctx, name); err != nil {
 			return err
@@ -48,4 +48,15 @@ func ListPrefixes(ctx context.Context, bkt objstore.Bucket, prefix string, logge
 		return nil
 	})
 	return keys, err
+}
+
+func IsOneOfTheExpectedErrors(f ...objstore.IsOpFailureExpectedFunc) objstore.IsOpFailureExpectedFunc {
+	return func(err error) bool {
+		for _, f := range f {
+			if f(err) {
+				return true
+			}
+		}
+		return false
+	}
 }

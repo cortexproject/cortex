@@ -79,6 +79,12 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 
 		handlePRW2 := func() {
 			var req cortexpb.PreallocWriteRequestV2
+			// v1 request is put back into the pool by the Distributor.
+			defer func() {
+				cortexpb.ReuseWriteRequestV2(&req)
+				req.Free()
+			}()
+
 			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())

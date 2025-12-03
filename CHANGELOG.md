@@ -11,6 +11,7 @@
 * [ENHANCEMENT] Alertmanager/Ruler: Introduce a user scanner to reduce the number of list calls to object storage. #6999
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
+* [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116

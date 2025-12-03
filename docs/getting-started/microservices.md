@@ -77,7 +77,7 @@ This setup creates a production-like Cortex deployment with independent microser
 - **Ingester**: Stores recent metrics in memory and flushes to S3
 - **Querier**: Queries both ingesters (recent data) and store-gateway (historical data)
 - **Store Gateway**: Queries historical blocks from S3
-- **Compactor**: Compacts and downsamples blocks in S3
+- **Compactor**: Compacts and deduplicates blocks in S3
 - **Ruler**: Evaluates recording and alerting rules
 - **Alertmanager**: Manages alerts (optional)
 

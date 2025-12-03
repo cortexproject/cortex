@@ -52,24 +52,27 @@ func TestProtobufCodec_Encode(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		data           *v1.QueryData
+		resp           *v1.Response
 		cortexInternal bool
 		expected       *tripperware.PrometheusResponse
 	}{
 		{
 			name: "vector",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeVector,
-				Result: promql.Vector{
-					promql.Sample{
-						Metric: labels.FromStrings("__name__", "foo"),
-						T:      1000,
-						F:      1,
-					},
-					promql.Sample{
-						Metric: labels.FromStrings("__name__", "bar"),
-						T:      2000,
-						F:      2,
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeVector,
+					Result: promql.Vector{
+						promql.Sample{
+							Metric: labels.FromStrings("__name__", "foo"),
+							T:      1000,
+							F:      1,
+						},
+						promql.Sample{
+							Metric: labels.FromStrings("__name__", "bar"),
+							T:      2000,
+							F:      2,
+						},
 					},
 				},
 			},
@@ -102,9 +105,12 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "scalar",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeScalar,
-				Result:     promql.Scalar{T: 1000, V: 1},
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeScalar,
+					Result:     promql.Scalar{T: 1000, V: 1},
+				},
 			},
 			expected: &tripperware.PrometheusResponse{
 				Status: tripperware.StatusSuccess,
@@ -120,16 +126,19 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "matrix",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeMatrix,
-				Result: promql.Matrix{
-					promql.Series{
-						Metric: labels.FromStrings("__name__", "foo"),
-						Floats: []promql.FPoint{{F: 1, T: 1000}},
-					},
-					promql.Series{
-						Metric: labels.FromStrings("__name__", "bar"),
-						Floats: []promql.FPoint{{F: 2, T: 2000}},
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeMatrix,
+					Result: promql.Matrix{
+						promql.Series{
+							Metric: labels.FromStrings("__name__", "foo"),
+							Floats: []promql.FPoint{{F: 1, T: 1000}},
+						},
+						promql.Series{
+							Metric: labels.FromStrings("__name__", "bar"),
+							Floats: []promql.FPoint{{F: 2, T: 2000}},
+						},
 					},
 				},
 			},
@@ -166,15 +175,18 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "matrix with multiple float samples",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeMatrix,
-				Result: promql.Matrix{
-					promql.Series{
-						Metric: labels.FromStrings("__name__", "foo", "__job__", "bar"),
-						Floats: []promql.FPoint{
-							{F: 0.14, T: 18555000},
-							{F: 2.9, T: 18556000},
-							{F: 30, T: 18557000},
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeMatrix,
+					Result: promql.Matrix{
+						promql.Series{
+							Metric: labels.FromStrings("__name__", "foo", "__job__", "bar"),
+							Floats: []promql.FPoint{
+								{F: 0.14, T: 18555000},
+								{F: 2.9, T: 18556000},
+								{F: 30, T: 18557000},
+							},
 						},
 					},
 				},
@@ -207,12 +219,15 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "matrix with histogram and not cortex internal",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeMatrix,
-				Result: promql.Matrix{
-					promql.Series{
-						Histograms: []promql.HPoint{{H: testFloatHistogram, T: 1000}},
-						Metric:     labels.FromStrings("__name__", "foo"),
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeMatrix,
+					Result: promql.Matrix{
+						promql.Series{
+							Histograms: []promql.HPoint{{H: testFloatHistogram, T: 1000}},
+							Metric:     labels.FromStrings("__name__", "foo"),
+						},
 					},
 				},
 			},
@@ -297,12 +312,15 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "matrix with histogram and not cortex internal, empty bucket",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeMatrix,
-				Result: promql.Matrix{
-					promql.Series{
-						Histograms: []promql.HPoint{{H: floatHistogramWithEmptyBucket, T: 1000}},
-						Metric:     labels.FromStrings("__name__", "foo"),
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeMatrix,
+					Result: promql.Matrix{
+						promql.Series{
+							Histograms: []promql.HPoint{{H: floatHistogramWithEmptyBucket, T: 1000}},
+							Metric:     labels.FromStrings("__name__", "foo"),
+						},
 					},
 				},
 			},
@@ -338,13 +356,16 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "vector with histogram and not cortex internal",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeVector,
-				Result: promql.Vector{
-					promql.Sample{
-						Metric: labels.FromStrings("__name__", "foo"),
-						T:      1000,
-						H:      testFloatHistogram,
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeVector,
+					Result: promql.Vector{
+						promql.Sample{
+							Metric: labels.FromStrings("__name__", "foo"),
+							T:      1000,
+							H:      testFloatHistogram,
+						},
 					},
 				},
 			},
@@ -427,13 +448,16 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		},
 		{
 			name: "vector with histogram with and not cortex internal, empty bucket",
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeVector,
-				Result: promql.Vector{
-					promql.Sample{
-						Metric: labels.FromStrings("__name__", "foo"),
-						T:      1000,
-						H:      floatHistogramWithEmptyBucket,
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeVector,
+					Result: promql.Vector{
+						promql.Sample{
+							Metric: labels.FromStrings("__name__", "foo"),
+							T:      1000,
+							H:      floatHistogramWithEmptyBucket,
+						},
 					},
 				},
 			},
@@ -468,13 +492,16 @@ func TestProtobufCodec_Encode(t *testing.T) {
 		{
 			name:           "vector with histogram and cortex internal",
 			cortexInternal: true,
-			data: &v1.QueryData{
-				ResultType: parser.ValueTypeVector,
-				Result: promql.Vector{
-					promql.Sample{
-						Metric: labels.FromStrings("__name__", "foo"),
-						T:      1000,
-						H:      testFloatHistogram,
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeVector,
+					Result: promql.Vector{
+						promql.Sample{
+							Metric: labels.FromStrings("__name__", "foo"),
+							T:      1000,
+							H:      testFloatHistogram,
+						},
 					},
 				},
 			},
@@ -499,6 +526,34 @@ func TestProtobufCodec_Encode(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:           "all fields except data",
+			cortexInternal: true,
+			resp: &v1.Response{
+				Status: tripperware.StatusSuccess,
+				Data: &v1.QueryData{
+					ResultType: parser.ValueTypeVector,
+					Result:     promql.Vector{},
+				},
+				ErrorType: "internal",
+				Error:     "some internal error",
+				Warnings:  []string{"PromQL warning: warning 1", "PromQL warning: warning 2"},
+				Infos:     []string{"PromQL info: info 1", "PromQL info: info 2"},
+			},
+			expected: &tripperware.PrometheusResponse{
+				Status: tripperware.StatusSuccess,
+				Data: tripperware.PrometheusData{
+					ResultType: model.ValVector.String(),
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Vector{Vector: &tripperware.Vector{}},
+					},
+				},
+				ErrorType: "internal",
+				Error:     "some internal error",
+				Warnings:  []string{"PromQL warning: warning 1", "PromQL warning: warning 2"},
+				Infos:     []string{"PromQL info: info 1", "PromQL info: info 2"},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -506,10 +561,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			cm := NewInstrumentedCodecMetrics(reg)
 			codec := NewInstrumentedCodec(ProtobufCodec{CortexInternal: test.cortexInternal}, cm)
-			body, err := codec.Encode(&v1.Response{
-				Status: tripperware.StatusSuccess,
-				Data:   test.data,
-			})
+			body, err := codec.Encode(test.resp)
 			require.NoError(t, err)
 			b, err := proto.Marshal(test.expected)
 			require.NoError(t, err)

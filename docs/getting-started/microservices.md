@@ -375,19 +375,21 @@ kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &
 
 **macOS:**
 ```sh
-brew install cortexproject/tap/cortex-tools
+wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_mac-os_x86_64 -O cortextool
+chmod +x cortextool
+sudo mv cortextool /usr/local/bin/
 ```
 
 **Linux:**
 ```sh
-wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortex-tools_0.17.0_linux_x86_64.tar.gz
-tar -xzf cortex-tools_0.17.0_linux_x86_64.tar.gz
+wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_linux_x86_64 -O cortextool
+chmod +x cortextool
 sudo mv cortextool /usr/local/bin/
 ```
 
 **Or use Docker:**
 ```sh
-alias cortextool="docker run --rm --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0 cortextool"
+alias cortextool="docker run --rm --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0"
 ```
 
 ### Load Recording and Alerting Rules

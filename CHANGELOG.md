@@ -1,6 +1,8 @@
 # Changelog
 
-## master / unreleased
+## 1.20.1 2025-12-03
+
+* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
 
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092

@@ -1,6 +1,8 @@
 # Changelog
 
-## master / unreleased
+## 1.20.1 2025-12-03
+
+* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
 
 ## 1.20.0 2025-11-10
 

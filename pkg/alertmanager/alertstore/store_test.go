@@ -2,26 +2,22 @@ package alertstore
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
-)
-
-var (
-	errAccessDenied = fmt.Errorf("access denied")
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestAlertStore_ListAllUsers(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -42,11 +38,20 @@ func TestAlertStore_ListAllUsers(t *testing.T) {
 			require.NoError(t, err)
 			assert.ElementsMatch(t, []string{"user-1", "user-2"}, users)
 		}
+
+		{
+			// delete user-1 alertmanager config
+			require.NoError(t, store.DeleteAlertConfig(ctx, "user-1"))
+
+			users, err := store.ListAllUsers(ctx)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, []string{"user-2"}, users)
+		}
 	})
 }
 
 func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -84,7 +89,7 @@ func TestAlertStore_SetAndGetAlertConfig(t *testing.T) {
 }
 
 func TestStore_GetAlertConfigs(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -129,7 +134,7 @@ func TestStore_GetAlertConfigs(t *testing.T) {
 }
 
 func TestAlertStore_DeleteAlertConfig(t *testing.T) {
-	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *mockBucket, client any) {
+	runForEachAlertStore(t, func(t *testing.T, store AlertStore, m *MockBucket, client any) {
 		ctx := context.Background()
 		user1Cfg := alertspb.AlertConfigDesc{User: "user-1", RawConfig: "content-1"}
 		user2Cfg := alertspb.AlertConfigDesc{User: "user-2", RawConfig: "content-2"}
@@ -169,10 +174,13 @@ func TestAlertStore_DeleteAlertConfig(t *testing.T) {
 	})
 }
 
-func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *mockBucket, client any)) {
+func runForEachAlertStore(t *testing.T, testFn func(t *testing.T, store AlertStore, b *MockBucket, client any)) {
 	bucketClient := objstore.NewInMemBucket()
-	mBucketClient := &mockBucket{Bucket: bucketClient}
-	bucketStore := bucketclient.NewBucketAlertStore(mBucketClient, nil, log.NewNopLogger())
+	mBucketClient := &MockBucket{Bucket: bucketClient}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	bucketStore, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	assert.NoError(t, err)
 
 	stores := map[string]struct {
 		store  AlertStore
@@ -211,8 +219,11 @@ func makeTestFullState(content string) alertspb.FullStateDesc {
 
 func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
-	mBucketClient := &mockBucket{Bucket: bucket}
-	store := bucketclient.NewBucketAlertStore(mBucketClient, nil, log.NewNopLogger())
+	mBucketClient := &MockBucket{Bucket: bucket}
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	reg := prometheus.NewPedanticRegistry()
+	store, err := bucketclient.NewBucketAlertStore(mBucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	assert.NoError(t, err)
 	ctx := context.Background()
 
 	state1 := makeTestFullState("one")
@@ -290,20 +301,4 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 		// Delete again (should be idempotent).
 		require.NoError(t, store.DeleteFullState(ctx, "user-1"))
 	}
-}
-
-type mockBucket struct {
-	objstore.Bucket
-	err error
-}
-
-func (m *mockBucket) Get(ctx context.Context, name string) (io.ReadCloser, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	return m.Bucket.Get(ctx, name)
-}
-
-func (m *mockBucket) IsAccessDeniedErr(err error) bool {
-	return err == errAccessDenied
 }

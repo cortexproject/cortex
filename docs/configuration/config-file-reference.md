@@ -986,6 +986,26 @@ local:
   # Path at which alertmanager configurations are stored.
   # CLI flag: -alertmanager-storage.local.path
   [path: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -alertmanager-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `blocks_storage_config`
@@ -2601,6 +2621,11 @@ users_scanner:
   # base scanner if stale. Only valid when strategy is user_index.
   # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -4795,6 +4820,10 @@ thanos_engine:
 # need to make sure Parquet files are created before it is queryable.
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+# [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+# CLI flag: -querier.parquet-queryable-shard-cache-ttl
+[parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `query_frontend_config`
@@ -5828,6 +5857,26 @@ local:
   # Directory to scan for rules
   # CLI flag: -ruler-storage.local.directory
   [directory: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -ruler-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.cleanup-interval
+  [clean_up_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -ruler-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `runtime_configuration_storage_config`

@@ -234,7 +234,7 @@ func (p *PartitionedGroupInfo) isBlockNoCompact(ctx context.Context, userBucket 
 	return noCompactMarkerExists
 }
 
-func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blocksMarkedForDeletion *prometheus.CounterVec, userID string) error {
+func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blocksMarkedForDeletion *prometheus.CounterVec, userID string) (int, error) {
 	blocks := p.getAllBlocks()
 	deleteBlocksCount := 0
 	defer func() {
@@ -244,13 +244,13 @@ func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, use
 		if p.doesBlockExist(ctx, userBucket, userLogger, blockID) && !p.isBlockDeleted(ctx, userBucket, userLogger, blockID) && !p.isBlockNoCompact(ctx, userBucket, userLogger, blockID) {
 			if err := block.MarkForDeletion(ctx, userLogger, userBucket, blockID, "delete block during partitioned group completion check", blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
 				level.Warn(userLogger).Log("msg", "unable to mark block for deletion", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
-				return err
+				return deleteBlocksCount, err
 			}
 			deleteBlocksCount++
 			level.Debug(userLogger).Log("msg", "marked block for deletion during partitioned group info clean up", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
 		}
 	}
-	return nil
+	return deleteBlocksCount, nil
 }
 
 func (p *PartitionedGroupInfo) String() string {

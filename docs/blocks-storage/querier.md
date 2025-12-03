@@ -307,6 +307,10 @@ querier:
   # queryable.
   # CLI flag: -querier.parquet-queryable-fallback-disabled
   [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+  # [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+  # CLI flag: -querier.parquet-queryable-shard-cache-ttl
+  [parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `blocks_storage_config`
@@ -1935,6 +1939,11 @@ blocks_storage:
     # the base scanner if stale. Only valid when strategy is user_index.
     # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
+
+    # How frequently user index file is updated. It only takes effect when user
+    # scan strategy is user_index.
+    # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
+    [clean_up_interval: <duration> | default = 15m]
 
     # TTL of the cached users. 0 disables caching and relies on caching at
     # bucket client level.

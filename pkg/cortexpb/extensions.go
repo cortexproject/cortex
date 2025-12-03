@@ -8,7 +8,7 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/cortexproject/cortex/pkg/tenant"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const maxBufferSize = 1024
@@ -63,7 +63,7 @@ func (w *WriteRequest) VerifySign(ctx context.Context, signature string) (bool, 
 }
 
 func (w *WriteRequest) Sign(ctx context.Context) (string, error) {
-	u, err := tenant.TenantID(ctx)
+	u, err := users.TenantID(ctx)
 	if err != nil {
 		return "", err
 	}

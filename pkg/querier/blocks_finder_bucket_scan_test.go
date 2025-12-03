@@ -22,9 +22,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
@@ -87,8 +87,8 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = t.TempDir()
 
-	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy:       cortex_tsdb.UserScanStrategyList,
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
 		MaxStalePeriod: time.Hour,
 		CacheTTL:       0,
 	}, bucket, log.NewNopLogger(), reg)
@@ -103,8 +103,8 @@ func TestBucketScanBlocksFinder_InitialScanFailure(t *testing.T) {
 	bucket.MockIter("", []string{"user-1"}, nil)
 	bucket.MockIter("__markers__", []string{}, nil)
 	bucket.MockIter("user-1/", []string{"user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json"}, nil)
-	bucket.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath("user-1"), false, nil)
-	bucket.MockExists(cortex_tsdb.GetLocalDeletionMarkPath("user-1"), false, nil)
+	bucket.MockExists(users.GetGlobalDeletionMarkPath("user-1"), false, nil)
+	bucket.MockExists(users.GetLocalDeletionMarkPath("user-1"), false, nil)
 	bucket.MockGet("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", "invalid", errors.New("mocked error"))
 
 	require.NoError(t, s.StartAsync(ctx))
@@ -152,8 +152,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 		bucket.MockIterWithCallback(tenantID+"/", []string{}, nil, func() {
 			time.Sleep(time.Second)
 		})
-		bucket.MockExists(cortex_tsdb.GetGlobalDeletionMarkPath(tenantID), false, nil)
-		bucket.MockExists(cortex_tsdb.GetLocalDeletionMarkPath(tenantID), false, nil)
+		bucket.MockExists(users.GetGlobalDeletionMarkPath(tenantID), false, nil)
+		bucket.MockExists(users.GetLocalDeletionMarkPath(tenantID), false, nil)
 	}
 
 	cfg := prepareBucketScanBlocksFinderConfig()
@@ -162,8 +162,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyTenants(t *t
 	cfg.TenantsConcurrency = 1
 
 	reg := prometheus.NewRegistry()
-	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy:       cortex_tsdb.UserScanStrategyList,
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
 		MaxStalePeriod: time.Hour,
 		CacheTTL:       0,
 	}, bucket, log.NewNopLogger(), reg)
@@ -206,8 +206,8 @@ func TestBucketScanBlocksFinder_StopWhileRunningTheInitialScanOnManyBlocks(t *te
 	cfg.TenantsConcurrency = 1
 
 	reg := prometheus.NewRegistry()
-	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy:       cortex_tsdb.UserScanStrategyList,
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
 		MaxStalePeriod: time.Hour,
 		CacheTTL:       0,
 	}, bucket, log.NewNopLogger(), reg)
@@ -526,8 +526,8 @@ func prepareBucketScanBlocksFinder(t *testing.T, cfg BucketScanBlocksFinderConfi
 	cfg.CacheDir = t.TempDir()
 
 	// Create a user scanner with list strategy
-	usersScanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy:       cortex_tsdb.UserScanStrategyList,
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
 		MaxStalePeriod: time.Hour,
 		CacheTTL:       0,
 	}, bkt, log.NewNopLogger(), reg)

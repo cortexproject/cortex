@@ -1,8 +1,6 @@
 # Changelog
 
-## 1.20.1 2025-12-03
-
-* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
+## master / unreleased
 
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
@@ -16,8 +14,11 @@
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
-* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132
+
+## 1.20.1 2025-12-03
+
+* [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116
 
 ## 1.20.0 2025-11-10
 

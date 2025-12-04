@@ -242,9 +242,9 @@ jobs:
             docker pull quay.io/cortexproject/cortex:v1.17.2
             docker pull quay.io/cortexproject/cortex:v1.18.1
             docker pull quay.io/cortexproject/cortex:v1.19.1
-            docker pull quay.io/cortexproject/cortex:v1.20.0
+            docker pull quay.io/cortexproject/cortex:v1.20.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.20.0 
+            docker pull quay.io/cortexproject/cortex:v1.20.1
             docker pull quay.io/prometheus/prometheus:v3.6.0
           fi
           docker pull memcached:1.6.1

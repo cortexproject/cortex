@@ -3,6 +3,7 @@
 ## master / unreleased
 
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
+* [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Querier: Add a `-querier.parquet-queryable-shard-cache-ttl` flag to add TTL to parquet shard cache. #7098
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063

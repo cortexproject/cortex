@@ -1,1 +1,786 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Getting Started</title><link>/docs/getting-started/</link><description>Recent content in Getting Started on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/getting-started/index.xml" rel="self" type="application/rss+xml"/></channel></rss>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Getting Started</title><link>/docs/getting-started/</link><description>Recent content in Getting Started on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/getting-started/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Single Binary Mode</title><link>/docs/getting-started/single-binary/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/single-binary/</guid><description>
+&lt;p>This guide will help you get Cortex running in single-binary mode using Docker Compose. In this mode, all Cortex components run in a single process, making it perfect for learning, development, and testing.&lt;/p>
+&lt;p>&lt;strong>Time to complete:&lt;/strong> ~15 minutes&lt;/p>
+&lt;h2 id="what-youll-learn">What You&amp;rsquo;ll Learn&lt;/h2>
+&lt;ul>
+&lt;li>How to run Cortex with Docker Compose&lt;/li>
+&lt;li>How to send metrics from Prometheus to Cortex using remote_write&lt;/li>
+&lt;li>How to query metrics stored in Cortex using Grafana&lt;/li>
+&lt;li>How to configure recording rules and alerting rules&lt;/li>
+&lt;li>How to set up the Cortex Alertmanager&lt;/li>
+&lt;/ul>
+&lt;h2 id="prerequisites">Prerequisites&lt;/h2>
+&lt;h3 id="software-requirements">Software Requirements&lt;/h3>
+&lt;ul>
+&lt;li>&lt;a href="https://docs.docker.com/get-docker/">Docker&lt;/a> (v20.10+)&lt;/li>
+&lt;li>&lt;a href="https://docs.docker.com/compose/install/">Docker Compose&lt;/a> (v2.30+)&lt;/li>
+&lt;/ul>
+&lt;h3 id="system-requirements">System Requirements&lt;/h3>
+&lt;ul>
+&lt;li>4GB RAM minimum&lt;/li>
+&lt;li>10GB disk space&lt;/li>
+&lt;li>Linux, macOS, or Windows with WSL2&lt;/li>
+&lt;/ul>
+&lt;h3 id="optional-tools">Optional Tools&lt;/h3>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-tools/">cortextool&lt;/a> - For managing rules and alerts (we&amp;rsquo;ll use Docker to run this)&lt;/li>
+&lt;/ul>
+&lt;h2 id="architecture">Architecture&lt;/h2>
+&lt;p>This setup creates the following services:&lt;/p>
+&lt;pre tabindex="0">&lt;code>┌─────────────┐ remote_write ┌─────────────┐
+│ Prometheus │ ───────────────────&amp;gt; │ Cortex │
+│ │ │ (single) │
+└─────────────┘ └─────────────┘
+│
+│ stores blocks
+▼
+┌─────────────┐ ┌─────────────┐
+│ Grafana │ ────── queries ────&amp;gt; │ SeaweedFS │
+│ Perses │ │ (S3) │
+└─────────────┘ └─────────────┘
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Components:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>SeaweedFS&lt;/strong>: S3-compatible object storage for storing metric blocks&lt;/li>
+&lt;li>&lt;strong>Cortex&lt;/strong>: Single-process Cortex instance with all components (distributor, ingester, querier, compactor, etc.)&lt;/li>
+&lt;li>&lt;strong>Prometheus&lt;/strong>: Scrapes its own metrics and sends them to Cortex&lt;/li>
+&lt;li>&lt;strong>Grafana&lt;/strong>: Visualizes metrics stored in Cortex&lt;/li>
+&lt;li>&lt;strong>Perses&lt;/strong>: Modern dashboard alternative (optional)&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-1-clone-the-repository">Step 1: Clone the Repository&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>git clone https://github.com/cortexproject/cortex.git
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cd cortex/docs/getting-started
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>getting-started&lt;/code> directory contains all the configuration files needed for this guide.&lt;/p>
+&lt;h2 id="step-2-start-the-services">Step 2: Start the Services&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose up -d
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This command starts all services in the background. Docker Compose will:&lt;/p>
+&lt;ol>
+&lt;li>Pull required images (first time only)&lt;/li>
+&lt;li>Start SeaweedFS (S3-compatible storage)&lt;/li>
+&lt;li>Initialize S3 buckets&lt;/li>
+&lt;li>Start Cortex&lt;/li>
+&lt;li>Start Prometheus (configured to send metrics to Cortex)&lt;/li>
+&lt;li>Start Grafana (pre-configured with Cortex datasource)&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>What&amp;rsquo;s happening?&lt;/strong> Check the logs:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># View all logs&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>docker compose logs -f
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># View Cortex logs only&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>docker compose logs -f cortex
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-3-verify-services-are-running">Step 3: Verify Services Are Running&lt;/h2>
+&lt;p>After ~30 seconds, all services should be healthy. Verify by checking:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose ps
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You should see all services with status &amp;ldquo;Up&amp;rdquo; or &amp;ldquo;healthy&amp;rdquo;.&lt;/p>
+&lt;h3 id="access-the-uis">Access the UIs&lt;/h3>
+&lt;p>Open these URLs in your browser:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Cortex&lt;/strong>: &lt;a href="http://localhost:9009">http://localhost:9009&lt;/a> - Admin interface and ring status&lt;/li>
+&lt;li>&lt;strong>Prometheus&lt;/strong>: &lt;a href="http://localhost:9090">http://localhost:9090&lt;/a> - Prometheus UI&lt;/li>
+&lt;li>&lt;strong>Grafana&lt;/strong>: &lt;a href="http://localhost:3000">http://localhost:3000&lt;/a> - Dashboards (no auth needed)&lt;/li>
+&lt;li>&lt;strong>SeaweedFS S3 API&lt;/strong>: http://localhost:8333 - S3-compatible API (use curl with &lt;code>--user any:any&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-4-verify-data-flow">Step 4: Verify Data Flow&lt;/h2>
+&lt;p>Let&amp;rsquo;s verify that metrics are flowing from Prometheus → Cortex → Grafana.&lt;/p>
+&lt;h3 id="check-prometheus-is-sending-metrics">Check Prometheus is Sending Metrics&lt;/h3>
+&lt;ol>
+&lt;li>Open &lt;a href="http://localhost:9090">Prometheus&lt;/a>&lt;/li>
+&lt;li>Go to Status → Targets&lt;/li>
+&lt;li>Verify the targets are UP&lt;/li>
+&lt;li>Go to Query - you should see &lt;code>prometheus_remote_storage_samples_total&lt;/code> increasing&lt;/li>
+&lt;/ol>
+&lt;h3 id="query-metrics-in-cortex">Query Metrics in Cortex&lt;/h3>
+&lt;p>Test that Cortex is receiving metrics:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: cortex&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/prometheus/api/v1/query?query=up&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You should see JSON output with metrics data.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> The &lt;code>X-Scope-OrgID&lt;/code> header specifies which tenant&amp;rsquo;s data to query. Cortex is multi-tenant by default. Prometheus automatically adds this header when writing metrics via remote_write.&lt;/p>
+&lt;h3 id="view-metrics-in-grafana">View Metrics in Grafana&lt;/h3>
+&lt;ol>
+&lt;li>Open &lt;a href="http://localhost:3000">Grafana&lt;/a> (login: &lt;code>admin&lt;/code> / &lt;code>admin&lt;/code>)&lt;/li>
+&lt;li>Go to &lt;a href="http://localhost:3000/explore">Explore&lt;/a>&lt;/li>
+&lt;li>Select the &amp;ldquo;Cortex&amp;rdquo; datasource&lt;/li>
+&lt;li>Run a query: &lt;code>up&lt;/code>&lt;/li>
+&lt;li>You should see metrics from Prometheus!&lt;/li>
+&lt;/ol>
+&lt;h3 id="view-cortex-dashboards">View Cortex Dashboards&lt;/h3>
+&lt;p>Pre-built dashboards are available at &lt;a href="http://localhost:3000/dashboards?tag=cortex">Dashboards&lt;/a>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Cortex / Writes&lt;/strong>: Monitor metric ingestion&lt;/li>
+&lt;li>&lt;strong>Cortex / Reads&lt;/strong>: Monitor query performance&lt;/li>
+&lt;li>&lt;strong>Cortex / Object Store&lt;/strong>: Monitor block storage&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-5-configure-recording-and-alerting-rules-optional">Step 5: Configure Recording and Alerting Rules (Optional)&lt;/h2>
+&lt;p>Cortex can evaluate PromQL recording rules and alerting rules, similar to Prometheus. This is optional but demonstrates an important Cortex feature.&lt;/p>
+&lt;p>&lt;strong>What are these?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Recording rules&lt;/strong>: Pre-compute expensive queries and store results as new metrics&lt;/li>
+&lt;li>&lt;strong>Alerting rules&lt;/strong>: Define conditions that trigger alerts&lt;/li>
+&lt;/ul>
+&lt;p>The repository includes example rules in &lt;code>rules.yaml&lt;/code> and &lt;code>alerts.yaml&lt;/code>.&lt;/p>
+&lt;h3 id="load-rules-into-cortex">Load Rules into Cortex&lt;/h3>
+&lt;p>&lt;strong>For Linux users:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker run --network host &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -v &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>pwd&lt;span style="color:#66d9ef">)&lt;/span>&lt;span style="color:#e6db74">:/workspace&amp;#34;&lt;/span> -w /workspace &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> quay.io/cortexproject/cortex-tools:v0.17.0 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:9009
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>For macOS/Windows users:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker run --network cortex-docs-getting-started_default &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -v &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>pwd&lt;span style="color:#66d9ef">)&lt;/span>&lt;span style="color:#e6db74">:/workspace&amp;#34;&lt;/span> -w /workspace &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> quay.io/cortexproject/cortex-tools:v0.17.0 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> rules sync rules.yaml alerts.yaml --id cortex --address http://cortex:9009
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Note:&lt;/strong> The &lt;code>--id cortex&lt;/code> flag specifies the tenant ID. Cortex is multi-tenant, so rules are namespaced by tenant.&lt;/p>
+&lt;h3 id="verify-rules-are-loaded">Verify Rules Are Loaded&lt;/h3>
+&lt;p>View rules in Grafana: &lt;a href="http://localhost:3000/alerting/list?view=list&amp;amp;search=datasource:Cortex">Alerting → Alert rules&lt;/a>&lt;/p>
+&lt;p>Or check via API:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: cortex&amp;#34;&lt;/span> &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/prometheus/api/v1/rules&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-6-configure-alertmanager-optional">Step 6: Configure Alertmanager (Optional)&lt;/h2>
+&lt;p>Cortex includes a multi-tenant Alertmanager that receives alerts from the ruler.&lt;/p>
+&lt;h3 id="load-alertmanager-configuration">Load Alertmanager Configuration&lt;/h3>
+&lt;p>&lt;strong>For Linux users:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker run --network host &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -v &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>pwd&lt;span style="color:#66d9ef">)&lt;/span>&lt;span style="color:#e6db74">:/workspace&amp;#34;&lt;/span> -w /workspace &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> quay.io/cortexproject/cortex-tools:v0.17.0 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:9009
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>For macOS/Windows users:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker run --network cortex-docs-getting-started_default &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -v &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>pwd&lt;span style="color:#66d9ef">)&lt;/span>&lt;span style="color:#e6db74">:/workspace&amp;#34;&lt;/span> -w /workspace &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> quay.io/cortexproject/cortex-tools:v0.17.0 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> alertmanager load alertmanager-config.yaml --id cortex --address http://cortex:9009
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="view-alertmanager-in-grafana">View Alertmanager in Grafana&lt;/h3>
+&lt;p>Configure Alertmanager notification policies in Grafana: &lt;a href="http://localhost:3000/alerting/notifications?search=&amp;amp;alertmanager=Cortex%20Alertmanager">Alerting → Notification policies&lt;/a>&lt;/p>
+&lt;h2 id="explore-and-experiment">Explore and Experiment&lt;/h2>
+&lt;p>Now that everything is running, try these experiments to learn how Cortex works:&lt;/p>
+&lt;h3 id="experiment-1-stop-the-ingester">Experiment 1: Stop the Ingester&lt;/h3>
+&lt;p>Cortex runs all components in one process, so stopping Cortex simulates an ingester failure.&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose stop cortex
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Observe:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Prometheus continues running and queues samples&lt;/li>
+&lt;li>Grafana queries fail (no ingesters available)&lt;/li>
+&lt;li>Metrics are NOT lost - Prometheus will retry&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Restart Cortex:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose start cortex
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Result:&lt;/strong> Prometheus catches up by sending queued samples. Check the Cortex / Writes dashboard to see the backlog being processed.&lt;/p>
+&lt;h3 id="experiment-2-query-old-vs-recent-data">Experiment 2: Query Old vs Recent Data&lt;/h3>
+&lt;p>Cortex stores recent data (last ~2 hours) in memory and older data in object storage (S3).&lt;/p>
+&lt;p>&lt;strong>Query recent metrics (from ingester memory):&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/prometheus/api/v1/query?query=up&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>After 2+ hours, query old metrics (from S3 blocks):&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/prometheus/api/v1/query?query=up[24h]&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Observe:&lt;/strong> Both queries work! Cortex seamlessly queries both sources.&lt;/p>
+&lt;h3 id="experiment-3-compare-prometheus-vs-cortex">Experiment 3: Compare Prometheus vs Cortex&lt;/h3>
+&lt;p>&lt;strong>In Prometheus:&lt;/strong> &lt;a href="http://localhost:9090/graph?g0.expr=up">Query &lt;code>up&lt;/code>&lt;/a>&lt;/p>
+&lt;p>&lt;strong>In Grafana (Cortex datasource):&lt;/strong> &lt;a href="http://localhost:3000/explore">Query &lt;code>up&lt;/code>&lt;/a>&lt;/p>
+&lt;p>&lt;strong>Are they the same?&lt;/strong> Initially yes, but after Prometheus sends data to Cortex via remote_write, the data diverges:&lt;/p>
+&lt;ul>
+&lt;li>Prometheus has local storage (limited retention)&lt;/li>
+&lt;li>Cortex has long-term storage in S3&lt;/li>
+&lt;/ul>
+&lt;h3 id="experiment-4-explore-the-ring">Experiment 4: Explore the Ring&lt;/h3>
+&lt;p>Cortex uses a hash ring for consistent hashing of time series to ingesters.&lt;/p>
+&lt;p>View the ring status: &lt;a href="http://localhost:9009/ring">http://localhost:9009/ring&lt;/a>&lt;/p>
+&lt;p>In single-binary mode, you&amp;rsquo;ll see one ingester. In microservices mode, you&amp;rsquo;d see multiple ingesters.&lt;/p>
+&lt;h3 id="experiment-5-inspect-object-storage">Experiment 5: Inspect Object Storage&lt;/h3>
+&lt;p>SeaweedFS stores Cortex blocks. You can inspect them using the S3 API:&lt;/p>
+&lt;p>&lt;strong>List buckets:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> http://localhost:8333
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>List objects in the cortex-blocks bucket:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> http://localhost:8333/cortex-blocks?list-type&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">2&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You&amp;rsquo;ll see:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex/&lt;/code> directory (tenant ID)&lt;/li>
+&lt;li>Block directories named by ULID (e.g., &lt;code>01J8KRQ7M8...&lt;/code>)&lt;/li>
+&lt;li>Each block contains &lt;code>index&lt;/code>, &lt;code>chunks/&lt;/code>, and &lt;code>meta.json&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Tip:&lt;/strong> You can also use the AWS CLI with SeaweedFS:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>export AWS_ACCESS_KEY_ID&lt;span style="color:#f92672">=&lt;/span>any
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>export AWS_SECRET_ACCESS_KEY&lt;span style="color:#f92672">=&lt;/span>any
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>aws --endpoint-url&lt;span style="color:#f92672">=&lt;/span>http://localhost:8333 s3 ls s3://cortex-blocks/
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="configuration-files">Configuration Files&lt;/h2>
+&lt;p>This setup uses several configuration files. Here&amp;rsquo;s what each does:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>File&lt;/th>
+&lt;th>Purpose&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>docker-compose.yaml&lt;/code>&lt;/td>
+&lt;td>Defines all services (Cortex, Prometheus, Grafana, SeaweedFS)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex-config.yaml&lt;/code>&lt;/td>
+&lt;td>Cortex configuration (storage, limits, components)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>prometheus-config.yaml&lt;/code>&lt;/td>
+&lt;td>Prometheus configuration with remote_write to Cortex&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>grafana-datasource-docker.yaml&lt;/code>&lt;/td>
+&lt;td>Grafana datasource pointing to Cortex&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>rules.yaml&lt;/code>&lt;/td>
+&lt;td>Example recording rules&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>alerts.yaml&lt;/code>&lt;/td>
+&lt;td>Example alerting rules&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>alertmanager-config.yaml&lt;/code>&lt;/td>
+&lt;td>Alertmanager configuration&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Want to customize?&lt;/strong> Edit these files and restart services:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose restart cortex
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="troubleshooting">Troubleshooting&lt;/h2>
+&lt;h3 id="services-wont-start">Services won&amp;rsquo;t start&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check logs&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>docker compose logs
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check port conflicts&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>lsof -i :9009 &lt;span style="color:#75715e"># Cortex&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>lsof -i :9090 &lt;span style="color:#75715e"># Prometheus&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>lsof -i :3000 &lt;span style="color:#75715e"># Grafana&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="no-metrics-in-grafana">No metrics in Grafana&lt;/h3>
+&lt;ol>
+&lt;li>Check Prometheus is sending metrics: &lt;a href="http://localhost:9090/targets">Status → Targets&lt;/a>&lt;/li>
+&lt;li>Check Cortex is receiving metrics: &lt;code>curl &amp;quot;http://localhost:9009/prometheus/api/v1/query?query=up&amp;quot;&lt;/code>&lt;/li>
+&lt;li>Check Grafana datasource: Settings → Data sources → Cortex → Test&lt;/li>
+&lt;/ol>
+&lt;h3 id="cortextool-fails-on-macoswindows">cortextool fails on macOS/Windows&lt;/h3>
+&lt;p>The &lt;code>--network host&lt;/code> flag doesn&amp;rsquo;t work on macOS/Windows. Use the Docker network name instead:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker run --network cortex-docs-getting-started_default ...
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="out-of-memory-errors">Out of memory errors&lt;/h3>
+&lt;p>Increase Docker&amp;rsquo;s memory limit to 4GB or more:&lt;/p>
+&lt;ul>
+&lt;li>Docker Desktop → Settings → Resources → Memory&lt;/li>
+&lt;/ul>
+&lt;h2 id="clean-up">Clean Up&lt;/h2>
+&lt;p>When you&amp;rsquo;re done, stop and remove all services:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>docker compose down -v
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>-v&lt;/code> flag removes volumes (stored data). Omit it to keep data between runs.&lt;/p>
+&lt;h2 id="next-steps">Next Steps&lt;/h2>
+&lt;p>Congratulations! You&amp;rsquo;ve successfully run Cortex in single-binary mode. Here&amp;rsquo;s what to explore next:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Try Microservices Mode&lt;/strong>: &lt;a href="/docs/getting-started/microservices/">Get started with microservices mode →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Learn the Architecture&lt;/strong>: &lt;a href="/docs/architecture/">Understand Cortex&amp;rsquo;s design →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Production Deployment&lt;/strong>: &lt;a href="/docs/guides/running-cortex-on-kubernetes/">Run Cortex on Kubernetes →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Deep Dive into Blocks Storage&lt;/strong>: &lt;a href="/docs/blocks-storage/">Learn about blocks storage →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Configure Multi-tenancy&lt;/strong>: &lt;a href="/docs/guides/auth/">Set up authentication →&lt;/a>&lt;/li>
+&lt;/ol>
+&lt;h2 id="additional-resources">Additional Resources&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/">Cortex Documentation&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-helm-chart">Cortex Helm Chart&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-tools">cortextool CLI&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://cloud-native.slack.com/archives/cortex">CNCF Slack #cortex&lt;/a>&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Microservices Mode</title><link>/docs/getting-started/microservices/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/getting-started/microservices/</guid><description>
+&lt;p>This guide will help you run Cortex in microservices mode using Kubernetes (Kind). In this mode, each Cortex component runs as an independent service, mirroring how Cortex runs in production.&lt;/p>
+&lt;p>&lt;strong>Time to complete:&lt;/strong> ~30 minutes&lt;/p>
+&lt;h2 id="what-youll-learn">What You&amp;rsquo;ll Learn&lt;/h2>
+&lt;ul>
+&lt;li>How to deploy Cortex on Kubernetes with Helm&lt;/li>
+&lt;li>How Cortex microservices communicate with each other&lt;/li>
+&lt;li>How to configure Prometheus to send metrics to a distributed Cortex&lt;/li>
+&lt;li>How to query metrics across multiple Cortex services&lt;/li>
+&lt;li>How to configure rules and alerts in a distributed setup&lt;/li>
+&lt;/ul>
+&lt;h2 id="prerequisites">Prerequisites&lt;/h2>
+&lt;h3 id="software-requirements">Software Requirements&lt;/h3>
+&lt;ul>
+&lt;li>&lt;a href="https://kind.sigs.k8s.io/docs/user/quick-start/#installation">Kind&lt;/a> (Kubernetes in Docker)&lt;/li>
+&lt;li>&lt;a href="https://kubernetes.io/docs/tasks/tools/">kubectl&lt;/a> (v1.20+)&lt;/li>
+&lt;li>&lt;a href="https://helm.sh/docs/intro/install/">Helm&lt;/a> (v3.0+)&lt;/li>
+&lt;li>&lt;a href="https://docs.docker.com/get-docker/">Docker&lt;/a> (required by Kind)&lt;/li>
+&lt;/ul>
+&lt;h3 id="system-requirements">System Requirements&lt;/h3>
+&lt;ul>
+&lt;li>8GB RAM minimum (for local Kubernetes cluster)&lt;/li>
+&lt;li>20GB disk space&lt;/li>
+&lt;li>Linux, macOS, or Windows with WSL2&lt;/li>
+&lt;/ul>
+&lt;h3 id="optional-tools">Optional Tools&lt;/h3>
+&lt;ul>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-tools/">cortextool&lt;/a> - For managing rules and alerts&lt;/li>
+&lt;li>&lt;a href="https://jqlang.github.io/jq/">jq&lt;/a> - For parsing JSON responses&lt;/li>
+&lt;/ul>
+&lt;h2 id="architecture">Architecture&lt;/h2>
+&lt;p>This setup creates a production-like Cortex deployment with independent microservices:&lt;/p>
+&lt;pre tabindex="0">&lt;code> ┌─────────────────────────────────────┐
+│ Kubernetes Cluster (Kind) │
+│ │
+┌─────────────┐ │ ┌──────────────┐ ┌──────────────┐ │
+│ Prometheus │────remote───┼─&amp;gt;│ Distributor │ │ Ingester │ │
+│ │ write │ └──────────────┘ └──────────────┘ │
+└─────────────┘ │ │ │ │
+│ │ │ │
+│ └────────────────┘ │
+│ │ │
+│ ▼ │
+┌─────────────┐ │ ┌──────────────┐ ┌──────────────┐ │
+│ Grafana │◄──────┼──┤ Querier │ │ SeaweedFS │ │
+└─────────────┘ │ └──────────────┘ │ (S3) │ │
+│ ▲ └──────────────┘ │
+│ │ │ │
+│ ┌──────────────┐ │ │
+│ │Store Gateway │◄────────┘ │
+│ └──────────────┘ │
+│ │
+│ ┌──────────────┐ │
+│ │ Compactor │ │
+│ └──────────────┘ │
+│ │
+│ ┌──────────────┐ │
+│ │ Ruler │ │
+│ └──────────────┘ │
+└─────────────────────────────────────┘
+&lt;/code>&lt;/pre>&lt;p>&lt;strong>Components:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Distributor&lt;/strong>: Receives metrics from Prometheus, validates, and forwards to ingesters&lt;/li>
+&lt;li>&lt;strong>Ingester&lt;/strong>: Stores recent metrics in memory and flushes to S3&lt;/li>
+&lt;li>&lt;strong>Querier&lt;/strong>: Queries both ingesters (recent data) and store-gateway (historical data)&lt;/li>
+&lt;li>&lt;strong>Store Gateway&lt;/strong>: Queries historical blocks from S3&lt;/li>
+&lt;li>&lt;strong>Compactor&lt;/strong>: Compacts and deduplicates blocks in S3&lt;/li>
+&lt;li>&lt;strong>Ruler&lt;/strong>: Evaluates recording and alerting rules&lt;/li>
+&lt;li>&lt;strong>Alertmanager&lt;/strong>: Manages alerts (optional)&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-1-create-a-kubernetes-cluster">Step 1: Create a Kubernetes Cluster&lt;/h2>
+&lt;p>Create a local Kubernetes cluster using Kind:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kind create cluster --name cortex-demo
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s happening?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Kind creates a Kubernetes cluster running inside Docker&lt;/li>
+&lt;li>This takes ~2 minutes&lt;/li>
+&lt;li>The cluster is named &lt;code>cortex-demo&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Verify the cluster:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl cluster-info
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl get nodes
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You should see one node in the &lt;code>Ready&lt;/code> state.&lt;/p>
+&lt;h2 id="step-2-configure-helm-repositories">Step 2: Configure Helm Repositories&lt;/h2>
+&lt;p>Add the Helm repositories for Cortex, Grafana, and Prometheus:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>helm repo add cortex-helm https://cortexproject.github.io/cortex-helm-chart
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>helm repo add grafana https://grafana.github.io/helm-charts
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>helm repo update
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-3-clone-the-repository">Step 3: Clone the Repository&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>git clone https://github.com/cortexproject/cortex.git
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>cd cortex/docs/getting-started
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>getting-started&lt;/code> directory contains Helm values files and Kubernetes manifests.&lt;/p>
+&lt;h2 id="step-4-create-the-cortex-namespace">Step 4: Create the Cortex Namespace&lt;/h2>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl create namespace cortex
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>All Cortex components will be deployed in this namespace.&lt;/p>
+&lt;h2 id="step-5-deploy-seaweedfs-s3-compatible-storage">Step 5: Deploy SeaweedFS (S3-Compatible Storage)&lt;/h2>
+&lt;p>Cortex requires object storage for blocks. We&amp;rsquo;ll use SeaweedFS as an S3-compatible alternative.&lt;/p>
+&lt;h3 id="deploy-seaweedfs">Deploy SeaweedFS&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex apply -f seaweedfs.yaml --wait --timeout&lt;span style="color:#f92672">=&lt;/span>5m
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="wait-for-seaweedfs-to-be-ready">Wait for SeaweedFS to be Ready&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex wait --for&lt;span style="color:#f92672">=&lt;/span>condition&lt;span style="color:#f92672">=&lt;/span>ready pod -l app&lt;span style="color:#f92672">=&lt;/span>seaweedfs --timeout&lt;span style="color:#f92672">=&lt;/span>5m
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s happening?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>SeaweedFS starts as a StatefulSet&lt;/li>
+&lt;li>It provides an S3-compatible API on port 8333&lt;/li>
+&lt;li>Initial startup takes ~1 minute&lt;/li>
+&lt;/ul>
+&lt;h3 id="create-s3-buckets">Create S3 Buckets&lt;/h3>
+&lt;p>SeaweedFS needs buckets for Cortex data. First, port-forward to SeaweedFS:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward svc/seaweedfs &lt;span style="color:#ae81ff">8333&lt;/span> &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Note:&lt;/strong> This runs in the background. If the command fails with &amp;ldquo;port already in use&amp;rdquo;, kill the existing process:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>lsof -ti:8333 | xargs kill
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Now create the buckets:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> bucket in cortex-blocks cortex-ruler cortex-alertmanager; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -X PUT http://localhost:8333/$bucket
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What are these buckets?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex-blocks&lt;/code>: Stores TSDB blocks (metric data)&lt;/li>
+&lt;li>&lt;code>cortex-ruler&lt;/code>: Stores ruler configuration&lt;/li>
+&lt;li>&lt;code>cortex-alertmanager&lt;/code>: Stores alertmanager configuration&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Verify buckets were created:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> http://localhost:8333
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-6-deploy-cortex">Step 6: Deploy Cortex&lt;/h2>
+&lt;p>Deploy Cortex using the Helm chart with the provided values file:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>helm upgrade --install &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --version&lt;span style="color:#f92672">=&lt;/span>2.4.0 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --namespace cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> cortex cortex-helm/cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -f cortex-values.yaml &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --wait
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s in &lt;code>cortex-values.yaml&lt;/code>?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Configures blocks storage to use SeaweedFS&lt;/li>
+&lt;li>Sets resource limits for each component&lt;/li>
+&lt;li>Enables the ruler and alertmanager&lt;/li>
+&lt;li>Configures the ingester to use 3 replicas&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>This takes ~5 minutes.&lt;/strong> The &lt;code>--wait&lt;/code> flag waits for all pods to be ready.&lt;/p>
+&lt;h3 id="verify-cortex-components">Verify Cortex Components&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex get pods
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You should see pods for each Cortex component:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex-distributor-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-ingester-*&lt;/code> (multiple replicas)&lt;/li>
+&lt;li>&lt;code>cortex-querier-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-query-frontend-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-store-gateway-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-compactor-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-ruler-*&lt;/code>&lt;/li>
+&lt;li>&lt;code>cortex-nginx-*&lt;/code> (reverse proxy)&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Check logs if pods aren&amp;rsquo;t starting:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs -l app.kubernetes.io/name&lt;span style="color:#f92672">=&lt;/span>cortex -f --max-log-requests &lt;span style="color:#ae81ff">20&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-7-deploy-prometheus">Step 7: Deploy Prometheus&lt;/h2>
+&lt;p>Deploy Prometheus to scrape metrics from Kubernetes and send them to Cortex:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>helm upgrade --install &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --version&lt;span style="color:#f92672">=&lt;/span>25.20.1 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --namespace cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> prometheus prometheus-community/prometheus &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -f prometheus-values.yaml &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --wait
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s in &lt;code>prometheus-values.yaml&lt;/code>?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Configures remote_write to send metrics to &lt;code>cortex-distributor&lt;/code>&lt;/li>
+&lt;li>Sets up scrape configs for Kubernetes services&lt;/li>
+&lt;li>Adds the &lt;code>X-Scope-OrgID: cortex&lt;/code> header for multi-tenancy&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Verify Prometheus is running:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex get pods -l app.kubernetes.io/name&lt;span style="color:#f92672">=&lt;/span>prometheus
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-8-deploy-grafana">Step 8: Deploy Grafana&lt;/h2>
+&lt;p>Deploy Grafana to visualize metrics from Cortex:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>helm upgrade --install &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --version&lt;span style="color:#f92672">=&lt;/span>7.3.9 &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --namespace cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> grafana grafana/grafana &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -f grafana-values.yaml &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --wait
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s in &lt;code>grafana-values.yaml&lt;/code>?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Configures Cortex as a datasource (pointing to &lt;code>cortex-nginx&lt;/code>)&lt;/li>
+&lt;li>Enables sidecar for loading dashboards from ConfigMaps&lt;/li>
+&lt;/ul>
+&lt;h3 id="load-cortex-dashboards">Load Cortex Dashboards&lt;/h3>
+&lt;p>Create ConfigMaps for Cortex operational dashboards:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> dashboard in &lt;span style="color:#66d9ef">$(&lt;/span>ls dashboards&lt;span style="color:#66d9ef">)&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> basename&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>basename -s .json $dashboard&lt;span style="color:#66d9ef">)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> cmname&lt;span style="color:#f92672">=&lt;/span>grafana-dashboard-$basename
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl create --namespace cortex configmap $cmname &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --from-file&lt;span style="color:#f92672">=&lt;/span>$dashboard&lt;span style="color:#f92672">=&lt;/span>dashboards/$dashboard &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --save-config&lt;span style="color:#f92672">=&lt;/span>true -o yaml --dry-run&lt;span style="color:#f92672">=&lt;/span>client | kubectl apply -f -
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> kubectl patch --namespace cortex configmap $cmname &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -p &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;metadata&amp;#34;:{&amp;#34;labels&amp;#34;:{&amp;#34;grafana_dashboard&amp;#34;:&amp;#34;1&amp;#34;}}}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s happening?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Each dashboard JSON is stored in a ConfigMap&lt;/li>
+&lt;li>The &lt;code>grafana_dashboard&lt;/code> label tells Grafana&amp;rsquo;s sidecar to load it&lt;/li>
+&lt;li>Dashboards appear automatically in Grafana&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-9-access-the-services">Step 9: Access the Services&lt;/h2>
+&lt;p>Port-forward to access Grafana:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/grafana &lt;span style="color:#ae81ff">3000&lt;/span> &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Open &lt;a href="http://localhost:3000">Grafana&lt;/a>.&lt;/p>
+&lt;p>&lt;strong>For other services, port-forward as needed:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Prometheus&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/prometheus-server &lt;span style="color:#ae81ff">9090&lt;/span> &amp;amp;
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Cortex Nginx (API gateway)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &amp;amp;
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Cortex Distributor (admin UI)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/cortex-distributor 9009:8080 &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Tip:&lt;/strong> Open a new terminal for each port-forward, or use &lt;code>&amp;amp;&lt;/code> to run in the background.&lt;/p>
+&lt;h2 id="step-10-verify-data-flow">Step 10: Verify Data Flow&lt;/h2>
+&lt;h3 id="check-prometheus-is-sending-metrics">Check Prometheus is Sending Metrics&lt;/h3>
+&lt;p>Port-forward to Prometheus:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/prometheus-server &lt;span style="color:#ae81ff">9090&lt;/span> &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Open &lt;a href="http://localhost:9090">Prometheus&lt;/a> and:&lt;/p>
+&lt;ol>
+&lt;li>Go to Status → Targets - verify targets are UP&lt;/li>
+&lt;li>Go to Query - verify &lt;code>prometheus_remote_storage_samples_total&lt;/code> is increasing&lt;/li>
+&lt;/ol>
+&lt;h3 id="query-metrics-in-cortex">Query Metrics in Cortex&lt;/h3>
+&lt;p>Port-forward to the Cortex API:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Query metrics:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: cortex&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> &lt;span style="color:#e6db74">&amp;#34;http://localhost:8080/prometheus/api/v1/query?query=up&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Note:&lt;/strong> The &lt;code>X-Scope-OrgID&lt;/code> header specifies the tenant. Cortex is multi-tenant.&lt;/p>
+&lt;h3 id="view-metrics-in-grafana">View Metrics in Grafana&lt;/h3>
+&lt;ol>
+&lt;li>Open &lt;a href="http://localhost:3000">Grafana&lt;/a>&lt;/li>
+&lt;li>Go to &lt;a href="http://localhost:3000/explore">Explore&lt;/a>&lt;/li>
+&lt;li>Select the &amp;ldquo;Cortex&amp;rdquo; datasource&lt;/li>
+&lt;li>Run a query: &lt;code>up&lt;/code>&lt;/li>
+&lt;li>You should see metrics from Prometheus!&lt;/li>
+&lt;/ol>
+&lt;h3 id="view-cortex-dashboards">View Cortex Dashboards&lt;/h3>
+&lt;p>Navigate to &lt;a href="http://localhost:3000/dashboards?tag=cortex">Dashboards&lt;/a> to see:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Cortex / Writes&lt;/strong>: Monitor the distributor and ingesters&lt;/li>
+&lt;li>&lt;strong>Cortex / Reads&lt;/strong>: Monitor the querier and query-frontend&lt;/li>
+&lt;li>&lt;strong>Cortex / Object Store&lt;/strong>: Monitor block storage operations&lt;/li>
+&lt;li>&lt;strong>Cortex / Compactor&lt;/strong>: Monitor block compaction&lt;/li>
+&lt;/ul>
+&lt;h2 id="step-11-configure-rules-and-alerts-optional">Step 11: Configure Rules and Alerts (Optional)&lt;/h2>
+&lt;h3 id="port-forward-to-cortex-api">Port-Forward to Cortex API&lt;/h3>
+&lt;p>If not already running:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="install-cortextool-if-needed">Install cortextool (if needed)&lt;/h3>
+&lt;p>&lt;strong>macOS:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_mac-os_x86_64 -O cortextool
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>chmod +x cortextool
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>sudo mv cortextool /usr/local/bin/
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Linux:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_linux_x86_64 -O cortextool
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>chmod +x cortextool
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>sudo mv cortextool /usr/local/bin/
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Or use Docker:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>alias cortextool&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#e6db74">&amp;#34;docker run --rm --network host -v &lt;/span>&lt;span style="color:#66d9ef">$(&lt;/span>pwd&lt;span style="color:#66d9ef">)&lt;/span>&lt;span style="color:#e6db74">:/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="load-recording-and-alerting-rules">Load Recording and Alerting Rules&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>cortextool rules sync rules.yaml alerts.yaml &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --id cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --address http://localhost:8080
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>What&amp;rsquo;s happening?&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>rules.yaml&lt;/code> contains recording rules (pre-computed PromQL queries)&lt;/li>
+&lt;li>&lt;code>alerts.yaml&lt;/code> contains alerting rules (conditions that trigger alerts)&lt;/li>
+&lt;li>Rules are stored in S3 and evaluated by the ruler component&lt;/li>
+&lt;/ul>
+&lt;h3 id="verify-rules-are-loaded">Verify Rules Are Loaded&lt;/h3>
+&lt;p>View rules in Grafana: &lt;a href="http://localhost:3000/alerting/list?view=list&amp;amp;search=datasource:Cortex">Alerting → Alert rules&lt;/a>&lt;/p>
+&lt;p>Or check via API:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: cortex&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> &lt;span style="color:#e6db74">&amp;#34;http://localhost:8080/prometheus/api/v1/rules&amp;#34;&lt;/span> | jq
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="step-12-configure-alertmanager-optional">Step 12: Configure Alertmanager (Optional)&lt;/h2>
+&lt;p>Load Alertmanager configuration:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>cortextool alertmanager load alertmanager-config.yaml &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --id cortex &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --address http://localhost:8080
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Verify in Grafana:&lt;/strong> &lt;a href="http://localhost:3000/alerting/notifications?search=&amp;amp;alertmanager=Cortex%20Alertmanager">Alerting → Notification policies&lt;/a>&lt;/p>
+&lt;h2 id="explore-and-experiment">Explore and Experiment&lt;/h2>
+&lt;h3 id="experiment-1-scale-ingesters">Experiment 1: Scale Ingesters&lt;/h3>
+&lt;p>Cortex uses a hash ring to distribute time series across ingesters. Let&amp;rsquo;s add more ingesters:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex scale deployment cortex-ingester --replicas&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">5&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Observe:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>New ingesters join the ring&lt;/li>
+&lt;li>Time series are rebalanced&lt;/li>
+&lt;li>View the ring: Port-forward to a distributor and visit &lt;a href="http://localhost:9009/ingester/ring">http://localhost:9009/ingester/ring&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/cortex-distributor 9009:8080
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Scale back down:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex scale deployment cortex-ingester --replicas&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">3&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="experiment-2-kill-an-ingester">Experiment 2: Kill an Ingester&lt;/h3>
+&lt;p>Simulate a failure by deleting a single ingester pod. This demonstrates Cortex&amp;rsquo;s resilience.&lt;/p>
+&lt;p>&lt;strong>Step 1: List the ingester pods&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex get pods -l app.kubernetes.io/component&lt;span style="color:#f92672">=&lt;/span>ingester
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You should see multiple ingester pods (typically 3 replicas).&lt;/p>
+&lt;p>&lt;strong>Step 2: Delete one specific ingester pod&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Replace &amp;lt;pod-name&amp;gt; with an actual pod name from the list above&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex delete pod &amp;lt;pod-name&amp;gt; --force --grace-period&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">0&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Example:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex delete pod cortex-ingester-76d95464d8 --force --grace-period&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">0&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Observe:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Queries still work (data is replicated across the remaining ingesters)&lt;/li>
+&lt;li>Kubernetes automatically restarts the deleted pod&lt;/li>
+&lt;li>The new ingester rejoins the ring&lt;/li>
+&lt;li>Check the ring status: Port-forward to a distributor and visit &lt;a href="http://localhost:9009/ingester/ring">http://localhost:9009/ingester/ring&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Why it works:&lt;/strong> Cortex replicates data across multiple ingesters (default: 3 replicas), so losing one ingester doesn&amp;rsquo;t cause data loss.&lt;/p>
+&lt;h3 id="experiment-3-view-component-logs">Experiment 3: View Component Logs&lt;/h3>
+&lt;p>See what each component is doing:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Distributor logs (receives metrics from Prometheus)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs -l app.kubernetes.io/component&lt;span style="color:#f92672">=&lt;/span>distributor -f
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Ingester logs (stores metrics in memory)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs -l app.kubernetes.io/component&lt;span style="color:#f92672">=&lt;/span>ingester -f
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Querier logs (handles PromQL queries)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs -l app.kubernetes.io/component&lt;span style="color:#f92672">=&lt;/span>querier -f
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Compactor logs (compacts blocks in S3)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs -l app.kubernetes.io/component&lt;span style="color:#f92672">=&lt;/span>compactor -f
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="experiment-4-inspect-the-ring">Experiment 4: Inspect the Ring&lt;/h3>
+&lt;p>Cortex uses a hash ring for consistent hashing. View the ingester ring:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward deploy/cortex-distributor 9009:8080 &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Open &lt;a href="http://localhost:9009/ingester/ring">http://localhost:9009/ingester/ring&lt;/a> to see:&lt;/p>
+&lt;ul>
+&lt;li>Ingester tokens in the ring&lt;/li>
+&lt;li>Health status of each ingester&lt;/li>
+&lt;li>Token ownership ranges&lt;/li>
+&lt;/ul>
+&lt;h3 id="experiment-5-check-block-storage">Experiment 5: Check Block Storage&lt;/h3>
+&lt;p>View blocks in SeaweedFS using the S3 API:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex port-forward svc/seaweedfs &lt;span style="color:#ae81ff">8333&lt;/span> &amp;amp;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>List buckets:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> http://localhost:8333
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>List objects in the cortex-blocks bucket:&lt;/strong>&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>curl --aws-sigv4 &lt;span style="color:#e6db74">&amp;#34;aws:amz:local:seaweedfs&amp;#34;&lt;/span> --user &lt;span style="color:#e6db74">&amp;#34;any:any&amp;#34;&lt;/span> http://localhost:8333/cortex-blocks?list-type&lt;span style="color:#f92672">=&lt;/span>&lt;span style="color:#ae81ff">2&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>You&amp;rsquo;ll see:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex/&lt;/code> directory (tenant ID)&lt;/li>
+&lt;li>Block directories (named by ULID)&lt;/li>
+&lt;li>Each block contains &lt;code>index&lt;/code>, &lt;code>chunks/&lt;/code>, and &lt;code>meta.json&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Tip:&lt;/strong> You can also use the AWS CLI:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>export AWS_ACCESS_KEY_ID&lt;span style="color:#f92672">=&lt;/span>any
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>export AWS_SECRET_ACCESS_KEY&lt;span style="color:#f92672">=&lt;/span>any
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>aws --endpoint-url&lt;span style="color:#f92672">=&lt;/span>http://localhost:8333 s3 ls s3://cortex-blocks/cortex/
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="configuration-files">Configuration Files&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>File&lt;/th>
+&lt;th>Purpose&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>seaweedfs.yaml&lt;/code>&lt;/td>
+&lt;td>Kubernetes manifest for SeaweedFS (S3)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex-values.yaml&lt;/code>&lt;/td>
+&lt;td>Helm values for Cortex (component config, storage)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>prometheus-values.yaml&lt;/code>&lt;/td>
+&lt;td>Helm values for Prometheus (scrape configs, remote_write)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>grafana-values.yaml&lt;/code>&lt;/td>
+&lt;td>Helm values for Grafana (datasources, dashboards)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>rules.yaml&lt;/code>&lt;/td>
+&lt;td>Recording rules for the ruler&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>alerts.yaml&lt;/code>&lt;/td>
+&lt;td>Alerting rules for the ruler&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>alertmanager-config.yaml&lt;/code>&lt;/td>
+&lt;td>Alertmanager notification configuration&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Want to customize?&lt;/strong> Edit the Helm values files and upgrade:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>helm upgrade --namespace cortex cortex cortex-helm/cortex -f cortex-values.yaml
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="troubleshooting">Troubleshooting&lt;/h2>
+&lt;h3 id="pods-are-pending-or-crashing">Pods are pending or crashing&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check pod status&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex get pods
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Describe a pod to see events&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex describe pod &amp;lt;pod-name&amp;gt;
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check logs&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>kubectl --namespace cortex logs &amp;lt;pod-name&amp;gt;
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="ingesters-wont-start">Ingesters won&amp;rsquo;t start&lt;/h3>
+&lt;ul>
+&lt;li>Check that SeaweedFS is running and buckets are created&lt;/li>
+&lt;li>Verify the &lt;code>cortex-values.yaml&lt;/code> has correct S3 config&lt;/li>
+&lt;li>Check logs: &lt;code>kubectl --namespace cortex logs -l app.kubernetes.io/component=ingester&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;h3 id="no-metrics-in-grafana">No metrics in Grafana&lt;/h3>
+&lt;ol>
+&lt;li>Check Prometheus remote_write is configured: &lt;code>kubectl --namespace cortex get configmap prometheus-server -o yaml&lt;/code>&lt;/li>
+&lt;li>Check distributor is receiving metrics: &lt;code>kubectl --namespace cortex logs -l app.kubernetes.io/component=distributor&lt;/code>&lt;/li>
+&lt;li>Test Cortex API directly: &lt;code>curl -H &amp;quot;X-Scope-OrgID: cortex&amp;quot; &amp;quot;http://localhost:8080/prometheus/api/v1/query?query=up&amp;quot;&lt;/code>&lt;/li>
+&lt;/ol>
+&lt;h3 id="port-forward-fails">Port-forward fails&lt;/h3>
+&lt;ul>
+&lt;li>Check if port is already in use: &lt;code>lsof -i :&amp;lt;port&amp;gt;&lt;/code>&lt;/li>
+&lt;li>Kill existing process: &lt;code>lsof -ti:&amp;lt;port&amp;gt; | xargs kill&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;h3 id="out-of-memory">Out of memory&lt;/h3>
+&lt;p>Kind requires Docker to have enough resources:&lt;/p>
+&lt;ul>
+&lt;li>Docker Desktop → Settings → Resources → Memory (set to 8GB+)&lt;/li>
+&lt;/ul>
+&lt;h3 id="cortextool-commands-fail">cortextool commands fail&lt;/h3>
+&lt;ul>
+&lt;li>Make sure port-forward is running: &lt;code>kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &amp;amp;&lt;/code>&lt;/li>
+&lt;li>Verify Cortex is responding: &lt;code>curl http://localhost:8080/ready&lt;/code>&lt;/li>
+&lt;/ul>
+&lt;h2 id="clean-up">Clean Up&lt;/h2>
+&lt;h3 id="remove-port-forwards">Remove Port-Forwards&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Kill all kubectl port-forwards&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>killall kubectl
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Or kill specific port-forwards&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>lsof -ti:3000,8080,9009,9090 | xargs kill
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="delete-the-kind-cluster">Delete the Kind Cluster&lt;/h3>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>kind delete cluster --name cortex-demo
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This removes all Kubernetes resources and the Kind cluster.&lt;/p>
+&lt;h2 id="next-steps">Next Steps&lt;/h2>
+&lt;p>Congratulations! You&amp;rsquo;ve successfully deployed Cortex in microservices mode on Kubernetes. Here&amp;rsquo;s what to explore next:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Production Deployment&lt;/strong>: &lt;a href="/docs/guides/running-cortex-on-kubernetes/">Run Cortex on real Kubernetes →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Learn the Architecture&lt;/strong>: &lt;a href="/docs/architecture/">Understand each component →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Blocks Storage Deep Dive&lt;/strong>: &lt;a href="/docs/blocks-storage/">How blocks storage works →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>High Availability&lt;/strong>: &lt;a href="/docs/guides/zone-aware-replication/">Configure zone replication →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Monitoring Cortex&lt;/strong>: &lt;a href="/docs/guides/capacity-planning/">Capacity planning guide →&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Secure Your Deployment&lt;/strong>: &lt;a href="/docs/guides/auth/">Set up authentication →&lt;/a>&lt;/li>
+&lt;/ol>
+&lt;h2 id="comparison-single-binary-vs-microservices">Comparison: Single Binary vs Microservices&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Aspect&lt;/th>
+&lt;th>Single Binary&lt;/th>
+&lt;th>Microservices&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;strong>Components&lt;/strong>&lt;/td>
+&lt;td>All in one process&lt;/td>
+&lt;td>Separate pods per component&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Scaling&lt;/strong>&lt;/td>
+&lt;td>Vertical (bigger instance)&lt;/td>
+&lt;td>Horizontal (more pods)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Resource Usage&lt;/strong>&lt;/td>
+&lt;td>Lower (1 process)&lt;/td>
+&lt;td>Higher (multiple processes)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Complexity&lt;/strong>&lt;/td>
+&lt;td>Simple&lt;/td>
+&lt;td>Complex (orchestration needed)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Failure Isolation&lt;/strong>&lt;/td>
+&lt;td>None (single point of failure)&lt;/td>
+&lt;td>Yes (component failures isolated)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Use Case&lt;/strong>&lt;/td>
+&lt;td>Dev, testing, learning&lt;/td>
+&lt;td>Production deployments&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="additional-resources">Additional Resources&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/">Cortex Documentation&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-helm-chart">Cortex Helm Chart&lt;/a>&lt;/li>
+&lt;li>&lt;a href="/docs/architecture/">Cortex Architecture&lt;/a>&lt;/li>
+&lt;li>&lt;a href="/docs/guides/running-cortex-on-kubernetes/">Running on Production Kubernetes&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://cloud-native.slack.com/archives/cortex">CNCF Slack #cortex&lt;/a>&lt;/li>
+&lt;/ul></description></item></channel></rss>

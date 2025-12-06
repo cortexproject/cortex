@@ -12,10 +12,10 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/prometheus/model/labels"
@@ -306,7 +306,7 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 		// We check for duplicate series after dropped labels when
 		// showing the result of the query. Series that are equal after
 		// dropping name should not hash to the same bucket here.
-		lbls, _ = extlabels.DropMetricName(lbls, b)
+		lbls = extlabels.DropReserved(lbls, b)
 
 		seriesHash := hasher.Sum64()
 		seriesID, ok := seriesHashes[seriesHash]

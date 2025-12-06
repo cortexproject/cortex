@@ -3864,7 +3864,7 @@
             },
             "enable_type_and_unit_labels": {
               "default": false,
-              "description": "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.",
+              "description": "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
             }
@@ -4984,6 +4984,12 @@
           "description": "[EXPERIMENTAL] True to enable native histogram.",
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
+        },
+        "enable_type_and_unit_labels": {
+          "default": false,
+          "description": "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.enable-type-and-unit-labels"
         },
         "enforce_metadata_metric_name": {
           "default": true,

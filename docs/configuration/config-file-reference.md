@@ -3300,8 +3300,7 @@ otlp:
   # CLI flag: -distributor.otlp.allow-delta-temporality
   [allow_delta_temporality: <boolean> | default = false]
 
-  # EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for
-  # the OTLP metrics.
+  # Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
 ```
@@ -4022,6 +4021,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # labels.
 # CLI flag: -distributor.promote-resource-attributes
 [promote_resource_attributes: <list of string> | default = ]
+
+# EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics.
+# This applies to remote write v2 and OTLP requests.
+# CLI flag: -distributor.enable-type-and-unit-labels
+[enable_type_and_unit_labels: <boolean> | default = false]
 
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user

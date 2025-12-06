@@ -4779,7 +4779,7 @@ thanos_engine:
 
   # Logical plan optimizers. Multiple optimizers can be provided as a
   # comma-separated list. Supported values: default, all, propagate-matchers,
-  # sort-matchers, merge-selects, detect-histogram-stats
+  # sort-matchers, merge-selects, detect-histogram-stats, projection
   # CLI flag: -querier.optimizers
   [optimizers: <string> | default = "default"]
 
@@ -5550,7 +5550,7 @@ thanos_engine:
 
   # Logical plan optimizers. Multiple optimizers can be provided as a
   # comma-separated list. Supported values: default, all, propagate-matchers,
-  # sort-matchers, merge-selects, detect-histogram-stats
+  # sort-matchers, merge-selects, detect-histogram-stats, projection
   # CLI flag: -ruler.optimizers
   [optimizers: <string> | default = "default"]
 

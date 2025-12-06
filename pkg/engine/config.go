@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
-var supportedOptimizers = []string{"default", "all", "propagate-matchers", "sort-matchers", "merge-selects", "detect-histogram-stats"}
+var supportedOptimizers = []string{"default", "all", "propagate-matchers", "sort-matchers", "merge-selects", "detect-histogram-stats", "projection"}
 
 // ThanosEngineConfig contains the configuration to create engine.
 type ThanosEngineConfig struct {
@@ -59,6 +60,11 @@ func getOptimizer(name string) ([]logicalplan.Optimizer, error) {
 		return []logicalplan.Optimizer{logicalplan.MergeSelectsOptimizer{}}, nil
 	case "detect-histogram-stats":
 		return []logicalplan.Optimizer{logicalplan.DetectHistogramStatsOptimizer{}}, nil
+	case "projection":
+		po := logicalplan.ProjectionOptimizer{
+			SeriesHashLabel: schema.SeriesHashColumn,
+		}
+		return []logicalplan.Optimizer{po}, nil
 	default:
 		return nil, fmt.Errorf("unknown optimizer %s", name)
 	}

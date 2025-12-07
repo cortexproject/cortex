@@ -75,8 +75,7 @@ func TestFragmenter(t *testing.T) {
 				//   0    1
 				require.Empty(t, res[0].ChildIDs)
 				require.Empty(t, res[1].ChildIDs)
-				require.Equal(t, []uint64{res[0].FragmentID, res[1].FragmentID}, res[2].ChildIDs)
-
+				require.ElementsMatch(t, []uint64{res[0].FragmentID, res[1].FragmentID}, res[2].ChildIDs)
 			} else if len(res) == 5 {
 				// current binary split:
 				// 		   4

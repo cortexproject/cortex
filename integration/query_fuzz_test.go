@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -933,6 +934,23 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		return false
 	}
 	compareFloats := func(l, r float64) bool {
+		// Treat NaN as equal to +Inf and -Inf to reduce flakiness when comparing
+		// results between different engines (e.g., Thanos engine might return NaN
+		// while another engine returns +Inf or -Inf).
+		lIsNaN := math.IsNaN(l)
+		rIsNaN := math.IsNaN(r)
+		lIsInf := math.IsInf(l, 0) // 0 means check for both +Inf and -Inf
+		rIsInf := math.IsInf(r, 0)
+
+		// If both are NaN, they're equal
+		if lIsNaN && rIsNaN {
+			return true
+		}
+		// If one is NaN and the other is Inf (either +Inf or -Inf), treat as equal
+		if (lIsNaN && rIsInf) || (lIsInf && rIsNaN) {
+			return true
+		}
+
 		const epsilon = 1e-6
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))

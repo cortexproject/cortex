@@ -294,6 +294,10 @@ querier:
   # CLI flag: -querier.parquet-queryable-shard-cache-size
   [parquet_queryable_shard_cache_size: <int> | default = 512]
 
+  # [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
+  # CLI flag: -querier.parquet-queryable-shard-cache-ttl
+  [parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
+
   # [Experimental] Parquet queryable's default block store to query. Valid
   # options are tsdb and parquet. If it is set to tsdb, parquet queryable always
   # fallback to store gateway.
@@ -307,10 +311,6 @@ querier:
   # queryable.
   # CLI flag: -querier.parquet-queryable-fallback-disabled
   [parquet_queryable_fallback_disabled: <boolean> | default = false]
-
-  # [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
-  # CLI flag: -querier.parquet-queryable-shard-cache-ttl
-  [parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
 ```
 
 ### `blocks_storage_config`

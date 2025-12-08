@@ -32,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -92,11 +93,10 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable            bool          `yaml:"enable_parquet_queryable"`
-	ParquetQueryableShardCacheSize    int           `yaml:"parquet_queryable_shard_cache_size"`
-	ParquetQueryableDefaultBlockStore string        `yaml:"parquet_queryable_default_block_store"`
-	ParquetQueryableFallbackDisabled  bool          `yaml:"parquet_queryable_fallback_disabled"`
-	ParquetQueryableShardCacheTTL     time.Duration `yaml:"parquet_queryable_shard_cache_ttl"`
+	EnableParquetQueryable            bool                    `yaml:"enable_parquet_queryable"`
+	ParquetShardCache                 parquetutil.CacheConfig `yaml:",inline"`
+	ParquetQueryableDefaultBlockStore string                  `yaml:"parquet_queryable_default_block_store"`
+	ParquetQueryableFallbackDisabled  bool                    `yaml:"parquet_queryable_fallback_disabled"`
 
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
@@ -147,8 +147,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
-	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
-	f.DurationVar(&cfg.ParquetQueryableShardCacheTTL, "querier.parquet-queryable-shard-cache-ttl", 24*time.Hour, "[Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.")
+	cfg.ParquetShardCache.RegisterFlagsWithPrefix("querier.", f)
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")

@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -15,7 +14,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -41,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -402,8 +401,10 @@ func TestParquetQueryable_Limits(t *testing.T) {
 		QueryStoreAfter:                         0,
 		StoreGatewayQueryStatsEnabled:           false,
 		StoreGatewayConsistencyCheckMaxAttempts: 3,
-		ParquetQueryableShardCacheSize:          100,
-		ParquetQueryableDefaultBlockStore:       "parquet",
+		ParquetShardCache: parquetutil.CacheConfig{
+			ParquetQueryableShardCacheSize: 100,
+		},
+		ParquetQueryableDefaultBlockStore: "parquet",
 	}
 
 	storageCfg := cortex_tsdb.BlocksStorageConfig{
@@ -882,111 +883,4 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			require.Len(t, mParquetQuerier.queriedBlocks, 2)
 		})
 	})
-}
-
-func Test_Cache_LRUEviction(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-	cache, err := newCache[string]("test", 2, 0, time.Minute, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-	cache.Set("key2", "value2")
-
-	_ = cache.Get("key1") // hit
-	// "key2" deleted by LRU eviction
-	cache.Set("key3", "value3")
-
-	val1 := cache.Get("key1") // hit
-	require.Equal(t, "value1", val1)
-	val3 := cache.Get("key3") // hit
-	require.Equal(t, "value3", val3)
-	val2 := cache.Get("key2") // miss
-	require.Equal(t, "", val2)
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 3
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 2
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-	`)))
-}
-
-func Test_Cache_TTLEvictionByGet(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-
-	cache, err := newCache[string]("test", 10, 100*time.Millisecond, time.Minute, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-
-	val := cache.Get("key1")
-	require.Equal(t, "value1", val)
-
-	// sleep longer than TTL
-	time.Sleep(150 * time.Millisecond)
-
-	val = cache.Get("key1")
-	require.Equal(t, "", val)
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-	`)))
-}
-
-func Test_Cache_TTLEvictionByLoop(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-
-	cache, err := newCache[string]("test", 10, 100*time.Millisecond, 100*time.Millisecond, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-
-	val := cache.Get("key1")
-	require.Equal(t, "value1", val)
-
-	// sleep longer than TTL
-	time.Sleep(150 * time.Millisecond)
-
-	if c, ok := cache.(*Cache[string]); ok {
-		// should delete by maintenance loop
-		_, ok := c.cache.Peek("key1")
-		require.False(t, ok)
-	}
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
-	`)))
 }

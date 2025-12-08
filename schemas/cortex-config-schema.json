@@ -6000,7 +6000,7 @@
             },
             "optimizers": {
               "default": "default",
-              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats",
+              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats, projection",
               "type": "string",
               "x-cli-flag": "querier.optimizers"
             }
@@ -7021,7 +7021,7 @@
             },
             "optimizers": {
               "default": "default",
-              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats",
+              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats, projection",
               "type": "string",
               "x-cli-flag": "ruler.optimizers"
             }

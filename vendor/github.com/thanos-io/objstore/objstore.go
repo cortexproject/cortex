@@ -591,7 +591,6 @@ func wrapWithMetrics(b Bucket, metrics *Metrics) *metricBucket {
 		bkt.metrics.ops.WithLabelValues(op)
 		bkt.metrics.opsFailures.WithLabelValues(op)
 		bkt.metrics.opsDuration.WithLabelValues(op)
-		bkt.metrics.opsFetchedBytes.WithLabelValues(op)
 	}
 
 	// fetched bytes only relevant for get, getrange and upload
@@ -600,6 +599,7 @@ func wrapWithMetrics(b Bucket, metrics *Metrics) *metricBucket {
 		OpGetRange,
 		OpUpload,
 	} {
+		bkt.metrics.opsFetchedBytes.WithLabelValues(op)
 		bkt.metrics.opsTransferredBytes.WithLabelValues(op)
 	}
 	return bkt

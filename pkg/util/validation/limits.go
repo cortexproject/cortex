@@ -152,6 +152,7 @@ type Limits struct {
 	MetricRelabelConfigs              []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
+	EnableTypeAndUnitLabels           bool                `yaml:"enable_type_and_unit_labels" json:"enable_type_and_unit_labels"`
 
 	// Ingester enforced limits.
 	// Series
@@ -264,6 +265,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
+	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -1090,6 +1092,10 @@ func (o *Overrides) AlertmanagerMaxSilencesCount(userID string) int {
 
 func (o *Overrides) AlertmanagerMaxSilenceSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesSizeBytes
+}
+
+func (o *Overrides) EnableTypeAndUnitLabels(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableTypeAndUnitLabels
 }
 
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {

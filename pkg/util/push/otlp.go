@@ -181,7 +181,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 		AddMetricSuffixes:       true,
 		DisableTargetInfo:       cfg.DisableTargetInfo,
 		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
-		EnableTypeAndUnitLabels: cfg.EnableTypeAndUnitLabels,
+		EnableTypeAndUnitLabels: overrides.EnableTypeAndUnitLabels(userID),
 	}
 
 	var annots annotations.Annotations

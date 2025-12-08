@@ -17,12 +17,12 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	engstorage "github.com/thanos-io/promql-engine/storage"
 	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/client_golang/prometheus"

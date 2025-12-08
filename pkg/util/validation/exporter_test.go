@@ -54,6 +54,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="compactor_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="creation_grace_period",user="tenant-a"} 600
 		cortex_overrides{limit_name="enable_native_histograms",user="tenant-a"} 0
+		cortex_overrides{limit_name="enable_type_and_unit_labels",user="tenant-a"} 0
 		cortex_overrides{limit_name="enforce_metadata_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="enforce_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="ha_max_clusters",user="tenant-a"} 0

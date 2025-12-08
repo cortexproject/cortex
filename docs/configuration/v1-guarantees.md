@@ -116,7 +116,6 @@ Currently experimental features are:
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
-  - Add `__type__` and `__unit__` labels (`-distributor.otlp.enable-type-and-unit-labels`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms
@@ -133,3 +132,4 @@ Currently experimental features are:
   - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
+  - Add `__type__` and `__unit__` labels to OTLP and remote write v2 requests (`-distributor.enable-type-and-unit-labels`)

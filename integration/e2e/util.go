@@ -465,10 +465,10 @@ func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Labe
 	st := writev2.NewSymbolTable()
 	lb := labels.NewScratchBuilder(0)
 	lb.Add("__name__", name)
-
 	for _, label := range additionalLabels {
 		lb.Add(label.Name, label.Value)
 	}
+
 	series = append(series, writev2.TimeSeries{
 		// Generate the series
 		LabelsRefs: st.SymbolizeLabels(lb.Labels(), nil),
@@ -476,7 +476,9 @@ func GenerateSeriesV2(name string, ts time.Time, additionalLabels ...prompb.Labe
 			{Value: value, Timestamp: tsMillis},
 		},
 		Metadata: writev2.Metadata{
-			Type: writev2.Metadata_METRIC_TYPE_GAUGE,
+			Type:    writev2.Metadata_METRIC_TYPE_GAUGE,
+			HelpRef: 2, // equal to name
+			UnitRef: 2, // equal to name
 		},
 	})
 	symbols = st.Symbols()

@@ -358,11 +358,26 @@ func ConvertTSDBBlock(
 		opt(&cfg)
 	}
 
-	logger.Info("sharding input series")
-	shardedRowReaders, err := shardedTSDBRowReaders(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
-	if err != nil {
-		return 0, errors.Wrap(err, "failed to create sharded TSDB row readers")
+	var (
+		rr                *TSDBRowReader
+		shardedRowReaders []*TSDBRowReader
+		err               error
+	)
+	// If numRowGroups is not specified, we can use a single row reader.
+	if cfg.numRowGroups == math.MaxInt32 {
+		rr, err = singleTSDBRowReader(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
+		if err != nil {
+			return 0, errors.Wrap(err, "failed to create TSDB row readers")
+		}
+		shardedRowReaders = []*TSDBRowReader{rr}
+	} else {
+		logger.Info("sharding input series")
+		shardedRowReaders, err = shardedTSDBRowReaders(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
+		if err != nil {
+			return 0, errors.Wrap(err, "failed to create sharded TSDB row readers")
+		}
 	}
+
 	defer func() {
 		for _, rr := range shardedRowReaders {
 			_ = rr.Close()
@@ -422,6 +437,80 @@ type blockSeries struct {
 	seriesIdx int // index of the series in the block postings
 	ref       storage.SeriesRef
 	labels    labels.Labels
+}
+
+// singleTSDBRowReader is a shortcut when we know there is only one final shard.
+// This can happen when numRowGroups is not specified.
+func singleTSDBRowReader(
+	ctx context.Context,
+	mint, maxt, colDuration int64,
+	blocks []Convertible,
+	opts convertOpts,
+) (*TSDBRowReader, error) {
+	var (
+		seriesSets = make([]storage.ChunkSeriesSet, 0, len(blocks))
+		closers    = make([]io.Closer, 0, len(blocks))
+		ok         = false
+	)
+	// If we fail to build the row reader, make sure we release resources.
+	// This could be either a controlled error or a panic.
+	defer func() {
+		if !ok {
+			for i := range closers {
+				_ = closers[i].Close()
+			}
+		}
+	}()
+
+	b := schema.NewBuilder(mint, maxt, colDuration)
+
+	compareFunc := func(a, b labels.Labels) int {
+		for _, lb := range opts.sortedLabels {
+			if c := strings.Compare(a.Get(lb), b.Get(lb)); c != 0 {
+				return c
+			}
+		}
+
+		return labels.Compare(a, b)
+	}
+
+	for _, blk := range blocks {
+		indexr, err := blk.Index()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get index reader from block")
+		}
+		closers = append(closers, indexr)
+
+		chunkr, err := blk.Chunks()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get chunk reader from block")
+		}
+		closers = append(closers, chunkr)
+
+		tombsr, err := blk.Tombstones()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get tombstone reader from block")
+		}
+		closers = append(closers, tombsr)
+		lblns, err := indexr.LabelNames(ctx)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get label names from index reader")
+		}
+		postings := sortedPostings(ctx, indexr, mint, maxt, opts.sortedLabels...)
+		seriesSet := tsdb.NewBlockChunkSeriesSet(blk.Meta().ULID, indexr, chunkr, tombsr, postings, mint, maxt, false)
+		seriesSets = append(seriesSets, seriesSet)
+
+		b.AddLabelNameColumn(lblns...)
+	}
+
+	cseriesSet := NewMergeChunkSeriesSet(seriesSets, compareFunc, storage.NewConcatenatingChunkSeriesMerger())
+
+	s, err := b.Build()
+	if err != nil {
+		return nil, fmt.Errorf("unable to build schema reader from block: %w", err)
+	}
+	ok = true
+	return newTSDBRowReader(ctx, closers, cseriesSet, s, opts), nil
 }
 
 func shardedTSDBRowReaders(
@@ -672,4 +761,66 @@ func allChunksEmpty(chkBytes [][]byte) bool {
 		}
 	}
 	return true
+}
+
+func sortedPostings(ctx context.Context, indexr tsdb.IndexReader, mint, maxt int64, sortedLabels ...string) index.Postings {
+	p := tsdb.AllSortedPostings(ctx, indexr)
+	if len(sortedLabels) == 0 {
+		return p
+	}
+
+	type s struct {
+		ref    storage.SeriesRef
+		idx    int
+		labels labels.Labels
+	}
+	series := make([]s, 0, 128)
+	chks := make([]chunks.Meta, 0, 128)
+	scratchBuilder := labels.NewScratchBuilder(10)
+	lb := labels.NewBuilder(labels.EmptyLabels())
+	i := 0
+P:
+	for p.Next() {
+		scratchBuilder.Reset()
+		chks = chks[:0]
+		if err := indexr.Series(p.At(), &scratchBuilder, &chks); err != nil {
+			return index.ErrPostings(fmt.Errorf("unable to expand series: %w", err))
+		}
+		hasChunks := slices.ContainsFunc(chks, func(chk chunks.Meta) bool {
+			return mint <= chk.MaxTime && chk.MinTime <= maxt
+		})
+		if !hasChunks {
+			continue P
+		}
+
+		lb.Reset(scratchBuilder.Labels())
+
+		series = append(series, s{labels: lb.Keep(sortedLabels...).Labels(), ref: p.At(), idx: i})
+		i++
+	}
+
+	if err := p.Err(); err != nil {
+		return index.ErrPostings(fmt.Errorf("expand postings: %w", err))
+	}
+
+	slices.SortFunc(series, func(a, b s) int {
+		for _, lb := range sortedLabels {
+			if c := strings.Compare(a.labels.Get(lb), b.labels.Get(lb)); c != 0 {
+				return c
+			}
+		}
+		if a.idx < b.idx {
+			return -1
+		} else if a.idx > b.idx {
+			return 1
+		}
+		return 0
+	})
+
+	// Convert back to list.
+	ep := make([]storage.SeriesRef, 0, len(series))
+	for _, p := range series {
+		ep = append(ep, p.ref)
+	}
+	return index.NewListPostings(ep)
 }

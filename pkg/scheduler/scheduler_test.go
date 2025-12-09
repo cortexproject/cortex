@@ -848,7 +848,7 @@ func TestQueryFragmentRegistryNoLeak(t *testing.T) {
 	frontendAddr := "frontend1"
 
 	// Simulate 100 requests completing normally
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		queryID := uint64(i)
 		fragmentID := uint64(0)
 

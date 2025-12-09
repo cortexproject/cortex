@@ -739,11 +739,11 @@ func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
 
 	tests := map[string]testCase{
 		"should set priority based on api type for metadata": {
-			path:             "/api/v1/targets/metadata?limit=1",
+			path:             "/api/v1/metadata?limit=1",
 			expectedPriority: 7,
 		},
 		"should set priority based on api type for series": {
-			path:             "/api/v1/targets/series",
+			path:             "/api/v1/series",
 			expectedPriority: 6,
 		},
 	}

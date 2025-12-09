@@ -141,6 +141,11 @@ func NewParquetQueryable(
 	}
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
+	// This is a noop cache for now as we didn't expose any config to enable this cache.
+	rrConstraintsCache := search.NewConstraintRowRangeCacheSyncMap()
+	constraintCacheFunc := func(ctx context.Context) (search.RowRangesForConstraintsCache, error) {
+		return rrConstraintsCache, nil
+	}
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
@@ -195,7 +200,7 @@ func NewParquetQueryable(
 			return nil
 		}),
 	}
-	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
+	parquetQueryable, err := queryable.NewParquetQueryable(func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
 		userID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
@@ -245,7 +250,7 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	}, parquetQueryableOpts...)
+	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,

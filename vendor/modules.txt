@@ -952,7 +952,7 @@ github.com/planetscale/vtprotobuf/types/known/wrapperspb
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib
-# github.com/prometheus-community/parquet-common v0.0.0-20251023184424-4f977ece2a46
+# github.com/prometheus-community/parquet-common v0.0.0-20251205214622-b9865c513b71
 ## explicit; go 1.24.0
 github.com/prometheus-community/parquet-common/convert
 github.com/prometheus-community/parquet-common/queryable

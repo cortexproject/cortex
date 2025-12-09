@@ -163,7 +163,7 @@ func sortConstraintsBySortingColumns(cs []Constraint, sc []parquet.SortingColumn
 //
 // Returns a slice of RowRange that represent the rows satisfying all constraints,
 // or an error if any constraint fails to filter.
-func Filter(ctx context.Context, f storage.ParquetShard, rgIdx int, cs ...Constraint) ([]RowRange, error) {
+func Filter(ctx context.Context, f storage.ParquetShard, rgIdx int, cache RowRangesForConstraintsCache, cs ...Constraint) ([]RowRange, error) {
 	rg := f.LabelsFile().RowGroups()[rgIdx]
 
 	// Constraints for sorting columns are cheaper to evaluate, so we sort them first.
@@ -176,6 +176,12 @@ func Filter(ctx context.Context, f storage.ParquetShard, rgIdx int, cs ...Constr
 		mu  sync.Mutex
 		g   errgroup.Group
 	)
+
+	if cache != nil {
+		if rr, ok := cache.Get(ctx, f, rgIdx, cs); ok {
+			return rr, nil
+		}
+	}
 
 	// First pass prefilter with a quick index scan to find a superset of matching rows
 	rr := []RowRange{{From: int64(0), Count: rg.NumRows()}}
@@ -211,6 +217,9 @@ func Filter(ctx context.Context, f storage.ParquetShard, rgIdx int, cs ...Constr
 		return nil, fmt.Errorf("unable to do second pass filter: %w", err)
 	}
 
+	if cache != nil {
+		_ = cache.Set(ctx, f, rgIdx, cs, res)
+	}
 	return res, nil
 }
 

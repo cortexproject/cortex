@@ -286,7 +286,7 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, l
 	if err != nil {
 		return nil, err
 	}
-	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback)
+	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback, false)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +361,8 @@ func (b *parquetBlock) Query(ctx context.Context, mint, maxt int64, skipChunks b
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}
@@ -421,7 +422,8 @@ func (b *parquetBlock) LabelNames(ctx context.Context, limit int64, matchers []*
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}
@@ -461,7 +463,8 @@ func (b *parquetBlock) LabelValues(ctx context.Context, name string, limit int64
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}

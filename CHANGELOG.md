@@ -17,6 +17,7 @@
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132
+* [BUGFIX] Scheduler: Fix memory leak by properly cleaning up query fragment registry. #7148
 
 ## 1.20.1 2025-12-03
 

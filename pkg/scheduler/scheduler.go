@@ -462,6 +462,30 @@ func (s *Scheduler) cancelRequestAndRemoveFromPending(frontendAddr string, query
 			req.ctxCancel()
 		}
 		delete(s.pendingRequests, key)
+
+		// Clean up queryFragmentRegistry for this specific fragment
+		if fragmentIDs, ok := s.queryFragmentRegistry[querykey]; ok {
+			// Fast path: if there's only one fragment and it's the one we're deleting,
+			// just delete the entire entry without allocating a new slice
+			if len(fragmentIDs) == 1 && fragmentIDs[0] == fragmentID {
+				delete(s.queryFragmentRegistry, querykey)
+			} else {
+				// Slow path: remove this fragmentID from the slice
+				newFragmentIDs := make([]uint64, 0, len(fragmentIDs)-1)
+				for _, fid := range fragmentIDs {
+					if fid != fragmentID {
+						newFragmentIDs = append(newFragmentIDs, fid)
+					}
+				}
+
+				// If no more fragments remain, delete the entire entry
+				if len(newFragmentIDs) == 0 {
+					delete(s.queryFragmentRegistry, querykey)
+				} else {
+					s.queryFragmentRegistry[querykey] = newFragmentIDs
+				}
+			}
+		}
 	}
 }
 

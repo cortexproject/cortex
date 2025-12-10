@@ -305,7 +305,7 @@ func TestParquetProjectionPushdown(t *testing.T) {
 	testCases := []struct {
 		name           string
 		query          string
-		expectedLabels []string // Labels that should be present in result (besides __name__)
+		expectedLabels []string // Labels that should be present in result
 	}{
 		{
 			name:           "simple_sum_by_job",
@@ -346,16 +346,18 @@ func TestParquetProjectionPushdown(t *testing.T) {
 					actualLabels[label.Name] = struct{}{}
 				}
 
+				// Check that all expected labels are present
+				for _, expectedLabel := range tc.expectedLabels {
+					_, ok := actualLabels[expectedLabel]
+					require.True(t, ok,
+						"series should have %s label", expectedLabel)
+				}
+
 				// Check that no unexpected labels are present
 				for lbl := range actualLabels {
 					if !slices.Contains(tc.expectedLabels, lbl) {
-						require.Fail(t, "series should not have %s label", lbl)
+						require.Fail(t, "series should not have unexpected label: %s", lbl)
 					}
-				}
-				// Check that all expected labels are present
-				for _, expectedLabel := range tc.expectedLabels {
-					require.True(t, actualLabels[expectedLabel],
-						"series should have %s label", expectedLabel)
 				}
 			}
 		})

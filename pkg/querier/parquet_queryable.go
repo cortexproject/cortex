@@ -510,7 +510,8 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	}
 
 	queryIngesters := q.queryIngestersWithin == 0 || maxt >= util.TimeToMillis(time.Now().Add(-q.queryIngestersWithin).Add(-q.projectionHintsIngesterBuffer))
-	disableProjection := len(remaining) > 0 || queryIngesters
+	// Only enable projection if ProjectionInclude is true.
+	disableProjection := len(remaining) > 0 || queryIngesters || !hints.ProjectionInclude
 	// Reset projection hints if there are mixed blocks (both parquet and non-parquet) or the query needs to merge results between ingester and parquet blocks
 	if disableProjection {
 		hints.ProjectionLabels = nil

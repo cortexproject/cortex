@@ -643,6 +643,7 @@ func TestSelectProjectionHints(t *testing.T) {
 		projectionHintsIngesterBuffer time.Duration
 		hasRemainingBlocks            bool // Whether there are non-parquet (TSDB) blocks
 		inputProjectionLabels         []string
+		inputProjectionInclude        bool     // Input ProjectionInclude value
 		expectedProjectionLabels      []string // nil means projection disabled
 		expectedProjectionInclude     bool
 	}{
@@ -653,6 +654,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
 			expectedProjectionInclude:     true,
 		},
@@ -663,6 +665,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            true, // Mixed blocks
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
 			expectedProjectionInclude:     false,
 		},
@@ -673,6 +676,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset (maxT >= now - 2h - 1h = now - 3h)
 			expectedProjectionInclude:     false,
 		},
@@ -683,6 +687,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset (maxT = now - 2.5h, threshold = now - 3h, so 2.5h > 3h means disabled)
 			expectedProjectionInclude:     false,
 		},
@@ -693,6 +698,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
 			expectedProjectionInclude:     false,
 		},
@@ -703,6 +709,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
 			expectedProjectionInclude:     true,
 		},
@@ -713,6 +720,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 0, // No buffer
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
 			expectedProjectionInclude:     true,
 		},
@@ -723,7 +731,19 @@ func TestSelectProjectionHints(t *testing.T) {
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
 			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: ProjectionInclude is false, disable projection": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"job"},
+			inputProjectionInclude:        false,
+			expectedProjectionLabels:      nil,
 			expectedProjectionInclude:     false,
 		},
 	}
@@ -782,7 +802,7 @@ func TestSelectProjectionHints(t *testing.T) {
 				Start:             testData.minT,
 				End:               testData.maxT,
 				ProjectionLabels:  testData.inputProjectionLabels,
-				ProjectionInclude: true,
+				ProjectionInclude: testData.inputProjectionInclude,
 			}
 
 			// Execute Select

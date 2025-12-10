@@ -467,7 +467,8 @@ func (m *Materializer) MaterializeLabels(ctx context.Context, hints *prom_storag
 				break
 			}
 		}
-		needsHash = !seriesHashExcluded
+		// Hash column is only needed if projection labels are provided and series hash is not excluded.
+		needsHash = !seriesHashExcluded && len(hints.ProjectionLabels) > 0
 
 		for _, labelName := range hints.ProjectionLabels {
 			if labelName == schema.SeriesHashColumn {

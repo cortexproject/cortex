@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/promqlsmith"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -23,7 +25,9 @@ import (
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -173,6 +177,216 @@ func TestParquetFuzz(t *testing.T) {
 
 	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 1000, false)
 
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))
+}
+
+func TestParquetProjectionPushdownFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	memcached := e2ecache.NewMemcached()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(
+		baseFlags,
+		map[string]string{
+			"-target": "all,parquet-converter",
+			"-blocks-storage.tsdb.block-ranges-period":                             "1m,24h",
+			"-blocks-storage.tsdb.ship-interval":                                   "1s",
+			"-blocks-storage.bucket-store.sync-interval":                           "1s",
+			"-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl": "1s",
+			"-blocks-storage.bucket-store.bucket-index.idle-timeout":               "1s",
+			"-blocks-storage.bucket-store.bucket-index.enabled":                    "true",
+			"-blocks-storage.bucket-store.index-cache.backend":                     tsdb.IndexCacheBackendInMemory,
+			"-querier.query-store-for-labels-enabled":                              "true",
+			// compactor
+			"-compactor.cleanup-interval": "1s",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor": "1",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled":   "false",
+			"--querier.store-gateway-addresses": "nonExistent", // Make sure we do not call Store gateways
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// parquet-converter
+			"-parquet-converter.ring.consul.hostname": consul.NetworkHTTPEndpoint(),
+			"-parquet-converter.conversion-interval":  "1s",
+			"-parquet-converter.enabled":              "true",
+			// Querier - Enable Thanos engine with projection optimizer
+			"-querier.thanos-engine":                            "true",
+			"-querier.optimizers":                               "propagate-matchers,sort-matchers,merge-selects,detect-histogram-stats,projection", // Enable all optimizers including projection
+			"-querier.enable-parquet-queryable":                 "true",
+			"-querier.parquet-queryable-honor-projection-hints": "true", // Honor projection hints
+			// Set query-ingesters-within to 2h so queries older than 2h don't hit ingesters
+			// Since test queries are 24-48h old, they won't query ingesters and projection will be enabled
+			"-querier.query-ingesters-within": "2h",
+			// Enable cache for parquet labels and chunks
+			"-blocks-storage.bucket-store.parquet-labels-cache.backend":             "inmemory,memcached",
+			"-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+			"-blocks-storage.bucket-store.chunks-cache.backend":                     "inmemory,memcached",
+			"-blocks-storage.bucket-store.chunks-cache.memcached.addresses":         "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	dir := filepath.Join(s.SharedDir(), "data")
+	numSeries := 20
+	numSamples := 100
+	lbls := make([]labels.Labels, 0, numSeries)
+	scrapeInterval := time.Minute
+	statusCodes := []string{"200", "400", "404", "500", "502"}
+	methods := []string{"GET", "POST", "PUT", "DELETE"}
+	now := time.Now()
+	// Make sure query time is old enough to not overlap with ingesters.
+	start := now.Add(-time.Hour * 72)
+	end := now.Add(-time.Hour * 48)
+
+	// Create series with multiple labels
+	for i := range numSeries {
+		lbls = append(lbls, labels.FromStrings(
+			labels.MetricName, "http_requests_total",
+			"job", "api-server",
+			"instance", fmt.Sprintf("instance-%d", i%5),
+			"status_code", statusCodes[i%len(statusCodes)],
+			"method", methods[i%len(methods)],
+			"path", fmt.Sprintf("/api/v1/endpoint%d", i%3),
+			"cluster", "test-cluster",
+		))
+	}
+
+	id, err := e2e.CreateBlock(ctx, rnd, dir, lbls, numSamples, start.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	bkt := storage.GetBucket()
+	userBucket := bucket.NewUserBucketClient("user-1", bkt, nil)
+
+	err = block.Upload(ctx, log.Logger, userBucket, filepath.Join(dir, id.String()), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Wait until we convert the blocks to parquet AND bucket index is updated
+	cortex_testutil.Poll(t, 300*time.Second, true, func() interface{} {
+		// Check if parquet marker exists
+		markerFound := false
+		err := userBucket.Iter(context.Background(), "", func(name string) error {
+			if name == fmt.Sprintf("parquet-markers/%v-parquet-converter-mark.json", id.String()) {
+				markerFound = true
+			}
+			return nil
+		}, objstore.WithRecursiveIter())
+		if err != nil || !markerFound {
+			return false
+		}
+
+		// Check if bucket index exists AND contains the parquet block metadata
+		idx, err := bucketindex.ReadIndex(ctx, bkt, "user-1", nil, log.Logger)
+		if err != nil {
+			return false
+		}
+
+		// Verify the block is in the bucket index with parquet metadata
+		for _, b := range idx.Blocks {
+			if b.ID == id && b.Parquet != nil {
+				require.True(t, b.Parquet.Version == cortex_parquet.CurrentVersion)
+				return true
+			}
+		}
+		return false
+	})
+
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name           string
+		query          string
+		expectedLabels []string // Labels that should be present in result
+	}{
+		{
+			name:           "vector selector query should not use projection",
+			query:          `http_requests_total`,
+			expectedLabels: []string{"__name__", "job", "instance", "status_code", "method", "path", "cluster"},
+		},
+		{
+			name:           "simple_sum_by_job",
+			query:          `sum by (job) (http_requests_total)`,
+			expectedLabels: []string{"job"},
+		},
+		{
+			name:           "rate_with_aggregation",
+			query:          `sum by (method) (rate(http_requests_total[5m]))`,
+			expectedLabels: []string{"method"},
+		},
+		{
+			name:           "multiple_grouping_labels",
+			query:          `sum by (job, status_code) (http_requests_total)`,
+			expectedLabels: []string{"job", "status_code"},
+		},
+		{
+			name:           "aggregation without query",
+			query:          `sum without (instance, method) (http_requests_total)`,
+			expectedLabels: []string{"job", "status_code", "path", "cluster"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Logf("Testing: %s", tc.query)
+
+			// Execute instant query
+			result, err := c.Query(tc.query, end)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+
+			// Verify we got results
+			vector, ok := result.(model.Vector)
+			require.True(t, ok, "result should be a vector")
+			require.NotEmpty(t, vector, "query should return results")
+
+			t.Logf("Query returned %d series", len(vector))
+
+			// Verify projection worked: series should only have the expected labels
+			for _, sample := range vector {
+				actualLabels := make(map[string]struct{})
+				for label := range sample.Metric {
+					actualLabels[string(label)] = struct{}{}
+				}
+
+				// Check that all expected labels are present
+				for _, expectedLabel := range tc.expectedLabels {
+					_, ok := actualLabels[expectedLabel]
+					require.True(t, ok,
+						"series should have %s label", expectedLabel)
+				}
+
+				// Check that no unexpected labels are present
+				for lbl := range actualLabels {
+					if !slices.Contains(tc.expectedLabels, lbl) {
+						require.Fail(t, "series should not have unexpected label: %s", lbl)
+					}
+				}
+			}
+		})
+	}
+
+	// Verify that parquet blocks were queried
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))
 }

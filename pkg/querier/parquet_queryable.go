@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -95,11 +96,13 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 type parquetQueryableWithFallback struct {
 	services.Service
 
-	fallbackDisabled      bool
-	queryStoreAfter       time.Duration
-	parquetQueryable      storage.Queryable
-	cache                 parquetutil.CacheInterface[parquet_storage.ParquetShard]
-	blockStorageQueryable *BlocksStoreQueryable
+	fallbackDisabled              bool
+	queryStoreAfter               time.Duration
+	queryIngestersWithin          time.Duration
+	projectionHintsIngesterBuffer time.Duration
+	parquetQueryable              storage.Queryable
+	cache                         parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	blockStorageQueryable         *BlocksStoreQueryable
 
 	finder BlocksFinder
 
@@ -147,6 +150,7 @@ func NewParquetQueryable(
 	}
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithHonorProjectionHints(config.ParquetQueryableHonorProjectionHints),
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
@@ -252,18 +256,20 @@ func NewParquetQueryable(
 	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
-		subservices:           manager,
-		blockStorageQueryable: blockStorageQueryable,
-		parquetQueryable:      parquetQueryable,
-		cache:                 cache,
-		queryStoreAfter:       config.QueryStoreAfter,
-		subservicesWatcher:    services.NewFailureWatcher(),
-		finder:                blockStorageQueryable.finder,
-		metrics:               newParquetQueryableFallbackMetrics(reg),
-		limits:                limits,
-		logger:                logger,
-		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
-		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
+		subservices:                   manager,
+		blockStorageQueryable:         blockStorageQueryable,
+		parquetQueryable:              parquetQueryable,
+		cache:                         cache,
+		queryStoreAfter:               config.QueryStoreAfter,
+		queryIngestersWithin:          config.QueryIngestersWithin,
+		projectionHintsIngesterBuffer: config.ParquetQueryableProjectionHintsIngesterBuffer,
+		subservicesWatcher:            services.NewFailureWatcher(),
+		finder:                        blockStorageQueryable.finder,
+		metrics:                       newParquetQueryableFallbackMetrics(reg),
+		limits:                        limits,
+		logger:                        logger,
+		defaultBlockStoreType:         blockStoreType(config.ParquetQueryableDefaultBlockStore),
+		fallbackDisabled:              config.ParquetQueryableFallbackDisabled,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -310,17 +316,19 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 	}
 
 	return &parquetQuerierWithFallback{
-		minT:                  mint,
-		maxT:                  maxt,
-		parquetQuerier:        pq,
-		queryStoreAfter:       p.queryStoreAfter,
-		blocksStoreQuerier:    bsq,
-		finder:                p.finder,
-		metrics:               p.metrics,
-		limits:                p.limits,
-		logger:                p.logger,
-		defaultBlockStoreType: p.defaultBlockStoreType,
-		fallbackDisabled:      p.fallbackDisabled,
+		minT:                          mint,
+		maxT:                          maxt,
+		parquetQuerier:                pq,
+		queryStoreAfter:               p.queryStoreAfter,
+		queryIngestersWithin:          p.queryIngestersWithin,
+		projectionHintsIngesterBuffer: p.projectionHintsIngesterBuffer,
+		blocksStoreQuerier:            bsq,
+		finder:                        p.finder,
+		metrics:                       p.metrics,
+		limits:                        p.limits,
+		logger:                        p.logger,
+		defaultBlockStoreType:         p.defaultBlockStoreType,
+		fallbackDisabled:              p.fallbackDisabled,
 	}, nil
 }
 
@@ -334,7 +342,9 @@ type parquetQuerierWithFallback struct {
 
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
+	queryStoreAfter               time.Duration
+	queryIngestersWithin          time.Duration
+	projectionHintsIngesterBuffer time.Duration
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
@@ -499,6 +509,18 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		sortSeries = true
 	}
 
+	queryIngesters := q.queryIngestersWithin == 0 || maxt >= util.TimeToMillis(time.Now().Add(-q.queryIngestersWithin).Add(-q.projectionHintsIngesterBuffer))
+	// Only enable projection if ProjectionInclude is true.
+	disableProjection := len(remaining) > 0 || queryIngesters || !hints.ProjectionInclude || !allParquetBlocksHaveHashColumn(parquet)
+	// Reset projection hints if:
+	// - there are mixed blocks (both parquet and non-parquet)
+	// - the query needs to merge results between ingester and parquet blocks
+	// - not all parquet blocks have hash column (version < 2)
+	if disableProjection {
+		hints.ProjectionLabels = nil
+		hints.ProjectionInclude = false
+	}
+
 	promises := make([]chan storage.SeriesSet, 0, 2)
 
 	if len(parquet) > 0 {
@@ -596,6 +618,17 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	case len(remaining) == 0 && len(parquetBlocks) > 0:
 		q.metrics.operationsTotal.WithLabelValues("parquet", method).Inc()
 	}
+}
+
+// allParquetBlocksHaveHashColumn checks if all parquet blocks have version >= 2, which means they have the hash column.
+// Parquet blocks with version 1 don't have the hash column, so projection cannot be enabled for them.
+func allParquetBlocksHaveHashColumn(blocks []*bucketindex.Block) bool {
+	for _, b := range blocks {
+		if b.Parquet == nil || b.Parquet.Version < cortex_parquet.ParquetConverterMarkVersion2 {
+			return false
+		}
+	}
+	return true
 }
 
 type shardMatcherLabelsFilter struct {

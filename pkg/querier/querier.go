@@ -93,10 +93,12 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable            bool                    `yaml:"enable_parquet_queryable"`
-	ParquetShardCache                 parquetutil.CacheConfig `yaml:",inline"`
-	ParquetQueryableDefaultBlockStore string                  `yaml:"parquet_queryable_default_block_store"`
-	ParquetQueryableFallbackDisabled  bool                    `yaml:"parquet_queryable_fallback_disabled"`
+	EnableParquetQueryable                        bool                    `yaml:"enable_parquet_queryable"`
+	ParquetShardCache                             parquetutil.CacheConfig `yaml:",inline"`
+	ParquetQueryableDefaultBlockStore             string                  `yaml:"parquet_queryable_default_block_store"`
+	ParquetQueryableFallbackDisabled              bool                    `yaml:"parquet_queryable_fallback_disabled"`
+	ParquetQueryableHonorProjectionHints          bool                    `yaml:"parquet_queryable_honor_projection_hints"`
+	ParquetQueryableProjectionHintsIngesterBuffer time.Duration           `yaml:"parquet_queryable_projection_hints_ingester_buffer"`
 
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 }
@@ -149,6 +151,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("querier.", f)
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
+	f.BoolVar(&cfg.ParquetQueryableHonorProjectionHints, "querier.parquet-queryable-honor-projection-hints", false, "[Experimental] If true, parquet queryable will honor projection hints and only materialize requested labels. Projection is only applied when all queried blocks are parquet blocks and not querying ingesters.")
+	f.DurationVar(&cfg.ParquetQueryableProjectionHintsIngesterBuffer, "querier.parquet-queryable-projection-hints-ingester-buffer", time.Hour, "[Experimental] Time buffer to use when checking if query overlaps with ingester data. Projection hints are disabled if query time range overlaps with (now - query-ingesters-within - buffer).")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 }

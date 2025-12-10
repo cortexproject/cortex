@@ -631,6 +631,177 @@ func (mockParquetQuerier) Close() error {
 	return nil
 }
 
+func TestSelectProjectionHints(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	now := time.Now()
+
+	tests := map[string]struct {
+		minT                          int64
+		maxT                          int64
+		queryIngestersWithin          time.Duration
+		projectionHintsIngesterBuffer time.Duration
+		hasRemainingBlocks            bool // Whether there are non-parquet (TSDB) blocks
+		inputProjectionLabels         []string
+		expectedProjectionLabels      []string // nil means projection disabled
+		expectedProjectionInclude     bool
+	}{
+		"projection enabled: all parquet blocks, query older than ingester window": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
+			expectedProjectionInclude:     true,
+		},
+		"projection disabled: mixed blocks (parquet + TSDB)": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            true, // Mixed blocks
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      nil, // Reset
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: query overlaps with ingester window": {
+			minT:                          util.TimeToMillis(now.Add(-1 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-30 * time.Minute)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      nil, // Reset (maxT >= now - 2h - 1h = now - 3h)
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: query within buffer zone": {
+			minT:                          util.TimeToMillis(now.Add(-4 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-2*time.Hour - 30*time.Minute)), // Well within buffer
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      nil, // Reset (maxT = now - 2.5h, threshold = now - 3h, so 2.5h > 3h means disabled)
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: queryIngestersWithin is 0 (always query ingesters)": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          0, // Always query ingesters
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      nil, // Reset
+			expectedProjectionInclude:     false,
+		},
+		"projection enabled: query just outside ingester window with buffer": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-3*time.Hour - 1*time.Minute)), // Just before threshold
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
+			expectedProjectionInclude:     true,
+		},
+		"projection enabled: no buffer, query outside ingester window": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-2*time.Hour - 1*time.Minute)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 0, // No buffer
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
+			expectedProjectionInclude:     true,
+		},
+		"projection disabled: recent query (current time)": {
+			minT:                          util.TimeToMillis(now.Add(-1 * time.Hour)),
+			maxT:                          util.TimeToMillis(now), // Right now
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			inputProjectionLabels:         []string{"__name__", "job"},
+			expectedProjectionLabels:      nil, // Reset
+			expectedProjectionInclude:     false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			finder := &blocksFinderMock{}
+
+			// Setup blocks
+			var blocks bucketindex.Blocks
+			if testData.hasRemainingBlocks {
+				// Mixed: one parquet, one TSDB
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+					&bucketindex.Block{ID: block2}, // No parquet metadata = TSDB block
+				}
+			} else {
+				// All parquet
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+				}
+			}
+			finder.On("GetBlocks", mock.Anything, "user-1", testData.minT, mock.Anything, mock.Anything).Return(blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark{}, nil)
+
+			// Mock TSDB querier (for remaining blocks)
+			mockTSDBQuerier := &mockParquetQuerier{}
+
+			// Mock parquet querier (captures hints)
+			mockParquetQuerierInstance := &mockParquetQuerier{}
+
+			// Create the parquetQuerierWithFallback
+			pq := &parquetQuerierWithFallback{
+				minT:                          testData.minT,
+				maxT:                          testData.maxT,
+				finder:                        finder,
+				blocksStoreQuerier:            mockTSDBQuerier,
+				parquetQuerier:                mockParquetQuerierInstance,
+				queryIngestersWithin:          testData.queryIngestersWithin,
+				projectionHintsIngesterBuffer: testData.projectionHintsIngesterBuffer,
+				queryStoreAfter:               0, // Disable queryStoreAfter manipulation
+				metrics:                       newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+				limits:                        defaultOverrides(t, 0),
+				logger:                        log.NewNopLogger(),
+				defaultBlockStoreType:         parquetBlockStore,
+				fallbackDisabled:              false,
+			}
+
+			matchers := []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test_metric"),
+			}
+
+			// Create input hints with projection
+			inputHints := &storage.SelectHints{
+				Start:             testData.minT,
+				End:               testData.maxT,
+				ProjectionLabels:  testData.inputProjectionLabels,
+				ProjectionInclude: true,
+			}
+
+			// Execute Select
+			set := pq.Select(ctx, false, inputHints, matchers...)
+			require.NotNil(t, set)
+
+			// Verify the hints passed to the parquet querier
+			if !testData.hasRemainingBlocks {
+				// If all parquet blocks, verify hints passed to parquet querier
+				require.NotNil(t, mockParquetQuerierInstance.queriedHints, "parquet querier should have been called")
+				require.Equal(t, testData.expectedProjectionLabels, mockParquetQuerierInstance.queriedHints.ProjectionLabels,
+					"projection labels mismatch")
+				require.Equal(t, testData.expectedProjectionInclude, mockParquetQuerierInstance.queriedHints.ProjectionInclude,
+					"projection include flag mismatch")
+			}
+		})
+	}
+}
+
 func TestMaterializedLabelsFilterCallback(t *testing.T) {
 	tests := []struct {
 		name                     string

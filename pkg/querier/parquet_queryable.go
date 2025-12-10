@@ -96,11 +96,13 @@ func newParquetQueryableFallbackMetrics(reg prometheus.Registerer) *parquetQuery
 type parquetQueryableWithFallback struct {
 	services.Service
 
-	fallbackDisabled      bool
-	queryStoreAfter       time.Duration
-	parquetQueryable      storage.Queryable
-	cache                 cacheInterface[parquet_storage.ParquetShard]
-	blockStorageQueryable *BlocksStoreQueryable
+	fallbackDisabled              bool
+	queryStoreAfter               time.Duration
+	queryIngestersWithin          time.Duration
+	projectionHintsIngesterBuffer time.Duration
+	parquetQueryable              storage.Queryable
+	cache                         cacheInterface[parquet_storage.ParquetShard]
+	blockStorageQueryable         *BlocksStoreQueryable
 
 	finder BlocksFinder
 
@@ -148,6 +150,7 @@ func NewParquetQueryable(
 	}
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithHonorProjectionHints(config.ParquetQueryableHonorProjectionHints),
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
@@ -253,18 +256,20 @@ func NewParquetQueryable(
 	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
-		subservices:           manager,
-		blockStorageQueryable: blockStorageQueryable,
-		parquetQueryable:      parquetQueryable,
-		cache:                 cache,
-		queryStoreAfter:       config.QueryStoreAfter,
-		subservicesWatcher:    services.NewFailureWatcher(),
-		finder:                blockStorageQueryable.finder,
-		metrics:               newParquetQueryableFallbackMetrics(reg),
-		limits:                limits,
-		logger:                logger,
-		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
-		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
+		subservices:                   manager,
+		blockStorageQueryable:         blockStorageQueryable,
+		parquetQueryable:              parquetQueryable,
+		cache:                         cache,
+		queryStoreAfter:               config.QueryStoreAfter,
+		queryIngestersWithin:          config.QueryIngestersWithin,
+		projectionHintsIngesterBuffer: config.ParquetQueryableProjectionHintsIngesterBuffer,
+		subservicesWatcher:            services.NewFailureWatcher(),
+		finder:                        blockStorageQueryable.finder,
+		metrics:                       newParquetQueryableFallbackMetrics(reg),
+		limits:                        limits,
+		logger:                        logger,
+		defaultBlockStoreType:         blockStoreType(config.ParquetQueryableDefaultBlockStore),
+		fallbackDisabled:              config.ParquetQueryableFallbackDisabled,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -311,17 +316,19 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 	}
 
 	return &parquetQuerierWithFallback{
-		minT:                  mint,
-		maxT:                  maxt,
-		parquetQuerier:        pq,
-		queryStoreAfter:       p.queryStoreAfter,
-		blocksStoreQuerier:    bsq,
-		finder:                p.finder,
-		metrics:               p.metrics,
-		limits:                p.limits,
-		logger:                p.logger,
-		defaultBlockStoreType: p.defaultBlockStoreType,
-		fallbackDisabled:      p.fallbackDisabled,
+		minT:                          mint,
+		maxT:                          maxt,
+		parquetQuerier:                pq,
+		queryStoreAfter:               p.queryStoreAfter,
+		queryIngestersWithin:          p.queryIngestersWithin,
+		projectionHintsIngesterBuffer: p.projectionHintsIngesterBuffer,
+		blocksStoreQuerier:            bsq,
+		finder:                        p.finder,
+		metrics:                       p.metrics,
+		limits:                        p.limits,
+		logger:                        p.logger,
+		defaultBlockStoreType:         p.defaultBlockStoreType,
+		fallbackDisabled:              p.fallbackDisabled,
 	}, nil
 }
 
@@ -335,7 +342,9 @@ type parquetQuerierWithFallback struct {
 
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
+	queryStoreAfter               time.Duration
+	queryIngestersWithin          time.Duration
+	projectionHintsIngesterBuffer time.Duration
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
@@ -498,6 +507,14 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	// Lets sort the series to merge
 	if len(parquet) > 0 && len(remaining) > 0 {
 		sortSeries = true
+	}
+
+	queryIngesters := q.queryIngestersWithin == 0 || maxt >= util.TimeToMillis(time.Now().Add(-q.queryIngestersWithin).Add(-q.projectionHintsIngesterBuffer))
+	disableProjection := len(remaining) > 0 || queryIngesters
+	// Reset projection hints if there are mixed blocks (both parquet and non-parquet) or the query needs to merge results between ingester and parquet blocks
+	if disableProjection {
+		hints.ProjectionLabels = nil
+		hints.ProjectionInclude = false
 	}
 
 	promises := make([]chan storage.SeriesSet, 0, 2)

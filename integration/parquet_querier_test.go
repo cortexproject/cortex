@@ -353,7 +353,7 @@ func TestParquetProjectionPushdown(t *testing.T) {
 			for _, series := range matrix {
 				actualLabels := make(map[string]struct{})
 				for _, label := range series.Metric {
-					actualLabels[string(label.Name)] = struct{}{}
+					actualLabels[string(label)] = struct{}{}
 				}
 
 				// Check that all expected labels are present

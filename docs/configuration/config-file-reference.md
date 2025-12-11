@@ -544,6 +544,12 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.detailed-metrics-enabled
   [detailed_metrics_enabled: <boolean> | default = true]
 
+  # Disable extending the replica set when instances are unhealthy. This limits
+  # blast radius during config corruption incidents but reduces availability
+  # during normal failures.
+  # CLI flag: -alertmanager.sharding-ring.disable-replica-set-extension
+  [disable_replica_set_extension: <boolean> | default = false]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep

@@ -386,7 +386,8 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if marker.Version == cortex_parquet.CurrentVersion {
+		// We don't convert blocks again if they already have a valid converter mark.
+		if cortex_parquet.ValidConverterMarkVersion(marker.Version) {
 			continue
 		}
 

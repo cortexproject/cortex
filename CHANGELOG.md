@@ -12,6 +12,7 @@
 * [ENHANCEMENT] Distributor: Add count, spans, and buckets validations for native histogram. #7072
 * [ENHANCEMENT] Alertmanager/Ruler: Introduce a user scanner to reduce the number of list calls to object storage. #6999
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
+* [ENHANCEMENT] Query Frontend: Add query priority based on operation. #7128
 * [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088

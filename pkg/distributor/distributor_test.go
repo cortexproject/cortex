@@ -4543,7 +4543,7 @@ func TestDistributor_BatchTimeoutMetric(t *testing.T) {
 	reg := regs[0]
 
 	ctx := context.Background()
-	ctx = user.InjectOrgID(context.Background(), "user-1")
+	ctx = user.InjectOrgID(ctx, "user-1")
 
 	for range 5 {
 		request := makeWriteRequest(0, 30, 0, 0)

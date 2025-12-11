@@ -29,19 +29,19 @@ type cacheMetrics struct {
 func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
 	return &cacheMetrics{
 		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_hits_total",
+			Name: "cortex_parquet_cache_hits_total",
 			Help: "Total number of parquet cache hits",
 		}, []string{"name"}),
 		misses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_misses_total",
+			Name: "cortex_parquet_cache_misses_total",
 			Help: "Total number of parquet cache misses",
 		}, []string{"name"}),
 		evictions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_evictions_total",
+			Name: "cortex_parquet_cache_evictions_total",
 			Help: "Total number of parquet cache evictions",
 		}, []string{"name"}),
 		size: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_parquet_queryable_cache_item_count",
+			Name: "cortex_parquet_cache_item_count",
 			Help: "Current number of cached parquet items",
 		}, []string{"name"}),
 	}
@@ -61,23 +61,23 @@ type Cache[T any] struct {
 }
 
 type CacheConfig struct {
-	ParquetQueryableShardCacheSize int           `yaml:"parquet_queryable_shard_cache_size"`
-	ParquetQueryableShardCacheTTL  time.Duration `yaml:"parquet_queryable_shard_cache_ttl"`
-	MaintenanceInterval            time.Duration `yaml:"-"`
+	ParquetShardCacheSize int           `yaml:"parquet_shard_cache_size"`
+	ParquetShardCacheTTL  time.Duration `yaml:"parquet_shard_cache_ttl"`
+	MaintenanceInterval   time.Duration `yaml:"-"`
 }
 
 func (cfg *CacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.ParquetQueryableShardCacheSize, prefix+"parquet-queryable-shard-cache-size", 512, "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
-	f.DurationVar(&cfg.ParquetQueryableShardCacheTTL, prefix+"parquet-queryable-shard-cache-ttl", 24*time.Hour, "[Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.")
+	f.IntVar(&cfg.ParquetShardCacheSize, prefix+"parquet-shard-cache-size", 512, "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.")
+	f.DurationVar(&cfg.ParquetShardCacheTTL, prefix+"parquet-shard-cache-ttl", 24*time.Hour, "[Experimental] TTL of the Parquet shard cache. 0 to no TTL.")
 	cfg.MaintenanceInterval = defaultMaintenanceInterval
 }
 
 func NewCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (CacheInterface[T], error) {
-	if cfg.ParquetQueryableShardCacheSize <= 0 {
+	if cfg.ParquetShardCacheSize <= 0 {
 		return &noopCache[T]{}, nil
 	}
 	metrics := newCacheMetrics(reg)
-	cache, err := lru.NewWithEvict(cfg.ParquetQueryableShardCacheSize, func(key string, value *cacheEntry[T]) {
+	cache, err := lru.NewWithEvict(cfg.ParquetShardCacheSize, func(key string, value *cacheEntry[T]) {
 		metrics.evictions.WithLabelValues(name).Inc()
 		metrics.size.WithLabelValues(name).Dec()
 	})
@@ -89,11 +89,11 @@ func NewCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (
 		cache:   cache,
 		name:    name,
 		metrics: metrics,
-		ttl:     cfg.ParquetQueryableShardCacheTTL,
+		ttl:     cfg.ParquetShardCacheTTL,
 		stopCh:  make(chan struct{}),
 	}
 
-	if cfg.ParquetQueryableShardCacheTTL > 0 {
+	if cfg.ParquetShardCacheTTL > 0 {
 		go c.maintenanceLoop(cfg.MaintenanceInterval)
 	}
 

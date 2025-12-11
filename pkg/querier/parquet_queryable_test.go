@@ -402,7 +402,7 @@ func TestParquetQueryable_Limits(t *testing.T) {
 		StoreGatewayQueryStatsEnabled:           false,
 		StoreGatewayConsistencyCheckMaxAttempts: 3,
 		ParquetShardCache: parquetutil.CacheConfig{
-			ParquetQueryableShardCacheSize: 100,
+			ParquetShardCacheSize: 100,
 		},
 		ParquetQueryableDefaultBlockStore: "parquet",
 	}

@@ -13,9 +13,9 @@ import (
 func Test_Cache_LRUEviction(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	cfg := &CacheConfig{
-		ParquetQueryableShardCacheSize: 2,
-		ParquetQueryableShardCacheTTL:  0,
-		MaintenanceInterval:            time.Minute,
+		ParquetShardCacheSize: 2,
+		ParquetShardCacheTTL:  0,
+		MaintenanceInterval:   time.Minute,
 	}
 	cache, err := NewCache[string](cfg, "test", reg)
 	require.NoError(t, err)
@@ -36,27 +36,27 @@ func Test_Cache_LRUEviction(t *testing.T) {
 	require.Equal(t, "", val2)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 3
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 2
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
+		# HELP cortex_parquet_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_cache_evictions_total counter
+		cortex_parquet_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_cache_hits_total counter
+		cortex_parquet_cache_hits_total{name="test"} 3
+		# HELP cortex_parquet_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_cache_item_count gauge
+		cortex_parquet_cache_item_count{name="test"} 2
+		# HELP cortex_parquet_cache_misses_total Total number of parquet cache misses
+		# TYPE cortex_parquet_cache_misses_total counter
+		cortex_parquet_cache_misses_total{name="test"} 1
 	`)))
 }
 
 func Test_Cache_TTLEvictionByGet(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	cfg := &CacheConfig{
-		ParquetQueryableShardCacheSize: 10,
-		ParquetQueryableShardCacheTTL:  100 * time.Millisecond,
-		MaintenanceInterval:            time.Minute,
+		ParquetShardCacheSize: 10,
+		ParquetShardCacheTTL:  100 * time.Millisecond,
+		MaintenanceInterval:   time.Minute,
 	}
 
 	cache, err := NewCache[string](cfg, "test", reg)
@@ -75,27 +75,27 @@ func Test_Cache_TTLEvictionByGet(t *testing.T) {
 	require.Equal(t, "", val)
 
 	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
+		# HELP cortex_parquet_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_cache_evictions_total counter
+		cortex_parquet_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_cache_hits_total counter
+		cortex_parquet_cache_hits_total{name="test"} 1
+		# HELP cortex_parquet_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_cache_item_count gauge
+		cortex_parquet_cache_item_count{name="test"} 0
+		# HELP cortex_parquet_cache_misses_total Total number of parquet cache misses
+		# TYPE cortex_parquet_cache_misses_total counter
+		cortex_parquet_cache_misses_total{name="test"} 1
 	`)))
 }
 
 func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	cfg := &CacheConfig{
-		ParquetQueryableShardCacheSize: 10,
-		ParquetQueryableShardCacheTTL:  100 * time.Millisecond,
-		MaintenanceInterval:            100 * time.Millisecond,
+		ParquetShardCacheSize: 10,
+		ParquetShardCacheTTL:  100 * time.Millisecond,
+		MaintenanceInterval:   100 * time.Millisecond,
 	}
 
 	cache, err := NewCache[string](cfg, "test", reg)
@@ -117,14 +117,14 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 	}
 
 	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
+		# HELP cortex_parquet_cache_evictions_total Total number of parquet cache evictions
+		# TYPE cortex_parquet_cache_evictions_total counter
+		cortex_parquet_cache_evictions_total{name="test"} 1
+		# HELP cortex_parquet_cache_hits_total Total number of parquet cache hits
+		# TYPE cortex_parquet_cache_hits_total counter
+		cortex_parquet_cache_hits_total{name="test"} 1
+		# HELP cortex_parquet_cache_item_count Current number of cached parquet items
+		# TYPE cortex_parquet_cache_item_count gauge
+		cortex_parquet_cache_item_count{name="test"} 0
 	`)))
 }

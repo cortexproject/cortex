@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/cortexproject/promqlsmith"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -301,12 +301,16 @@ func TestParquetProjectionPushdown(t *testing.T) {
 	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	// Test queries that should use projection hints
 	testCases := []struct {
 		name           string
 		query          string
 		expectedLabels []string // Labels that should be present in result
 	}{
+		{
+			name:           "vector selector query should not use projection",
+			query:          `http_requests_total`,
+			expectedLabels: []string{"__name__", "job", "instance", "status_code", "method", "path", "cluster"},
+		},
 		{
 			name:           "simple_sum_by_job",
 			query:          `sum by (job) (http_requests_total)`,
@@ -322,6 +326,11 @@ func TestParquetProjectionPushdown(t *testing.T) {
 			query:          `sum by (job, status_code) (http_requests_total)`,
 			expectedLabels: []string{"job", "status_code"},
 		},
+		{
+			name:           "aggregation without query",
+			query:          `sum without (instance, method) (http_requests_total)`,
+			expectedLabels: []string{"job", "status_code", "path", "cluster"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -334,16 +343,17 @@ func TestParquetProjectionPushdown(t *testing.T) {
 			require.NotNil(t, result)
 
 			// Verify we got results
-			matrix := result.(promql.Matrix)
+			matrix, ok := result.(model.Matrix)
+			require.True(t, ok, "result should be a matrix")
 			require.NotEmpty(t, matrix, "query should return results")
 
 			t.Logf("Query returned %d series", len(matrix))
 
 			// Verify projection worked: series should only have the expected labels
-			for i, series := range matrix {
+			for _, series := range matrix {
 				actualLabels := make(map[string]struct{})
 				for _, label := range series.Metric {
-					actualLabels[label.Name] = struct{}{}
+					actualLabels[string(label.Name)] = struct{}{}
 				}
 
 				// Check that all expected labels are present

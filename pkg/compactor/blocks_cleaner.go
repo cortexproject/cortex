@@ -788,11 +788,12 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
 		isPartitionGroupInfoDeleted := false
 		partitionedGroupInfoFile := extraInfo.path
+		deletedBlocksCount := 0
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
-				deletedBlocksCount, err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
+				deletedBlocksCount, err = partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
 				if err != nil {
 					level.Warn(userLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
 					// if one block can not be marked for deletion, we should
@@ -800,16 +801,17 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 					// would try it again.
 					continue
 				}
-				if deletedBlocksCount > 0 {
-					level.Info(userLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+			}
+
+			if deletedBlocksCount > 0 {
+				level.Info(userLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+			} else {
+				level.Info(userLogger).Log("msg", "deleting partition group because either all associated blocks have been deleted or partition group is invalid", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
+					level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
 				} else {
-					level.Info(userLogger).Log("msg", "deleting partition group now that all associated blocks have been deleted", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
-					if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
-						level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
-					} else {
-						level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
-						isPartitionGroupInfoDeleted = true
-					}
+					level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+					isPartitionGroupInfoDeleted = true
 				}
 			}
 		}

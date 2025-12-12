@@ -111,24 +111,25 @@ type Distributor struct {
 	inflightClientRequests atomic.Int64
 
 	// Metrics
-	queryDuration                    *instrument.HistogramCollector
-	receivedSamples                  *prometheus.CounterVec
-	receivedSamplesPerLabelSet       *prometheus.CounterVec
-	receivedExemplars                *prometheus.CounterVec
-	receivedMetadata                 *prometheus.CounterVec
-	incomingSamples                  *prometheus.CounterVec
-	incomingExemplars                *prometheus.CounterVec
-	incomingMetadata                 *prometheus.CounterVec
-	nonHASamples                     *prometheus.CounterVec
-	dedupedSamples                   *prometheus.CounterVec
-	labelsHistogram                  prometheus.Histogram
-	ingesterAppends                  *prometheus.CounterVec
-	ingesterAppendFailures           *prometheus.CounterVec
-	ingesterQueries                  *prometheus.CounterVec
-	ingesterQueryFailures            *prometheus.CounterVec
-	ingesterPartialDataQueries       prometheus.Counter
-	replicationFactor                prometheus.Gauge
-	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	queryDuration                         *instrument.HistogramCollector
+	receivedSamples                       *prometheus.CounterVec
+	receivedSamplesPerLabelSet            *prometheus.CounterVec
+	receivedExemplars                     *prometheus.CounterVec
+	receivedMetadata                      *prometheus.CounterVec
+	incomingSamples                       *prometheus.CounterVec
+	incomingExemplars                     *prometheus.CounterVec
+	incomingMetadata                      *prometheus.CounterVec
+	nonHASamples                          *prometheus.CounterVec
+	dedupedSamples                        *prometheus.CounterVec
+	labelsHistogram                       prometheus.Histogram
+	ingesterAppends                       *prometheus.CounterVec
+	ingesterAppendFailures                *prometheus.CounterVec
+	ingesterQueries                       *prometheus.CounterVec
+	ingesterQueryFailures                 *prometheus.CounterVec
+	ingesterPartialDataQueries            prometheus.Counter
+	replicationFactor                     prometheus.Gauge
+	latestSeenSampleTimestampPerUser      *prometheus.GaugeVec
+	distributorIngesterPushTimeoutPerUser *prometheus.CounterVec
 
 	validateMetrics *validation.ValidateMetrics
 
@@ -408,6 +409,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		latestSeenSampleTimestampPerUser: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
+		}, []string{"user"}),
+		distributorIngesterPushTimeoutPerUser: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_distributor_ingester_push_timeouts_total",
+			Help: "The total number of push requests to ingesters that were canceled due to timeout.",
 		}, []string{"user"}),
 
 		validateMetrics: validation.NewValidateMetrics(reg),
@@ -932,6 +937,12 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 
 	// Use a background context to make sure all ingesters get samples even if we return early
 	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	defer func() {
+		if errors.Is(localCtx.Err(), context.DeadlineExceeded) {
+			d.distributorIngesterPushTimeoutPerUser.WithLabelValues(userID).Inc()
+		}
+	}()
+
 	localCtx = user.InjectOrgID(localCtx, userID)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)

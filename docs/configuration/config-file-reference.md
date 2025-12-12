@@ -4828,6 +4828,18 @@ thanos_engine:
 # [Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.
 # CLI flag: -querier.parquet-queryable-shard-cache-ttl
 [parquet_queryable_shard_cache_ttl: <duration> | default = 24h]
+
+# [Experimental] If true, parquet queryable will honor projection hints and only
+# materialize requested labels. Projection is only applied when all queried
+# blocks are parquet blocks and not querying ingesters.
+# CLI flag: -querier.parquet-queryable-honor-projection-hints
+[parquet_queryable_honor_projection_hints: <boolean> | default = false]
+
+# [Experimental] Time buffer to use when checking if query overlaps with
+# ingester data. Projection hints are disabled if query time range overlaps with
+# (now - query-ingesters-within - buffer).
+# CLI flag: -querier.parquet-queryable-projection-hints-ingester-buffer
+[parquet_queryable_projection_hints_ingester_buffer: <duration> | default = 1h]
 ```
 
 ### `query_frontend_config`

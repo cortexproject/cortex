@@ -173,7 +173,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 			&bucketindex.Block{ID: block2},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
@@ -242,8 +242,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select", func(t *testing.T) {
@@ -316,8 +316,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select", func(t *testing.T) {
@@ -642,17 +642,20 @@ func TestSelectProjectionHints(t *testing.T) {
 		queryIngestersWithin          time.Duration
 		projectionHintsIngesterBuffer time.Duration
 		hasRemainingBlocks            bool // Whether there are non-parquet (TSDB) blocks
+		parquetBlockVersion           int  // Version of parquet blocks (1 or 2)
+		mixedVersions                 bool // If true, block1 is v1, block2 is v2
 		inputProjectionLabels         []string
 		inputProjectionInclude        bool     // Input ProjectionInclude value
 		expectedProjectionLabels      []string // nil means projection disabled
 		expectedProjectionInclude     bool
 	}{
-		"projection enabled: all parquet blocks, query older than ingester window": {
+		"projection enabled: all parquet blocks v2, query older than ingester window": {
 			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2, // Version 2 has hash column
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
@@ -664,6 +667,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            true, // Mixed blocks
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
@@ -675,6 +679,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset (maxT >= now - 2h - 1h = now - 3h)
@@ -686,6 +691,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset (maxT = now - 2.5h, threshold = now - 3h, so 2.5h > 3h means disabled)
@@ -697,6 +703,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          0, // Always query ingesters
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
@@ -708,6 +715,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
@@ -719,6 +727,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 0, // No buffer
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
@@ -730,6 +739,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"__name__", "job"},
 			inputProjectionInclude:        true,
 			expectedProjectionLabels:      nil, // Reset
@@ -741,9 +751,34 @@ func TestSelectProjectionHints(t *testing.T) {
 			queryIngestersWithin:          2 * time.Hour,
 			projectionHintsIngesterBuffer: 1 * time.Hour,
 			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:         []string{"job"},
 			inputProjectionInclude:        false,
 			expectedProjectionLabels:      nil,
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: parquet blocks version 1 (no hash column)": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			parquetBlockVersion:           parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
+			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
+			expectedProjectionLabels:      nil, // Reset because version 1 doesn't support projection
+			expectedProjectionInclude:     false,
+		},
+		"projection disabled: mixed parquet block versions (v1 and v2)": {
+			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryIngestersWithin:          2 * time.Hour,
+			projectionHintsIngesterBuffer: 1 * time.Hour,
+			hasRemainingBlocks:            false,
+			mixedVersions:                 true, // block1 is v1, block2 is v2
+			inputProjectionLabels:         []string{"__name__", "job"},
+			inputProjectionInclude:        true,
+			expectedProjectionLabels:      nil, // Reset because not all blocks support projection
 			expectedProjectionInclude:     false,
 		},
 	}
@@ -758,14 +793,20 @@ func TestSelectProjectionHints(t *testing.T) {
 			if testData.hasRemainingBlocks {
 				// Mixed: one parquet, one TSDB
 				blocks = bucketindex.Blocks{
-					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
 					&bucketindex.Block{ID: block2}, // No parquet metadata = TSDB block
 				}
-			} else {
-				// All parquet
+			} else if testData.mixedVersions {
+				// Mixed parquet versions: block1 is v1, block2 is v2
 				blocks = bucketindex.Blocks{
-					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				}
+			} else {
+				// All parquet with same version
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
+					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
 				}
 			}
 			finder.On("GetBlocks", mock.Anything, "user-1", testData.minT, mock.Anything, mock.Anything).Return(blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark{}, nil)
@@ -818,6 +859,84 @@ func TestSelectProjectionHints(t *testing.T) {
 				require.Equal(t, testData.expectedProjectionInclude, mockParquetQuerierInstance.queriedHints.ProjectionInclude,
 					"projection include flag mismatch")
 			}
+		})
+	}
+}
+
+func TestAllParquetBlocksHaveHashColumn(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	block3 := ulid.MustNew(3, nil)
+
+	tests := map[string]struct {
+		blocks   []*bucketindex.Block
+		expected bool
+	}{
+		"all blocks v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+		"all blocks v1": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			},
+			expected: false,
+		},
+		"mixed versions v1 and v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: false,
+		},
+		"one block nil parquet metadata": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				{ID: block2, Parquet: nil},
+			},
+			expected: false,
+		},
+		"all blocks nil parquet metadata": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: nil},
+				{ID: block2, Parquet: nil},
+			},
+			expected: false,
+		},
+		"single block v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+		"single block v1": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			},
+			expected: false,
+		},
+		"empty blocks": {
+			blocks:   []*bucketindex.Block{},
+			expected: true, // No blocks with version < 2, so return true
+		},
+		"all blocks v3 or higher": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 3}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 4}},
+				{ID: block3, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			result := allParquetBlocksHaveHashColumn(testData.blocks)
+			require.Equal(t, testData.expected, result, "unexpected result for %s", testName)
 		})
 	}
 }
@@ -989,7 +1108,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 
 		// Set up blocks where block1 has parquet metadata but block2 doesn't
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
 			&bucketindex.Block{ID: block2}, // Not available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
@@ -1048,8 +1167,8 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 
 		// Set up blocks where both blocks have parquet metadata
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select should work without error", func(t *testing.T) {

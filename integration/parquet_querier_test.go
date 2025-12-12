@@ -219,7 +219,7 @@ func TestParquetProjectionPushdown(t *testing.T) {
 			"-parquet-converter.enabled":              "true",
 			// Querier - Enable Thanos engine with projection optimizer
 			"-querier.thanos-engine":                            "true",
-			"-querier.optimizers":                               "default,projection", // Enable projection optimizer
+			"-querier.optimizers":                               "propagate-matchers,sort-matchers,merge-selects,detect-histogram-stats,projection", // Enable all optimizers including projection
 			"-querier.enable-parquet-queryable":                 "true",
 			"-querier.parquet-queryable-honor-projection-hints": "true", // Honor projection hints
 			// Set query-ingesters-within to 2h so queries older than 2h don't hit ingesters

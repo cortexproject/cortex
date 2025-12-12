@@ -26,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -280,22 +281,33 @@ func TestParquetProjectionPushdown(t *testing.T) {
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
 
-	// Wait until we convert the blocks to parquet
+	// Wait until we convert the blocks to parquet AND bucket index is updated
 	cortex_testutil.Poll(t, 30*time.Second, true, func() interface{} {
-		found := false
-		foundBucketIndex := false
-
+		// Check if parquet marker exists
+		markerFound := false
 		err := bkt.Iter(context.Background(), "", func(name string) error {
 			if name == fmt.Sprintf("parquet-markers/%v-parquet-converter-mark.json", id.String()) {
-				found = true
-			}
-			if name == "bucket-index.json.gz" {
-				foundBucketIndex = true
+				markerFound = true
 			}
 			return nil
 		}, objstore.WithRecursiveIter())
-		require.NoError(t, err)
-		return found && foundBucketIndex
+		if err != nil || !markerFound {
+			return false
+		}
+
+		// Check if bucket index exists AND contains the parquet block metadata
+		idx, err := bucketindex.ReadIndex(ctx, bkt, "user-1", nil, log.Logger)
+		if err != nil {
+			return false
+		}
+
+		// Verify the block is in the bucket index with parquet metadata
+		for _, b := range idx.Blocks {
+			if b.ID == id && b.Parquet != nil {
+				return true
+			}
+		}
+		return false
 	})
 
 	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")

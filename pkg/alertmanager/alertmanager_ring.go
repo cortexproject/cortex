@@ -27,29 +27,56 @@ const (
 	RingNumTokens = 128
 )
 
-// RingOp is the operation used for reading/writing to the alertmanagers.
+// Original ring operations (with extension enabled for backward compatibility)
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
-	// Only ACTIVE Alertmanager get requests. If instance is not ACTIVE, we need to find another Alertmanager.
+	// Original behavior: extend replica set if instance is not ACTIVE
 	return s != ring.ACTIVE
 })
 
-// SyncRingOp is the operation used for checking if a user is owned by an alertmanager.
 var SyncRingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, func(s ring.InstanceState) bool {
+	// Original behavior: extend replica set if instance is not ACTIVE
 	return s != ring.ACTIVE
 })
+
+// Blast radius limited ring operations (with extension disabled)
+var RingOpNoExtension = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
+	// Never extend replica set to limit blast radius during config corruption incidents
+	return false
+})
+
+var SyncRingOpNoExtension = ring.NewOp([]ring.InstanceState{ring.ACTIVE, ring.JOINING}, func(s ring.InstanceState) bool {
+	// Never extend replica set during sync to limit blast radius during config corruption incidents
+	return false
+})
+
+// Helper functions to select the appropriate ring operation based on config
+func GetRingOp(disableExtension bool) ring.Operation {
+	if disableExtension {
+		return RingOpNoExtension
+	}
+	return RingOp
+}
+
+func GetSyncRingOp(disableExtension bool) ring.Operation {
+	if disableExtension {
+		return SyncRingOpNoExtension
+	}
+	return SyncRingOp
+}
 
 // RingConfig masks the ring lifecycler config which contains
 // many options not really required by the alertmanager ring. This config
 // is used to strip down the config to the minimum, and avoid confusion
 // to the user.
 type RingConfig struct {
-	KVStore                kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
-	HeartbeatPeriod        time.Duration `yaml:"heartbeat_period"`
-	HeartbeatTimeout       time.Duration `yaml:"heartbeat_timeout"`
-	ReplicationFactor      int           `yaml:"replication_factor"`
-	ZoneAwarenessEnabled   bool          `yaml:"zone_awareness_enabled"`
-	TokensFilePath         string        `yaml:"tokens_file_path"`
-	DetailedMetricsEnabled bool          `yaml:"detailed_metrics_enabled"`
+	KVStore                    kv.Config     `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances."`
+	HeartbeatPeriod            time.Duration `yaml:"heartbeat_period"`
+	HeartbeatTimeout           time.Duration `yaml:"heartbeat_timeout"`
+	ReplicationFactor          int           `yaml:"replication_factor"`
+	ZoneAwarenessEnabled       bool          `yaml:"zone_awareness_enabled"`
+	TokensFilePath             string        `yaml:"tokens_file_path"`
+	DetailedMetricsEnabled     bool          `yaml:"detailed_metrics_enabled"`
+	DisableReplicaSetExtension bool          `yaml:"disable_replica_set_extension"`
 
 	FinalSleep                      time.Duration `yaml:"final_sleep"`
 	WaitInstanceStateTimeout        time.Duration `yaml:"wait_instance_state_timeout"`
@@ -90,6 +117,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ZoneAwarenessEnabled, rfprefix+"zone-awareness-enabled", false, "True to enable zone-awareness and replicate alerts across different availability zones.")
 	f.StringVar(&cfg.TokensFilePath, rfprefix+"tokens-file-path", "", "File path where tokens are stored. If empty, tokens are not stored at shutdown and restored at startup.")
 	f.BoolVar(&cfg.DetailedMetricsEnabled, rfprefix+"detailed-metrics-enabled", true, "Set to true to enable ring detailed metrics. These metrics provide detailed information, such as token count and ownership per tenant. Disabling them can significantly decrease the number of metrics emitted.")
+	f.BoolVar(&cfg.DisableReplicaSetExtension, rfprefix+"disable-replica-set-extension", false, "Disable extending the replica set when instances are unhealthy. This limits blast radius during config corruption incidents but reduces availability during normal failures.")
 
 	// Instance flags
 	cfg.InstanceInterfaceNames = []string{"eth0", "en0"}

@@ -36,12 +36,12 @@ type Distributor struct {
 
 	alertmanagerRing        ring.ReadRing
 	alertmanagerClientsPool ClientsPool
-
-	logger log.Logger
+	ringConfig              RingConfig
+	logger                  log.Logger
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, ringConfig RingConfig, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if alertmanagerClientsPool == nil {
 		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg, logger, reg)
 	}
@@ -52,6 +52,7 @@ func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *r
 		maxRecvMsgSize:          maxRecvMsgSize,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
+		ringConfig:              ringConfig,
 	}
 
 	d.Service = services.NewBasicService(nil, d.running, nil)
@@ -89,6 +90,9 @@ func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
 	if strings.HasSuffix(path.Dir(p), "/v2/silence") {
 		return true, merger.V2SilenceID{}
 	}
+	if strings.HasSuffix(p, "/v2/receivers") {
+		return true, merger.V2Receivers{}
+	}	
 	return false, nil
 }
 
@@ -160,7 +164,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	var responses []*httpgrpc.HTTPResponse
 	var responsesMtx sync.Mutex
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
-	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, nil, []uint32{users.ShardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
+	err = ring.DoBatch(r.Context(), GetRingOp(d.ringConfig.DisableReplicaSetExtension), d.alertmanagerRing, nil, []uint32{users.ShardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), userID), opentracing.SpanFromContext(r.Context()))
 		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
@@ -207,7 +211,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 
 func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	key := users.ShardByUser(userID)
-	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
+	replicationSet, err := d.alertmanagerRing.Get(key, GetRingOp(d.ringConfig.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get replication set from the ring", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -244,16 +248,30 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 			instances[i], instances[j] = instances[j], instances[i]
 		})
 	} else {
-		//Picking 1 instance at Random for Non-Get and Non-Delete Unary Read requests, as shuffling through large number of instances might increase complexity
-		randN := rand.Intn(len(replicationSet.Instances))
-		instances = replicationSet.Instances[randN : randN+1]
+		// For POST requests, add retry logic to PutSilence
+		if d.isUnaryWritePath(r.URL.Path) {
+			instances = replicationSet.Instances
+			rand.Shuffle(len(instances), func(i, j int) {
+				instances[i], instances[j] = instances[j], instances[i]
+			})
+		} else {
+			// Other POST requests pick 1 instance at Random for Non-Get and Non-Delete Unary Read requests, as shuffling through large number of instances might increase complexity
+			randN := rand.Intn(len(replicationSet.Instances))
+			instances = replicationSet.Instances[randN : randN+1]
+		}
 	}
 
 	var lastErr error
 	for _, instance := range instances {
 		resp, err := d.doRequest(ctx, instance, req)
-		// storing the last error message
 		if err != nil {
+			// For PutSilence with non-retryable errors, fail immediately
+			if d.isUnaryWritePath(r.URL.Path) && !d.isRetryableError(err) {
+				level.Error(logger).Log("msg", "non-retryable error from alertmanager", "instance", instance.Addr, "err", err)
+				respondFromError(err, w, logger)
+				return
+			}
+			// storing the last error message
 			lastErr = err
 			continue
 		}
@@ -265,6 +283,49 @@ func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Requ
 	if lastErr != nil {
 		respondFromError(lastErr, w, logger)
 	}
+}
+
+// isRetryableError determines if an error is retryable (network/availability issues)
+// vs non-retryable (bad request, validation errors)
+func (d *Distributor) isRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check if it's an HTTP error with a status code
+	httpResp, ok := httpgrpc.HTTPResponseFromError(errors.Cause(err))
+	if ok {
+		statusCode := int(httpResp.Code)
+
+		if statusCode == http.StatusRequestTimeout || statusCode == http.StatusTooManyRequests || statusCode >= 500 {
+			return true
+		}
+
+		if statusCode >= 400 && statusCode < 500 {
+			return false
+		}
+	}
+
+	// Network errors, context errors, etc. are retryable
+	errorStr := err.Error()
+	retryablePatterns := []string{
+		"connection refused",
+		"connection reset",
+		"timeout",
+		"context deadline exceeded",
+		"no such host",
+		"network is unreachable",
+		"broken pipe",
+	}
+
+	for _, pattern := range retryablePatterns {
+		if strings.Contains(strings.ToLower(errorStr), pattern) {
+			return true
+		}
+	}
+
+	// Default to retryable for unknown errors to maximize availability
+	return true
 }
 
 func respondFromError(err error, w http.ResponseWriter, logger log.Logger) {

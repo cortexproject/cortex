@@ -343,16 +343,16 @@ func TestParquetProjectionPushdown(t *testing.T) {
 			require.NotNil(t, result)
 
 			// Verify we got results
-			matrix, ok := result.(model.Matrix)
-			require.True(t, ok, "result should be a matrix")
-			require.NotEmpty(t, matrix, "query should return results")
+			vector, ok := result.(model.Vector)
+			require.True(t, ok, "result should be a vector")
+			require.NotEmpty(t, vector, "query should return results")
 
-			t.Logf("Query returned %d series", len(matrix))
+			t.Logf("Query returned %d series", len(vector))
 
 			// Verify projection worked: series should only have the expected labels
-			for _, series := range matrix {
+			for _, sample := range vector {
 				actualLabels := make(map[string]struct{})
-				for _, label := range series.Metric {
+				for _, label := range sample.Metric {
 					actualLabels[string(label)] = struct{}{}
 				}
 

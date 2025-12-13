@@ -5840,17 +5840,17 @@
           "type": "boolean",
           "x-cli-flag": "querier.parquet-queryable-fallback-disabled"
         },
-        "parquet_queryable_shard_cache_size": {
+        "parquet_shard_cache_size": {
           "default": 512,
-          "description": "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.",
+          "description": "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.",
           "type": "number",
-          "x-cli-flag": "querier.parquet-queryable-shard-cache-size"
+          "x-cli-flag": "querier.parquet-shard-cache-size"
         },
-        "parquet_queryable_shard_cache_ttl": {
+        "parquet_shard_cache_ttl": {
           "default": "24h0m0s",
-          "description": "[Experimental] TTL of the Parquet queryable shard cache. 0 to no TTL.",
+          "description": "[Experimental] TTL of the Parquet shard cache. 0 to no TTL.",
           "type": "string",
-          "x-cli-flag": "querier.parquet-queryable-shard-cache-ttl",
+          "x-cli-flag": "querier.parquet-shard-cache-ttl",
           "x-format": "duration"
         },
         "per_step_stats_enabled": {

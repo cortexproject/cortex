@@ -231,7 +231,7 @@ func TestLimitsLoadingFromJson(t *testing.T) {
 }
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
-	limits := reflect.TypeOf(Limits{})
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var mismatch []string
 
@@ -301,8 +301,8 @@ max_query_length: 1s
 }
 
 func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
-	stdlibDuration := reflect.TypeOf(time.Duration(0))
-	limits := reflect.TypeOf(Limits{})
+	stdlibDuration := reflect.TypeFor[time.Duration]()
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var badDurationType []string
 

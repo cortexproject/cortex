@@ -252,7 +252,7 @@ web-deploy:
 	./tools/website/web-deploy.sh
 
 modernize:
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.20.0 -fix ./...
+	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.21.0 -fix ./...
 
 # Generates the config file documentation.
 doc: clean-doc

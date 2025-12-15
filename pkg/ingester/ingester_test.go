@@ -6309,13 +6309,13 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		testName := ""
+		var testName strings.Builder
 		for _, matcher := range tc.matchers {
 			t, _ := matcher.MatcherType()
-			testName += matcher.Name + t.String() + matcher.Value + "|"
+			testName.WriteString(matcher.Name + t.String() + matcher.Value + "|")
 
 		}
-		t.Run(fmt.Sprintf("%v", testName), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%v", testName.String()), func(t *testing.T) {
 			for _, r := range ranges {
 				t.Run(fmt.Sprintf("start=%v,end=%v", r.startTs, r.endTs), func(t *testing.T) {
 					db.postingCache.Clear()

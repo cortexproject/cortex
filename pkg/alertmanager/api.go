@@ -344,74 +344,74 @@ func validateAlertmanagerConfig(cfg any) error {
 	// Check if the input config is a data type for which we have a specific validation.
 	// At this point the value can't be a pointer anymore.
 	switch t {
-	case reflect.TypeOf(config.GlobalConfig{}):
+	case reflect.TypeFor[config.GlobalConfig]():
 		if err := validateGlobalConfig(v.Interface().(config.GlobalConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(commoncfg.HTTPClientConfig{}):
+	case reflect.TypeFor[commoncfg.HTTPClientConfig]():
 		if err := validateReceiverHTTPConfig(v.Interface().(commoncfg.HTTPClientConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.OpsGenieConfig{}):
+	case reflect.TypeFor[config.OpsGenieConfig]():
 		if err := validateOpsGenieConfig(v.Interface().(config.OpsGenieConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(commoncfg.TLSConfig{}):
+	case reflect.TypeFor[commoncfg.TLSConfig]():
 		if err := validateReceiverTLSConfig(v.Interface().(commoncfg.TLSConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.SlackConfig{}):
+	case reflect.TypeFor[config.SlackConfig]():
 		if err := validateSlackConfig(v.Interface().(config.SlackConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.VictorOpsConfig{}):
+	case reflect.TypeFor[config.VictorOpsConfig]():
 		if err := validateVictorOpsConfig(v.Interface().(config.VictorOpsConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.PagerdutyConfig{}):
+	case reflect.TypeFor[config.PagerdutyConfig]():
 		if err := validatePagerdutyConfig(v.Interface().(config.PagerdutyConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.WebhookConfig{}):
+	case reflect.TypeFor[config.WebhookConfig]():
 		if err := validateWebhookConfig(v.Interface().(config.WebhookConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.PushoverConfig{}):
+	case reflect.TypeFor[config.PushoverConfig]():
 		if err := validatePushOverConfig(v.Interface().(config.PushoverConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.TelegramConfig{}):
+	case reflect.TypeFor[config.TelegramConfig]():
 		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.MSTeamsConfig{}):
+	case reflect.TypeFor[config.MSTeamsConfig]():
 		if err := validateMSTeamsConfig(v.Interface().(config.MSTeamsConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.MSTeamsV2Config{}):
+	case reflect.TypeFor[config.MSTeamsV2Config]():
 		if err := validateMSTeamsV2Config(v.Interface().(config.MSTeamsV2Config)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.RocketchatConfig{}):
+	case reflect.TypeFor[config.RocketchatConfig]():
 		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.DiscordConfig{}):
+	case reflect.TypeFor[config.DiscordConfig]():
 		if err := validateDiscordConfig(v.Interface().(config.DiscordConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.EmailConfig{}):
+	case reflect.TypeFor[config.EmailConfig]():
 		if err := validateEmailConfig(v.Interface().(config.EmailConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.IncidentioConfig{}):
+	case reflect.TypeFor[config.IncidentioConfig]():
 		if err := validateIncidentIOConfig(v.Interface().(config.IncidentioConfig)); err != nil {
 			return err
 		}

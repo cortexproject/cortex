@@ -134,7 +134,7 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
-	cache, err := parquetutil.NewCache[parquet_storage.ParquetShard](&config.ParquetShardCache, "parquet-shards", extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	cache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&config.ParquetShardCache, "parquet-shards", extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
 		return nil, err
 	}

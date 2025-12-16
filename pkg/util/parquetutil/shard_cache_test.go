@@ -17,7 +17,7 @@ func Test_Cache_LRUEviction(t *testing.T) {
 		ParquetShardCacheTTL:  0,
 		MaintenanceInterval:   time.Minute,
 	}
-	cache, err := NewCache[string](cfg, "test", reg)
+	cache, err := NewParquetShardCache[string](cfg, "test", reg)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -59,7 +59,7 @@ func Test_Cache_TTLEvictionByGet(t *testing.T) {
 		MaintenanceInterval:   time.Minute,
 	}
 
-	cache, err := NewCache[string](cfg, "test", reg)
+	cache, err := NewParquetShardCache[string](cfg, "test", reg)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -98,7 +98,7 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 		MaintenanceInterval:   100 * time.Millisecond,
 	}
 
-	cache, err := NewCache[string](cfg, "test", reg)
+	cache, err := NewParquetShardCache[string](cfg, "test", reg)
 	require.NoError(t, err)
 	defer cache.Close()
 
@@ -110,7 +110,7 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 	// sleep longer than TTL
 	time.Sleep(150 * time.Millisecond)
 
-	if c, ok := cache.(*Cache[string]); ok {
+	if c, ok := cache.(*ParquetShardCache[string]); ok {
 		// should delete by maintenance loop
 		_, ok := c.cache.Peek("key1")
 		require.False(t, ok)

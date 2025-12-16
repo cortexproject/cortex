@@ -52,7 +52,7 @@ type cacheEntry[T any] struct {
 	expiresAt time.Time
 }
 
-type Cache[T any] struct {
+type ParquetShardCache[T any] struct {
 	cache   *lru.Cache[string, *cacheEntry[T]]
 	name    string
 	metrics *cacheMetrics
@@ -72,7 +72,7 @@ func (cfg *CacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	cfg.MaintenanceInterval = defaultMaintenanceInterval
 }
 
-func NewCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (CacheInterface[T], error) {
+func NewParquetShardCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (CacheInterface[T], error) {
 	if cfg.ParquetShardCacheSize <= 0 {
 		return &noopCache[T]{}, nil
 	}
@@ -85,7 +85,7 @@ func NewCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (
 		return nil, err
 	}
 
-	c := &Cache[T]{
+	c := &ParquetShardCache[T]{
 		cache:   cache,
 		name:    name,
 		metrics: metrics,
@@ -100,7 +100,7 @@ func NewCache[T any](cfg *CacheConfig, name string, reg prometheus.Registerer) (
 	return c, nil
 }
 
-func (c *Cache[T]) maintenanceLoop(interval time.Duration) {
+func (c *ParquetShardCache[T]) maintenanceLoop(interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -123,7 +123,7 @@ func (c *Cache[T]) maintenanceLoop(interval time.Duration) {
 	}
 }
 
-func (c *Cache[T]) Get(path string) (r T) {
+func (c *ParquetShardCache[T]) Get(path string) (r T) {
 	if entry, ok := c.cache.Get(path); ok {
 		isExpired := !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt)
 
@@ -140,7 +140,7 @@ func (c *Cache[T]) Get(path string) (r T) {
 	return
 }
 
-func (c *Cache[T]) Set(path string, reader T) {
+func (c *ParquetShardCache[T]) Set(path string, reader T) {
 	if !c.cache.Contains(path) {
 		c.metrics.size.WithLabelValues(c.name).Inc()
 	}
@@ -158,7 +158,7 @@ func (c *Cache[T]) Set(path string, reader T) {
 	c.cache.Add(path, entry)
 }
 
-func (c *Cache[T]) Close() {
+func (c *ParquetShardCache[T]) Close() {
 	close(c.stopCh)
 }
 

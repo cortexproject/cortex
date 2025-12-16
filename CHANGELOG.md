@@ -2,6 +2,7 @@
 
 ## master / unreleased
 
+* [CHANGE] Querier: Renamed `cortex_parquet_queryable_cache_*` metrics to `cortex_parquet_cache_*`. #7146
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125

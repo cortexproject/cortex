@@ -842,7 +842,17 @@ func extractSampleStream(start, end int64, stream tripperware.SampleStream) (tri
 			result.Samples = append(result.Samples, sample)
 		}
 	}
-	if len(result.Samples) == 0 {
+	if stream.Histograms != nil {
+		for _, histogram := range stream.Histograms {
+			if start <= histogram.TimestampMs && histogram.TimestampMs <= end {
+				if result.Histograms == nil {
+					result.Histograms = make([]tripperware.SampleHistogramPair, 0, len(stream.Histograms))
+				}
+				result.Histograms = append(result.Histograms, histogram)
+			}
+		}
+	}
+	if len(result.Samples) == 0 && len(result.Histograms) == 0 {
 		return tripperware.SampleStream{}, false
 	}
 	return result, true

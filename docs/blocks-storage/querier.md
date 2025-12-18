@@ -1800,6 +1800,14 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
       [request_token_bucket_size: <int> | default = 4194304]
 
+    # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-size
+    [parquet_shard_cache_size: <int> | default = 512]
+
+    # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+    # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
+    [parquet_shard_cache_ttl: <duration> | default = 24h]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir

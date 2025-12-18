@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -37,10 +38,12 @@ type parquetBucketStore struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache storecache.MatchersCache
+	matcherCache      storecache.MatchersCache
+	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 }
 
 func (p *parquetBucketStore) Close() error {
+	p.parquetShardCache.Close()
 	return p.bucket.Close()
 }
 

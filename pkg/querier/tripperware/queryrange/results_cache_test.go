@@ -1610,3 +1610,155 @@ func getScannedSamples(start, end, step uint64) uint64 {
 func getPeakSamples(start, end, step uint64) uint64 {
 	return start + ((end-start)/step)*step
 }
+
+func TestPrometheusResponseExtractor_Extract_Histograms(t *testing.T) {
+	t.Parallel()
+	extractor := PrometheusResponseExtractor{}
+
+	for _, tc := range []struct {
+		name                    string
+		inputStream             tripperware.SampleStream
+		extractStart            int64
+		extractEnd              int64
+		expectedSamplesCount    int
+		expectedHistogramsCount int
+		expectedHistogramsNil   bool
+	}{
+		{
+			name: "stream with no histograms",
+			inputStream: tripperware.SampleStream{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "foo", Value: "bar"},
+				},
+				Samples: []cortexpb.Sample{
+					{TimestampMs: 1000, Value: 1.0},
+					{TimestampMs: 2000, Value: 2.0},
+					{TimestampMs: 3000, Value: 3.0},
+				},
+				// Histograms: nil (not set)
+			},
+			extractStart:            1500,
+			extractEnd:              2500,
+			expectedSamplesCount:    1,
+			expectedHistogramsCount: 0,
+			expectedHistogramsNil:   true,
+		},
+		{
+			name: "stream with histograms",
+			inputStream: tripperware.SampleStream{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "foo", Value: "bar"},
+				},
+				Samples: []cortexpb.Sample{
+					{TimestampMs: 1000, Value: 1.0},
+					{TimestampMs: 2000, Value: 2.0},
+					{TimestampMs: 3000, Value: 3.0},
+				},
+				Histograms: []tripperware.SampleHistogramPair{
+					{
+						TimestampMs: 1500,
+						Histogram:   tripperware.SampleHistogram{Count: 10, Sum: 100.0},
+					},
+					{
+						TimestampMs: 2500,
+						Histogram:   tripperware.SampleHistogram{Count: 20, Sum: 200.0},
+					},
+					{
+						TimestampMs: 3500,
+						Histogram:   tripperware.SampleHistogram{Count: 30, Sum: 300.0},
+					},
+				},
+			},
+			extractStart:            1500,
+			extractEnd:              2500,
+			expectedSamplesCount:    1, // Only sample at 2000
+			expectedHistogramsCount: 2, // Histograms at 1500 and 2500
+			expectedHistogramsNil:   false,
+		},
+		{
+			name: "stream with histograms - no samples and histograms in range",
+			inputStream: tripperware.SampleStream{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "foo", Value: "bar"},
+				},
+				Samples: []cortexpb.Sample{
+					{TimestampMs: 1000, Value: 1.0},
+				},
+				Histograms: []tripperware.SampleHistogramPair{
+					{
+						TimestampMs: 3000,
+						Histogram:   tripperware.SampleHistogram{Count: 30, Sum: 300.0},
+					},
+				},
+			},
+			extractStart:            1500,
+			extractEnd:              2500,
+			expectedSamplesCount:    0,
+			expectedHistogramsCount: 0,
+			expectedHistogramsNil:   true,
+		},
+		{
+			name: "stream with empty histograms slice",
+			inputStream: tripperware.SampleStream{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "foo", Value: "bar"},
+				},
+				Samples: []cortexpb.Sample{
+					{TimestampMs: 2000, Value: 2.0},
+				},
+				Histograms: []tripperware.SampleHistogramPair{},
+			},
+			extractStart:            1500,
+			extractEnd:              2500,
+			expectedSamplesCount:    1,
+			expectedHistogramsCount: 0,
+			expectedHistogramsNil:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			response := &tripperware.PrometheusResponse{
+				Status: "success",
+				Data: tripperware.PrometheusData{
+					ResultType: "matrix",
+					Result: tripperware.PrometheusQueryResult{
+						Result: &tripperware.PrometheusQueryResult_Matrix{
+							Matrix: &tripperware.Matrix{
+								SampleStreams: []tripperware.SampleStream{tc.inputStream},
+							},
+						},
+					},
+				},
+			}
+
+			extracted := extractor.Extract(tc.extractStart, tc.extractEnd, response).(*tripperware.PrometheusResponse)
+			extractedStreams := extracted.Data.Result.GetMatrix().GetSampleStreams()
+
+			if tc.expectedSamplesCount == 0 && tc.expectedHistogramsCount == 0 {
+				require.Empty(t, extractedStreams, "should have no streams when no data in range")
+				return
+			}
+
+			require.Len(t, extractedStreams, 1, "should have exactly one stream")
+			extractedStream := extractedStreams[0]
+
+			require.Equal(t, tc.expectedSamplesCount, len(extractedStream.Samples), "unexpected number of samples")
+
+			if tc.expectedHistogramsNil {
+				require.Nil(t, extractedStream.Histograms, "histograms should be nil for backward compatibility")
+			} else {
+				require.NotNil(t, extractedStream.Histograms, "histograms should not be nil when original had histograms")
+				require.Equal(t, tc.expectedHistogramsCount, len(extractedStream.Histograms), "unexpected number of histograms")
+			}
+
+			if tc.expectedHistogramsCount > 0 {
+				for _, hist := range extractedStream.Histograms {
+					require.GreaterOrEqual(t, hist.TimestampMs, tc.extractStart, "histogram timestamp should be >= start")
+					require.LessOrEqual(t, hist.TimestampMs, tc.extractEnd, "histogram timestamp should be <= end")
+					require.NotNil(t, hist.Histogram, "histogram data should not be nil")
+				}
+			}
+		})
+	}
+}

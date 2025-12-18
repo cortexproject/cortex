@@ -2,7 +2,10 @@
 
 ## master / unreleased
 
-* [CHANGE] Querier: Renamed `cortex_parquet_queryable_cache_*` metrics to `cortex_parquet_cache_*`. #7146
+* [CHANGE] Querier: Refactored parquet cache configuration naming. #7146
+  * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
+  * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.
+  * Config: Renamed `parquet_queryable_shard_cache_size` to `parquet_shard_cache_size` and `parquet_queryable_shard_cache_ttl` to `parquet_shard_cache_ttl`.
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125
@@ -18,11 +21,13 @@
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
 * [ENHANCEMENT] Upgrade to go 1.25. #7164
+* [ENHANCEMENT] Upgraded container base images to `alpine:3.23`. #7163
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132
 * [BUGFIX] Scheduler: Fix memory leak by properly cleaning up query fragment registry. #7148
 * [BUGFIX] Compactor: Add back deletion of partition group info file even if not complete #7157
+* [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
 
 ## 1.20.1 2025-12-03
 

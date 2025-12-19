@@ -20,6 +20,7 @@
 * [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
+* [ENHANCEMENT] Upgrade to go 1.25. #7164
 * [ENHANCEMENT] Upgraded container base images to `alpine:3.23`. #7163
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111

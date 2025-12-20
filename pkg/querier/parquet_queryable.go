@@ -485,6 +485,8 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		mint, maxt, limit = hints.Start, hints.End, hints.Limit
 	}
 
+	// Keep original maxt to check whether the query overlaps with ingester query time or not.
+	originalMaxT := maxt
 	maxt = q.adjustMaxT(maxt)
 	hints.End = maxt
 
@@ -509,7 +511,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		sortSeries = true
 	}
 
-	queryIngesters := q.queryIngestersWithin == 0 || maxt >= util.TimeToMillis(time.Now().Add(-q.queryIngestersWithin).Add(-q.projectionHintsIngesterBuffer))
+	queryIngesters := q.queryIngestersWithin == 0 || originalMaxT >= util.TimeToMillis(time.Now().Add(-q.queryIngestersWithin).Add(-q.projectionHintsIngesterBuffer))
 	// Only enable projection if ProjectionInclude is true.
 	disableProjection := len(remaining) > 0 || queryIngesters || !hints.ProjectionInclude || !allParquetBlocksHaveHashColumn(parquet)
 	// Reset projection hints if:

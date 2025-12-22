@@ -4827,6 +4827,13 @@ thanos_engine:
 # need to make sure Parquet files are created before it is queryable.
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+# [Experimental] If true, querier will honor projection hints and only
+# materialize requested labels. Today, projection is only effective when Parquet
+# Queryable is enabled. Projection is only applied when not querying mixed block
+# types (parquet and non-parquet) and not querying ingesters.
+# CLI flag: -querier.honor-projection-hints
+[honor_projection_hints: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`

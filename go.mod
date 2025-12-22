@@ -87,7 +87,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
-	github.com/prometheus-community/parquet-common v0.0.0-20251205214622-b9865c513b71
+	github.com/prometheus-community/parquet-common v0.0.0-20251211092633-65ebeae24e94
 	github.com/prometheus/client_golang/exp v0.0.0-20250914183048-a974e0d45e0a
 	github.com/prometheus/procfs v0.16.1
 	github.com/sercand/kuberesolver/v5 v5.1.1

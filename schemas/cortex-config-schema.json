@@ -5772,6 +5772,12 @@
           "type": "boolean",
           "x-cli-flag": "querier.enable-promql-experimental-functions"
         },
+        "honor_projection_hints": {
+          "default": false,
+          "description": "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.",
+          "type": "boolean",
+          "x-cli-flag": "querier.honor-projection-hints"
+        },
         "ignore_max_query_length": {
           "default": false,
           "description": "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.",

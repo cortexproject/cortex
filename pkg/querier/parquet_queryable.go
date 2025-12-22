@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -114,6 +116,8 @@ type parquetQueryableWithFallback struct {
 	logger log.Logger
 
 	defaultBlockStoreType blockStoreType
+
+	honorProjectionHints bool
 }
 
 func NewParquetQueryable(
@@ -147,6 +151,7 @@ func NewParquetQueryable(
 	}
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithHonorProjectionHints(config.HonorProjectionHints),
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
@@ -264,6 +269,7 @@ func NewParquetQueryable(
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
 		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
+		honorProjectionHints:  config.HonorProjectionHints,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -321,6 +327,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
 		fallbackDisabled:      p.fallbackDisabled,
+		honorProjectionHints:  p.honorProjectionHints,
 	}, nil
 }
 
@@ -345,6 +352,8 @@ type parquetQuerierWithFallback struct {
 	defaultBlockStoreType blockStoreType
 
 	fallbackDisabled bool
+
+	honorProjectionHints bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -499,6 +508,21 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		sortSeries = true
 	}
 
+	// Reset projection hints if:
+	// - there are mixed blocks (both parquet and non-parquet)
+	// - not all parquet blocks have hash column (version < 2)
+	if q.honorProjectionHints {
+		if len(remaining) > 0 || !allParquetBlocksHaveHashColumn(parquet) {
+			hints.ProjectionLabels = nil
+			hints.ProjectionInclude = false
+		}
+		if hints.ProjectionInclude && !slices.Contains(hints.ProjectionLabels, schema.SeriesHashColumn) {
+			// Series hash column is always required for projection unless duplicate label check is disabled.
+			hints.ProjectionLabels = append(hints.ProjectionLabels, schema.SeriesHashColumn)
+
+		}
+	}
+
 	promises := make([]chan storage.SeriesSet, 0, 2)
 
 	if len(parquet) > 0 {
@@ -596,6 +620,17 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	case len(remaining) == 0 && len(parquetBlocks) > 0:
 		q.metrics.operationsTotal.WithLabelValues("parquet", method).Inc()
 	}
+}
+
+// allParquetBlocksHaveHashColumn checks if all parquet blocks have version >= 2, which means they have the hash column.
+// Parquet blocks with version 1 don't have the hash column, so projection cannot be enabled for them.
+func allParquetBlocksHaveHashColumn(blocks []*bucketindex.Block) bool {
+	for _, b := range blocks {
+		if b.Parquet == nil || b.Parquet.Version < cortex_parquet.ParquetConverterMarkVersion2 {
+			return false
+		}
+	}
+	return true
 }
 
 type shardMatcherLabelsFilter struct {

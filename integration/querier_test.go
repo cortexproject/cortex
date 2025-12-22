@@ -461,7 +461,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
-				if testCfg.bucketStorageType == "tedb" {
+				if testCfg.bucketStorageType == "tsdb" {
 					// Check the in-memory index cache metrics (in the store-gateway).
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty

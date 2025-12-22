@@ -314,6 +314,16 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
+	// Wait for data to be queryable before running the projection hints tests
+	cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+		labelSets, err := c.Series([]string{`{job="api-server"}`}, start, end)
+		if err != nil {
+			t.Logf("Series query failed: %v", err)
+			return false
+		}
+		return len(labelSets) > 0
+	})
+
 	testCases := []struct {
 		name           string
 		query          string

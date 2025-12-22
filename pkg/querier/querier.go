@@ -93,14 +93,14 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable                        bool                    `yaml:"enable_parquet_queryable"`
-	ParquetShardCache                             parquetutil.CacheConfig `yaml:",inline"`
-	ParquetQueryableDefaultBlockStore             string                  `yaml:"parquet_queryable_default_block_store"`
-	ParquetQueryableFallbackDisabled              bool                    `yaml:"parquet_queryable_fallback_disabled"`
-	ParquetQueryableHonorProjectionHints          bool                    `yaml:"parquet_queryable_honor_projection_hints"`
-	ParquetQueryableProjectionHintsIngesterBuffer time.Duration           `yaml:"parquet_queryable_projection_hints_ingester_buffer"`
+	EnableParquetQueryable            bool                    `yaml:"enable_parquet_queryable"`
+	ParquetShardCache                 parquetutil.CacheConfig `yaml:",inline"`
+	ParquetQueryableDefaultBlockStore string                  `yaml:"parquet_queryable_default_block_store"`
+	ParquetQueryableFallbackDisabled  bool                    `yaml:"parquet_queryable_fallback_disabled"`
 
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
+
+	HonorProjectionHints bool `yaml:"honor_projection_hints"`
 }
 
 var (
@@ -151,8 +151,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("querier.", f)
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
-	f.BoolVar(&cfg.ParquetQueryableHonorProjectionHints, "querier.parquet-queryable-honor-projection-hints", false, "[Experimental] If true, parquet queryable will honor projection hints and only materialize requested labels. Projection is only applied when all queried blocks are parquet blocks and not querying ingesters.")
-	f.DurationVar(&cfg.ParquetQueryableProjectionHintsIngesterBuffer, "querier.parquet-queryable-projection-hints-ingester-buffer", time.Hour, "[Experimental] Time buffer to use when checking if query overlaps with ingester data. Projection hints are disabled if query time range overlaps with (now - query-ingesters-within - buffer).")
+	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 }
@@ -307,6 +306,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			limits:               limits,
 			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
 			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
+			honorProjectionHints: cfg.HonorProjectionHints,
 			distributor:          distributor,
 			stores:               stores,
 			limiterHolder:        &limiterHolder{},
@@ -317,13 +317,14 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	now                time.Time
-	mint, maxt         int64
-	limits             *validation.Overrides
-	maxQueryIntoFuture time.Duration
-	distributor        QueryableWithFilter
-	stores             []QueryableWithFilter
-	limiterHolder      *limiterHolder
+	now                  time.Time
+	mint, maxt           int64
+	limits               *validation.Overrides
+	maxQueryIntoFuture   time.Duration
+	honorProjectionHints bool
+	distributor          QueryableWithFilter
+	stores               []QueryableWithFilter
+	limiterHolder        *limiterHolder
 
 	ignoreMaxQueryLength bool
 }
@@ -436,6 +437,15 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 			return storage.ErrSeriesSet(limitErr)
+		}
+	}
+
+	// Reset projection hints if querying ingesters or projection is not included.
+	// Projection can only be applied when not querying mixed sources (ingester + store).
+	if q.honorProjectionHints {
+		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, mint, maxt) {
+			sp.ProjectionLabels = nil
+			sp.ProjectionInclude = false
 		}
 	}
 

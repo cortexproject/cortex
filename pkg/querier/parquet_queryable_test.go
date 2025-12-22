@@ -638,149 +638,65 @@ func TestSelectProjectionHints(t *testing.T) {
 	now := time.Now()
 
 	tests := map[string]struct {
-		minT                          int64
-		maxT                          int64
-		queryIngestersWithin          time.Duration
-		projectionHintsIngesterBuffer time.Duration
-		hasRemainingBlocks            bool // Whether there are non-parquet (TSDB) blocks
-		parquetBlockVersion           int  // Version of parquet blocks (1 or 2)
-		mixedVersions                 bool // If true, block1 is v1, block2 is v2
-		inputProjectionLabels         []string
-		inputProjectionInclude        bool     // Input ProjectionInclude value
-		expectedProjectionLabels      []string // nil means projection disabled
-		expectedProjectionInclude     bool
+		minT                      int64
+		maxT                      int64
+		hasRemainingBlocks        bool // Whether there are non-parquet (TSDB) blocks
+		parquetBlockVersion       int  // Version of parquet blocks (1 or 2)
+		mixedVersions             bool // If true, block1 is v1, block2 is v2
+		inputProjectionLabels     []string
+		inputProjectionInclude    bool     // Input ProjectionInclude value
+		expectedProjectionLabels  []string // nil means projection disabled
+		expectedProjectionInclude bool
 	}{
-		"projection enabled: all parquet blocks v2, query older than ingester window": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2, // Version 2 has hash column
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
-			expectedProjectionInclude:     true,
+		"projection enabled: all parquet blocks v2, no remaining blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2, // Version 2 has hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Preserved
+			expectedProjectionInclude: true,
 		},
 		"projection disabled: mixed blocks (parquet + TSDB)": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            true, // Mixed blocks
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset
-			expectedProjectionInclude:     false,
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			hasRemainingBlocks:        true, // Mixed blocks
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset
+			expectedProjectionInclude: false,
 		},
-		"projection disabled: query overlaps with ingester window": {
-			minT:                          util.TimeToMillis(now.Add(-1 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-30 * time.Minute)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset (maxT >= now - 2h - 1h = now - 3h)
-			expectedProjectionInclude:     false,
-		},
-		"projection disabled: query within buffer zone": {
-			minT:                          util.TimeToMillis(now.Add(-4 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-2*time.Hour - 30*time.Minute)), // Well within buffer
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset (maxT = now - 2.5h, threshold = now - 3h, so 2.5h > 3h means disabled)
-			expectedProjectionInclude:     false,
-		},
-		"projection disabled: queryIngestersWithin is 0 (always query ingesters)": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          0, // Always query ingesters
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset
-			expectedProjectionInclude:     false,
-		},
-		"projection enabled: query just outside ingester window with buffer": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-3*time.Hour - 1*time.Minute)), // Just before threshold
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
-			expectedProjectionInclude:     true,
-		},
-		"projection enabled: no buffer, query outside ingester window": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-2*time.Hour - 1*time.Minute)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 0, // No buffer
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      []string{"__name__", "job"}, // Preserved
-			expectedProjectionInclude:     true,
-		},
-		"projection disabled: recent query (current time)": {
-			minT:                          util.TimeToMillis(now.Add(-1 * time.Hour)),
-			maxT:                          util.TimeToMillis(now), // Right now
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset
-			expectedProjectionInclude:     false,
-		},
-		"projection disabled: ProjectionInclude is false, disable projection": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion2,
-			inputProjectionLabels:         []string{"job"},
-			inputProjectionInclude:        false,
-			expectedProjectionLabels:      nil,
-			expectedProjectionInclude:     false,
+		"projection disabled: ProjectionInclude is false": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"job"},
+			inputProjectionInclude:    false,
+			expectedProjectionLabels:  []string{"job"}, // Labels remain unchanged when ProjectionInclude is false
+			expectedProjectionInclude: false,
 		},
 		"projection disabled: parquet blocks version 1 (no hash column)": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			parquetBlockVersion:           parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset because version 1 doesn't support projection
-			expectedProjectionInclude:     false,
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset because version 1 doesn't support projection
+			expectedProjectionInclude: false,
 		},
 		"projection disabled: mixed parquet block versions (v1 and v2)": {
-			minT:                          util.TimeToMillis(now.Add(-10 * time.Hour)),
-			maxT:                          util.TimeToMillis(now.Add(-5 * time.Hour)),
-			queryIngestersWithin:          2 * time.Hour,
-			projectionHintsIngesterBuffer: 1 * time.Hour,
-			hasRemainingBlocks:            false,
-			mixedVersions:                 true, // block1 is v1, block2 is v2
-			inputProjectionLabels:         []string{"__name__", "job"},
-			inputProjectionInclude:        true,
-			expectedProjectionLabels:      nil, // Reset because not all blocks support projection
-			expectedProjectionInclude:     false,
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			hasRemainingBlocks:        false,
+			mixedVersions:             true, // block1 is v1, block2 is v2
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset because not all blocks support projection
+			expectedProjectionInclude: false,
 		},
 	}
 
@@ -820,19 +736,18 @@ func TestSelectProjectionHints(t *testing.T) {
 
 			// Create the parquetQuerierWithFallback
 			pq := &parquetQuerierWithFallback{
-				minT:                          testData.minT,
-				maxT:                          testData.maxT,
-				finder:                        finder,
-				blocksStoreQuerier:            mockTSDBQuerier,
-				parquetQuerier:                mockParquetQuerierInstance,
-				queryIngestersWithin:          testData.queryIngestersWithin,
-				projectionHintsIngesterBuffer: testData.projectionHintsIngesterBuffer,
-				queryStoreAfter:               0, // Disable queryStoreAfter manipulation
-				metrics:                       newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-				limits:                        defaultOverrides(t, 0),
-				logger:                        log.NewNopLogger(),
-				defaultBlockStoreType:         parquetBlockStore,
-				fallbackDisabled:              false,
+				minT:                  testData.minT,
+				maxT:                  testData.maxT,
+				finder:                finder,
+				blocksStoreQuerier:    mockTSDBQuerier,
+				parquetQuerier:        mockParquetQuerierInstance,
+				queryIngestersWithin:  0,
+				queryStoreAfter:       0, // Disable queryStoreAfter manipulation
+				metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+				limits:                defaultOverrides(t, 0),
+				logger:                log.NewNopLogger(),
+				defaultBlockStoreType: parquetBlockStore,
+				fallbackDisabled:      false,
 			}
 
 			matchers := []*labels.Matcher{

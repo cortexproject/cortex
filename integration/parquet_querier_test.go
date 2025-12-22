@@ -220,10 +220,10 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 			"-parquet-converter.conversion-interval":  "1s",
 			"-parquet-converter.enabled":              "true",
 			// Querier - Enable Thanos engine with projection optimizer
-			"-querier.thanos-engine":                            "true",
-			"-querier.optimizers":                               "propagate-matchers,sort-matchers,merge-selects,detect-histogram-stats,projection", // Enable all optimizers including projection
-			"-querier.enable-parquet-queryable":                 "true",
-			"-querier.parquet-queryable-honor-projection-hints": "true", // Honor projection hints
+			"-querier.thanos-engine":            "true",
+			"-querier.optimizers":               "propagate-matchers,sort-matchers,merge-selects,detect-histogram-stats,projection", // Enable all optimizers including projection
+			"-querier.enable-parquet-queryable": "true",
+			"-querier.honor-projection-hints":   "true", // Honor projection hints
 			// Set query-ingesters-within to 2h so queries older than 2h don't hit ingesters
 			// Since test queries are 24-48h old, they won't query ingesters and projection will be enabled
 			"-querier.query-ingesters-within": "2h",

@@ -98,7 +98,6 @@ type parquetQueryableWithFallback struct {
 
 	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
-	queryIngestersWithin  time.Duration
 	parquetQueryable      storage.Queryable
 	cache                 parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	blockStorageQueryable *BlocksStoreQueryable
@@ -260,7 +259,6 @@ func NewParquetQueryable(
 		parquetQueryable:      parquetQueryable,
 		cache:                 cache,
 		queryStoreAfter:       config.QueryStoreAfter,
-		queryIngestersWithin:  config.QueryIngestersWithin,
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
 		metrics:               newParquetQueryableFallbackMetrics(reg),
@@ -318,7 +316,6 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		maxT:                  maxt,
 		parquetQuerier:        pq,
 		queryStoreAfter:       p.queryStoreAfter,
-		queryIngestersWithin:  p.queryIngestersWithin,
 		blocksStoreQuerier:    bsq,
 		finder:                p.finder,
 		metrics:               p.metrics,
@@ -339,8 +336,7 @@ type parquetQuerierWithFallback struct {
 
 	// If set, the querier manipulates the max time to not be greater than
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter      time.Duration
-	queryIngestersWithin time.Duration
+	queryStoreAfter time.Duration
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics

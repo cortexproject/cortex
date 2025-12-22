@@ -1723,3 +1723,130 @@ func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
 }
+
+func TestQuerier_ProjectionHints(t *testing.T) {
+	t.Parallel()
+	start := time.Now().Add(-2 * time.Hour)
+	end := time.Now()
+	ctx := user.InjectOrgID(context.Background(), "0")
+
+	tests := map[string]struct {
+		honorProjectionHints      bool
+		inputProjectionInclude    bool
+		inputProjectionLabels     []string
+		queryIngesters            bool // Whether ingesters should be queried
+		expectedProjectionInclude bool
+		expectedProjectionLabels  []string
+	}{
+		"projection preserved: honor enabled, projection included, not querying ingesters": {
+			honorProjectionHints:      true,
+			inputProjectionInclude:    true,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            false,
+			expectedProjectionInclude: true,
+			expectedProjectionLabels:  []string{"__name__", "job"},
+		},
+		"projection reset: honor enabled, projection included, querying ingesters": {
+			honorProjectionHints:      true,
+			inputProjectionInclude:    true,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            true,
+			expectedProjectionInclude: false,
+			expectedProjectionLabels:  nil,
+		},
+		"projection reset: honor enabled, projection not included": {
+			honorProjectionHints:      true,
+			inputProjectionInclude:    false,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            false,
+			expectedProjectionInclude: false,
+			expectedProjectionLabels:  nil,
+		},
+		"projection not modified: honor disabled, projection included, querying ingesters": {
+			honorProjectionHints:      false,
+			inputProjectionInclude:    true,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            true,
+			expectedProjectionInclude: true,
+			expectedProjectionLabels:  []string{"__name__", "job"},
+		},
+		"projection not modified: honor disabled, projection not included": {
+			honorProjectionHints:      false,
+			inputProjectionInclude:    false,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            false,
+			expectedProjectionInclude: false,
+			expectedProjectionLabels:  []string{"__name__", "job"},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			cfg.ActiveQueryTrackerDir = ""
+			cfg.HonorProjectionHints = testData.honorProjectionHints
+
+			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+
+			// Create mock store
+			chunkStore := &emptyChunkStore{}
+			storeQueryable := &wrappedSampleAndChunkQueryable{
+				QueryableWithFilter: UseAlwaysQueryable(NewMockStoreQueryable(chunkStore)),
+			}
+
+			// Create mock distributor
+			distributor := &MockDistributor{}
+			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+
+			// Create distributor queryable that can be controlled to be used or not
+			var distributorQueryable QueryableWithFilter
+			if testData.queryIngesters {
+				// Ingesters will be queried
+				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+			} else {
+				// Ingesters will not be queried (time range is too old)
+				distributorQueryable = UseBeforeTimestampQueryable(
+					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1),
+					start.Add(-1*time.Hour),
+				)
+			}
+
+			wDistributorQueryable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: distributorQueryable}
+
+			queryable := NewQueryable(wDistributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides)
+			q, err := queryable.Querier(util.TimeToMillis(start), util.TimeToMillis(end))
+			require.NoError(t, err)
+
+			// Create select hints with projection
+			hints := &storage.SelectHints{
+				Start:             util.TimeToMillis(start),
+				End:               util.TimeToMillis(end),
+				ProjectionInclude: testData.inputProjectionInclude,
+				ProjectionLabels:  testData.inputProjectionLabels,
+			}
+
+			matcher := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test")
+			set := q.Select(ctx, false, hints, matcher)
+			require.False(t, set.Next()) // Expected to be empty
+			require.NoError(t, set.Err())
+
+			// Check the projection hints received by the underlying querier(s)
+			var receivedHints *storage.SelectHints
+			for _, queryable := range append([]QueryableWithFilter{storeQueryable}, wDistributorQueryable) {
+				wQueryable := queryable.(*wrappedSampleAndChunkQueryable)
+				if wQueryable.UseQueryable(time.Now(), util.TimeToMillis(start), util.TimeToMillis(end)) {
+					require.Len(t, wQueryable.queriers, 1)
+					require.Len(t, wQueryable.queriers[0].selectCallsArgs, 1)
+					receivedHints = wQueryable.queriers[0].selectCallsArgs[0][1].(*storage.SelectHints)
+					break
+				}
+			}
+
+			require.NotNil(t, receivedHints, "should have received hints")
+			assert.Equal(t, testData.expectedProjectionInclude, receivedHints.ProjectionInclude, "ProjectionInclude mismatch")
+			assert.Equal(t, testData.expectedProjectionLabels, receivedHints.ProjectionLabels, "ProjectionLabels mismatch")
+		})
+	}
+}

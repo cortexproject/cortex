@@ -741,7 +741,6 @@ func TestSelectProjectionHints(t *testing.T) {
 				finder:                finder,
 				blocksStoreQuerier:    mockTSDBQuerier,
 				parquetQuerier:        mockParquetQuerierInstance,
-				queryIngestersWithin:  0,
 				queryStoreAfter:       0, // Disable queryStoreAfter manipulation
 				metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 				limits:                defaultOverrides(t, 0),

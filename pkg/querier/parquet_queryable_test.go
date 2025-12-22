@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -640,6 +641,7 @@ func TestSelectProjectionHints(t *testing.T) {
 	tests := map[string]struct {
 		minT                      int64
 		maxT                      int64
+		honorProjectionHints      bool // Whether to honor projection hints
 		hasRemainingBlocks        bool // Whether there are non-parquet (TSDB) blocks
 		parquetBlockVersion       int  // Version of parquet blocks (1 or 2)
 		mixedVersions             bool // If true, block1 is v1, block2 is v2
@@ -648,19 +650,21 @@ func TestSelectProjectionHints(t *testing.T) {
 		expectedProjectionLabels  []string // nil means projection disabled
 		expectedProjectionInclude bool
 	}{
-		"projection enabled: all parquet blocks v2, no remaining blocks": {
+		"projection enabled: honor enabled, all parquet blocks v2, no remaining blocks": {
 			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
 			hasRemainingBlocks:        false,
 			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2, // Version 2 has hash column
 			inputProjectionLabels:     []string{"__name__", "job"},
 			inputProjectionInclude:    true,
-			expectedProjectionLabels:  []string{"__name__", "job"}, // Preserved
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn},
 			expectedProjectionInclude: true,
 		},
-		"projection disabled: mixed blocks (parquet + TSDB)": {
+		"projection disabled: honor enabled, mixed blocks (parquet + TSDB)": {
 			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
 			hasRemainingBlocks:        true, // Mixed blocks
 			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:     []string{"__name__", "job"},
@@ -671,6 +675,7 @@ func TestSelectProjectionHints(t *testing.T) {
 		"projection disabled: ProjectionInclude is false": {
 			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
 			hasRemainingBlocks:        false,
 			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
 			inputProjectionLabels:     []string{"job"},
@@ -678,9 +683,10 @@ func TestSelectProjectionHints(t *testing.T) {
 			expectedProjectionLabels:  []string{"job"}, // Labels remain unchanged when ProjectionInclude is false
 			expectedProjectionInclude: false,
 		},
-		"projection disabled: parquet blocks version 1 (no hash column)": {
+		"projection disabled: honor enabled, parquet blocks version 1 (no hash column)": {
 			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
 			hasRemainingBlocks:        false,
 			parquetBlockVersion:       parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
 			inputProjectionLabels:     []string{"__name__", "job"},
@@ -688,15 +694,82 @@ func TestSelectProjectionHints(t *testing.T) {
 			expectedProjectionLabels:  nil, // Reset because version 1 doesn't support projection
 			expectedProjectionInclude: false,
 		},
-		"projection disabled: mixed parquet block versions (v1 and v2)": {
+		"projection disabled: honor enabled, mixed parquet block versions (v1 and v2)": {
 			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
 			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
 			hasRemainingBlocks:        false,
 			mixedVersions:             true, // block1 is v1, block2 is v2
 			inputProjectionLabels:     []string{"__name__", "job"},
 			inputProjectionInclude:    true,
 			expectedProjectionLabels:  nil, // Reset because not all blocks support projection
 			expectedProjectionInclude: false,
+		},
+		"projection not modified: honor disabled, mixed blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false, // Honor disabled
+			hasRemainingBlocks:        true,  // Mixed blocks
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Not reset because honor is disabled
+			expectedProjectionInclude: true,
+		},
+		"projection not modified: honor disabled, version 1 blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false, // Honor disabled
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Not reset because honor is disabled
+			expectedProjectionInclude: true,
+		},
+		"hash column added: projection enabled without hash column": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn}, // Hash column added
+			expectedProjectionInclude: true,
+		},
+		"hash column not duplicated: projection enabled with hash column already present": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job", schema.SeriesHashColumn},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn}, // No duplicate
+			expectedProjectionInclude: true,
+		},
+		"hash column not added: projection disabled": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    false,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Hash column not added when projection disabled
+			expectedProjectionInclude: false,
+		},
+		"hash column not added: honor disabled": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Hash column not added when honor disabled
+			expectedProjectionInclude: true,
 		},
 	}
 
@@ -738,6 +811,7 @@ func TestSelectProjectionHints(t *testing.T) {
 			pq := &parquetQuerierWithFallback{
 				minT:                  testData.minT,
 				maxT:                  testData.maxT,
+				honorProjectionHints:  testData.honorProjectionHints,
 				finder:                finder,
 				blocksStoreQuerier:    mockTSDBQuerier,
 				parquetQuerier:        mockParquetQuerierInstance,

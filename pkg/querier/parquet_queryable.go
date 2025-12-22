@@ -3,6 +3,7 @@ package querier
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -115,6 +116,8 @@ type parquetQueryableWithFallback struct {
 	logger log.Logger
 
 	defaultBlockStoreType blockStoreType
+
+	honorProjectionHints bool
 }
 
 func NewParquetQueryable(
@@ -266,6 +269,7 @@ func NewParquetQueryable(
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
 		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
+		honorProjectionHints:  config.HonorProjectionHints,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -323,6 +327,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
 		fallbackDisabled:      p.fallbackDisabled,
+		honorProjectionHints:  p.honorProjectionHints,
 	}, nil
 }
 
@@ -347,6 +352,8 @@ type parquetQuerierWithFallback struct {
 	defaultBlockStoreType blockStoreType
 
 	fallbackDisabled bool
+
+	honorProjectionHints bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -504,9 +511,16 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	// Reset projection hints if:
 	// - there are mixed blocks (both parquet and non-parquet)
 	// - not all parquet blocks have hash column (version < 2)
-	if len(remaining) > 0 || !allParquetBlocksHaveHashColumn(parquet) {
-		hints.ProjectionLabels = nil
-		hints.ProjectionInclude = false
+	if q.honorProjectionHints {
+		if len(remaining) > 0 || !allParquetBlocksHaveHashColumn(parquet) {
+			hints.ProjectionLabels = nil
+			hints.ProjectionInclude = false
+		}
+		if hints.ProjectionInclude && !slices.Contains(hints.ProjectionLabels, schema.SeriesHashColumn) {
+			// Series hash column is always required for projection unless duplicate label check is disabled.
+			hints.ProjectionLabels = append(hints.ProjectionLabels, schema.SeriesHashColumn)
+
+		}
 	}
 
 	promises := make([]chan storage.SeriesSet, 0, 2)

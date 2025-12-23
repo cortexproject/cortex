@@ -4479,6 +4479,41 @@
     "ingester_config": {
       "description": "The ingester_config configures the Cortex ingester.",
       "properties": {
+        "active_queried_series_metrics_enabled": {
+          "default": false,
+          "description": "Enable tracking of active queried series using probabilistic data structure and export them as metrics.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.active-queried-series-metrics-enabled"
+        },
+        "active_queried_series_metrics_sample_rate": {
+          "default": 1,
+          "description": "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.",
+          "type": "number",
+          "x-cli-flag": "ingester.active-queried-series-metrics-sample-rate"
+        },
+        "active_queried_series_metrics_update_period": {
+          "default": "1m0s",
+          "description": "How often to update active queried series metrics.",
+          "type": "string",
+          "x-cli-flag": "ingester.active-queried-series-metrics-update-period",
+          "x-format": "duration"
+        },
+        "active_queried_series_metrics_window_duration": {
+          "default": "15m0s",
+          "description": "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.",
+          "type": "string",
+          "x-cli-flag": "ingester.active-queried-series-metrics-window-duration",
+          "x-format": "duration"
+        },
+        "active_queried_series_metrics_windows": {
+          "default": "2h0m0s",
+          "description": "Time windows to expose queried series metric. Each window tracks queried series within that time period.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "ingester.active-queried-series-metrics-windows"
+        },
         "active_series_metrics_enabled": {
           "default": true,
           "description": "Enable tracking of active series and export them as metrics.",

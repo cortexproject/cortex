@@ -23,6 +23,7 @@ func TestIngesterMetrics(t *testing.T) {
 	m := newIngesterMetrics(mainReg,
 		false,
 		true,
+		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{
 				MaxIngestionRate:        12,

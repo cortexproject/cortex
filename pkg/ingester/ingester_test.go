@@ -7305,3 +7305,172 @@ func (*panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ s
 	a[1] = 2 // index out of range
 	return nil, nil
 }
+
+func TestIngester_ActiveQueriedSeries(t *testing.T) {
+	registry := prometheus.NewRegistry()
+
+	// Create ingester config with active queried series enabled
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.ActiveQueriedSeriesMetricsEnabled = true
+	cfg.ActiveQueriedSeriesMetricsUpdatePeriod = 5 * time.Second
+	cfg.ActiveQueriedSeriesMetricsWindowDuration = 5 * time.Second
+	cfg.ActiveQueriedSeriesMetricsSampleRate = 1.0 // Sample all queries
+	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{5 * time.Second, 10 * time.Second}
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some sample data
+	now := time.Now()
+	for idx := range 10 {
+		req := &cortexpb.WriteRequest{}
+		for seriesIdx := range 5 {
+			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: labels.MetricName, Value: "test_metric"},
+						{Name: "series", Value: fmt.Sprintf("series_%d", seriesIdx)},
+					},
+					Samples: []cortexpb.Sample{
+						{Value: float64(idx), TimestampMs: now.Add(time.Duration(idx) * time.Second).UnixMilli()},
+					},
+				},
+			})
+		}
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Verify initial state - no queries run yet, so metric should be 0 or not exist
+	metricsBefore := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Metrics before query: %v", metricsBefore)
+
+	// Run a query to trigger active queried series tracking
+	matcher := &client.LabelMatcher{
+		Type:  client.REGEX_MATCH,
+		Name:  labels.MetricName,
+		Value: ".*",
+	}
+
+	req := &client.QueryRequest{
+		StartTimestampMs: now.Add(-1 * time.Hour).UnixMilli(),
+		EndTimestampMs:   now.Add(1 * time.Hour).UnixMilli(),
+		Matchers:         []*client.LabelMatcher{matcher},
+	}
+
+	s := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(req, s)
+	require.NoError(t, err)
+	require.NotEmpty(t, s.series, "Query should return some series")
+	t.Logf("Query returned %d series", len(s.series))
+
+	// Wait a bit for the async updates to be processed by the worker goroutines
+	time.Sleep(100 * time.Millisecond)
+
+	// Manually trigger the update of active queried series metrics
+	// This simulates the periodic update that would normally happen
+	i.updateActiveQueriedSeries(context.Background())
+
+	// Check that the metric was updated
+	metricsAfter := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Metrics after query: %v", metricsAfter)
+
+	// Verify the metric exists and has a reasonable value
+	found := false
+	for _, metric := range metricsAfter {
+		if strings.Contains(metric, "cortex_ingester_active_queried_series") &&
+			strings.Contains(metric, `user="test-user"`) {
+			found = true
+			t.Logf("Found active queried series metric: %s", metric)
+
+			// Extract the value from the metric line
+			// Format: cortex_ingester_active_queried_series{user="test-user",window="5s"} VALUE
+			parts := strings.Fields(metric)
+			if len(parts) >= 2 {
+				value := parts[len(parts)-1]
+				t.Logf("Metric value: %s", value)
+				// Value should be greater than 0 since we queried series
+				assert.NotEqual(t, "0", value, "Active queried series should be greater than 0 after running a query")
+			}
+		}
+	}
+	assert.True(t, found, "Should find cortex_ingester_active_queried_series metric for test-user")
+
+	// Run another query with a more specific matcher to verify tracking
+	specificMatcher := &client.LabelMatcher{
+		Type:  client.EQUAL,
+		Name:  "series",
+		Value: "series_0",
+	}
+	req2 := &client.QueryRequest{
+		StartTimestampMs: now.Add(-1 * time.Hour).UnixMilli(),
+		EndTimestampMs:   now.Add(1 * time.Hour).UnixMilli(),
+		Matchers:         []*client.LabelMatcher{matcher, specificMatcher},
+	}
+
+	s2 := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(req2, s2)
+	require.NoError(t, err)
+	t.Logf("Second query returned %d series", len(s2.series))
+
+	// Wait a bit for the async updates to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Update metrics again
+	i.updateActiveQueriedSeries(context.Background())
+
+	// Verify metrics are still present
+	finalMetrics := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Final metrics: %v", finalMetrics)
+
+	foundFinal := false
+	for _, metric := range finalMetrics {
+		if strings.Contains(metric, "cortex_ingester_active_queried_series") &&
+			strings.Contains(metric, `user="test-user"`) {
+			foundFinal = true
+			break
+		}
+	}
+	assert.True(t, foundFinal, "Active queried series metric should still be present after second query")
+}
+
+// fetchMetrics is a helper function to fetch metrics from a registry that match a prefix
+func fetchMetrics(t *testing.T, registry *prometheus.Registry, prefix string) []string {
+	metricFamilies, err := registry.Gather()
+	require.NoError(t, err)
+
+	var metrics []string
+	for _, mf := range metricFamilies {
+		if strings.HasPrefix(mf.GetName(), prefix) {
+			for _, m := range mf.GetMetric() {
+				var labels []string
+				for _, label := range m.GetLabel() {
+					labels = append(labels, fmt.Sprintf(`%s="%s"`, label.GetName(), label.GetValue()))
+				}
+				labelStr := strings.Join(labels, ",")
+
+				var value string
+				if m.Counter != nil {
+					value = fmt.Sprintf("%v", m.Counter.GetValue())
+				} else if m.Gauge != nil {
+					value = fmt.Sprintf("%v", m.Gauge.GetValue())
+				}
+
+				metricLine := fmt.Sprintf("%s{%s} %s", mf.GetName(), labelStr, value)
+				metrics = append(metrics, metricLine)
+			}
+		}
+	}
+	return metrics
+}

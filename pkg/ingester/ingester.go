@@ -124,6 +124,12 @@ type Config struct {
 	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
 
+	ActiveQueriedSeriesMetricsEnabled        bool                     `yaml:"active_queried_series_metrics_enabled"`
+	ActiveQueriedSeriesMetricsUpdatePeriod   time.Duration            `yaml:"active_queried_series_metrics_update_period"`
+	ActiveQueriedSeriesMetricsWindowDuration time.Duration            `yaml:"active_queried_series_metrics_window_duration"`
+	ActiveQueriedSeriesMetricsSampleRate     float64                  `yaml:"active_queried_series_metrics_sample_rate"`
+	ActiveQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"active_queried_series_metrics_windows"`
+
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
@@ -181,6 +187,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 
+	f.BoolVar(&cfg.ActiveQueriedSeriesMetricsEnabled, "ingester.active-queried-series-metrics-enabled", false, "Enable tracking of active queried series using probabilistic data structure and export them as metrics.")
+	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsUpdatePeriod, "ingester.active-queried-series-metrics-update-period", 1*time.Minute, "How often to update active queried series metrics.")
+	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsWindowDuration, "ingester.active-queried-series-metrics-window-duration", 1*time.Minute, "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.")
+	f.Float64Var(&cfg.ActiveQueriedSeriesMetricsSampleRate, "ingester.active-queried-series-metrics-sample-rate", 1.0, "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.")
+	f.Var(&cfg.ActiveQueriedSeriesMetricsWindows, "ingester.active-queried-series-metrics-windows", "Time windows to expose queried series metric. Each window tracks queried series within that time period.")
+
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
@@ -206,6 +218,37 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 
 	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
 		return err
+	}
+
+	// Validate active queried series metrics windows
+	if cfg.ActiveQueriedSeriesMetricsEnabled {
+		if len(cfg.ActiveQueriedSeriesMetricsWindows) == 0 {
+			return fmt.Errorf("active queried series metrics windows must be configured when enabled")
+		}
+
+		// Validate window duration
+		if cfg.ActiveQueriedSeriesMetricsWindowDuration <= 0 {
+			return fmt.Errorf("active queried series metrics sub-window duration must be > 0, got %v", cfg.ActiveQueriedSeriesMetricsWindowDuration)
+		}
+
+		// Validate sample rate
+		if cfg.ActiveQueriedSeriesMetricsSampleRate <= 0 {
+			return fmt.Errorf("active queried series metrics sample rate must be > 0, got %v", cfg.ActiveQueriedSeriesMetricsSampleRate)
+		}
+		if cfg.ActiveQueriedSeriesMetricsSampleRate > 1.0 {
+			return fmt.Errorf("active queried series metrics sample rate must be <= 1.0, got %v", cfg.ActiveQueriedSeriesMetricsSampleRate)
+		}
+
+		for _, window := range cfg.ActiveQueriedSeriesMetricsWindows {
+			if window <= 0 {
+				return fmt.Errorf("active queried series metrics window duration must be > 0, got %v", window)
+			}
+
+			// Query window duration must be at least as large as the window duration.
+			if window < cfg.ActiveQueriedSeriesMetricsWindowDuration {
+				return fmt.Errorf("active queried series metrics window duration (%v) must be at least as large as sub-window duration (%v)", window, cfg.ActiveQueriedSeriesMetricsWindowDuration)
+			}
+		}
 	}
 
 	return nil
@@ -270,6 +313,8 @@ type Ingester struct {
 
 	matchersCache                storecache.MatchersCache
 	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
+
+	activeQueriedSeriesService *ActiveQueriedSeriesService
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -309,12 +354,13 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 }
 
 type userTSDB struct {
-	db              *tsdb.DB
-	userID          string
-	activeSeries    *ActiveSeries
-	seriesInMetric  *metricCounter
-	labelSetCounter *labelSetCounter
-	limiter         *Limiter
+	db                  *tsdb.DB
+	userID              string
+	activeSeries        *ActiveSeries
+	activeQueriedSeries *ActiveQueriedSeries
+	seriesInMetric      *metricCounter
+	labelSetCounter     *labelSetCounter
+	limiter             *Limiter
 
 	instanceSeriesCount *atomic.Int64 // Shared across all userTSDB instances created by ingester.
 	instanceLimitsFn    func() *InstanceLimits
@@ -743,6 +789,10 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		matchersCache:                storecache.NoopMatchersCache,
 	}
 
+	if cfg.ActiveQueriedSeriesMetricsEnabled {
+		i.activeQueriedSeriesService = NewActiveQueriedSeriesService(logger, registerer)
+	}
+
 	if cfg.MatchersCacheMaxItems > 0 {
 		r := prometheus.NewRegistry()
 		registerer.MustRegister(cortex_tsdb.NewMatchCacheMetrics("cortex_ingester", r, logger))
@@ -755,6 +805,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
+		cfg.ActiveQueriedSeriesMetricsEnabled,
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.maxInflightPushRequests,
@@ -851,6 +902,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		false,
+		false,
 		i.getInstanceLimits,
 		nil,
 		&i.maxInflightPushRequests,
@@ -898,6 +950,11 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	// let's start the rest of subservices via manager
 	servs := []services.Service(nil)
+
+	// Start active queried series service if enabled
+	if i.activeQueriedSeriesService != nil {
+		servs = append(servs, i.activeQueriedSeriesService)
+	}
 
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
@@ -983,6 +1040,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		defer t.Stop()
 	}
 
+	var activeQueriedSeriesTickerChan <-chan time.Time
+	if i.cfg.ActiveQueriedSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveQueriedSeriesMetricsUpdatePeriod)
+		activeQueriedSeriesTickerChan = t.C
+		defer t.Stop()
+	}
+
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
@@ -1009,6 +1073,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries(ctx)
+		case <-activeQueriedSeriesTickerChan:
+			i.updateActiveQueriedSeries(ctx)
 		case <-maxTrackerResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
 			i.maxInflightPushRequests.Tick()
@@ -1077,6 +1143,31 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
+		}
+	}
+}
+
+func (i *Ingester) updateActiveQueriedSeries(ctx context.Context) {
+	now := time.Now()
+	for _, userID := range i.getTSDBUsers() {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil || userDB.activeQueriedSeries == nil {
+			continue
+		}
+
+		// Purge expired windows for all trackers
+		userDB.activeQueriedSeries.Purge(now)
+
+		// Get estimated cardinality for each configured window
+		for _, windowDuration := range i.cfg.ActiveQueriedSeriesMetricsWindows {
+			estimatedCount, err := userDB.activeQueriedSeries.GetSeriesQueried(now, windowDuration)
+			if err != nil {
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to get active queried series count", "user", userID, "window", windowDuration, "err", err)
+				continue
+			}
+
+			// Update metric with window label
+			i.metrics.activeQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
 		}
 	}
 }
@@ -2316,6 +2407,18 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	defer putTimeSeriesChunksSlice(chunkSeries)
 	batchSizeBytes := 0
 	var it chunks.Iterator
+
+	now := time.Now()
+	// Check sampling decision early to avoid calculating hashes if batch will be skipped
+	var queriedSeriesHashes []uint64
+	sampled := false
+	if db.activeQueriedSeries != nil {
+		sampled = db.activeQueriedSeries.SampleRequest()
+		if sampled {
+			queriedSeriesHashes = make([]uint64, 0, 1024) // Pre-allocate with reasonable capacity
+		}
+	}
+
 	for ss.Next() {
 		series := ss.At()
 		lbls := series.Labels()
@@ -2326,6 +2429,12 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 
 		if sm.IsSharded() && !sm.MatchesLabels(lbls) {
 			continue
+		}
+
+		// Collect hash for batched tracking (only if sampling decision allows)
+		if sampled {
+			hash := lbls.Hash()
+			queriedSeriesHashes = append(queriedSeriesHashes, hash)
 		}
 
 		// convert labels to LabelAdapter
@@ -2390,6 +2499,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
 		return 0, 0, 0, 0, err
+	}
+
+	// Update active queried series tracking in a single batched call
+	if sampled && len(queriedSeriesHashes) > 0 && db.activeQueriedSeries != nil && i.activeQueriedSeriesService != nil {
+		i.activeQueriedSeriesService.UpdateSeriesBatch(db.activeQueriedSeries, queriedSeriesHashes, now, db.userID)
 	}
 
 	// Final flush any existing metrics
@@ -2512,9 +2626,20 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
 	}
 
+	var activeQueriedSeries *ActiveQueriedSeries
+	if i.cfg.ActiveQueriedSeriesMetricsEnabled {
+		activeQueriedSeries = NewActiveQueriedSeries(
+			i.cfg.ActiveQueriedSeriesMetricsWindows,
+			i.cfg.ActiveQueriedSeriesMetricsWindowDuration,
+			i.cfg.ActiveQueriedSeriesMetricsSampleRate,
+			i.logger,
+		)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
+		activeQueriedSeries: activeQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),

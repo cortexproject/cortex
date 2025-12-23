@@ -25,6 +25,7 @@ func Test_UserMetricsMetadata(t *testing.T) {
 	m := newIngesterMetrics(reg,
 		false,
 		false,
+		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{}
 		},

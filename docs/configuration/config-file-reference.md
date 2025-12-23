@@ -3702,6 +3702,30 @@ lifecycler:
 # CLI flag: -ingester.active-series-metrics-idle-timeout
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
 
+# Enable tracking of active queried series using probabilistic data structure
+# and export them as metrics.
+# CLI flag: -ingester.active-queried-series-metrics-enabled
+[active_queried_series_metrics_enabled: <boolean> | default = false]
+
+# How often to update active queried series metrics.
+# CLI flag: -ingester.active-queried-series-metrics-update-period
+[active_queried_series_metrics_update_period: <duration> | default = 1m]
+
+# Duration of each sub-window for active queried series tracking (e.g., 1
+# minute). Used to divide the total tracking period into smaller windows.
+# CLI flag: -ingester.active-queried-series-metrics-window-duration
+[active_queried_series_metrics_window_duration: <duration> | default = 1m]
+
+# Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 =
+# 10% sampling). By default, all queries are sampled.
+# CLI flag: -ingester.active-queried-series-metrics-sample-rate
+[active_queried_series_metrics_sample_rate: <float> | default = 1]
+
+# Time windows to expose queried series metric. Each window tracks queried
+# series within that time period.
+# CLI flag: -ingester.active-queried-series-metrics-windows
+[active_queried_series_metrics_windows: <list of duration> | default = ]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]

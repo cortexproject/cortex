@@ -78,6 +78,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.39.2
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.50.1
+	github.com/axiomhq/hyperloglog v0.2.6
 	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-openapi/swag/jsonutils v0.25.1
@@ -202,6 +203,7 @@ require (
 	github.com/jessevdk/go-flags v1.6.1 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
+	github.com/kamstrup/intmap v0.5.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.0 // indirect

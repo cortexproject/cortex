@@ -7333,7 +7333,7 @@ func TestIngester_ActiveQueriedSeries(t *testing.T) {
 
 	// Push some sample data
 	now := time.Now()
-	for idx := 0; idx < 10; idx++ {
+	for idx := range 10 {
 		req := &cortexpb.WriteRequest{}
 		for seriesIdx := 0; seriesIdx < 5; seriesIdx++ {
 			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{

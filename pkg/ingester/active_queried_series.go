@@ -322,7 +322,7 @@ func (a *ActiveQueriedSeries) rotateWindowsLocked(now time.Time) {
 			a.cache = make(map[time.Duration]*mergedCacheEntry)
 		} else {
 			// Advance by the required number of windows
-			for i := 0; i < windowsToAdvance; i++ {
+			for i := range windowsToAdvance {
 				// Move to next window
 				a.currentWindow = (a.currentWindow + 1) % a.numWindows
 
@@ -380,10 +380,8 @@ type ActiveQueriedSeriesService struct {
 
 // NewActiveQueriedSeriesService creates a new ActiveQueriedSeriesService service.
 func NewActiveQueriedSeriesService(logger log.Logger, registerer prometheus.Registerer) *ActiveQueriedSeriesService {
-	numWorkers := runtime.NumCPU() / 2
-	if numWorkers > 8 {
-		numWorkers = 8 // Cap at 8 workers to avoid excessive goroutines
-	}
+	// Cap at 8 workers to avoid excessive goroutines
+	numWorkers := min(runtime.NumCPU()/2, 8)
 
 	m := &ActiveQueriedSeriesService{
 		updateChan: make(chan activeQueriedSeriesUpdate, 10000), // Buffered channel to avoid blocking

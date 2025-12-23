@@ -61,7 +61,7 @@ func TestActiveQueriedSeries_MultipleSeries(t *testing.T) {
 
 	// Add many different series
 	hashes := make([]uint64, 0, numSeries)
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		ls := labels.FromStrings("metric", "value", "index", fmt.Sprintf("%d", i))
 		hash := ls.Hash()
 		hashes = append(hashes, hash)
@@ -215,10 +215,10 @@ func TestActiveQueriedSeries_ConcurrentUpdates(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		go func(goroutineID int) {
 			defer wg.Done()
-			for j := 0; j < numSeriesPerGoroutine; j++ {
+			for j := range numSeriesPerGoroutine {
 				ls := labels.FromStrings("metric", "value", "goroutine", fmt.Sprintf("%d", goroutineID), "series", fmt.Sprintf("%d", j))
 				hash := ls.Hash()
 				a.UpdateSeriesBatch([]uint64{hash}, now)
@@ -313,7 +313,7 @@ func TestActiveQueriedSeries_ManyWindows(t *testing.T) {
 	baseTime := time.Now()
 
 	// Add series across multiple windows
-	for i := 0; i < numWindows; i++ {
+	for i := range numWindows {
 		ls := labels.FromStrings("metric", "value", "window", fmt.Sprintf("%d", i))
 		hash := ls.Hash()
 		windowTime := baseTime.Add(time.Duration(i) * windowDuration)

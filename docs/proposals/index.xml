@@ -294,7 +294,514 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;h4 id="allow-customisation-of-the-label-used-to-expose-tenant-ids">Allow customisation of the label used to expose tenant ids&lt;/h4>
 &lt;p>As per this proposal the label name &lt;code>__tenant_id__&lt;/code> is fixed, but users might want to be able to modify that through a configuration option.&lt;/p>
 &lt;h4 id="retain-overlapping-tenant-id-label-values-recursively">Retain overlapping tenant id label values recursively&lt;/h4>
-&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Deletion of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-deletion/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-deletion/</guid><description>
+&lt;p>As per this proposal the tenant label injection retains an existing label value, but this is not implemented recursively. So if the result already contains &lt;code>__tenant_id__&lt;/code> and &lt;code>original__tenant_id__&lt;/code> labels, the value of the latter would be lost.&lt;/p></description></item><item><title>Docs: Crossplane Provider for Cortex</title><link>/docs/proposals/crossplane-provider-for-cortex/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/crossplane-provider-for-cortex/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/zanderfriz">Alex Frisvold&lt;/a>&lt;/li>
+&lt;li>Date: 10/1/2025&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="overview">Overview&lt;/h2>
+&lt;p>This proposal outlines the development of a Crossplane provider for Cortex that enables declarative management of a Cortex tenant&amp;rsquo;s recording rules, alerting rules, and Alertmanager configurations through Kubernetes Custom Resources.&lt;/p>
+&lt;h2 id="current-state">Current State&lt;/h2>
+&lt;p>Currently, a Cortex tenant&amp;rsquo;s recording rules, alerting rules, and Alertmanager configurations are managed through a variety of methods:&lt;/p>
+&lt;ul>
+&lt;li>Manual API calls to configure alerting rules and alertmanager settings&lt;/li>
+&lt;li>&lt;a href="https://github.com/cortexproject/cortex-tools">cortextool&lt;/a> CLI that directly interacts with Cortex APIs&lt;/li>
+&lt;li>Configuration files deployed via traditional Kubernetes deployments or ConfigMaps&lt;/li>
+&lt;/ul>
+&lt;p>This approach leads to several challenges:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Configuration Drift&lt;/strong>: Manual changes and inconsistent deployment practices result in environments becoming out of sync&lt;/li>
+&lt;li>&lt;strong>Limited Observability&lt;/strong>: No standardized way to track the status and health of Cortex configurations&lt;/li>
+&lt;li>&lt;strong>Security Concerns&lt;/strong>: Authentication credentials are often embedded in scripts or stored insecurely&lt;/li>
+&lt;li>&lt;strong>Tenant Isolation&lt;/strong>: Difficult to enforce proper isolation and governance controls across multiple tenants&lt;/li>
+&lt;li>&lt;strong>No GitOps Integration&lt;/strong>: Configurations cannot be easily managed through standard Kubernetes workflows&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposal">Proposal&lt;/h2>
+&lt;p>This proposal introduces a Crossplane provider that enables declarative management of Cortex configurations through Kubernetes Custom Resources. The provider implements three core resources that address the key aspects of Cortex management:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>TenantConfig&lt;/strong>: Manages connection details and authentication for specific Cortex tenants&lt;/li>
+&lt;li>&lt;strong>RuleGroup&lt;/strong>: Declaratively manages Prometheus alerting and recording rules&lt;/li>
+&lt;li>&lt;strong>AlertmanagerConfig&lt;/strong>: Manages Alertmanager configuration for handling alert notifications&lt;/li>
+&lt;/ol>
+&lt;p>The provider leverages Crossplane&amp;rsquo;s composition and configuration capabilities to provide:&lt;/p>
+&lt;ul>
+&lt;li>Secure credential management through Kubernetes secrets&lt;/li>
+&lt;li>Declarative configuration management with drift detection&lt;/li>
+&lt;li>Multi-tenant isolation and governance controls&lt;/li>
+&lt;li>Integration with GitOps workflows&lt;/li>
+&lt;li>Comprehensive observability and status reporting&lt;/li>
+&lt;/ul>
+&lt;h3 id="goals">Goals&lt;/h3>
+&lt;ul>
+&lt;li>Enable declarative management of Cortex ruler configurations, alerting rules, and Alertmanager configurations through Kubernetes CRDs&lt;/li>
+&lt;li>Provide secure authentication and credential management for multi-tenant Cortex environments&lt;/li>
+&lt;li>Support multiple authentication methods including bearer tokens, basic auth, and mTLS&lt;/li>
+&lt;li>Implement comprehensive observability and status reporting for all managed resources&lt;/li>
+&lt;li>Enable platform teams to provide self-service capabilities to development teams while maintaining governance controls&lt;/li>
+&lt;li>Support GitOps workflows for configuration management and deployment&lt;/li>
+&lt;/ul>
+&lt;h3 id="non-goals">Non-Goals&lt;/h3>
+&lt;ul>
+&lt;li>This provider does NOT manage the deployment or lifecycle of Cortex infrastructure itself (clusters, storage, etc.)&lt;/li>
+&lt;li>Does not provide backup and restore capabilities for Cortex data&lt;/li>
+&lt;li>Does not implement custom Cortex extensions or plugins&lt;/li>
+&lt;li>Scope is limited to configuration management, not performance tuning or capacity planning&lt;/li>
+&lt;/ul>
+&lt;h2 id="design">Design&lt;/h2>
+&lt;h3 id="architecture-overview">Architecture Overview&lt;/h3>
+&lt;p>The provider follows Crossplane&amp;rsquo;s standard architecture pattern with three main components:&lt;/p>
+&lt;pre tabindex="0">&lt;code>┌─────────────────┐ ┌─────────────────┐ ┌──────────────────┐
+│ TenantConfig │ │ RuleGroup │ │AlertmanagerConfig│
+│ │ │ │ │ │
+│ - Connection │ │ - Rules Mgmt │ │ - AM Config │
+│ - Auth Details │ │ - PromQL │ │ - Templates │
+│ - TLS Config │ │ - Evaluation │ │ - Routing │
+└─────────┬───────┘ └─────────┬───────┘ └─────────┬────────┘
+│ │ │
+└──────────────────────┼──────────────────────┘
+│
+┌─────────────────────┐
+│ Crossplane Provider │
+│ │
+│ - Authentication │
+│ - HTTP Client │
+│ - Reconciliation │
+│ - Status Reporting │
+└─────────┬───────────┘
+│
+┌─────────────────────┐
+│ Cortex Cluster │
+│ │
+│ - Ruler API │
+│ - Alertmanager API │
+│ - Multi-tenant │
+└─────────────────────┘
+&lt;/code>&lt;/pre>&lt;p>The provider implements controllers for each Custom Resource Definition (CRD) that handle:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Authentication Management&lt;/strong>: Secure retrieval and caching of credentials from Kubernetes secrets&lt;/li>
+&lt;li>&lt;strong>HTTP Client Management&lt;/strong>: Configurable HTTP clients with TLS support and custom headers based on Cortex&amp;rsquo;s own go client code&lt;/li>
+&lt;li>&lt;strong>Reconciliation Logic&lt;/strong>: Ensures desired state matches actual state in Cortex&lt;/li>
+&lt;li>&lt;strong>Status Reporting&lt;/strong>: Provides detailed feedback on resource health and synchronization status&lt;/li>
+&lt;li>&lt;strong>Drift Detection&lt;/strong>: Monitors for changes and automatically reconciles configurations&lt;/li>
+&lt;/ol>
+&lt;h3 id="custom-resource-definitions-crds">Custom Resource Definitions (CRDs)&lt;/h3>
+&lt;h4 id="tenantconfig">TenantConfig&lt;/h4>
+&lt;p>The TenantConfig CRD manages connection details and authentication for a specific Cortex tenant:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">apiVersion&lt;/span>: &lt;span style="color:#ae81ff">config.cortexmetrics.io/v1alpha1&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">kind&lt;/span>: &lt;span style="color:#ae81ff">TenantConfig&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">metadata&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">production-tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#ae81ff">tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">spec&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">forProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenantId&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;production&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">endpoint&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;https://cortex.company.com&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">authMethod&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;bearer&amp;#34;&lt;/span> &lt;span style="color:#75715e"># bearer, basic, or none&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bearerTokenSecretRef&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">cortex-token&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">key&lt;/span>: &lt;span style="color:#ae81ff">token&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tlsConfig&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">insecureSkipVerify&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">caBundleSecretRef&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">cortex-ca-bundle&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">key&lt;/span>: &lt;span style="color:#ae81ff">ca-bundle.crt&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">additionalHeaders&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;X-Custom-Header&amp;#34;: &lt;/span>&lt;span style="color:#e6db74">&amp;#34;custom-value&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">providerConfigRef&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">cortex-config&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">status&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">atProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenantId&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;production&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">connectionStatus&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Connected&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">lastConnectionTime&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;2025-01-01T10:30:00Z&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">authMethod&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;bearer&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">conditions&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">type&lt;/span>: &lt;span style="color:#ae81ff">Ready&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">status&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;True&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">type&lt;/span>: &lt;span style="color:#ae81ff">Synced&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">status&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;True&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Key Features:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Support for multiple authentication methods (bearer token, basic auth, mTLS)&lt;/li>
+&lt;li>Flexible TLS configuration including custom CA bundles and client certificates&lt;/li>
+&lt;li>Custom HTTP headers for additional authentication or routing&lt;/li>
+&lt;li>Connection health monitoring and status reporting&lt;/li>
+&lt;/ul>
+&lt;h4 id="rulegroup">RuleGroup&lt;/h4>
+&lt;p>The RuleGroup CRD manages Prometheus alerting and recording rules within a Cortex namespace:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">apiVersion&lt;/span>: &lt;span style="color:#ae81ff">config.cortexmetrics.io/v1alpha1&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">kind&lt;/span>: &lt;span style="color:#ae81ff">RuleGroup&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">metadata&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">cpu-monitoring&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#ae81ff">tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">spec&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">forProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenantConfigRef&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">production-tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;monitoring&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">groupName&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;cpu-alerts&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">interval&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;30s&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">rules&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Alerting rule - fires when node CPU usage exceeds 80%&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">alert&lt;/span>: &lt;span style="color:#ae81ff">HighCPUUsage&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">expr&lt;/span>: |&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &lt;/span> &lt;span style="color:#ae81ff">100&lt;/span> - &lt;span style="color:#ae81ff">(avg by (instance) (rate(node_cpu_seconds_total{mode=&amp;#34;idle&amp;#34;}[5m])) * 100) &amp;gt; 80&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">for&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;5m&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">labels&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">severity&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;warning&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">team&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;platform&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">annotations&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">summary&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;High CPU usage on {{ $labels.instance }}&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">description&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;CPU usage is {{ $value | humanize }}% (above 80% threshold for 5 minutes)&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Recording rule - pre-calculates node CPU usage percentage for dashboards&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">record&lt;/span>: &lt;span style="color:#ae81ff">instance_cpu_usage_percent&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">expr&lt;/span>: |&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &lt;/span> &lt;span style="color:#ae81ff">100&lt;/span> - &lt;span style="color:#ae81ff">(avg by (instance) (rate(node_cpu_seconds_total{mode=&amp;#34;idle&amp;#34;}[5m])) * 100)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">labels&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">job&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;node-exporter&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">status&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">atProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;monitoring&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">groupName&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;cpu-alerts&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ruleCount&lt;/span>: &lt;span style="color:#ae81ff">2&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">lastUpdated&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;2025-01-01T10:35:00Z&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">status&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Active&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Key Features:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Support for both alerting rules (using &lt;code>alert:&lt;/code> field) and recording rules (using &lt;code>record:&lt;/code> field)&lt;/li>
+&lt;li>Rules specify their type explicitly using either &lt;code>alert:&lt;/code> or &lt;code>record:&lt;/code> field&lt;/li>
+&lt;li>PromQL expression validation&lt;/li>
+&lt;li>Configurable evaluation intervals&lt;/li>
+&lt;li>Flexible labeling and annotation support&lt;/li>
+&lt;li>Alerting rules support &lt;code>annotations&lt;/code> and &lt;code>for&lt;/code> duration fields&lt;/li>
+&lt;li>Rule count and status monitoring&lt;/li>
+&lt;/ul>
+&lt;h4 id="alertmanagerconfig">AlertmanagerConfig&lt;/h4>
+&lt;p>The AlertmanagerConfig CRD manages Alertmanager configuration including routing rules, receivers, and notification templates:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">apiVersion&lt;/span>: &lt;span style="color:#ae81ff">config.cortexmetrics.io/v1alpha1&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">kind&lt;/span>: &lt;span style="color:#ae81ff">AlertmanagerConfig&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">metadata&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">production-alerting&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">namespace&lt;/span>: &lt;span style="color:#ae81ff">tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">spec&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">forProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenantConfigRef&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">production-tenant&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">alertmanagerConfig&lt;/span>: |&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> global:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> resolve_timeout: 5m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> smtp_smarthost: &amp;#39;smtp.company.com:587&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> route:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_by: [&amp;#39;alertname&amp;#39;, &amp;#39;cluster&amp;#39;]
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_wait: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_interval: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> repeat_interval: 1h
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receiver: &amp;#39;platform-team&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> routes:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - match:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: critical
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receiver: &amp;#39;critical-alerts&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receivers:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - name: &amp;#39;platform-team&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> email_configs:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - to: &amp;#39;platform@company.com&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> subject: &amp;#39;Alert: {{ .GroupLabels.alertname }}&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> body: &amp;#39;{{ template &amp;#34;alert.html&amp;#34; . }}&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - name: &amp;#39;critical-alerts&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> slack_configs:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - api_url: &amp;#39;https://hooks.slack.com/services/...&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> channel: &amp;#39;#critical-alerts&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> title: &amp;#39;Critical Alert: {{ .GroupLabels.alertname }}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">templateFiles&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">alert.html&lt;/span>: |&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &amp;lt;h2&amp;gt;Alert Details&amp;lt;/h2&amp;gt;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> {{ range .Alerts }}
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &amp;lt;p&amp;gt;&amp;lt;strong&amp;gt;{{ .Annotations.summary }}&amp;lt;/strong&amp;gt;&amp;lt;/p&amp;gt;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &amp;lt;p&amp;gt;{{ .Annotations.description }}&amp;lt;/p&amp;gt;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> {{ end }}&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">status&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">atProvider&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">configurationStatus&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Applied&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">lastUpdated&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;2025-01-01T10:40:00Z&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">configHash&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;abc123def456&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;strong>Key Features:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Full Alertmanager configuration management&lt;/li>
+&lt;li>Support for notification templates&lt;/li>
+&lt;li>Configuration validation and syntax checking&lt;/li>
+&lt;li>Hash-based change detection&lt;/li>
+&lt;li>Template file management&lt;/li>
+&lt;/ul>
+&lt;h3 id="provider-components">Provider Components&lt;/h3>
+&lt;h4 id="controller-architecture">Controller Architecture&lt;/h4>
+&lt;p>The provider implements three controllers following Crossplane&amp;rsquo;s managed resource pattern:&lt;/p>
+&lt;p>&lt;strong>TenantConfig Controller:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Manages HTTP client instances with authentication and TLS configuration&lt;/li>
+&lt;li>Validates connection to Cortex endpoints and reports connection status&lt;/li>
+&lt;li>Caches authentication tokens and manages credential refresh&lt;/li>
+&lt;li>Monitors endpoint health and Cortex version compatibility&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>RuleGroup Controller:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Validates PromQL expressions before applying to Cortex&lt;/li>
+&lt;li>Validates rule structure with clear error messages for configuration mistakes&lt;/li>
+&lt;li>Manages rule group lifecycle (create, update, delete) via Cortex Ruler API&lt;/li>
+&lt;li>Tracks rule evaluation status and provides detailed error reporting&lt;/li>
+&lt;li>Supports alerting rules with &lt;code>alert&lt;/code> name, &lt;code>for&lt;/code> duration, and &lt;code>annotations&lt;/code>&lt;/li>
+&lt;li>Supports recording rules with &lt;code>record&lt;/code> name for pre-computed metrics&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>AlertmanagerConfig Controller:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Validates Alertmanager configuration syntax using built-in validation&lt;/li>
+&lt;li>Manages configuration and template files via Cortex Alertmanager API&lt;/li>
+&lt;li>Implements hash-based change detection to minimize API calls&lt;/li>
+&lt;li>Provides detailed feedback on configuration parsing and validation errors&lt;/li>
+&lt;/ul>
+&lt;h4 id="resource-management">Resource Management&lt;/h4>
+&lt;p>The provider manages resources through a consistent pattern:&lt;/p>
+&lt;ol>
+&lt;li>
+&lt;p>&lt;strong>Reconciliation Loop&lt;/strong>: Each controller runs a reconciliation loop that:&lt;/p>
+&lt;ul>
+&lt;li>Fetches the current state from Cortex APIs&lt;/li>
+&lt;li>Compares with desired state from Kubernetes CRD&lt;/li>
+&lt;li>Applies necessary changes via HTTP API calls&lt;/li>
+&lt;li>Updates resource status with current state and any errors&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>External Resource Identification&lt;/strong>: Resources are identified using:&lt;/p>
+&lt;ul>
+&lt;li>TenantConfig: Combination of endpoint and tenant ID&lt;/li>
+&lt;li>RuleGroup: Namespace and group name within the tenant&lt;/li>
+&lt;li>AlertmanagerConfig: Tenant-specific Alertmanager configuration&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Dependency Management&lt;/strong>: Resources reference each other using Crossplane&amp;rsquo;s reference resolution:&lt;/p>
+&lt;ul>
+&lt;li>RuleGroup and AlertmanagerConfig reference TenantConfig for connection details&lt;/li>
+&lt;li>Changes to TenantConfig trigger reconciliation of dependent resources&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ol>
+&lt;h3 id="configuration-management">Configuration Management&lt;/h3>
+&lt;p>The provider handles Cortex configuration through several mechanisms:&lt;/p>
+&lt;p>&lt;strong>Authentication and Security:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Secure retrieval of credentials from Kubernetes secrets&lt;/li>
+&lt;li>Support for bearer tokens, basic authentication, and mTLS&lt;/li>
+&lt;li>Cross-namespace secret references supported for centralized credential management&lt;/li>
+&lt;li>TLS certificate validation with custom CA bundles&lt;/li>
+&lt;li>Request timeout and retry configuration&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>API Client Management:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>HTTP client pooling and connection reuse&lt;/li>
+&lt;li>Automatic retry with exponential backoff&lt;/li>
+&lt;li>Request/response logging for debugging&lt;/li>
+&lt;li>Rate limiting to prevent API overwhelm&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Configuration Validation:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>PromQL expression syntax validation using Prometheus parser&lt;/li>
+&lt;li>Rule structure validation with helpful error messages&lt;/li>
+&lt;li>Alertmanager configuration validation using Alertmanager&amp;rsquo;s built-in validator&lt;/li>
+&lt;li>Pre-flight validation before applying changes to Cortex&lt;/li>
+&lt;li>Detailed error reporting for validation failures&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Hash-Based Drift Detection:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Configuration hashes computed for both desired state (CRD) and current state (Cortex)&lt;/li>
+&lt;li>Hash comparison enables efficient drift detection without deep object comparisons&lt;/li>
+&lt;li>Avoids unnecessary API calls and updates when configurations are already synchronized&lt;/li>
+&lt;li>Metrics track both drift detected and unnecessary updates avoided&lt;/li>
+&lt;/ul>
+&lt;h3 id="observability">Observability&lt;/h3>
+&lt;p>The provider includes comprehensive observability features:&lt;/p>
+&lt;p>&lt;strong>Metrics:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Resource Metrics&lt;/strong>: Track rule group sizes, receiver counts, and configuration complexity&lt;/li>
+&lt;li>&lt;strong>Performance Metrics&lt;/strong>: Monitor hash calculation duration, Cortex API latency, secret retrieval, and TLS setup times&lt;/li>
+&lt;li>&lt;strong>Drift Detection Metrics&lt;/strong>: Track configuration drift detected and unnecessary updates avoided via hash matching&lt;/li>
+&lt;li>&lt;strong>Error Metrics&lt;/strong>: Classify and count API errors by type, operation, and resource&lt;/li>
+&lt;li>&lt;strong>Authentication Metrics&lt;/strong>: Track authentication failures by method&lt;/li>
+&lt;li>All metrics designed with low cardinality for efficient Prometheus operation&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Logging:&lt;/strong>
+The provider will use a &lt;strong>debug-first logging approach&lt;/strong> with structured logging:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Info Level (Default)&lt;/strong>: Only critical events visible
+&lt;ul>
+&lt;li>Drift detected (with hashes)&lt;/li>
+&lt;li>Connection test failures&lt;/li>
+&lt;li>Blocking deletion events&lt;/li>
+&lt;li>All errors and validation failures&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;strong>Debug Level&lt;/strong> (requires &lt;code>--debug&lt;/code> flag): Operational details
+&lt;ul>
+&lt;li>All lifecycle operations (Connect, Observe, Create, Update, Delete)&lt;/li>
+&lt;li>&amp;ldquo;No drift detected&amp;rdquo; routine checks&lt;/li>
+&lt;li>Connection test start/success&lt;/li>
+&lt;li>API call details and hash calculations&lt;/li>
+&lt;li>TLS/authentication setup&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;strong>Structured Fields&lt;/strong>: All logs include resource context (namespace, name, generation, tenantConfig), Cortex details (tenantID, endpoint, cortexNamespace, groupName), and operation-specific data for filtering&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Status Reporting:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Standard Crossplane conditions (Ready, Synced)&lt;/li>
+&lt;li>Resource-specific status fields (connection status, rule count, config hash, etc.)&lt;/li>
+&lt;li>Last update timestamps and configuration hashes&lt;/li>
+&lt;li>Error details with actionable messages&lt;/li>
+&lt;/ul>
+&lt;h2 id="compatibility">Compatibility&lt;/h2>
+&lt;h3 id="crossplane-versions">Crossplane Versions&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Minimum&lt;/strong>: Crossplane v2.0.0 (uses Crossplane Runtime v2)&lt;/li>
+&lt;li>&lt;strong>Recommended&lt;/strong>: Crossplane v2.0.2&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Note&lt;/strong>: Crossplane Runtime v2 is not backwards compatible with Crossplane v1.x releases. This provider requires Crossplane v2.0.0 or later.&lt;/p>
+&lt;h3 id="cortex-versions">Cortex Versions&lt;/h3>
+&lt;p>The provider supports multiple Cortex versions through its flexible API client:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Minimum&lt;/strong>: Cortex 1.17.0+&lt;/li>
+&lt;li>&lt;strong>Recommended&lt;/strong>: Cortex 1.19.0+&lt;/li>
+&lt;/ul>
+&lt;h3 id="ruler-storage-backends">Ruler Storage Backends&lt;/h3>
+&lt;p>The provider requires Cortex to be configured with a ruler storage backend that supports the full Ruler API. The following backends are supported:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Backend&lt;/th>
+&lt;th>Support Status&lt;/th>
+&lt;th>Notes&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;strong>S3&lt;/strong>&lt;/td>
+&lt;td>✅ Fully Supported&lt;/td>
+&lt;td>Recommended for production use. Includes S3-compatible storage like MinIO&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>GCS&lt;/strong>&lt;/td>
+&lt;td>✅ Fully Supported&lt;/td>
+&lt;td>Google Cloud Storage&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Azure&lt;/strong>&lt;/td>
+&lt;td>✅ Fully Supported&lt;/td>
+&lt;td>Azure Blob Storage&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Swift&lt;/strong>&lt;/td>
+&lt;td>✅ Fully Supported&lt;/td>
+&lt;td>OpenStack Swift&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;strong>Local&lt;/strong>&lt;/td>
+&lt;td>❌ &lt;strong>NOT SUPPORTED&lt;/strong>&lt;/td>
+&lt;td>Read-only backend with no write API support&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Important&lt;/strong>: Cortex&amp;rsquo;s &lt;code>ruler_storage.backend: local&lt;/code> is a read-only storage backend that does not support the write operations (SetRuleGroup, DeleteRuleGroup) required by this provider.&lt;/p>
+&lt;h3 id="api-fallback-support">API Fallback Support&lt;/h3>
+&lt;p>The provider implements intelligent API fallback for maximum compatibility:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Primary Path&lt;/strong>: Uses &lt;code>GetRuleGroup&lt;/code> API for optimal performance on supported backends&lt;/li>
+&lt;li>&lt;strong>Fallback Path&lt;/strong>: Automatically falls back to &lt;code>ListRules&lt;/code> if &lt;code>GetRuleGroup&lt;/code> returns &amp;ldquo;unsupported&amp;rdquo; errors&lt;/li>
+&lt;li>&lt;strong>Transparency&lt;/strong>: Fallback happens automatically with no user configuration required&lt;/li>
+&lt;/ul>
+&lt;p>This ensures compatibility with different Cortex configurations while maintaining optimal performance where possible.&lt;/p>
+&lt;h2 id="security-considerations">Security Considerations&lt;/h2>
+&lt;h3 id="authentication-and-authorization">Authentication and Authorization&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Secure Credential Storage&lt;/strong>: All credentials stored in Kubernetes secrets&lt;/li>
+&lt;li>&lt;strong>Principle of Least Privilege&lt;/strong>: Provider service account has minimal required permissions&lt;/li>
+&lt;li>&lt;strong>Bearer Token Authentication&lt;/strong>: Maintains continuous authentication using bearer tokens from secrets&lt;/li>
+&lt;li>&lt;strong>Audit Logging&lt;/strong>: All configuration changes are logged for security auditing&lt;/li>
+&lt;/ul>
+&lt;h3 id="network-security">Network Security&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>TLS&lt;/strong>: All HTTP communications can use TLS with certificate validation&lt;/li>
+&lt;li>&lt;strong>Custom CA Support&lt;/strong>: Support for private CAs and certificate pinning&lt;/li>
+&lt;li>&lt;strong>mTLS Authentication&lt;/strong>: Client certificate authentication for enhanced security&lt;/li>
+&lt;li>&lt;strong>Network Policies&lt;/strong>: Compatible with Kubernetes network policies for traffic isolation&lt;/li>
+&lt;/ul>
+&lt;h3 id="multi-tenancy">Multi-tenancy&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Tenant Isolation&lt;/strong>: Each TenantConfig manages separate tenant credentials and configurations&lt;/li>
+&lt;li>&lt;strong>Namespace Isolation&lt;/strong>: Resources can be deployed in separate namespaces for isolation&lt;/li>
+&lt;li>&lt;strong>RBAC Integration&lt;/strong>: Leverages Kubernetes RBAC for access control&lt;/li>
+&lt;li>&lt;strong>Configuration Validation&lt;/strong>: Prevents cross-tenant configuration leakage&lt;/li>
+&lt;/ul>
+&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
+&lt;h3 id="alternative-1-helm-charts-only">Alternative 1: Helm Charts Only&lt;/h3>
+&lt;p>&lt;strong>Approach&lt;/strong>: Using Helm charts to deploy and manage Cortex configurations&lt;/p>
+&lt;p>&lt;strong>Limitations&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>No drift detection or reconciliation capabilities&lt;/li>
+&lt;li>Manual lifecycle management of configurations&lt;/li>
+&lt;li>Limited observability into configuration status&lt;/li>
+&lt;li>No native Kubernetes resource management integration&lt;/li>
+&lt;li>Difficult to implement proper multi-tenancy and isolation&lt;/li>
+&lt;li>Configuration updates require manual intervention&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Conclusion&lt;/strong>: Helm charts alone are insufficient for dynamic configuration management and lack the operational benefits of Kubernetes-native resources.&lt;/p>
+&lt;h3 id="alternative-2-traditional-kubernetes-operators">Alternative 2: Traditional Kubernetes Operators&lt;/h3>
+&lt;p>&lt;strong>Approach&lt;/strong>: Building a traditional Kubernetes operator without Crossplane&lt;/p>
+&lt;p>&lt;strong>Comparison&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Pros&lt;/strong>: Direct control over implementation, no external dependencies&lt;/li>
+&lt;li>&lt;strong>Cons&lt;/strong>:
+&lt;ul>
+&lt;li>Requires building and maintaining complex controller infrastructure&lt;/li>
+&lt;li>No composition or configuration management capabilities&lt;/li>
+&lt;li>Limited reusability across different Kubernetes clusters&lt;/li>
+&lt;li>Missing advanced features like external secret management&lt;/li>
+&lt;li>Significant development and maintenance overhead&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Conclusion&lt;/strong>: While operators provide control, Crossplane offers a mature platform with proven patterns and extensive ecosystem benefits.&lt;/p>
+&lt;h3 id="alternative-3-terraform-providers">Alternative 3: Terraform Providers&lt;/h3>
+&lt;p>&lt;strong>Approach&lt;/strong>: Using Terraform with custom providers for Cortex management&lt;/p>
+&lt;p>&lt;strong>Comparison&lt;/strong>:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>State Management&lt;/strong>: Terraform state vs. Kubernetes-native status&lt;/li>
+&lt;li>&lt;strong>Drift Detection&lt;/strong>: Limited compared to Kubernetes controllers&lt;/li>
+&lt;li>&lt;strong>Integration&lt;/strong>: Separate toolchain vs. native Kubernetes workflows&lt;/li>
+&lt;li>&lt;strong>Observability&lt;/strong>: External monitoring vs. built-in Kubernetes observability&lt;/li>
+&lt;li>&lt;strong>Multi-tenancy&lt;/strong>: Complex state management vs. native namespace isolation&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Conclusion&lt;/strong>: While Terraform is powerful for infrastructure management, Crossplane provides better integration with Kubernetes-native workflows and superior multi-tenancy support for application-level configuration management.&lt;/p>
+&lt;h2 id="open-questions">Open Questions&lt;/h2>
+&lt;h3 id="implementation-and-technical-questions">Implementation and Technical Questions&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Configuration Composition&lt;/strong>: How should we implement Crossplane Compositions to enable platform teams to create reusable configuration templates?&lt;/li>
+&lt;li>&lt;strong>Multi-cluster Support&lt;/strong>: What is the best approach for managing Cortex configurations across multiple Kubernetes clusters?&lt;/li>
+&lt;li>&lt;strong>Performance Optimization&lt;/strong>: What are the optimal reconciliation intervals and caching strategies for large-scale deployments?&lt;/li>
+&lt;/ul>
+&lt;h3 id="operational-and-deployment-questions">Operational and Deployment Questions&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Provider Distribution&lt;/strong>: What is the best approach for distributing and versioning the provider package?&lt;/li>
+&lt;li>&lt;strong>Upgrade Strategy&lt;/strong>: How should we handle provider upgrades and backward compatibility for existing configurations?&lt;/li>
+&lt;li>&lt;strong>Documentation Strategy&lt;/strong>: What additional documentation and training materials are needed for successful adoption?&lt;/li>
+&lt;/ul>
+&lt;h2 id="references">References&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://crossplane.io/docs/">Crossplane Documentation&lt;/a> - Core platform documentation and best practices&lt;/li>
+&lt;li>&lt;a href="https://github.com/crossplane/crossplane-runtime/tree/main/v2">Crossplane Runtime v2&lt;/a> - Runtime library used by the provider&lt;/li>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/">Cortex Documentation&lt;/a> - Cortex configuration and API documentation&lt;/li>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/api/#ruler">Cortex Ruler API&lt;/a> - API endpoints for rule management&lt;/li>
+&lt;li>&lt;a href="https://cortexmetrics.io/docs/api/#alertmanager">Cortex Alertmanager API&lt;/a> - API endpoints for alertmanager configuration&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Deletion of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-deletion/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-deletion/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/pstibrany">Peter Stibrany&lt;/a>&lt;/li>
 &lt;li>Date: November 2020&lt;/li>

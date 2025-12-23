@@ -19,7 +19,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/gogo/status v1.1.1
 	github.com/golang-migrate/migrate/v4 v4.18.1
-	github.com/golang/protobuf v1.5.4
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc

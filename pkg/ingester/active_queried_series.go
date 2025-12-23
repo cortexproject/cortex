@@ -380,8 +380,8 @@ type ActiveQueriedSeriesService struct {
 
 // NewActiveQueriedSeriesService creates a new ActiveQueriedSeriesService service.
 func NewActiveQueriedSeriesService(logger log.Logger, registerer prometheus.Registerer) *ActiveQueriedSeriesService {
-	// Cap at 8 workers to avoid excessive goroutines
-	numWorkers := min(runtime.NumCPU()/2, 8)
+	// Cap at 4 workers to avoid excessive goroutines
+	numWorkers := max(min(runtime.NumCPU()/2, 4), 1)
 
 	m := &ActiveQueriedSeriesService{
 		updateChan: make(chan activeQueriedSeriesUpdate, 10000), // Buffered channel to avoid blocking

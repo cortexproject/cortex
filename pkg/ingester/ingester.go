@@ -189,8 +189,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.ActiveQueriedSeriesMetricsEnabled, "ingester.active-queried-series-metrics-enabled", false, "Enable tracking of active queried series using probabilistic data structure and export them as metrics.")
 	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsUpdatePeriod, "ingester.active-queried-series-metrics-update-period", 1*time.Minute, "How often to update active queried series metrics.")
-	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsWindowDuration, "ingester.active-queried-series-metrics-window-duration", 1*time.Minute, "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.")
+	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsWindowDuration, "ingester.active-queried-series-metrics-window-duration", 15*time.Minute, "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.")
 	f.Float64Var(&cfg.ActiveQueriedSeriesMetricsSampleRate, "ingester.active-queried-series-metrics-sample-rate", 1.0, "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.")
+	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
 	f.Var(&cfg.ActiveQueriedSeriesMetricsWindows, "ingester.active-queried-series-metrics-windows", "Time windows to expose queried series metric. Each window tracks queried series within that time period.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")

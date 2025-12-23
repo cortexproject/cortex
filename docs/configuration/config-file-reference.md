@@ -3714,7 +3714,7 @@ lifecycler:
 # Duration of each sub-window for active queried series tracking (e.g., 1
 # minute). Used to divide the total tracking period into smaller windows.
 # CLI flag: -ingester.active-queried-series-metrics-window-duration
-[active_queried_series_metrics_window_duration: <duration> | default = 1m]
+[active_queried_series_metrics_window_duration: <duration> | default = 15m]
 
 # Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 =
 # 10% sampling). By default, all queries are sampled.
@@ -3724,7 +3724,7 @@ lifecycler:
 # Time windows to expose queried series metric. Each window tracks queried
 # series within that time period.
 # CLI flag: -ingester.active-queried-series-metrics-windows
-[active_queried_series_metrics_windows: <list of duration> | default = ]
+[active_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled

@@ -7335,7 +7335,7 @@ func TestIngester_ActiveQueriedSeries(t *testing.T) {
 	now := time.Now()
 	for idx := range 10 {
 		req := &cortexpb.WriteRequest{}
-		for seriesIdx := 0; seriesIdx < 5; seriesIdx++ {
+		for seriesIdx := range 5 {
 			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
 				TimeSeries: &cortexpb.TimeSeries{
 					Labels: []cortexpb.LabelAdapter{

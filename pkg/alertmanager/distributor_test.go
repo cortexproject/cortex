@@ -234,6 +234,16 @@ func TestDistributor_DistributeRequest(t *testing.T) {
 			expectedTotalCalls: 1,
 			route:              "/receivers",
 		}, {
+			name:               "Read /v2/receivers is sent to 3 AMs",
+			numAM:              5,
+			numHappyAM:         5,
+			replicationFactor:  3,
+			isRead:             true,
+			expStatusCode:      http.StatusOK,
+			expectedTotalCalls: 3,
+			route:              "/v2/receivers",
+			responseBody:       []byte(`[{"name":"default"},{"name":"slack"}]`),
+		}, {
 			name:                "Write /receivers not supported",
 			numAM:               5,
 			numHappyAM:          5,
@@ -352,8 +362,9 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 
 	cfg := &MultitenantAlertmanagerConfig{}
 	flagext.DefaultValues(cfg)
+	cfg.ShardingRing.DisableReplicaSetExtension = false
 
-	d, err := NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, prometheus.NewRegistry())
+	d, err := NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, amRing, newMockAlertmanagerClientFactory(amByAddr), cfg.ShardingRing, util_log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

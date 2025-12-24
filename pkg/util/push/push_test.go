@@ -173,7 +173,7 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 }
 
 func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
-	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
+	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes", "__type__", "exist type", "__unit__", "exist unit"}
 	samples := []cortexpb.Sample{
 		{
 			Value:       123,
@@ -196,6 +196,52 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 						{
 							TimeSeriesV2: &cortexpb.TimeSeriesV2{
 								LabelsRefs: []uint32{1, 2, 3, 4},
+								Samples:    samples,
+								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
+								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedV1Req: cortexpb.PreallocWriteRequest{
+				WriteRequest: cortexpb.WriteRequest{
+					Timeseries: []cortexpb.PreallocTimeseries{
+						{
+							TimeSeries: &cortexpb.TimeSeries{
+								Labels:  cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("__name__", "test_metric1", "__type__", "counter", "__unit__", "Maybe op/sec who knows (:", "b", "c")),
+								Samples: samples,
+								Exemplars: []cortexpb.Exemplar{
+									{
+										Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromStrings("f", "g")),
+										Value:       1,
+										TimestampMs: 1,
+									},
+								},
+							},
+						},
+					},
+					Metadata: []*cortexpb.MetricMetadata{
+						{
+							Type:             cortexpb.COUNTER,
+							MetricFamilyName: "test_metric1",
+							Help:             "Test gauge for test purposes",
+							Unit:             "Maybe op/sec who knows (:",
+						},
+					},
+				},
+			},
+			enableTypeAndUnitLabels: true,
+		},
+		{
+			desc: "should be added from metadata when __type__ and __unit__ labels already exist.",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4, 18, 19, 20, 21},
 								Samples:    samples,
 								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
 								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},

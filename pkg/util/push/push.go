@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/exp/api/remote"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/compression"
@@ -202,7 +203,11 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 		if shouldAttachTypeAndUnitLabels {
 			slb := labels.NewScratchBuilder(lbs.Len() + 2) // for __type__ and __unit__
 			lbs.Range(func(l labels.Label) {
-				slb.Add(l.Name, l.Value)
+				// Skip __type__ and __unit__ labels to prevent duplication,
+				// We append these labels from metadata.
+				if l.Name != model.MetricTypeLabel && l.Name != model.MetricUnitLabel {
+					slb.Add(l.Name, l.Value)
+				}
 			})
 			schema.Metadata{Type: cortexpb.MetadataV2MetricTypeToMetricType(metricType), Unit: unit}.AddToLabels(&slb)
 			slb.Sort()

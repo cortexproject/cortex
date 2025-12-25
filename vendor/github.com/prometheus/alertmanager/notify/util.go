@@ -22,11 +22,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/prometheus/common/version"
 
 	"github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
@@ -74,6 +76,10 @@ func request(ctx context.Context, client *http.Client, method, url, bodyType str
 	if bodyType != "" {
 		req.Header.Set("Content-Type", bodyType)
 	}
+
+	// Inject trancing transport
+	client.Transport = tracing.Transport(client.Transport)
+
 	return client.Do(req.WithContext(ctx))
 }
 
@@ -222,15 +228,7 @@ func (r *Retrier) Check(statusCode int, body io.Reader) (bool, error) {
 	}
 
 	// 5xx responses are considered to be always retried.
-	retry := statusCode/100 == 5
-	if !retry {
-		for _, code := range r.RetryCodes {
-			if code == statusCode {
-				retry = true
-				break
-			}
-		}
-	}
+	retry := statusCode/100 == 5 || slices.Contains(r.RetryCodes, statusCode)
 
 	s := fmt.Sprintf("unexpected status code %v", statusCode)
 	var details string

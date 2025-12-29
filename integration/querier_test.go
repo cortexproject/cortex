@@ -523,13 +523,19 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					// ensure parquet shard cache works
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_hits_total"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
-						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards"))))
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_item_count"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
-						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards"))))
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
 					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_misses_total"}, e2e.WithLabelMatchers(
 						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
-						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards"))))
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
 				}
 
 				// Query metadata.

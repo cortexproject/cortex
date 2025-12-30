@@ -5145,9 +5145,10 @@ The `redis_config` configures the Redis backend cache.
 The `ruler_config` configures the Cortex ruler.
 
 ```yaml
-# [Experimental] GRPC listen address of the Query Frontend, in host:port format.
-# If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries
-# to Ingesters and Store Gateway directly.
+# [Experimental] gRPC address of the Query Frontend (host:port). If set, the
+# Ruler send queries to the Query Frontend to utilize splitting and caching, at
+# the cost of additional network hops compared to direct querying to Ingesters
+# and Store Gateway.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 

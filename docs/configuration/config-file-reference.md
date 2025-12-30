@@ -5147,7 +5147,7 @@ The `ruler_config` configures the Cortex ruler.
 ```yaml
 # [Experimental] GRPC listen address of the Query Frontend, in host:port format.
 # If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries
-# to Ingesters directly.
+# to Ingesters and Store Gateway directly.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 

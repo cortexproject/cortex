@@ -6587,7 +6587,7 @@
           "x-format": "duration"
         },
         "frontend_address": {
-          "description": "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.",
+          "description": "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters and Store Gateway directly.",
           "type": "string",
           "x-cli-flag": "ruler.frontend-address"
         },

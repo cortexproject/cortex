@@ -231,7 +231,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "ruler.alertmanager-use-v2", "This flag is no longer functional. V1 API is deprecated and removed", util_log.Logger)
 
-	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.")
+	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters and Store Gateway directly.")
 	f.StringVar(&cfg.QueryResponseFormat, "ruler.query-response-format", queryResponseFormatProtobuf, fmt.Sprintf("[Experimental] Query response format to get query results from Query Frontend when the rule evaluation. It will only take effect when `-ruler.frontend-address` is configured. Supported values: %s", strings.Join(supportedQueryResponseFormats, ",")))
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")

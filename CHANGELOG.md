@@ -1,7 +1,9 @@
 # Changelog
 
 ## master / unreleased
-
+* [CHANGE] Users Scanner: Rename user index update configuration. #7180
+  * Flag: Renamed `-*.users-scanner.user-index.cleanup-interval` to `-*.users-scanner.user-index.update-interval`.
+  * Config: Renamed `clean_up_interval` to `update_interval` within the `users_scanner` configuration block..
 * [CHANGE] Querier: Refactored parquet cache configuration naming. #7146
   * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
   * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.

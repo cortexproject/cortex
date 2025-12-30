@@ -83,7 +83,7 @@ func TestAlertmanagerWithUserIndexUpdater(t *testing.T) {
 	baseFlags := mergeFlags(AlertmanagerFlags(), AlertmanagerS3Flags())
 	flags := mergeFlags(baseFlags, AlertmanagerShardingFlags(consul.NetworkHTTPEndpoint(), 1), map[string]string{
 		"-alertmanager-storage.users-scanner.strategy":                    "user_index",
-		"-alertmanager-storage.users-scanner.user-index.cleanup-interval": "15s",
+		"-alertmanager-storage.users-scanner.user-index.update-interval": "15s",
 		"-alertmanager.configs.poll-interval":                             "5s",
 	})
 

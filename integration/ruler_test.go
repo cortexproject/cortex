@@ -158,10 +158,10 @@ func TestRulerWithUserIndexUpdater(t *testing.T) {
 		RulerFlags(),
 		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
 		map[string]string{
-			"-ruler.sharding-strategy":                                 "shuffle-sharding",
-			"-ruler-storage.users-scanner.strategy":                    "user_index",
+			"-ruler.sharding-strategy":                                "shuffle-sharding",
+			"-ruler-storage.users-scanner.strategy":                   "user_index",
 			"-ruler-storage.users-scanner.user-index.update-interval": "15s",
-			"-ruler.tenant-shard-size":                                 "1",
+			"-ruler.tenant-shard-size":                                "1",
 			// Since we're not going to run any rule, we don't need the
 			// store-gateway to be configured to a valid address.
 			"-querier.store-gateway-addresses": "localhost:12345",

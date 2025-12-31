@@ -78,6 +78,10 @@ const (
 	// The combined length of the label names and values of an Exemplar's LabelSet MUST NOT exceed 128 UTF-8 characters
 	// https://github.com/OpenObservability/OpenMetrics/blob/main/specification/OpenMetrics.md#exemplars
 	ExemplarMaxLabelSetLength = 128
+
+	// Sample type constants for discarded samples metric
+	SampleTypeFloat     = "float"
+	SampleTypeHistogram = "histogram"
 )
 
 type ValidateMetrics struct {
@@ -109,7 +113,7 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 			Name: "cortex_discarded_samples_total",
 			Help: "The total number of samples that were discarded.",
 		},
-		[]string{discardReasonLabel, "user"},
+		[]string{discardReasonLabel, "user", "type"},
 	)
 	registerCollector(r, discardedSamples)
 	discardedSamplesPerLabelSet := prometheus.NewCounterVec(
@@ -192,14 +196,14 @@ func NewValidateMetrics(r prometheus.Registerer) *ValidateMetrics {
 // Used in test only for now.
 func (m *ValidateMetrics) updateSamplesDiscardedForSeries(userID, reason string, labelSetLimits []LimitsPerLabelSet, lbls labels.Labels, count int) {
 	matchedLimits := LimitsPerLabelSetsForSeries(labelSetLimits, lbls)
-	m.updateSamplesDiscarded(userID, reason, matchedLimits, count)
+	m.updateSamplesDiscarded(userID, reason, SampleTypeFloat, matchedLimits, count)
 }
 
 // updateSamplesDiscarded updates discarded samples and discarded samples per labelset for the provided reason.
 // The provided label set needs to be pre-filtered to match the series if applicable.
 // Used in test only for now.
-func (m *ValidateMetrics) updateSamplesDiscarded(userID, reason string, labelSetLimits []LimitsPerLabelSet, count int) {
-	m.DiscardedSamples.WithLabelValues(reason, userID).Add(float64(count))
+func (m *ValidateMetrics) updateSamplesDiscarded(userID, reason, sampleType string, labelSetLimits []LimitsPerLabelSet, count int) {
+	m.DiscardedSamples.WithLabelValues(reason, userID, sampleType).Add(float64(count))
 	for _, limit := range labelSetLimits {
 		m.LabelSetTracker.Track(userID, limit.Hash, limit.LabelSet)
 		m.DiscardedSamplesPerLabelSet.WithLabelValues(reason, userID, limit.LabelSet.String()).Add(float64(count))
@@ -227,12 +231,12 @@ func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, u
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
 	if limits.RejectOldSamples && model.Time(timestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
-		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID, SampleTypeFloat).Inc()
 		return newSampleTimestampTooOldError(unsafeMetricName, timestampMs)
 	}
 
 	if model.Time(timestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
-		validateMetrics.DiscardedSamples.WithLabelValues(tooFarInFuture, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(tooFarInFuture, userID, SampleTypeFloat).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, timestampMs)
 	}
 
@@ -282,19 +286,19 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	if limits.EnforceMetricName {
 		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 		if err != nil {
-			validateMetrics.DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(missingMetricName, userID, SampleTypeFloat).Inc()
 			return newNoMetricNameError()
 		}
 
 		if !nameValidationScheme.IsValidMetricName(unsafeMetricName) {
-			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID, SampleTypeFloat).Inc()
 			return newInvalidMetricNameError(unsafeMetricName)
 		}
 	}
 
 	numLabelNames := len(ls)
 	if numLabelNames > limits.MaxLabelNamesPerSeries {
-		validateMetrics.DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID, SampleTypeFloat).Inc()
 		return newTooManyLabelsError(ls, limits.MaxLabelNamesPerSeries)
 	}
 
@@ -306,21 +310,21 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 
 	for _, l := range ls {
 		if !skipLabelNameValidation && !nameValidationScheme.IsValidLabelName(l.Name) {
-			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID, SampleTypeFloat).Inc()
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {
-			validateMetrics.DiscardedSamples.WithLabelValues(labelNameTooLong, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(labelNameTooLong, userID, SampleTypeFloat).Inc()
 			return newLabelNameTooLongError(ls, l.Name, maxLabelNameLength)
 		} else if len(l.Value) > maxLabelValueLength {
-			validateMetrics.DiscardedSamples.WithLabelValues(labelValueTooLong, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(labelValueTooLong, userID, SampleTypeFloat).Inc()
 			return newLabelValueTooLongError(ls, l.Name, l.Value, maxLabelValueLength)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
 			if cmp == 0 {
-				validateMetrics.DiscardedSamples.WithLabelValues(duplicateLabelNames, userID).Inc()
+				validateMetrics.DiscardedSamples.WithLabelValues(duplicateLabelNames, userID, SampleTypeFloat).Inc()
 				return newDuplicatedLabelError(ls, l.Name)
 			}
 
-			validateMetrics.DiscardedSamples.WithLabelValues(labelsNotSorted, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(labelsNotSorted, userID, SampleTypeFloat).Inc()
 			return newLabelsNotSortedError(ls, l.Name)
 		}
 
@@ -329,7 +333,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	}
 	validateMetrics.LabelSizeBytes.WithLabelValues(userID).Observe(float64(labelsSizeBytes))
 	if maxLabelsSizeBytes > 0 && labelsSizeBytes > maxLabelsSizeBytes {
-		validateMetrics.DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID, SampleTypeFloat).Inc()
 		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
 	}
 	return nil
@@ -371,13 +375,13 @@ func ValidateMetadata(validateMetrics *ValidateMetrics, cfg *Limits, userID stri
 func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, histogramSample cortexpb.Histogram) (cortexpb.Histogram, error) {
 	// sample size validation for native histogram
 	if limits.MaxNativeHistogramSampleSizeBytes > 0 && histogramSample.Size() > limits.MaxNativeHistogramSampleSizeBytes {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSampleSizeBytesExceeded, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSampleSizeBytesExceeded, userID, SampleTypeHistogram).Inc()
 		return cortexpb.Histogram{}, newNativeHistogramSampleSizeBytesExceededError(ls, histogramSample.Size(), limits.MaxNativeHistogramSampleSizeBytes)
 	}
 
 	// schema validation for native histogram
 	if histogramSample.Schema < histogram.ExponentialSchemaMin || histogramSample.Schema > histogram.ExponentialSchemaMax {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalidSchema, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalidSchema, userID, SampleTypeHistogram).Inc()
 		return cortexpb.Histogram{}, newNativeHistogramSchemaInvalidError(ls, int(histogramSample.Schema))
 	}
 
@@ -388,7 +392,7 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	if histogramSample.IsFloatHistogram() {
 		fh := cortexpb.FloatHistogramProtoToFloatHistogram(histogramSample)
 		if err := fh.Validate(); err != nil {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID, SampleTypeHistogram).Inc()
 			return cortexpb.Histogram{}, newNativeHistogramInvalidError(ls, err)
 		}
 
@@ -404,14 +408,14 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 
 		// Exceed limit.
 		if histogramSample.Schema <= histogram.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID, SampleTypeHistogram).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 
 		oBuckets := len(fh.PositiveBuckets) + len(fh.NegativeBuckets)
 		for len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 			if fh.Schema <= histogram.ExponentialSchemaMin {
-				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID, SampleTypeHistogram).Inc()
 				return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 			}
 			fh = fh.ReduceResolution(fh.Schema - 1)
@@ -425,7 +429,7 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 
 	h := cortexpb.HistogramProtoToHistogram(histogramSample)
 	if err := h.Validate(); err != nil {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID, SampleTypeHistogram).Inc()
 		return cortexpb.Histogram{}, newNativeHistogramInvalidError(ls, err)
 	}
 
@@ -440,13 +444,13 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	}
 	// Exceed limit.
 	if histogramSample.Schema <= histogram.ExponentialSchemaMin {
-		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID, SampleTypeHistogram).Inc()
 		return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 	}
 	oBuckets := len(h.PositiveBuckets) + len(h.NegativeBuckets)
 	for len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
 		if h.Schema <= histogram.ExponentialSchemaMin {
-			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID, SampleTypeHistogram).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
 		h = h.ReduceResolution(h.Schema - 1)

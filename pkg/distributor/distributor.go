@@ -775,7 +775,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
-				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
+				if numFloatSamples > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeFloat).Add(float64(numFloatSamples))
+				}
+				if numHistogramSamples > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeHistogram).Add(float64(numHistogramSamples))
+				}
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			return nil, err
@@ -805,7 +810,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
+		if validatedFloatSamples > 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID, validation.SampleTypeFloat).Add(float64(validatedFloatSamples))
+		}
+		if validatedHistogramSamples > 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID, validation.SampleTypeHistogram).Add(float64(validatedHistogramSamples))
+		}
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		// Return a 429 here to tell the client it is going too fast.
@@ -820,7 +830,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	var nativeHistogramErr error
 
 	if !d.nativeHistogramIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID, validation.SampleTypeHistogram).Add(float64(validatedHistogramSamples))
 		nativeHistogramErr = httpgrpc.Errorf(http.StatusTooManyRequests, "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
 		validatedHistogramSamples = 0
 	} else {
@@ -1043,7 +1053,12 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 						d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples) + len(ts.Histograms)))
 					}
 					if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
-						d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+						if len(ts.Samples) > 0 {
+							d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeFloat).Add(float64(len(ts.Samples)))
+						}
+						if len(ts.Histograms) > 0 {
+							d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeHistogram).Add(float64(len(ts.Histograms)))
+						}
 					}
 
 					continue
@@ -1067,10 +1082,20 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if l.Len() == 0 {
 				// all labels are gone, samples will be discarded
-				d.validateMetrics.DiscardedSamples.WithLabelValues(
-					validation.DroppedByRelabelConfiguration,
-					userID,
-				).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+				if len(ts.Samples) > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(
+						validation.DroppedByRelabelConfiguration,
+						userID,
+						validation.SampleTypeFloat,
+					).Add(float64(len(ts.Samples)))
+				}
+				if len(ts.Histograms) > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(
+						validation.DroppedByRelabelConfiguration,
+						userID,
+						validation.SampleTypeHistogram,
+					).Add(float64(len(ts.Histograms)))
+				}
 
 				// all labels are gone, exemplars will be discarded
 				d.validateMetrics.DiscardedExemplars.WithLabelValues(
@@ -1097,10 +1122,20 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		removeEmptyLabels(&ts.Labels)
 
 		if len(ts.Labels) == 0 {
-			d.validateMetrics.DiscardedSamples.WithLabelValues(
-				validation.DroppedByUserConfigurationOverride,
-				userID,
-			).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+			if len(ts.Samples) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
+					validation.DroppedByUserConfigurationOverride,
+					userID,
+					validation.SampleTypeFloat,
+				).Add(float64(len(ts.Samples)))
+			}
+			if len(ts.Histograms) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
+					validation.DroppedByUserConfigurationOverride,
+					userID,
+					validation.SampleTypeHistogram,
+				).Add(float64(len(ts.Histograms)))
+			}
 
 			d.validateMetrics.DiscardedExemplars.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,

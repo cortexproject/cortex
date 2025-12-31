@@ -283,7 +283,9 @@ func (g *PartitionCompactionGrouper) groupBlocksByRange(blocks []*metadata.Meta,
 		}
 
 		if len(group.blocks) > 1 {
-			ret = append(ret, group)
+			if time.UnixMilli(group.rangeEnd).Before(time.Now().Add(-2 * g.compactorCfg.CleanupInterval)) {
+				ret = append(ret, group)
+			}
 		}
 	}
 

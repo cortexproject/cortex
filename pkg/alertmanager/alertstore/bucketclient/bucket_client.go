@@ -67,7 +67,7 @@ func NewBucketAlertStore(bkt objstore.InstrumentedBucket, userScannerCfg users.U
 		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
 			Strategy: users.UserScanStrategyList,
 		}, alertBucket, logger, regWithComponent)
-		userIndexUpdater = users.NewUserIndexUpdater(alertBucket, userScannerCfg.CleanUpInterval, baseScanner, regWithComponent)
+		userIndexUpdater = users.NewUserIndexUpdater(alertBucket, userScannerCfg.UpdateInterval, baseScanner, regWithComponent)
 	}
 
 	return &BucketAlertStore{

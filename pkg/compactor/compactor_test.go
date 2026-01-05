@@ -1580,7 +1580,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
 	storageCfg.UsersScanner.Strategy = users.UserScanStrategyUserIndex
-	storageCfg.UsersScanner.CleanUpInterval = 100 * time.Millisecond // Short interval for testing
+	storageCfg.UsersScanner.UpdateInterval = 100 * time.Millisecond // Short interval for testing
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()

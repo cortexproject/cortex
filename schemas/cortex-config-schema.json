@@ -912,13 +912,6 @@
               "x-cli-flag": "alertmanager-storage.users-scanner.cache-ttl",
               "x-format": "duration"
             },
-            "clean_up_interval": {
-              "default": "15m0s",
-              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
-              "type": "string",
-              "x-cli-flag": "alertmanager-storage.users-scanner.user-index.cleanup-interval",
-              "x-format": "duration"
-            },
             "max_stale_period": {
               "default": "1h0m0s",
               "description": "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.",
@@ -931,6 +924,13 @@
               "description": "Strategy to use to scan users. Supported values are: list, user_index.",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
             }
           },
           "type": "object"
@@ -3114,13 +3114,6 @@
               "x-cli-flag": "blocks-storage.users-scanner.cache-ttl",
               "x-format": "duration"
             },
-            "clean_up_interval": {
-              "default": "15m0s",
-              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
-              "type": "string",
-              "x-cli-flag": "blocks-storage.users-scanner.user-index.cleanup-interval",
-              "x-format": "duration"
-            },
             "max_stale_period": {
               "default": "1h0m0s",
               "description": "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.",
@@ -3133,6 +3126,13 @@
               "description": "Strategy to use to scan users. Supported values are: list, user_index.",
               "type": "string",
               "x-cli-flag": "blocks-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
             }
           },
           "type": "object"
@@ -7472,13 +7472,6 @@
               "x-cli-flag": "ruler-storage.users-scanner.cache-ttl",
               "x-format": "duration"
             },
-            "clean_up_interval": {
-              "default": "15m0s",
-              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
-              "type": "string",
-              "x-cli-flag": "ruler-storage.users-scanner.user-index.cleanup-interval",
-              "x-format": "duration"
-            },
             "max_stale_period": {
               "default": "1h0m0s",
               "description": "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.",
@@ -7491,6 +7484,13 @@
               "description": "Strategy to use to scan users. Supported values are: list, user_index.",
               "type": "string",
               "x-cli-flag": "ruler-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
             }
           },
           "type": "object"

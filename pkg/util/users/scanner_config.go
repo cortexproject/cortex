@@ -10,17 +10,17 @@ import (
 )
 
 type UsersScannerConfig struct {
-	Strategy        string        `yaml:"strategy"`
-	MaxStalePeriod  time.Duration `yaml:"max_stale_period"`
-	CleanUpInterval time.Duration `yaml:"clean_up_interval"`
-	CacheTTL        time.Duration `yaml:"cache_ttl"`
+	Strategy       string        `yaml:"strategy"`
+	MaxStalePeriod time.Duration `yaml:"max_stale_period"`
+	UpdateInterval time.Duration `yaml:"update_interval"`
+	CacheTTL       time.Duration `yaml:"cache_ttl"`
 }
 
 const (
 	UserScanStrategyList      = "list"
 	UserScanStrategyUserIndex = "user_index"
 
-	defaultCleanUpInterval = time.Minute * 15
+	defaultUpdateInterval = time.Minute * 15
 )
 
 var (
@@ -46,6 +46,6 @@ func (c *UsersScannerConfig) Validate() error {
 func (c *UsersScannerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Strategy, prefix+"users-scanner.strategy", UserScanStrategyList, fmt.Sprintf("Strategy to use to scan users. Supported values are: %s.", strings.Join(supportedStrategies, ", ")))
 	f.DurationVar(&c.MaxStalePeriod, prefix+"users-scanner.user-index.max-stale-period", time.Hour, "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.")
-	f.DurationVar(&c.CleanUpInterval, prefix+"users-scanner.user-index.cleanup-interval", defaultCleanUpInterval, fmt.Sprintf("How frequently user index file is updated. It only takes effect when user scan strategy is %s.", UserScanStrategyUserIndex))
+	f.DurationVar(&c.UpdateInterval, prefix+"users-scanner.user-index.update-interval", defaultUpdateInterval, fmt.Sprintf("How frequently user index file is updated. It only takes effect when user scan strategy is %s.", UserScanStrategyUserIndex))
 	f.DurationVar(&c.CacheTTL, prefix+"users-scanner.cache-ttl", 0, "TTL of the cached users. 0 disables caching and relies on caching at bucket client level.")
 }

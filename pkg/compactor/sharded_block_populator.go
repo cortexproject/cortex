@@ -52,6 +52,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	}()
 	metrics.PopulatingBlocks.Set(1)
 
+	begin := time.Now()
 	globalMaxt := blocks[0].Meta().MaxTime
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
@@ -91,7 +92,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 			if err != nil {
 				return err
 			}
-			level.Debug(c.logger).Log("msg", "finished sharding", "duration", time.Since(shardStart))
+			level.Debug(c.logger).Log("msg", "finished sharding", "duration", time.Since(shardStart), "duration_ms", time.Since(shardStart).Milliseconds())
 			// Blocks meta is half open: [min, max), so subtract 1 to ensure we don't hold samples with exact meta.MaxTime timestamp.
 			setsMtx.Lock()
 			sets = append(sets, tsdb.NewBlockChunkSeriesSet(meta.ULID, indexr, chunkr, tombsr, shardedPosting, meta.MinTime, meta.MaxTime-1, false))
@@ -103,7 +104,9 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	if err := g.Wait(); err != nil {
 		return err
 	}
+	level.Info(c.logger).Log("msg", "finished sharding all blocks and created series sets", "series_sets_count", len(sets), "symbols_count", len(symbols), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
+	begin = time.Now()
 	symbolsList := make([]string, len(symbols))
 	symbolIdx := 0
 	for symbol := range symbols {
@@ -116,6 +119,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 			return errors.Wrap(err, "add symbol")
 		}
 	}
+	level.Info(c.logger).Log("msg", "finished sorting symbols and added to index", "symbols_count", len(symbols), "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	var (
 		ref = storage.SeriesRef(0)
@@ -131,6 +135,8 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 		defer cancel()
 	}
 
+	begin = time.Now()
+	seriesCount := 0
 	go func() {
 		// Iterate over all sorted chunk series.
 		for set.Next() {
@@ -173,6 +179,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 				if err := indexw.AddSeries(r, s.Labels(), chks...); err != nil {
 					return errors.Wrap(err, "add series")
 				}
+				seriesCount++
 
 				meta.Stats.NumChunks += uint64(len(chks))
 				meta.Stats.NumSeries++
@@ -209,6 +216,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 			return err
 		}
 	}
+	level.Info(c.logger).Log("msg", "finished iterating all series sets", "series_sets_count", len(sets), "series_count", seriesCount, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
 	if set.Err() != nil {
 		return errors.Wrap(set.Err(), "iterate compaction set")

@@ -319,7 +319,7 @@ func (c *BlocksCleaner) runEmitPartitionMetricsWorker(ctx context.Context, jobCh
 		err := concurrency.ForEachUser(ctx, job.users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 			userLogger := util_log.WithUserID(userID, c.logger)
 			userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
-			c.emitUserParititionMetrics(ctx, userLogger, userBucket, userID)
+			c.emitUserPartitionMetrics(ctx, userLogger, userBucket, userID)
 			return nil
 		})
 
@@ -789,13 +789,14 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		isPartitionGroupInfoDeleted := false
 		partitionedGroupInfoFile := extraInfo.path
 		deletedBlocksCount := 0
+		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
 				deletedBlocksCount, err = partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
 				if err != nil {
-					level.Warn(userLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+					level.Warn(partitionedGroupLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion")
 					// if one block can not be marked for deletion, we should
 					// skip delete this partitioned group. next iteration
 					// would try it again.
@@ -804,13 +805,13 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 			}
 
 			if deletedBlocksCount > 0 {
-				level.Info(userLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				level.Info(partitionedGroupLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle")
 			} else {
-				level.Info(userLogger).Log("msg", "deleting partition group because either all associated blocks have been deleted or partition group is invalid", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				level.Info(partitionedGroupLogger).Log("msg", "deleting partition group because either all associated blocks have been deleted or partition group is invalid")
 				if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
-					level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_file", partitionedGroupInfoFile, "err", err)
 				} else {
-					level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+					level.Info(partitionedGroupLogger).Log("msg", "deleted partitioned group info", "partitioned_group_file", partitionedGroupInfoFile)
 					isPartitionGroupInfoDeleted = true
 				}
 			}
@@ -819,15 +820,15 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		if isPartitionGroupInfoDeleted && (extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker) {
 			// Remove partition visit markers
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
-				level.Warn(userLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "err", err)
 			} else {
-				level.Info(userLogger).Log("msg", "deleted partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile)
+				level.Info(partitionedGroupLogger).Log("msg", "deleted partition visit markers for partitioned group")
 			}
 		}
 	}
 }
 
-func (c *BlocksCleaner) emitUserParititionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
+func (c *BlocksCleaner) emitUserPartitionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
 	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error listing partitioned group directory to emit metrics", "err", err)
@@ -842,7 +843,7 @@ func (c *BlocksCleaner) emitUserParititionMetrics(ctx context.Context, userLogge
 		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
 		if oldestPartitionGroup != nil {
 			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
+			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTimeString())
 		} else {
 			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
 		}
@@ -874,8 +875,9 @@ func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objs
 			return nil
 		}
 
+		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
-		level.Debug(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
+		level.Debug(partitionedGroupLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
 		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
 			path   string
 			status PartitionedGroupStatus

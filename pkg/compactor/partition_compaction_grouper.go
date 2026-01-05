@@ -171,7 +171,7 @@ func (g *PartitionCompactionGrouper) generateCompactionJobs(blocks map[ulid.ULID
 	var blockIDs []string
 	for _, p := range existingPartitionedGroups {
 		blockIDs = p.getAllBlockIDs()
-		level.Info(g.logger).Log("msg", "existing partitioned group", "partitioned_group_id", p.PartitionedGroupID, "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
+		level.Info(g.logger).Log("msg", "existing partitioned group", "partitioned_group_id", p.PartitionedGroupID, "partitioned_group_creation_time", p.CreationTimeString(), "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 
 	allPartitionedGroup, err := g.generatePartitionedGroups(blocks, groups, existingPartitionedGroups, timeRanges)
@@ -181,13 +181,13 @@ func (g *PartitionCompactionGrouper) generateCompactionJobs(blocks map[ulid.ULID
 	g.sortPartitionedGroups(allPartitionedGroup)
 	for _, p := range allPartitionedGroup {
 		blockIDs = p.getAllBlockIDs()
-		level.Info(g.logger).Log("msg", "partitioned group ready for compaction", "partitioned_group_id", p.PartitionedGroupID, "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
+		level.Info(g.logger).Log("msg", "partitioned group ready for compaction", "partitioned_group_id", p.PartitionedGroupID, "partitioned_group_creation_time", p.CreationTimeString(), "partition_count", p.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 
 	partitionCompactionJobs := g.generatePartitionCompactionJobs(blocks, allPartitionedGroup, g.doRandomPick)
 	for _, p := range partitionCompactionJobs {
 		blockIDs = p.getBlockIDs()
-		level.Info(g.logger).Log("msg", "partitioned compaction job", "partitioned_group_id", p.partitionedGroupInfo.PartitionedGroupID, "partition_id", p.partition.PartitionID, "partition_count", p.partitionedGroupInfo.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
+		level.Info(g.logger).Log("msg", "partitioned compaction job", "partitioned_group_id", p.partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", p.partitionedGroupInfo.CreationTimeString(), "partition_id", p.partition.PartitionID, "partition_count", p.partitionedGroupInfo.PartitionCount, "rangeStart", p.rangeStartTime().String(), "rangeEnd", p.rangeEndTime().String(), "blocks", strings.Join(blockIDs, ","))
 	}
 	return partitionCompactionJobs, nil
 }
@@ -582,10 +582,10 @@ func (g *PartitionCompactionGrouper) generatePartitionCompactionJobs(blocks map[
 			partition := partitionedGroupInfo.Partitions[i]
 			if len(partition.Blocks) == 1 {
 				partition.Blocks = append(partition.Blocks, DUMMY_BLOCK_ID)
-				level.Info(g.logger).Log("msg", "handled single block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
+				level.Info(g.logger).Log("msg", "handled single block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString(), "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
 			} else if len(partition.Blocks) < 1 {
 				if err := g.handleEmptyPartition(partitionedGroupInfo, partition); err != nil {
-					level.Warn(g.logger).Log("msg", "failed to handle empty partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID, "err", err)
+					level.Warn(g.logger).Log("msg", "failed to handle empty partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString(), "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID, "err", err)
 				}
 				continue
 			}
@@ -609,7 +609,7 @@ func (g *PartitionCompactionGrouper) handleEmptyPartition(partitionedGroupInfo *
 		return nil
 	}
 
-	level.Info(g.logger).Log("msg", "handling empty block partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
+	level.Info(g.logger).Log("msg", "handling empty block partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString(), "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
 	visitMarker := &partitionVisitMarker{
 		PartitionedGroupID: partitionedGroupInfo.PartitionedGroupID,
 		PartitionID:        partition.PartitionID,
@@ -618,7 +618,7 @@ func (g *PartitionCompactionGrouper) handleEmptyPartition(partitionedGroupInfo *
 	visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
 	visitMarkerManager.MarkWithStatus(g.ctx, Completed)
 
-	level.Info(g.logger).Log("msg", "handled empty block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
+	level.Info(g.logger).Log("msg", "handled empty block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString(), "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
 	return nil
 }
 
@@ -720,7 +720,7 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 	for _, p := range outGroups {
 		partitionInfo, err := tsdb.ConvertToPartitionInfo(p.Extensions())
 		if err == nil && partitionInfo != nil {
-			level.Info(g.logger).Log("msg", "picked compaction job", "partitioned_group_id", partitionInfo.PartitionedGroupID, "partition_count", partitionInfo.PartitionCount)
+			level.Info(g.logger).Log("msg", "picked compaction job", "partitioned_group_id", partitionInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionInfo.CreationTimeString(), "partition_count", partitionInfo.PartitionCount)
 		}
 	}
 	return outGroups

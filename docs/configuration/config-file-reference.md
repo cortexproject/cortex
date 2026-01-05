@@ -999,8 +999,8 @@ users_scanner:
 
   # How frequently user index file is updated. It only takes effect when user
   # scan strategy is user_index.
-  # CLI flag: -alertmanager-storage.users-scanner.user-index.cleanup-interval
-  [clean_up_interval: <duration> | default = 15m]
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -2624,8 +2624,8 @@ users_scanner:
 
   # How frequently user index file is updated. It only takes effect when user
   # scan strategy is user_index.
-  # CLI flag: -blocks-storage.users-scanner.user-index.cleanup-interval
-  [clean_up_interval: <duration> | default = 15m]
+  # CLI flag: -blocks-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -5905,8 +5905,8 @@ users_scanner:
 
   # How frequently user index file is updated. It only takes effect when user
   # scan strategy is user_index.
-  # CLI flag: -ruler-storage.users-scanner.user-index.cleanup-interval
-  [clean_up_interval: <duration> | default = 15m]
+  # CLI flag: -ruler-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.

@@ -65,7 +65,7 @@ func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg users.UsersScannerCo
 		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
 			Strategy: users.UserScanStrategyList,
 		}, rulesBucket, logger, regWithComponent)
-		userIndexUpdater = users.NewUserIndexUpdater(rulesBucket, userScannerCfg.CleanUpInterval, baseScanner, regWithComponent)
+		userIndexUpdater = users.NewUserIndexUpdater(rulesBucket, userScannerCfg.UpdateInterval, baseScanner, regWithComponent)
 	}
 
 	return &BucketRuleStore{

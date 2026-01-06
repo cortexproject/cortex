@@ -107,6 +107,7 @@ var (
 	errExemplarRef      = errors.New("exemplars not ingested because series not already present")
 	errIngesterStopping = errors.New("ingester stopping")
 	errNoUserDb         = errors.New("no user db")
+	errLabelsOutOfOrder = errors.New("labels out of order")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 )
@@ -1247,15 +1248,16 @@ type extendedAppender interface {
 
 func (i *Ingester) isLabelSetOutOfOrder(lbls labels.Labels) bool {
 	last := ""
-	ooo := false
-	lbls.Range(func(l labels.Label) {
-		if strings.Compare(last, l.Name) > 0 {
-			ooo = true
+
+	err := lbls.Validate(func(l labels.Label) error {
+		if last > l.Name {
+			return errLabelsOutOfOrder
 		}
 		last = l.Name
+		return nil
 	})
 
-	return ooo
+	return errors.Is(err, errLabelsOutOfOrder)
 }
 
 // Push adds metrics to a block

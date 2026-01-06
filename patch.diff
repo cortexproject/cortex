@@ -1,0 +1,78 @@
+diff --git a/pkg/scheduler/queue/queue_test.go b/pkg/scheduler/queue/queue_test.go
+index 47bd5295271..4b9561fc76d 100644
+--- a/pkg/scheduler/queue/queue_test.go
++++ b/pkg/scheduler/queue/queue_test.go
+@@ -285,6 +285,60 @@ func TestQueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
+ 	assert.Equal(t, highPriorityRequest, nextRequest) // high priority request returned, although it was enqueued the last
+ }
+ 
++func TestGetOrAddQueue_ShouldNotDeadlockWhenLimitsAreReduced(t *testing.T) {
++	// Setup: Large initial limit
++	initialLimit := 100
++	newLimit := 50
++
++	limits := MockLimits{
++		MaxOutstanding: initialLimit,
++	}
++
++	// Initialize queues
++	q := newUserQueues(0, limits, nil)
++
++	// Create user queue
++	userID := "test-user-deadlock"
++	queue := q.getOrAddQueue(userID, 1)
++
++	// Fill queue to capacity (near initialLimit)
++	// We fill it more than newLimit
++	itemsToFill := 80
++	for i := 0; i < itemsToFill; i++ {
++		queue.enqueueRequest(MockRequest{priority: 1})
++	}
++
++	require.Equal(t, itemsToFill, queue.length())
++
++	// Reduce limit below current size
++	// We change the mock limits return value.
++	// In real app this comes from runtime config reload.
++	limits.MaxOutstanding = newLimit
++	q.limits = limits // Update strict reference in queues struct (mocking the reload effect)
++
++	// Now call getOrAddQueue again.
++	// This triggers the migration logic: existing queue (80 items) -> new queue (cap 50).
++	done := make(chan struct{})
++	go func() {
++		_ = q.getOrAddQueue(userID, 1)
++		close(done)
++	}()
++
++	select {
++	case <-done:
++		// Success: no deadlock
++	case <-time.After(2 * time.Second):
++		t.Fatal("Deadlock detected! getOrAddQueue timed out while migrating queue with reduced limits.")
++	}
++
++	// The new queue should be capped at newLimit or contain what managed to fit.
++	// Logic: it breaks when full. So new queue should be full (length == newLimit).
++	newQueue := q.getOrAddQueue(userID, 1) // Should be fast now
++
++	// Note: The actual items in queue should be newLimit (50). The rest (30) are dropped.
++	assert.Equal(t, newLimit, newQueue.length())
++}
++
+ func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {
+ 	queue := NewRequestQueue(0,
+ 		prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"user", "priority", "type"}),
+diff --git a/pkg/scheduler/queue/user_queues.go b/pkg/scheduler/queue/user_queues.go
+index c7e30d87375..eaed52ad2e4 100644
+--- a/pkg/scheduler/queue/user_queues.go
++++ b/pkg/scheduler/queue/user_queues.go
+@@ -169,7 +169,7 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue
+ 		tmpQueue := q.createUserRequestQueue(userID)
+ 
+ 		// flush to new queue
+-		for uq.queue.length() > 0 {
++		for (uq.queue.length() > 0) && (tmpQueue.length() < maxOutstanding) {
+ 			tmpQueue.enqueueRequest(uq.queue.dequeueRequest(0, false))
+ 		}
+ 

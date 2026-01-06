@@ -106,9 +106,9 @@ var (
 	errExemplarRef      = errors.New("exemplars not ingested because series not already present")
 	errIngesterStopping = errors.New("ingester stopping")
 	errNoUserDb         = errors.New("no user db")
-
-	tsChunksPool        zeropool.Pool[[]client.TimeSeriesChunk]
 	errLabelsOutOfOrder = errors.New("labels out of order")
+
+	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 )
 
 // Config for an Ingester.

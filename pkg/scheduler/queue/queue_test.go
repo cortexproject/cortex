@@ -304,7 +304,7 @@ func TestGetOrAddQueue_ShouldNotDeadlockWhenLimitsAreReduced(t *testing.T) {
 	// Fill queue to capacity (near initialLimit)
 	// We fill it more than newLimit
 	itemsToFill := 80
-	for i := 0; i < itemsToFill; i++ {
+	for range itemsToFill {
 		queue.enqueueRequest(MockRequest{priority: 1})
 	}
 

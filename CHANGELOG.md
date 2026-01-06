@@ -29,7 +29,8 @@
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
 * [ENHANCEMENT] Upgrade to go 1.25. #7164
 * [ENHANCEMENT] Upgraded container base images to `alpine:3.23`. #7163
-* [ENHANCEMENT] Instrument Ingester CPU profile with userID for read APIs. #7184
+* [ENHANCEMENT] Ingester: Instrument Ingester CPU profile with userID for read APIs. #7184
+* [ENHANCEMENT] Ingester: Add fetch timeout for Ingester expanded postings cache. #7185
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132

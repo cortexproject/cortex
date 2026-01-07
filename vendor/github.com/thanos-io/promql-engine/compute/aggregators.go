@@ -9,10 +9,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/warnings"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
-	"github.com/prometheus/prometheus/util/annotations"
 	"gonum.org/v1/gonum/floats"
 )
 
@@ -24,17 +21,28 @@ const (
 	MixedTypeValue
 )
 
+// Accumulators map prometheus behavior for aggregations, either operators or
+// "[...]_over_time" functions. The caller is responsible to add all errors
+// returned by Add as annotations.
+// Accumulators might ignore histograms (for example min or max), if they do
+// the caller can check the HasIgnoredHistograms method and add appropriate
+// annotations.
+// The ValueType function can be checked to see if the aggregator encountered
+// mixed values for its slot so the caller can again add the appropriate annotations.
 type Accumulator interface {
 	Add(v float64, h *histogram.FloatHistogram) error
 	Value() (float64, *histogram.FloatHistogram)
 	ValueType() ValueType
+	HasIgnoredHistograms() bool
 	Reset(float64)
 }
 
+// VectorAccumulator is like Accumulator but accepts batches of values.
 type VectorAccumulator interface {
 	AddVector(vs []float64, hs []*histogram.FloatHistogram) error
 	Value() (float64, *histogram.FloatHistogram)
 	ValueType() ValueType
+	HasIgnoredHistograms() bool
 	Reset(float64)
 }
 
@@ -43,6 +51,7 @@ type SumAcc struct {
 	compensation float64
 	histSum      *histogram.FloatHistogram
 	hasFloatVal  bool
+	hasError     bool // histogram error occurred; accumulator becomes no-op
 }
 
 func NewSumAcc() *SumAcc {
@@ -50,24 +59,38 @@ func NewSumAcc() *SumAcc {
 }
 
 func (s *SumAcc) AddVector(float64s []float64, histograms []*histogram.FloatHistogram) error {
+	if s.hasError {
+		return nil
+	}
 	if len(float64s) > 0 {
 		s.value, s.compensation = KahanSumInc(compensatedSum(float64s), s.value, s.compensation)
 		s.hasFloatVal = true
 	}
 
-	var err error
 	if len(histograms) > 0 {
+		var err error
 		s.histSum, err = histogramSum(s.histSum, histograms)
+		if err != nil {
+			s.hasError = true
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func (s *SumAcc) Add(v float64, h *histogram.FloatHistogram) error {
+	if s.hasError {
+		return nil
+	}
 	if h == nil {
 		s.hasFloatVal = true
 		s.value, s.compensation = KahanSumInc(v, s.value, s.compensation)
 		return nil
 	}
+	return s.addHistogram(h)
+}
+
+func (s *SumAcc) addHistogram(h *histogram.FloatHistogram) error {
 	if s.histSum == nil {
 		s.histSum = h.Copy()
 		return nil
@@ -76,27 +99,17 @@ func (s *SumAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	// https://github.com/prometheus/prometheus/blob/57bcbf18880f7554ae34c5b341d52fc53f059a97/promql/engine.go#L2448-L2456
 	var err error
 	if h.Schema >= s.histSum.Schema {
-		if s.histSum, err = s.histSum.Add(h); err != nil {
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-				return annotations.MixedExponentialCustomHistogramsWarning
-			}
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				return annotations.IncompatibleCustomBucketsHistogramsWarning
-			}
-			return err
-		}
+		s.histSum, err = s.histSum.Add(h)
 	} else {
 		t := h.Copy()
-		if s.histSum, err = t.Add(s.histSum); err != nil {
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-				return annotations.MixedExponentialCustomHistogramsWarning
-			}
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				return annotations.IncompatibleCustomBucketsHistogramsWarning
-			}
-			return err
+		if s.histSum, err = t.Add(s.histSum); err == nil {
+			s.histSum = t
 		}
-		s.histSum = t
+	}
+	if err != nil {
+		s.histSum = nil
+		s.hasError = true
+		return warnings.ConvertHistogramError(err)
 	}
 	return nil
 }
@@ -118,9 +131,14 @@ func (s *SumAcc) ValueType() ValueType {
 	return NoValue
 }
 
+func (s *SumAcc) HasIgnoredHistograms() bool {
+	return false // Sum handles histograms; use ValueType() instead
+}
+
 func (s *SumAcc) Reset(_ float64) {
 	s.histSum = nil
 	s.hasFloatVal = false
+	s.hasError = false
 	s.value = 0
 	s.compensation = 0
 }
@@ -130,44 +148,49 @@ func NewMaxAcc() *MaxAcc {
 }
 
 type MaxAcc struct {
-	value    float64
-	hasValue bool
+	value       float64
+	hasValue    bool
+	ignoredHist bool
 }
 
 func (c *MaxAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
-	var warn error
 	if len(hs) > 0 {
-		warn = annotations.NewHistogramIgnoredInAggregationInfo("max", posrange.PositionRange{})
+		c.ignoredHist = true
 	}
 	if len(vs) == 0 {
-		return warn
+		return nil
 	}
 
 	fst, rem := vs[0], vs[1:]
-	warn = warnings.Coalesce(warn, c.Add(fst, nil))
-	if len(rem) == 0 {
-		return warn
+	_ = c.Add(fst, nil)
+	if len(rem) > 0 {
+		_ = c.Add(floats.Max(rem), nil)
 	}
-	return warnings.Coalesce(warn, c.Add(floats.Max(rem), nil))
+	return nil
 }
 
 func (c *MaxAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		if c.hasValue {
-			return annotations.NewHistogramIgnoredInAggregationInfo("max", posrange.PositionRange{})
-		}
+		c.ignoredHist = true
 		return nil
 	}
+	c.addFloat(v)
+	return nil
+}
 
+func (c *MaxAcc) HasIgnoredHistograms() bool {
+	return c.ignoredHist
+}
+
+func (c *MaxAcc) addFloat(v float64) {
 	if !c.hasValue {
 		c.value = v
 		c.hasValue = true
-		return nil
+		return
 	}
 	if c.value < v || math.IsNaN(c.value) {
 		c.value = v
 	}
-	return nil
 }
 
 func (c *MaxAcc) Value() (float64, *histogram.FloatHistogram) {
@@ -184,6 +207,7 @@ func (c *MaxAcc) ValueType() ValueType {
 
 func (c *MaxAcc) Reset(_ float64) {
 	c.hasValue = false
+	c.ignoredHist = false
 	c.value = 0
 }
 
@@ -192,45 +216,49 @@ func NewMinAcc() *MinAcc {
 }
 
 type MinAcc struct {
-	value    float64
-	hasValue bool
+	value       float64
+	hasValue    bool
+	ignoredHist bool
 }
 
 func (c *MinAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
-	var warn error
 	if len(hs) > 0 {
-		warn = annotations.NewHistogramIgnoredInAggregationInfo("min", posrange.PositionRange{})
+		c.ignoredHist = true
 	}
 	if len(vs) == 0 {
-		return warn
+		return nil
 	}
 
 	fst, rem := vs[0], vs[1:]
-	warn = warnings.Coalesce(warn, c.Add(fst, nil))
-	if len(rem) == 0 {
-		return warn
+	_ = c.Add(fst, nil)
+	if len(rem) > 0 {
+		_ = c.Add(floats.Min(rem), nil)
 	}
-
-	return warnings.Coalesce(warn, c.Add(floats.Min(rem), nil))
+	return nil
 }
 
 func (c *MinAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		if c.hasValue {
-			return annotations.NewHistogramIgnoredInAggregationInfo("min", posrange.PositionRange{})
-		}
+		c.ignoredHist = true
 		return nil
 	}
+	c.addFloat(v)
+	return nil
+}
 
+func (c *MinAcc) HasIgnoredHistograms() bool {
+	return c.ignoredHist
+}
+
+func (c *MinAcc) addFloat(v float64) {
 	if !c.hasValue {
 		c.value = v
 		c.hasValue = true
-		return nil
+		return
 	}
 	if c.value > v || math.IsNaN(c.value) {
 		c.value = v
 	}
-	return nil
 }
 
 func (c *MinAcc) Value() (float64, *histogram.FloatHistogram) {
@@ -247,6 +275,7 @@ func (c *MinAcc) ValueType() ValueType {
 
 func (c *MinAcc) Reset(_ float64) {
 	c.hasValue = false
+	c.ignoredHist = false
 	c.value = 0
 }
 
@@ -284,6 +313,10 @@ func (c *GroupAcc) ValueType() ValueType {
 	} else {
 		return NoValue
 	}
+}
+
+func (c *GroupAcc) HasIgnoredHistograms() bool {
+	return false
 }
 
 func (c *GroupAcc) Reset(_ float64) {
@@ -325,6 +358,10 @@ func (c *CountAcc) ValueType() ValueType {
 		return NoValue
 	}
 }
+func (c *CountAcc) HasIgnoredHistograms() bool {
+	return false
+}
+
 func (c *CountAcc) Reset(_ float64) {
 	c.hasValue = false
 	c.value = 0
@@ -337,6 +374,7 @@ type AvgAcc struct {
 	incremental bool
 	count       int64
 	hasValue    bool
+	hasError    bool // histogram error occurred; accumulator becomes no-op
 
 	histSum        *histogram.FloatHistogram
 	histScratch    *histogram.FloatHistogram
@@ -349,27 +387,42 @@ func NewAvgAcc() *AvgAcc {
 }
 
 func (a *AvgAcc) Add(v float64, h *histogram.FloatHistogram) error {
-	if h != nil {
-		a.histCount++
-		if a.histSum == nil {
-			a.histSum = h.Copy()
-			a.histScratch = &histogram.FloatHistogram{}
-			a.histSumScratch = &histogram.FloatHistogram{}
-			return nil
-		}
+	if a.hasError {
+		return nil
+	}
+	if h == nil {
+		return a.addFloat(v)
+	}
+	return a.addHistogram(h)
+}
 
-		h.CopyTo(a.histScratch)
-		left := a.histScratch.Div(a.histCount)
-		a.histSum.CopyTo(a.histSumScratch)
-		right := a.histSumScratch.Div(a.histCount)
-		toAdd, err := left.Sub(right)
-		if err != nil {
-			return err
-		}
-		a.histSum, err = a.histSum.Add(toAdd)
-		return err
+func (a *AvgAcc) addHistogram(h *histogram.FloatHistogram) error {
+	a.histCount++
+	if a.histSum == nil {
+		a.histSum = h.Copy()
+		a.histScratch = &histogram.FloatHistogram{}
+		a.histSumScratch = &histogram.FloatHistogram{}
+		return nil
 	}
 
+	h.CopyTo(a.histScratch)
+	left := a.histScratch.Div(a.histCount)
+	a.histSum.CopyTo(a.histSumScratch)
+	right := a.histSumScratch.Div(a.histCount)
+	toAdd, err := left.Sub(right)
+	if err == nil {
+		a.histSum, err = a.histSum.Add(toAdd)
+	}
+	if err != nil {
+		a.histSum = nil
+		a.histCount = 0
+		a.hasError = true
+		return warnings.ConvertHistogramError(err)
+	}
+	return nil
+}
+
+func (a *AvgAcc) addFloat(v float64) error {
 	a.count++
 	if !a.hasValue {
 		a.hasValue = true
@@ -426,6 +479,9 @@ func (a *AvgAcc) Add(v float64, h *histogram.FloatHistogram) error {
 }
 
 func (a *AvgAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
+	if a.hasError {
+		return nil
+	}
 	for _, v := range vs {
 		if err := a.Add(v, nil); err != nil {
 			return err
@@ -433,18 +489,6 @@ func (a *AvgAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 	}
 	for _, h := range hs {
 		if err := a.Add(0, h); err != nil {
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-				// to make valueType NoValue
-				a.histSum = nil
-				a.histCount = 0
-				return annotations.MixedExponentialCustomHistogramsWarning
-			}
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				// to make valueType NoValue
-				a.histSum = nil
-				a.histCount = 0
-				return annotations.IncompatibleCustomBucketsHistogramsWarning
-			}
 			return err
 		}
 	}
@@ -474,8 +518,13 @@ func (a *AvgAcc) ValueType() ValueType {
 	return NoValue
 }
 
+func (a *AvgAcc) HasIgnoredHistograms() bool {
+	return false // Avg handles histograms; use ValueType() instead
+}
+
 func (a *AvgAcc) Reset(_ float64) {
 	a.hasValue = false
+	a.hasError = false
 	a.incremental = false
 	a.kahanSum = 0
 	a.kahanC = 0
@@ -486,24 +535,55 @@ func (a *AvgAcc) Reset(_ float64) {
 }
 
 type statAcc struct {
-	count    float64
-	mean     float64
-	value    float64
-	hasValue bool
+	count       float64
+	mean        float64
+	cMean       float64
+	value       float64
+	cValue      float64
+	hasValue    bool
+	hasNaN      bool
+	ignoredHist bool
 }
 
 func (s *statAcc) ValueType() ValueType {
 	if s.hasValue {
 		return SingleTypeValue
-	} else {
-		return NoValue
 	}
+	return NoValue
 }
+
+func (s *statAcc) HasIgnoredHistograms() bool {
+	return s.ignoredHist
+}
+
 func (s *statAcc) Reset(_ float64) {
 	s.hasValue = false
+	s.hasNaN = false
+	s.ignoredHist = false
 	s.count = 0
 	s.mean = 0
+	s.cMean = 0
 	s.value = 0
+	s.cValue = 0
+}
+
+func (s *statAcc) add(v float64) {
+	s.hasValue = true
+	s.count++
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		s.hasNaN = true
+		return
+	}
+	delta := v - (s.mean + s.cMean)
+	s.mean, s.cMean = KahanSumInc(delta/s.count, s.mean, s.cMean)
+	s.value, s.cValue = KahanSumInc(delta*(v-(s.mean+s.cMean)), s.value, s.cValue)
+}
+
+func (s *statAcc) variance() float64 {
+	if s.hasNaN {
+		return math.NaN()
+	}
+	return (s.value + s.cValue) / s.count
 }
 
 type StdDevAcc struct {
@@ -516,31 +596,15 @@ func NewStdDevAcc() *StdDevAcc {
 
 func (s *StdDevAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		return annotations.NewHistogramIgnoredInAggregationInfo("stddev", posrange.PositionRange{})
+		s.ignoredHist = true
+		return nil
 	}
-
-	s.hasValue = true
-	s.count++
-
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		s.value = math.NaN()
-	} else {
-		delta := v - s.mean
-		s.mean += delta / s.count
-		s.value += delta * (v - s.mean)
-	}
+	s.add(v)
 	return nil
 }
 
 func (s *StdDevAcc) Value() (float64, *histogram.FloatHistogram) {
-	if math.IsNaN(s.value) {
-		return math.NaN(), nil
-	}
-
-	if s.count == 1 {
-		return 0, nil
-	}
-	return math.Sqrt(s.value / s.count), nil
+	return math.Sqrt(s.variance()), nil
 }
 
 type StdVarAcc struct {
@@ -553,37 +617,22 @@ func NewStdVarAcc() *StdVarAcc {
 
 func (s *StdVarAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		return annotations.NewHistogramIgnoredInAggregationInfo("stdvar", posrange.PositionRange{})
+		s.ignoredHist = true
+		return nil
 	}
-
-	s.hasValue = true
-	s.count++
-
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		s.value = math.NaN()
-	} else {
-		delta := v - s.mean
-		s.mean += delta / s.count
-		s.value += delta * (v - s.mean)
-	}
+	s.add(v)
 	return nil
 }
 
 func (s *StdVarAcc) Value() (float64, *histogram.FloatHistogram) {
-	if math.IsNaN(s.value) {
-		return math.NaN(), nil
-	}
-
-	if s.count == 1 {
-		return 0, nil
-	}
-	return s.value / s.count, nil
+	return s.variance(), nil
 }
 
 type QuantileAcc struct {
-	arg      float64
-	points   []float64
-	hasValue bool
+	arg         float64
+	points      []float64
+	hasValue    bool
+	ignoredHist bool
 }
 
 func NewQuantileAcc() Accumulator {
@@ -592,7 +641,8 @@ func NewQuantileAcc() Accumulator {
 
 func (q *QuantileAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		return annotations.NewHistogramIgnoredInAggregationInfo("quantile", posrange.PositionRange{})
+		q.ignoredHist = true
+		return nil
 	}
 
 	q.hasValue = true
@@ -612,8 +662,13 @@ func (q *QuantileAcc) ValueType() ValueType {
 	}
 }
 
+func (q *QuantileAcc) HasIgnoredHistograms() bool {
+	return q.ignoredHist
+}
+
 func (q *QuantileAcc) Reset(f float64) {
 	q.hasValue = false
+	q.ignoredHist = false
 	q.arg = f
 	q.points = q.points[:0]
 }
@@ -664,8 +719,63 @@ func (acc *HistogramAvgAcc) ValueType() ValueType {
 	return NoValue
 }
 
+func (acc *HistogramAvgAcc) HasIgnoredHistograms() bool {
+	return false // HistogramAvg handles histograms; use ValueType() instead
+}
+
 func (acc *HistogramAvgAcc) Reset(f float64) {
 	acc.count = 0
+}
+
+// LastAcc tracks the last value seen. Used for last_over_time.
+type LastAcc struct {
+	value    float64
+	hist     *histogram.FloatHistogram
+	hasValue bool
+}
+
+func NewLastAcc() *LastAcc {
+	return &LastAcc{}
+}
+
+func (l *LastAcc) Add(v float64, h *histogram.FloatHistogram) error {
+	l.hasValue = true
+	if h != nil {
+		l.value = 0
+		if l.hist == nil {
+			l.hist = h.Copy()
+		} else {
+			h.CopyTo(l.hist)
+		}
+	} else {
+		l.value = v
+		l.hist = nil
+	}
+	return nil
+}
+
+func (l *LastAcc) Value() (float64, *histogram.FloatHistogram) {
+	if l.hist != nil {
+		return 0, l.hist.Copy()
+	}
+	return l.value, nil
+}
+
+func (l *LastAcc) ValueType() ValueType {
+	if l.hasValue {
+		return SingleTypeValue
+	}
+	return NoValue
+}
+
+func (l *LastAcc) HasIgnoredHistograms() bool {
+	return false // Last handles histograms; use ValueType() instead
+}
+
+func (l *LastAcc) Reset(_ float64) {
+	l.hasValue = false
+	l.value = 0
+	l.hist = nil
 }
 
 // KahanSumInc implements kahan summation, see https://en.wikipedia.org/wiki/Kahan_summation_algorithm.
@@ -727,26 +837,12 @@ func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.Flo
 	for i := range histograms {
 		if histograms[i].Schema >= histSum.Schema {
 			histSum, err = histSum.Add(histograms[i])
-			if err != nil {
-				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-					return nil, annotations.MixedExponentialCustomHistogramsWarning
-				}
-				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-					return nil, annotations.IncompatibleCustomBucketsHistogramsWarning
-				}
-				return nil, err
-			}
 		} else {
 			t := histograms[i].Copy()
-			if histSum, err = t.Add(histSum); err != nil {
-				if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-					return nil, annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{})
-				}
-				if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-					return nil, annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{})
-				}
-				return nil, err
-			}
+			histSum, err = t.Add(histSum)
+		}
+		if err != nil {
+			return nil, warnings.ConvertHistogramError(err)
 		}
 	}
 	return histSum, nil

@@ -15,7 +15,6 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -48,13 +47,18 @@ func (t *vectorTable) timestamp() int64 {
 	return t.ts
 }
 
-func (t *vectorTable) aggregate(vector model.StepVector) error {
+func (t *vectorTable) aggregate(ctx context.Context, vector model.StepVector) {
 	t.ts = vector.T
-	return t.accumulator.AddVector(vector.Samples, vector.Histograms)
+	if err := t.accumulator.AddVector(vector.Samples, vector.Histograms); err != nil {
+		warnings.AddToContext(err, ctx)
+	}
 }
 
 func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
 	result := pool.GetStepVector(t.ts)
+	if t.accumulator.HasIgnoredHistograms() {
+		warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
+	}
 	switch t.accumulator.ValueType() {
 	case compute.NoValue:
 		return result
@@ -66,7 +70,7 @@ func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) mode
 			result.AppendHistogram(pool, 0, h)
 		}
 	case compute.MixedTypeValue:
-		warnings.AddToContext(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}), ctx)
+		warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
 	}
 	return result
 }

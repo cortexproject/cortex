@@ -37,6 +37,7 @@
 * [BUGFIX] Scheduler: Fix memory leak by properly cleaning up query fragment registry. #7148
 * [BUGFIX] Compactor: Add back deletion of partition group info file even if not complete #7157
 * [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
+* [ENHANCEMENT] Distributor/Ingester: Add `type` label to `cortex_discarded_samples_total` metric to distinguish between float and native histogram samples. #6221
 
 ## 1.20.1 2025-12-03
 

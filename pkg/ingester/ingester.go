@@ -1621,32 +1621,32 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
 	if sampleOutOfBoundsCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID, validation.SampleTypeFloat).Add(float64(sampleOutOfBoundsCount))
 	}
 	if sampleOutOfOrderCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID, validation.SampleTypeFloat).Add(float64(sampleOutOfOrderCount))
 	}
 	if sampleTooOldCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleTooOld, userID, validation.SampleTypeFloat).Add(float64(sampleTooOldCount))
 	}
 	if newValueForTimestampCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID, validation.SampleTypeFloat).Add(float64(newValueForTimestampCount))
 	}
 	if perUserSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID, validation.SampleTypeFloat).Add(float64(perUserSeriesLimitCount))
 	}
 	if perUserNativeHistogramSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramSeriesLimit, userID).Add(float64(perUserNativeHistogramSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramSeriesLimit, userID, validation.SampleTypeHistogram).Add(float64(perUserNativeHistogramSeriesLimitCount))
 	}
 	if perMetricSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID, validation.SampleTypeFloat).Add(float64(perMetricSeriesLimitCount))
 	}
 	if perLabelSetSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID, validation.SampleTypeFloat).Add(float64(perLabelSetSeriesLimitCount))
 	}
 
 	if !i.limits.EnableNativeHistograms(userID) && discardedNativeHistogramCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID, validation.SampleTypeHistogram).Add(float64(discardedNativeHistogramCount))
 	}
 
 	for h, counter := range reasonCounter.counters {

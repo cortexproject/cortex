@@ -2973,7 +2973,7 @@
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.block.enabled"
                     },
                     "fetch_timeout": {
-                      "default": "1m0s",
+                      "default": "0s",
                       "description": "Timeout for fetching postings from TSDB index when cache miss occurs. This prevents runaway queries from consuming resources when all callers have given up.",
                       "type": "string",
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.block.fetch-timeout",
@@ -3005,7 +3005,7 @@
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.head.enabled"
                     },
                     "fetch_timeout": {
-                      "default": "1m0s",
+                      "default": "0s",
                       "description": "Timeout for fetching postings from TSDB index when cache miss occurs. This prevents runaway queries from consuming resources when all callers have given up.",
                       "type": "string",
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.head.fetch-timeout",

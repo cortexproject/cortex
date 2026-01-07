@@ -2004,7 +2004,7 @@ blocks_storage:
         # This prevents runaway queries from consuming resources when all
         # callers have given up.
         # CLI flag: -blocks-storage.expanded_postings_cache.head.fetch-timeout
-        [fetch_timeout: <duration> | default = 1m]
+        [fetch_timeout: <duration> | default = 0s]
 
       # If enabled, ingesters will cache expanded postings for the compacted
       # blocks. The cache is shared between all blocks.
@@ -2025,7 +2025,7 @@ blocks_storage:
         # This prevents runaway queries from consuming resources when all
         # callers have given up.
         # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
-        [fetch_timeout: <duration> | default = 1m]
+        [fetch_timeout: <duration> | default = 0s]
 
   users_scanner:
     # Strategy to use to scan users. Supported values are: list, user_index.

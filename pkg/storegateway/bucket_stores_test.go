@@ -37,6 +37,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -761,6 +762,7 @@ func querySeries(stores BucketStores, userID, metricName string, minT, maxT int6
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)
+	ctx = user.InjectOrgID(ctx, userID)
 	srv := newBucketStoreSeriesServer(ctx)
 	err = stores.Series(req, srv)
 

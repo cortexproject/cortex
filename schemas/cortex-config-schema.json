@@ -2600,6 +2600,19 @@
               },
               "type": "object"
             },
+            "parquet_shard_cache_size": {
+              "default": 512,
+              "description": "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-shard-cache-size"
+            },
+            "parquet_shard_cache_ttl": {
+              "default": "24h0m0s",
+              "description": "[Experimental] TTL of the Parquet shard cache. 0 to no TTL.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-shard-cache-ttl",
+              "x-format": "duration"
+            },
             "series_batch_size": {
               "default": 10000,
               "description": "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.",

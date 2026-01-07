@@ -205,7 +205,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
 	f.BoolVar(&cfg.EnableMatcherOptimization, "ingester.enable-matcher-optimization", false, "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.")
-
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
 }
@@ -2428,7 +2427,7 @@ func (i *Ingester) queryStream(ctx context.Context, userID string, req *client.Q
 	numSeries := 0
 	totalDataBytes := 0
 	numChunks := 0
-	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, userID, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -2467,13 +2466,102 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	}, nil
 }
 
+func isRegexUnOptimized(matcher *labels.Matcher) bool {
+	if matcher.Type != labels.MatchRegexp {
+		return false
+	}
+	// PostingsForMatchers will optimize .* and .+ matchers, so we don't need to check them.
+	if matcher.Value == ".*" || matcher.Value == ".+" {
+		return false
+	}
+	return !matcher.IsRegexOptimized()
+}
+
+// checkRegexMatcherLimits validates regex matchers against configured limits to prevent expensive queries.
+func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, db *userTSDB, matchers []*labels.Matcher, from, through int64) error {
+	var hasUnoptimizedRegex bool
+	// Check if we have any unoptimized regex matchers first
+	if slices.ContainsFunc(matchers, isRegexUnOptimized) {
+		hasUnoptimizedRegex = true
+	}
+	if !hasUnoptimizedRegex {
+		return nil
+	}
+
+	maxPatternLength := i.limits.MaxRegexPatternLength(userID)
+	if maxPatternLength > 0 {
+		for _, matcher := range matchers {
+			if isRegexUnOptimized(matcher) {
+				patternLength := len(matcher.Value)
+				if patternLength > maxPatternLength {
+					return validation.LimitError(fmt.Sprintf(
+						"regex pattern length %d exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific pattern.",
+						patternLength, maxPatternLength, matcher.String(),
+					))
+				}
+			}
+		}
+	}
+
+	// Check cardinality and total value length limits which requires TSDB access.
+	maxCardinality := i.limits.MaxLabelCardinalityForUnoptimizedRegex(userID)
+	maxTotalValueLength := i.limits.MaxTotalLabelValueLengthForUnoptimizedRegex(userID)
+
+	if maxCardinality > 0 || maxTotalValueLength > 0 {
+		labelQuerier, err := db.Querier(from, through)
+		if err != nil {
+			return err
+		}
+		defer labelQuerier.Close()
+
+		for _, matcher := range matchers {
+			if isRegexUnOptimized(matcher) {
+				labelVals, _, err := labelQuerier.LabelValues(ctx, matcher.Name, nil)
+				if err != nil {
+					// If we can't get label values, skip this matcher and continue checking others
+					continue
+				}
+
+				cardinality := len(labelVals)
+
+				// Calculate total length of all values
+				var totalValueLength int
+				for _, val := range labelVals {
+					totalValueLength += len(val)
+				}
+
+				if maxCardinality > 0 && cardinality > maxCardinality {
+					return validation.LimitError(fmt.Sprintf(
+						"label %q has cardinality %d which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
+						matcher.Name, cardinality, maxCardinality, matcher.String(),
+					))
+				}
+
+				if maxTotalValueLength > 0 && totalValueLength > maxTotalValueLength {
+					return validation.LimitError(fmt.Sprintf(
+						"label %q has total value length %d bytes (across %d values) which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
+						matcher.Name, totalValueLength, cardinality, maxTotalValueLength, matcher.String(),
+					))
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, userID string, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
 	defer q.Close()
+
+	// Check regex matcher limits before executing query
+	if err := i.checkRegexMatcherLimits(ctx, userID, db, matchers, from, through); err != nil {
+		return 0, 0, 0, 0, err
+	}
 
 	c, err := i.trackInflightQueryRequest()
 	if err != nil {

@@ -3994,6 +3994,8 @@ func BenchmarkIngester_QueryStreamChunks_MatcherOptimization(b *testing.B) {
 }
 
 func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatcherOptimization bool, matchers []*labels.Matcher, description string) {
+	const userID = "test"
+
 	cfg := defaultIngesterTestConfig(b)
 	cfg.EnableMatcherOptimization = enableMatcherOptimization
 
@@ -4059,7 +4061,7 @@ func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatch
 
 	for b.Loop() {
 		numSeries, numSamples, _, numChunks, err := i.queryStreamChunks(
-			ctx, db, 0, 5000, matchers, sm, mockStream)
+			ctx, userID, db, 0, 5000, matchers, sm, mockStream)
 
 		require.NoError(b, err)
 		require.Greater(b, numSeries, 0)
@@ -7473,4 +7475,189 @@ func fetchMetrics(t *testing.T, registry *prometheus.Registry, prefix string) []
 		}
 	}
 	return metrics
+}
+
+func TestIngester_checkRegexMatcherLimits(t *testing.T) {
+	const userID = "test-user"
+
+	tests := map[string]struct {
+		maxPatternLength     int
+		maxCardinality       int
+		maxTotalValueLength  int
+		labelValues          map[string][]string // label name -> values
+		matchers             []*labels.Matcher
+		expectError          bool
+		expectedErrSubstring string
+	}{
+		// Pattern length tests
+		"no limits, any pattern should succeed": {
+			maxPatternLength: 0,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("a", 1000))},
+			expectError:      false,
+		},
+		"pattern length below limit should succeed": {
+			maxPatternLength: 100,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value[0-9]+")},
+			expectError:      false,
+		},
+		"pattern length exceeds limit should fail": {
+			maxPatternLength:     50,
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("a", 100))},
+			expectError:          true,
+			expectedErrSubstring: "regex pattern length 100 exceeds limit 50",
+		},
+		"pattern length limit should not apply to .* (optimized)": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".*")},
+			expectError:      false,
+		},
+		"pattern length limit should not apply to .+ (optimized)": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".+")},
+			expectError:      false,
+		},
+		"pattern length limit should not apply to optimized prefix match": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "very_long_prefix.*")},
+			expectError:      false,
+		},
+
+		// Cardinality tests
+		"cardinality below limit should succeed": {
+			maxCardinality: 10,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			expectError:    false,
+		},
+		"cardinality exceeds limit should fail": {
+			maxCardinality:       3,
+			labelValues:          map[string][]string{"status": {"val1", "val2", "val3", "val4", "val5"}},
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			expectError:          true,
+			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
+		},
+		"cardinality limit should not apply to .* (optimized)": {
+			maxCardinality: 3,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3", "val4", "val5"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".*")},
+			expectError:    false,
+		},
+		"cardinality limit should not apply to optimized regex": {
+			maxCardinality: 3,
+			labelValues:    map[string][]string{"status": {"value1", "value2", "value3", "value4", "value5"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value.*")},
+			expectError:    false,
+		},
+
+		// Total value length tests
+		"total value length below limit should succeed": {
+			maxTotalValueLength: 1000,
+			labelValues:         map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			expectError:         false,
+		},
+		"total value length exceeds limit should fail": {
+			maxTotalValueLength:  50,
+			labelValues:          map[string][]string{"status": {"value1234567890", "value1234567890", "value1234567890", "value1234567890", "value1234567890"}},
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value[0-9]+")},
+			expectError:          true,
+			expectedErrSubstring: "total value length 75 bytes",
+		},
+		"total value length limit should not apply to .+ (optimized)": {
+			maxTotalValueLength: 50,
+			labelValues:         map[string][]string{"status": {"value1234567890", "value1234567890", "value1234567890", "value1234567890", "value1234567890"}},
+			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".+")},
+			expectError:         false,
+		},
+
+		// Multiple matchers
+		"multiple matchers, one exceeds limit should fail": {
+			maxCardinality: 3,
+			labelValues: map[string][]string{
+				"status": {"val1", "val2"},
+				"host":   {"host1", "host2", "host3", "host4", "host5"},
+			},
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "host[0-9]+"),
+			},
+			expectError:          true,
+			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
+		},
+		"multiple matchers, mix of optimized and unoptimized": {
+			maxCardinality: 3,
+			labelValues: map[string][]string{
+				"status": {"val1", "val2", "val3", "val4", "val5"},
+				"host":   {"host1", "host2"},
+			},
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "status", ".*"), // Optimized - should not be checked
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "host[0-9]+"),
+			},
+			expectError: false,
+		},
+
+		// Non-regex matchers should not be affected
+		"equal matcher should not be checked": {
+			maxCardinality: 1,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "status", "val1")},
+			expectError:    false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Create ingester with custom per-tenant limits
+			cfg := defaultIngesterTestConfig(t)
+			limits := defaultLimitsTestConfig()
+			limits.MaxRegexPatternLength = testData.maxPatternLength
+			limits.MaxLabelCardinalityForUnoptimizedRegex = testData.maxCardinality
+			limits.MaxTotalLabelValueLengthForUnoptimizedRegex = testData.maxTotalValueLength
+
+			tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+			registry := prometheus.NewRegistry()
+
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, t.TempDir(), registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+				return i.lifecycler.GetState()
+			})
+
+			// Push series with label values
+			ctx := user.InjectOrgID(context.Background(), userID)
+			timestamp := int64(123000)
+
+			for labelName, values := range testData.labelValues {
+				for idx, labelValue := range values {
+					lbls := labels.FromStrings(labels.MetricName, "test_metric", labelName, labelValue, "id", strconv.Itoa(idx))
+					req, _ := mockWriteRequest(t, lbls, float64(idx), timestamp)
+					_, err := i.Push(ctx, req)
+					require.NoError(t, err)
+				}
+			}
+
+			// Get the TSDB for the user
+			db, err := i.getTSDB(userID)
+			require.NoError(t, err)
+			require.NotNil(t, db)
+
+			// Call checkRegexMatcherLimits directly
+			err = i.checkRegexMatcherLimits(ctx, userID, db, testData.matchers, 0, math.MaxInt64)
+
+			if testData.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), testData.expectedErrSubstring)
+
+				// Verify it's a LimitError (won't be retried, won't be marked as partial data)
+				require.True(t, validation.IsLimitError(err), "expected error to be a validation.LimitError")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

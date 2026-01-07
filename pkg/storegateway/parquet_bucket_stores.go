@@ -280,7 +280,7 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, s
 		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf("%v-%v", userID, name)
+	cacheKey := fmt.Sprintf("%v-%v-%v", userID, name, shardID)
 	shard := p.parquetShardCache.Get(cacheKey)
 
 	if shard == nil {

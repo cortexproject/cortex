@@ -376,9 +376,13 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 	}
 
 	// schema validation for native histogram
-	if histogramSample.Schema < histogram.ExponentialSchemaMin || histogramSample.Schema > histogram.ExponentialSchemaMax {
+	schema := histogramSample.Schema
+	isCustomBucketsSchema := schema == histogram.CustomBucketsSchema
+	isExponentialSchema := schema >= histogram.ExponentialSchemaMin && schema <= histogram.ExponentialSchemaMax
+	isValidSchema := isCustomBucketsSchema || isExponentialSchema
+	if !isValidSchema {
 		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalidSchema, userID).Inc()
-		return cortexpb.Histogram{}, newNativeHistogramSchemaInvalidError(ls, int(histogramSample.Schema))
+		return cortexpb.Histogram{}, newNativeHistogramSchemaInvalidError(ls, int(schema))
 	}
 
 	var (
@@ -397,13 +401,22 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 			return histogramSample, nil
 		}
 
+		// Custom bucket cannot reduce resolution
+		if isCustomBucketsSchema {
+			if len(fh.PositiveBuckets)+len(fh.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+				return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+			}
+			return histogramSample, nil
+		}
+
 		exceedLimit = len(histogramSample.PositiveCounts)+len(histogramSample.NegativeCounts) > limits.MaxNativeHistogramBuckets
 		if !exceedLimit {
 			return histogramSample, nil
 		}
 
 		// Exceed limit.
-		if histogramSample.Schema <= histogram.ExponentialSchemaMin {
+		if schema <= histogram.ExponentialSchemaMin {
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
@@ -434,12 +447,21 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 		return histogramSample, nil
 	}
 
+	// Custom bucket cannot reduce resolution
+	if isCustomBucketsSchema {
+		if len(h.PositiveBuckets)+len(h.NegativeBuckets) > limits.MaxNativeHistogramBuckets {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
+			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
+		}
+		return histogramSample, nil
+	}
+
 	exceedLimit = len(histogramSample.PositiveDeltas)+len(histogramSample.NegativeDeltas) > limits.MaxNativeHistogramBuckets
 	if !exceedLimit {
 		return histogramSample, nil
 	}
 	// Exceed limit.
-	if histogramSample.Schema <= histogram.ExponentialSchemaMin {
+	if schema <= histogram.ExponentialSchemaMin {
 		validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 		return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 	}

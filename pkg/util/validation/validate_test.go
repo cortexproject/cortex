@@ -463,6 +463,9 @@ func TestValidateNativeHistogram(t *testing.T) {
 	countMisMatch := tsdbutil.GenerateTestHistogram(0)
 	countMisMatch.Count = 11
 
+	customBucketH := tsdbutil.GenerateTestCustomBucketsHistogram(0)
+	customBucketFH := tsdbutil.GenerateTestCustomBucketsFloatHistogram(0)
+
 	for _, tc := range []struct {
 		name                                   string
 		bucketLimit                            int
@@ -659,6 +662,32 @@ func TestValidateNativeHistogram(t *testing.T) {
 			histogram:                 cortexpb.HistogramToHistogramProto(0, countMisMatch.Copy()),
 			expectedErr:               newNativeHistogramInvalidError(lbls, errors.New("12 observations found in buckets, but the Count field is 11: histogram's observation count should equal the number of observations found in the buckets (in absence of NaN)")),
 			discardedSampleLabelValue: nativeHistogramInvalid,
+		},
+		{
+			name:              "valid custom bucket histogram",
+			bucketLimit:       10,
+			histogram:         cortexpb.HistogramToHistogramProto(0, customBucketH.Copy()),
+			expectedHistogram: cortexpb.HistogramToHistogramProto(0, customBucketH.Copy()),
+		},
+		{
+			name:              "valid custom bucket float histogram",
+			bucketLimit:       10,
+			histogram:         cortexpb.FloatHistogramToHistogramProto(0, customBucketFH.Copy()),
+			expectedHistogram: cortexpb.FloatHistogramToHistogramProto(0, customBucketFH.Copy()),
+		},
+		{
+			name:                      "custom bucket histogram with bucket limit exceeded",
+			bucketLimit:               2,
+			histogram:                 cortexpb.HistogramToHistogramProto(0, customBucketH.Copy()),
+			expectedErr:               newHistogramBucketLimitExceededError(lbls, 2),
+			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
+		},
+		{
+			name:                      "custom bucket float histogram with bucket limit exceeded",
+			bucketLimit:               2,
+			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, customBucketFH.Copy()),
+			expectedErr:               newHistogramBucketLimitExceededError(lbls, 2),
+			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

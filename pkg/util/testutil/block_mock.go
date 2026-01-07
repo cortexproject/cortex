@@ -89,9 +89,10 @@ func MockStorageNonCompactionMark(t testing.TB, bucket objstore.Bucket, userID s
 	return &mark
 }
 
-func MockStorageParquetConverterMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta) *parquet.ConverterMark {
+func MockStorageParquetConverterMark(t testing.TB, bucket objstore.Bucket, userID string, meta tsdb.BlockMeta, shards int) *parquet.ConverterMark {
 	mark := parquet.ConverterMark{
 		Version: 1,
+		Shards:  shards,
 	}
 
 	markContent, err := json.Marshal(mark)

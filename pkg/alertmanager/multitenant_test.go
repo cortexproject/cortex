@@ -226,6 +226,11 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs(t *testing.T) {
 
 	reg := prometheus.NewPedanticRegistry()
 	cfg := mockAlertmanagerConfig(t)
+
+	// Using a relative directory here instead of a fully qualified one to test that files are cleaned up properly
+	relativeTmpDir := "TestMultitenantAlertmanager_loadAndSyncConfigs"
+	cfg.DataDir = relativeTmpDir
+
 	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
 	require.NoError(t, err)
 
@@ -370,6 +375,10 @@ templates:
 	require.True(t, dirExists(t, user3Dir))
 	require.True(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "first.tpl")))
 	require.False(t, fileExists(t, filepath.Join(user3Dir, templatesDir, "second.tpl")))
+
+	// Cleaning up relative tmp directory
+	err = os.RemoveAll(relativeTmpDir)
+	require.NoError(t, err)
 }
 
 func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {

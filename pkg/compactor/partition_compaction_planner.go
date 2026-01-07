@@ -22,6 +22,7 @@ var (
 
 type PartitionCompactionPlanner struct {
 	ctx                                    context.Context
+	ctxCancel                              context.CancelFunc
 	bkt                                    objstore.InstrumentedBucket
 	logger                                 log.Logger
 	ranges                                 []int64
@@ -36,6 +37,7 @@ type PartitionCompactionPlanner struct {
 
 func NewPartitionCompactionPlanner(
 	ctx context.Context,
+	cancel context.CancelFunc,
 	bkt objstore.InstrumentedBucket,
 	logger log.Logger,
 	ranges []int64,
@@ -49,6 +51,7 @@ func NewPartitionCompactionPlanner(
 ) *PartitionCompactionPlanner {
 	return &PartitionCompactionPlanner{
 		ctx:                                    ctx,
+		ctxCancel:                              cancel,
 		bkt:                                    bkt,
 		logger:                                 logger,
 		ranges:                                 ranges,
@@ -73,7 +76,7 @@ func (p *PartitionCompactionPlanner) Plan(ctx context.Context, metasByMinTime []
 	return p.PlanWithPartition(ctx, metasByMinTime, cortexMetaExtensions, errChan)
 }
 
-func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasByMinTime []*metadata.Meta, cortexMetaExtensions *tsdb.CortexMetaExtensions, errChan chan error) ([]*metadata.Meta, error) {
+func (p *PartitionCompactionPlanner) PlanWithPartition(ctx context.Context, metasByMinTime []*metadata.Meta, cortexMetaExtensions *tsdb.CortexMetaExtensions, errChan chan error) ([]*metadata.Meta, error) {
 	partitionInfo := cortexMetaExtensions.PartitionInfo
 	if partitionInfo == nil {
 		return nil, fmt.Errorf("partitionInfo cannot be nil")
@@ -85,8 +88,21 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 	// claimed same partition in grouper at same time.
 	time.Sleep(p.plannerDelay)
 
-	visitMarker := newPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionID)
-	visitMarkerManager := NewVisitMarkerManager(p.bkt, p.logger, p.ringLifecyclerID, visitMarker)
+	visitMarker := newPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionInfo.PartitionedGroupCreationTime, partitionID)
+	visitMarkerManager := NewVisitMarkerManager(p.bkt, p.logger, p.ringLifecyclerID, visitMarker, func(v VisitMarker) bool {
+		partitionVisitMarker, ok := v.(*partitionVisitMarker)
+		if !ok {
+			level.Info(p.logger).Log("msg", "not a partition visit marker, must be consistent")
+			return true
+		}
+		partitionGroupInfo, err := ReadPartitionedGroupInfo(ctx, p.bkt, p.logger, partitionVisitMarker.PartitionedGroupID)
+		if err != nil {
+			level.Error(p.logger).Log("msg", "failed to read partition info file, assuming visit marker is inconsistent", "partition_group_id", partitionVisitMarker.PartitionedGroupID, "err", err)
+			return false
+		}
+		level.Info(p.logger).Log("msg", "checking partitiong group creation time", "visit_marker", partitionVisitMarker.PartitionedGroupCreationTime, "partition_group", partitionGroupInfo.CreationTime)
+		return (partitionVisitMarker.PartitionedGroupCreationTime == 0 || partitionVisitMarker.PartitionedGroupCreationTime == partitionGroupInfo.CreationTime)
+	})
 	existingPartitionVisitMarker := &partitionVisitMarker{}
 	err := visitMarkerManager.ReadVisitMarker(p.ctx, existingPartitionVisitMarker)
 	visitMarkerExists := true
@@ -171,7 +187,7 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		return nil, nil
 	}
 
-	go visitMarkerManager.HeartBeat(p.ctx, errChan, p.partitionVisitMarkerFileUpdateInterval, false)
+	go visitMarkerManager.HeartBeat(p.ctx, p.ctxCancel, errChan, p.partitionVisitMarkerFileUpdateInterval, false)
 
 	return resultMetas, nil
 }

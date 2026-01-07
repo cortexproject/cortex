@@ -40,10 +40,11 @@ type VisitMarker interface {
 }
 
 type VisitMarkerManager struct {
-	bkt             objstore.InstrumentedBucket
-	logger          log.Logger
-	ownerIdentifier string
-	visitMarker     VisitMarker
+	bkt                          objstore.InstrumentedBucket
+	logger                       log.Logger
+	ownerIdentifier              string
+	visitMarker                  VisitMarker
+	isConsistentWithCompactionFn func(v VisitMarker) bool
 }
 
 func NewVisitMarkerManager(
@@ -51,23 +52,28 @@ func NewVisitMarkerManager(
 	logger log.Logger,
 	ownerIdentifier string,
 	visitMarker VisitMarker,
+	isConsistentWithCompactionFn func(v VisitMarker) bool,
 ) *VisitMarkerManager {
 	return &VisitMarkerManager{
-		bkt:             bkt,
-		logger:          log.With(logger, "type", fmt.Sprintf("%T", visitMarker)),
-		ownerIdentifier: ownerIdentifier,
-		visitMarker:     visitMarker,
+		bkt:                          bkt,
+		logger:                       log.With(logger, "type", fmt.Sprintf("%T", visitMarker)),
+		ownerIdentifier:              ownerIdentifier,
+		visitMarker:                  visitMarker,
+		isConsistentWithCompactionFn: isConsistentWithCompactionFn,
 	}
 }
 
-func (v *VisitMarkerManager) HeartBeat(ctx context.Context, errChan <-chan error, visitMarkerFileUpdateInterval time.Duration, deleteOnExit bool) {
+func (v *VisitMarkerManager) HeartBeat(ctx context.Context, cancel context.CancelFunc, errChan <-chan error, visitMarkerFileUpdateInterval time.Duration, deleteOnExit bool) {
 	level.Info(v.getLogger()).Log("msg", "start visit marker heart beat")
 	ticker := time.NewTicker(visitMarkerFileUpdateInterval)
 	defer ticker.Stop()
 heartBeat:
 	for {
 		v.MarkWithStatus(ctx, InProgress)
-
+		if !v.isConsistentWithCompaction() {
+			v.cancelContext(ctx, cancel)
+			break heartBeat
+		}
 		select {
 		case <-ctx.Done():
 			level.Warn(v.getLogger()).Log("msg", "visit marker heart beat got cancelled")
@@ -91,6 +97,11 @@ heartBeat:
 			}
 			break heartBeat
 		}
+	}
+
+	if !v.isConsistentWithCompaction() {
+		v.cancelContext(ctx, cancel)
+		return
 	}
 	level.Info(v.getLogger()).Log("msg", "stop visit marker heart beat")
 	if deleteOnExit {
@@ -152,4 +163,14 @@ func (v *VisitMarkerManager) updateVisitMarker(ctx context.Context) error {
 
 func (v *VisitMarkerManager) getLogger() log.Logger {
 	return log.With(v.logger, "visit_marker", v.visitMarker.String())
+}
+
+func (v *VisitMarkerManager) isConsistentWithCompaction() bool {
+	return v.isConsistentWithCompactionFn == nil || v.isConsistentWithCompactionFn(v.visitMarker)
+}
+
+func (v *VisitMarkerManager) cancelContext(ctx context.Context, cancel context.CancelFunc) {
+	level.Error(v.getLogger()).Log("msg", "visit marker is inconsistent with compaction data, deleting visit marker and cancelling the compaction", "visit_marker_file", v.visitMarker.GetVisitMarkerFilePath())
+	v.DeleteVisitMarker(context.Background())
+	cancel()
 }

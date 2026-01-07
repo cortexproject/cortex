@@ -27,7 +27,6 @@ import (
 
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
-	"github.com/trivago/tgo/tcontainer"
 
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/notify"
@@ -72,6 +71,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	}
 
 	logger := n.logger.With("group_key", key.String())
+	logger.Debug("extracted group key")
 
 	var (
 		alerts = types.Alerts(as...)
@@ -102,13 +102,21 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	} else {
 		path = "issue/" + existingIssue.Key
 		method = http.MethodPut
-
-		logger.Debug("updating existing issue", "issue_key", existingIssue.Key)
+		logger.Debug("updating existing issue", "issue_key", existingIssue.Key, "summary_update_enabled", n.conf.Summary.EnableUpdateValue(), "description_update_enabled", n.conf.Description.EnableUpdateValue())
 	}
 
 	requestBody, err := n.prepareIssueRequestBody(ctx, logger, key.Hash(), tmplTextFunc)
 	if err != nil {
 		return false, err
+	}
+
+	if method == http.MethodPut && requestBody.Fields != nil {
+		if !n.conf.Description.EnableUpdateValue() {
+			requestBody.Fields.Description = nil
+		}
+		if !n.conf.Summary.EnableUpdateValue() {
+			requestBody.Fields.Summary = nil
+		}
 	}
 
 	_, shouldRetry, err = n.doAPIRequest(ctx, method, path, requestBody)
@@ -119,11 +127,12 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	return n.transitionIssue(ctx, logger, existingIssue, alerts.HasFiring())
 }
 
-func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logger, groupID string, tmplTextFunc templateFunc) (issue, error) {
-	summary, err := tmplTextFunc(n.conf.Summary)
+func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logger, groupID string, tmplTextFunc template.TemplateFunc) (issue, error) {
+	summary, err := tmplTextFunc(n.conf.Summary.Template)
 	if err != nil {
 		return issue{}, fmt.Errorf("summary template: %w", err)
 	}
+
 	project, err := tmplTextFunc(n.conf.Project)
 	if err != nil {
 		return issue{}, fmt.Errorf("project template: %w", err)
@@ -133,11 +142,12 @@ func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logge
 		return issue{}, fmt.Errorf("issue_type template: %w", err)
 	}
 
-	// Recursively convert any maps to map[string]interface{}, filtering out all non-string keys, so the json encoder
-	// doesn't blow up when marshaling JIRA requests.
-	fieldsWithStringKeys, err := tcontainer.ConvertToMarshalMap(n.conf.Fields, func(v string) string { return v })
-	if err != nil {
-		return issue{}, fmt.Errorf("convertToMarshalMap: %w", err)
+	fieldsWithStringKeys := make(map[string]any, len(n.conf.Fields))
+	for key, value := range n.conf.Fields {
+		fieldsWithStringKeys[key], err = template.DeepCopyWithTemplate(value, tmplTextFunc)
+		if err != nil {
+			return issue{}, fmt.Errorf("fields template: %w", err)
+		}
 	}
 
 	summary, truncated := notify.TruncateInRunes(summary, maxSummaryLenRunes)
@@ -148,12 +158,12 @@ func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logge
 	requestBody := issue{Fields: &issueFields{
 		Project:   &issueProject{Key: project},
 		Issuetype: &idNameValue{Name: issueType},
-		Summary:   summary,
+		Summary:   &summary,
 		Labels:    make([]string, 0, len(n.conf.Labels)+1),
 		Fields:    fieldsWithStringKeys,
 	}}
 
-	issueDescriptionString, err := tmplTextFunc(n.conf.Description)
+	issueDescriptionString, err := tmplTextFunc(n.conf.Description.Template)
 	if err != nil {
 		return issue{}, fmt.Errorf("description template: %w", err)
 	}
@@ -163,14 +173,13 @@ func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logge
 		logger.Warn("Truncated description", "max_runes", maxDescriptionLenRunes)
 	}
 
-	requestBody.Fields.Description = issueDescriptionString
-	if strings.HasSuffix(n.conf.APIURL.Path, "/3") {
-		var issueDescription any
-		if err := json.Unmarshal([]byte(issueDescriptionString), &issueDescription); err != nil {
-			return issue{}, fmt.Errorf("description unmarshaling: %w", err)
+	descriptionCopy := issueDescriptionString
+	if isAPIv3Path(n.conf.APIURL.Path) {
+		if !json.Valid([]byte(descriptionCopy)) {
+			return issue{}, fmt.Errorf("description template: invalid JSON for API v3")
 		}
-		requestBody.Fields.Description = issueDescription
 	}
+	requestBody.Fields.Description = &descriptionCopy
 
 	for i, label := range n.conf.Labels {
 		label, err = tmplTextFunc(label)
@@ -194,7 +203,7 @@ func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logge
 	return requestBody, nil
 }
 
-func (n *Notifier) searchExistingIssue(ctx context.Context, logger *slog.Logger, groupID string, firing bool, tmplTextFunc templateFunc) (*issue, bool, error) {
+func (n *Notifier) searchExistingIssue(ctx context.Context, logger *slog.Logger, groupID string, firing bool, tmplTextFunc template.TemplateFunc) (*issue, bool, error) {
 	jql := strings.Builder{}
 
 	if n.conf.WontFixResolution != "" {
@@ -386,4 +395,8 @@ func (n *Notifier) doAPIRequestFullPath(ctx context.Context, method, path string
 	}
 
 	return responseBody, false, nil
+}
+
+func isAPIv3Path(path string) bool {
+	return strings.HasSuffix(strings.TrimRight(path, "/"), "/3")
 }

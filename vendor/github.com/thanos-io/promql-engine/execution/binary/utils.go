@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/thanos-io/promql-engine/warnings"
+
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -113,23 +115,13 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 			case parser.ADD:
 				res, err := hlhs.Copy().Add(hrhs)
 				if err != nil {
-					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-						return 0, nil, false, annotations.MixedExponentialCustomHistogramsWarning
-					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-						return 0, nil, false, annotations.IncompatibleCustomBucketsHistogramsWarning
-					}
-					return 0, nil, false, errors.Newf("%s: %s", annotations.PromQLWarning, err)
+					return 0, nil, false, warnings.ConvertHistogramError(err)
 				}
 				return 0, res.Compact(0), true, nil
 			case parser.SUB:
 				res, err := hlhs.Copy().Sub(hrhs)
 				if err != nil {
-					if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-						return 0, nil, false, annotations.MixedExponentialCustomHistogramsWarning
-					} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-						return 0, nil, false, annotations.IncompatibleCustomBucketsHistogramsWarning
-					}
-					return 0, nil, false, errors.Newf("%s: %s", annotations.PromQLWarning, err)
+					return 0, nil, false, warnings.ConvertHistogramError(err)
 				}
 				return 0, res.Compact(0), true, nil
 			case parser.EQLC:

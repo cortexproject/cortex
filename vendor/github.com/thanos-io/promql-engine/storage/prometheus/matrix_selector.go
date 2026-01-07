@@ -272,19 +272,33 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 }
 
 func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
-	switch o.functionName {
-	case "rate":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
-	case "increase":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
-	case "delta":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
-	case "count_over_time":
-		return ringbuffer.NewCountOverTimeBuffer(*o.opts, o.selectRange, o.offset)
-	case "max_over_time":
-		return ringbuffer.NewMaxOverTimeBuffer(*o.opts, o.selectRange, o.offset)
-	case "min_over_time":
-		return ringbuffer.NewMinOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+	if ringbuffer.UseStreamingRingBuffers(*o.opts, o.selectRange) {
+		switch o.functionName {
+		case "rate":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
+		case "increase":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
+		case "delta":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
+		case "count_over_time":
+			return ringbuffer.NewCountOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "max_over_time":
+			return ringbuffer.NewMaxOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "min_over_time":
+			return ringbuffer.NewMinOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "sum_over_time":
+			return ringbuffer.NewSumOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "avg_over_time":
+			return ringbuffer.NewAvgOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "stddev_over_time":
+			return ringbuffer.NewStdDevOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "stdvar_over_time":
+			return ringbuffer.NewStdVarOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "present_over_time":
+			return ringbuffer.NewPresentOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "last_over_time":
+			return ringbuffer.NewLastOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		}
 	}
 
 	if o.isExtFunction {

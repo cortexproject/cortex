@@ -188,16 +188,14 @@ func TestWatchPrefix(t *testing.T) {
 
 		wg := sync.WaitGroup{}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			// start watching before we even start generating values. values will be buffered
 			client.WatchPrefix(ctx, prefix, func(key string, val any) bool {
 				observedKeysCh <- key
 				return true
 			})
-		}()
+		})
 
 		gen := func(p string) {
 			defer wg.Done()

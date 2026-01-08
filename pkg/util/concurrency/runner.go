@@ -31,9 +31,7 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 	wg := sync.WaitGroup{}
 	routines := min(concurrency, len(userIDs))
 	for range routines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			for userID := range ch {
 				// Ensure the context has not been canceled (ie. shutdown has been triggered).
@@ -47,7 +45,7 @@ func ForEachUser(ctx context.Context, userIDs []string, concurrency int, userFun
 					errsMx.Unlock()
 				}
 			}
-		}()
+		})
 	}
 
 	// wait for ongoing workers to finish.

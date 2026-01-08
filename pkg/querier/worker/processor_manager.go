@@ -68,15 +68,13 @@ func (pm *processorManager) concurrency(n int) {
 		ctx, cancel := context.WithCancel(pm.ctx)
 		pm.cancels = append(pm.cancels, cancel)
 
-		pm.wg.Add(1)
-		go func() {
-			defer pm.wg.Done()
+		pm.wg.Go(func() {
 
 			pm.currentProcessors.Inc()
 			defer pm.currentProcessors.Dec()
 
 			pm.p.processQueriesOnSingleStream(ctx, pm.conn, pm.address)
-		}()
+		})
 	}
 
 	for len(pm.cancels) > n {

@@ -887,12 +887,18 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	// List existing files to keep track the ones to be removed
 	if oldTemplateFiles, err := os.ReadDir(userTemplateDir); err == nil {
 		for _, file := range oldTemplateFiles {
-			pathsToRemove[filepath.Join(userTemplateDir, file.Name())] = struct{}{}
+			pathToRemove, err := safeTemplateFilepath(userTemplateDir, file.Name())
+			if err != nil {
+				return err
+			}
+			level.Debug(am.logger).Log("msg", "discovered existing file", "oldTemplateFile", file.Name(), "pathToRemove", pathToRemove, "user", cfg.User)
+			pathsToRemove[pathToRemove] = struct{}{}
 		}
 	}
 
 	for _, tmpl := range cfg.Templates {
 		templateFilePath, err := safeTemplateFilepath(userTemplateDir, tmpl.Filename)
+		level.Debug(am.logger).Log("msg", "skipping template file since it's still used by the config", "file", templateFilePath, "user", cfg.User)
 		if err != nil {
 			return err
 		}
@@ -906,10 +912,12 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 
 		if hasChanged {
 			hasTemplateChanges = true
+			level.Debug(am.logger).Log("msg", "template file changed", "file", templateFilePath, "body", tmpl.Body, "user", cfg.User)
 		}
 	}
 
 	for pathToRemove := range pathsToRemove {
+		level.Debug(am.logger).Log("msg", "removing stale template file", "file", pathToRemove, "user", cfg.User)
 		err := os.Remove(pathToRemove)
 		if err != nil {
 			level.Warn(am.logger).Log("msg", "failed to remove file", "file", pathToRemove, "err", err)

@@ -7480,6 +7480,19 @@ func fetchMetrics(t *testing.T, registry *prometheus.Registry, prefix string) []
 func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 	const userID = "test-user"
 
+	// Helper to validate matchers are truly unoptimized when we expect them to be
+	validateUnoptimized := func(t *testing.T, testName string, matchers []*labels.Matcher, shouldBeUnoptimized bool) {
+		t.Helper()
+		for _, m := range matchers {
+			if m.Type == labels.MatchRegexp {
+				isUnopt := isRegexUnOptimized(m)
+				if shouldBeUnoptimized && !isUnopt {
+					t.Fatalf("Test %q: matcher %q is optimized but should be unoptimized for this test", testName, m.String())
+				}
+			}
+		}
+	}
+
 	tests := map[string]struct {
 		maxPatternLength     int
 		maxCardinality       int
@@ -7492,17 +7505,17 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 		// Pattern length tests
 		"no limits, any pattern should succeed": {
 			maxPatternLength: 0,
-			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("a", 1000))},
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("(a|b)", 200))}, // Unoptimized: 800 chars
 			expectError:      false,
 		},
 		"pattern length below limit should succeed": {
 			maxPatternLength: 100,
-			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value[0-9]+")},
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized: 16 chars
 			expectError:      false,
 		},
 		"pattern length exceeds limit should fail": {
 			maxPatternLength:     50,
-			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("a", 100))},
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("(x|y)", 20))}, // Unoptimized: 100 chars
 			expectError:          true,
 			expectedErrSubstring: "regex pattern length 100 exceeds limit 50",
 		},
@@ -7526,13 +7539,13 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 		"cardinality below limit should succeed": {
 			maxCardinality: 10,
 			labelValues:    map[string][]string{"status": {"val1", "val2", "val3"}},
-			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
 			expectError:    false,
 		},
 		"cardinality exceeds limit should fail": {
 			maxCardinality:       3,
 			labelValues:          map[string][]string{"status": {"val1", "val2", "val3", "val4", "val5"}},
-			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
 			expectError:          true,
 			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
 		},
@@ -7553,15 +7566,15 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 		"total value length below limit should succeed": {
 			maxTotalValueLength: 1000,
 			labelValues:         map[string][]string{"status": {"val1", "val2", "val3"}},
-			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+")},
+			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
 			expectError:         false,
 		},
 		"total value length exceeds limit should fail": {
 			maxTotalValueLength:  50,
-			labelValues:          map[string][]string{"status": {"value1234567890", "value1234567890", "value1234567890", "value1234567890", "value1234567890"}},
-			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value[0-9]+")},
+			labelValues:          map[string][]string{"status": {"value1234567890a", "value1234567890b", "value1234567890c", "value1234567890d"}}, // 4*16=64 bytes > 50
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")},                       // Unoptimized
 			expectError:          true,
-			expectedErrSubstring: "total value length 75 bytes",
+			expectedErrSubstring: "total value length 64 bytes",
 		},
 		"total value length limit should not apply to .+ (optimized)": {
 			maxTotalValueLength: 50,
@@ -7578,8 +7591,8 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 				"host":   {"host1", "host2", "host3", "host4", "host5"},
 			},
 			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "status", "val[0-9]+"),
-				labels.MustNewMatcher(labels.MatchRegexp, "host", "host[0-9]+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+"), // Unoptimized
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "[a-zA-Z]+[0-9]+"),   // Unoptimized
 			},
 			expectError:          true,
 			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
@@ -7591,8 +7604,8 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 				"host":   {"host1", "host2"},
 			},
 			matchers: []*labels.Matcher{
-				labels.MustNewMatcher(labels.MatchRegexp, "status", ".*"), // Optimized - should not be checked
-				labels.MustNewMatcher(labels.MatchRegexp, "host", "host[0-9]+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "status", ".*"),            // Optimized - should not be checked
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "[a-zA-Z]+[0-9]+"), // Unoptimized
 			},
 			expectError: false,
 		},
@@ -7610,6 +7623,7 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			// Create ingester with custom per-tenant limits
 			cfg := defaultIngesterTestConfig(t)
+			cfg.EnableRegexMatcherLimits = true // Enable the feature flag
 			limits := defaultLimitsTestConfig()
 			limits.MaxRegexPatternLength = testData.maxPatternLength
 			limits.MaxLabelCardinalityForUnoptimizedRegex = testData.maxCardinality
@@ -7628,6 +7642,14 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 				return i.lifecycler.GetState()
 			})
 
+			// Validate that matchers requiring TSDB queries are truly unoptimized
+			// Only validate if the test expects an error (which means we need unoptimized matchers to trigger the limit)
+			// or if the test name doesn't indicate it's testing optimized patterns
+			needsUnoptimized := testData.expectError && len(testData.labelValues) > 0
+			if needsUnoptimized {
+				validateUnoptimized(t, testName, testData.matchers, true)
+			}
+
 			// Push series with label values
 			ctx := user.InjectOrgID(context.Background(), userID)
 			timestamp := int64(123000)
@@ -7642,7 +7664,7 @@ func TestIngester_checkRegexMatcherLimits(t *testing.T) {
 			}
 
 			// Get the TSDB for the user
-			db, err := i.getTSDB(userID)
+			db, err := i.getOrCreateTSDB(userID, false)
 			require.NoError(t, err)
 			require.NotNil(t, db)
 

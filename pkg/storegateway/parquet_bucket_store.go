@@ -65,7 +65,8 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 	for _, blockID := range blockIDs {
-		block, err := p.newParquetBlock(ctx, blockID, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
+		// TODO: support shard ID > 0 later.
+		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
 		if err != nil {
 			return nil, err
 		}

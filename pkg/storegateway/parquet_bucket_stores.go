@@ -274,13 +274,13 @@ type parquetBlock struct {
 	concurrency int
 }
 
-func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
+func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, shardID int, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
 	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	cacheKey := fmt.Sprintf("%v-%v", userID, name)
+	cacheKey := fmt.Sprintf("%v-%v-%v", userID, name, shardID)
 	shard := p.parquetShardCache.Get(cacheKey)
 
 	if shard == nil {

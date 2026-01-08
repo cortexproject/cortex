@@ -205,6 +205,7 @@ func (w *Updater) updateParquetBlockIndexEntry(ctx context.Context, id ulid.ULID
 
 	block.Parquet = &parquet.ConverterMarkMeta{
 		Version: marker.Version,
+		Shards:  marker.Shards,
 	}
 	return nil
 }

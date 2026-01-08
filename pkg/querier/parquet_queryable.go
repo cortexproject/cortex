@@ -216,41 +216,65 @@ func NewParquetQueryable(
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
 		bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
-		shards := make([]parquet_storage.ParquetShard, len(blocks))
+
+		// Calculate total number of shards across all blocks
+		totalShards := 0
+		for _, block := range blocks {
+			numShards := 1 // Default to 1 shard for backward compatibility
+			if block.Parquet != nil && block.Parquet.Shards > 0 {
+				numShards = block.Parquet.Shards
+			}
+			totalShards += numShards
+		}
+
+		shards := make([]parquet_storage.ParquetShard, totalShards)
 		errGroup := &errgroup.Group{}
 
 		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
 		defer span.Finish()
 
-		for i, block := range blocks {
-			errGroup.Go(func() error {
-				cacheKey := fmt.Sprintf("%v-%v", userID, block.ID)
-				shard := cache.Get(cacheKey)
-				if shard == nil {
-					// we always only have 1 shard - shard 0
-					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.NewParquetShardOpener(
-						context.WithoutCancel(ctx),
-						block.ID.String(),
-						bucketOpener,
-						bucketOpener,
-						0,
-						parquet_storage.WithFileOptions(
-							parquet.SkipMagicBytes(true),
-							parquet.ReadBufferSize(100*1024),
-							parquet.SkipBloomFilters(true),
-							parquet.OptimisticRead(true),
-						),
-					)
-					if err != nil {
-						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())
-					}
-					cache.Set(cacheKey, shard)
-				}
+		shardIdx := 0
+		for _, block := range blocks {
+			numShards := 1 // Default to 1 shard for backward compatibility
+			if block.Parquet != nil && block.Parquet.Shards > 0 {
+				numShards = block.Parquet.Shards
+			}
 
-				shards[i] = shard
-				return nil
-			})
+			for shardID := 0; shardID < numShards; shardID++ {
+				idx := shardIdx
+				shardIdx++
+				blockID := block.ID
+				currentShardID := shardID
+
+				errGroup.Go(func() error {
+					cacheKey := fmt.Sprintf("%v-%v-%v", userID, blockID, currentShardID)
+					shard := cache.Get(cacheKey)
+					if shard == nil {
+						// Use context.Background() here as the file can be cached and live after the request ends.
+						var err error
+						shard, err = parquet_storage.NewParquetShardOpener(
+							context.WithoutCancel(ctx),
+							blockID.String(),
+							bucketOpener,
+							bucketOpener,
+							currentShardID,
+							parquet_storage.WithFileOptions(
+								parquet.SkipMagicBytes(true),
+								parquet.ReadBufferSize(100*1024),
+								parquet.SkipBloomFilters(true),
+								parquet.OptimisticRead(true),
+							),
+						)
+						if err != nil {
+							return errors.Wrapf(err, "failed to open parquet shard. block: %v, shard: %v", blockID.String(), currentShardID)
+						}
+						cache.Set(cacheKey, shard)
+					}
+
+					shards[idx] = shard
+					return nil
+				})
+			}
 		}
 
 		return shards, errGroup.Wait()

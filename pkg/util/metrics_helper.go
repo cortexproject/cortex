@@ -465,7 +465,6 @@ type HistogramData struct {
 	buckets map[float64]uint64
 
 	// Native histogram fields
-	nativeHistogram bool
 	Schema          int32
 	ZeroThreshold   float64
 	ZeroCount       uint64

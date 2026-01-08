@@ -3816,6 +3816,12 @@ instance_limits:
 # CLI flag: -ingester.enable-matcher-optimization
 [enable_matcher_optimization: <boolean> | default = false]
 
+# Enable regex matcher limits and metrics collection for unoptimized regex
+# queries. When enabled, the ingester will track pattern length, label
+# cardinality, and total value length for unoptimized regex matchers.
+# CLI flag: -ingester.enable-regex-matcher-limits
+[enable_regex_matcher_limits: <boolean> | default = false]
+
 query_protection:
   rejection:
     threshold:

@@ -233,12 +233,10 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Querier-2 waits for a new request.
 	querier2wg := sync.WaitGroup{}
-	querier2wg.Add(1)
-	go func() {
-		defer querier2wg.Done()
+	querier2wg.Go(func() {
 		_, _, err := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-2")
 		require.NoError(t, err)
-	}()
+	})
 
 	// Querier-1 crashes (no graceful shutdown notification).
 	queue.UnregisterQuerierConnection("querier-1")

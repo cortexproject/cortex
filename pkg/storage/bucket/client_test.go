@@ -145,9 +145,7 @@ func TestClientMock_MockGet(t *testing.T) {
 	// ensure there's no race.
 	wg := sync.WaitGroup{}
 	for range 1000 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			reader, err := m.Get(context.Background(), "test")
 			require.NoError(t, err)
@@ -156,7 +154,7 @@ func TestClientMock_MockGet(t *testing.T) {
 			require.Equal(t, []byte(expected), actual)
 
 			require.NoError(t, reader.Close())
-		}()
+		})
 	}
 
 	wg.Wait()

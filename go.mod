@@ -1,6 +1,6 @@
 module github.com/cortexproject/cortex
 
-go 1.24.0
+go 1.25.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
@@ -19,7 +19,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/gogo/status v1.1.1
 	github.com/golang-migrate/migrate/v4 v4.18.1
-	github.com/golang/protobuf v1.5.4
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -87,7 +87,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/parquet-go/parquet-go v0.25.1
+	github.com/parquet-go/parquet-go v0.26.4
 	github.com/prometheus-community/parquet-common v0.0.0-20251211092633-65ebeae24e94
 	github.com/prometheus/client_golang/exp v0.0.0-20250914183048-a974e0d45e0a
 	github.com/prometheus/procfs v0.16.1
@@ -233,6 +233,8 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.129.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.129.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.129.0 // indirect
+	github.com/parquet-go/bitpack v1.0.0 // indirect
+	github.com/parquet-go/jsonlite v1.0.0 // indirect
 	github.com/philhofer/fwd v1.1.3-0.20240916144458-20a13a1f6b7c // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect

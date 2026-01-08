@@ -4075,7 +4075,6 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 }
 
 func TestSortLabels(t *testing.T) {
-	t.Parallel()
 	sorted := []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},

@@ -169,8 +169,8 @@ func (q *queues) getOrAddQueue(userID string, maxQueriers int) userRequestQueue 
 		tmpQueue := q.createUserRequestQueue(userID)
 
 		// flush to new queue
-		// If the new limit is lower than the current number of requests, 
-    // the excess requests (newest ones) will be dropped to prevent deadlocks.
+		// If the new limit is lower than the current number of requests,
+		// the excess requests (newest ones) will be dropped to prevent deadlocks.
 		for (uq.queue.length() > 0) && (tmpQueue.length() < maxOutstanding) {
 			tmpQueue.enqueueRequest(uq.queue.dequeueRequest(0, false))
 		}

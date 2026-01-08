@@ -72,6 +72,11 @@ type ingesterMetrics struct {
 
 	// Posting Cache Metrics
 	expandedPostingsCacheMetrics *tsdb.ExpandedPostingsCacheMetrics
+
+	// Unoptimized regex matcher metrics
+	unoptimizedRegexPatternLength    prometheus.Histogram
+	unoptimizedRegexLabelCardinality prometheus.Histogram
+	unoptimizedRegexTotalValueLength prometheus.Histogram
 }
 
 func newIngesterMetrics(r prometheus.Registerer,
@@ -83,6 +88,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	inflightPushRequests *util_math.MaxTracker,
 	maxInflightQueryRequests *util_math.MaxTracker,
 	postingsCacheEnabled bool,
+	regexMatcherLimitsEnabled bool,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -281,6 +287,33 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_queried_series",
 			Help: "Estimated number of currently active queried series per user (probabilistic count using HyperLogLog).",
 		}, []string{"user", "window"}),
+	}
+
+	if regexMatcherLimitsEnabled {
+		m.unoptimizedRegexPatternLength = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_pattern_length_bytes",
+			Help:                            "Length (in bytes) of unoptimized regex patterns in queries.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 2, 12), // 1 to 4096 bytes
+		})
+		m.unoptimizedRegexLabelCardinality = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_label_cardinality",
+			Help:                            "Cardinality of labels queried with unoptimized regex matchers.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 4, 10), // 1 to ~1M
+		})
+		m.unoptimizedRegexTotalValueLength = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_total_value_length_bytes",
+			Help:                            "Total length (in bytes) of all label values for labels queried with unoptimized regex matchers.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 4, 12), // 1 to ~16M bytes
+		})
 	}
 
 	if postingsCacheEnabled && r != nil {

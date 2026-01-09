@@ -3079,6 +3079,7 @@ type prepConfig struct {
 	tokens                       [][]uint32
 	useStreamPush                bool
 	nameValidationScheme         model.ValidationScheme
+	remoteTimeout                time.Duration
 }
 
 type prepState struct {
@@ -3197,6 +3198,10 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.NameValidationScheme = model.LegacyValidation
 		if cfg.nameValidationScheme == model.UTF8Validation {
 			distributorCfg.NameValidationScheme = cfg.nameValidationScheme
+		}
+
+		if cfg.remoteTimeout > 0 {
+			distributorCfg.RemoteTimeout = cfg.remoteTimeout
 		}
 
 		if cfg.shuffleShardEnabled {
@@ -4518,4 +4523,37 @@ func TestFindHALabels(t *testing.T) {
 		assert.Equal(t, c.expected.cluster, cluster)
 		assert.Equal(t, c.expected.replica, replica)
 	}
+}
+
+func TestDistributor_BatchTimeoutMetric(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	distributors, _, regs, _ := prepare(t, prepConfig{
+		numIngesters:    3,
+		happyIngesters:  3,
+		numDistributors: 1,
+		limits:          limits,
+		remoteTimeout:   time.Nanosecond, // To produce timeout
+	})
+
+	distributor := distributors[0]
+	reg := regs[0]
+
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, "user-1")
+
+	for range 5 {
+		request := makeWriteRequest(0, 30, 0, 0)
+		_, err := distributor.Push(ctx, request)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_ingester_push_timeouts_total The total number of push requests to ingesters that were canceled due to timeout.
+		# TYPE cortex_distributor_ingester_push_timeouts_total counter
+		cortex_distributor_ingester_push_timeouts_total{user="user-1"} 5
+	`), "cortex_distributor_ingester_push_timeouts_total"))
 }

@@ -16,6 +16,7 @@
 * [ENHANCEMENT] Ingester: Add support for ingesting Native Histogram with Custom Buckets. #7191
 * [ENHANCEMENT] Ingester: Optimize labels out-of-order (ooo) check by allowing the iteration to terminate immediately upon finding the first unsorted label. #7186
 * [ENHANCEMENT] Distributor: Skip attaching `__unit__` and `__type__` labels when `-distributor.enable-type-and-unit-labels` is enabled, as these are appended from metadata. #7145
+* [ENHANCEMENT] Distributor: Add `cortex_distributor_ingester_push_timeouts_total` metric to track the number of push requests to ingesters that were canceled due to timeout. #7155
 * [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Querier: Add a `-querier.parquet-queryable-shard-cache-ttl` flag to add TTL to parquet shard cache. #7098

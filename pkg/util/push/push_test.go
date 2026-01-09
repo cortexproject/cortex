@@ -452,30 +452,85 @@ func TestHandler_remoteWrite(t *testing.T) {
 	flagext.DefaultValues(&limits)
 	overrides := validation.NewOverrides(limits, nil)
 
-	t.Run("remote write v1", func(t *testing.T) {
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
-		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
-		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusOK, resp.Code)
-	})
-	t.Run("remote write v2", func(t *testing.T) {
-		ctx := context.Background()
-		ctx = user.InjectOrgID(ctx, "user-1")
+	tests := []struct {
+		name           string
+		createBody     func() ([]byte, bool) // returns (bodyBytes, isV2)
+		expectedStatus int
+		expectedBody   string
+		verifyResponse func(resp *httptest.ResponseRecorder)
+	}{
+		{
+			name: "remote write v1",
+			createBody: func() ([]byte, bool) {
+				return createPrometheusRemoteWriteProtobuf(t), false
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "remote write v2",
+			createBody: func() ([]byte, bool) {
+				return createPrometheusRemoteWriteV2Protobuf(t), true
+			},
+			expectedStatus: http.StatusNoContent,
+			verifyResponse: func(resp *httptest.ResponseRecorder) {
+				respHeader := resp.Header()
+				assert.Equal(t, "1", respHeader[rw20WrittenSamplesHeader][0])
+				assert.Equal(t, "1", respHeader[rw20WrittenHistogramsHeader][0])
+				assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
+			},
+		},
+		{
+			name: "remote write v2 with empty samples and histograms should return 400",
+			createBody: func() ([]byte, bool) {
+				// Create a request with a TimeSeries that has no samples and no histograms
+				reqProto := writev2.Request{
+					Symbols: []string{"", "__name__", "foo"},
+					Timeseries: []writev2.TimeSeries{
+						{
+							LabelsRefs: []uint32{1, 2},
+							Exemplars: []writev2.Exemplar{
+								{
+									LabelsRefs: []uint32{},
+									Value:      1.0,
+									Timestamp:  time.Now().UnixMilli(),
+								},
+							},
+						},
+					},
+				}
+				reqBytes, err := reqProto.Marshal()
+				require.NoError(t, err)
+				return reqBytes, true
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "TimeSeries must contain at least one sample or histogram for series {__name__=\"foo\"}",
+		},
+	}
 
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
-		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
-		req = req.WithContext(ctx)
-		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusNoContent, resp.Code)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, "user-1")
+			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
 
-		// test header value
-		respHeader := resp.Header()
-		assert.Equal(t, "1", respHeader[rw20WrittenSamplesHeader][0])
-		assert.Equal(t, "1", respHeader[rw20WrittenHistogramsHeader][0])
-		assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
-	})
+			body, isV2 := test.createBody()
+			req := createRequest(t, body, isV2)
+			req = req.WithContext(ctx)
+
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+
+			assert.Equal(t, test.expectedStatus, resp.Code)
+
+			if test.expectedBody != "" {
+				assert.Contains(t, resp.Body.String(), test.expectedBody)
+			}
+
+			if test.verifyResponse != nil {
+				test.verifyResponse(resp)
+			}
+		})
+	}
 }
 
 func TestHandler_ContentTypeAndEncoding(t *testing.T) {

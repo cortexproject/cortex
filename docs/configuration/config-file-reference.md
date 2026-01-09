@@ -2477,6 +2477,14 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
     [request_token_bucket_size: <int> | default = 4194304]
 
+  # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-size
+  [parquet_shard_cache_size: <int> | default = 512]
+
+  # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
+  [parquet_shard_cache_ttl: <duration> | default = 24h]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir
@@ -2597,6 +2605,12 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
       [ttl: <duration> | default = 10m]
 
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
+
     # If enabled, ingesters will cache expanded postings for the compacted
     # blocks. The cache is shared between all blocks.
     blocks:
@@ -2611,6 +2625,12 @@ tsdb:
       # TTL for postings cache
       # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
       [ttl: <duration> | default = 10m]
+
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
 
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.

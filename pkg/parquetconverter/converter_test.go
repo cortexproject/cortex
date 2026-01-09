@@ -110,6 +110,8 @@ func TestConverter(t *testing.T) {
 			require.NoError(t, err)
 			if m.Version == parquet.CurrentVersion {
 				blocksConverted = append(blocksConverted, bIds)
+				// Verify that shards field is populated (should be > 0)
+				require.Greater(t, m.Shards, 0, "expected shards to be greater than 0 for block %s", bIds.String())
 			}
 		}
 		return len(blocksConverted)
@@ -455,6 +457,7 @@ func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
 	// Write a converter mark with version 1 to simulate an already converted block
 	markerV1 := parquet.ConverterMark{
 		Version: parquet.ParquetConverterMarkVersion1,
+		Shards:  2, // Simulate a block with 2 shards
 	}
 	markerBytes, err := json.Marshal(markerV1)
 	require.NoError(t, err)
@@ -462,10 +465,11 @@ func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
 	err = userBucket.Upload(ctx, markerPath, bytes.NewReader(markerBytes))
 	require.NoError(t, err)
 
-	// Verify the marker exists with version 1
+	// Verify the marker exists with version 1 and has shards
 	marker, err := parquet.ReadConverterMark(ctx, blockID, userBucket, logger)
 	require.NoError(t, err)
 	require.Equal(t, parquet.ParquetConverterMarkVersion1, marker.Version)
+	require.Equal(t, 2, marker.Shards)
 
 	// Start the converter
 	err = services.StartAndAwaitRunning(context.Background(), c)

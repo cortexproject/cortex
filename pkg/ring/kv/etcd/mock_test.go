@@ -317,9 +317,7 @@ func TestMockKV_Watch(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
 		started.Add(1)
-		complete.Add(1)
-		go func() {
-			defer complete.Done()
+		complete.Go(func() {
 
 			var ops []clientv3.OpOption
 			if prefix {
@@ -334,7 +332,7 @@ func TestMockKV_Watch(t *testing.T) {
 					ch <- e.Events[0]
 				}
 			}
-		}()
+		})
 
 		started.Wait()
 		return kv, cancel, ch, &complete

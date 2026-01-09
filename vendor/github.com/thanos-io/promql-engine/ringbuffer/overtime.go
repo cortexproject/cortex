@@ -16,6 +16,26 @@ import (
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
+// If we use $__interval as steps and $__rate_interval for the sliding window
+// we usually have an overlap of 4 steps here. This should ensure we use the
+// optimized streaming approach normally, but wont regress if a user wants a very
+// high overlap.
+const maxStreamingStepOverlap = 5
+
+// overlapSteps calculates the number of evaluation steps that a range window overlaps.
+// This is the number of steps where a single sample contributes to the result.
+func overlapSteps(opts query.Options, selectRange int64) int64 {
+	step := max(1, opts.Step.Milliseconds())
+	return min(
+		(selectRange-1)/step+1,
+		querySteps(opts),
+	)
+}
+
+func UseStreamingRingBuffers(opts query.Options, selectRange int64) bool {
+	return overlapSteps(opts, selectRange) <= maxStreamingStepOverlap
+}
+
 // OverTimeBuffer is a Buffer which can calculate [agg]_over_time for a series in a
 // streaming manner, calculating the value incrementally for each step where the sample is used.
 type OverTimeBuffer struct {
@@ -23,7 +43,6 @@ type OverTimeBuffer struct {
 	stepRanges []stepRange
 	// stepStates contains the aggregation state for the corresponding stepRange
 	stepStates []stepState
-
 	// firstTimestamps contains the timestamp of the first sample for each evaluation step.
 	firstTimestamps []int64
 
@@ -41,10 +60,7 @@ type stepState struct {
 func newOverTimeBuffer(opts query.Options, selectRange, offset int64, accMaker func() compute.Accumulator) *OverTimeBuffer {
 	var (
 		step     = max(1, opts.Step.Milliseconds())
-		numSteps = min(
-			(selectRange-1)/step+1,
-			querySteps(opts),
-		)
+		numSteps = overlapSteps(opts, selectRange)
 
 		current         = opts.Start.UnixMilli()
 		firstTimestamps = make([]int64, 0, numSteps)
@@ -72,24 +88,40 @@ func newOverTimeBuffer(opts query.Options, selectRange, offset int64, accMaker f
 	}
 }
 
-// NewCountOverTimeBuffer creates a new OverTimeBuffer for the count_over_time function.
 func NewCountOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
 	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewCountAcc() })
 }
 
-// NewMaxOverTimeBuffer creates a new OverTimeBuffer for the max_over_time function.
 func NewMaxOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
 	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewMaxAcc() })
 }
 
-// NewMinOverTime creates a new OverTimeBuffer for the min_over_time function.
 func NewMinOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
 	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewMinAcc() })
 }
 
-// NewSumOverTime creates a new OverTimeBuffer for the sum_over_time function.
 func NewSumOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
 	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewSumAcc() })
+}
+
+func NewAvgOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
+	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewAvgAcc() })
+}
+
+func NewStdDevOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
+	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewStdDevAcc() })
+}
+
+func NewStdVarOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
+	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewStdVarAcc() })
+}
+
+func NewPresentOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
+	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewGroupAcc() })
+}
+
+func NewLastOverTimeBuffer(opts query.Options, selectRange, offset int64) *OverTimeBuffer {
+	return newOverTimeBuffer(opts, selectRange, offset, func() compute.Accumulator { return compute.NewLastAcc() })
 }
 
 func (r *OverTimeBuffer) SampleCount() int {
@@ -111,10 +143,11 @@ func (r *OverTimeBuffer) Push(t int64, v Value) {
 			r.stepRanges[i].sampleCount++
 		}
 
-		// Aggregate the sample to the current step
+		// Aggregate the sample to the current step.
+		// Accumulators track error state internally and become no-ops after an error.
+		// Float-only accumulators skip histograms and track via HasIgnoredHistograms().
 		if err := r.stepStates[i].acc.Add(v.F, v.H); err != nil {
 			r.stepStates[i].warn = err
-			continue
 		}
 
 		if fts := r.firstTimestamps[i]; t >= fts {
@@ -165,11 +198,17 @@ func (r *OverTimeBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float
 		return 0, nil, false, nil
 	}
 
-	f, h := r.stepStates[0].acc.Value()
+	acc := r.stepStates[0].acc
+	f, h := acc.Value()
 
-	if r.stepStates[0].acc.ValueType() == compute.MixedTypeValue {
+	if acc.ValueType() == compute.MixedTypeValue {
 		warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
 		return 0, nil, false, nil
 	}
-	return f, h, r.stepStates[0].acc.ValueType() == compute.SingleTypeValue, nil
+
+	// Float-only accumulators track skipped histograms; emit info-level warning
+	if acc.HasIgnoredHistograms() && acc.ValueType() == compute.SingleTypeValue {
+		warnings.AddToContext(annotations.HistogramIgnoredInMixedRangeInfo, ctx)
+	}
+	return f, h, acc.ValueType() == compute.SingleTypeValue, nil
 }

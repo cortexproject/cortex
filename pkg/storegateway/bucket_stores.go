@@ -287,9 +287,7 @@ func (u *ThanosBucketStores) syncUsersBlocks(ctx context.Context, f func(context
 	// is limited in order to avoid to concurrently sync a lot of tenants in
 	// a large cluster.
 	for i := 0; i < u.cfg.BucketStore.TenantSyncConcurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 
 			for job := range jobs {
 				if err := f(ctx, job.store); err != nil {
@@ -308,7 +306,7 @@ func (u *ThanosBucketStores) syncUsersBlocks(ctx context.Context, f func(context
 					u.storesErrorsMu.Unlock()
 				}
 			}
-		}()
+		})
 	}
 
 	// Lazily create a bucket store for each new user found

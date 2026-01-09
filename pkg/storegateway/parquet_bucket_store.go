@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -37,10 +38,12 @@ type parquetBucketStore struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache storecache.MatchersCache
+	matcherCache      storecache.MatchersCache
+	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 }
 
 func (p *parquetBucketStore) Close() error {
+	p.parquetShardCache.Close()
 	return p.bucket.Close()
 }
 
@@ -62,7 +65,8 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 	for _, blockID := range blockIDs {
-		block, err := p.newParquetBlock(ctx, blockID, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
+		// TODO: support shard ID > 0 later.
+		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
 		if err != nil {
 			return nil, err
 		}

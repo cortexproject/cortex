@@ -12,6 +12,36 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
+func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+
+	// Test with feature flag disabled - metrics should be nil
+	t.Run("metrics are nil when feature flag is disabled", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
+
+		require.Nil(t, m.unoptimizedRegexPatternLength)
+		require.Nil(t, m.unoptimizedRegexLabelCardinality)
+		require.Nil(t, m.unoptimizedRegexTotalValueLength)
+	})
+
+	// Test with feature flag enabled - metrics should be initialized
+	t.Run("metrics are initialized when feature flag is enabled", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexPatternLength)
+		require.NotNil(t, m.unoptimizedRegexLabelCardinality)
+		require.NotNil(t, m.unoptimizedRegexTotalValueLength)
+	})
+}
+
 func TestIngesterMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
@@ -35,7 +65,8 @@ func TestIngesterMetrics(t *testing.T) {
 		ingestionRate,
 		&inflightPushRequests,
 		&maxInflightQueryRequests,
-		false)
+		false,
+		true)
 
 	require.NotNil(t, m)
 
@@ -137,6 +168,55 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_queries_total The total number of queries the ingester has handled.
 			# TYPE cortex_ingester_queries_total counter
 			cortex_ingester_queries_total 0
+			# HELP cortex_ingester_unoptimized_regex_pattern_length_bytes Length (in bytes) of unoptimized regex patterns in queries.
+			# TYPE cortex_ingester_unoptimized_regex_pattern_length_bytes histogram
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="2"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="8"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="32"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="128"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="512"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="2048"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_sum 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_count 0
+			# HELP cortex_ingester_unoptimized_regex_label_cardinality Cardinality of labels queried with unoptimized regex matchers.
+			# TYPE cortex_ingester_unoptimized_regex_label_cardinality histogram
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="4096"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="16384"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="65536"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="262144"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_sum 0
+			cortex_ingester_unoptimized_regex_label_cardinality_count 0
+			# HELP cortex_ingester_unoptimized_regex_total_value_length_bytes Total length (in bytes) of all label values for labels queried with unoptimized regex matchers.
+			# TYPE cortex_ingester_unoptimized_regex_total_value_length_bytes histogram
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4096"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="16384"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="65536"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="262144"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1.048576e+06"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4.194304e+06"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_sum 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_count 0
 	`))
 	require.NoError(t, err)
 

@@ -139,3 +139,9 @@ Currently experimental features are:
   - `-ingester.active-queried-series-metrics-update-period` metric update interval
   - `-ingester.active-queried-series-metrics-window-duration` each HyperLogLog time window size
   - `-ingester.active-queried-series-metrics-sample-rate` query sampling rate
+- Ingester: Regex Matcher Limits
+  - Enable regex matcher limits and metrics collection via `-ingester.enable-regex-matcher-limits=true`
+  - Per-tenant limits for unoptimized regex matchers:
+    - `-validation.max-regex-pattern-length` (int) - maximum pattern length in bytes
+    - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
+    - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes

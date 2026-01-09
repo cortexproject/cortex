@@ -4585,6 +4585,12 @@
           "type": "boolean",
           "x-cli-flag": "ingester.enable-matcher-optimization"
         },
+        "enable_regex_matcher_limits": {
+          "default": false,
+          "description": "Enable regex matcher limits and metrics collection for unoptimized regex queries. When enabled, the ingester will track pattern length, label cardinality, and total value length for unoptimized regex matchers.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.enable-regex-matcher-limits"
+        },
         "ignore_series_limit_for_metric_names": {
           "description": "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.",
           "type": "string",
@@ -5194,6 +5200,12 @@
           "type": "number",
           "x-cli-flag": "ingester.max-global-series-per-user"
         },
+        "max_label_cardinality_for_unoptimized_regex": {
+          "default": 0,
+          "description": "Maximum cardinality of a label that can be queried with an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-label-cardinality-for-unoptimized-regex"
+        },
         "max_label_name_length": {
           "default": 1024,
           "description": "Maximum length accepted for label names",
@@ -5292,6 +5304,12 @@
           "type": "number",
           "x-cli-flag": "frontend.max-query-response-size"
         },
+        "max_regex_pattern_length": {
+          "default": 0,
+          "description": "Maximum length (in bytes) of an unoptimized regex pattern. This is a pre-flight check to reject expensive regex queries. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-regex-pattern-length"
+        },
         "max_series_per_metric": {
           "default": 50000,
           "description": "The maximum number of active series per metric name, per ingester. 0 to disable.",
@@ -5303,6 +5321,12 @@
           "description": "The maximum number of active series per user, per ingester. 0 to disable.",
           "type": "number",
           "x-cli-flag": "ingester.max-series-per-user"
+        },
+        "max_total_label_value_length_for_unoptimized_regex": {
+          "default": 0,
+          "description": "Maximum total length (in bytes) of all label values combined for an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-total-label-value-length-for-unoptimized-regex"
         },
         "metric_relabel_configs": {
           "default": [],

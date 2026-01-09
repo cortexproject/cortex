@@ -347,6 +347,12 @@
               "type": "boolean",
               "x-cli-flag": "alertmanager.sharding-ring.detailed-metrics-enabled"
             },
+            "disable_replica_set_extension": {
+              "default": false,
+              "description": "Disable extending the replica set when instances are unhealthy. This limits blast radius during config corruption incidents but reduces availability during normal failures.",
+              "type": "boolean",
+              "x-cli-flag": "alertmanager.sharding-ring.disable-replica-set-extension"
+            },
             "final_sleep": {
               "default": "0s",
               "description": "The sleep seconds when alertmanager is shutting down. Need to be close to or larger than KV Store information propagation delay",

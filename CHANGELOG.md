@@ -41,7 +41,6 @@
 * [BUGFIX] Alertmanager: Fix alertmanager reloading bug that removes user template files #7196
 * [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
 
-
 ## 1.20.1 2025-12-03
 
 * [BUGFIX] Distributor: Fix panic on health check failure when using stream push. #7116

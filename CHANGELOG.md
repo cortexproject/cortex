@@ -34,6 +34,7 @@
 * [BUGFIX] Scheduler: Fix memory leak by properly cleaning up query fragment registry. #7148
 * [BUGFIX] Compactor: Add back deletion of partition group info file even if not complete #7157
 * [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
+* [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
 
 ## 1.20.1 2025-12-03
 
@@ -2651,4 +2652,3 @@ This release has several exciting features, the most notable of them being setti
 * [FEATURE] You can specify "heap ballast" to reduce Go GC Churn #1489
 * [BUGFIX] HA Tracker no longer always makes a request to Consul/Etcd when a request is not from the active replica #1516
 * [BUGFIX] Queries are now correctly cancelled by the query-frontend #1508
-* [BUGFIX] If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188

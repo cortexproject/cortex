@@ -89,15 +89,18 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 
 	tests := map[string]struct {
-		finderResult      bucketindex.Blocks
-		finderErr         error
-		storeSetResponses []any
-		limits            BlocksStoreLimits
-		queryLimiter      *limiter.QueryLimiter
-		seriesLimit       int
-		expectedSeries    []seriesResult
-		expectedErr       error
-		expectedMetrics   string
+		finderResult       bucketindex.Blocks
+		finderErr          error
+		storeSetResponses  []any
+		limits             BlocksStoreLimits
+		queryLimiter       *limiter.QueryLimiter
+		seriesLimit        int
+		projectionLabels   []string
+		projectionInclude  bool
+		expectedQueryHints *storepb.QueryHints
+		expectedSeries     []seriesResult
+		expectedErr        error
+		expectedMetrics    string
 	}{
 		"no block in the storage matching the query time range": {
 			finderResult: nil,
@@ -1549,6 +1552,35 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"query with projection hints": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []any{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.FromStrings(metricNameLabel.Name, metricNameLabel.Value), []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:            &blocksStoreLimitsMock{},
+			queryLimiter:      noOpQueryLimiter,
+			projectionLabels:  []string{"job", "instance"},
+			projectionInclude: true,
+			expectedQueryHints: &storepb.QueryHints{
+				ProjectionLabels:  []string{"job", "instance"},
+				ProjectionInclude: true,
+			},
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel),
+					values: []valueResult{
+						{t: minT, v: 1},
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1556,12 +1588,20 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			t.Parallel()
 
 			var hints *storage.SelectHints
-			if testData.seriesLimit > 0 {
+			if testData.seriesLimit > 0 || len(testData.projectionLabels) > 0 {
 				hints = &storage.SelectHints{
-					Limit: testData.seriesLimit,
 					Start: minT,
 					End:   maxT,
 				}
+			}
+
+			if testData.seriesLimit > 0 {
+				hints.Limit = testData.seriesLimit
+			}
+
+			if len(testData.projectionLabels) > 0 {
+				hints.ProjectionLabels = testData.projectionLabels
+				hints.ProjectionInclude = testData.projectionInclude
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "user-1")
@@ -1640,6 +1680,22 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 			}
 			require.NoError(t, set.Err())
 			assert.Equal(t, testData.expectedSeries, actualSeries)
+
+			if testData.expectedQueryHints != nil {
+				found := false
+				for _, resp := range testData.storeSetResponses {
+					if clientsMap, ok := resp.(map[BlocksStoreClient][]ulid.ULID); ok {
+						for client := range clientsMap {
+							if mockClient, ok := client.(*storeGatewayClientMock); ok {
+								// verify if SG get passed hint
+								assert.Equal(t, testData.expectedQueryHints, mockClient.lastSeriesRequest.QueryHints)
+								found = true
+							}
+						}
+					}
+				}
+				require.True(t, found)
+			}
 
 			// Assert on metrics (optional, only for test cases defining it).
 			if testData.expectedMetrics != "" {
@@ -2560,9 +2616,12 @@ type storeGatewayClientMock struct {
 	mockedLabelNamesResponse  *storepb.LabelNamesResponse
 	mockedLabelValuesResponse *storepb.LabelValuesResponse
 	mockedLabelValuesErr      error
+	lastSeriesRequest         *storepb.SeriesRequest // capture the last received SeriesRequest to use test.
 }
 
 func (m *storeGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storegatewaypb.StoreGateway_SeriesClient, error) {
+	m.lastSeriesRequest = in
+
 	seriesClient := &storeGatewaySeriesClientMock{
 		limit:                 in.Limit,
 		mockedResponses:       m.mockedSeriesResponses,

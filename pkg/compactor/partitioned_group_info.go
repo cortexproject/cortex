@@ -156,7 +156,8 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
-		} else if visitMarker.VisitTime < p.CreationTime {
+		} else if visitMarker.VisitTime < p.CreationTime ||
+			(visitMarker.PartitionedGroupCreationTime > 0 && visitMarker.PartitionedGroupCreationTime < p.CreationTime) {
 			status.VisitMarkersToDelete = append(status.VisitMarkersToDelete, visitMarker)
 			allPartitionCompleted = false
 		} else if (visitMarker.GetStatus() == Pending || visitMarker.GetStatus() == InProgress) && !visitMarker.IsExpired(partitionVisitMarkerTimeout) {

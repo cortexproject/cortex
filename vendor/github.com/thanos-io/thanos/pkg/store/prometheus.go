@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -91,7 +92,7 @@ func NewPrometheusStore(
 		promVersion:                   promVersion,
 		timestamps:                    timestamps,
 		remoteReadAcceptableResponses: []prompb.ReadRequest_ResponseType{prompb.ReadRequest_STREAMED_XOR_CHUNKS, prompb.ReadRequest_SAMPLES},
-		buffers: sync.Pool{New: func() interface{} {
+		buffers: sync.Pool{New: func() any {
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
@@ -122,7 +123,9 @@ func (p *PrometheusStore) putBuffer(b *[]byte) {
 
 // Series returns all series for a requested time range and label matcher.
 func (p *PrometheusStore) Series(r *storepb.SeriesRequest, seriesSrv storepb.Store_SeriesServer) error {
-	s := newFlushableServer(seriesSrv, sortingStrategyStore)
+	s := newFlushableServer(
+		newBatchableServer(seriesSrv, int(r.ResponseBatchSize)),
+		sortingStrategyStore)
 
 	extLset := p.externalLabelsFn()
 
@@ -426,10 +429,7 @@ func (p *PrometheusStore) chunkSamples(series *prompb.TimeSeries, maxSamplesPerC
 	defer hashPool.Put(hasher)
 
 	for len(samples) > 0 {
-		chunkSize := len(samples)
-		if chunkSize > maxSamplesPerChunk {
-			chunkSize = maxSamplesPerChunk
-		}
+		chunkSize := min(len(samples), maxSamplesPerChunk)
 
 		enc, cb, err := p.encodeChunk(samples[:chunkSize])
 		if err != nil {
@@ -598,10 +598,8 @@ func (p *PrometheusStore) LabelValues(ctx context.Context, r *storepb.LabelValue
 	if r.Label == "" {
 		return nil, status.Error(codes.InvalidArgument, "label name parameter cannot be empty")
 	}
-	for i := range r.WithoutReplicaLabels {
-		if r.Label == r.WithoutReplicaLabels[i] {
-			return &storepb.LabelValuesResponse{}, nil
-		}
+	if slices.Contains(r.WithoutReplicaLabels, r.Label) {
+		return &storepb.LabelValuesResponse{}, nil
 	}
 
 	extLset := p.externalLabelsFn()

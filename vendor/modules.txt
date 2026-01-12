@@ -1,4 +1,4 @@
-# cel.dev/expr v0.23.1
+# cel.dev/expr v0.24.0
 ## explicit; go 1.22.0
 cel.dev/expr
 # cloud.google.com/go v0.120.0
@@ -27,8 +27,8 @@ cloud.google.com/go/auth/internal/transport/cert
 # cloud.google.com/go/auth/oauth2adapt v0.2.8
 ## explicit; go 1.23.0
 cloud.google.com/go/auth/oauth2adapt
-# cloud.google.com/go/compute/metadata v0.7.0
-## explicit; go 1.23.0
+# cloud.google.com/go/compute/metadata v0.9.0
+## explicit; go 1.24.0
 cloud.google.com/go/compute/metadata
 # cloud.google.com/go/iam v1.5.2
 ## explicit; go 1.23.0
@@ -120,8 +120,8 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/managedidentity
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
-# github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.27.0
-## explicit; go 1.22
+# github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0
+## explicit; go 1.24.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.50.0
 ## explicit; go 1.22
@@ -132,6 +132,9 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapp
 # github.com/Masterminds/squirrel v1.5.4
 ## explicit; go 1.14
 github.com/Masterminds/squirrel
+# github.com/VictoriaMetrics/easyproto v0.1.4
+## explicit; go 1.18
+github.com/VictoriaMetrics/easyproto
 # github.com/VictoriaMetrics/fastcache v1.12.2
 ## explicit; go 1.13
 github.com/VictoriaMetrics/fastcache
@@ -302,8 +305,8 @@ github.com/cenkalti/backoff/v5
 # github.com/cespare/xxhash/v2 v2.3.0
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/cncf/xds/go v0.0.0-20250501225837-2ac532fd4443
-## explicit; go 1.19
+# github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f
+## explicit; go 1.24
 github.com/cncf/xds/go/udpa/annotations
 github.com/cncf/xds/go/udpa/type/v1
 github.com/cncf/xds/go/xds/annotations/v3
@@ -360,8 +363,8 @@ github.com/efficientgo/core/testutil/internal
 # github.com/efficientgo/tools/extkingpin v0.0.0-20230505153745-6b7392939a60
 ## explicit; go 1.19
 github.com/efficientgo/tools/extkingpin
-# github.com/envoyproxy/go-control-plane/envoy v1.32.4
-## explicit; go 1.22
+# github.com/envoyproxy/go-control-plane/envoy v1.35.0
+## explicit; go 1.23.0
 github.com/envoyproxy/go-control-plane/envoy/admin/v3
 github.com/envoyproxy/go-control-plane/envoy/annotations
 github.com/envoyproxy/go-control-plane/envoy/config/accesslog/v3
@@ -1203,7 +1206,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/assert/yaml
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
-# github.com/thanos-io/objstore v0.0.0-20250722142242-922b22272ee3
+# github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488
 ## explicit; go 1.24.0
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp
@@ -1238,8 +1241,8 @@ github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 github.com/thanos-io/promql-engine/warnings
-# github.com/thanos-io/thanos v0.39.3-0.20250729120336-88d0ae8071cb
-## explicit; go 1.24.0
+# github.com/thanos-io/thanos v0.40.1-0.20260109174305-38129bbb6008
+## explicit; go 1.25.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
 github.com/thanos-io/thanos/pkg/block/indexheader
@@ -1280,6 +1283,7 @@ github.com/thanos-io/thanos/pkg/rules/rulespb
 github.com/thanos-io/thanos/pkg/runutil
 github.com/thanos-io/thanos/pkg/server/http/middleware
 github.com/thanos-io/thanos/pkg/shipper
+github.com/thanos-io/thanos/pkg/status/statuspb
 github.com/thanos-io/thanos/pkg/store
 github.com/thanos-io/thanos/pkg/store/cache
 github.com/thanos-io/thanos/pkg/store/cache/cachekey
@@ -1474,8 +1478,8 @@ go.opentelemetry.io/collector/semconv/v1.6.1
 # go.opentelemetry.io/contrib/bridges/otelzap v0.11.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/contrib/bridges/otelzap
-# go.opentelemetry.io/contrib/detectors/gcp v1.35.0
-## explicit; go 1.22.0
+# go.opentelemetry.io/contrib/detectors/gcp v1.38.0
+## explicit; go 1.23.8
 go.opentelemetry.io/contrib/detectors/gcp
 # go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0
 ## explicit; go 1.23.0
@@ -1662,7 +1666,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/netutil
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.31.0
+# golang.org/x/oauth2 v0.32.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -1751,8 +1755,8 @@ google.golang.org/genproto/googleapis/type/calendarperiod
 google.golang.org/genproto/googleapis/type/date
 google.golang.org/genproto/googleapis/type/expr
 google.golang.org/genproto/googleapis/type/timeofday
-# google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822
-## explicit; go 1.23.0
+# google.golang.org/genproto/googleapis/api v0.0.0-20251029180050-ab9386a59fda
+## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/api
 google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/distribution
@@ -1761,12 +1765,12 @@ google.golang.org/genproto/googleapis/api/httpbody
 google.golang.org/genproto/googleapis/api/label
 google.golang.org/genproto/googleapis/api/metric
 google.golang.org/genproto/googleapis/api/monitoredres
-# google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822
-## explicit; go 1.23.0
+# google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda
+## explicit; go 1.24.0
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.73.0 => google.golang.org/grpc v1.71.2
+# google.golang.org/grpc v1.76.0 => google.golang.org/grpc v1.71.2
 ## explicit; go 1.22.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes

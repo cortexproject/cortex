@@ -648,7 +648,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			seriesQueryStats := &hintspb.QueryStats{}
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, limit, convertedMatchers, shardingInfo, skipChunks, blockIDs, defaultAggrs)
+			req, err := createSeriesRequest(minT, maxT, limit, convertedMatchers, sp, shardingInfo, skipChunks, blockIDs, defaultAggrs)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -1044,7 +1044,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil, merr.Err()
 }
 
-func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatcher, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatcher, selectHints *storage.SelectHints, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -1062,7 +1062,7 @@ func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatche
 		return nil, errors.Wrapf(err, "failed to marshal series request hints")
 	}
 
-	return &storepb.SeriesRequest{
+	req := &storepb.SeriesRequest{
 		MinTime:                 minT,
 		MaxTime:                 maxT,
 		Limit:                   limit,
@@ -1071,10 +1071,19 @@ func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatche
 		Hints:                   anyHints,
 		SkipChunks:              skipChunks,
 		ShardInfo:               shardingInfo,
-		Aggregates:              aggrs,
 		// TODO: support more downsample levels when downsampling is supported.
+		Aggregates:          aggrs,
 		MaxResolutionWindow: downsample.ResLevel0,
-	}, nil
+	}
+
+	if selectHints != nil {
+		req.QueryHints = &storepb.QueryHints{
+			ProjectionLabels:  selectHints.ProjectionLabels,
+			ProjectionInclude: selectHints.ProjectionInclude,
+		}
+	}
+
+	return req, nil
 }
 
 func createLabelNamesRequest(minT, maxT, limit int64, blockIDs []ulid.ULID, matchers []storepb.LabelMatcher) (*storepb.LabelNamesRequest, error) {

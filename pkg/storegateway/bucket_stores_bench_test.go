@@ -141,7 +141,7 @@ func generateBenchmarkBlock(b *testing.B, storageDir, userID string, numSeries, 
 
 	app := db.Appender(context.Background())
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls := labels.FromStrings(
 			labels.MetricName, "test_metric",
 			"idx", fmt.Sprintf("%d", i),
@@ -149,7 +149,7 @@ func generateBenchmarkBlock(b *testing.B, storageDir, userID string, numSeries, 
 			"instance", "localhost:9090",
 		)
 
-		for t := 0; t < numSamples; t++ {
+		for t := range numSamples {
 			// Time in milliseconds, step 15s
 			ts := int64(t * 15000)
 			_, err := app.Append(0, lbls, ts, float64(i))

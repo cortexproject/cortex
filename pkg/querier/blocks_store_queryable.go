@@ -143,6 +143,7 @@ type BlocksStoreQueryable struct {
 
 	storeGatewayQueryStatsEnabled           bool
 	storeGatewayConsistencyCheckMaxAttempts int
+	storeGatewaySeriesBatchSize             int64
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -175,6 +176,7 @@ func NewBlocksStoreQueryable(
 		limits:                                  limits,
 		storeGatewayQueryStatsEnabled:           config.StoreGatewayQueryStatsEnabled,
 		storeGatewayConsistencyCheckMaxAttempts: config.StoreGatewayConsistencyCheckMaxAttempts,
+		storeGatewaySeriesBatchSize:             config.StoreGatewaySeriesBatchSize,
 	}
 
 	q.Service = services.NewBasicService(q.starting, q.running, q.stopping)
@@ -306,6 +308,7 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 		queryStoreAfter:                         q.queryStoreAfter,
 		storeGatewayQueryStatsEnabled:           q.storeGatewayQueryStatsEnabled,
 		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
+		storeGatewaySeriesBatchSize:             q.storeGatewaySeriesBatchSize,
 	}, nil
 }
 
@@ -328,6 +331,9 @@ type blocksStoreQuerier struct {
 
 	// The maximum number of times we attempt fetching missing blocks from different Store Gateways.
 	storeGatewayConsistencyCheckMaxAttempts int
+
+	// The maximum number of series to be batched in a single gRPC response message from Store Gateways.
+	storeGatewaySeriesBatchSize int64
 }
 
 // Select implements storage.Querier interface.
@@ -648,7 +654,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			seriesQueryStats := &hintspb.QueryStats{}
 			skipChunks := sp != nil && sp.Func == "series"
 
-			req, err := createSeriesRequest(minT, maxT, limit, convertedMatchers, sp, shardingInfo, skipChunks, blockIDs, defaultAggrs)
+			req, err := createSeriesRequest(minT, maxT, limit, convertedMatchers, sp, shardingInfo, skipChunks, blockIDs, defaultAggrs, q.storeGatewaySeriesBatchSize)
 			if err != nil {
 				return errors.Wrapf(err, "failed to create series request")
 			}
@@ -669,6 +675,37 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			mySeries := []*storepb.Series(nil)
 			myWarnings := annotations.Annotations(nil)
 			myQueriedBlocks := []ulid.ULID(nil)
+
+			processSeries := func(s *storepb.Series) error {
+				mySeries = append(mySeries, s)
+
+				// Add series fingerprint to query limiter; will return error if we are over the limit
+				limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
+				if limitErr != nil {
+					return validation.LimitError(limitErr.Error())
+				}
+
+				// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
+				if maxChunksLimit > 0 {
+					actual := numChunks.Add(int32(len(s.Chunks)))
+					if actual > int32(leftChunksLimit) {
+						return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
+					}
+				}
+				chunksSize := countChunkBytes(s)
+				dataSize := countDataBytes(s)
+				if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
+					return validation.LimitError(chunkBytesLimitErr.Error())
+				}
+				if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
+					return validation.LimitError(chunkLimitErr.Error())
+				}
+				if dataBytesLimitErr := queryLimiter.AddDataBytes(dataSize); dataBytesLimitErr != nil {
+					return validation.LimitError(dataBytesLimitErr.Error())
+				}
+
+				return nil
+			}
 
 			for {
 				// Ensure the context hasn't been canceled in the meanwhile (eg. an error occurred
@@ -708,33 +745,18 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 					return errors.Wrapf(err, "failed to receive series from %s", c.RemoteAddress())
 				}
 
-				// Response may either contain series, warning or hints.
+				// Response may either contain series, batch, warning or hints.
 				if s := resp.GetSeries(); s != nil {
-					mySeries = append(mySeries, s)
-
-					// Add series fingerprint to query limiter; will return error if we are over the limit
-					limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
-					if limitErr != nil {
-						return validation.LimitError(limitErr.Error())
+					if err := processSeries(s); err != nil {
+						return err
 					}
+				}
 
-					// Ensure the max number of chunks limit hasn't been reached (max == 0 means disabled).
-					if maxChunksLimit > 0 {
-						actual := numChunks.Add(int32(len(s.Chunks)))
-						if actual > int32(leftChunksLimit) {
-							return validation.LimitError(fmt.Sprintf(errMaxChunksPerQueryLimit, util.LabelMatchersToString(matchers), maxChunksLimit))
+				if b := resp.GetBatch(); b != nil {
+					for _, s := range b.Series {
+						if err := processSeries(s); err != nil {
+							return err
 						}
-					}
-					chunksSize := countChunkBytes(s)
-					dataSize := countDataBytes(s)
-					if chunkBytesLimitErr := queryLimiter.AddChunkBytes(chunksSize); chunkBytesLimitErr != nil {
-						return validation.LimitError(chunkBytesLimitErr.Error())
-					}
-					if chunkLimitErr := queryLimiter.AddChunks(len(s.Chunks)); chunkLimitErr != nil {
-						return validation.LimitError(chunkLimitErr.Error())
-					}
-					if dataBytesLimitErr := queryLimiter.AddDataBytes(dataSize); dataBytesLimitErr != nil {
-						return validation.LimitError(dataBytesLimitErr.Error())
 					}
 				}
 
@@ -1044,7 +1066,7 @@ func (q *blocksStoreQuerier) fetchLabelValuesFromStore(
 	return valueSets, warnings, queriedBlocks, nil, merr.Err()
 }
 
-func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatcher, selectHints *storage.SelectHints, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr) (*storepb.SeriesRequest, error) {
+func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatcher, selectHints *storage.SelectHints, shardingInfo *storepb.ShardInfo, skipChunks bool, blockIDs []ulid.ULID, aggrs []storepb.Aggr, batchSize int64) (*storepb.SeriesRequest, error) {
 	// Selectively query only specific blocks.
 	hints := &hintspb.SeriesRequestHints{
 		BlockMatchers: []storepb.LabelMatcher{
@@ -1074,6 +1096,7 @@ func createSeriesRequest(minT, maxT, limit int64, matchers []storepb.LabelMatche
 		// TODO: support more downsample levels when downsampling is supported.
 		Aggregates:          aggrs,
 		MaxResolutionWindow: downsample.ResLevel0,
+		ResponseBatchSize:   batchSize,
 	}
 
 	if selectHints != nil {

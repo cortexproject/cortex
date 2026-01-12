@@ -4829,6 +4829,11 @@ store_gateway_client:
 # CLI flag: -querier.store-gateway-consistency-check-max-attempts
 [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
+# [Experimental] The maximum number of series to be batched in a single gRPC
+# response message from Store Gateways. A value of 0 or 1 disables batching.
+# CLI flag: -querier.store-gateway-series-batch-size
+[store_gateway_series_batch_size: <int> | default = 1]
+
 # The maximum number of times we attempt fetching data from ingesters for
 # retryable errors (ex. partial data returned).
 # CLI flag: -querier.ingester-query-max-attempts

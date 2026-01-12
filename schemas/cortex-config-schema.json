@@ -6076,6 +6076,12 @@
           "type": "boolean",
           "x-cli-flag": "querier.store-gateway-query-stats-enabled"
         },
+        "store_gateway_series_batch_size": {
+          "default": 1,
+          "description": "[Experimental] The maximum number of series to be batched in a single gRPC response message from Store Gateways. A value of 0 or 1 disables batching.",
+          "type": "number",
+          "x-cli-flag": "querier.store-gateway-series-batch-size"
+        },
         "thanos_engine": {
           "properties": {
             "decoding_concurrency": {

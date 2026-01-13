@@ -815,12 +815,21 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 			}
 		}
 
-		if extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker {
-			// Remove partition visit markers
+		if extraInfo.status.CanDelete {
+			// Remove all partition visit markers for completed partitions
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
-				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "err", err)
+				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete all partition visit markers for partitioned group", "err", err)
 			} else {
 				level.Info(partitionedGroupLogger).Log("msg", "deleted partition visit markers for partitioned group")
+			}
+		} else {
+			// Remove all invalid visit markers
+			for _, v := range extraInfo.status.VisitMarkersToDelete {
+				if err := userBucket.Delete(ctx, v.GetVisitMarkerFilePath()); err != nil {
+					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete invalid visit marker", "partition_visit_marker_file", v.String(), "err", err)
+				} else {
+					level.Info(partitionedGroupLogger).Log("msg", "deleted invalid visit marker", "partition_visit_marker_file", v.String())
+				}
 			}
 		}
 	}

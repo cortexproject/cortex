@@ -42,6 +42,7 @@
 * [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
 * [BUGFIX] Alertmanager: Fix alertmanager reloading bug that removes user template files #7196
 * [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
+* [BUGFIX] Compactor: Always clean up visit marker when partition group should be deleted. #7208
 
 ## 1.20.1 2025-12-03
 

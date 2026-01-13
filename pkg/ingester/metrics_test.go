@@ -27,6 +27,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 		require.Nil(t, m.unoptimizedRegexPatternLength)
 		require.Nil(t, m.unoptimizedRegexLabelCardinality)
 		require.Nil(t, m.unoptimizedRegexTotalValueLength)
+		require.Nil(t, m.unoptimizedRegexRejectedTotal)
 	})
 
 	// Test with feature flag enabled - metrics should be initialized
@@ -39,6 +40,61 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 		require.NotNil(t, m.unoptimizedRegexPatternLength)
 		require.NotNil(t, m.unoptimizedRegexLabelCardinality)
 		require.NotNil(t, m.unoptimizedRegexTotalValueLength)
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+	})
+}
+
+func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+
+	t.Run("rejected metric increments correctly", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+
+		// Test incrementing different rejection reasons
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "cardinality").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "cardinality").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "total_value_length").Inc()
+
+		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user1"} 2
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="pattern_length",user="user1"} 1
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="total_value_length",user="user2"} 1
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		require.NoError(t, err)
+	})
+
+	t.Run("metric cleanup works correctly", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+
+		// Add metrics for multiple users
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "cardinality").Inc()
+
+		// Delete user1 metrics
+		m.deletePerUserMetrics("user1")
+
+		// Only user2 metrics should remain
+		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user2"} 1
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		require.NoError(t, err)
 	})
 }
 
@@ -217,6 +273,8 @@ func TestIngesterMetrics(t *testing.T) {
 			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="+Inf"} 0
 			cortex_ingester_unoptimized_regex_total_value_length_bytes_sum 0
 			cortex_ingester_unoptimized_regex_total_value_length_bytes_count 0
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
 	`))
 	require.NoError(t, err)
 

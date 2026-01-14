@@ -77,9 +77,11 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 }
 
 // Series implements the store interface for a single parquet bucket store
-func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
-	spanLog, ctx := spanlogger.New(srv.Context(), "ParquetBucketStore.Series")
+func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store_SeriesServer) (err error) {
+	spanLog, ctx := spanlogger.New(seriesSrv.Context(), "ParquetBucketStore.Series")
 	defer spanLog.Finish()
+
+	srv := newFlushableServer(newBatchableServer(seriesSrv, int(req.ResponseBatchSize)))
 
 	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
 	if err != nil {
@@ -160,7 +162,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, srv storepb.Stor
 		return
 	}
 
-	return nil
+	return srv.Flush()
 }
 
 // LabelNames implements the store interface for a single parquet bucket store

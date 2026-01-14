@@ -89,6 +89,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 	}
 
 	tests := map[string]struct {
+		seriesBatchSize    int64
 		finderResult       bucketindex.Blocks
 		finderErr          error
 		storeSetResponses  []any
@@ -1581,6 +1582,33 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
+		"a single store-gateway instance returns a batch of series": {
+			seriesBatchSize: 2,
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1},
+			},
+			storeSetResponses: []any{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.FromStrings(metricNameLabel.Name, metricNameLabel.Value, series1Label.Name, series1Label.Value), []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
+						mockSeriesResponse(labels.FromStrings(metricNameLabel.Name, metricNameLabel.Value, series2Label.Name, series2Label.Value), []cortexpb.Sample{{Value: 2, TimestampMs: minT}}, nil, nil),
+						mockHintsResponse(block1),
+					}}: {block1},
+				},
+			},
+			limits:       &blocksStoreLimitsMock{},
+			queryLimiter: noOpQueryLimiter,
+			expectedSeries: []seriesResult{
+				{
+					lbls:   labels.New(metricNameLabel, series1Label),
+					values: []valueResult{{t: minT, v: 1}},
+				},
+				{
+					lbls:   labels.New(metricNameLabel, series2Label),
+					values: []valueResult{{t: minT, v: 2}},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1622,6 +1650,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				limits:      testData.limits,
 
 				storeGatewayConsistencyCheckMaxAttempts: 3,
+				storeGatewaySeriesBatchSize:             testData.seriesBatchSize,
 			}
 
 			matchers := []*labels.Matcher{
@@ -1689,6 +1718,22 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 							if mockClient, ok := client.(*storeGatewayClientMock); ok {
 								// verify if SG get passed hint
 								assert.Equal(t, testData.expectedQueryHints, mockClient.lastSeriesRequest.QueryHints)
+								found = true
+							}
+						}
+					}
+				}
+				require.True(t, found)
+			}
+
+			if testData.seriesBatchSize > 0 {
+				found := false
+				for _, resp := range testData.storeSetResponses {
+					if clientsMap, ok := resp.(map[BlocksStoreClient][]ulid.ULID); ok {
+						for client := range clientsMap {
+							if mockClient, ok := client.(*storeGatewayClientMock); ok {
+								// verify if SG get passed seriesBatchSize
+								assert.Equal(t, testData.seriesBatchSize, mockClient.lastSeriesRequest.ResponseBatchSize)
 								found = true
 							}
 						}

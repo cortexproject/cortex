@@ -1666,6 +1666,18 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: errInvalidParquetQueryableDefaultBlockStore,
 		},
+		"should if if invalid series batch size": {
+			setup: func(cfg *Config) {
+				cfg.StoreGatewaySeriesBatchSize = -1
+			},
+			expected: errInvalidSeriesBatchSize,
+		},
+		"should pass when 0 series batch size": {
+			setup: func(cfg *Config) {
+				cfg.StoreGatewaySeriesBatchSize = 0
+			},
+			expected: nil,
+		},
 	}
 
 	for testName, testData := range tests {

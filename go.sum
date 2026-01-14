@@ -1789,8 +1789,8 @@ github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488 h1:khBsQLLRoF1K
 github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488/go.mod h1:uDHLkMKOGDAnlN75EAz8VrRzob1+VbgYSuUleatWuF0=
 github.com/thanos-io/promql-engine v0.0.0-20251224085502-3988aa4704b5 h1:hIg9M9TRha/qaLDdtwsTWsTDkewGHleVZaV2JsLY1vA=
 github.com/thanos-io/promql-engine v0.0.0-20251224085502-3988aa4704b5/go.mod h1:MOFN0M1nDMcWZg1t4iF39sOard/K4SWgO/HHSODeDIc=
-github.com/thanos-io/thanos v0.40.1-0.20260109174305-38129bbb6008 h1:+msnhVSAWx7AewLJllGEELJmhGciT5BmLoq6rUt4Aq4=
-github.com/thanos-io/thanos v0.40.1-0.20260109174305-38129bbb6008/go.mod h1:B9TgiYdhZdVxB1jXi4hRV+XDhiMmhHFykb8cxsZyWG8=
+github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b h1:KIQzAcxtdxi3PhrOpGP5t/TP7NBZqYvvcUvlu0q8fEQ=
+github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b/go.mod h1:B9TgiYdhZdVxB1jXi4hRV+XDhiMmhHFykb8cxsZyWG8=
 github.com/tinylib/msgp v1.3.0 h1:ULuf7GPooDaIlbyvgAxBV/FI7ynli6LZ1/nVUNu+0ww=
 github.com/tinylib/msgp v1.3.0/go.mod h1:ykjzy2wzgrlvpDCRc4LA8UXy6D8bzMSuAF3WD57Gok0=
 github.com/tjhop/slog-gokit v0.1.4 h1:uj/vbDt3HaF0Py8bHPV4ti/s0utnO0miRbO277FLBKM=

@@ -2616,7 +2616,7 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, userID string, db *use
 	if db.activeQueriedSeries != nil {
 		sampled = db.activeQueriedSeries.SampleRequest()
 		if sampled {
-			queriedSeriesHashes = make([]uint64, 0, 1024) // Pre-allocate with reasonable capacity
+			queriedSeriesHashes = getQueriedSeriesHashesSlice()
 		}
 	}
 

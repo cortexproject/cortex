@@ -13,8 +13,13 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/util/zeropool"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
+)
+
+var (
+	queriedSeriesHashesPool zeropool.Pool[[]uint64]
 )
 
 // ActiveQueriedSeries tracks unique queried series using time-windowed HyperLogLog.
@@ -439,6 +444,8 @@ func (m *ActiveQueriedSeriesService) processUpdates(ctx context.Context) {
 			}
 			// Process the update synchronously
 			update.activeQueriedSeries.UpdateSeriesBatch(update.hashes, update.now)
+			// Return the slice to the pool after processing
+			putQueriedSeriesHashesSlice(update.hashes)
 		}
 	}
 }
@@ -463,5 +470,21 @@ func (m *ActiveQueriedSeriesService) UpdateSeriesBatch(activeQueriedSeries *Acti
 		// This is acceptable as we're using probabilistic data structures (HLL)
 		m.droppedUpdatesTotal.Inc()
 		level.Warn(m.logger).Log("msg", "active queried series update channel full, dropping batch", "batch_size", len(hashes), "user", userID)
+		// Return the slice to the pool since we're dropping the update
+		putQueriedSeriesHashesSlice(hashes)
+	}
+}
+
+func getQueriedSeriesHashesSlice() []uint64 {
+	if p := queriedSeriesHashesPool.Get(); p != nil {
+		return p
+	}
+
+	return make([]uint64, 0, 1024) // Pre-allocate with reasonable capacity
+}
+
+func putQueriedSeriesHashesSlice(p []uint64) {
+	if p != nil {
+		queriedSeriesHashesPool.Put(p[:0])
 	}
 }

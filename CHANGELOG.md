@@ -26,7 +26,7 @@
 * [ENHANCEMENT] Alertmanager/Ruler: Introduce a user scanner to reduce the number of list calls to object storage. #6999
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [ENHANCEMENT] Query Frontend: Add query priority based on operation. #7128
-* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
+* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7130 #7209
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
 * [ENHANCEMENT] Upgrade to go 1.25. #7164
@@ -42,7 +42,6 @@
 * [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
 * [BUGFIX] Alertmanager: Fix alertmanager reloading bug that removes user template files #7196
 * [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
-* [BUGFIX] Compactor: Always clean up visit marker when partition group should be deleted. #7208
 
 ## 1.20.1 2025-12-03
 

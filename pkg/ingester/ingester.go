@@ -2509,6 +2509,9 @@ func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, d
 		for _, matcher := range unoptimizedMatchers {
 			patternLength := len(matcher.Value)
 			if patternLength > maxPatternLength {
+				if i.metrics.unoptimizedRegexRejectedTotal != nil {
+					i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "pattern_length").Inc()
+				}
 				return validation.LimitError(fmt.Sprintf(
 					"regex pattern length %d exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific pattern.",
 					patternLength, maxPatternLength, matcher.String(),
@@ -2552,6 +2555,9 @@ func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, d
 
 		// Check limits only if configured
 		if maxCardinality > 0 && cardinality > maxCardinality {
+			if i.metrics.unoptimizedRegexRejectedTotal != nil {
+				i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "cardinality").Inc()
+			}
 			return validation.LimitError(fmt.Sprintf(
 				"label %q has cardinality %d which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
 				matcher.Name, cardinality, maxCardinality, matcher.String(),
@@ -2559,6 +2565,9 @@ func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, d
 		}
 
 		if maxTotalValueLength > 0 && totalValueLength > maxTotalValueLength {
+			if i.metrics.unoptimizedRegexRejectedTotal != nil {
+				i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "total_value_length").Inc()
+			}
 			return validation.LimitError(fmt.Sprintf(
 				"label %q has total value length %d bytes (across %d values) which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
 				matcher.Name, totalValueLength, cardinality, maxTotalValueLength, matcher.String(),

@@ -77,6 +77,7 @@ type ingesterMetrics struct {
 	unoptimizedRegexPatternLength    prometheus.Histogram
 	unoptimizedRegexLabelCardinality prometheus.Histogram
 	unoptimizedRegexTotalValueLength prometheus.Histogram
+	unoptimizedRegexRejectedTotal    *prometheus.CounterVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer,
@@ -314,6 +315,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			NativeHistogramMinResetDuration: 1,
 			Buckets:                         prometheus.ExponentialBuckets(1, 4, 12), // 1 to ~16M bytes
 		})
+		m.unoptimizedRegexRejectedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_unoptimized_regex_rejected_requests_total",
+			Help: "Total number of requests rejected due to unoptimized regex matcher limits per user and reason.",
+		}, []string{"user", "reason"})
 	}
 
 	if postingsCacheEnabled && r != nil {
@@ -361,6 +366,10 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 
 	if m.memSeriesRemovedTotal != nil {
 		m.memSeriesRemovedTotal.DeleteLabelValues(userID)
+	}
+
+	if m.unoptimizedRegexRejectedTotal != nil {
+		m.unoptimizedRegexRejectedTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 	}
 }
 

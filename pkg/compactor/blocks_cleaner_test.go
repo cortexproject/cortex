@@ -999,6 +999,10 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	partitionedGroupFileExists, err = userBucket.Exists(ctx, GetPartitionedGroupFile(partitionedGroupID))
 	require.NoError(t, err)
 	require.False(t, partitionedGroupFileExists)
+
+	partitionedGroupFileExists, err = userBucket.Exists(ctx, visitMarker.GetVisitMarkerFilePath())
+	require.NoError(t, err)
+	require.False(t, partitionedGroupFileExists)
 }
 
 func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {

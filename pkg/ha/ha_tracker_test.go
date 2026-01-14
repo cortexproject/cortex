@@ -758,6 +758,108 @@ func TestCheckReplicaCleanup(t *testing.T) {
 	))
 }
 
+func TestHATracker_CacheWarmupOnStart(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	reg := prometheus.NewPedanticRegistry()
+
+	codec := GetReplicaDescCodec()
+	kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	mockKV := kv.PrefixClient(kvStore, "prefix")
+
+	// CAS valid entry
+	user1 := "user1"
+	clusterUser1 := "clusterUser1"
+	key1 := fmt.Sprintf("%s/%s", user1, clusterUser1)
+	desc1 := &ReplicaDesc{
+		Replica:    "replica-0",
+		ReceivedAt: timestamp.FromTime(time.Now()),
+	}
+
+	err := mockKV.CAS(ctx, key1, func(_ any) (any, bool, error) {
+		return desc1, true, nil
+	})
+	require.NoError(t, err)
+
+	user2 := "user2"
+	clusterUser2 := "clusterUser2"
+	key2 := fmt.Sprintf("%s/%s", user2, clusterUser2)
+	desc2 := &ReplicaDesc{
+		Replica:    "replica-0",
+		ReceivedAt: timestamp.FromTime(time.Now()),
+	}
+	err = mockKV.CAS(ctx, key2, func(_ any) (any, bool, error) {
+		return desc2, true, nil
+	})
+	require.NoError(t, err)
+
+	// CAS deleted entry
+	clusterDeleted := "clusterDeleted"
+	keyDeleted := fmt.Sprintf("%s/%s", user1, clusterDeleted)
+	descDeleted := &ReplicaDesc{
+		Replica:    "replica-old",
+		ReceivedAt: timestamp.FromTime(time.Now()),
+		DeletedAt:  timestamp.FromTime(time.Now()), // Marked as deleted
+	}
+	err = mockKV.CAS(ctx, keyDeleted, func(_ any) (any, bool, error) {
+		return descDeleted, true, nil
+	})
+	require.NoError(t, err)
+
+	cfg := HATrackerConfig{
+		EnableHATracker:        true,
+		KVStore:                kv.Config{Mock: mockKV}, // Use the seeded KV
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        time.Second,
+	}
+
+	tracker, err := NewHATracker(cfg, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
+	require.NoError(t, err)
+
+	// Start ha tracker
+	require.NoError(t, services.StartAndAwaitRunning(ctx, tracker))
+	defer services.StopAndAwaitTerminated(ctx, tracker) // nolint:errcheck
+
+	tracker.electedLock.Lock()
+	// Check local cache updated
+	desc1Cached, ok := tracker.elected[key1]
+	require.True(t, ok)
+	require.Equal(t, desc1.Replica, desc1Cached.Replica)
+
+	_, ok = tracker.elected[keyDeleted]
+	require.False(t, ok)
+
+	desc2Cached, ok := tracker.elected[key2]
+	require.True(t, ok)
+	require.Equal(t, desc2.Replica, desc2Cached.Replica)
+
+	// user1 should have 1 group (clusterUser1), ignoring clusterDeleted
+	require.NotNil(t, tracker.replicaGroups[user1])
+	require.Equal(t, 1, len(tracker.replicaGroups[user1]))
+	_, hasClusterUser1 := tracker.replicaGroups[user1][clusterUser1]
+	require.True(t, hasClusterUser1)
+
+	// user2 should have 1 group (clusterUser2), ignoring clusterDeleted
+	require.NotNil(t, tracker.replicaGroups[user2])
+	require.Equal(t, 1, len(tracker.replicaGroups[user2]))
+	_, hasClusterUser2 := tracker.replicaGroups[user2][clusterUser2]
+	require.True(t, hasClusterUser2)
+
+	tracker.electedLock.Unlock()
+
+	// Check metric updated
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_ha_tracker_user_replica_group_count Number of HA replica groups tracked for each user.
+		# TYPE cortex_ha_tracker_user_replica_group_count gauge
+		cortex_ha_tracker_user_replica_group_count{user="user1"} 1
+		cortex_ha_tracker_user_replica_group_count{user="user2"} 1
+	`), "cortex_ha_tracker_user_replica_group_count",
+	))
+}
+
 func checkUserReplicaGroups(t *testing.T, duration time.Duration, c *HATracker, user string, expectedReplicaGroups int) {
 	t.Helper()
 	test.Poll(t, duration, nil, func() any {

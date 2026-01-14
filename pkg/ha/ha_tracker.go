@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"math/rand"
 	"slices"
 	"strings"
@@ -222,8 +223,82 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 		t.client = client
 	}
 
-	t.Service = services.NewBasicService(nil, t.loop, nil)
+	t.Service = services.NewBasicService(t.syncKVStoreToLocalMap, t.loop, nil)
 	return t, nil
+}
+
+// syncKVStoreToLocalMap warms up the local cache by fetching all active entries from the KV store.
+func (c *HATracker) syncKVStoreToLocalMap(ctx context.Context) error {
+	if !c.cfg.EnableHATracker {
+		return nil
+	}
+
+	start := time.Now()
+	level.Info(c.logger).Log("msg", "starting HA tracker cache warmup")
+
+	keys, err := c.client.List(ctx, "")
+	if err != nil {
+		level.Error(c.logger).Log("msg", "failed to list keys during HA tracker cache warmup", "err", err)
+		return err
+	}
+
+	if len(keys) == 0 {
+		level.Info(c.logger).Log("msg", "HA tracker cache warmup finished", "reason", "no keys found in KV store")
+		return nil
+	}
+
+	// create temporarily map
+	tempElected := make(map[string]ReplicaDesc, len(keys))
+	tempReplicaGroups := make(map[string]map[string]struct{})
+	successCount := 0
+
+	for _, key := range keys {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		val, err := c.client.Get(ctx, key)
+		if err != nil {
+			level.Warn(c.logger).Log("msg", "failed to fetch key during cache warmup", "key", key, "err", err)
+			continue
+		}
+
+		desc, ok := val.(*ReplicaDesc)
+		if !ok || desc == nil || desc.DeletedAt > 0 {
+			continue
+		}
+
+		user, cluster, keyHasSeparator := strings.Cut(key, "/")
+		if !keyHasSeparator {
+			continue
+		}
+
+		tempElected[key] = *desc
+		if tempReplicaGroups[user] == nil {
+			tempReplicaGroups[user] = make(map[string]struct{})
+		}
+		tempReplicaGroups[user][cluster] = struct{}{}
+		successCount++
+	}
+
+	c.electedLock.Lock()
+
+	// Update local map
+	maps.Copy(c.elected, tempElected)
+	for user, clusters := range tempReplicaGroups {
+		if c.replicaGroups[user] == nil {
+			c.replicaGroups[user] = make(map[string]struct{})
+		}
+		for cluster := range clusters {
+			c.replicaGroups[user][cluster] = struct{}{}
+		}
+	}
+	c.electedLock.Unlock()
+
+	c.updateUserReplicaGroupCount()
+
+	level.Info(c.logger).Log("msg", "HA tracker cache warmup completed", "duration", time.Since(start), "synced keys", successCount)
+	return nil
 }
 
 // Follows pattern used by ring for WatchKey.

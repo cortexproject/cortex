@@ -758,6 +758,48 @@ func TestCheckReplicaCleanup(t *testing.T) {
 	))
 }
 
+func BenchmarkHATracker_syncKVStoreToLocalMap(b *testing.B) {
+	keyCounts := []int{100, 1000, 10000}
+
+	for _, count := range keyCounts {
+		b.Run(fmt.Sprintf("keys=%d", count), func(b *testing.B) {
+			ctx := context.Background()
+
+			codec := GetReplicaDescCodec()
+			kvStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
+			b.Cleanup(func() { assert.NoError(b, closer.Close()) })
+
+			mockKV := kv.PrefixClient(kvStore, "prefix")
+
+			for i := range count {
+				key := fmt.Sprintf("user-%d/cluster-%d", i%100, i)
+				desc := &ReplicaDesc{
+					Replica:    fmt.Sprintf("replica-%d", i),
+					ReceivedAt: timestamp.FromTime(time.Now()),
+				}
+				err := mockKV.CAS(ctx, key, func(_ any) (any, bool, error) {
+					return desc, true, nil
+				})
+				require.NoError(b, err)
+			}
+
+			cfg := HATrackerConfig{
+				EnableHATracker: true,
+				KVStore:         kv.Config{Mock: mockKV},
+			}
+			tracker, _ := NewHATracker(cfg, trackerLimits{}, haTrackerStatusConfig, nil, "bench", log.NewNopLogger())
+
+			b.ReportAllocs()
+			for b.Loop() {
+				err := tracker.syncKVStoreToLocalMap(ctx)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func TestHATracker_CacheWarmupOnStart(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

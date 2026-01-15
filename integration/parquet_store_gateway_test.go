@@ -17,14 +17,13 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
-	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
-
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/util/log"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/test"
 )
 
 func TestParquetBucketStore_ProjectionHint(t *testing.T) {

@@ -632,7 +632,7 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 		partitionCount := partitionedGroup.partitionedGroupInfo.PartitionCount
 		partitionID := partitionedGroup.partition.PartitionID
 		partitionedGroupLogger := log.With(g.logger, "rangeStart", partitionedGroup.rangeStartTime().String(), "rangeEnd", partitionedGroup.rangeEndTime().String(), "rangeDuration", partitionedGroup.rangeDuration().String(), "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group_hash", groupHash)
-		visitMarker := newPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionID)
+		visitMarker := newPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionedGroup.partitionedGroupInfo.CreationTime, partitionID)
 		visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
 		if isVisited, err := g.isGroupVisited(partitionID, visitMarkerManager); err != nil {
 			level.Warn(partitionedGroupLogger).Log("msg", "unable to check if partition is visited", "err", err, "group", partitionedGroup.String())

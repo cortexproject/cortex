@@ -168,7 +168,7 @@ type RulesLimits interface {
 
 type QueryExecutor func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
 
-func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+func engineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	var executor QueryExecutor
 
 	if frontendClient != nil {
@@ -237,7 +237,7 @@ func wrapWithMiddleware(next QueryExecutor, overrides RulesLimits, userID string
 	}
 }
 
-func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
+func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
 		result, err := qf(ctx, qs, t)
@@ -269,7 +269,7 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	}
 }
 
-func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
+func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
 	queryTime := evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 	querySeries := evalMetrics.RulerQuerySeries.WithLabelValues(userID)
 	querySample := evalMetrics.RulerQuerySamples.WithLabelValues(userID)
@@ -410,16 +410,16 @@ func buildQueryFunc(
 	metrics *RuleEvalMetrics,
 	logger log.Logger,
 ) rules.QueryFunc {
-	baseQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
+	baseQueryFunc := engineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
 
 	// apply metric middleware
 	totalQueries := metrics.TotalQueriesVec.WithLabelValues(userID)
 	failedQueries := metrics.FailedQueriesVec.WithLabelValues(userID)
-	metricsFunc := MetricsQueryFunc(baseQueryFunc, totalQueries, failedQueries)
+	metricsFunc := metricsQueryFunc(baseQueryFunc, totalQueries, failedQueries)
 
 	// apply statistic middleware
 	if cfg.EnableQueryStats {
-		return RecordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
 	}
 	return metricsFunc
 }

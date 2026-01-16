@@ -1,4 +1,4 @@
-package api_tracker
+package request_tracker
 
 import (
 	"context"
@@ -21,12 +21,12 @@ func TestAPITracker(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	tracker := NewAPITracker(tmpDir, 10, logger)
+	tracker := NewRequestTracker(tmpDir, "apis.active", 10, logger)
 	require.NotNil(t, tracker)
 	defer tracker.Close()
 
 	ctx := context.Background()
-	insertIndex, err := tracker.Insert(ctx, make(map[string]interface{}))
+	insertIndex, err := tracker.Insert(ctx, []byte{})
 	require.NoError(t, err)
 	assert.Greater(t, insertIndex, 0)
 
@@ -46,17 +46,17 @@ func TestAPITrackerLogUnfinished(t *testing.T) {
 	var logOutput strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
 
-	tracker := NewAPITracker(tmpDir, 10, logger)
+	tracker := NewRequestTracker(tmpDir, "apis.active", 10, logger)
 	require.NotNil(t, tracker)
 	defer tracker.Close()
 	output := logOutput.String()
-	assert.Contains(t, output, "These API calls didn't finish in prometheus' last run")
+	assert.Contains(t, output, "These request calls didn't finish in prometheus' last run")
 	assert.Contains(t, output, "/api/v1/series")
 }
 
 func TestAPITrackerNilDirectory(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	tracker := NewAPITracker("", 10, logger)
+	tracker := NewRequestTracker("", "apis.active", 10, logger)
 	assert.Nil(t, tracker)
 }
 
@@ -66,7 +66,7 @@ func TestAPIWrapper(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	tracker := NewAPITracker(tmpDir, 10, logger)
+	tracker := NewRequestTracker(tmpDir, "apis.active", 10, logger)
 	require.NotNil(t, tracker)
 	defer tracker.Close()
 
@@ -74,7 +74,7 @@ func TestAPIWrapper(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	wrapper := NewAPIWrapper(handler, tracker)
+	wrapper := NewRequestWrapper(handler, tracker, &ApiExtractor{})
 
 	req := httptest.NewRequest("GET", "/api/v1/series?match[]=up", nil)
 	rr := httptest.NewRecorder()
@@ -87,7 +87,7 @@ func TestAPIWrapperNilTracker(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	wrapper := NewAPIWrapper(handler, nil)
+	wrapper := NewRequestWrapper(handler, nil, &ApiExtractor{})
 
 	req := httptest.NewRequest("GET", "/api/v1/series?match[]=up", nil)
 	rr := httptest.NewRecorder()
@@ -102,26 +102,26 @@ func TestAPITrackerAboveMaxConcurrency(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	tracker := NewAPITracker(tmpDir, 2, logger)
+	tracker := NewRequestTracker(tmpDir, "apis.active", 2, logger)
 	require.NotNil(t, tracker)
 	defer tracker.Close()
 	ctx := context.Background()
 
-	index1, err := tracker.Insert(ctx, make(map[string]interface{}))
+	index1, err := tracker.Insert(ctx, []byte{})
 	require.NoError(t, err)
 
-	index2, err := tracker.Insert(ctx, make(map[string]interface{}))
+	index2, err := tracker.Insert(ctx, []byte{})
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
 	defer cancel()
 
-	_, err = tracker.Insert(ctx, make(map[string]interface{}))
+	_, err = tracker.Insert(ctx, []byte{})
 	assert.Error(t, err) // Should timeout
 
 	tracker.Delete(index1)
 	ctx = context.Background()
-	index3, err := tracker.Insert(ctx, make(map[string]interface{}))
+	index3, err := tracker.Insert(ctx, []byte{})
 	require.NoError(t, err)
 
 	tracker.Delete(index2)

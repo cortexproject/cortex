@@ -141,7 +141,7 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			PartitionedGroupID: p.PartitionedGroupID,
 			PartitionID:        partition.PartitionID,
 		}
-		visitMarkerManager := NewVisitMarkerManager(userBucket, partitionedGroupLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", visitMarker)
+		visitMarkerManager := NewVisitMarkerManager(userBucket, partitionedGroupLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", visitMarker, nil)
 		partitionVisitMarkerExists := true
 		if err := visitMarkerManager.ReadVisitMarker(ctx, visitMarker); err != nil {
 			if errors.Is(err, errorVisitMarkerNotFound) {

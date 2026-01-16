@@ -356,7 +356,7 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		go visitMarkerManager.HeartBeat(ctx, func() {}, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
 		defer func() {
 			errChan <- nil
 		}()
@@ -391,7 +391,7 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		go visitMarkerManager.HeartBeat(ctx, func() {}, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
 		defer func() {
 			errChan <- nil
 		}()
@@ -439,7 +439,7 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 
 func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {
 	cleanerVisitMarker := NewCleanerVisitMarker(c.ringLifecyclerID)
-	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker)
+	visitMarkerManager = NewVisitMarkerManager(userBucket, userLogger, c.ringLifecyclerID, cleanerVisitMarker, nil)
 
 	existingCleanerVisitMarker := &CleanerVisitMarker{}
 	err = visitMarkerManager.ReadVisitMarker(ctx, existingCleanerVisitMarker)

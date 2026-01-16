@@ -617,7 +617,7 @@ func (g *PartitionCompactionGrouper) handleEmptyPartition(partitionedGroupInfo *
 		PartitionID:        partition.PartitionID,
 		Version:            PartitionVisitMarkerVersion1,
 	}
-	visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
+	visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker, nil)
 	visitMarkerManager.MarkWithStatus(g.ctx, Completed)
 
 	level.Info(g.logger).Log("msg", "handled empty block in partition", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString(), "partition_count", partitionedGroupInfo.PartitionCount, "partition_id", partition.PartitionID)
@@ -632,8 +632,8 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 		partitionCount := partitionedGroup.partitionedGroupInfo.PartitionCount
 		partitionID := partitionedGroup.partition.PartitionID
 		partitionedGroupLogger := log.With(g.logger, "rangeStart", partitionedGroup.rangeStartTime().String(), "rangeEnd", partitionedGroup.rangeEndTime().String(), "rangeDuration", partitionedGroup.rangeDuration().String(), "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "partition_count", partitionCount, "group_hash", groupHash)
-		visitMarker := newPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionID)
-		visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker)
+		visitMarker := newPartitionVisitMarker(g.ringLifecyclerID, partitionedGroupID, partitionedGroup.partitionedGroupInfo.CreationTime, partitionID)
+		visitMarkerManager := NewVisitMarkerManager(g.bkt, g.logger, g.ringLifecyclerID, visitMarker, nil)
 		if isVisited, err := g.isGroupVisited(partitionID, visitMarkerManager); err != nil {
 			level.Warn(partitionedGroupLogger).Log("msg", "unable to check if partition is visited", "err", err, "group", partitionedGroup.String())
 			continue

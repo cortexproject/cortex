@@ -784,8 +784,9 @@ func BenchmarkHATracker_syncKVStoreToLocalMap(b *testing.B) {
 			}
 
 			cfg := HATrackerConfig{
-				EnableHATracker: true,
-				KVStore:         kv.Config{Mock: mockKV},
+				EnableHATracker:   true,
+				EnableStartupSync: true,
+				KVStore:           kv.Config{Mock: mockKV},
 			}
 			tracker, _ := NewHATracker(cfg, trackerLimits{}, haTrackerStatusConfig, nil, "bench", log.NewNopLogger())
 
@@ -852,6 +853,7 @@ func TestHATracker_CacheWarmupOnStart(t *testing.T) {
 
 	cfg := HATrackerConfig{
 		EnableHATracker:        true,
+		EnableStartupSync:      true,
 		KVStore:                kv.Config{Mock: mockKV}, // Use the seeded KV
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,

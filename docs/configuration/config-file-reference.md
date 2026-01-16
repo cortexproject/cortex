@@ -3095,6 +3095,12 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
+  # If enabled, fetch all tracked keys on startup to populate the local cache.
+  # This reduces CAS operations for existing replicas but causes a spike in GET
+  # during initialization.
+  # CLI flag: -distributor.ha-tracker.enable-startup-sync
+  [enable_startup_sync: <boolean> | default = false]
+
   # Backend storage to use for the ring. Please be aware that memberlist is not
   # supported by the HA tracker since gossip propagation is too slow for HA
   # purposes.

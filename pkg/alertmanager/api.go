@@ -619,15 +619,6 @@ func validateDiscordConfig(cfg config.DiscordConfig) error {
 	return nil
 }
 
-// validateMatterMostConfig validates the Discord Config and returns an error if it contains
-// settings not allowed by Cortex.
-func validateMattermostConfig(cfg config.MattermostConfig) error {
-	if cfg.WebhookURLFile != "" {
-		return errMatterMostWebhookUrlFileNotAllowed
-	}
-	return nil
-}
-
 // validateEmailConfig validates the Email Config and returns an error if it contains
 // settings not allowed by Cortex.
 func validateEmailConfig(cfg config.EmailConfig) error {
@@ -648,5 +639,14 @@ func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
 		return errIncidentIOAlertSourceTokenFileNotAllowed
 	}
 
+	return nil
+}
+
+// validateMatterMostConfig validates the Mattermost Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMattermostConfig(cfg config.MattermostConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errMatterMostWebhookUrlFileNotAllowed
+	}
 	return nil
 }

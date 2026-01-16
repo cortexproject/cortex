@@ -44,7 +44,7 @@ type Notifier struct {
 
 // New returns a new Webex notifier.
 func New(c *config.WebexConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "webex", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "webex", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,9 +72,10 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 
-	n.logger.Debug("extracted group key", "key", key)
+	logger := n.logger.With("group_key", key)
+	logger.Debug("extracted group key")
 
-	data := notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
+	data := notify.GetTemplateData(ctx, n.tmpl, as, logger)
 	tmpl := notify.TmplText(n.tmpl, data, &err)
 	if err != nil {
 		return false, err
@@ -87,7 +88,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 
 	message, truncated := notify.TruncateInBytes(message, maxMessageSize)
 	if truncated {
-		n.logger.Debug("message truncated due to exceeding maximum allowed length by webex", "truncated_message", message)
+		logger.Debug("message truncated due to exceeding maximum allowed length by webex", "truncated_message", message)
 	}
 
 	w := webhook{

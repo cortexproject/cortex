@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -46,28 +47,29 @@ func TestSilencesLimits(t *testing.T) {
 				EndsAt:   time.Now().Add(time.Minute * 30),
 			}
 		}
+		ctx := context.Background()
 
 		// create silences up to maxSilencesCount
 		for range maxSilencesCount {
-			err := am.silences.Set(createSilences())
+			err := am.silences.Set(ctx, createSilences())
 			require.NoError(t, err)
 		}
 
 		// exceeds limit
-		err = am.silences.Set(createSilences())
+		err = am.silences.Set(ctx, createSilences())
 		require.Error(t, err)
 		require.Equal(t, fmt.Sprintf("exceeded maximum number of silences: %d (limit: %d)", maxSilencesCount, maxSilencesCount), err.Error())
 
 		// expire whole silences
-		silences, _, err := am.silences.Query()
+		silences, _, err := am.silences.Query(ctx)
 		require.NoError(t, err)
 		for _, s := range silences {
-			err := am.silences.Expire(s.Id)
+			err := am.silences.Expire(ctx, s.Id)
 			require.NoError(t, err)
 		}
 
 		// check maxSilencesCount includes expired silences
-		err = am.silences.Set(createSilences())
+		err = am.silences.Set(ctx, createSilences())
 		require.Error(t, err)
 		require.Equal(t, fmt.Sprintf("exceeded maximum number of silences: %d (limit: %d)", maxSilencesCount, maxSilencesCount), err.Error())
 
@@ -83,7 +85,7 @@ func TestSilencesLimits(t *testing.T) {
 			EndsAt:   time.Now().Add(time.Minute * 30),
 		}
 
-		err = am.silences.Set(bigSilences)
+		err = am.silences.Set(context.Background(), bigSilences)
 		require.Error(t, err)
 		require.True(t, strings.Contains(err.Error(), "silence exceeded maximum size"))
 	})
@@ -170,7 +172,7 @@ route:
 				Timeout:   false,
 			},
 		}
-		require.NoError(t, am.alerts.Put(inputAlerts...))
+		require.NoError(t, am.alerts.Put(context.Background(), inputAlerts...))
 	}
 
 	// Give it some time, as alerts are sent to dispatcher asynchronously.

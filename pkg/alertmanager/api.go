@@ -60,6 +60,7 @@ var (
 	errEmailAuthPasswordFileNotAllowed          = errors.New("setting Email auth_password_file is not allowed")
 	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
 	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
+	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -415,6 +416,10 @@ func validateAlertmanagerConfig(cfg any) error {
 		if err := validateIncidentIOConfig(v.Interface().(config.IncidentioConfig)); err != nil {
 			return err
 		}
+	case reflect.TypeFor[config.MattermostConfig]():
+		if err := validateMattermostConfig(v.Interface().(config.MattermostConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -610,6 +615,15 @@ func validateRocketChatConfig(cfg config.RocketchatConfig) error {
 func validateDiscordConfig(cfg config.DiscordConfig) error {
 	if cfg.WebhookURLFile != "" {
 		return errDiscordWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateMatterMostConfig validates the Discord Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateMattermostConfig(cfg config.MattermostConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errMatterMostWebhookUrlFileNotAllowed
 	}
 	return nil
 }

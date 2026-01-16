@@ -764,6 +764,19 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errIncidentIOAlertSourceTokenFileNotAllowed, "error validating Alertmanager config"),
 		},
+		{
+			name: "Should return error if Mattermost webhook_url_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      mattermost_configs:
+        - webhook_url_file: /urlFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		},
 	}
 
 	limits := &mockAlertManagerLimits{}

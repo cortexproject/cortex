@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/alertmanager/notify/email"
 	"github.com/prometheus/alertmanager/notify/incidentio"
 	"github.com/prometheus/alertmanager/notify/jira"
+	"github.com/prometheus/alertmanager/notify/mattermost"
 	"github.com/prometheus/alertmanager/notify/msteams"
 	"github.com/prometheus/alertmanager/notify/msteamsv2"
 	"github.com/prometheus/alertmanager/notify/opsgenie"
@@ -87,14 +88,13 @@ type Config struct {
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
 
-	ShardingEnabled    bool
-	ReplicationFactor  int
-	Replicator         Replicator
-	Store              alertstore.AlertStore
-	PersisterConfig    PersisterConfig
-	APIConcurrency     int
-	GCInterval         time.Duration
-	DispatchStartDelay time.Duration
+	ShardingEnabled   bool
+	ReplicationFactor int
+	Replicator        Replicator
+	Store             alertstore.AlertStore
+	PersisterConfig   PersisterConfig
+	APIConcurrency    int
+	GCInterval        time.Duration
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -130,6 +130,8 @@ type Alertmanager struct {
 	configHashMetric prometheus.Gauge
 
 	rateLimitedNotifications *prometheus.CounterVec
+
+	requestDuration *prometheus.HistogramVec
 }
 
 var (
@@ -184,6 +186,17 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Help: "Number of rate-limited notifications per integration.",
 		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
 
+		requestDuration: promauto.With(reg).NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:                            "alertmanager_http_request_duration_seconds",
+				Help:                            "Histogram of latencies for HTTP requests.",
+				Buckets:                         prometheus.DefBuckets,
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: 1 * time.Hour,
+			},
+			[]string{"handler", "method", "code"},
+		),
 	}
 
 	am.registry = reg
@@ -292,7 +305,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
 			return am.dispatcher.Groups(ctx, f1, f2)
 		},
-		Concurrency: am.cfg.APIConcurrency,
+		Concurrency:     am.cfg.APIConcurrency,
+		RequestDuration: am.requestDuration,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api: %v", err)
@@ -610,6 +624,11 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	for i, c := range nc.IncidentioConfigs {
 		add("incidentio", i, c, func(l log.Logger) (notify.Notifier, error) {
 			return incidentio.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+	for i, c := range nc.MattermostConfigs {
+		add("mattermost", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return mattermost.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
 		})
 	}
 

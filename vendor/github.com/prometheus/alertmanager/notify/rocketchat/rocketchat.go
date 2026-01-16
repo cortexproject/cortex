@@ -88,7 +88,7 @@ func (t *rocketchatRoundTripper) RoundTrip(req *http.Request) (res *http.Respons
 
 // New returns a new Rocketchat notification handler.
 func New(c *config.RocketchatConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "rocketchat", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "rocketchat", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,14 @@ func getToken(c *config.RocketchatConfig) (string, error) {
 func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	var err error
 
-	data := notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
+	key, err := notify.ExtractGroupKey(ctx)
+	if err != nil {
+		return false, err
+	}
+	logger := n.logger.With("group_key", key)
+	logger.Debug("extracted group key")
+
+	data := notify.GetTemplateData(ctx, n.tmpl, as, logger)
 	tmplText := notify.TmplText(n.tmpl, data, &err)
 	if err != nil {
 		return false, err
@@ -152,11 +159,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 
 	title, truncated := notify.TruncateInRunes(title, maxTitleLenRunes)
 	if truncated {
-		key, err := notify.ExtractGroupKey(ctx)
-		if err != nil {
-			return false, err
-		}
-		n.logger.Warn("Truncated title", "key", key, "max_runes", maxTitleLenRunes)
+		logger.Warn("Truncated title", "max_runes", maxTitleLenRunes)
 	}
 	att := &Attachment{
 		Title:     title,

@@ -14,17 +14,21 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/common/route"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
 	apiv2 "github.com/prometheus/alertmanager/api/v2"
 	"github.com/prometheus/alertmanager/cluster"
@@ -40,6 +44,7 @@ type API struct {
 	v2                *apiv2.API
 	deprecationRouter *V1DeprecationRouter
 
+	requestDuration          *prometheus.HistogramVec
 	requestsInFlight         prometheus.Gauge
 	concurrencyLimitExceeded prometheus.Counter
 	timeout                  time.Duration
@@ -75,10 +80,12 @@ type Options struct {
 	// Registry is used to register Prometheus metrics. If nil, no metrics
 	// registration will happen.
 	Registry prometheus.Registerer
+	// RequestDuration is used to measure the duration of HTTP requests.
+	RequestDuration *prometheus.HistogramVec
 	// GroupFunc returns a list of alert groups. The alerts are grouped
 	// according to the current active configuration. Alerts returned are
 	// filtered by the arguments provided to the function.
-	GroupFunc func(func(*dispatch.Route) bool, func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string)
+	GroupFunc func(context.Context, func(*dispatch.Route) bool, func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error)
 }
 
 func (o Options) validate() error {
@@ -112,10 +119,7 @@ func New(opts Options) (*API, error) {
 	}
 	concurrency := opts.Concurrency
 	if concurrency < 1 {
-		concurrency = runtime.GOMAXPROCS(0)
-		if concurrency < 8 {
-			concurrency = 8
-		}
+		concurrency = max(runtime.GOMAXPROCS(0), 8)
 	}
 
 	v2, err := apiv2.NewAPI(
@@ -132,8 +136,6 @@ func New(opts Options) (*API, error) {
 		return nil, err
 	}
 
-	// TODO(beorn7): For now, this hardcodes the method="get" label. Other
-	// methods should get the same instrumentation.
 	requestsInFlight := prometheus.NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_http_requests_in_flight",
 		Help:        "Current number of HTTP requests being processed.",
@@ -156,6 +158,7 @@ func New(opts Options) (*API, error) {
 	return &API{
 		deprecationRouter:        NewV1DeprecationRouter(l.With("version", "v1")),
 		v2:                       v2,
+		requestDuration:          opts.RequestDuration,
 		requestsInFlight:         requestsInFlight,
 		concurrencyLimitExceeded: concurrencyLimitExceeded,
 		timeout:                  opts.Timeout,
@@ -181,13 +184,17 @@ func (api *API) Register(r *route.Router, routePrefix string) *http.ServeMux {
 	if routePrefix != "/" {
 		apiPrefix = routePrefix
 	}
-	// TODO(beorn7): HTTP instrumentation is only in place for Router. Since
-	// /api/v2 works on the Handler level, it is currently not instrumented
-	// at all (with the exception of requestsInFlight, which is handled in
-	// limitHandler below).
 	mux.Handle(
 		apiPrefix+"/api/v2/",
-		api.limitHandler(http.StripPrefix(apiPrefix, api.v2.Handler)),
+		api.instrumentHandler(
+			apiPrefix,
+			api.limitHandler(
+				http.StripPrefix(
+					apiPrefix,
+					api.v2.Handler,
+				),
+			),
+		),
 	)
 
 	return mux
@@ -195,7 +202,7 @@ func (api *API) Register(r *route.Router, routePrefix string) *http.ServeMux {
 
 // Update config and resolve timeout of each API. APIv2 also needs
 // setAlertStatus to be updated.
-func (api *API) Update(cfg *config.Config, setAlertStatus func(model.LabelSet)) {
+func (api *API) Update(cfg *config.Config, setAlertStatus func(ctx context.Context, labels model.LabelSet)) {
 	api.v2.Update(cfg, setAlertStatus)
 }
 
@@ -225,4 +232,18 @@ func (api *API) limitHandler(h http.Handler) http.Handler {
 	return http.TimeoutHandler(concLimiter, api.timeout, fmt.Sprintf(
 		"Exceeded configured timeout of %v.\n", api.timeout,
 	))
+}
+
+func (api *API) instrumentHandler(prefix string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path, _ := strings.CutPrefix(r.URL.Path, prefix)
+		// avoid high cardinality label values by replacing the actual silence IDs with a placeholder
+		if strings.HasPrefix(path, "/api/v2/silence/") {
+			path = "/api/v2/silence/{silenceID}"
+		}
+		promhttp.InstrumentHandlerDuration(
+			api.requestDuration.MustCurryWith(prometheus.Labels{"handler": path}),
+			otelhttp.WithRouteTag(path, h),
+		).ServeHTTP(w, r)
+	})
 }

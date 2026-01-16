@@ -87,13 +87,14 @@ type Config struct {
 	// Tenant-specific local directory where AM can store its state (notifications, silences, templates). When AM is stopped, entire dir is removed.
 	TenantDataDir string
 
-	ShardingEnabled   bool
-	ReplicationFactor int
-	Replicator        Replicator
-	Store             alertstore.AlertStore
-	PersisterConfig   PersisterConfig
-	APIConcurrency    int
-	GCInterval        time.Duration
+	ShardingEnabled    bool
+	ReplicationFactor  int
+	Replicator         Replicator
+	Store              alertstore.AlertStore
+	PersisterConfig    PersisterConfig
+	APIConcurrency     int
+	GCInterval         time.Duration
+	DispatchStartDelay time.Duration
 }
 
 // An Alertmanager manages the alerts for one user.
@@ -288,8 +289,8 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Peer:     &NilPeer{},
 		Registry: am.registry,
 		Logger:   util_log.GoKitLogToSlog(log.With(am.logger, "component", "api")),
-		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
-			return am.dispatcher.Groups(f1, f2)
+		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
+			return am.dispatcher.Groups(ctx, f1, f2)
 		},
 		Concurrency: am.cfg.APIConcurrency,
 	})
@@ -354,7 +355,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	am.api.Update(conf, func(_ model.LabelSet) {})
+	am.api.Update(conf, func(_ context.Context, _ model.LabelSet) {})
 
 	// Ensure inhibitor is set before being called
 	if am.inhibitor != nil {
@@ -428,7 +429,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcherMetrics,
 	)
 
-	go am.dispatcher.Run()
+	go am.dispatcher.Run(time.Now())
 	go am.inhibitor.Run()
 
 	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))

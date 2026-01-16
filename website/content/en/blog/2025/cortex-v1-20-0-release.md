@@ -22,7 +22,7 @@ A groundbreaking addition is experimental support for Parquet-based block storag
 - A new **Parquet converter service** to transform TSDB blocks into Parquet format.
 - A **Parquet querier** for querying Parquet files directly.
 
-Parquet's columnar storage offers superior compression and query performance, especially for analytical workloads. This feature allows users to optimize storage costs and query speeds for historical data, potentially reducing infrastructure expenses by up to 50% in certain scenarios.
+Parquet's columnar storage offers superior compression and query performance, especially for analytical workloads. This feature allows users to optimize query speeds for historical data and storage footprint
 
 ### Advanced Query Federation with Regex Tenant Resolver
 The experimental regex tenant resolver enhances multi-tenant query federation. By enabling the `-tenant-federation.regex-matcher-enabled` flag, users can use regex patterns in the `X-Scope-OrgID` header. This simplifies querying across multiple tenants, improving operational workflows for organizations with complex tenant structures.

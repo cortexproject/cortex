@@ -146,3 +146,4 @@ Currently experimental features are:
     - `-validation.max-regex-pattern-length` (int) - maximum pattern length in bytes
     - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
     - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
+- HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled fetch all tracked keys on startup to populate the local cache.

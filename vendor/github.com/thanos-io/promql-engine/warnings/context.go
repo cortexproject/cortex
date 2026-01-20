@@ -5,11 +5,21 @@ package warnings
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"sync"
 
+	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/util/annotations"
 )
+
+// MixedFloatsHistogramsAggWarning is used when an aggregation encounters both floats and histograms.
+// We define this here because Prometheus's NewMixedFloatsHistogramsAggWarning requires a posrange
+// which we don't have at the accumulator level.
+//
+//lint:ignore faillint We need fmt.Errorf to match Prometheus error format exactly.
+var MixedFloatsHistogramsAggWarning = fmt.Errorf("%w aggregation", annotations.MixedFloatsHistogramsWarning)
 
 type warningKey string
 
@@ -66,4 +76,19 @@ func FromContext(ctx context.Context) annotations.Annotations {
 	warns := ctx.Value(key).(*warnings).get()
 
 	return maps.Clone(warns)
+}
+
+// ConvertHistogramError converts histogram operation errors to appropriate annotation warnings.
+// Returns nil if the error is not a histogram error.
+func ConvertHistogramError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
+		return annotations.MixedExponentialCustomHistogramsWarning
+	}
+	if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
+		return annotations.IncompatibleCustomBucketsHistogramsWarning
+	}
+	return err
 }

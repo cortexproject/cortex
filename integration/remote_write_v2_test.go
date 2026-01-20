@@ -110,12 +110,12 @@ func TestIngesterRollingUpdate(t *testing.T) {
 
 	// histogram
 	histogramIdx := rand.Uint32()
-	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
 	writeStats, err := c.PushV2(symbols2, histogramSeries)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
@@ -349,28 +349,52 @@ func TestIngest(t *testing.T) {
 
 	// histogram
 	histogramIdx := rand.Uint32()
-	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	writeStats, err = c.PushV2(symbols2, histogramSeries)
+	symbols2, intNH := e2e.GenerateHistogramSeriesV2("test_nh", now, histogramIdx, false, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	writeStats, err = c.PushV2(symbols2, intNH)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
 	// float histogram
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
-	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
+	symbols3, floatNH := e2e.GenerateHistogramSeriesV2("test_nh", now, histogramIdx, false, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	writeStats, err = c.PushV2(symbols3, floatNH)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 0, 1, 0)
+
+	// histogram with Custom Bucket
+	symbols4, intNHCB := e2e.GenerateHistogramSeriesV2("test_nhcb", now, histogramIdx, true, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	writeStats, err = c.PushV2(symbols4, intNHCB)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 0, 1, 0)
+
+	// float histogram with Custom Bucket
+	symbols5, floatNHCB := e2e.GenerateHistogramSeriesV2("test_nhcb", now, histogramIdx, true, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	writeStats, err = c.PushV2(symbols5, floatNHCB)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
-	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
-	result, err = c.Query(`test_histogram`, testHistogramTimestamp)
+	expectedNH := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
+	result, err = c.Query(`test_nh`, testHistogramTimestamp)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	v := result.(model.Vector)
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
-		require.Equal(t, float64(expectedHistogram.Count), float64(s.Histogram.Count))
-		require.Equal(t, float64(expectedHistogram.Sum), float64(s.Histogram.Sum))
+		require.Equal(t, float64(expectedNH.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedNH.Sum), float64(s.Histogram.Sum))
+	}
+
+	expectedNHCB := tsdbutil.GenerateTestCustomBucketsHistogram(int64(histogramIdx))
+	result, err = c.Query(`test_nhcb`, testHistogramTimestamp)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	v = result.(model.Vector)
+	require.Equal(t, 2, v.Len())
+	for _, s := range v {
+		require.NotNil(t, s.Histogram)
+		require.Equal(t, float64(expectedNHCB.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedNHCB.Sum), float64(s.Histogram.Sum))
 	}
 }
 

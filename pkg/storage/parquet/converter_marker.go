@@ -29,6 +29,9 @@ const (
 
 type ConverterMark struct {
 	Version int `json:"version"`
+	// Shards is the number of parquet shards created for this block.
+	// This field is optional for backward compatibility.
+	Shards int `json:"shards,omitempty"`
 }
 
 func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*ConverterMark, error) {
@@ -53,9 +56,10 @@ func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 	return &marker, err
 }
 
-func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket) error {
+func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket, shards int) error {
 	marker := ConverterMark{
 		Version: CurrentVersion,
+		Shards:  shards,
 	}
 	markerPath := path.Join(id.String(), ConverterMarkerFileName)
 	b, err := json.Marshal(marker)
@@ -68,6 +72,9 @@ func WriteConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.Buck
 // ConverterMarkMeta is used in Bucket Index. It might not be the same as ConverterMark.
 type ConverterMarkMeta struct {
 	Version int `json:"version"`
+	// Shards is the number of parquet shards created for this block.
+	// This field is optional for backward compatibility.
+	Shards int `json:"shards,omitempty"`
 }
 
 func ValidConverterMarkVersion(version int) bool {

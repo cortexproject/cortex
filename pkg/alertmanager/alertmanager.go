@@ -220,11 +220,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 	c := am.state.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 	am.nflog.SetBroadcast(c.Broadcast)
-	am.wg.Add(1)
-	go func() {
+	am.wg.Go(func() {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
-		am.wg.Done()
-	}()
+	})
 	memMarker := types.NewMarker(reg)
 	am.alertMarker = memMarker
 	am.groupMarker = memMarker
@@ -268,11 +266,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
 
-	am.wg.Add(1)
-	go func() {
+	am.wg.Go(func() {
 		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop, nil)
-		am.wg.Done()
-	}()
+	})
 
 	var callback mem.AlertStoreCallback
 	if am.cfg.Limits != nil {

@@ -12,7 +12,6 @@ import (
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/warnings"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
@@ -116,11 +115,8 @@ func instantValue(ctx context.Context, samples []Sample, isRate bool) (float64, 
 
 		if !isRate || !ss[1].V.H.DetectReset(ss[0].V.H) {
 			_, err := resultSample.V.H.Sub(ss[0].V.H)
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-				warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-				return 0, nil, false
-			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+			if err != nil {
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
 				return 0, nil, false
 			}
 		}
@@ -144,18 +140,6 @@ func instantValue(ctx context.Context, samples []Sample, isRate bool) (float64, 
 	}
 
 	return resultSample.V.F, resultSample.V.H, true
-}
-
-func handleHistogramErr(ctx context.Context, err error) error {
-	if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil
-	} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-		warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil
-	}
-
-	return err
 }
 
 var rangeVectorFuncs = map[string]FunctionCall{
@@ -348,10 +332,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"xdelta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -361,10 +342,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"xincrease": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -374,10 +352,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"predict_linear": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -433,10 +408,7 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 	}
 
 	if samples[0].V.H != nil {
-		resultHistogram, err = histogramRate(ctx, samples, isCounter)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		resultHistogram = histogramRate(ctx, samples, isCounter)
 	} else {
 		resultValue = samples[len(samples)-1].V.F - samples[0].V.F
 		if isCounter {
@@ -525,7 +497,7 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, error) {
+func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -534,14 +506,9 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 	)
 
 	if samples[0].V.H != nil {
-		var err error
 		// TODO - support extended rate for histograms
-		resultHistogram, err = histogramRate(ctx, samples, isCounter)
-		if err != nil {
-			return 0, nil, err
-		}
-
-		return resultValue, resultHistogram, nil
+		resultHistogram = histogramRate(ctx, samples, isCounter)
+		return resultValue, resultHistogram
 	}
 
 	sameVals := true
@@ -558,7 +525,7 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 	if isCounter && !isRate && sameVals {
 		// Make sure we are not at the end of the range.
 		if stepTime-offset <= until {
-			return samples[0].V.F, nil, nil
+			return samples[0].V.F, nil
 		}
 	}
 
@@ -571,7 +538,7 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 		// If the point before the range is too far from rangeStart, drop it.
 		if float64(rangeStart-samples[0].T) > averageDurationBetweenSamples {
 			if len(samples) < 3 {
-				return resultValue, nil, nil
+				return resultValue, nil
 			}
 			firstPoint = 1
 			sampledInterval = float64(samples[len(samples)-1].T - samples[1].T)
@@ -611,16 +578,16 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 		resultValue = resultValue / float64(selectRange/1000)
 	}
 
-	return resultValue, nil, nil
+	return resultValue, nil
 }
 
 // histogramRate is a helper function for extrapolatedRate. It requires
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram.
-func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histogram.FloatHistogram, error) {
+func histogramRate(ctx context.Context, points []Sample, isCounter bool) *histogram.FloatHistogram {
 	// Calculating a rate on a single sample is not defined.
 	if len(points) < 2 {
-		return nil, nil
+		return nil
 	}
 	var (
 		prev               = points[0].V.H
@@ -630,7 +597,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 
 	if last == nil {
 		warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
-		return nil, nil // Range contains a mix of histograms and floats.
+		return nil // Range contains a mix of histograms and floats.
 	}
 
 	// We check for gauge type histograms in the loop below, but the loop
@@ -655,14 +622,14 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 
 	if last.UsesCustomBuckets() != usingCustomBuckets {
 		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil, nil
+		return nil
 	}
 
 	minSchema := min(last.Schema, prev.Schema)
 
 	if last.UsesCustomBuckets() != usingCustomBuckets {
 		warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
-		return nil, nil
+		return nil
 	}
 
 	// https://github.com/prometheus/prometheus/blob/ccea61c7bf1e6bce2196ba8189a209945a204c5b/promql/functions.go#L183
@@ -674,7 +641,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 		curr := currPoint.V.H
 		if curr == nil {
 			warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
-			return nil, nil // Range contains a mix of histograms and floats.
+			return nil // Range contains a mix of histograms and floats.
 		}
 		if !isCounter {
 			continue
@@ -687,16 +654,14 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 		}
 		if curr.UsesCustomBuckets() != usingCustomBuckets {
 			warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
-			return nil, nil
+			return nil
 		}
 	}
 
 	h := last.CopyToSchema(minSchema)
 	if _, err := h.Sub(prev); err != nil {
-		if err := handleHistogramErr(ctx, err); err != nil {
-			return nil, err
-		}
-		return nil, nil
+		warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+		return nil
 	}
 
 	if isCounter {
@@ -705,10 +670,8 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 			curr := currPoint.V.H
 			if curr.DetectReset(prev) {
 				if _, err := h.Add(prev); err != nil {
-					if err := handleHistogramErr(ctx, err); err != nil {
-						return nil, err
-					}
-					return nil, nil
+					warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+					return nil
 				}
 			}
 			prev = curr
@@ -718,7 +681,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 	}
 
 	h.CounterResetHint = histogram.GaugeType
-	return h.Compact(0), nil
+	return h.Compact(0)
 }
 
 func madOverTime(ctx context.Context, points []Sample) (float64, bool) {
@@ -819,10 +782,12 @@ func avgOverTime(ctx context.Context, points []Sample) (float64, *histogram.Floa
 			right := mean.Copy().Div(count)
 			toAdd, err := left.Sub(right)
 			if err != nil {
-				return 0, nil, false, handleHistogramErr(ctx, err)
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
 			}
 			if _, err = mean.Add(toAdd); err != nil {
-				return 0, nil, false, handleHistogramErr(ctx, err)
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
 			}
 		}
 		return 0, mean, true, nil
@@ -874,7 +839,8 @@ func sumOverTime(ctx context.Context, points []Sample) (float64, *histogram.Floa
 				return 0, nil, false, nil
 			}
 			if _, err := res.Add(v.V.H); err != nil {
-				return 0, nil, false, handleHistogramErr(ctx, err)
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
 			}
 		}
 		return 0, res, true, nil

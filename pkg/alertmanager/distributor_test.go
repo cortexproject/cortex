@@ -352,8 +352,9 @@ func prepare(t *testing.T, numAM, numHappyAM, replicationFactor int, responseBod
 
 	cfg := &MultitenantAlertmanagerConfig{}
 	flagext.DefaultValues(cfg)
+	cfg.ShardingRing.DisableReplicaSetExtension = false
 
-	d, err := NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, amRing, newMockAlertmanagerClientFactory(amByAddr), util_log.Logger, prometheus.NewRegistry())
+	d, err := NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, amRing, newMockAlertmanagerClientFactory(amByAddr), cfg.ShardingRing, util_log.Logger, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 

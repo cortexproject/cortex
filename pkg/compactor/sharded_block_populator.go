@@ -151,16 +151,14 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 			var chks []chunks.Meta
 			var wg sync.WaitGroup
 			r := ref
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				for curChksIter.Next() {
 					// We are not iterating in streaming way over chunk as
 					// it's more efficient to do bulk write for index and
 					// chunk file purposes.
 					chks = append(chks, curChksIter.At())
 				}
-				wg.Done()
-			}()
+			})
 
 			ch <- func() error {
 				wg.Wait()

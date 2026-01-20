@@ -41,10 +41,10 @@ type PartitionedGroupStatus struct {
 	PartitionedGroupID        uint32
 	CanDelete                 bool
 	IsCompleted               bool
-	DeleteVisitMarker         bool
 	PendingPartitions         int
 	InProgressPartitions      int
 	PendingOrFailedPartitions []Partition
+	VisitMarkersToDelete      []VisitMarker
 }
 
 func (s PartitionedGroupStatus) String() string {
@@ -52,8 +52,12 @@ func (s PartitionedGroupStatus) String() string {
 	for _, p := range s.PendingOrFailedPartitions {
 		partitions = append(partitions, fmt.Sprintf("%d", p.PartitionID))
 	}
-	return fmt.Sprintf(`{"partitioned_group_id": %d, "can_delete": %t, "is_complete": %t, "delete_visit_marker": %t, "pending_partitions": %d, "in_progress_partitions": %d, "pending_or_failed_partitions": [%s]}`,
-		s.PartitionedGroupID, s.CanDelete, s.IsCompleted, s.DeleteVisitMarker, s.PendingPartitions, s.InProgressPartitions, strings.Join(partitions, ","))
+	var visitMarkers []string
+	for _, v := range s.VisitMarkersToDelete {
+		visitMarkers = append(visitMarkers, v.GetVisitMarkerFilePath())
+	}
+	return fmt.Sprintf(`{"partitioned_group_id": %d, "can_delete": %t, "is_complete": %t, "pending_partitions": %d, "in_progress_partitions": %d, "pending_or_failed_partitions": [%s], "visit_markers_to_delete": [%s]}`,
+		s.PartitionedGroupID, s.CanDelete, s.IsCompleted, s.PendingPartitions, s.InProgressPartitions, strings.Join(partitions, ","), strings.Join(visitMarkers, ","))
 }
 
 type PartitionedGroupInfo struct {
@@ -125,10 +129,10 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 		PartitionedGroupID:        p.PartitionedGroupID,
 		CanDelete:                 false,
 		IsCompleted:               false,
-		DeleteVisitMarker:         false,
 		PendingPartitions:         0,
 		InProgressPartitions:      0,
 		PendingOrFailedPartitions: []Partition{},
+		VisitMarkersToDelete:      []VisitMarker{},
 	}
 	allPartitionCompleted := true
 	hasInProgressPartitions := false
@@ -152,8 +156,9 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
-		} else if visitMarker.VisitTime < p.CreationTime {
-			status.DeleteVisitMarker = true
+		} else if visitMarker.VisitTime < p.CreationTime ||
+			(visitMarker.PartitionedGroupCreationTime > 0 && visitMarker.PartitionedGroupCreationTime < p.CreationTime) {
+			status.VisitMarkersToDelete = append(status.VisitMarkersToDelete, visitMarker)
 			allPartitionCompleted = false
 		} else if (visitMarker.GetStatus() == Pending || visitMarker.GetStatus() == InProgress) && !visitMarker.IsExpired(partitionVisitMarkerTimeout) {
 			status.InProgressPartitions++
@@ -174,7 +179,6 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 
 	if allPartitionCompleted {
 		status.CanDelete = true
-		status.DeleteVisitMarker = true
 		return status
 	}
 
@@ -187,19 +191,16 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			if !p.doesBlockExist(ctx, userBucket, partitionedGroupLogger, blockID) {
 				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is physically deleted", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
 			if p.isBlockDeleted(ctx, userBucket, partitionedGroupLogger, blockID) {
 				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is marked for deletion", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
 			if p.isBlockNoCompact(ctx, userBucket, partitionedGroupLogger, blockID) {
 				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is marked for no compact", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
 			checkedBlocks[blockID] = struct{}{}

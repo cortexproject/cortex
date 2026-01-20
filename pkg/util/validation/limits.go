@@ -165,6 +165,11 @@ type Limits struct {
 	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
 	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
+	// Regex matcher query limits.
+	MaxRegexPatternLength                       int `yaml:"max_regex_pattern_length" json:"max_regex_pattern_length"`
+	MaxLabelCardinalityForUnoptimizedRegex      int `yaml:"max_label_cardinality_for_unoptimized_regex" json:"max_label_cardinality_for_unoptimized_regex"`
+	MaxTotalLabelValueLengthForUnoptimizedRegex int `yaml:"max_total_label_value_length_for_unoptimized_regex" json:"max_total_label_value_length_for_unoptimized_regex"`
+
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
 	MaxLocalMetadataPerMetric           int `yaml:"max_metadata_per_metric" json:"max_metadata_per_metric"`
@@ -280,6 +285,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 	f.IntVar(&l.MaxNativeHistogramBuckets, "validation.max-native-histogram-buckets", 0, "Limit on total number of positive and negative buckets allowed in a single native histogram. The resolution of a histogram with more buckets will be reduced until the number of buckets is within the limit. If the limit cannot be reached, the sample will be discarded. 0 means no limit. Enforced at Distributor.")
+
+	// Regex limits.
+	f.IntVar(&l.MaxRegexPatternLength, "validation.max-regex-pattern-length", 0, "Maximum length (in bytes) of an unoptimized regex pattern. This is a pre-flight check to reject expensive regex queries. 0 to disable. This is only enforced in Ingester.")
+	f.IntVar(&l.MaxLabelCardinalityForUnoptimizedRegex, "validation.max-label-cardinality-for-unoptimized-regex", 0, "Maximum cardinality of a label that can be queried with an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.")
+	f.IntVar(&l.MaxTotalLabelValueLengthForUnoptimizedRegex, "validation.max-total-label-value-length-for-unoptimized-regex", 0, "Maximum total length (in bytes) of all label values combined for an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.")
 
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
@@ -1120,6 +1130,24 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 
 func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
+}
+
+// MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.
+// This is only used in Ingester.
+func (o *Overrides) MaxRegexPatternLength(userID string) int {
+	return o.GetOverridesForUser(userID).MaxRegexPatternLength
+}
+
+// MaxLabelCardinalityForUnoptimizedRegex returns the maximum cardinality for a label with an unoptimized regex matcher.
+// This is only used in Ingester.
+func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
+	return o.GetOverridesForUser(userID).MaxLabelCardinalityForUnoptimizedRegex
+}
+
+// MaxTotalLabelValueLengthForUnoptimizedRegex returns the maximum total length of all label values for an unoptimized regex matcher.
+// This is only used in Ingester.
+func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
+	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

@@ -85,7 +85,7 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 	// claimed same partition in grouper at same time.
 	time.Sleep(p.plannerDelay)
 
-	visitMarker := newPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionID)
+	visitMarker := newPartitionVisitMarker(p.ringLifecyclerID, partitionedGroupID, partitionInfo.PartitionedGroupCreationTime, partitionID)
 	visitMarkerManager := NewVisitMarkerManager(p.bkt, p.logger, p.ringLifecyclerID, visitMarker)
 	existingPartitionVisitMarker := &partitionVisitMarker{}
 	err := visitMarkerManager.ReadVisitMarker(p.ctx, existingPartitionVisitMarker)

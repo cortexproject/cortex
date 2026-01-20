@@ -64,14 +64,16 @@ const (
 	reasonSeriesLimitStoreGateway  = "store_gateway_series_limit"
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
+	reasonUnOptimizedRegexMatcher  = `unoptimized_regex_matcher`
 
-	limitTooManySamples       = `query processing would load too many samples into memory`
-	limitTimeRangeExceeded    = `the query time range exceeds the limit`
-	limitResponseSizeExceeded = `the query response size exceeds limit`
-	limitSeriesFetched        = `the query hit the max number of series limit`
-	limitChunksFetched        = `the query hit the max number of chunks limit`
-	limitChunkBytesFetched    = `the query hit the aggregated chunks size limit`
-	limitDataBytesFetched     = `the query hit the aggregated data size limit`
+	limitTooManySamples          = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded       = `the query time range exceeds the limit`
+	limitResponseSizeExceeded    = `the query response size exceeds limit`
+	limitSeriesFetched           = `the query hit the max number of series limit`
+	limitChunksFetched           = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched       = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched        = `the query hit the aggregated data size limit`
+	limitUnOptimizedRegexMatcher = `unoptimized regex matcher`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -585,6 +587,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
+		} else if strings.Contains(errMsg, limitUnOptimizedRegexMatcher) {
+			reason = reasonUnOptimizedRegexMatcher
 		}
 	} else if statusCode == http.StatusServiceUnavailable && error != nil {
 		errMsg := error.Error()

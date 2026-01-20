@@ -14,10 +14,8 @@ import (
 	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -28,7 +26,7 @@ type aggregateTable interface {
 	// If the table is empty, it returns math.MinInt64.
 	timestamp() int64
 	// aggregate aggregates the given vector into the table.
-	aggregate(vector model.StepVector) error
+	aggregate(ctx context.Context, vector model.StepVector)
 	// toVector writes out the accumulated result to the given vector and
 	// resets the table.
 	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
@@ -77,31 +75,23 @@ func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregatio
 	}, nil
 }
 
-func (t *scalarTable) aggregate(vector model.StepVector) error {
+func (t *scalarTable) aggregate(ctx context.Context, vector model.StepVector) {
 	t.ts = vector.T
 
-	var err error
 	for i := range vector.Samples {
-		err = warnings.Coalesce(err, t.addSample(vector.SampleIDs[i], vector.Samples[i]))
+		outputSampleID := t.inputs[vector.SampleIDs[i]]
+		output := t.outputs[outputSampleID]
+		if err := t.accumulators[output.ID].Add(vector.Samples[i], nil); err != nil {
+			warnings.AddToContext(err, ctx)
+		}
 	}
 	for i := range vector.Histograms {
-		err = warnings.Coalesce(err, t.addHistogram(vector.HistogramIDs[i], vector.Histograms[i]))
+		outputSampleID := t.inputs[vector.HistogramIDs[i]]
+		output := t.outputs[outputSampleID]
+		if err := t.accumulators[output.ID].Add(0, vector.Histograms[i]); err != nil {
+			warnings.AddToContext(err, ctx)
+		}
 	}
-	return err
-}
-
-func (t *scalarTable) addSample(sampleID uint64, sample float64) error {
-	outputSampleID := t.inputs[sampleID]
-	output := t.outputs[outputSampleID]
-
-	return t.accumulators[output.ID].Add(sample, nil)
-}
-
-func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) error {
-	outputSampleID := t.inputs[sampleID]
-	output := t.outputs[outputSampleID]
-
-	return t.accumulators[output.ID].Add(0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
@@ -114,18 +104,22 @@ func (t *scalarTable) reset(arg float64) {
 func (t *scalarTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
 	result := pool.GetStepVector(t.ts)
 	for i, v := range t.outputs {
-		switch t.accumulators[i].ValueType() {
+		acc := t.accumulators[i]
+		if acc.HasIgnoredHistograms() {
+			warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
+		}
+		switch acc.ValueType() {
 		case compute.NoValue:
 			continue
 		case compute.SingleTypeValue:
-			f, h := t.accumulators[i].Value()
+			f, h := acc.Value()
 			if h == nil {
 				result.AppendSample(pool, v.ID, f)
 			} else {
 				result.AppendHistogram(pool, v.ID, h)
 			}
 		case compute.MixedTypeValue:
-			warnings.AddToContext(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}), ctx)
+			warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
 		}
 	}
 	return result

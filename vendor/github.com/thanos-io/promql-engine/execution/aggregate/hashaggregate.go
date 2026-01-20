@@ -135,9 +135,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		a.tables[i].reset(p)
 	}
 	if a.lastBatch != nil {
-		if warn := a.aggregate(a.lastBatch); warn != nil {
-			warnings.AddToContext(warn, ctx)
-		}
+		a.aggregate(ctx, a.lastBatch)
 		a.lastBatch = nil
 	}
 	for {
@@ -151,9 +149,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		// Keep aggregating samples as long as timestamps of batches are equal.
 		currentTs := a.tables[0].timestamp()
 		if currentTs == math.MinInt64 || next[0].T == currentTs {
-			if warn := a.aggregate(next); warn != nil {
-				warnings.AddToContext(warn, ctx)
-			}
+			a.aggregate(ctx, next)
 			continue
 		}
 		a.lastBatch = next
@@ -174,14 +170,12 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 	return result, nil
 }
 
-func (a *aggregate) aggregate(in []model.StepVector) error {
-	var err error
+func (a *aggregate) aggregate(ctx context.Context, in []model.StepVector) {
 	for i, vector := range in {
-		err = warnings.Coalesce(err, a.tables[i].aggregate(vector))
+		a.tables[i].aggregate(ctx, vector)
 		a.next.GetPool().PutStepVector(vector)
 	}
 	a.next.GetPool().PutVectors(in)
-	return err
 }
 
 func (a *aggregate) initializeTables(ctx context.Context) error {

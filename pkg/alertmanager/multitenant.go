@@ -435,7 +435,7 @@ func createMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, fallbackC
 		am.grpcServer = server.NewServer(&handlerForGRPCServer{am: am})
 
 		am.alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(am.ring), cfg.AlertmanagerClient, logger, am.registry)
-		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, am.alertmanagerClientsPool, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
+		am.distributor, err = NewDistributor(cfg.AlertmanagerClient, cfg.MaxRecvMsgSize, am.ring, am.alertmanagerClientsPool, cfg.ShardingRing, log.With(logger, "component", "AlertmanagerDistributor"), am.registry)
 		if err != nil {
 			return nil, errors.Wrap(err, "create distributor")
 		}
@@ -515,7 +515,7 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	if am.cfg.ShardingEnabled {
 		// Store the ring state after the initial Alertmanager configs sync has been done and before we do change
 		// our state in the ring.
-		am.ringLastState, _ = am.ring.GetAllHealthy(RingOp)
+		am.ringLastState, _ = am.ring.GetAllHealthy(getRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension))
 
 		// Make sure that all the alertmanagers we were initially configured with have
 		// fetched state from the replicas, before advertising as ACTIVE. This will
@@ -688,7 +688,7 @@ func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 		case <-ringTickerChan:
 			// We ignore the error because in case of error it will return an empty
 			// replication set which we use to compare with the previous state.
-			currRingState, _ := am.ring.GetAllHealthy(RingOp)
+			currRingState, _ := am.ring.GetAllHealthy(getRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension))
 
 			if ring.HasReplicationSetChanged(am.ringLastState, currRingState) {
 				am.ringLastState = currRingState
@@ -828,7 +828,7 @@ func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
 		return true
 	}
 
-	alertmanagers, err := am.ring.Get(users.ShardByUser(userID), SyncRingOp, nil, nil, nil)
+	alertmanagers, err := am.ring.Get(users.ShardByUser(userID), getSyncRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
 		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
@@ -887,12 +887,18 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	// List existing files to keep track the ones to be removed
 	if oldTemplateFiles, err := os.ReadDir(userTemplateDir); err == nil {
 		for _, file := range oldTemplateFiles {
-			pathsToRemove[filepath.Join(userTemplateDir, file.Name())] = struct{}{}
+			pathToRemove, err := safeTemplateFilepath(userTemplateDir, file.Name())
+			if err != nil {
+				return err
+			}
+			level.Debug(am.logger).Log("msg", "discovered existing file", "oldTemplateFile", file.Name(), "pathToRemove", pathToRemove, "user", cfg.User)
+			pathsToRemove[pathToRemove] = struct{}{}
 		}
 	}
 
 	for _, tmpl := range cfg.Templates {
 		templateFilePath, err := safeTemplateFilepath(userTemplateDir, tmpl.Filename)
+		level.Debug(am.logger).Log("msg", "skipping template file since it's still used by the config", "file", templateFilePath, "user", cfg.User)
 		if err != nil {
 			return err
 		}
@@ -906,10 +912,12 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 
 		if hasChanged {
 			hasTemplateChanges = true
+			level.Debug(am.logger).Log("msg", "template file changed", "file", templateFilePath, "body", tmpl.Body, "user", cfg.User)
 		}
 	}
 
 	for pathToRemove := range pathsToRemove {
+		level.Debug(am.logger).Log("msg", "removing stale template file", "file", pathToRemove, "user", cfg.User)
 		err := os.Remove(pathToRemove)
 		if err != nil {
 			level.Warn(am.logger).Log("msg", "failed to remove file", "file", pathToRemove, "err", err)
@@ -1038,7 +1046,7 @@ func (am *MultitenantAlertmanager) GetPositionForUser(userID string) int {
 		return 0
 	}
 
-	set, err := am.ring.Get(users.ShardByUser(userID), RingOp, nil, nil, nil)
+	set, err := am.ring.Get(users.ShardByUser(userID), getRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		level.Error(am.logger).Log("msg", "unable to read the ring while trying to determine the alertmanager position", "err", err)
 		// If we're  unable to determine the position, we don't want a tenant to miss out on the notification - instead,
@@ -1139,7 +1147,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 	level.Debug(am.logger).Log("msg", "message received for replication", "user", userID, "key", part.Key)
 
 	selfAddress := am.ringLifecycler.GetInstanceAddr()
-	err := ring.DoBatch(ctx, RingOp, am.ring, nil, []uint32{users.ShardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
+	err := ring.DoBatch(ctx, getRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), am.ring, nil, []uint32{users.ShardByUser(userID)}, func(desc ring.InstanceDesc, _ []int) error {
 		if desc.GetAddr() == selfAddress {
 			return nil
 		}
@@ -1171,7 +1179,7 @@ func (am *MultitenantAlertmanager) ReplicateStateForUser(ctx context.Context, us
 func (am *MultitenantAlertmanager) ReadFullStateForUser(ctx context.Context, userID string) ([]*clusterpb.FullState, error) {
 	// Only get the set of replicas which contain the specified user.
 	key := users.ShardByUser(userID)
-	replicationSet, err := am.ring.Get(key, RingOp, nil, nil, nil)
+	replicationSet, err := am.ring.Get(key, getRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		return nil, err
 	}

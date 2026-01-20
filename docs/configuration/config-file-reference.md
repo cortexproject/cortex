@@ -544,6 +544,12 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.detailed-metrics-enabled
   [detailed_metrics_enabled: <boolean> | default = true]
 
+  # Disable extending the replica set when instances are unhealthy. This limits
+  # blast radius during config corruption incidents but reduces availability
+  # during normal failures.
+  # CLI flag: -alertmanager.sharding-ring.disable-replica-set-extension
+  [disable_replica_set_extension: <boolean> | default = false]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -2477,6 +2483,14 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
     [request_token_bucket_size: <int> | default = 4194304]
 
+  # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-size
+  [parquet_shard_cache_size: <int> | default = 512]
+
+  # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
+  [parquet_shard_cache_ttl: <duration> | default = 24h]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir
@@ -2597,6 +2611,12 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
       [ttl: <duration> | default = 10m]
 
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
+
     # If enabled, ingesters will cache expanded postings for the compacted
     # blocks. The cache is shared between all blocks.
     blocks:
@@ -2611,6 +2631,12 @@ tsdb:
       # TTL for postings cache
       # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
       [ttl: <duration> | default = 10m]
+
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
 
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.
@@ -3796,6 +3822,12 @@ instance_limits:
 # CLI flag: -ingester.enable-matcher-optimization
 [enable_matcher_optimization: <boolean> | default = false]
 
+# Enable regex matcher limits and metrics collection for unoptimized regex
+# queries. When enabled, the ingester will track pattern length, label
+# cardinality, and total value length for unoptimized regex matchers.
+# CLI flag: -ingester.enable-regex-matcher-limits
+[enable_regex_matcher_limits: <boolean> | default = false]
+
 query_protection:
   rejection:
     threshold:
@@ -4090,6 +4122,24 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [EXPERIMENTAL] True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
 [enable_native_histograms: <boolean> | default = false]
+
+# Maximum length (in bytes) of an unoptimized regex pattern. This is a
+# pre-flight check to reject expensive regex queries. 0 to disable. This is only
+# enforced in Ingester.
+# CLI flag: -validation.max-regex-pattern-length
+[max_regex_pattern_length: <int> | default = 0]
+
+# Maximum cardinality of a label that can be queried with an unoptimized regex
+# matcher. If exceeded, the query will be rejected with a limit error. 0 to
+# disable. This is only enforced in Ingester.
+# CLI flag: -validation.max-label-cardinality-for-unoptimized-regex
+[max_label_cardinality_for_unoptimized_regex: <int> | default = 0]
+
+# Maximum total length (in bytes) of all label values combined for an
+# unoptimized regex matcher. If exceeded, the query will be rejected with a
+# limit error. 0 to disable. This is only enforced in Ingester.
+# CLI flag: -validation.max-total-label-value-length-for-unoptimized-regex
+[max_total_label_value_length_for_unoptimized_regex: <int> | default = 0]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
@@ -4778,6 +4828,11 @@ store_gateway_client:
 # replication factor) than we'll end the retries earlier
 # CLI flag: -querier.store-gateway-consistency-check-max-attempts
 [store_gateway_consistency_check_max_attempts: <int> | default = 3]
+
+# [Experimental] The maximum number of series to be batched in a single gRPC
+# response message from Store Gateways. A value of 0 or 1 disables batching.
+# CLI flag: -querier.store-gateway-series-batch-size
+[store_gateway_series_batch_size: <int> | default = 1]
 
 # The maximum number of times we attempt fetching data from ingesters for
 # retryable errors (ex. partial data returned).

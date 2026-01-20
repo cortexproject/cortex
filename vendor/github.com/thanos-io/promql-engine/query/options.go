@@ -33,6 +33,16 @@ func (o *Options) NumSteps() int {
 	return int(totalSteps)
 }
 
+// TotalSteps returns the total number of steps in the query, regardless of batching.
+// This is useful for pre-allocating result slices.
+func (o *Options) TotalSteps() int {
+	// Instant evaluation is executed as a range evaluation with one step.
+	if o.Step.Milliseconds() == 0 {
+		return 1
+	}
+	return int((o.End.UnixMilli()-o.Start.UnixMilli())/o.Step.Milliseconds() + 1)
+}
+
 func (o *Options) IsInstantQuery() bool {
 	return o.NumSteps() == 1
 }

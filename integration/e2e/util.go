@@ -292,12 +292,19 @@ func CreateNHBlock(
 		var ref storage.SeriesRef
 		start := RandRange(rnd, mint, maxt)
 		for j := range numNHSamples {
-			if num%2 == 0 {
+			switch num % 4 {
+			case 0:
 				// append float histogram
 				ref, err = app.AppendHistogram(ref, series[i], start, nil, tsdbutil.GenerateTestFloatHistogram(int64(i+j)))
-			} else {
-				// append histogram
+			case 1:
+				// append int histogram
 				ref, err = app.AppendHistogram(ref, series[i], start, tsdbutil.GenerateTestHistogram(int64(i+j)), nil)
+			case 2:
+				// append float histogram with custom bucket
+				ref, err = app.AppendHistogram(ref, series[i], start, nil, tsdbutil.GenerateTestCustomBucketsFloatHistogram(int64(i+j)))
+			case 3:
+				// append int histogram with custom bucket
+				ref, err = app.AppendHistogram(ref, series[i], start, tsdbutil.GenerateTestCustomBucketsHistogram(int64(i+j)), nil)
 			}
 			if err != nil {
 				if rerr := app.Rollback(); rerr != nil {
@@ -424,7 +431,7 @@ func CreateBlock(
 	return id, nil
 }
 
-func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogram bool, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries) {
+func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, customBucket, floatHistogram bool, additionalLabels ...prompb.Label) (symbols []string, series []writev2.TimeSeries) {
 	tsMillis := TimeToMilliseconds(ts)
 
 	st := writev2.NewSymbolTable()
@@ -439,11 +446,20 @@ func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, floatHistogr
 		fh *histogram.FloatHistogram
 		ph writev2.Histogram
 	)
+
 	if floatHistogram {
-		fh = tsdbutil.GenerateTestFloatHistogram(int64(i))
+		if customBucket {
+			fh = tsdbutil.GenerateTestCustomBucketsFloatHistogram(int64(i))
+		} else {
+			fh = tsdbutil.GenerateTestFloatHistogram(int64(i))
+		}
 		ph = writev2.FromFloatHistogram(tsMillis, fh)
 	} else {
-		h = tsdbutil.GenerateTestHistogram(int64(i))
+		if customBucket {
+			h = tsdbutil.GenerateTestCustomBucketsHistogram(int64(i))
+		} else {
+			h = tsdbutil.GenerateTestHistogram(int64(i))
+		}
 		ph = writev2.FromIntHistogram(tsMillis, h)
 	}
 

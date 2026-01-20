@@ -177,9 +177,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is not visited and contains block marked for deletion",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         true,
-				IsCompleted:       false,
-				DeleteVisitMarker: true,
+				CanDelete:            true,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -230,9 +230,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is pending and contains block marked for deletion",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         true,
-				IsCompleted:       false,
-				DeleteVisitMarker: true,
+				CanDelete:            true,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -292,7 +292,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 			expectedResult: PartitionedGroupStatus{
 				CanDelete:                 false,
 				IsCompleted:               false,
-				DeleteVisitMarker:         false,
+				VisitMarkersToDelete:      []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{},
 			},
 			partitionedGroupInfo: PartitionedGroupInfo{
@@ -342,9 +342,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is pending expired",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         false,
-				IsCompleted:       false,
-				DeleteVisitMarker: false,
+				CanDelete:            false,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 0,
@@ -400,9 +400,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is complete with one block deleted and one partition is not visited with no blocks deleted",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         false,
-				IsCompleted:       false,
-				DeleteVisitMarker: false,
+				CanDelete:            false,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -453,9 +453,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is complete and one partition is failed with no blocks deleted",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         false,
-				IsCompleted:       false,
-				DeleteVisitMarker: false,
+				CanDelete:            false,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -511,9 +511,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is complete and one partition is failed one block deleted",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         true,
-				IsCompleted:       false,
-				DeleteVisitMarker: true,
+				CanDelete:            true,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -573,7 +573,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 			expectedResult: PartitionedGroupStatus{
 				CanDelete:                 true,
 				IsCompleted:               true,
-				DeleteVisitMarker:         true,
+				VisitMarkersToDelete:      []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{},
 			},
 			partitionedGroupInfo: PartitionedGroupInfo{
@@ -623,9 +623,24 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test partitioned group created after visit marker",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:                 false,
-				IsCompleted:               false,
-				DeleteVisitMarker:         true,
+				CanDelete:   false,
+				IsCompleted: false,
+				VisitMarkersToDelete: []VisitMarker{
+					&partitionVisitMarker{
+						PartitionedGroupID: partitionedGroupID,
+						PartitionID:        0,
+						Status:             Completed,
+						VisitTime:          time.Now().Add(-2 * time.Minute).Unix(),
+						Version:            PartitionVisitMarkerVersion1,
+					},
+					&partitionVisitMarker{
+						PartitionedGroupID: partitionedGroupID,
+						PartitionID:        1,
+						Status:             Completed,
+						VisitTime:          time.Now().Add(-2 * time.Minute).Unix(),
+						Version:            PartitionVisitMarkerVersion1,
+					},
+				},
 				PendingOrFailedPartitions: []Partition{},
 			},
 			partitionedGroupInfo: PartitionedGroupInfo{
@@ -675,7 +690,7 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 			expectedResult: PartitionedGroupStatus{
 				CanDelete:                 false,
 				IsCompleted:               false,
-				DeleteVisitMarker:         false,
+				VisitMarkersToDelete:      []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{},
 			},
 			partitionedGroupInfo: PartitionedGroupInfo{
@@ -725,9 +740,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is not visited and contains block with no compact mark",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         true,
-				IsCompleted:       false,
-				DeleteVisitMarker: true,
+				CanDelete:            true,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -778,9 +793,9 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 		{
 			name: "test one partition is expired and contains block with no compact mark",
 			expectedResult: PartitionedGroupStatus{
-				CanDelete:         true,
-				IsCompleted:       false,
-				DeleteVisitMarker: true,
+				CanDelete:            true,
+				IsCompleted:          false,
+				VisitMarkersToDelete: []VisitMarker{},
 				PendingOrFailedPartitions: []Partition{
 					{
 						PartitionID: 1,
@@ -876,6 +891,10 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 			require.Equal(t, len(tcase.expectedResult.PendingOrFailedPartitions), len(result.PendingOrFailedPartitions))
 			for _, partition := range result.PendingOrFailedPartitions {
 				require.Contains(t, tcase.expectedResult.PendingOrFailedPartitions, partition)
+			}
+			require.Equal(t, len(tcase.expectedResult.VisitMarkersToDelete), len(result.VisitMarkersToDelete))
+			for _, visitMarker := range result.VisitMarkersToDelete {
+				require.Contains(t, tcase.expectedResult.VisitMarkersToDelete, visitMarker)
 			}
 		})
 	}

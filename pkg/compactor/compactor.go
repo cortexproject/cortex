@@ -1099,6 +1099,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
+		nil, // Pass nil for blocksCleaner to maintain current behavior.
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")

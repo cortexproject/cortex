@@ -36,12 +36,12 @@ type Distributor struct {
 
 	alertmanagerRing        ring.ReadRing
 	alertmanagerClientsPool ClientsPool
-
-	logger log.Logger
+	ringConfig              RingConfig
+	logger                  log.Logger
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, ringConfig RingConfig, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if alertmanagerClientsPool == nil {
 		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg, logger, reg)
 	}
@@ -52,6 +52,7 @@ func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *r
 		maxRecvMsgSize:          maxRecvMsgSize,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
+		ringConfig:              ringConfig,
 	}
 
 	d.Service = services.NewBasicService(nil, d.running, nil)
@@ -160,7 +161,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	var responses []*httpgrpc.HTTPResponse
 	var responsesMtx sync.Mutex
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
-	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, nil, []uint32{users.ShardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
+	err = ring.DoBatch(r.Context(), getRingOp(d.ringConfig.DisableReplicaSetExtension), d.alertmanagerRing, nil, []uint32{users.ShardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), userID), opentracing.SpanFromContext(r.Context()))
 		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
@@ -207,7 +208,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 
 func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
 	key := users.ShardByUser(userID)
-	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
+	replicationSet, err := d.alertmanagerRing.Get(key, getRingOp(d.ringConfig.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get replication set from the ring", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)

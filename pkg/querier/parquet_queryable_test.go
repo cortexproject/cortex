@@ -569,7 +569,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 		convert.WithName(blockID.String()),
 	}
 
-	_, err = convert.ConvertTSDBBlock(
+	numShards, err := convert.ConvertTSDBBlock(
 		ctx,
 		userBucketClient,
 		tsdbBlock.MinTime(),
@@ -583,7 +583,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 	_ = tsdbBlock.Close()
 
 	// Write parquet converter marker
-	err = parquet.WriteConverterMark(ctx, blockID, userBucketClient)
+	err = parquet.WriteConverterMark(ctx, blockID, userBucketClient, numShards)
 	require.NoError(t, err)
 
 	return nil

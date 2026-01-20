@@ -176,8 +176,15 @@ type NumberLiteral struct {
 	Val float64
 }
 
-func (c *NumberLiteral) Clone() Node                  { return &NumberLiteral{Val: c.Val} }
-func (c *NumberLiteral) String() string               { return fmt.Sprint(c.Val) }
+func (c *NumberLiteral) Clone() Node { return &NumberLiteral{Val: c.Val} }
+func (c *NumberLiteral) String() string {
+	// Wrap negative numbers in parentheses to preserve parsing behavior.
+	// Without parens, "-1.5 ^ 2" parses as "-(1.5 ^ 2)" due to operator precedence.
+	if c.Val < 0 {
+		return fmt.Sprintf("(%v)", c.Val)
+	}
+	return fmt.Sprint(c.Val)
+}
 func (c *NumberLiteral) ReturnType() parser.ValueType { return parser.ValueTypeScalar }
 func (c *NumberLiteral) Type() NodeType               { return NumberLiteralNode }
 

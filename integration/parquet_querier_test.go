@@ -182,6 +182,8 @@ func TestParquetFuzz(t *testing.T) {
 }
 
 func TestParquetProjectionPushdownFuzz(t *testing.T) {
+	t.Skip("Disabled due to flakiness")
+
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

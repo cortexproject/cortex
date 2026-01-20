@@ -62,10 +62,8 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 	latestTS := atomic.NewInt64(0)
 
 	for range count {
-		done.Add(1)
 
-		go func() {
-			defer done.Done()
+		done.Go(func() {
 
 			for !stop.Load() {
 				ts := latestTS.Inc()
@@ -75,7 +73,7 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 
 				time.Sleep(1 * time.Millisecond)
 			}
-		}()
+		})
 	}
 
 	previousLatest := int64(0)

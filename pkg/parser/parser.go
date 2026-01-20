@@ -3,6 +3,7 @@ package parser
 import (
 	"maps"
 
+	"github.com/prometheus/prometheus/promql"
 	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/promql-engine/execution/parse"
 )
@@ -13,6 +14,17 @@ func buildFunctions() map[string]*promqlparser.Function {
 	fns := make(map[string]*promqlparser.Function, len(promqlparser.Functions))
 	maps.Copy(fns, promqlparser.Functions)
 	maps.Copy(fns, parse.XFunctions)
+
+	// The holt_winters function was renamed to double_exponential_smoothing and marked experimental in Prometheus v3.
+	// Register holt_winters as an alias in cortexparser to maintain backward compatibility.
+	if des, ok := fns["double_exponential_smoothing"]; ok {
+		holtWinters := *des
+		holtWinters.Experimental = false
+		holtWinters.Name = "holt_winters"
+		fns["holt_winters"] = &holtWinters
+		promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
+	}
+
 	return fns
 }
 

@@ -295,7 +295,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
 					"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
-					"-querier.query-store-for-labels-enabled":           "true",
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 					"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
@@ -677,7 +676,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
 						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 						"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
-						"-querier.query-store-for-labels-enabled":           "true",
 						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 						"-querier.enable-x-functions":                       strconv.FormatBool(thanosEngine),
 						// Ingester.
@@ -1243,7 +1241,6 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-querier.max-fetched-series-per-query":      "1",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-querier.query-store-for-labels-enabled":    "true",
 		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
@@ -1371,7 +1368,6 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.tsdb.ship-interval":         "1s",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
-		"-querier.query-store-for-labels-enabled":    "true",
 		"-querier.max-fetched-series-per-query":      "3",
 	})
 

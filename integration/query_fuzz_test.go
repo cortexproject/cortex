@@ -77,7 +77,6 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -173,7 +172,6 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -281,7 +279,6 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store": "consul",
 			// Distributor.
@@ -442,7 +439,6 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.retention-period":             "2h",
 			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -466,7 +462,6 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.retention-period":                 "2h",
 			"-blocks-storage.bucket-store.index-cache.backend":      tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled":     "true",
-			"-querier.query-store-for-labels-enabled":               "true",
 			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
 			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
 			// Ingester.
@@ -683,7 +678,6 @@ func TestVerticalShardingFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -801,7 +795,6 @@ func TestProtobufCodecFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -1159,7 +1152,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-querier.query-store-for-labels-enabled":          "true",
 		"-ring.store":                                "consul",
 		"-consul.hostname":                           consul1.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
@@ -1320,7 +1312,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-querier.query-store-for-labels-enabled":          "true",
 		"-ring.store":                                "consul",
 		"-consul.hostname":                           consul.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
@@ -1503,7 +1494,6 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -1621,7 +1611,6 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),

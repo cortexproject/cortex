@@ -3095,9 +3095,10 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 
-  # [Experimental] If enabled, fetch all tracked keys on startup to populate the
-  # local cache. This reduces CAS operations for existing replicas but causes a
-  # spike in GET during initialization.
+  # [Experimental] If enabled, fetches all tracked keys on startup to populate
+  # the local cache. This prevents duplicate GET calls for the same key while
+  # the cache is cold, but could cause a spike in GET requests during
+  # initialization if the number of tracked keys is large.
   # CLI flag: -distributor.ha-tracker.enable-startup-sync
   [enable_startup_sync: <boolean> | default = false]
 

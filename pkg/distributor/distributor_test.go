@@ -4554,6 +4554,6 @@ func TestDistributor_BatchTimeoutMetric(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 		# HELP cortex_distributor_ingester_push_timeouts_total The total number of push requests to ingesters that were canceled due to timeout.
 		# TYPE cortex_distributor_ingester_push_timeouts_total counter
-		cortex_distributor_ingester_push_timeouts_total{user="user-1"} 5
+		cortex_distributor_ingester_push_timeouts_total 5
 	`), "cortex_distributor_ingester_push_timeouts_total"))
 }

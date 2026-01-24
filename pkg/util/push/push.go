@@ -197,6 +197,10 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			return v1Req, err
 		}
 
+		if len(v2Ts.Samples) == 0 && len(v2Ts.Histograms) == 0 {
+			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
+		}
+
 		unit := symbols[v2Ts.Metadata.UnitRef]
 		metricType := v2Ts.Metadata.Type
 		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")

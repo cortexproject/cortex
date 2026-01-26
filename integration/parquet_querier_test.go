@@ -54,7 +54,6 @@ func TestParquetFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.bucket-index.idle-timeout":               "1s",
 			"-blocks-storage.bucket-store.bucket-index.enabled":                    "true",
 			"-blocks-storage.bucket-store.index-cache.backend":                     tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":                              "true",
 			// compactor
 			"-compactor.cleanup-interval": "1s",
 			// Ingester.
@@ -204,7 +203,6 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.bucket-index.idle-timeout":               "1s",
 			"-blocks-storage.bucket-store.bucket-index.enabled":                    "true",
 			"-blocks-storage.bucket-store.index-cache.backend":                     tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":                              "true",
 			// compactor
 			"-compactor.cleanup-interval": "1s",
 			// Ingester.

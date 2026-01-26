@@ -690,7 +690,7 @@ func TestBucketStores_SyncBlocksWithIgnoreBlocksBefore(t *testing.T) {
 	`), "cortex_bucket_store_block_loads_total", "cortex_bucket_store_blocks_loaded", "cortex_blocks_meta_synced"))
 }
 
-func prepareStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
+func prepareStorageConfig(t testing.TB) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 	cfg.BucketStore.SyncDir = t.TempDir()

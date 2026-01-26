@@ -786,7 +786,6 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 	}
 
 	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
-		isPartitionGroupInfoDeleted := false
 		partitionedGroupInfoFile := extraInfo.path
 		deletedBlocksCount := 0
 		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
@@ -812,17 +811,25 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_file", partitionedGroupInfoFile, "err", err)
 				} else {
 					level.Info(partitionedGroupLogger).Log("msg", "deleted partitioned group info", "partitioned_group_file", partitionedGroupInfoFile)
-					isPartitionGroupInfoDeleted = true
 				}
 			}
 		}
 
-		if isPartitionGroupInfoDeleted && (extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker) {
-			// Remove partition visit markers
+		if extraInfo.status.CanDelete {
+			// Remove all partition visit markers for completed partitions
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
-				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "err", err)
+				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete all partition visit markers for partitioned group", "err", err)
 			} else {
 				level.Info(partitionedGroupLogger).Log("msg", "deleted partition visit markers for partitioned group")
+			}
+		} else {
+			// Remove all invalid visit markers
+			for _, v := range extraInfo.status.VisitMarkersToDelete {
+				if err := userBucket.Delete(ctx, v.GetVisitMarkerFilePath()); err != nil {
+					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete invalid visit marker", "partition_visit_marker_file", v.String(), "err", err)
+				} else {
+					level.Info(partitionedGroupLogger).Log("msg", "deleted invalid visit marker", "partition_visit_marker_file", v.String())
+				}
 			}
 		}
 	}

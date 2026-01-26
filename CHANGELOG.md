@@ -13,10 +13,11 @@
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
+* [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] Ingester: Add support for ingesting Native Histogram with Custom Buckets. #7191
 * [ENHANCEMENT] Ingester: Optimize labels out-of-order (ooo) check by allowing the iteration to terminate immediately upon finding the first unsorted label. #7186
 * [ENHANCEMENT] Distributor: Skip attaching `__unit__` and `__type__` labels when `-distributor.enable-type-and-unit-labels` is enabled, as these are appended from metadata. #7145
-* [ENHANCEMENT] Distributor: Add `cortex_distributor_ingester_push_timeouts_total` metric to track the number of push requests to ingesters that were canceled due to timeout. #7155
+* [ENHANCEMENT] Distributor: Add `cortex_distributor_ingester_push_timeouts_total` metric to track the number of push requests to ingesters that were canceled due to timeout. #7155 #7229
 * [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125
 * [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Querier: Add a `-querier.parquet-queryable-shard-cache-ttl` flag to add TTL to parquet shard cache. #7098
@@ -26,7 +27,7 @@
 * [ENHANCEMENT] Alertmanager/Ruler: Introduce a user scanner to reduce the number of list calls to object storage. #6999
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [ENHANCEMENT] Query Frontend: Add query priority based on operation. #7128
-* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7129
+* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7130 #7209
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
 * [ENHANCEMENT] Upgrade to go 1.25. #7164
@@ -35,6 +36,7 @@
 * [ENHANCEMENT] Ingester: Add fetch timeout for Ingester expanded postings cache. #7185
 * [ENHANCEMENT] Ingester: Add feature flag to collect metrics of how expensive an unoptimized regex matcher is and new limits to protect Ingester query path against expensive unoptimized regex matchers. #7194 #7210
 * [ENHANCEMENT] Querier: Add logging for api calls in querier during an OOMKill. #7216
+* [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132

@@ -1,12 +1,35 @@
-// Copyright (c) The Thanos Authors.
-// Licensed under the Apache License 2.0.
-
-package store
+package storegateway
 
 import (
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 )
 
+type flushableServer interface {
+	storepb.Store_SeriesServer
+
+	Flush() error
+}
+
+// copied from thanos pkg/store/flushable.go
+func newFlushableServer(
+	upstream storepb.Store_SeriesServer,
+) flushableServer {
+	return &passthroughServer{Store_SeriesServer: upstream}
+}
+
+type passthroughServer struct {
+	storepb.Store_SeriesServer
+}
+
+func (p *passthroughServer) Flush() error {
+	// If the underlying server is also flushable, flush it
+	if f, ok := p.Store_SeriesServer.(flushableServer); ok {
+		return f.Flush()
+	}
+	return nil
+}
+
+// copied from thanos pkg/store/batchable.go
 func newBatchableServer(
 	upstream storepb.Store_SeriesServer,
 	batchSize int,

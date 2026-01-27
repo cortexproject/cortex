@@ -56,6 +56,7 @@ Currently experimental features are:
 - Querier: tenant federation
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.user-sync-interval`
+  - `-tenant-federation.allow-partial-data`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - Alertmanager limits
   - notification rate (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)

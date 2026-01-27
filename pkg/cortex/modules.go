@@ -507,7 +507,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initIngester() (serv services.Service, err error) {
-	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor, t.Overrides)
+	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor, t.OverridesConfig)
 
 	return nil, nil
 }

@@ -7,17 +7,15 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
 
+	"github.com/thanos-io/promql-engine/compute"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
-	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -28,7 +26,7 @@ type aggregateTable interface {
 	// If the table is empty, it returns math.MinInt64.
 	timestamp() int64
 	// aggregate aggregates the given vector into the table.
-	aggregate(ctx context.Context, vector model.StepVector) error
+	aggregate(ctx context.Context, vector model.StepVector)
 	// toVector writes out the accumulated result to the given vector and
 	// resets the table.
 	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
@@ -41,7 +39,7 @@ type scalarTable struct {
 	ts           int64
 	inputs       []uint64
 	outputs      []*model.Series
-	accumulators []accumulator
+	accumulators []compute.Accumulator
 }
 
 func newScalarTables(stepsBatch int, inputCache []uint64, outputCache []*model.Series, aggregation parser.ItemType) ([]aggregateTable, error) {
@@ -61,7 +59,7 @@ func (t *scalarTable) timestamp() int64 {
 }
 
 func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregation parser.ItemType) (*scalarTable, error) {
-	accumulators := make([]accumulator, len(outputs))
+	accumulators := make([]compute.Accumulator, len(outputs))
 	for i := range accumulators {
 		acc, err := newScalarAccumulator(aggregation)
 		if err != nil {
@@ -77,34 +75,23 @@ func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregatio
 	}, nil
 }
 
-func (t *scalarTable) aggregate(ctx context.Context, vector model.StepVector) error {
+func (t *scalarTable) aggregate(ctx context.Context, vector model.StepVector) {
 	t.ts = vector.T
 
 	for i := range vector.Samples {
-		if err := t.addSample(ctx, vector.SampleIDs[i], vector.Samples[i]); err != nil {
-			return err
+		outputSampleID := t.inputs[vector.SampleIDs[i]]
+		output := t.outputs[outputSampleID]
+		if err := t.accumulators[output.ID].Add(vector.Samples[i], nil); err != nil {
+			warnings.AddToContext(err, ctx)
 		}
 	}
 	for i := range vector.Histograms {
-		if err := t.addHistogram(ctx, vector.HistogramIDs[i], vector.Histograms[i]); err != nil {
-			return err
+		outputSampleID := t.inputs[vector.HistogramIDs[i]]
+		output := t.outputs[outputSampleID]
+		if err := t.accumulators[output.ID].Add(0, vector.Histograms[i]); err != nil {
+			warnings.AddToContext(err, ctx)
 		}
 	}
-	return nil
-}
-
-func (t *scalarTable) addSample(ctx context.Context, sampleID uint64, sample float64) error {
-	outputSampleID := t.inputs[sampleID]
-	output := t.outputs[outputSampleID]
-
-	return t.accumulators[output.ID].Add(ctx, sample, nil)
-}
-
-func (t *scalarTable) addHistogram(ctx context.Context, sampleID uint64, h *histogram.FloatHistogram) error {
-	outputSampleID := t.inputs[sampleID]
-	output := t.outputs[outputSampleID]
-
-	return t.accumulators[output.ID].Add(ctx, 0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
@@ -117,18 +104,22 @@ func (t *scalarTable) reset(arg float64) {
 func (t *scalarTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
 	result := pool.GetStepVector(t.ts)
 	for i, v := range t.outputs {
-		switch t.accumulators[i].ValueType() {
-		case NoValue:
+		acc := t.accumulators[i]
+		if acc.HasIgnoredHistograms() {
+			warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
+		}
+		switch acc.ValueType() {
+		case compute.NoValue:
 			continue
-		case SingleTypeValue:
-			f, h := t.accumulators[i].Value()
+		case compute.SingleTypeValue:
+			f, h := acc.Value()
 			if h == nil {
 				result.AppendSample(pool, v.ID, f)
 			} else {
 				result.AppendHistogram(pool, v.ID, h)
 			}
-		case MixedTypeValue:
-			warnings.AddToContext(annotations.NewMixedFloatsHistogramsAggWarning(posrange.PositionRange{}), ctx)
+		case compute.MixedTypeValue:
+			warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
 		}
 	}
 	return result
@@ -184,55 +175,31 @@ func addRatioSample(ratioLimit float64, series labels.Labels) bool {
 		(ratioLimit < 0 && sampleOffset >= (1.0+ratioLimit))
 }
 
-func newScalarAccumulator(expr parser.ItemType) (accumulator, error) {
+func newScalarAccumulator(expr parser.ItemType) (compute.Accumulator, error) {
 	t := parser.ItemTypeStr[expr]
 	switch t {
 	case "sum":
-		return newSumAcc(), nil
+		return compute.NewSumAcc(), nil
 	case "max":
-		return newMaxAcc(), nil
+		return compute.NewMaxAcc(), nil
 	case "min":
-		return newMinAcc(), nil
+		return compute.NewMinAcc(), nil
 	case "count":
-		return newCountAcc(), nil
+		return compute.NewCountAcc(), nil
 	case "avg":
-		return newAvgAcc(), nil
+		return compute.NewAvgAcc(), nil
 	case "group":
-		return newGroupAcc(), nil
+		return compute.NewGroupAcc(), nil
 	case "stddev":
-		return newStdDevAcc(), nil
+		return compute.NewStdDevAcc(), nil
 	case "stdvar":
-		return newStdVarAcc(), nil
+		return compute.NewStdVarAcc(), nil
 	case "quantile":
-		return newQuantileAcc(), nil
+		return compute.NewQuantileAcc(), nil
 	case "histogram_avg":
-		return newHistogramAvg(), nil
+		return compute.NewHistogramAvgAcc(), nil
 	}
 
 	msg := fmt.Sprintf("unknown aggregation function %s", t)
 	return nil, errors.Wrap(parse.ErrNotSupportedExpr, msg)
-}
-
-func Quantile(q float64, points []float64) float64 {
-	if len(points) == 0 || math.IsNaN(q) {
-		return math.NaN()
-	}
-	if q < 0 {
-		return math.Inf(-1)
-	}
-	if q > 1 {
-		return math.Inf(+1)
-	}
-	sort.Float64s(points)
-
-	n := float64(len(points))
-	// When the quantile lies between two samples,
-	// we use a weighted average of the two samples.
-	rank := q * (n - 1)
-
-	lowerIndex := math.Max(0, math.Floor(rank))
-	upperIndex := math.Min(n-1, lowerIndex+1)
-
-	weight := rank - math.Floor(rank)
-	return points[int(lowerIndex)]*(1-weight) + points[int(upperIndex)]*weight
 }

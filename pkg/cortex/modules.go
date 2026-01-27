@@ -507,7 +507,7 @@ func (t *Cortex) initIngesterService() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initIngester() (serv services.Service, err error) {
-	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor)
+	t.API.RegisterIngester(t.Ingester, t.Cfg.Distributor, t.Overrides)
 
 	return nil, nil
 }
@@ -668,8 +668,20 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 
-	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {
-		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
+
+	var (
+		pusher      ruler.Pusher
+		queryable   prom_storage.Queryable
+		queryEngine promql.QueryEngine
+	)
+	if t.Cfg.ExternalPusher != nil {
+		pusher = t.Cfg.ExternalPusher
+	} else {
+		pusher = t.Distributor
+	}
+	if t.Cfg.ExternalQueryable != nil {
+		queryable = t.Cfg.ExternalQueryable
 
 		opts := promql.EngineOpts{
 			Logger:               util_log.SLogger,
@@ -685,18 +697,14 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 				return t.Cfg.Querier.DefaultEvaluationInterval.Milliseconds()
 			},
 		}
-		queryEngine := engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
-
-		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Cfg.ExternalPusher, t.Cfg.ExternalQueryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
-		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.OverridesConfig, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
+		queryEngine = engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 	} else {
-		rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, engine := querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData)
-
-		managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, t.Distributor, queryable, engine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
-		manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.OverridesConfig, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
+		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData)
 	}
+
+	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
+	manager, err = ruler.NewDefaultMultiTenantManager(t.Cfg.Ruler, t.OverridesConfig, managerFactory, metrics, prometheus.DefaultRegisterer, util_log.Logger)
 
 	if err != nil {
 		return nil, err

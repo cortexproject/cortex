@@ -12,8 +12,8 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -135,9 +135,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		a.tables[i].reset(p)
 	}
 	if a.lastBatch != nil {
-		if err := a.aggregate(ctx, a.lastBatch); err != nil {
-			return nil, err
-		}
+		a.aggregate(ctx, a.lastBatch)
 		a.lastBatch = nil
 	}
 	for {
@@ -151,9 +149,7 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 		// Keep aggregating samples as long as timestamps of batches are equal.
 		currentTs := a.tables[0].timestamp()
 		if currentTs == math.MinInt64 || next[0].T == currentTs {
-			if err := a.aggregate(ctx, next); err != nil {
-				return nil, err
-			}
+			a.aggregate(ctx, next)
 			continue
 		}
 		a.lastBatch = next
@@ -174,15 +170,12 @@ func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 	return result, nil
 }
 
-func (a *aggregate) aggregate(ctx context.Context, in []model.StepVector) error {
+func (a *aggregate) aggregate(ctx context.Context, in []model.StepVector) {
 	for i, vector := range in {
-		if err := a.tables[i].aggregate(ctx, vector); err != nil {
-			return err
-		}
+		a.tables[i].aggregate(ctx, vector)
 		a.next.GetPool().PutStepVector(vector)
 	}
 	a.next.GetPool().PutVectors(in)
-	return nil
 }
 
 func (a *aggregate) initializeTables(ctx context.Context) error {

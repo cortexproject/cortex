@@ -541,14 +541,14 @@ func TestCompactor_ShouldIterateOverUsersAndRunCompaction(t *testing.T) {
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start initial sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of initial garbage collection"`,
 		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start initial sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of initial garbage collection"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
@@ -675,8 +675,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start initial sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of initial garbage collection"`,
 		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
@@ -1074,14 +1074,14 @@ func TestCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInstanceRunni
 		`level=info component=compactor msg="discovering users from bucket"`,
 		`level=info component=compactor msg="discovered users from bucket" users=2`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-1`,
-		`level=info component=compactor org_id=user-1 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-1 msg="start of GC"`,
+		`level=info component=compactor org_id=user-1 msg="start initial sync of metas"`,
+		`level=info component=compactor org_id=user-1 msg="start of initial garbage collection"`,
 		`level=info component=compactor org_id=user-1 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-1 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-1`,
 		`level=info component=compactor msg="starting compaction of user blocks" user=user-2`,
-		`level=info component=compactor org_id=user-2 msg="start sync of metas"`,
-		`level=info component=compactor org_id=user-2 msg="start of GC"`,
+		`level=info component=compactor org_id=user-2 msg="start initial sync of metas"`,
+		`level=info component=compactor org_id=user-2 msg="start of initial garbage collection"`,
 		`level=info component=compactor org_id=user-2 msg="start of compactions"`,
 		`level=info component=compactor org_id=user-2 msg="compaction iterations done"`,
 		`level=info component=compactor msg="successfully compacted user blocks" user=user-2`,
@@ -1580,7 +1580,7 @@ func prepare(t *testing.T, compactorCfg Config, bucketClient objstore.Instrument
 	flagext.DefaultValues(&storageCfg)
 	storageCfg.BucketStore.BlockDiscoveryStrategy = string(cortex_tsdb.RecursiveDiscovery)
 	storageCfg.UsersScanner.Strategy = users.UserScanStrategyUserIndex
-	storageCfg.UsersScanner.CleanUpInterval = 100 * time.Millisecond // Short interval for testing
+	storageCfg.UsersScanner.UpdateInterval = 100 * time.Millisecond // Short interval for testing
 
 	// Create a temporary directory for compactor data.
 	compactorCfg.DataDir = t.TempDir()

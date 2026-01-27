@@ -614,6 +614,16 @@ datasources:
         timeInterval: 15s
       secureJsonData:
         httpHeaderValue1: cortex
+    - name: Cortex Alertmanager
+      type: alertmanager
+      url: http://cortex-nginx/api/prom
+      access: proxy
+      editable: true
+      jsonData:
+        httpHeaderName1: X-Scope-OrgID
+        implementation: cortex
+      secureJsonData:
+        httpHeaderValue1: cortex
 #    - name: CloudWatch
 #      type: cloudwatch
 #      access: proxy

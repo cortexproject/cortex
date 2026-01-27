@@ -295,7 +295,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-store-gateway.sharding-enabled":                   strconv.FormatBool(testCfg.blocksShardingStrategy != ""),
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
 					"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
-					"-querier.query-store-for-labels-enabled":           "true",
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 					"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
@@ -461,7 +460,7 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector3, result.(model.Vector))
 
-				if testCfg.bucketStorageType == "tedb" {
+				if testCfg.bucketStorageType == "tsdb" {
 					// Check the in-memory index cache metrics (in the store-gateway).
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64((5+5+2)*numberOfCacheBackends)), "thanos_store_index_cache_requests_total"))
 					require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total")) // no cache hit cause the cache was empty
@@ -519,6 +518,23 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					if strings.Contains(testCfg.chunkCacheBackend, tsdb.CacheBackendRedis) {
 						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_redis_requests_total"))
 					}
+
+					// ensure parquet shard cache works
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_hits_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_item_count"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
+					require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_parquet_cache_misses_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"),
+						labels.MustNewMatcher(labels.MatchEqual, "name", "parquet-shards")),
+						e2e.SkipMissingMetrics), // one store gateway may not receive queries
+					)
 				}
 
 				// Query metadata.
@@ -660,7 +676,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
 						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 						"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
-						"-querier.query-store-for-labels-enabled":           "true",
 						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
 						"-querier.enable-x-functions":                       strconv.FormatBool(thanosEngine),
 						// Ingester.
@@ -1226,7 +1241,6 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-querier.max-fetched-series-per-query":      "1",
 	}), "")
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
-		"-querier.query-store-for-labels-enabled":    "true",
 		"-blocks-storage.bucket-store.sync-interval": "5s",
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
@@ -1354,7 +1368,6 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.tsdb.ship-interval":         "1s",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
-		"-querier.query-store-for-labels-enabled":    "true",
 		"-querier.max-fetched-series-per-query":      "3",
 	})
 

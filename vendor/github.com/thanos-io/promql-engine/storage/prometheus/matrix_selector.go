@@ -14,10 +14,10 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -35,7 +35,7 @@ type matrixScanner struct {
 	buffer           ringbuffer.Buffer
 	iterator         chunkenc.Iterator
 	lastSample       ringbuffer.Sample
-	metricAppearedTs *int64
+	metricAppearedTs int64
 }
 
 type matrixSelector struct {
@@ -226,7 +226,7 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 
 		o.scanners = make([]matrixScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
-		b := labels.ScratchBuilder{}
+		var b labels.ScratchBuilder
 
 		for i, s := range series {
 			lbls := s.Labels()
@@ -236,14 +236,15 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 				// we have to copy it here.
 				// TODO(GiedriusS): could we identify somehow whether labels.Labels
 				// is reused between Select() calls?
-				lbls, _ = extlabels.DropMetricName(lbls, b)
+				lbls = extlabels.DropReserved(lbls, b)
 			}
 			o.scanners[i] = matrixScanner{
-				labels:     lbls,
-				signature:  s.Signature,
-				iterator:   s.Iterator(nil),
-				lastSample: ringbuffer.Sample{T: math.MinInt64},
-				buffer:     o.newBuffer(ctx),
+				labels:           lbls,
+				signature:        s.Signature,
+				iterator:         s.Iterator(nil),
+				lastSample:       ringbuffer.Sample{T: math.MinInt64},
+				buffer:           o.newBuffer(ctx),
+				metricAppearedTs: math.MinInt64,
 			}
 			o.series[i] = lbls
 		}
@@ -271,20 +272,39 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 }
 
 func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
-	switch o.functionName {
-	case "rate":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
-	case "increase":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
-	case "delta":
-		return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
+	if ringbuffer.UseStreamingRingBuffers(*o.opts, o.selectRange) {
+		switch o.functionName {
+		case "rate":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, true, true, o.selectRange, o.offset)
+		case "increase":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, true, false, o.selectRange, o.offset)
+		case "delta":
+			return ringbuffer.NewRateBuffer(ctx, *o.opts, false, false, o.selectRange, o.offset)
+		case "count_over_time":
+			return ringbuffer.NewCountOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "max_over_time":
+			return ringbuffer.NewMaxOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "min_over_time":
+			return ringbuffer.NewMinOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "sum_over_time":
+			return ringbuffer.NewSumOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "avg_over_time":
+			return ringbuffer.NewAvgOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "stddev_over_time":
+			return ringbuffer.NewStdDevOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "stdvar_over_time":
+			return ringbuffer.NewStdVarOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "present_over_time":
+			return ringbuffer.NewPresentOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		case "last_over_time":
+			return ringbuffer.NewLastOverTimeBuffer(*o.opts, o.selectRange, o.offset)
+		}
 	}
 
 	if o.isExtFunction {
-		return ringbuffer.NewWithExtLookback(ctx, 8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds()-1, o.call, false)
+		return ringbuffer.NewWithExtLookback(ctx, 8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds()-1, o.call)
 	}
-	return ringbuffer.New(ctx, 8, o.selectRange, o.offset, o.call, false)
-
+	return ringbuffer.New(ctx, 8, o.selectRange, o.offset, o.call)
 }
 
 func (o *matrixSelector) String() string {
@@ -317,14 +337,14 @@ func (m *matrixScanner) selectPoints(
 	if bufMaxt := m.buffer.MaxT() + 1; bufMaxt > mint {
 		mint = bufMaxt
 	}
-	mint = maxInt64(mint, m.buffer.MaxT()+1)
+	mint = max(mint, m.buffer.MaxT()+1)
 	if m.lastSample.T > mint {
 		m.buffer.Push(m.lastSample.T, m.lastSample.V)
 		m.lastSample.T = math.MinInt64
-		mint = maxInt64(mint, m.buffer.MaxT()+1)
+		mint = max(mint, m.buffer.MaxT()+1)
 	}
 
-	appendedPointBeforeMint := m.buffer.Len() > 0
+	appendedPointBeforeMint := !ringbuffer.Empty(m.buffer)
 	for valType := m.iterator.Next(); valType != chunkenc.ValNone; valType = m.iterator.Next() {
 		switch valType {
 		case chunkenc.ValHistogram, chunkenc.ValFloatHistogram:
@@ -353,9 +373,8 @@ func (m *matrixScanner) selectPoints(
 			if value.IsStaleNaN(v) {
 				continue
 			}
-			if m.metricAppearedTs == nil {
-				tCopy := t
-				m.metricAppearedTs = &tCopy
+			if m.metricAppearedTs == math.MinInt64 {
+				m.metricAppearedTs = t
 			}
 			if t > maxt {
 				m.lastSample.T, m.lastSample.V.F, m.lastSample.V.H = t, v, nil
@@ -378,12 +397,4 @@ func (m *matrixScanner) selectPoints(
 		}
 	}
 	return m.iterator.Err()
-}
-
-func maxInt64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-
 }

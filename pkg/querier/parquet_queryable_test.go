@@ -1,7 +1,6 @@
 package querier
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -14,8 +13,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -41,6 +40,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -173,7 +173,7 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 			&bucketindex.Block{ID: block2},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
@@ -242,8 +242,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select", func(t *testing.T) {
@@ -316,8 +316,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 		}
 
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, maxT, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}},
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select", func(t *testing.T) {
@@ -402,8 +402,10 @@ func TestParquetQueryable_Limits(t *testing.T) {
 		QueryStoreAfter:                         0,
 		StoreGatewayQueryStatsEnabled:           false,
 		StoreGatewayConsistencyCheckMaxAttempts: 3,
-		ParquetQueryableShardCacheSize:          100,
-		ParquetQueryableDefaultBlockStore:       "parquet",
+		ParquetShardCache: parquetutil.CacheConfig{
+			ParquetShardCacheSize: 100,
+		},
+		ParquetQueryableDefaultBlockStore: "parquet",
 	}
 
 	storageCfg := cortex_tsdb.BlocksStorageConfig{
@@ -567,7 +569,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 		convert.WithName(blockID.String()),
 	}
 
-	_, err = convert.ConvertTSDBBlock(
+	numShards, err := convert.ConvertTSDBBlock(
 		ctx,
 		userBucketClient,
 		tsdbBlock.MinTime(),
@@ -581,7 +583,7 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 	_ = tsdbBlock.Close()
 
 	// Write parquet converter marker
-	err = parquet.WriteConverterMark(ctx, blockID, userBucketClient)
+	err = parquet.WriteConverterMark(ctx, blockID, userBucketClient, numShards)
 	require.NoError(t, err)
 
 	return nil
@@ -629,6 +631,303 @@ func (m *mockParquetQuerier) Reset() {
 
 func (mockParquetQuerier) Close() error {
 	return nil
+}
+
+func TestSelectProjectionHints(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	now := time.Now()
+
+	tests := map[string]struct {
+		minT                      int64
+		maxT                      int64
+		honorProjectionHints      bool // Whether to honor projection hints
+		hasRemainingBlocks        bool // Whether there are non-parquet (TSDB) blocks
+		parquetBlockVersion       int  // Version of parquet blocks (1 or 2)
+		mixedVersions             bool // If true, block1 is v1, block2 is v2
+		inputProjectionLabels     []string
+		inputProjectionInclude    bool     // Input ProjectionInclude value
+		expectedProjectionLabels  []string // nil means projection disabled
+		expectedProjectionInclude bool
+	}{
+		"projection enabled: honor enabled, all parquet blocks v2, no remaining blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2, // Version 2 has hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn},
+			expectedProjectionInclude: true,
+		},
+		"projection disabled: honor enabled, mixed blocks (parquet + TSDB)": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        true, // Mixed blocks
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset
+			expectedProjectionInclude: false,
+		},
+		"projection disabled: ProjectionInclude is false": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"job"},
+			inputProjectionInclude:    false,
+			expectedProjectionLabels:  []string{"job"}, // Labels remain unchanged when ProjectionInclude is false
+			expectedProjectionInclude: false,
+		},
+		"projection disabled: honor enabled, parquet blocks version 1 (no hash column)": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset because version 1 doesn't support projection
+			expectedProjectionInclude: false,
+		},
+		"projection disabled: honor enabled, mixed parquet block versions (v1 and v2)": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			mixedVersions:             true, // block1 is v1, block2 is v2
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  nil, // Reset because not all blocks support projection
+			expectedProjectionInclude: false,
+		},
+		"projection not modified: honor disabled, mixed blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false, // Honor disabled
+			hasRemainingBlocks:        true,  // Mixed blocks
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Not reset because honor is disabled
+			expectedProjectionInclude: true,
+		},
+		"projection not modified: honor disabled, version 1 blocks": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false, // Honor disabled
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion1, // Version 1 doesn't have hash column
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Not reset because honor is disabled
+			expectedProjectionInclude: true,
+		},
+		"hash column added: projection enabled without hash column": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn}, // Hash column added
+			expectedProjectionInclude: true,
+		},
+		"hash column not duplicated: projection enabled with hash column already present": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job", schema.SeriesHashColumn},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job", schema.SeriesHashColumn}, // No duplicate
+			expectedProjectionInclude: true,
+		},
+		"hash column not added: projection disabled": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      true,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    false,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Hash column not added when projection disabled
+			expectedProjectionInclude: false,
+		},
+		"hash column not added: honor disabled": {
+			minT:                      util.TimeToMillis(now.Add(-10 * time.Hour)),
+			maxT:                      util.TimeToMillis(now.Add(-5 * time.Hour)),
+			honorProjectionHints:      false,
+			hasRemainingBlocks:        false,
+			parquetBlockVersion:       parquet.ParquetConverterMarkVersion2,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			inputProjectionInclude:    true,
+			expectedProjectionLabels:  []string{"__name__", "job"}, // Hash column not added when honor disabled
+			expectedProjectionInclude: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			finder := &blocksFinderMock{}
+
+			// Setup blocks
+			var blocks bucketindex.Blocks
+			if testData.hasRemainingBlocks {
+				// Mixed: one parquet, one TSDB
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
+					&bucketindex.Block{ID: block2}, // No parquet metadata = TSDB block
+				}
+			} else if testData.mixedVersions {
+				// Mixed parquet versions: block1 is v1, block2 is v2
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				}
+			} else {
+				// All parquet with same version
+				blocks = bucketindex.Blocks{
+					&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
+					&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: testData.parquetBlockVersion}},
+				}
+			}
+			finder.On("GetBlocks", mock.Anything, "user-1", testData.minT, mock.Anything, mock.Anything).Return(blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark{}, nil)
+
+			// Mock TSDB querier (for remaining blocks)
+			mockTSDBQuerier := &mockParquetQuerier{}
+
+			// Mock parquet querier (captures hints)
+			mockParquetQuerierInstance := &mockParquetQuerier{}
+
+			// Create the parquetQuerierWithFallback
+			pq := &parquetQuerierWithFallback{
+				minT:                  testData.minT,
+				maxT:                  testData.maxT,
+				honorProjectionHints:  testData.honorProjectionHints,
+				finder:                finder,
+				blocksStoreQuerier:    mockTSDBQuerier,
+				parquetQuerier:        mockParquetQuerierInstance,
+				queryStoreAfter:       0, // Disable queryStoreAfter manipulation
+				metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
+				limits:                defaultOverrides(t, 0),
+				logger:                log.NewNopLogger(),
+				defaultBlockStoreType: parquetBlockStore,
+				fallbackDisabled:      false,
+			}
+
+			matchers := []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test_metric"),
+			}
+
+			// Create input hints with projection
+			inputHints := &storage.SelectHints{
+				Start:             testData.minT,
+				End:               testData.maxT,
+				ProjectionLabels:  testData.inputProjectionLabels,
+				ProjectionInclude: testData.inputProjectionInclude,
+			}
+
+			// Execute Select
+			set := pq.Select(ctx, false, inputHints, matchers...)
+			require.NotNil(t, set)
+
+			// Verify the hints passed to the parquet querier
+			if !testData.hasRemainingBlocks {
+				// If all parquet blocks, verify hints passed to parquet querier
+				require.NotNil(t, mockParquetQuerierInstance.queriedHints, "parquet querier should have been called")
+				require.Equal(t, testData.expectedProjectionLabels, mockParquetQuerierInstance.queriedHints.ProjectionLabels,
+					"projection labels mismatch")
+				require.Equal(t, testData.expectedProjectionInclude, mockParquetQuerierInstance.queriedHints.ProjectionInclude,
+					"projection include flag mismatch")
+			}
+		})
+	}
+}
+
+func TestAllParquetBlocksHaveHashColumn(t *testing.T) {
+	block1 := ulid.MustNew(1, nil)
+	block2 := ulid.MustNew(2, nil)
+	block3 := ulid.MustNew(3, nil)
+
+	tests := map[string]struct {
+		blocks   []*bucketindex.Block
+		expected bool
+	}{
+		"all blocks v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+		"all blocks v1": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			},
+			expected: false,
+		},
+		"mixed versions v1 and v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: false,
+		},
+		"one block nil parquet metadata": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+				{ID: block2, Parquet: nil},
+			},
+			expected: false,
+		},
+		"all blocks nil parquet metadata": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: nil},
+				{ID: block2, Parquet: nil},
+			},
+			expected: false,
+		},
+		"single block v2": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+		"single block v1": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}},
+			},
+			expected: false,
+		},
+		"empty blocks": {
+			blocks:   []*bucketindex.Block{},
+			expected: true, // No blocks with version < 2, so return true
+		},
+		"all blocks v3 or higher": {
+			blocks: []*bucketindex.Block{
+				{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 3}},
+				{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 4}},
+				{ID: block3, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion2}},
+			},
+			expected: true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			result := allParquetBlocksHaveHashColumn(testData.blocks)
+			require.Equal(t, testData.expected, result, "unexpected result for %s", testName)
+		})
+	}
 }
 
 func TestMaterializedLabelsFilterCallback(t *testing.T) {
@@ -798,7 +1097,7 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 
 		// Set up blocks where block1 has parquet metadata but block2 doesn't
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
 			&bucketindex.Block{ID: block2}, // Not available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
@@ -857,8 +1156,8 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 
 		// Set up blocks where both blocks have parquet metadata
 		finder.On("GetBlocks", mock.Anything, "user-1", minT, mock.Anything, mock.Anything).Return(bucketindex.Blocks{
-			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
-			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: 1}}, // Available as parquet
+			&bucketindex.Block{ID: block1, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
+			&bucketindex.Block{ID: block2, Parquet: &parquet.ConverterMarkMeta{Version: parquet.ParquetConverterMarkVersion1}}, // Available as parquet
 		}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 
 		t.Run("select should work without error", func(t *testing.T) {
@@ -882,111 +1181,4 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			require.Len(t, mParquetQuerier.queriedBlocks, 2)
 		})
 	})
-}
-
-func Test_Cache_LRUEviction(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-	cache, err := newCache[string]("test", 2, 0, time.Minute, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-	cache.Set("key2", "value2")
-
-	_ = cache.Get("key1") // hit
-	// "key2" deleted by LRU eviction
-	cache.Set("key3", "value3")
-
-	val1 := cache.Get("key1") // hit
-	require.Equal(t, "value1", val1)
-	val3 := cache.Get("key3") // hit
-	require.Equal(t, "value3", val3)
-	val2 := cache.Get("key2") // miss
-	require.Equal(t, "", val2)
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 3
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 2
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-	`)))
-}
-
-func Test_Cache_TTLEvictionByGet(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-
-	cache, err := newCache[string]("test", 10, 100*time.Millisecond, time.Minute, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-
-	val := cache.Get("key1")
-	require.Equal(t, "value1", val)
-
-	// sleep longer than TTL
-	time.Sleep(150 * time.Millisecond)
-
-	val = cache.Get("key1")
-	require.Equal(t, "", val)
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
-		# HELP cortex_parquet_queryable_cache_misses_total Total number of parquet cache misses
-		# TYPE cortex_parquet_queryable_cache_misses_total counter
-		cortex_parquet_queryable_cache_misses_total{name="test"} 1
-	`)))
-}
-
-func Test_Cache_TTLEvictionByLoop(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	metrics := newCacheMetrics(reg)
-
-	cache, err := newCache[string]("test", 10, 100*time.Millisecond, 100*time.Millisecond, metrics)
-	require.NoError(t, err)
-	defer cache.Close()
-
-	cache.Set("key1", "value1")
-
-	val := cache.Get("key1")
-	require.Equal(t, "value1", val)
-
-	// sleep longer than TTL
-	time.Sleep(150 * time.Millisecond)
-
-	if c, ok := cache.(*Cache[string]); ok {
-		// should delete by maintenance loop
-		_, ok := c.cache.Peek("key1")
-		require.False(t, ok)
-	}
-
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
-		# HELP cortex_parquet_queryable_cache_evictions_total Total number of parquet cache evictions
-		# TYPE cortex_parquet_queryable_cache_evictions_total counter
-		cortex_parquet_queryable_cache_evictions_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_hits_total Total number of parquet cache hits
-		# TYPE cortex_parquet_queryable_cache_hits_total counter
-		cortex_parquet_queryable_cache_hits_total{name="test"} 1
-		# HELP cortex_parquet_queryable_cache_item_count Current number of cached parquet items
-		# TYPE cortex_parquet_queryable_cache_item_count gauge
-		cortex_parquet_queryable_cache_item_count{name="test"} 0
-	`)))
 }

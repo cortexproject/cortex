@@ -327,9 +327,9 @@ func (c *stateChannel) Broadcast(b []byte) {
 
 // getStateTypeFromKey used for get the state type out of the state key.
 func getStateTypeFromKey(key string) string {
-	index := strings.IndexByte(key, ':')
-	if index < 0 {
+	before, _, ok := strings.Cut(key, ":")
+	if !ok {
 		return key
 	}
-	return key[:index]
+	return before
 }

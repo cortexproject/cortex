@@ -762,7 +762,7 @@ func (c *Compactor) starting(ctx context.Context) error {
 		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
 			Strategy: users.UserScanStrategyList,
 		}, c.bucketClient, c.logger, c.registerer)
-		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, c.storageCfg.UsersScanner.CleanUpInterval, baseScanner, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, c.storageCfg.UsersScanner.UpdateInterval, baseScanner, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 	}
 
 	return nil
@@ -1024,7 +1024,8 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
 	var blockLister block.Lister
-	switch cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy) {
+	blockDiscoveryStrategy := cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy)
+	switch blockDiscoveryStrategy {
 	case cortex_tsdb.ConcurrentDiscovery:
 		blockLister = block.NewConcurrentLister(ulogger, bucket)
 	case cortex_tsdb.RecursiveDiscovery:
@@ -1038,6 +1039,24 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return cortex_tsdb.ErrBlockDiscoveryStrategy
 	}
 
+	// List of filters to apply (order matters).
+	filterList := []block.MetadataFilter{
+		// Remove the ingester ID because we don't shard blocks anymore, while still
+		// honoring the shard ID if sharding was done in the past.
+		NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
+		block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
+	}
+
+	// Add ignoreDeletionMarkFilter only when not using bucket index discovery.
+	if blockDiscoveryStrategy != cortex_tsdb.BucketIndexDiscovery {
+		filterList = append(filterList, ignoreDeletionMarkFilter)
+	}
+
+	filterList = append(filterList,
+		deduplicateBlocksFilter,
+		noCompactMarkerFilter,
+	)
+
 	fetcher, err := block.NewMetaFetcherWithMetrics(
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
@@ -1046,16 +1065,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.metaSyncDirForUser(userID),
 		c.compactorMetrics.getBaseFetcherMetrics(),
 		c.compactorMetrics.getMetaFetcherMetrics(),
-		// List of filters to apply (order matters).
-		[]block.MetadataFilter{
-			// Remove the ingester ID because we don't shard blocks anymore, while still
-			// honoring the shard ID if sharding was done in the past.
-			NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
-			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
-			ignoreDeletionMarkFilter,
-			deduplicateBlocksFilter,
-			noCompactMarkerFilter,
-		},
+		filterList,
 	)
 	if err != nil {
 		return err
@@ -1089,6 +1099,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
+		nil, // Pass nil for blocksCleaner to maintain current behavior.
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")
@@ -1202,7 +1213,7 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which compactor owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(c.storageCfg.UsersScanner.CleanUpInterval, 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(c.storageCfg.UsersScanner.UpdateInterval, 0.1))
 	defer ticker.Stop()
 
 	for {

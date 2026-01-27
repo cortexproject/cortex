@@ -207,15 +207,13 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	var wg sync.WaitGroup
 	for i := range INGESTER_CLIENT_STREAM_WORKER_COUNT {
 		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", c.addr, i)
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)
 			if err != nil {
 				workerErr = err
 			}
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 	return workerErr

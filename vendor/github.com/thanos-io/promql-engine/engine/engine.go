@@ -17,12 +17,12 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	engstorage "github.com/thanos-io/promql-engine/storage"
 	promstorage "github.com/thanos-io/promql-engine/storage/prometheus"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -273,7 +273,7 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 	}
 	e.metrics.totalQueries.Inc()
 	return &compatibilityQuery{
-		Query:      &Query{exec: exec, opts: opts},
+		Query:      &Query{exec: exec, opts: qOpts},
 		engine:     e,
 		plan:       optimizedPlan,
 		warns:      warns,
@@ -281,9 +281,6 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 		t:          InstantQuery,
 		resultSort: resultSort,
 		scanners:   scanners,
-		start:      ts,
-		end:        ts,
-		step:       0,
 	}, nil
 }
 
@@ -318,7 +315,7 @@ func (e *Engine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryab
 	e.metrics.totalQueries.Inc()
 
 	return &compatibilityQuery{
-		Query:  &Query{exec: exec, opts: opts},
+		Query:  &Query{exec: exec, opts: qOpts},
 		engine: e,
 		plan:   lplan,
 		warns:  warns,
@@ -327,9 +324,6 @@ func (e *Engine) MakeInstantQueryFromPlan(ctx context.Context, q storage.Queryab
 		// TODO(fpetkovski): Infer the sort order from the plan, ideally without copying the newResultSort function.
 		resultSort: noSortResultSort{},
 		scanners:   scnrs,
-		start:      ts,
-		end:        ts,
-		step:       0,
 	}, nil
 }
 
@@ -378,15 +372,12 @@ func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *
 	e.metrics.totalQueries.Inc()
 
 	return &compatibilityQuery{
-		Query:    &Query{exec: exec, opts: opts},
+		Query:    &Query{exec: exec, opts: qOpts},
 		engine:   e,
 		plan:     optimizedPlan,
 		warns:    warns,
 		t:        RangeQuery,
 		scanners: scnrs,
-		start:    start,
-		end:      end,
-		step:     step,
 	}, nil
 }
 
@@ -420,15 +411,12 @@ func (e *Engine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable
 	e.metrics.totalQueries.Inc()
 
 	return &compatibilityQuery{
-		Query:    &Query{exec: exec, opts: opts},
+		Query:    &Query{exec: exec, opts: qOpts},
 		engine:   e,
 		plan:     lplan,
 		warns:    warns,
 		t:        RangeQuery,
 		scanners: scnrs,
-		start:    start,
-		end:      end,
-		step:     step,
 	}, nil
 }
 
@@ -498,7 +486,7 @@ func (e *Engine) storageScanners(queryable storage.Queryable, qOpts *query.Optio
 
 type Query struct {
 	exec model.VectorOperator
-	opts promql.QueryOpts
+	opts *query.Options
 }
 
 // Explain returns human-readable explanation of the created executor.
@@ -520,9 +508,6 @@ type compatibilityQuery struct {
 	plan   logicalplan.Plan
 	ts     time.Time // Empty for range queries.
 	warns  annotations.Annotations
-	start  time.Time
-	end    time.Time
-	step   time.Duration
 
 	t          QueryType
 	resultSort resultSorter
@@ -567,6 +552,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	for i, s := range resultSeries {
 		series[i].Metric = s
 	}
+	totalSteps := q.opts.TotalSteps()
 loop:
 	for {
 		select {
@@ -590,7 +576,7 @@ loop:
 			for _, vector := range r {
 				for i, s := range vector.SampleIDs {
 					if len(series[s].Floats) == 0 {
-						series[s].Floats = make([]promql.FPoint, 0, 121) // Typically 1h of data.
+						series[s].Floats = make([]promql.FPoint, 0, totalSteps)
 					}
 					series[s].Floats = append(series[s].Floats, promql.FPoint{
 						T: vector.T,
@@ -599,7 +585,7 @@ loop:
 				}
 				for i, s := range vector.HistogramIDs {
 					if len(series[s].Histograms) == 0 {
-						series[s].Histograms = make([]promql.HPoint, 0, 121) // Typically 1h of data.
+						series[s].Histograms = make([]promql.HPoint, 0, totalSteps)
 					}
 					series[s].Histograms = append(series[s].Histograms, promql.HPoint{
 						T: vector.T,
@@ -695,15 +681,12 @@ func (q *compatibilityQuery) Statement() parser.Statement { return nil }
 
 // Stats always returns empty query stats for now to avoid panic.
 func (q *compatibilityQuery) Stats() *stats.Statistics {
-	var enablePerStepStats bool
-	if q.opts != nil {
-		enablePerStepStats = q.opts.EnablePerStepStats()
-	}
+	enablePerStepStats := q.opts.EnablePerStepStats
 
 	analysis := q.Analyze()
 	samples := stats.NewQuerySamples(enablePerStepStats)
 	if enablePerStepStats {
-		samples.InitStepTracking(q.start.UnixMilli(), q.end.UnixMilli(), telemetry.StepTrackingInterval(q.step))
+		samples.InitStepTracking(q.opts.Start.UnixMilli(), q.opts.End.UnixMilli(), telemetry.StepTrackingInterval(q.opts.Step))
 	}
 
 	if analysis != nil {

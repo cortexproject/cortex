@@ -8,15 +8,13 @@ import (
 	"math"
 	"sort"
 
-	"github.com/thanos-io/promql-engine/execution/aggregate"
+	"github.com/thanos-io/promql-engine/compute"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/warnings"
 
-	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
-	"gonum.org/v1/gonum/stat"
 )
 
 type SamplesBuffer GenericRingBuffer
@@ -27,7 +25,7 @@ type FunctionArgs struct {
 	StepTime         int64
 	SelectRange      int64
 	Offset           int64
-	MetricAppearedTs *int64
+	MetricAppearedTs int64
 
 	// quantile_over_time and predict_linear use one, so we only use one here.
 	ScalarPoint  float64
@@ -117,11 +115,8 @@ func instantValue(ctx context.Context, samples []Sample, isRate bool) (float64, 
 
 		if !isRate || !ss[1].V.H.DetectReset(ss[0].V.H) {
 			_, err := resultSample.V.H.Sub(ss[0].V.H)
-			if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-				warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-				return 0, nil, false
-			} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-				warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
+			if err != nil {
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
 				return 0, nil, false
 			}
 		}
@@ -147,51 +142,18 @@ func instantValue(ctx context.Context, samples []Sample, isRate bool) (float64, 
 	return resultSample.V.F, resultSample.V.H, true
 }
 
-func handleHistogramErr(ctx context.Context, err error) error {
-	if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
-		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil
-	} else if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-		warnings.AddToContext(annotations.NewIncompatibleCustomBucketsHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil
-	}
-
-	return err
-}
-
 var rangeVectorFuncs = map[string]FunctionCall{
 	"sum_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-
-		var fd, hd bool
-		for _, s := range f.Samples {
-			hd = hd || s.V.H != nil
-			fd = fd || s.V.H == nil
+		return sumOverTime(f.ctx, f.Samples)
+	},
+	"avg_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
+		if len(f.Samples) == 0 {
+			return 0., nil, false, nil
 		}
-		if fd && hd {
-			warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), f.ctx)
-			return 0, nil, false, nil
-		}
-
-		if f.Samples[0].V.H != nil {
-			// histogram
-			sum := f.Samples[0].V.H.Copy()
-			for _, sample := range f.Samples[1:] {
-				h := sample.V.H
-				_, err := sum.Add(h)
-				if err != nil {
-					if err := handleHistogramErr(f.ctx, err); err != nil {
-						return 0, nil, false, err
-					}
-					return 0, nil, false, nil
-				}
-			}
-
-			return 0, sum, true, nil
-		}
-		return sumOverTime(f.ctx, f.Samples), nil, true, nil
+		return avgOverTime(f.ctx, f.Samples)
 	},
 	"mad_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -238,46 +200,6 @@ var rangeVectorFuncs = map[string]FunctionCall{
 			t = max(t, s.T)
 		}
 		return float64(t) / 1000, nil, true, nil
-	},
-	"avg_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
-		if len(f.Samples) == 0 {
-			return 0., nil, false, nil
-		}
-		var fd, hd bool
-		for _, s := range f.Samples {
-			hd = hd || s.V.H != nil
-			fd = fd || s.V.H == nil
-		}
-		if fd && hd {
-			warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), f.ctx)
-			return 0, nil, false, nil
-		}
-		if f.Samples[0].V.H != nil {
-			// histogram
-			mean := f.Samples[0].V.H.Copy()
-			for i, sample := range f.Samples[1:] {
-				count := float64(i + 2)
-				left := sample.V.H.Copy().Div(count)
-				right := mean.Copy().Div(count)
-				toAdd, err := left.Sub(right)
-				if err != nil {
-					if err := handleHistogramErr(f.ctx, err); err != nil {
-						return 0, nil, false, err
-					}
-					return 0, mean, false, nil
-				}
-				_, err = mean.Add(toAdd)
-				if err != nil {
-					if err := handleHistogramErr(f.ctx, err); err != nil {
-						return 0, nil, false, err
-					}
-					return 0, mean, false, nil
-				}
-			}
-			return 0, mean, true, nil
-		}
-
-		return avgOverTime(f.Samples), nil, true, nil
 	},
 	"stddev_over_time": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -350,7 +272,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(floats) == 0 {
 			return 0, nil, false, nil
 		}
-		return aggregate.Quantile(f.ScalarPoint, floats), nil, true, nil
+		return compute.Quantile(f.ScalarPoint, floats), nil, true, nil
 	},
 	"changes": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
@@ -407,39 +329,30 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-		if f.MetricAppearedTs == nil {
+		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"xdelta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-		if f.MetricAppearedTs == nil {
+		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"xincrease": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
 		if len(f.Samples) == 0 {
 			return 0., nil, false, nil
 		}
-		if f.MetricAppearedTs == nil {
+		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h, err := extendedRate(f.ctx, f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, *f.MetricAppearedTs)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		v, h := extendedRate(f.ctx, f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 		return v, h, true, nil
 	},
 	"predict_linear": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, error) {
@@ -495,10 +408,7 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 	}
 
 	if samples[0].V.H != nil {
-		resultHistogram, err = histogramRate(ctx, samples, isCounter)
-		if err != nil {
-			return 0, nil, false, err
-		}
+		resultHistogram = histogramRate(ctx, samples, isCounter)
 	} else {
 		resultValue = samples[len(samples)-1].V.F - samples[0].V.F
 		if isCounter {
@@ -587,7 +497,7 @@ func extrapolatedRate(ctx context.Context, samples []Sample, numSamples int, isC
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, error) {
+func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
 	var (
 		rangeStart      = stepTime - (selectRange + offset)
 		rangeEnd        = stepTime - offset
@@ -596,14 +506,9 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 	)
 
 	if samples[0].V.H != nil {
-		var err error
 		// TODO - support extended rate for histograms
-		resultHistogram, err = histogramRate(ctx, samples, isCounter)
-		if err != nil {
-			return 0, nil, err
-		}
-
-		return resultValue, resultHistogram, nil
+		resultHistogram = histogramRate(ctx, samples, isCounter)
+		return resultValue, resultHistogram
 	}
 
 	sameVals := true
@@ -620,7 +525,7 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 	if isCounter && !isRate && sameVals {
 		// Make sure we are not at the end of the range.
 		if stepTime-offset <= until {
-			return samples[0].V.F, nil, nil
+			return samples[0].V.F, nil
 		}
 	}
 
@@ -633,7 +538,7 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 		// If the point before the range is too far from rangeStart, drop it.
 		if float64(rangeStart-samples[0].T) > averageDurationBetweenSamples {
 			if len(samples) < 3 {
-				return resultValue, nil, nil
+				return resultValue, nil
 			}
 			firstPoint = 1
 			sampledInterval = float64(samples[len(samples)-1].T - samples[1].T)
@@ -673,16 +578,16 @@ func extendedRate(ctx context.Context, samples []Sample, isCounter, isRate bool,
 		resultValue = resultValue / float64(selectRange/1000)
 	}
 
-	return resultValue, nil, nil
+	return resultValue, nil
 }
 
 // histogramRate is a helper function for extrapolatedRate. It requires
 // points[0] to be a histogram. It returns nil if any other Point in points is
 // not a histogram.
-func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histogram.FloatHistogram, error) {
+func histogramRate(ctx context.Context, points []Sample, isCounter bool) *histogram.FloatHistogram {
 	// Calculating a rate on a single sample is not defined.
 	if len(points) < 2 {
-		return nil, nil
+		return nil
 	}
 	var (
 		prev               = points[0].V.H
@@ -692,7 +597,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 
 	if last == nil {
 		warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
-		return nil, nil // Range contains a mix of histograms and floats.
+		return nil // Range contains a mix of histograms and floats.
 	}
 
 	// We check for gauge type histograms in the loop below, but the loop
@@ -717,14 +622,14 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 
 	if last.UsesCustomBuckets() != usingCustomBuckets {
 		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
-		return nil, nil
+		return nil
 	}
 
 	minSchema := min(last.Schema, prev.Schema)
 
 	if last.UsesCustomBuckets() != usingCustomBuckets {
 		warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
-		return nil, nil
+		return nil
 	}
 
 	// https://github.com/prometheus/prometheus/blob/ccea61c7bf1e6bce2196ba8189a209945a204c5b/promql/functions.go#L183
@@ -736,7 +641,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 		curr := currPoint.V.H
 		if curr == nil {
 			warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
-			return nil, nil // Range contains a mix of histograms and floats.
+			return nil // Range contains a mix of histograms and floats.
 		}
 		if !isCounter {
 			continue
@@ -749,16 +654,14 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 		}
 		if curr.UsesCustomBuckets() != usingCustomBuckets {
 			warnings.AddToContext(annotations.MixedExponentialCustomHistogramsWarning, ctx)
-			return nil, nil
+			return nil
 		}
 	}
 
 	h := last.CopyToSchema(minSchema)
 	if _, err := h.Sub(prev); err != nil {
-		if err := handleHistogramErr(ctx, err); err != nil {
-			return nil, err
-		}
-		return nil, nil
+		warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+		return nil
 	}
 
 	if isCounter {
@@ -767,10 +670,8 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 			curr := currPoint.V.H
 			if curr.DetectReset(prev) {
 				if _, err := h.Add(prev); err != nil {
-					if err := handleHistogramErr(ctx, err); err != nil {
-						return nil, err
-					}
-					return nil, nil
+					warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+					return nil
 				}
 			}
 			prev = curr
@@ -780,7 +681,7 @@ func histogramRate(ctx context.Context, points []Sample, isCounter bool) (*histo
 	}
 
 	h.CounterResetHint = histogram.GaugeType
-	return h.Compact(0), nil
+	return h.Compact(0)
 }
 
 func madOverTime(ctx context.Context, points []Sample) (float64, bool) {
@@ -803,14 +704,14 @@ func madOverTime(ctx context.Context, points []Sample) (float64, bool) {
 	if len(values) == 0 {
 		return 0, false
 	}
-	median := stat.Quantile(0.5, stat.LinInterp, values, nil)
+	median := compute.Quantile(0.5, values)
 
 	for i, f := range values {
 		values[i] = math.Abs(f - median)
 	}
 	sort.Float64s(values)
 
-	return stat.Quantile(0.5, stat.LinInterp, values, nil), true
+	return compute.Quantile(0.5, values), true
 }
 
 func maxOverTime(ctx context.Context, points []Sample) (float64, int64, bool) {
@@ -867,7 +768,32 @@ func countOverTime(points []Sample) float64 {
 	return float64(len(points))
 }
 
-func avgOverTime(points []Sample) float64 {
+func avgOverTime(ctx context.Context, points []Sample) (float64, *histogram.FloatHistogram, bool, error) {
+	// we sniffed a histogram average
+	if points[0].V.H != nil {
+		mean := points[0].V.H.Copy()
+		for i, sample := range points[1:] {
+			if sample.V.H == nil {
+				warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), ctx)
+				return 0, nil, false, nil
+			}
+			count := float64(i + 2)
+			left := sample.V.H.Copy().Div(count)
+			right := mean.Copy().Div(count)
+			toAdd, err := left.Sub(right)
+			if err != nil {
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
+			}
+			if _, err = mean.Add(toAdd); err != nil {
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
+			}
+		}
+		return 0, mean, true, nil
+	}
+
+	// we sniffed a float average
 	var (
 		// Pre-set the 1st sample to start the loop with the 2nd.
 		sum, count      = points[0].V.F, 1.
@@ -875,9 +801,13 @@ func avgOverTime(points []Sample) float64 {
 		incrementalMean bool
 	)
 	for i, p := range points[1:] {
+		if p.V.H != nil {
+			warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), ctx)
+			return 0, nil, false, nil
+		}
 		count = float64(i + 2)
 		if !incrementalMean {
-			newSum, newC := aggregate.KahanSumInc(p.V.F, sum, kahanC)
+			newSum, newC := compute.KahanSumInc(p.V.F, sum, kahanC)
 			// Perform regular mean calculation as long as
 			// the sum doesn't overflow.
 			if !math.IsInf(newSum, 0) {
@@ -891,26 +821,45 @@ func avgOverTime(points []Sample) float64 {
 			kahanC /= count - 1
 		}
 		q := (count - 1) / count
-		mean, kahanC = aggregate.KahanSumInc(p.V.F/count, q*mean, q*kahanC)
+		mean, kahanC = compute.KahanSumInc(p.V.F/count, q*mean, q*kahanC)
 	}
 	if incrementalMean {
-		return mean + kahanC
+		return mean + kahanC, nil, true, nil
 	}
-	return sum/count + kahanC/count
+	return sum/count + kahanC/count, nil, true, nil
 }
 
-func sumOverTime(ctx context.Context, points []Sample) float64 {
-	var sum, c float64
-	for _, v := range points {
-		if v.V.H != nil {
-			warnings.AddToContext(annotations.NewHistogramIgnoredInMixedRangeInfo("", posrange.PositionRange{}), ctx)
+func sumOverTime(ctx context.Context, points []Sample) (float64, *histogram.FloatHistogram, bool, error) {
+	// we sniffed a histogram sum
+	if points[0].V.H != nil {
+		res := points[0].V.H.Copy()
+		for _, v := range points[1:] {
+			if v.V.H == nil {
+				warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), ctx)
+				return 0, nil, false, nil
+			}
+			if _, err := res.Add(v.V.H); err != nil {
+				warnings.AddToContext(warnings.ConvertHistogramError(err), ctx)
+				return 0, nil, false, nil
+			}
 		}
-		sum, c = aggregate.KahanSumInc(v.V.F, sum, c)
+		return 0, res, true, nil
 	}
-	if math.IsInf(sum, 0) {
-		return sum
+
+	// we sniffed a float sum
+	res, c := points[0].V.F, 0.
+	for _, v := range points[1:] {
+		if v.V.H != nil {
+			warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning("", posrange.PositionRange{}), ctx)
+			return 0, nil, false, nil
+		}
+		res, c = compute.KahanSumInc(v.V.F, res, c)
 	}
-	return sum + c
+	if math.IsInf(res, 0) {
+		return res, nil, true, nil
+	}
+	return res + c, nil, true, nil
+
 }
 
 func stddevOverTime(ctx context.Context, points []Sample) (float64, bool) {
@@ -928,8 +877,8 @@ func stddevOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		}
 		count++
 		delta := v.V.F - (mean + cMean)
-		mean, cMean = aggregate.KahanSumInc(delta/count, mean, cMean)
-		aux, cAux = aggregate.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
+		mean, cMean = compute.KahanSumInc(delta/count, mean, cMean)
+		aux, cAux = compute.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
 	}
 
 	if !foundFloat {
@@ -953,8 +902,8 @@ func stdvarOverTime(ctx context.Context, points []Sample) (float64, bool) {
 		}
 		count++
 		delta := v.V.F - (mean + cMean)
-		mean, cMean = aggregate.KahanSumInc(delta/count, mean, cMean)
-		aux, cAux = aggregate.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
+		mean, cMean = compute.KahanSumInc(delta/count, mean, cMean)
+		aux, cAux = compute.KahanSumInc(delta*(v.V.F-(mean+cMean)), aux, cAux)
 	}
 
 	if !foundFloat {
@@ -1175,10 +1124,10 @@ func linearRegression(Samples []Sample, interceptTime int64) (slope, intercept f
 		}
 		n += 1.0
 		x := float64(sample.T-interceptTime) / 1e3
-		sumX, cX = aggregate.KahanSumInc(x, sumX, cX)
-		sumY, cY = aggregate.KahanSumInc(sample.V.F, sumY, cY)
-		sumXY, cXY = aggregate.KahanSumInc(x*sample.V.F, sumXY, cXY)
-		sumX2, cX2 = aggregate.KahanSumInc(x*x, sumX2, cX2)
+		sumX, cX = compute.KahanSumInc(x, sumX, cX)
+		sumY, cY = compute.KahanSumInc(sample.V.F, sumY, cY)
+		sumXY, cXY = compute.KahanSumInc(x*sample.V.F, sumXY, cXY)
+		sumX2, cX2 = compute.KahanSumInc(x*x, sumX2, cX2)
 	}
 	if constY {
 		if math.IsInf(initY, 0) {

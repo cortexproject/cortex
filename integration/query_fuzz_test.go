@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -76,7 +77,6 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -172,7 +172,6 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -280,7 +279,6 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store": "consul",
 			// Distributor.
@@ -441,7 +439,6 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.retention-period":             "2h",
 			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -465,7 +462,6 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			"-blocks-storage.tsdb.retention-period":                 "2h",
 			"-blocks-storage.bucket-store.index-cache.backend":      tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled":     "true",
-			"-querier.query-store-for-labels-enabled":               "true",
 			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
 			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
 			// Ingester.
@@ -682,7 +678,6 @@ func TestVerticalShardingFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -800,7 +795,6 @@ func TestProtobufCodecFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -933,6 +927,23 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		return false
 	}
 	compareFloats := func(l, r float64) bool {
+		// Treat NaN as equal to +Inf and -Inf to reduce flakiness when comparing
+		// results between different engines (e.g., Thanos engine might return NaN
+		// while another engine returns +Inf or -Inf).
+		lIsNaN := math.IsNaN(l)
+		rIsNaN := math.IsNaN(r)
+		lIsInf := math.IsInf(l, 0) // 0 means check for both +Inf and -Inf
+		rIsInf := math.IsInf(r, 0)
+
+		// If both are NaN, they're equal
+		if lIsNaN && rIsNaN {
+			return true
+		}
+		// If one is NaN and the other is Inf (either +Inf or -Inf), treat as equal
+		if (lIsNaN && rIsInf) || (lIsInf && rIsNaN) {
+			return true
+		}
+
 		const epsilon = 1e-6
 		const fraction = 1.e-10 // 0.00000001%
 		return cmp.Equal(l, r, cmpopts.EquateNaNs(), cmpopts.EquateApprox(fraction, epsilon))
@@ -1141,7 +1152,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-querier.query-store-for-labels-enabled":          "true",
 		"-ring.store":                                "consul",
 		"-consul.hostname":                           consul1.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
@@ -1302,7 +1312,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-querier.query-store-for-labels-enabled":          "true",
 		"-ring.store":                                "consul",
 		"-consul.hostname":                           consul.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
@@ -1485,7 +1494,6 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "15m",
 			"-blocks-storage.tsdb.retention-period":            "2h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul1.NetworkHTTPEndpoint(),
@@ -1603,7 +1611,6 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			"-querier.query-store-for-labels-enabled":          "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),

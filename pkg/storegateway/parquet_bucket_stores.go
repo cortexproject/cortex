@@ -32,7 +32,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -52,7 +54,8 @@ type ParquetBucketStores struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache storecache.MatchersCache
+	matcherCache      storecache.MatchersCache
+	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 
 	inflightRequests *cortex_util.InflightRequestTracker
 }
@@ -65,15 +68,21 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		return nil, err
 	}
 
+	parquetShardCache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&cfg.BucketStore.ParquetShardCache, "parquet-shards", reg)
+	if err != nil {
+		return nil, err
+	}
+
 	u := &ParquetBucketStores{
-		logger:           logger,
-		cfg:              cfg,
-		limits:           limits,
-		bucket:           cachingBucket,
-		stores:           map[string]*parquetBucketStore{},
-		storesErrors:     map[string]error{},
-		chunksDecoder:    schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
-		inflightRequests: cortex_util.NewInflightRequestTracker(),
+		logger:            logger,
+		cfg:               cfg,
+		limits:            limits,
+		bucket:            cachingBucket,
+		stores:            map[string]*parquetBucketStore{},
+		storesErrors:      map[string]error{},
+		chunksDecoder:     schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
+		inflightRequests:  cortex_util.NewInflightRequestTracker(),
+		parquetShardCache: parquetShardCache,
 	}
 
 	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
@@ -246,12 +255,13 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 	userBucket := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 
 	store := &parquetBucketStore{
-		logger:        userLogger,
-		bucket:        userBucket,
-		limits:        u.limits,
-		concurrency:   4, // TODO: make this configurable
-		chunksDecoder: u.chunksDecoder,
-		matcherCache:  u.matcherCache,
+		logger:            userLogger,
+		bucket:            userBucket,
+		limits:            u.limits,
+		concurrency:       4, // TODO: make this configurable
+		chunksDecoder:     u.chunksDecoder,
+		matcherCache:      u.matcherCache,
+		parquetShardCache: u.parquetShardCache,
 	}
 
 	return store, nil
@@ -264,29 +274,43 @@ type parquetBlock struct {
 	concurrency int
 }
 
-func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
-	shard, err := parquet_storage.NewParquetShardOpener(
-		context.WithoutCancel(ctx),
-		name,
-		labelsFileOpener,
-		chunksFileOpener,
-		0,
-		parquet_storage.WithFileOptions(
-			parquet.SkipMagicBytes(true),
-			parquet.ReadBufferSize(100*1024),
-			parquet.SkipBloomFilters(true),
-			parquet.OptimisticRead(true),
-		),
-	)
+func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, shardID int, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
+	userID, err := users.TenantID(ctx)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open parquet shard. block: %v", name)
+		return nil, err
+	}
+
+	cacheKey := fmt.Sprintf("%v-%v-%v", userID, name, shardID)
+	shard := p.parquetShardCache.Get(cacheKey)
+
+	if shard == nil {
+		// cache miss, open parquet files
+		shard, err = parquet_storage.NewParquetShardOpener(
+			context.WithoutCancel(ctx),
+			name,
+			labelsFileOpener,
+			chunksFileOpener,
+			0, // we always only have 1 shard - shard 0
+			parquet_storage.WithFileOptions(
+				parquet.SkipMagicBytes(true),
+				parquet.ReadBufferSize(100*1024),
+				parquet.SkipBloomFilters(true),
+				parquet.OptimisticRead(true),
+			),
+		)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to open parquet shard. block: %v", name)
+		}
+
+		// set shard to cache
+		p.parquetShardCache.Set(cacheKey, shard)
 	}
 
 	s, err := shard.TSDBSchema()
 	if err != nil {
 		return nil, err
 	}
-	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback)
+	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback, false)
 	if err != nil {
 		return nil, err
 	}
@@ -361,7 +385,8 @@ func (b *parquetBlock) Query(ctx context.Context, mint, maxt int64, skipChunks b
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}
@@ -421,7 +446,8 @@ func (b *parquetBlock) LabelNames(ctx context.Context, limit int64, matchers []*
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}
@@ -461,7 +487,8 @@ func (b *parquetBlock) LabelValues(ctx context.Context, name string, limit int64
 			if err != nil {
 				return err
 			}
-			rr, err := search.Filter(ctx, b.shard, rgi, cs...)
+			// TODO: Add cache.
+			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
 			if err != nil {
 				return err
 			}

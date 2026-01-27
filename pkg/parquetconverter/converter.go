@@ -386,7 +386,8 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if marker.Version == cortex_parquet.CurrentVersion {
+		// We don't convert blocks again if they already have a valid converter mark.
+		if cortex_parquet.ValidConverterMarkVersion(marker.Version) {
 			continue
 		}
 
@@ -437,7 +438,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))
 		}
 
-		_, err = convert.ConvertTSDBBlock(
+		numShards, err := convert.ConvertTSDBBlock(
 			ctx,
 			uBucket,
 			tsdbBlock.MinTime(),
@@ -458,9 +459,9 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 		duration := time.Since(start)
 		c.metrics.convertBlockDuration.WithLabelValues(userID).Set(duration.Seconds())
-		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration)
+		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration, "shards", numShards)
 
-		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket); err != nil {
+		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket, numShards); err != nil {
 			level.Error(logger).Log("msg", "failed to write parquet converter marker", "block", b.ULID.String(), "err", err)
 			if c.checkConvertError(userID, err) {
 				return err

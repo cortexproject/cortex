@@ -52,3 +52,52 @@ func TestIsHealthyForAlertmanagerOperations(t *testing.T) {
 		})
 	}
 }
+
+func TestBlastRadiusProtection(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		operation ring.Operation
+		instance  *ring.InstanceDesc
+		timeout   time.Duration
+		expected  bool
+	}{
+		"RingOp extends to unhealthy ACTIVE instance": {
+			operation: RingOp,
+			instance:  &ring.InstanceDesc{State: ring.ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
+			timeout:   time.Minute,
+			expected:  false,
+		},
+		"RingOpNoExtension excludes unhealthy ACTIVE instance": {
+			operation: RingOpNoExtension,
+			instance:  &ring.InstanceDesc{State: ring.ACTIVE, Timestamp: time.Now().Add(-90 * time.Second).Unix()},
+			timeout:   time.Minute,
+			expected:  false,
+		},
+		"RingOp extends to LEAVING instance": {
+			operation: RingOp,
+			instance:  &ring.InstanceDesc{State: ring.LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:   time.Minute,
+			expected:  false,
+		},
+		"RingOpNoExtension excludes LEAVING instance": {
+			operation: RingOpNoExtension,
+			instance:  &ring.InstanceDesc{State: ring.LEAVING, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:   time.Minute,
+			expected:  false,
+		},
+		"Both operations include healthy ACTIVE instance": {
+			operation: RingOp,
+			instance:  &ring.InstanceDesc{State: ring.ACTIVE, Timestamp: time.Now().Add(-30 * time.Second).Unix()},
+			timeout:   time.Minute,
+			expected:  true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			actual := testData.instance.IsHealthy(testData.operation, testData.timeout, time.Now())
+			assert.Equal(t, testData.expected, actual)
+		})
+	}
+}

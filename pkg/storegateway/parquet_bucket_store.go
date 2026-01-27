@@ -25,6 +25,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -36,10 +38,12 @@ type parquetBucketStore struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache storecache.MatchersCache
+	matcherCache      storecache.MatchersCache
+	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 }
 
 func (p *parquetBucketStore) Close() error {
+	p.parquetShardCache.Close()
 	return p.bucket.Close()
 }
 
@@ -61,7 +65,8 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 	for _, blockID := range blockIDs {
-		block, err := p.newParquetBlock(ctx, blockID, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
+		// TODO: support shard ID > 0 later.
+		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
 		if err != nil {
 			return nil, err
 		}
@@ -72,13 +77,17 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 }
 
 // Series implements the store interface for a single parquet bucket store
-func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, srv storepb.Store_SeriesServer) (err error) {
+func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storepb.Store_SeriesServer) (err error) {
+	spanLog, ctx := spanlogger.New(seriesSrv.Context(), "ParquetBucketStore.Series")
+	defer spanLog.Finish()
+
+	srv := newFlushableServer(newBatchableServer(seriesSrv, int(req.ResponseBatchSize)))
+
 	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
 	if err != nil {
 		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	ctx := srv.Context()
 	resHints := &hintspb.SeriesResponseHints{}
 	var anyHints *types.Any
 
@@ -153,11 +162,14 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, srv storepb.Stor
 		return
 	}
 
-	return nil
+	return srv.Flush()
 }
 
 // LabelNames implements the store interface for a single parquet bucket store
 func (p *parquetBucketStore) LabelNames(ctx context.Context, req *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error) {
+	spanLog, ctx := spanlogger.New(ctx, "ParquetBucketStore.LabelNames")
+	defer spanLog.Finish()
+
 	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -213,6 +225,9 @@ func (p *parquetBucketStore) LabelNames(ctx context.Context, req *storepb.LabelN
 
 // LabelValues implements the store interface for a single parquet bucket store
 func (p *parquetBucketStore) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
+	spanLog, ctx := spanlogger.New(ctx, "ParquetBucketStore.LabelValues")
+	defer spanLog.Finish()
+
 	matchers, err := storecache.MatchersToPromMatchersCached(p.matcherCache, req.Matchers...)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

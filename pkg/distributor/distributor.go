@@ -129,6 +129,7 @@ type Distributor struct {
 	ingesterPartialDataQueries       prometheus.Counter
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	distributorIngesterPushTimeout   prometheus.Counter
 
 	validateMetrics *validation.ValidateMetrics
 
@@ -229,7 +230,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
-	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.")
+	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
 }
 
 // Validate config and returns error on failure
@@ -409,6 +410,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+		distributorIngesterPushTimeout: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_distributor_ingester_push_timeouts_total",
+			Help: "The total number of push requests to ingesters that were canceled due to timeout.",
+		}),
 
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
@@ -932,6 +937,12 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 
 	// Use a background context to make sure all ingesters get samples even if we return early
 	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	defer func() {
+		if errors.Is(localCtx.Err(), context.DeadlineExceeded) {
+			d.distributorIngesterPushTimeout.Inc()
+		}
+	}()
+
 	localCtx = user.InjectOrgID(localCtx, userID)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)

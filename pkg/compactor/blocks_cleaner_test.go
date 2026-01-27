@@ -999,6 +999,10 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	partitionedGroupFileExists, err = userBucket.Exists(ctx, GetPartitionedGroupFile(partitionedGroupID))
 	require.NoError(t, err)
 	require.False(t, partitionedGroupFileExists)
+
+	visitMarkerExists, err := userBucket.Exists(ctx, visitMarker.GetVisitMarkerFilePath())
+	require.NoError(t, err)
+	require.False(t, visitMarkerExists)
 }
 
 func TestBlocksCleaner_DeleteEmptyBucketIndex(t *testing.T) {
@@ -1256,7 +1260,7 @@ func TestBlocksCleaner_EmitUserMetrics(t *testing.T) {
 	err = v4Manager.updateVisitMarker(ctx)
 	require.NoError(t, err)
 
-	cleaner.emitUserParititionMetrics(ctx, logger, userBucket, userID)
+	cleaner.emitUserPartitionMetrics(ctx, logger, userBucket, userID)
 
 	metricNames := []string{
 		"cortex_compactor_remaining_planned_compactions",

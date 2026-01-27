@@ -54,6 +54,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="compactor_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="creation_grace_period",user="tenant-a"} 600
 		cortex_overrides{limit_name="enable_native_histograms",user="tenant-a"} 0
+		cortex_overrides{limit_name="enable_type_and_unit_labels",user="tenant-a"} 0
 		cortex_overrides{limit_name="enforce_metadata_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="enforce_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="ha_max_clusters",user="tenant-a"} 0
@@ -72,6 +73,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="max_global_native_histogram_series_per_user",user="tenant-a"} 0
 		cortex_overrides{limit_name="max_global_series_per_metric",user="tenant-a"} 0
 		cortex_overrides{limit_name="max_global_series_per_user",user="tenant-a"} 0
+		cortex_overrides{limit_name="max_label_cardinality_for_unoptimized_regex",user="tenant-a"} 0
 		cortex_overrides{limit_name="max_label_name_length",user="tenant-a"} 1024
 		cortex_overrides{limit_name="max_label_names_per_series",user="tenant-a"} 30
 		cortex_overrides{limit_name="max_label_value_length",user="tenant-a"} 2048
@@ -88,8 +90,10 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="max_query_lookback",user="tenant-a"} 0
 		cortex_overrides{limit_name="max_query_parallelism",user="tenant-a"} 14
 		cortex_overrides{limit_name="max_query_response_size",user="tenant-a"} 0
+		cortex_overrides{limit_name="max_regex_pattern_length",user="tenant-a"} 0
 		cortex_overrides{limit_name="max_series_per_metric",user="tenant-a"} 50000
 		cortex_overrides{limit_name="max_series_per_user",user="tenant-a"} 5e+06
+		cortex_overrides{limit_name="max_total_label_value_length_for_unoptimized_regex",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_burst_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_rate",user="tenant-a"} 1.7976931348623157e+308
 		cortex_overrides{limit_name="out_of_order_time_window",user="tenant-a"} 0

@@ -486,7 +486,7 @@ type ReplicasNotMatchError struct {
 }
 
 func (e ReplicasNotMatchError) Error() string {
-	return fmt.Sprintf("replicas did not mach, rejecting sample: replica=%s, elected=%s", e.replica, e.elected)
+	return fmt.Sprintf("replicas did not match, rejecting sample: replica=%s, elected=%s", e.replica, e.elected)
 }
 
 // Needed for errors.Is to work properly.

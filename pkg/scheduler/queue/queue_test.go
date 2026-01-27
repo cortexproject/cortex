@@ -233,12 +233,10 @@ func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBe
 
 	// Querier-2 waits for a new request.
 	querier2wg := sync.WaitGroup{}
-	querier2wg.Add(1)
-	go func() {
-		defer querier2wg.Done()
+	querier2wg.Go(func() {
 		_, _, err := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-2")
 		require.NoError(t, err)
-	}()
+	})
 
 	// Querier-1 crashes (no graceful shutdown notification).
 	queue.UnregisterQuerierConnection("querier-1")
@@ -283,6 +281,60 @@ func TestQueriersShouldGetHighPriorityQueryFirst(t *testing.T) {
 	assert.Error(t, queue.EnqueueRequest("userID", highPriorityRequest, 1, func() {})) // should fail due to maxOutstandingPerTenant = 3
 	nextRequest, _, _ := queue.GetNextRequestForQuerier(ctx, FirstUser(), "querier-1")
 	assert.Equal(t, highPriorityRequest, nextRequest) // high priority request returned, although it was enqueued the last
+}
+
+func TestGetOrAddQueue_ShouldNotDeadlockWhenLimitsAreReduced(t *testing.T) {
+	// Setup: Large initial limit
+	initialLimit := 100
+	newLimit := 50
+
+	limits := MockLimits{
+		MaxOutstanding: initialLimit,
+	}
+
+	// Initialize queues
+	q := newUserQueues(0, limits, nil)
+
+	// Create user queue
+	userID := "test-user-deadlock"
+	queue := q.getOrAddQueue(userID, 1)
+
+	// Fill queue to capacity (near initialLimit)
+	// We fill it more than newLimit
+	itemsToFill := 80
+	for range itemsToFill {
+		queue.enqueueRequest(MockRequest{priority: 1})
+	}
+
+	require.Equal(t, itemsToFill, queue.length())
+
+	// Reduce limit below current size
+	// We change the mock limits return value.
+	// In real app this comes from runtime config reload.
+	limits.MaxOutstanding = newLimit
+	q.limits = limits // Update strict reference in queues struct (mocking the reload effect)
+
+	// Now call getOrAddQueue again.
+	// This triggers the migration logic: existing queue (80 items) -> new queue (cap 50).
+	done := make(chan struct{})
+	go func() {
+		_ = q.getOrAddQueue(userID, 1)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success: no deadlock
+	case <-time.After(2 * time.Second):
+		t.Fatal("Deadlock detected! getOrAddQueue timed out while migrating queue with reduced limits.")
+	}
+
+	// The new queue should be capped at newLimit or contain what managed to fit.
+	// Logic: it breaks when full. So new queue should be full (length == newLimit).
+	newQueue := q.getOrAddQueue(userID, 1) // Should be fast now
+
+	// Note: The actual items in queue should be newLimit (50). The rest (30) are dropped.
+	assert.Equal(t, newLimit, newQueue.length())
 }
 
 func TestReservedQueriersShouldOnlyGetHighPriorityQueries(t *testing.T) {

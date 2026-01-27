@@ -36,7 +36,7 @@ var (
 		"quay.io/cortexproject/cortex:v1.17.2": nil,
 		"quay.io/cortexproject/cortex:v1.18.1": nil,
 		"quay.io/cortexproject/cortex:v1.19.1": nil,
-		"quay.io/cortexproject/cortex:v1.20.0": nil,
+		"quay.io/cortexproject/cortex:v1.20.1": nil,
 	}
 )
 
@@ -179,7 +179,6 @@ func TestCanSupportHoltWintersFunc(t *testing.T) {
 			"-blocks-storage.tsdb.retention-period":             "2h",
 			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),

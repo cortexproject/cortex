@@ -173,6 +173,14 @@ func (m mockTenantQuerier) Select(ctx context.Context, _ bool, sp *storage.Selec
 		}
 	}
 
+	if m.queryErr != nil {
+		return &mockSeriesSet{
+			upstream: storage.ErrSeriesSet(m.queryErr),
+			warnings: m.warnings,
+			queryErr: m.queryErr,
+		}
+	}
+
 	log, _ := spanlogger.New(ctx, "mockTenantQuerier.select")
 	defer log.Finish()
 	var matrix model.Matrix
@@ -210,6 +218,10 @@ func (m mockTenantQuerier) LabelValues(ctx context.Context, name string, hints *
 		if err, ok := m.queryErrByTenant[tenantIDs[0]]; ok {
 			m.queryErr = err
 		}
+	}
+
+	if m.queryErr != nil {
+		return nil, nil, m.queryErr
 	}
 
 	if len(matchers) > 0 {
@@ -259,6 +271,10 @@ func (m mockTenantQuerier) LabelNames(ctx context.Context, hints *storage.LabelH
 		}
 	}
 
+	if m.queryErr != nil {
+		return nil, nil, m.queryErr
+	}
+
 	var results []string
 
 	if len(matchers) == 1 && matchers[0].Name == seriesWithLabelNames {
@@ -302,12 +318,18 @@ type mergeQueryableScenario struct {
 	queryable mockTenantQueryableWithFilter
 	// doNotByPassSingleQuerier determines whether the MergeQueryable is by-passed in favor of a single querier.
 	doNotByPassSingleQuerier bool
+	// allowPartialData determines whether partial data is allowed.
+	allowPartialData bool
 }
 
 func (s *mergeQueryableScenario) init() (storage.Querier, prometheus.Gatherer, error) {
 	// initialize with default tenant label
 	reg := prometheus.NewPedanticRegistry()
-	q := NewQueryable(&s.queryable, defaultMaxConcurrency, !s.doNotByPassSingleQuerier, reg)
+	cfg := Config{
+		MaxConcurrent:    defaultMaxConcurrency,
+		AllowPartialData: s.allowPartialData,
+	}
+	q := NewQueryable(&s.queryable, cfg, !s.doNotByPassSingleQuerier, reg)
 
 	// retrieve querier
 	querier, err := q.Querier(mint, maxt)
@@ -336,7 +358,8 @@ type selectTestCase struct {
 // selectScenario tests a call to Select over a range of test cases in a specific scenario.
 type selectScenario struct {
 	mergeQueryableScenario
-	selectTestCases []selectTestCase
+	selectTestCases  []selectTestCase
+	allowPartialData bool
 }
 
 // labelNamesTestCase is the inputs and expected outputs of a call to LabelNames.
@@ -389,7 +412,10 @@ func TestMergeQueryable_Querier(t *testing.T) {
 	t.Run("querying without a tenant specified should error", func(t *testing.T) {
 		t.Parallel()
 		queryable := &mockTenantQueryableWithFilter{}
-		q := NewQueryable(queryable, defaultMaxConcurrency, false /* byPassWithSingleQuerier */, nil)
+		cfg := Config{
+			MaxConcurrent: defaultMaxConcurrency,
+		}
+		q := NewQueryable(queryable, cfg, false /* byPassWithSingleQuerier */, nil)
 
 		querier, err := q.Querier(mint, maxt)
 		require.NoError(t, err)
@@ -438,6 +464,17 @@ var (
 	threeTenantsWithErrorScenario = mergeQueryableScenario{
 		name:    "three tenants, one erroring",
 		tenants: []string{"team-a", "team-b", "team-c"},
+		queryable: mockTenantQueryableWithFilter{
+			queryErrByTenant: map[string]error{
+				"team-b": errors.New("failure xyz"),
+			},
+		},
+	}
+
+	threeTenantsWithErrorAndPartialDataScenario = mergeQueryableScenario{
+		name:             "three tenants, one erroring with partial data allowed",
+		tenants:          []string{"team-a", "team-b", "team-c"},
+		allowPartialData: true,
 		queryable: mockTenantQueryableWithFilter{
 			queryErrByTenant: map[string]error{
 				"team-b": errors.New("failure xyz"),
@@ -652,6 +689,24 @@ func TestMergeQueryable_Select(t *testing.T) {
 				expectedMetrics:  expectedThreeTenantsMetrics,
 			}},
 		},
+		{
+			mergeQueryableScenario: threeTenantsWithErrorAndPartialDataScenario,
+			selectTestCases: []selectTestCase{{
+				name:                "should return partial results and warnings instead of error",
+				expectedSeriesCount: 4,
+				expectedLabels: []labels.Labels{
+					labels.FromStrings("__tenant_id__", "team-a", "instance", "host1", "tenant-team-a", "static"),
+					labels.FromStrings("__tenant_id__", "team-a", "instance", "host2.team-a"),
+					labels.FromStrings("__tenant_id__", "team-c", "instance", "host1", "tenant-team-c", "static"),
+					labels.FromStrings("__tenant_id__", "team-c", "instance", "host2.team-c"),
+				},
+				expectedWarnings: []string{
+					"failed to query tenant tenant_id team-b (partial data returned): failure xyz",
+				},
+				expectedQueryErr: nil,
+				expectedMetrics:  expectedThreeTenantsMetrics,
+			}},
+		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			for _, useRegexResolver := range []bool{true, false} {
@@ -851,6 +906,18 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					`warning querying tenant_id team-b: don't like them`,
 				},
 				expectedMetrics: expectedThreeTenantsMetrics,
+			},
+		},
+		{
+			mergeQueryableScenario: threeTenantsWithErrorAndPartialDataScenario,
+			labelNamesTestCase: labelNamesTestCase{
+				name:               "should return partial label names and warnings instead of error",
+				expectedLabelNames: []string{defaultTenantLabel, "instance", "tenant-team-a", "tenant-team-c"},
+				expectedWarnings: []string{
+					"warning querying tenant_id team-b: failure xyz (partial data returned)",
+				},
+				expectedQueryErr: nil,
+				expectedMetrics:  expectedThreeTenantsMetrics,
 			},
 		},
 	} {
@@ -1088,6 +1155,19 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 				expectedMetrics:     expectedThreeTenantsMetrics,
 			}},
 		},
+		{
+			mergeQueryableScenario: threeTenantsWithErrorAndPartialDataScenario,
+			labelValuesTestCases: []labelValuesTestCase{{
+				name:                "should return partial label values and warnings instead of error",
+				labelName:           "instance",
+				expectedLabelValues: []string{"host1", "host2.team-a", "host2.team-c"},
+				expectedWarnings: []string{
+					"warning querying tenant_id team-b: failure xyz (partial data returned)",
+				},
+				expectedQueryErr: nil,
+				expectedMetrics:  expectedThreeTenantsMetrics,
+			}},
+		},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			for _, useRegexResolver := range []bool{true, false} {
@@ -1211,7 +1291,10 @@ func TestTracingMergeQueryable(t *testing.T) {
 	// set a multi tenant resolver
 	users.WithDefaultResolver(users.NewMultiResolver())
 	filter := mockTenantQueryableWithFilter{}
-	q := NewQueryable(&filter, defaultMaxConcurrency, false, nil)
+	cfg := Config{
+		MaxConcurrent: defaultMaxConcurrency,
+	}
+	q := NewQueryable(&filter, cfg, false, nil)
 	// retrieve querier if set
 	querier, err := q.Querier(mint, maxt)
 	require.NoError(t, err)

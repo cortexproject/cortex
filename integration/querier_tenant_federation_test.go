@@ -396,6 +396,79 @@ func runQuerierTenantFederationTest(t *testing.T, cfg querierTenantFederationCon
 	// TODO: check fairness in queryfrontend
 }
 
+func TestQuerierTenantFederation_PartialData(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-querier.cache-results":             "true",
+		"-querier.split-queries-by-interval": "24h",
+		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-tenant-federation.enabled":         "true",
+		// Allow query federation partial data
+		"-tenant-federation.allow-partial-data": "true",
+		"-querier.max-fetched-series-per-query": "5", // to trigger failure
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	require.NoError(t, s.StartAndWaitReady(querier, ingester, distributor))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait until distributor and queriers have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+
+	userPassID := "user-pass"
+	cPass, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userPassID)
+	require.NoError(t, err)
+
+	seriesPass, expectedVectorPass := generateSeries("series_good", now)
+	res, err := cPass.Push(seriesPass)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	userFailID := "user-fail"
+	cFail, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userFailID)
+	require.NoError(t, err)
+
+	var seriesFail []prompb.TimeSeries
+	seriesNum := 10 // to trigger fail
+	for i := range seriesNum {
+		s, _ := generateSeries(fmt.Sprintf("series_bad_%d", i), now)
+		seriesFail = append(seriesFail, s...)
+	}
+	res, err = cFail.Push(seriesFail)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	multiTenantID := userPassID + "|" + userFailID
+	cFederated, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", multiTenantID)
+	require.NoError(t, err)
+
+	result, err := cFederated.Query("series_good", now)
+	expectedResult := mergeResults([]string{userPassID}, []model.Vector{expectedVectorPass})
+
+	require.Equal(t, model.ValVector, result.Type())
+	assert.Equal(t, expectedResult, result.(model.Vector))
+}
+
 func mergeResults(tenantIDs []string, resultsPerTenant []model.Vector) model.Vector {
 	var v model.Vector
 	for pos, tenantID := range tenantIDs {

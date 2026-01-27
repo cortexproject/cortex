@@ -19,10 +19,11 @@ import (
 
 // NewMetadataQuerier returns a MetadataQuerier that merges metric
 // metadata for multiple tenants.
-func NewMetadataQuerier(upstream querier.MetadataQuerier, maxConcurrent int, reg prometheus.Registerer) querier.MetadataQuerier {
+func NewMetadataQuerier(upstream querier.MetadataQuerier, cfg Config, reg prometheus.Registerer) querier.MetadataQuerier {
 	return &mergeMetadataQuerier{
-		upstream:      upstream,
-		maxConcurrent: maxConcurrent,
+		upstream:         upstream,
+		maxConcurrent:    cfg.MaxConcurrent,
+		allowPartialData: cfg.AllowPartialData,
 
 		tenantsPerMetadataQuery: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -35,6 +36,7 @@ func NewMetadataQuerier(upstream querier.MetadataQuerier, maxConcurrent int, reg
 
 type mergeMetadataQuerier struct {
 	maxConcurrent           int
+	allowPartialData        bool
 	tenantsPerMetadataQuery prometheus.Histogram
 	upstream                querier.MetadataQuerier
 }
@@ -82,7 +84,10 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 
 		res, err := job.querier.MetricsMetadata(user.InjectOrgID(ctx, job.id), req)
 		if err != nil {
-			return errors.Wrapf(err, "error exemplars querying %s %s", job.id, err)
+			if m.allowPartialData {
+				return nil
+			}
+			return errors.Wrapf(err, "error metadata querying %s %s", job.id, err)
 		}
 
 		results[job.pos] = res

@@ -126,13 +126,14 @@ func Test_MergeExemplarQuerier_Select(t *testing.T) {
 	users.WithDefaultResolver(users.NewMultiResolver())
 
 	tests := []struct {
-		name            string
-		upstream        mockExemplarQueryable
-		matcher         [][]*labels.Matcher
-		orgId           string
-		expectedResult  []exemplar.QueryResult
-		expectedErr     error
-		expectedMetrics string
+		name             string
+		upstream         mockExemplarQueryable
+		matcher          [][]*labels.Matcher
+		orgId            string
+		allowPartialData bool
+		expectedResult   []exemplar.QueryResult
+		expectedErr      error
+		expectedMetrics  string
 	}{
 		{
 			name: "should be treated as single tenant",
@@ -295,12 +296,42 @@ func Test_MergeExemplarQuerier_Select(t *testing.T) {
 			},
 			expectedErr: errors.New("some error"),
 		},
+		{
+			name: "get error from one querier (partial data enabled)",
+			upstream: mockExemplarQueryable{exemplarQueriers: map[string]storage.ExemplarQuerier{
+				"user-1": &mockExemplarQuerier{res: getFixtureExemplarResult1()},
+				"user-2": &mockExemplarQuerier{err: errors.New("some error")},
+			}},
+			matcher: [][]*labels.Matcher{{
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", "exemplar_series"),
+			}},
+			orgId:            "user-1|user-2",
+			allowPartialData: true,
+			expectedResult: []exemplar.QueryResult{
+				{
+					SeriesLabels: labels.FromStrings("__name__", "exemplar_series", "__tenant_id__", "user-1"),
+					Exemplars: []exemplar.Exemplar{
+						{
+							Labels: labels.FromStrings("traceID", "123"),
+							Value:  123,
+							Ts:     1734942337900,
+						},
+					},
+				},
+			},
+			expectedMetrics: expectedTwoTenantsExemplarMetrics,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			exemplarQueryable := NewExemplarQueryable(&test.upstream, defaultMaxConcurrency, true, reg)
+
+			cfg := Config{
+				MaxConcurrent:    defaultMaxConcurrency,
+				AllowPartialData: test.allowPartialData,
+			}
+			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, true, reg)
 			ctx := user.InjectOrgID(context.Background(), test.orgId)
 			q, err := exemplarQueryable.ExemplarQuerier(ctx)
 			require.NoError(t, err)
@@ -346,13 +377,14 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 	})
 
 	tests := []struct {
-		name            string
-		upstream        mockExemplarQueryable
-		matcher         [][]*labels.Matcher
-		orgId           string
-		expectedResult  []exemplar.QueryResult
-		expectedErr     error
-		expectedMetrics string
+		name             string
+		upstream         mockExemplarQueryable
+		matcher          [][]*labels.Matcher
+		orgId            string
+		allowPartialData bool
+		expectedResult   []exemplar.QueryResult
+		expectedErr      error
+		expectedMetrics  string
 	}{
 		{
 			name: "result labels should contains __tenant_id__ even if one tenant is queried",
@@ -412,12 +444,42 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 			},
 			expectedMetrics: expectedTwoTenantsExemplarMetrics,
 		},
+		{
+			name: "get error from one querier (partial data enabled)",
+			upstream: mockExemplarQueryable{exemplarQueriers: map[string]storage.ExemplarQuerier{
+				"user-1": &mockExemplarQuerier{res: getFixtureExemplarResult1()},
+				"user-2": &mockExemplarQuerier{err: errors.New("some error")},
+			}},
+			matcher: [][]*labels.Matcher{{
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", "exemplar_series"),
+			}},
+			orgId:            "user-.+",
+			allowPartialData: true,
+			expectedResult: []exemplar.QueryResult{
+				{
+					SeriesLabels: labels.FromStrings("__name__", "exemplar_series", "__tenant_id__", "user-1"),
+					Exemplars: []exemplar.Exemplar{
+						{
+							Labels: labels.FromStrings("traceID", "123"),
+							Value:  123,
+							Ts:     1734942337900,
+						},
+					},
+				},
+			},
+			expectedMetrics: expectedTwoTenantsExemplarMetrics,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			exemplarQueryable := NewExemplarQueryable(&test.upstream, defaultMaxConcurrency, false, reg)
+
+			cfg := Config{
+				MaxConcurrent:    defaultMaxConcurrency,
+				AllowPartialData: test.allowPartialData,
+			}
+			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, false, reg)
 			ctx := user.InjectOrgID(context.Background(), test.orgId)
 			q, err := exemplarQueryable.ExemplarQuerier(ctx)
 			require.NoError(t, err)

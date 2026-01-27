@@ -358,7 +358,7 @@ type selectTestCase struct {
 // selectScenario tests a call to Select over a range of test cases in a specific scenario.
 type selectScenario struct {
 	mergeQueryableScenario
-	selectTestCases  []selectTestCase
+	selectTestCases []selectTestCase
 }
 
 // labelNamesTestCase is the inputs and expected outputs of a call to LabelNames.

@@ -463,6 +463,7 @@ func TestQuerierTenantFederation_PartialData(t *testing.T) {
 	require.NoError(t, err)
 
 	result, err := cFederated.Query("series_good", now)
+	require.NoError(t, err)
 	expectedResult := mergeResults([]string{userPassID}, []model.Vector{expectedVectorPass})
 
 	require.Equal(t, model.ValVector, result.Type())

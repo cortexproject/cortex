@@ -359,7 +359,6 @@ type selectTestCase struct {
 type selectScenario struct {
 	mergeQueryableScenario
 	selectTestCases  []selectTestCase
-	allowPartialData bool
 }
 
 // labelNamesTestCase is the inputs and expected outputs of a call to LabelNames.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 
 	"github.com/go-kit/log/level"
@@ -170,6 +171,23 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 	return map[string]any{}, nil
 }
 
+// mergeLimits merges new overrides into existing limits
+func mergeLimits(existing map[string]any, overrides map[string]any) map[string]any {
+	if existing == nil {
+		return overrides
+	}
+
+	merged := make(map[string]any)
+
+	// Copy existing limits
+	maps.Copy(merged, existing)
+
+	// Override with new values
+	maps.Copy(merged, overrides)
+
+	return merged
+}
+
 // setOverridesToBucket writes overrides for a specific tenant to the runtime config file
 func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides map[string]any) error {
 	var config runtimeconfig.RuntimeConfigValues
@@ -181,7 +199,29 @@ func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides
 		}
 	}
 
-	yamlData, err := yaml.Marshal(overrides)
+	if config.TenantLimits == nil {
+		config.TenantLimits = make(map[string]*validation.Limits)
+	}
+
+	// Get existing limits for the user
+	var existingLimitsMap map[string]any
+	if existingLimits, exists := config.TenantLimits[userID]; exists && existingLimits != nil {
+		// Convert existing limits to map
+		yamlData, err := yaml.Marshal(existingLimits)
+		if err != nil {
+			return fmt.Errorf("failed to marshal existing limits: %w", err)
+		}
+
+		if err := yaml.Unmarshal(yamlData, &existingLimitsMap); err != nil {
+			return fmt.Errorf("failed to unmarshal existing limits: %w", err)
+		}
+	}
+
+	// Merge existing limits with new overrides
+	mergedLimits := mergeLimits(existingLimitsMap, overrides)
+
+	// Convert merged limits back to validation.Limits
+	yamlData, err := yaml.Marshal(mergedLimits)
 	if err != nil {
 		return fmt.Errorf("failed to marshal overrides: %w", err)
 	}
@@ -189,10 +229,6 @@ func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides
 	var limits validation.Limits
 	if err := yaml.Unmarshal(yamlData, &limits); err != nil {
 		return fmt.Errorf("invalid overrides format: %w", err)
-	}
-
-	if config.TenantLimits == nil {
-		config.TenantLimits = make(map[string]*validation.Limits)
 	}
 
 	config.TenantLimits[userID] = &limits

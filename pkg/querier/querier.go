@@ -17,7 +17,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/thanos-io/thanos/pkg/strutil"
@@ -718,16 +717,4 @@ func validateQueryTimeRange(ctx context.Context, userID string, startMs, endMs i
 	}
 
 	return int64(startTime), int64(endTime), nil
-}
-
-func EnableExperimentalPromQLFunctions(enablePromQLExperimentalFunctions, enableHoltWinters bool) {
-	parser.EnableExperimentalFunctions = enablePromQLExperimentalFunctions
-
-	if enableHoltWinters {
-		holtWinters := *parser.Functions["double_exponential_smoothing"]
-		holtWinters.Experimental = false
-		holtWinters.Name = "holt_winters"
-		parser.Functions["holt_winters"] = &holtWinters
-		promql.FunctionCalls["holt_winters"] = promql.FunctionCalls["double_exponential_smoothing"]
-	}
 }

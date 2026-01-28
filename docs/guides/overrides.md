@@ -284,6 +284,8 @@ Limit names correspond to fields in the [`limits_config`](../configuration/confi
 
 Hard limits provide per-tenant upper bounds for override values. They prevent tenants from setting limits that exceed their allocated capacity.
 
+**Hard limits are inclusive** - if a hard limit is set to 100000, then values up to and including 100000 are allowed, but 100001 and above will be rejected.
+
 ### Configuring Hard Limits
 
 Hard limits are specified per tenant in the `hard_overrides` section:
@@ -303,10 +305,10 @@ hard_overrides:
 When a POST request is made:
 
 1. **Hard limit lookup**: System checks if the tenant has hard limits configured
-2. **Value comparison**: Each requested override value is compared against its hard limit
+2. **Value comparison**: Each requested override value is compared against its hard limit (inclusive)
 3. **Rejection**: If any value exceeds its hard limit, the entire request is rejected
 
-**Example - Rejected Request:**
+**Example - Allowed Request (at hard limit):**
 
 Runtime config:
 ```yaml
@@ -319,13 +321,32 @@ hard_overrides:
 Request:
 ```json
 {
-  "ingestion_rate": 150000
+  "ingestion_rate": 100000
+}
+```
+
+Response (200 OK): The request succeeds because 100000 equals the hard limit (inclusive).
+
+**Example - Rejected Request (exceeds hard limit):**
+
+Runtime config:
+```yaml
+hard_overrides:
+  tenant1:
+    ingestion_rate: 100000
+    max_global_series_per_user: 2000000
+```
+
+Request:
+```json
+{
+  "ingestion_rate": 100001
 }
 ```
 
 Response (400 Bad Request):
 ```
-limit ingestion_rate exceeds hard limit: 150000 > 100000
+limit ingestion_rate exceeds hard limit: 100001 > 100000
 ```
 
 ### Hard Limits vs. Default Limits
@@ -334,15 +355,15 @@ limit ingestion_rate exceeds hard limit: 150000 > 100000
 |--------------|---------|-------|
 | Default limits (`limits_config`) | Global defaults for all tenants | All tenants |
 | Overrides (`overrides`) | Per-tenant custom limits | Specific tenants |
-| Hard limits (`hard_overrides`) | Maximum allowed override values | Specific tenants |
+| Hard limits (`hard_overrides`) | Maximum allowed override values (inclusive) | Specific tenants |
 
 **Hierarchy:**
 ```
 Default Limits (global)
   ↓
-Tenant Overrides (per-tenant, within hard limits)
+Tenant Overrides (per-tenant, must be ≤ hard limits)
   ↓
-Hard Limits (per-tenant maximum)
+Hard Limits (per-tenant maximum, inclusive)
 ```
 
 ## Usage Examples
@@ -428,14 +449,16 @@ curl -X POST http://cortex:8080/api/v1/user-overrides \
   -H "X-Scope-OrgID: tenant1" \
   -H "Content-Type: application/json" \
   -d '{
-    "ingestion_rate": 200000
+    "ingestion_rate": 100001
   }'
 ```
 
 Response (400):
 ```
-limit ingestion_rate exceeds hard limit: 200000 > 100000
+limit ingestion_rate exceeds hard limit: 100001 > 100000
 ```
+
+Note: If the hard limit is 100000, then 100000 itself would be allowed (hard limits are inclusive), but 100001 exceeds it.
 
 ## Operational Considerations
 

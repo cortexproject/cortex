@@ -74,6 +74,13 @@ func (a *API) stopping(err error) error {
 		level.Info(a.logger).Log("msg", "overrides API stopping gracefully")
 	}
 
+	// Close bucket client to release resources
+	if a.bucketClient != nil {
+		if closeErr := a.bucketClient.Close(); closeErr != nil {
+			level.Warn(a.logger).Log("msg", "failed to close bucket client", "err", closeErr)
+		}
+	}
+
 	level.Info(a.logger).Log("msg", "overrides API stopped")
 	return nil
 }

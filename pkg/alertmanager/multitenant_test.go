@@ -529,6 +529,21 @@ receivers:
 `, backendURL)
 			},
 		},
+		"mattermost": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: mattermost
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: mattermost
+    mattermost_configs:
+      - webhook_url: %s
+`, backendURL)
+			},
+		},
 	}
 
 	for receiverName, testData := range tests {

@@ -56,6 +56,7 @@ cortex_querier_federated_tenants_per_metadata_query_count 1
 
 type mockMetadataQuerier struct {
 	tenantIdToMetadata map[string][]scrape.MetricMetadata
+	errorByTenant      map[string]error
 }
 
 func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context, _ *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
@@ -66,6 +67,10 @@ func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context, _ *client.Met
 	}
 
 	id := ids[0]
+	if err, ok := m.errorByTenant[id]; ok {
+		return nil, err
+	}
+
 	if res, ok := m.tenantIdToMetadata[id]; !ok {
 		return nil, fmt.Errorf("tenant not found, tenantId: %s", id)
 	} else {
@@ -80,9 +85,12 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 	tests := []struct {
 		name               string
 		tenantIdToMetadata map[string][]scrape.MetricMetadata
+		errorByTenant      map[string]error
 		orgId              string
+		allowPartialData   bool
 		expectedResults    []scrape.MetricMetadata
 		expectedMetrics    string
+		expectedErr        string
 	}{
 		{
 			name: "single tenant",
@@ -134,6 +142,35 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},
+		{
+			name: "two tenants, one fails (partial data disabled)",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"}},
+			},
+			errorByTenant: map[string]error{
+				"user-2": fmt.Errorf("metadata fetch failed"),
+			},
+			orgId:            "user-1|user-2",
+			allowPartialData: false,
+			expectedErr:      "error metadata querying user-2 metadata fetch failed",
+			expectedMetrics:  expectedTwoTenantsMetadataMetrics,
+		},
+		{
+			name: "two tenants, one fails (partial data enabled)",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"}},
+			},
+			errorByTenant: map[string]error{
+				"user-2": fmt.Errorf("metadata fetch failed"),
+			},
+			orgId:            "user-1|user-2",
+			allowPartialData: true,
+			expectedResults: []scrape.MetricMetadata{
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"},
+			},
+			expectedMetrics: expectedTwoTenantsMetadataMetrics,
+			expectedErr:     "", // no error
+		},
 	}
 
 	for _, test := range tests {
@@ -141,13 +178,24 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
 			upstream := mockMetadataQuerier{
 				tenantIdToMetadata: test.tenantIdToMetadata,
+				errorByTenant:      test.errorByTenant,
 			}
 
-			mergeMetadataQuerier := NewMetadataQuerier(&upstream, defaultMaxConcurrency, reg)
+			cfg := Config{
+				MaxConcurrent:    defaultMaxConcurrency,
+				AllowPartialData: test.allowPartialData,
+			}
+
+			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, reg)
 			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
-			require.NoError(t, err)
+			if test.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectedResults, metadata)
+			}
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_metadata_query"))
-			require.Equal(t, test.expectedResults, metadata)
 		})
 	}
 }
@@ -182,9 +230,12 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 	tests := []struct {
 		name               string
 		tenantIdToMetadata map[string][]scrape.MetricMetadata
+		errorByTenant      map[string]error
 		orgId              string
+		allowPartialData   bool
 		expectedResults    []scrape.MetricMetadata
 		expectedMetrics    string
+		expectedErr        string
 	}{
 		{
 			name: "single tenant",
@@ -218,6 +269,35 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 			},
 			expectedMetrics: expectedTwoTenantsMetadataMetrics,
 		},
+		{
+			name: "regex match two tenants, one fails (partial data disabled)",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"}},
+			},
+			errorByTenant: map[string]error{
+				"user-2": fmt.Errorf("metadata fetch failed"),
+			},
+			orgId:            "user-.+",
+			allowPartialData: false,
+			expectedErr:      "error metadata querying user-2 metadata fetch failed",
+			expectedMetrics:  expectedTwoTenantsMetadataMetrics,
+		},
+		{
+			name: "regex match two tenants, one fails (partial data enabled)",
+			tenantIdToMetadata: map[string][]scrape.MetricMetadata{
+				"user-1": {{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"}},
+			},
+			errorByTenant: map[string]error{
+				"user-2": fmt.Errorf("metadata fetch failed"),
+			},
+			orgId:            "user-.+",
+			allowPartialData: true,
+			expectedResults: []scrape.MetricMetadata{
+				{MetricFamily: "metadata1", Help: "metadata1 help", Type: "gauge"},
+			},
+			expectedMetrics: expectedTwoTenantsMetadataMetrics,
+			expectedErr:     "",
+		},
 	}
 
 	for _, test := range tests {
@@ -225,13 +305,24 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 			reg = prometheus.NewPedanticRegistry()
 			upstream := mockMetadataQuerier{
 				tenantIdToMetadata: test.tenantIdToMetadata,
+				errorByTenant:      test.errorByTenant,
 			}
 
-			mergeMetadataQuerier := NewMetadataQuerier(&upstream, defaultMaxConcurrency, reg)
+			cfg := Config{
+				MaxConcurrent:    defaultMaxConcurrency,
+				AllowPartialData: test.allowPartialData,
+			}
+
+			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, reg)
 			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
-			require.NoError(t, err)
+			if test.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), test.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, test.expectedResults, metadata)
+			}
 			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(test.expectedMetrics), "cortex_querier_federated_tenants_per_metadata_query"))
-			require.Equal(t, test.expectedResults, metadata)
 		})
 	}
 }

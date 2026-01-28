@@ -9054,6 +9054,12 @@
     },
     "tenant_federation": {
       "properties": {
+        "allow_partial_data": {
+          "default": false,
+          "description": "[Experimental] If enabled, query errors from individual tenants are treated as warnings, allowing partial results to be returned.",
+          "type": "boolean",
+          "x-cli-flag": "tenant-federation.allow-partial-data"
+        },
         "enabled": {
           "default": false,
           "description": "If enabled on all Cortex services, queries can be federated across multiple tenants. The tenant IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` header (experimental).",

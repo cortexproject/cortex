@@ -21,6 +21,12 @@ type HATrackerConfig struct {
 	// between the stored timestamp and the time we received a sample is
 	// more than this duration
 	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
+	// EnableStartupSync controls whether to fetch all tracked keys from the KV store
+	// on startup to populate the local cache.
+	// This prevents duplicate GET calls for the same key while the cache is cold,
+	// but could cause a spike in GET requests during initialization if the number
+	// of tracked keys is large.
+	EnableStartupSync bool `yaml:"enable_startup_sync"`
 
 	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 }
@@ -31,6 +37,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.UpdateTimeout, "distributor.ha-tracker.update-timeout", 15*time.Second, "Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, "distributor.ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout, "distributor.ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
+	f.BoolVar(&cfg.EnableStartupSync, "distributor.ha-tracker.enable-startup-sync", false, "[Experimental] If enabled, fetches all tracked keys on startup to populate the local cache. This prevents duplicate GET calls for the same key while the cache is cold, but could cause a spike in GET requests during initialization if the number of tracked keys is large.")
 
 	// We want the ability to use different Consul instances for the ring and
 	// for HA cluster tracking. We also customize the default keys prefix, in
@@ -48,6 +55,7 @@ func (cfg *HATrackerConfig) ToHATrackerConfig() ha.HATrackerConfig {
 	haCfg.UpdateTimeoutJitterMax = cfg.UpdateTimeoutJitterMax
 	haCfg.FailoverTimeout = cfg.FailoverTimeout
 	haCfg.KVStore = cfg.KVStore
+	haCfg.EnableStartupSync = cfg.EnableStartupSync
 
 	return haCfg
 }

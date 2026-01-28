@@ -381,7 +381,7 @@ func TestMetricsQueryFuncErrors(t *testing.T) {
 				}
 				return promql.Vector{}, err
 			}
-			qf := MetricsQueryFunc(mockFunc, queries, failures)
+			qf := metricsQueryFunc(mockFunc, queries, failures)
 
 			_, err := qf(context.Background(), "test", time.Now())
 			require.Equal(t, tc.returnedError, err)
@@ -404,7 +404,7 @@ func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := RecordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger())
+	qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger())
 	_, _ = qf(context.Background(), "test", time.Now())
 
 	require.GreaterOrEqual(t, testutil.ToFloat64(metrics.RulerQuerySeconds.WithLabelValues("userID")), float64(1))

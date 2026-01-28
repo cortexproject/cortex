@@ -46,7 +46,7 @@ type Notifier struct {
 
 // New returns a new VictorOps notifier.
 func New(c *config.VictorOpsConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "victorops", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "victorops", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (n *Notifier) createVictorOpsPayload(ctx context.Context, as ...*types.Aler
 
 	stateMessage, truncated := notify.TruncateInRunes(stateMessage, maxMessageLenRunes)
 	if truncated {
-		n.logger.Warn("Truncated state_message", "incident", key, "max_runes", maxMessageLenRunes)
+		n.logger.Warn("Truncated state_message", "group_key", key, "max_runes", maxMessageLenRunes)
 	}
 
 	msg := map[string]string{

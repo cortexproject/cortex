@@ -71,7 +71,7 @@ type weChatResponse struct {
 
 // New returns a new Wechat notifier.
 func New(c *config.WechatConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "wechat", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "wechat", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,10 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 
-	n.logger.Debug("extracted group key", "key", key)
-	data := notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
+	logger := n.logger.With("group_key", key)
+	logger.Debug("extracted group key")
+
+	data := notify.GetTemplateData(ctx, n.tmpl, as, logger)
 
 	tmpl := notify.TmplText(n.tmpl, data, &err)
 	if err != nil {
@@ -174,7 +176,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 	if err != nil {
 		return true, err
 	}
-	n.logger.Debug(string(body), "incident", key)
+	logger.Debug(string(body))
 
 	var weResp weChatResponse
 	if err := json.Unmarshal(body, &weResp); err != nil {

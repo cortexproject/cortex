@@ -37,6 +37,7 @@
 * [ENHANCEMENT] Ingester: Add fetch timeout for Ingester expanded postings cache. #7185
 * [ENHANCEMENT] Ingester: Add feature flag to collect metrics of how expensive an unoptimized regex matcher is and new limits to protect Ingester query path against expensive unoptimized regex matchers. #7194 #7210
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
+* [ENHANCEMENT] discard ooo samples in some special cases. #7226
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132

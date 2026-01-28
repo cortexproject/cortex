@@ -1440,6 +1440,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
+
+	// Even when OOO is enabled globally, we want to reject OOO samples in some cases.
+	// prometheus implementation: https://github.com/prometheus/prometheus/pull/14710
+	if req.DiscardOutOfOrder {
+		app.SetOptions(&storage.AppendOptions{DiscardOutOfOrder: true})
+	}
+
 	var newSeries []labels.Labels
 
 	for _, ts := range req.Timeseries {

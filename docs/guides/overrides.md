@@ -500,13 +500,6 @@ This indicates an issue reading or parsing the runtime configuration file. Check
 - YAML syntax is valid
 - Storage backend is properly configured
 
-### Overrides being reset
-
-If overrides are unexpectedly reset, check:
-- Multiple instances are not writing conflicting configurations
-- Runtime config file is not being manually edited simultaneously
-- Storage backend has sufficient permissions
-
 ## See Also
 
 - [Limits Configuration Reference](../configuration/config-file-reference.md#limits_config)

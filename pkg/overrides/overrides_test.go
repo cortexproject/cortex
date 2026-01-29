@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
@@ -284,6 +287,71 @@ api_allowed_limits:
 			tenantID:       "user999",
 			requestBody:    "invalid json",
 			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "POST overrides - merge with existing overrides",
+			method:         "POST",
+			path:           "/api/v1/user-overrides",
+			tenantID:       "user888",
+			requestBody:    map[string]any{"ingestion_rate": 8000}, // Only update ingestion_rate
+			expectedStatus: http.StatusOK,
+			setupMock: func(m *bucket.ClientMock) {
+				// Mock runtime config with existing overrides for user888
+				initialConfig := `overrides:
+  user888:
+    ingestion_rate: 5000
+    max_global_series_per_user: 100000
+    ruler_max_rules_per_rule_group: 20
+api_allowed_limits:
+  - ingestion_rate
+  - max_global_series_per_user
+  - ruler_max_rules_per_rule_group
+  - ingestion_burst_size`
+				// First read for getAllowedLimitsFromBucket
+				m.MockGet("runtime.yaml", initialConfig, nil)
+				// Second read for setOverridesToBucket to get existing overrides
+				m.MockGet("runtime.yaml", initialConfig, nil)
+
+				// Mock upload and validate the merged content
+				m.On("Upload", mock.Anything, "runtime.yaml", mock.Anything, mock.Anything).
+					Return(nil).
+					Run(func(args mock.Arguments) {
+						// Read the uploaded content
+						reader := args.Get(2).(io.Reader)
+						content, err := io.ReadAll(reader)
+						if err != nil {
+							panic(fmt.Sprintf("failed to read uploaded content: %v", err))
+						}
+
+						// Verify that the uploaded content has merged values
+						var config runtimeconfig.RuntimeConfigValues
+						if err := yaml.Unmarshal(content, &config); err != nil {
+							panic(fmt.Sprintf("failed to unmarshal uploaded config: %v", err))
+						}
+
+						// Check that all three fields are present
+						if config.TenantLimits == nil || config.TenantLimits["user888"] == nil {
+							panic("tenant limits for user888 not found")
+						}
+
+						limits := config.TenantLimits["user888"]
+
+						// Verify ingestion_rate was updated
+						if limits.IngestionRate != 8000 {
+							panic(fmt.Sprintf("expected ingestion_rate to be 8000, got %f", limits.IngestionRate))
+						}
+
+						// Verify max_global_series_per_user was preserved
+						if limits.MaxGlobalSeriesPerUser != 100000 {
+							panic(fmt.Sprintf("expected max_global_series_per_user to be preserved at 100000, got %d", limits.MaxGlobalSeriesPerUser))
+						}
+
+						// Verify ruler_max_rules_per_rule_group was preserved
+						if limits.RulerMaxRulesPerRuleGroup != 20 {
+							panic(fmt.Sprintf("expected ruler_max_rules_per_rule_group to be preserved at 20, got %d", limits.RulerMaxRulesPerRuleGroup))
+						}
+					})
+			},
 		},
 		{
 			name:           "POST overrides - exceeding hard limit from runtime config",

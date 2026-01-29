@@ -101,6 +101,8 @@ func (a *API) validateSingleHardLimit(limitName string, value, hardLimit any) er
 		return nil // Skip validation for unparseable hard limits
 	}
 
+	// Hard limit is inclusive - values equal to the hard limit are allowed
+	// For example, if hard limit is 100000, then 100000 is allowed but 100001 is not
 	if valueFloat > hardLimitFloat {
 		return fmt.Errorf("limit %s exceeds hard limit: %f > %f", limitName, valueFloat, hardLimitFloat)
 	}

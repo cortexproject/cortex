@@ -2,6 +2,9 @@ package request_tracker
 
 import (
 	"net/http"
+
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/google/uuid"
 )
 
 type RequestWrapper struct {
@@ -19,6 +22,16 @@ func NewRequestWrapper(handler http.Handler, requestTracker *RequestTracker, ext
 }
 
 func (w *RequestWrapper) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if requestmeta.RequestIdFromContext(ctx) == "" {
+		reqId := r.Header.Get("X-Request-ID")
+		if reqId == "" {
+			reqId = uuid.NewString()
+		}
+		ctx = requestmeta.ContextWithRequestId(ctx, reqId)
+		r = r.WithContext(ctx)
+	}
+
 	if w.requestTracker != nil {
 		insertIndex, err := w.requestTracker.Insert(r.Context(), w.extractor.Extract(r))
 		if err == nil {

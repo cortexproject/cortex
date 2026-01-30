@@ -3268,7 +3268,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 			tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 			mock := kv.PrefixClient(ringStore, "prefix")
-			distributorCfg.HATrackerConfig = HATrackerConfig{
+			distributorCfg.HATrackerConfig = ha.HATrackerConfig{
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,

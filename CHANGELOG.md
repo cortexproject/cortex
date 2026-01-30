@@ -13,7 +13,7 @@
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
-* [ENHANCEMENT] Distributor: Add `source` label to `cortex_distributor_samples_in_total`, `cortex_distributor_received_samples_total`, and related metadata/exemplar metrics to distinguish between Prometheus Remote Write v1 (`rw1`) and v2 (`rw2`) traffic.
+* [ENHANCEMENT] Distributor: Add `source` label to `cortex_distributor_samples_in_total`, `cortex_distributor_received_samples_total`, and related metadata/exemplar metrics to distinguish between Prometheus Remote Write v1 (`rw1`) and v2 (`rw2`) traffic. #7237
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
 * [ENHANCEMENT] Ingester: Add support for ingesting Native Histogram with Custom Buckets. #7191

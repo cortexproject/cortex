@@ -510,8 +510,8 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "0.1.0",
 			},
-			expectedCode:        http.StatusOK,
-			isV2:                false,
+			expectedCode: http.StatusOK,
+			isV2:         false,
 		},
 		{
 			description: "[RW 2.0] wrong content-type",
@@ -520,8 +520,8 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode:        http.StatusUnsupportedMediaType,
-			isV2:                true,
+			expectedCode: http.StatusUnsupportedMediaType,
+			isV2:         true,
 		},
 		{
 			description: "[RW 2.0] wrong content-type",

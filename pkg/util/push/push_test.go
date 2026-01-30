@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -126,7 +128,7 @@ func Benchmark_Handler(b *testing.B) {
 	testSeriesNums := []int{10, 100, 500, 1000}
 	for _, seriesNum := range testSeriesNums {
 		b.Run(fmt.Sprintf("PRW1 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler)
+			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW1HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -140,7 +142,7 @@ func Benchmark_Handler(b *testing.B) {
 			}
 		})
 		b.Run(fmt.Sprintf("PRW2 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler)
+			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -511,7 +513,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "user-1")
-			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
+			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			body, isV2 := test.createBody()
 			req := createRequest(t, body, isV2)
@@ -661,7 +663,7 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
+			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			if test.isV2 {
 				ctx := context.Background()
@@ -688,7 +690,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
+	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
@@ -718,10 +720,47 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 		createRequest(t, createCortexWriteRequestProtobuf(t, true, cortexpb.RULE), false),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE))
+		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
+}
+
+func TestHandler_MetricCollection(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "test help",
+	}, []string{"type"})
+
+	handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+
+	t.Run("counts v1 requests", func(t *testing.T) {
+		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusOK, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("prw1"))
+		assert.Equal(t, 1.0, val)
+	})
+
+	t.Run("counts v2 requests", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "user-1")
+
+		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+		req = req.WithContext(ctx)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusNoContent, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("prw2"))
+		assert.Equal(t, 1.0, val)
+	})
 }
 
 func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {

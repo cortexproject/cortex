@@ -416,6 +416,12 @@ func TestDistributor_Push_RWV2_Source(t *testing.T) {
 	_, err := ds[0].Push(ctx, request)
 	require.NoError(t, err)
 
+	request = makeWriteRequestExemplar([]string{model.MetricNameLabel, "test"}, 1000, []string{"foo", "bar"})
+	request.Source = cortexpb.API_V2
+
+	_, err = ds[0].Push(ctx, request)
+	require.NoError(t, err)
+
 	expected := `
 		# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
 		# TYPE cortex_distributor_received_samples_total counter
@@ -424,17 +430,30 @@ func TestDistributor_Push_RWV2_Source(t *testing.T) {
 		# HELP cortex_distributor_received_metadata_total The total number of received metadata, excluding rejected.
 		# TYPE cortex_distributor_received_metadata_total counter
 		cortex_distributor_received_metadata_total{source="rw2",user="userV2"} 5
+		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
+        # TYPE cortex_distributor_received_exemplars_total counter
+        cortex_distributor_received_exemplars_total{source="rw2",user="userV2"} 1
 		# HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
 		# TYPE cortex_distributor_samples_in_total counter
 		cortex_distributor_samples_in_total{source="rw2",type="float",user="userV2"} 10
 		cortex_distributor_samples_in_total{source="rw2",type="histogram",user="userV2"} 10
+		# HELP cortex_distributor_metadata_in_total The total number of metadata that have come in to the distributor, including rejected.
+		# TYPE cortex_distributor_metadata_in_total counter
+		cortex_distributor_metadata_in_total{source="rw2",user="userV2"} 5
+		# HELP cortex_distributor_exemplars_in_total The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.
+		# TYPE cortex_distributor_exemplars_in_total counter
+		cortex_distributor_exemplars_in_total{source="rw2",user="userV2"} 1
 	`
 
 	test.Poll(t, time.Second, nil, func() any {
 		return testutil.GatherAndCompare(regs[0], strings.NewReader(expected),
 			"cortex_distributor_received_samples_total",
+			"cortex_distributor_received_exemplars_total",
 			"cortex_distributor_received_metadata_total",
-			"cortex_distributor_samples_in_total")
+			"cortex_distributor_samples_in_total",
+			"cortex_distributor_exemplars_in_total",
+			"cortex_distributor_metadata_in_total",
+		)
 	})
 }
 

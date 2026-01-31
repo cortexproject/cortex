@@ -463,7 +463,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
 
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
+		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API_V2))
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()
@@ -484,7 +484,6 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
 
 	tests := []struct {
 		description  string
@@ -587,6 +586,12 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
+			expectedSource := cortexpb.API
+			if test.isV2 {
+				expectedSource = cortexpb.API_V2
+			}
+			handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, expectedSource))
+
 			if test.isV2 {
 				ctx := context.Background()
 				ctx = user.InjectOrgID(ctx, "user-1")
@@ -612,9 +617,9 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
 
 	t.Run("remote write v1", func(t *testing.T) {
+		handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
@@ -624,7 +629,8 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
 
-		req := createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.API), true)
+		handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API_V2))
+		req := createRequest(t, createCortexRemoteWriteV2Protobuf(t, false, cortexpb.API_V2), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)

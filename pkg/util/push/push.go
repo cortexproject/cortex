@@ -101,11 +101,6 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 				return
 			}
 
-			req.SkipLabelNameValidation = false
-			if req.Source == 0 {
-				req.Source = cortexpb.API
-			}
-
 			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
@@ -114,9 +109,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 			}
 
 			v1Req.SkipLabelNameValidation = false
-			if v1Req.Source == 0 {
-				v1Req.Source = cortexpb.API
-			}
+			v1Req.Source = cortexpb.API_V2
 
 			if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
 				resp, ok := httpgrpc.HTTPResponseFromError(err)

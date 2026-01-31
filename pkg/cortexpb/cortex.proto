@@ -11,6 +11,7 @@ option (gogoproto.unmarshaler_all) = true;
 enum SourceEnum {
   API = 0;
   RULE = 1;
+  API_V2 = 2;
 }
 
 message MessageWithBufRef {

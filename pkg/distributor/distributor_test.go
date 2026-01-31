@@ -1308,7 +1308,6 @@ func TestDistributor_PushHA_RWv2DedupReturnsStats(t *testing.T) {
 	// When HA dedup occurs and RemoteWriteV2 is enabled, distributor must return
 	// WriteResponse with Samples/Histograms/Exemplars so the push handler can set RWv2 headers.
 	for _, enableHistogram := range []bool{false, true} {
-		enableHistogram := enableHistogram
 		t.Run(fmt.Sprintf("histogram=%v", enableHistogram), func(t *testing.T) {
 			t.Parallel()
 			var limits validation.Limits

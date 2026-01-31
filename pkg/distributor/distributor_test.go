@@ -1317,12 +1317,12 @@ func TestDistributor_PushHA_RWv2DedupReturnsStats(t *testing.T) {
 			limits.MaxLabelValueLength = 15
 
 			ds, _, _, _ := prepare(t, prepConfig{
-				numIngesters:       3,
-				happyIngesters:     3,
-				numDistributors:    1,
-				shardByAllLabels:   true,
-				limits:             &limits,
-				enableTracker:      true,
+				numIngesters:         3,
+				happyIngesters:       3,
+				numDistributors:      1,
+				shardByAllLabels:     true,
+				limits:               &limits,
+				enableTracker:        true,
 				remoteWriteV2Enabled: true,
 			})
 

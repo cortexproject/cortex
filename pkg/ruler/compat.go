@@ -49,6 +49,7 @@ type PusherAppender struct {
 	histogramLabels []labels.Labels
 	histograms      []cortexpb.Histogram
 	userID          string
+	opts            *storage.AppendOptions
 }
 
 func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
@@ -73,7 +74,9 @@ func (a *PusherAppender) Append(_ storage.SeriesRef, l labels.Labels, t int64, v
 	return 0, nil
 }
 
-func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {}
+func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {
+	a.opts = opts
+}
 
 func (a *PusherAppender) AppendHistogramCTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	// AppendHistogramCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
@@ -93,6 +96,12 @@ func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 
 	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE)
+
+	// Set DiscardOutOfOrder flag if requested via AppendOptions
+	if a.opts != nil && a.opts.DiscardOutOfOrder {
+		req.DiscardOutOfOrder = true
+	}
+
 	req.AddHistogramTimeSeries(a.histogramLabels, a.histograms)
 	// Since a.pusher is distributor, client.ReuseSlice will be called in a.pusher.Push.
 	// We shouldn't call client.ReuseSlice here.

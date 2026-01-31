@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
@@ -531,6 +532,34 @@ func TestHandler_remoteWrite(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("remote write v2 HA dedup", func(t *testing.T) {
+		// HA dedup: push returns error with StatusAccepted (202) but also a non-nil WriteResponse with stats.
+		dedupWriteResp := &cortexpb.WriteResponse{
+			Samples:    5,
+			Histograms: 2,
+			Exemplars:  1,
+		}
+		dedupErr := httpgrpc.Errorf(http.StatusAccepted, "HA deduplication: samples deduped")
+		pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+			return dedupWriteResp, dedupErr
+		}
+
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "user-1")
+		handler := Handler(true, 100000, overrides, nil, pushFunc)
+		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+		req = req.WithContext(ctx)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+
+		assert.Equal(t, http.StatusAccepted, resp.Code)
+		respHeader := resp.Header()
+		assert.Equal(t, "5", respHeader[rw20WrittenSamplesHeader][0])
+		assert.Equal(t, "2", respHeader[rw20WrittenHistogramsHeader][0])
+		assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
+		assert.Contains(t, resp.Body.String(), "HA deduplication")
+	})
 }
 
 func TestHandler_ContentTypeAndEncoding(t *testing.T) {

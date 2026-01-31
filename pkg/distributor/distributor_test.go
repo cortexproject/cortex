@@ -1301,6 +1301,58 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 	}
 }
 
+func TestDistributor_PushHA_RWv2DedupReturnsStats(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	// When HA dedup occurs and RemoteWriteV2 is enabled, distributor must return
+	// WriteResponse with Samples/Histograms/Exemplars so the push handler can set RWv2 headers.
+	for _, enableHistogram := range []bool{false, true} {
+		enableHistogram := enableHistogram
+		t.Run(fmt.Sprintf("histogram=%v", enableHistogram), func(t *testing.T) {
+			t.Parallel()
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+			limits.AcceptHASamples = true
+			limits.MaxLabelValueLength = 15
+
+			ds, _, _, _ := prepare(t, prepConfig{
+				numIngesters:       3,
+				happyIngesters:     3,
+				numDistributors:    1,
+				shardByAllLabels:   true,
+				limits:             &limits,
+				enableTracker:      true,
+				remoteWriteV2Enabled: true,
+			})
+
+			d := ds[0]
+
+			// Accept "instance2" for cluster0; we will push from "instance0" so all samples are deduped.
+			err := d.HATracker.CheckReplica(ctx, "user", "cluster0", "instance2", time.Now())
+			require.NoError(t, err)
+
+			const numSamples = 5
+			request := makeWriteRequestHA(numSamples, "instance0", "cluster0", enableHistogram)
+			response, err := d.Push(ctx, request)
+
+			require.NotNil(t, response, "RWv2 HA dedup must return WriteResponse with stats")
+			if enableHistogram {
+				assert.Equal(t, int64(0), response.Samples)
+				assert.Equal(t, int64(numSamples), response.Histograms)
+			} else {
+				assert.Equal(t, int64(numSamples), response.Samples)
+				assert.Equal(t, int64(0), response.Histograms)
+			}
+			assert.Equal(t, int64(0), response.Exemplars)
+
+			httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "expected HTTP error")
+			assert.Equal(t, int32(http.StatusAccepted), httpResp.Code)
+		})
+	}
+}
+
 func TestDistributor_PushMixedHAInstances(t *testing.T) {
 	t.Parallel()
 	ctx := user.InjectOrgID(context.Background(), "user")
@@ -3075,6 +3127,7 @@ type prepConfig struct {
 	maxIngestionRate             float64
 	replicationFactor            int
 	enableTracker                bool
+	remoteWriteV2Enabled         bool
 	errFail                      error
 	tokens                       [][]uint32
 	useStreamPush                bool
@@ -3224,6 +3277,8 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			}
 			cfg.limits.HAMaxClusters = 100
 		}
+
+		distributorCfg.RemoteWriteV2Enabled = cfg.remoteWriteV2Enabled
 
 		overrides := validation.NewOverrides(*cfg.limits, nil)
 

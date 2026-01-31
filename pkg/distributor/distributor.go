@@ -776,7 +776,14 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
-				return nil, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
+				var dedupResp *cortexpb.WriteResponse
+				if d.cfg.RemoteWriteV2Enabled {
+					dedupResp = &cortexpb.WriteResponse{}
+					dedupResp.Samples = int64(numFloatSamples)
+					dedupResp.Histograms = int64(numHistogramSamples)
+					dedupResp.Exemplars = int64(numExemplars)
+				}
+				return dedupResp, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {

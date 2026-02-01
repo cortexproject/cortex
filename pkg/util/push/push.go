@@ -170,7 +170,8 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 			handlePRW1()
 		case remote.WriteV2MessageType:
 			if !remoteWrite2Enabled {
-				http.Error(w, "Remote Write V2 is disabled", http.StatusUnsupportedMediaType)
+				errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v", msgType, remote.WriteV1MessageType)
+				http.Error(w, errMsg, http.StatusUnsupportedMediaType)
 				return
 			}
 			handlePRW2()

@@ -194,7 +194,7 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
 	_, err = c.PushV2(symbols1, series)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "server returned HTTP status 415 Unsupported Media Type: Remote Write V2 is disabled")
+	require.Contains(t, err.Error(), "io.prometheus.write.v2.Request protobuf message is not accepted by this server; only accepts prometheus.WriteRequest")
 
 	// sample
 	result, err := c.Query("test_series", now)

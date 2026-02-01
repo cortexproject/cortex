@@ -539,13 +539,13 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
 
 	tests := []struct {
-		description  string
-		reqHeaders   map[string]string
-		expectedCode int
-		isV2         bool
+		description         string
+		reqHeaders          map[string]string
+		expectedCode        int
+		isV2                bool
+		remoteWrite2Enabled bool
 	}{
 		{
 			description: "[RW 2.0] correct content-type",
@@ -554,8 +554,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "[RW 1.0] correct content-type",
@@ -584,8 +585,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusUnsupportedMediaType,
-			isV2:         true,
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "[RW 2.0] wrong content-encoding",
@@ -594,13 +596,26 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "zstd",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusUnsupportedMediaType,
-			isV2:         true,
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
-			description:  "no header, should treated as RW 1.0",
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			description: "[RW 2.0] V2 disabled",
+			reqHeaders: map[string]string{
+				"Content-Type":           appProtoV2ContentType,
+				"Content-Encoding":       "snappy",
+				remoteWriteVersionHeader: "2.0.0",
+			},
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: false,
+		},
+		{
+			description:         "no header, should treated as RW 1.0",
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing content-type, should treated as RW 1.0",
@@ -608,8 +623,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing content-encoding",
@@ -617,8 +633,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":           appProtoV2ContentType,
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing remote write version, should treated based on Content-type",
@@ -626,8 +643,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     appProtoV2ContentType,
 				"Content-Encoding": "snappy",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing remote write version, should treated based on Content-type",
@@ -635,13 +653,16 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     appProtoV1ContentType,
 				"Content-Encoding": "snappy",
 			},
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
+			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
+
 			if test.isV2 {
 				ctx := context.Background()
 				ctx = user.InjectOrgID(ctx, "user-1")

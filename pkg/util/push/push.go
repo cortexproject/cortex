@@ -137,43 +137,44 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 			}
 		}
 
-		if remoteWrite2Enabled {
-			// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
-			contentType := r.Header.Get("Content-Type")
-			if contentType == "" {
-				contentType = appProtoContentType
-			}
+		// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = appProtoContentType
+		}
 
-			msgType, err := remote.ParseProtoMsg(contentType)
-			if err != nil {
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		msgType, err := remote.ParseProtoMsg(contentType)
+		if err != nil {
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
-				level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
+			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			enc := r.Header.Get("Content-Encoding")
-			if enc == "" {
-			} else if enc != compression.Snappy {
-				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		enc := r.Header.Get("Content-Encoding")
+		if enc == "" {
+		} else if enc != compression.Snappy {
+			err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			switch msgType {
-			case remote.WriteV1MessageType:
-				handlePRW1()
-			case remote.WriteV2MessageType:
-				handlePRW2()
-			}
-		} else {
+		switch msgType {
+		case remote.WriteV1MessageType:
 			handlePRW1()
+		case remote.WriteV2MessageType:
+			if !remoteWrite2Enabled {
+				errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v", msgType, remote.WriteV1MessageType)
+				http.Error(w, errMsg, http.StatusUnsupportedMediaType)
+				return
+			}
+			handlePRW2()
 		}
 	})
 }

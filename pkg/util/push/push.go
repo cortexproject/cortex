@@ -38,6 +38,7 @@ const (
 
 	labelValuePRW1 = "prw1"
 	labelValuePRW2 = "prw2"
+	labelValueOTLP = "otlp"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.

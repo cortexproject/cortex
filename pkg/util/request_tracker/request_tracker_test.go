@@ -50,7 +50,7 @@ func TestAPITrackerLogUnfinished(t *testing.T) {
 	require.NotNil(t, tracker)
 	defer tracker.Close()
 	output := logOutput.String()
-	assert.Contains(t, output, "These request calls didn't finish in prometheus' last run")
+	assert.Contains(t, output, "These requests didn't finish in cortex's last run")
 	assert.Contains(t, output, "/api/v1/series")
 }
 

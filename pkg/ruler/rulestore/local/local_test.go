@@ -66,7 +66,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	client, err := NewLocalRulesClient(Config{
 		Directory: dir,
-	}, promRules.FileLoader{})
+	}, promRules.FileLoader{}, model.UTF8Validation)
 	require.NoError(t, err)
 
 	ctx := context.Background()

@@ -32,6 +32,7 @@ var errCompilingQueryPriorityRegex = errors.New("error compiling query priority 
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
 var errInvalidLabelName = errors.New("invalid label name")
 var errInvalidLabelValue = errors.New("invalid label value")
+var errInvalidMetricRelabelConfigs = errors.New("invalid metric_relabel_configs")
 
 // Supported values for enum limits
 const (
@@ -398,6 +399,17 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 		return nil
 	}); err != nil {
 		return err
+	}
+
+	for i, rc := range l.MetricRelabelConfigs {
+		if rc == nil {
+			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", "nil config")
+			return errInvalidMetricRelabelConfigs
+		}
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", err)
+			return errInvalidMetricRelabelConfigs
+		}
 	}
 
 	return nil

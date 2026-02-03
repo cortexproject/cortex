@@ -1,6 +1,6 @@
 module github.com/cortexproject/cortex
 
-go 1.25.5
+go 1.25.3
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
@@ -65,15 +65,9 @@ require (
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0
 	go.uber.org/atomic v1.11.0
-<<<<<<< HEAD
 	golang.org/x/net v0.48.0
 	golang.org/x/sync v0.19.0
-	golang.org/x/time v0.12.0
-=======
-	golang.org/x/net v0.47.0
-	golang.org/x/sync v0.18.0
 	golang.org/x/time v0.13.0
->>>>>>> e73acc6f4f (upgrade thanos engine to latest main)
 	google.golang.org/grpc v1.76.0
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -224,13 +218,8 @@ require (
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/metalmatze/signal v0.0.0-20210307161603-1c9aa721a97a // indirect
-<<<<<<< HEAD
-	github.com/miekg/dns v1.1.66 // indirect
-	github.com/minio/crc64nvme v1.1.1 // indirect
-=======
 	github.com/miekg/dns v1.1.68 // indirect
-	github.com/minio/crc64nvme v1.0.1 // indirect
->>>>>>> e73acc6f4f (upgrade thanos engine to latest main)
+	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -304,15 +293,9 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go4.org/intern v0.0.0-20230525184215-6c62f75575cb // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20231121144256-b99613f794b6 // indirect
-<<<<<<< HEAD
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/exp v0.0.0-20250606033433-dcc06ee1d476 // indirect
-	golang.org/x/mod v0.30.0 // indirect
-=======
-	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a // indirect
-	golang.org/x/mod v0.29.0 // indirect
->>>>>>> e73acc6f4f (upgrade thanos engine to latest main)
+	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
@@ -362,5 +345,7 @@ replace google.golang.org/grpc => google.golang.org/grpc v1.71.2
 // See https://github.com/envoyproxy/go-control-plane/issues/1083 as this version introduces checksum mismatch.
 exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3
 
-// TODO: update it in next PR
-replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
+// Required by Prometheus v0.308+ config package for OTLP translation strategy types.
+replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
+
+replace github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af

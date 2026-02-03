@@ -141,7 +141,7 @@ func Test_stripEvaluationFields(t *testing.T) {
                         "lastEvaluation": "2025-01-24T12:04:26.441418-08:00",
                         "name": "UP_ALERT",
                         "query": "up < 1",
-                        "state": "inactive",
+                        "state": "unknown",
                         "type": "alerting"
                     }
                 ]
@@ -191,7 +191,7 @@ func Test_stripEvaluationFields(t *testing.T) {
                         "lastEvaluation": "0001-01-01T00:00:00Z",
                         "name": "UP_ALERT",
                         "query": "up < 1",
-                        "state": "inactive",
+                        "state": "unknown",
                         "type": "alerting"
                     }
                 ]
@@ -291,7 +291,7 @@ func TestRuler_rules(t *testing.T) {
 						&alertingRule{
 							Name:   "UP_ALERT",
 							Query:  "up < 1",
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -350,7 +350,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 						&alertingRule{
 							Name:   "UP_ALERT",
 							Query:  "up < 1",
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},
@@ -408,7 +408,7 @@ func TestRuler_rules_limit(t *testing.T) {
 						&alertingRule{
 							Name:   "UP_ALERT",
 							Query:  "up < 1",
-							State:  "inactive",
+							State:  "unknown",
 							Health: "unknown",
 							Type:   "alerting",
 							Alerts: []*Alert{},

@@ -19,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	amconfig "github.com/prometheus/alertmanager/config"
 	amtemplate "github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/common/model"
 
 	"github.com/cortexproject/cortex/pkg/configs/db"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
@@ -34,7 +35,8 @@ var (
 
 // Config configures Configs API
 type Config struct {
-	Notifications NotificationsConfig `yaml:"notifications"`
+	Notifications        NotificationsConfig      `yaml:"notifications"`
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // NotificationsConfig configures Alertmanager notifications method.
@@ -182,7 +184,7 @@ func (a *API) setConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Invalid Alertmanager config: %v", err), http.StatusBadRequest)
 		return
 	}
-	if err := validateRulesFiles(cfg); err != nil {
+	if err := validateRulesFiles(cfg, a.cfg.NameValidationScheme); err != nil {
 		level.Error(logger).Log("msg", "invalid rules", "err", err)
 		http.Error(w, fmt.Sprintf("Invalid rules: %v", err), http.StatusBadRequest)
 		return
@@ -242,8 +244,11 @@ func validateAlertmanagerConfig(cfg string, noCfg NotificationsConfig) error {
 	return nil
 }
 
-func validateRulesFiles(c userconfig.Config) error {
-	_, err := c.RulesConfig.Parse()
+func validateRulesFiles(c userconfig.Config, nameValidationScheme model.ValidationScheme) error {
+	if nameValidationScheme == model.UnsetValidation {
+		nameValidationScheme = model.UTF8Validation
+	}
+	_, err := c.RulesConfig.Parse(nameValidationScheme)
 	return err
 }
 

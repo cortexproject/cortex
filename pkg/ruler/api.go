@@ -142,7 +142,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	state := strings.ToLower(req.URL.Query().Get("state"))
-	if state != "" && state != firingStateFilter && state != pendingStateFilter && state != inactiveStateFilter {
+	if state != "" && state != firingStateFilter && state != pendingStateFilter && state != inactiveStateFilter && state != unknownStateFilter {
 		util_api.RespondError(logger, w, v1.ErrBadData, fmt.Sprintf("unsupported state value %q", state), http.StatusBadRequest)
 		return
 	}

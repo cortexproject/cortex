@@ -1064,7 +1064,7 @@ github.com/prometheus/common/version
 # github.com/prometheus/exporter-toolkit v0.15.0
 ## explicit; go 1.24.0
 github.com/prometheus/exporter-toolkit/web
-# github.com/prometheus/otlptranslator v1.0.0 => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
+# github.com/prometheus/otlptranslator v1.0.0 => github.com/prometheus/otlptranslator v1.0.0
 ## explicit; go 1.23.0
 github.com/prometheus/otlptranslator
 # github.com/prometheus/procfs v0.16.1
@@ -1235,7 +1235,7 @@ github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 github.com/thanos-io/promql-engine/warnings
-# github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b
+# github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af
 ## explicit; go 1.25.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1972,4 +1972,5 @@ k8s.io/utils/clock
 # github.com/google/gnostic => github.com/googleapis/gnostic v0.6.9
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # google.golang.org/grpc => google.golang.org/grpc v1.71.2
-# github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588
+# github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
+# github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af

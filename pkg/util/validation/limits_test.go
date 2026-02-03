@@ -139,6 +139,53 @@ func TestLimits_Validate(t *testing.T) {
 			expected:             errInvalidLabelValue,
 			nameValidationScheme: model.UTF8Validation,
 		},
+		"metric_relabel_configs nil entry": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{nil},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs valid config": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               relabel.Drop,
+						Regex:                relabel.MustNewRegexp("(foo)"),
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: nil,
+		},
+		"metric_relabel_configs invalid config empty action": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               "",
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs invalid target_label for legacy": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"cluster"},
+						Action:               relabel.Replace,
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						TargetLabel:          "invalid-label-with-dash",
+						Replacement:          "x",
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
 	}
 
 	for testName, testData := range tests {

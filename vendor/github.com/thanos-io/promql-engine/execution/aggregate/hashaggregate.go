@@ -24,26 +24,26 @@ import (
 )
 
 type aggregate struct {
-	next    model.VectorOperator
-	paramOp model.VectorOperator
-	// params holds the aggregate parameter for each step.
-	params    []float64
-	lastBatch []model.StepVector
-
-	vectorPool *model.VectorPool
-
+	next        model.VectorOperator
+	paramOp     model.VectorOperator
 	by          bool
 	labels      []string
 	aggregation parser.ItemType
+	stepsBatch  int
 
-	once       sync.Once
-	tables     []aggregateTable
-	series     []labels.Labels
-	stepsBatch int
+	once   sync.Once
+	series []labels.Labels
+	tables []aggregateTable
+	params []float64
+
+	lastBatch        []model.StepVector
+	tempBuf          []model.StepVector
+	paramBuf         []model.StepVector
+	lastBatchBuf     []model.StepVector
+	inputSeriesCount int
 }
 
 func NewHashAggregate(
-	points *model.VectorPool,
 	next model.VectorOperator,
 	paramOp model.VectorOperator,
 	aggregation parser.ItemType,
@@ -60,15 +60,13 @@ func NewHashAggregate(
 	// https://github.com/prometheus/prometheus/blob/8ed39fdab1ead382a354e45ded999eb3610f8d5f/model/labels/labels.go#L162-L181
 	slices.Sort(labels)
 	a := &aggregate{
-
 		next:        next,
 		paramOp:     paramOp,
-		params:      make([]float64, opts.StepsBatch),
-		vectorPool:  points,
 		by:          by,
-		aggregation: aggregation,
 		labels:      labels,
+		aggregation: aggregation,
 		stepsBatch:  opts.StepsBatch,
+		params:      make([]float64, opts.StepsBatch),
 	}
 
 	return telemetry.NewOperator(telemetry.NewTelemetry(a, opts), a), nil
@@ -99,83 +97,83 @@ func (a *aggregate) Series(ctx context.Context) ([]labels.Labels, error) {
 	return a.series, nil
 }
 
-func (a *aggregate) GetPool() *model.VectorPool {
-	return a.vectorPool
-}
-
-func (a *aggregate) Next(ctx context.Context) ([]model.StepVector, error) {
+func (a *aggregate) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	var err error
 	a.once.Do(func() { err = a.initializeTables(ctx) })
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	if a.paramOp != nil {
-		args, err := a.paramOp.Next(ctx)
+		n, err := a.paramOp.Next(ctx, a.paramBuf)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-		for i := range args {
-			a.params[i] = args[i].Samples[0]
+		for i := range n {
+			a.params[i] = a.paramBuf[i].Samples[0]
 			if sample := a.params[i]; math.IsNaN(sample) || sample < 0 || sample > 1 {
 				warnings.AddToContext(annotations.NewInvalidQuantileWarning(sample, posrange.PositionRange{}), ctx)
 			}
-			a.paramOp.GetPool().PutStepVector(args[i])
 		}
-		a.paramOp.GetPool().PutVectors(args)
 	}
 
 	for i, p := range a.params {
 		a.tables[i].reset(p)
 	}
+
+	// Track how many tables are populated during aggregation.
+	numTables := 0
 	if a.lastBatch != nil {
-		a.aggregate(ctx, a.lastBatch)
+		numTables = len(a.lastBatch)
+		if warn := a.aggregate(a.lastBatch); warn != nil {
+			warnings.AddToContext(warn, ctx)
+		}
 		a.lastBatch = nil
 	}
+
 	for {
-		next, err := a.next.Next(ctx)
+		n, err := a.next.Next(ctx, a.tempBuf)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-		if next == nil {
+		if n == 0 {
 			break
 		}
+		next := a.tempBuf[:n]
 		// Keep aggregating samples as long as timestamps of batches are equal.
 		currentTs := a.tables[0].timestamp()
 		if currentTs == math.MinInt64 || next[0].T == currentTs {
-			a.aggregate(ctx, next)
+			numTables = n
+			if warn := a.aggregate(next); warn != nil {
+				warnings.AddToContext(warn, ctx)
+			}
 			continue
 		}
-		a.lastBatch = next
+		a.lastBatch = a.lastBatchBuf[:n]
+		copy(a.lastBatch, next)
 		break
 	}
 
-	if a.tables[0].timestamp() == math.MinInt64 {
-		return nil, nil
+	n := min(numTables, len(buf))
+	for i := range n {
+		buf[i].Reset(a.tables[i].timestamp())
+		a.tables[i].populateVector(ctx, &buf[i])
 	}
-
-	result := a.vectorPool.GetVectorBatch()
-	for i := range a.tables {
-		if a.tables[i].timestamp() == math.MinInt64 {
-			break
-		}
-		result = append(result, a.tables[i].toVector(ctx, a.vectorPool))
-	}
-	return result, nil
+	return n, nil
 }
 
-func (a *aggregate) aggregate(ctx context.Context, in []model.StepVector) {
+func (a *aggregate) aggregate(in []model.StepVector) error {
+	var err error
 	for i, vector := range in {
-		a.tables[i].aggregate(ctx, vector)
-		a.next.GetPool().PutStepVector(vector)
+		err = warnings.Coalesce(err, a.tables[i].aggregate(vector))
 	}
-	a.next.GetPool().PutVectors(in)
+	return err
 }
 
 func (a *aggregate) initializeTables(ctx context.Context) error {
@@ -195,16 +193,25 @@ func (a *aggregate) initializeTables(ctx context.Context) error {
 	}
 	a.tables = tables
 	a.series = series
-	a.vectorPool.SetStepSize(len(a.series))
+
+	// Allocate outer slice for buffers; inner slices will be allocated by child operators
+	// or grow on demand. This avoids over-allocation when aggregating many series to few.
+	a.tempBuf = make([]model.StepVector, a.stepsBatch)
+	a.lastBatchBuf = make([]model.StepVector, a.stepsBatch)
+	if a.paramOp != nil {
+		a.paramBuf = make([]model.StepVector, len(a.params))
+	}
 
 	return nil
 }
 
 func (a *aggregate) initializeVectorizedTables(ctx context.Context) ([]aggregateTable, []labels.Labels, error) {
 	// perform initialization of the underlying operator even if we are aggregating the labels away
-	if _, err := a.next.Series(ctx); err != nil {
+	series, err := a.next.Series(ctx)
+	if err != nil {
 		return nil, nil, err
 	}
+	a.inputSeriesCount = len(series)
 	tables, err := newVectorizedTables(a.stepsBatch, a.aggregation)
 	if errors.Is(err, parse.ErrNotSupportedExpr) {
 		return a.initializeScalarTables(ctx)
@@ -222,6 +229,7 @@ func (a *aggregate) initializeScalarTables(ctx context.Context) ([]aggregateTabl
 	if err != nil {
 		return nil, nil, err
 	}
+	a.inputSeriesCount = len(series)
 	var (
 		// inputCache is an index from input seriesID to output seriesID.
 		inputCache = make([]uint64, len(series))

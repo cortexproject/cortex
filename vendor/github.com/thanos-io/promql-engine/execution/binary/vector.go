@@ -31,33 +31,28 @@ type joinBucket struct {
 
 // vectorOperator evaluates an expression between two step vectors.
 type vectorOperator struct {
-	pool *model.VectorPool
-	once sync.Once
+	lhs        model.VectorOperator
+	rhs        model.VectorOperator
+	matching   *parser.VectorMatching
+	opType     parser.ItemType
+	returnBool bool
+	stepsBatch int
+	sigFunc    func(labels.Labels) uint64
 
-	lhs          model.VectorOperator
-	rhs          model.VectorOperator
+	once         sync.Once
+	series       []labels.Labels
 	lhsSampleIDs []labels.Labels
 	rhsSampleIDs []labels.Labels
-	series       []labels.Labels
+	outputMap    map[uint64]uint64
 
-	// join signature
-	sigFunc func(labels.Labels) uint64
-
-	// join helpers
 	lcJoinBuckets []*joinBucket
 	hcJoinBuckets []*joinBucket
 
-	outputMap map[uint64]uint64
-
-	matching *parser.VectorMatching
-	opType   parser.ItemType
-
-	// If true then 1/0 needs to be returned instead of the value.
-	returnBool bool
+	lhsBuf []model.StepVector
+	rhsBuf []model.StepVector
 }
 
 func NewVectorOperator(
-	pool *model.VectorPool,
 	lhs model.VectorOperator,
 	rhs model.VectorOperator,
 	matching *parser.VectorMatching,
@@ -66,13 +61,13 @@ func NewVectorOperator(
 	opts *query.Options,
 ) (model.VectorOperator, error) {
 	op := &vectorOperator{
-		pool:       pool,
 		lhs:        lhs,
 		rhs:        rhs,
 		matching:   matching,
 		opType:     opType,
 		returnBool: returnBool,
 		sigFunc:    signatureFunc(matching.On, matching.MatchingLabels...),
+		stepsBatch: opts.StepsBatch,
 	}
 
 	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op), nil
@@ -96,65 +91,56 @@ func (o *vectorOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 	return o.series, nil
 }
 
-func (o *vectorOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *vectorOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	// Some operators do not call Series of all their children.
 	if err := o.initOnce(ctx); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	var lhs []model.StepVector
+	var lhsN int
 	var lerrChan = make(chan error, 1)
 	go func() {
 		var err error
-		lhs, err = o.lhs.Next(ctx)
+		lhsN, err = o.lhs.Next(ctx, o.lhsBuf)
 		if err != nil {
 			lerrChan <- err
 		}
 		close(lerrChan)
 	}()
 
-	rhs, rerr := o.rhs.Next(ctx)
+	rhsN, rerr := o.rhs.Next(ctx, o.rhsBuf)
 	lerr := <-lerrChan
 	if rerr != nil {
-		return nil, rerr
+		return 0, rerr
 	}
 	if lerr != nil {
-		return nil, lerr
+		return 0, lerr
 	}
 
 	// TODO(fpetkovski): When one operator becomes empty,
 	// we might want to drain or close the other one.
 	// We don't have a concept of closing an operator yet.
-	if len(lhs) == 0 || len(rhs) == 0 {
-		return nil, nil
+	if lhsN == 0 || rhsN == 0 {
+		return 0, nil
 	}
 
-	batch := o.pool.GetVectorBatch()
-	for i, vector := range lhs {
-		if i < len(rhs) {
-			step, err := o.execBinaryOperation(ctx, lhs[i], rhs[i])
-			if err != nil {
-				return nil, err
-			}
-			batch = append(batch, step)
-			o.rhs.GetPool().PutStepVector(rhs[i])
+	n := 0
+	minN := min(rhsN, lhsN)
+
+	for i := 0; i < minN && n < len(buf); i++ {
+		if err := o.execBinaryOperation(ctx, o.lhsBuf[i], o.rhsBuf[i], &buf[n]); err != nil {
+			return 0, err
 		}
-		o.lhs.GetPool().PutStepVector(vector)
+		n++
 	}
-	o.lhs.GetPool().PutVectors(lhs)
-	o.rhs.GetPool().PutVectors(rhs)
 
-	return batch, nil
-}
-
-func (o *vectorOperator) GetPool() *model.VectorPool {
-	return o.pool
+	return n, nil
 }
 
 func (o *vectorOperator) initOnce(ctx context.Context) error {
@@ -191,25 +177,43 @@ func (o *vectorOperator) init(ctx context.Context) error {
 
 	o.initJoinTables(highCardSide, lowCardSide)
 
+	// Pre-allocate buffers with appropriate inner slice capacities
+	// based on series counts from each side.
+	lhsSeriesCount := len(o.lhsSampleIDs)
+	rhsSeriesCount := len(o.rhsSampleIDs)
+
+	o.lhsBuf = make([]model.StepVector, o.stepsBatch)
+	o.rhsBuf = make([]model.StepVector, o.stepsBatch)
+
+	// Pre-allocate float sample slices; histogram slices will grow on demand.
+	for i := range o.lhsBuf {
+		o.lhsBuf[i].SampleIDs = make([]uint64, 0, lhsSeriesCount)
+		o.lhsBuf[i].Samples = make([]float64, 0, lhsSeriesCount)
+	}
+	for i := range o.rhsBuf {
+		o.rhsBuf[i].SampleIDs = make([]uint64, 0, rhsSeriesCount)
+		o.rhsBuf[i].Samples = make([]float64, 0, rhsSeriesCount)
+	}
+
 	return nil
 }
 
-func (o *vectorOperator) execBinaryOperation(ctx context.Context, lhs, rhs model.StepVector) (model.StepVector, error) {
+func (o *vectorOperator) execBinaryOperation(ctx context.Context, lhs, rhs model.StepVector, step *model.StepVector) error {
 	switch o.opType {
 	case parser.LAND:
-		return o.execBinaryAnd(lhs, rhs)
+		return o.execBinaryAnd(lhs, rhs, step)
 	case parser.LOR:
-		return o.execBinaryOr(lhs, rhs)
+		return o.execBinaryOr(lhs, rhs, step)
 	case parser.LUNLESS:
-		return o.execBinaryUnless(lhs, rhs)
+		return o.execBinaryUnless(lhs, rhs, step)
 	default:
-		return o.execBinaryArithmetic(ctx, lhs, rhs)
+		return o.execBinaryArithmetic(ctx, lhs, rhs, step)
 	}
 }
 
-func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector) (model.StepVector, error) {
+func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector, step *model.StepVector) error {
 	ts := lhs.T
-	step := o.pool.GetStepVector(ts)
+	step.Reset(ts)
 
 	for _, sampleID := range rhs.SampleIDs {
 		jp := o.lcJoinBuckets[sampleID]
@@ -221,54 +225,58 @@ func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector) (model.StepVec
 		jp.ats = ts
 	}
 
+	sampleHint := len(lhs.Samples)
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats == ts {
-			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
+			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
 		}
 	}
 
+	histogramHint := len(lhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats == ts {
-			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i])
+			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
 		}
 	}
-	return step, nil
+	return nil
 }
 
-func (o *vectorOperator) execBinaryOr(lhs, rhs model.StepVector) (model.StepVector, error) {
+func (o *vectorOperator) execBinaryOr(lhs, rhs model.StepVector, step *model.StepVector) error {
 	ts := lhs.T
-	step := o.pool.GetStepVector(ts)
+	step.Reset(ts)
 
+	sampleHint := len(lhs.Samples) + len(rhs.Samples)
 	for i, sampleID := range lhs.SampleIDs {
 		jp := o.hcJoinBuckets[sampleID]
 		jp.ats = ts
-		step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
+		step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
 	}
 
+	histogramHint := len(lhs.Histograms) + len(rhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		jp := o.hcJoinBuckets[histogramID]
 		jp.ats = ts
-		step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i])
+		step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
 	}
 
 	for i, sampleID := range rhs.SampleIDs {
 		if jp := o.lcJoinBuckets[sampleID]; jp.ats != ts {
-			step.AppendSample(o.pool, o.outputSeriesID(0, sampleID+1), rhs.Samples[i])
+			step.AppendSampleWithSizeHint(o.outputSeriesID(0, sampleID+1), rhs.Samples[i], sampleHint)
 		}
 	}
 
 	for i, histogramID := range rhs.HistogramIDs {
 		if jp := o.lcJoinBuckets[histogramID]; jp.ats != ts {
-			step.AppendHistogram(o.pool, o.outputSeriesID(0, histogramID+1), rhs.Histograms[i])
+			step.AppendHistogramWithSizeHint(o.outputSeriesID(0, histogramID+1), rhs.Histograms[i], histogramHint)
 		}
 	}
 
-	return step, nil
+	return nil
 }
 
-func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.StepVector, error) {
+func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector, step *model.StepVector) error {
 	ts := lhs.T
-	step := o.pool.GetStepVector(ts)
+	step.Reset(ts)
 
 	for _, sampleID := range rhs.SampleIDs {
 		jp := o.lcJoinBuckets[sampleID]
@@ -279,32 +287,32 @@ func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector) (model.Step
 		jp.ats = ts
 	}
 
+	sampleHint := len(lhs.Samples)
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats != ts {
-			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, 0), lhs.Samples[i])
+			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
 		}
 	}
+	histogramHint := len(lhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats != ts {
-			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i])
+			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
 		}
 	}
-	return step, nil
+	return nil
 }
 
-func (o *vectorOperator) computeBinaryPairing(hval, lval float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool, error) {
+func (o *vectorOperator) computeBinaryPairing(hval, lval float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	// operand is not commutative so we need to address potential swapping
 	if o.matching.Card == parser.CardOneToMany {
-		v, h, keep, err := binOp(o.opType, lval, hval, hlhs, hrhs)
-		return v, h, keep, err
+		return binOp(o.opType, lval, hval, hlhs, hrhs)
 	}
-	v, h, keep, err := binOp(o.opType, hval, lval, hlhs, hrhs)
-	return v, h, keep, err
+	return binOp(o.opType, hval, lval, hlhs, hrhs)
 }
 
-func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs model.StepVector) (model.StepVector, error) {
+func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs model.StepVector, step *model.StepVector) error {
 	ts := lhs.T
-	step := o.pool.GetStepVector(ts)
+	step.Reset(ts)
 
 	var (
 		hcs, lcs model.StepVector
@@ -319,18 +327,18 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 	case parser.CardOneToMany:
 		hcs, lcs = rhs, lhs
 	default:
-		return step, errors.Newf("Unexpected matching cardinality: %s", o.matching.Card.String())
+		return errors.Newf("Unexpected matching cardinality: %s", o.matching.Card.String())
 	}
 
 	// shortcut: if we have no samples and histograms on the high card side we cannot compute pairings
 	if len(hcs.Samples) == 0 && len(hcs.Histograms) == 0 {
-		return step, nil
+		return nil
 	}
 	for i, sampleID := range lcs.SampleIDs {
 		jp := o.lcJoinBuckets[sampleID]
 		// Hash collisions on the low-card-side would imply a many-to-many relation.
 		if jp.ats == ts {
-			return model.StepVector{}, o.newManyToManyMatchErrorOnLowCardSide(jp.sid, sampleID)
+			return o.newManyToManyMatchErrorOnLowCardSide(jp.sid, sampleID)
 		}
 		jp.sid = sampleID
 		jp.val = lcs.Samples[i]
@@ -341,12 +349,15 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		jp := o.lcJoinBuckets[histogramID]
 		// Hash collisions on the low-card-side would imply a many-to-many relation.
 		if jp.ats == ts {
-			return model.StepVector{}, o.newManyToManyMatchErrorOnLowCardSide(jp.sid, histogramID)
+			return o.newManyToManyMatchErrorOnLowCardSide(jp.sid, histogramID)
 		}
 		jp.sid = histogramID
 		jp.histogramVal = lcs.Histograms[i]
 		jp.ats = ts
 	}
+
+	sampleHint := len(hcs.Samples) + len(hcs.Histograms)
+	histogramHint := len(hcs.Samples) + len(hcs.Histograms)
 
 	for i, histogramID := range hcs.HistogramIDs {
 		jp := o.hcJoinBuckets[histogramID]
@@ -356,34 +367,42 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		// Hash collisions on the high card side are expected except if a one-to-one
 		// matching was requested and we have an implicit many-to-one match instead.
 		if jp.bts == ts && o.matching.Card == parser.CardOneToOne {
-			return model.StepVector{}, o.newImplicitManyToOneError()
+			return o.newImplicitManyToOneError()
 		}
 		jp.bts = ts
 
+		var warn warnings.Warnings
 		if jp.histogramVal != nil {
-			_, h, keep, err = o.computeBinaryPairing(0, 0, hcs.Histograms[i], jp.histogramVal)
+			_, h, keep, warn, err = o.computeBinaryPairing(0, 0, hcs.Histograms[i], jp.histogramVal)
 		} else {
-			_, h, keep, err = o.computeBinaryPairing(0, jp.val, hcs.Histograms[i], nil)
+			_, h, keep, warn, err = o.computeBinaryPairing(0, jp.val, hcs.Histograms[i], nil)
 		}
 		if err != nil {
 			warnings.AddToContext(err, ctx)
 			continue
+		}
+		if warn != 0 {
+			emitBinaryOpWarnings(ctx, warn, o.opType)
+			// For incompatible types, skip entirely - don't produce any output
+			if warn&warnings.WarnIncompatibleTypesInBinOp != 0 {
+				continue
+			}
 		}
 
 		switch {
 		case o.returnBool:
 			h = nil
 			if keep {
-				step.AppendSample(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), 1.0)
+				step.AppendSampleWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), 1.0, sampleHint)
 			} else {
-				step.AppendSample(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), 0.0)
+				step.AppendSampleWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), 0.0, sampleHint)
 			}
 		case !keep:
 			continue
 		}
 
 		if h != nil {
-			step.AppendHistogram(o.pool, o.outputSeriesID(histogramID+1, jp.sid+1), h)
+			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), h, histogramHint)
 		}
 	}
 
@@ -395,23 +414,36 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		// Hash collisions on the high card side are expected except if a one-to-one
 		// matching was requested and we have an implicit many-to-one match instead.
 		if jp.bts == ts && o.matching.Card == parser.CardOneToOne {
-			return model.StepVector{}, o.newImplicitManyToOneError()
+			return o.newImplicitManyToOneError()
 		}
 		jp.bts = ts
 		var val float64
+		var warn warnings.Warnings
 
 		if jp.histogramVal != nil {
-			_, h, _, err = o.computeBinaryPairing(hcs.Samples[i], 0, nil, jp.histogramVal)
+			_, h, keep, warn, err = o.computeBinaryPairing(hcs.Samples[i], 0, nil, jp.histogramVal)
 			if err != nil {
 				warnings.AddToContext(err, ctx)
 				continue
 			}
-			step.AppendHistogram(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), h)
+			if warn != 0 {
+				emitBinaryOpWarnings(ctx, warn, o.opType)
+				if warn&warnings.WarnIncompatibleTypesInBinOp != 0 {
+					continue
+				}
+			}
+			if !keep {
+				continue
+			}
+			step.AppendHistogramWithSizeHint(o.outputSeriesID(sampleID+1, jp.sid+1), h, histogramHint)
 		} else {
-			val, _, keep, err = o.computeBinaryPairing(hcs.Samples[i], jp.val, nil, nil)
+			val, _, keep, warn, err = o.computeBinaryPairing(hcs.Samples[i], jp.val, nil, nil)
 			if err != nil {
 				warnings.AddToContext(err, ctx)
 				continue
+			}
+			if warn != 0 {
+				emitBinaryOpWarnings(ctx, warn, o.opType)
 			}
 			if o.returnBool {
 				val = 0
@@ -421,10 +453,10 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			} else if !keep {
 				continue
 			}
-			step.AppendSample(o.pool, o.outputSeriesID(sampleID+1, jp.sid+1), val)
+			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, jp.sid+1), val, sampleHint)
 		}
 	}
-	return step, nil
+	return nil
 }
 
 func (o *vectorOperator) newManyToManyMatchErrorOnLowCardSide(originalSampleId, duplicateSampleId uint64) error {

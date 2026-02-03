@@ -13,7 +13,6 @@ import (
 	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/prometheus/prometheus/model/histogram"
-	"github.com/prometheus/prometheus/util/annotations"
 )
 
 // If we use $__interval as steps and $__rate_interval for the sliding window
@@ -189,26 +188,35 @@ func (r *OverTimeBuffer) Reset(mint int64, evalt int64) {
 
 func (r *OverTimeBuffer) ReadIntoLast(func(*Sample)) {}
 
-func (r *OverTimeBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, error) {
+func (r *OverTimeBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+	var warn warnings.Warnings
+
 	if r.stepStates[0].warn != nil {
-		warnings.AddToContext(r.stepStates[0].warn, ctx)
+		return 0, nil, false, warn, r.stepStates[0].warn
 	}
 
 	if r.firstTimestamps[0] == math.MaxInt64 {
-		return 0, nil, false, nil
+		return 0, nil, false, warn, nil
 	}
 
 	acc := r.stepStates[0].acc
 	f, h := acc.Value()
 
+	// Include accumulator warnings (mixed types, ignored histograms)
+	accWarn := acc.Warnings()
+
 	if acc.ValueType() == compute.MixedTypeValue {
-		warnings.AddToContext(annotations.MixedFloatsHistogramsWarning, ctx)
-		return 0, nil, false, nil
+		warn |= accWarn
+		return 0, nil, false, warn, nil
 	}
 
-	// Float-only accumulators track skipped histograms; emit info-level warning
-	if acc.HasIgnoredHistograms() && acc.ValueType() == compute.SingleTypeValue {
-		warnings.AddToContext(annotations.HistogramIgnoredInMixedRangeInfo, ctx)
+	// For _over_time functions returning a float value, translate WarnHistogramIgnoredInAggregation
+	// to WarnHistogramIgnoredInMixedRange (which indicates histograms were ignored in a mixed range).
+	// Only do this when we actually have a float result, not when returning no value.
+	if acc.ValueType() == compute.SingleTypeValue && h == nil && accWarn&warnings.WarnHistogramIgnoredInAggregation != 0 {
+		accWarn = (accWarn &^ warnings.WarnHistogramIgnoredInAggregation) | warnings.WarnHistogramIgnoredInMixedRange
 	}
-	return f, h, acc.ValueType() == compute.SingleTypeValue, nil
+	warn |= accWarn
+
+	return f, h, acc.ValueType() == compute.SingleTypeValue, warn, nil
 }

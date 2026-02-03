@@ -52,12 +52,8 @@ func (o *relabelOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 	return o.series, err
 }
 
-func (o *relabelOperator) GetPool() *model.VectorPool {
-	return o.next.GetPool()
-}
-
-func (o *relabelOperator) Next(ctx context.Context) ([]model.StepVector, error) {
-	return o.next.Next(ctx)
+func (o *relabelOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
+	return o.next.Next(ctx, buf)
 }
 
 func (o *relabelOperator) loadSeries(ctx context.Context) (err error) {

@@ -11,11 +11,9 @@ import (
 	"github.com/thanos-io/promql-engine/compute"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/util/annotations"
 )
 
 type vectorTable struct {
@@ -47,32 +45,25 @@ func (t *vectorTable) timestamp() int64 {
 	return t.ts
 }
 
-func (t *vectorTable) aggregate(ctx context.Context, vector model.StepVector) {
+func (t *vectorTable) aggregate(vector model.StepVector) error {
 	t.ts = vector.T
-	if err := t.accumulator.AddVector(vector.Samples, vector.Histograms); err != nil {
-		warnings.AddToContext(err, ctx)
-	}
+	return t.accumulator.AddVector(vector.Samples, vector.Histograms)
 }
 
-func (t *vectorTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
-	result := pool.GetStepVector(t.ts)
-	if t.accumulator.HasIgnoredHistograms() {
-		warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
-	}
+func (t *vectorTable) populateVector(ctx context.Context, vec *model.StepVector) {
+	emitAccumulatorWarnings(ctx, t.accumulator.Warnings())
 	switch t.accumulator.ValueType() {
-	case compute.NoValue:
-		return result
+	case compute.NoValue, compute.MixedTypeValue:
+		// MixedTypeValue: warning already emitted by emitAccumulatorWarnings
+		return
 	case compute.SingleTypeValue:
 		v, h := t.accumulator.Value()
 		if h == nil {
-			result.AppendSample(pool, 0, v)
+			vec.AppendSample(0, v)
 		} else {
-			result.AppendHistogram(pool, 0, h)
+			vec.AppendHistogram(0, h)
 		}
-	case compute.MixedTypeValue:
-		warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
 	}
-	return result
 }
 
 func (t *vectorTable) reset(p float64) {

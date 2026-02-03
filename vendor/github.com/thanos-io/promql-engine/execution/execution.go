@@ -56,7 +56,7 @@ func New(ctx context.Context, expr logicalplan.Node, storage storage.Scanners, o
 func newOperator(ctx context.Context, expr logicalplan.Node, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	switch e := expr.(type) {
 	case *logicalplan.NumberLiteral:
-		return scan.NewNumberLiteralSelector(model.NewVectorPool(opts.StepsBatch), opts, e.Val), nil
+		return scan.NewNumberLiteralSelector(opts, e.Val), nil
 	case *logicalplan.VectorSelector:
 		return newVectorSelector(ctx, e, storage, opts, hints)
 	case *logicalplan.FunctionCall:
@@ -80,7 +80,7 @@ func newOperator(ctx context.Context, expr logicalplan.Node, storage storage.Sca
 	case logicalplan.Noop:
 		return noop.NewOperator(opts), nil
 	case logicalplan.UserDefinedExpr:
-		return e.MakeExecutionOperator(ctx, model.NewVectorPool(opts.StepsBatch), opts, hints)
+		return e.MakeExecutionOperator(ctx, opts, hints)
 	default:
 		return nil, errors.Wrapf(parse.ErrNotSupportedExpr, "got: %s (%T)", e, e)
 	}
@@ -239,7 +239,7 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		}
 	}
 
-	return scan.NewSubqueryOperator(model.NewVectorPool(opts.StepsBatch), inner, scalarArg, scalarArg2, &outerOpts, e, t)
+	return scan.NewSubqueryOperator(inner, scalarArg, scalarArg2, &outerOpts, e, t)
 }
 
 func newInstantVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -270,7 +270,7 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 	}
 	if e.Op == parser.COUNT_VALUES {
 		param := logicalplan.UnsafeUnwrapString(e.Param)
-		return aggregate.NewCountValues(model.NewVectorPool(opts.StepsBatch), next, param, !e.Without, e.Grouping, opts), nil
+		return aggregate.NewCountValues(next, param, !e.Without, e.Grouping, opts), nil
 	}
 
 	// parameter is only required for count_values, quantile, topk, bottomk, limitk, and limit_ratio.
@@ -283,9 +283,9 @@ func newAggregateExpression(ctx context.Context, e *logicalplan.Aggregation, sca
 		}
 	}
 	if e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
-		next, err = aggregate.NewKHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
+		next, err = aggregate.NewKHashAggregate(next, paramOp, e.Op, !e.Without, e.Grouping, opts)
 	} else {
-		next, err = aggregate.NewHashAggregate(model.NewVectorPool(opts.StepsBatch), next, paramOp, e.Op, !e.Without, e.Grouping, opts)
+		next, err = aggregate.NewHashAggregate(next, paramOp, e.Op, !e.Without, e.Grouping, opts)
 	}
 	if err != nil {
 		return nil, err
@@ -310,7 +310,7 @@ func newVectorBinaryOperator(ctx context.Context, e *logicalplan.Binary, storage
 	if err != nil {
 		return nil, err
 	}
-	return binary.NewVectorOperator(model.NewVectorPool(opts.StepsBatch), leftOperator, rightOperator, e.VectorMatching, e.Op, e.ReturnBool, opts)
+	return binary.NewVectorOperator(leftOperator, rightOperator, e.VectorMatching, e.Op, e.ReturnBool, opts)
 }
 
 func newScalarBinaryOperator(ctx context.Context, e *logicalplan.Binary, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -323,7 +323,7 @@ func newScalarBinaryOperator(ctx context.Context, e *logicalplan.Binary, storage
 		return nil, err
 	}
 
-	return binary.NewScalar(model.NewVectorPoolWithSize(opts.StepsBatch, 1), lhs, rhs, e.LHS.ReturnType(), e.RHS.ReturnType(), e.Op, e.ReturnBool, opts)
+	return binary.NewScalar(lhs, rhs, e.LHS.ReturnType(), e.RHS.ReturnType(), e.Op, e.ReturnBool, opts)
 }
 
 func newUnaryExpression(ctx context.Context, e *logicalplan.Unary, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -346,13 +346,13 @@ func newUnaryExpression(ctx context.Context, e *logicalplan.Unary, scanners stor
 func newStepInvariantExpression(ctx context.Context, e *logicalplan.StepInvariantExpr, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	switch t := e.Expr.(type) {
 	case *logicalplan.NumberLiteral:
-		return scan.NewNumberLiteralSelector(model.NewVectorPool(opts.StepsBatch), opts, t.Val), nil
+		return scan.NewNumberLiteralSelector(opts, t.Val), nil
 	}
 	next, err := newOperator(ctx, e.Expr, scanners, opts.WithEndTime(opts.Start), hints)
 	if err != nil {
 		return nil, err
 	}
-	return step_invariant.NewStepInvariantOperator(model.NewVectorPoolWithSize(opts.StepsBatch, 1), next, e.Expr, opts)
+	return step_invariant.NewStepInvariantOperator(next, e.Expr, opts)
 }
 
 func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -372,8 +372,8 @@ func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners s
 		}
 		operators[i] = operator
 	}
-	coalesce := exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, 0, operators...)
-	dedup := exchange.NewDedupOperator(model.NewVectorPool(opts.StepsBatch), coalesce, opts)
+	coalesce := exchange.NewCoalesce(opts, 0, operators...)
+	dedup := exchange.NewDedupOperator(coalesce, opts)
 	return exchange.NewConcurrent(dedup, 2, opts), nil
 }
 
@@ -389,7 +389,7 @@ func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts
 	// We need to set the lookback for the selector to 0 since the remote query already applies one lookback.
 	selectorOpts := *opts
 	selectorOpts.LookbackDelta = 0
-	remoteExec := remote.NewExecution(qry, model.NewVectorPool(opts.StepsBatch), e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
+	remoteExec := remote.NewExecution(qry, e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
 	return exchange.NewConcurrent(remoteExec, 2, opts), nil
 }
 

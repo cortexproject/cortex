@@ -26,14 +26,14 @@ type RangedQueryExtractor struct{}
 func generateCommonMap(r *http.Request) map[string]interface{} {
 	ctx := r.Context()
 	entryMap := make(map[string]interface{})
-	entryMap["timestamp_sec"] = time.Now().Unix()
+	entryMap["timestamp-sec"] = time.Now().Unix()
 	entryMap["Path"] = r.URL.Path
 	entryMap["Method"] = r.Method
-	entryMap["X-Scope-OrgID"], _ = users.TenantID(ctx)
-	entryMap["X-Request-ID"] = requestmeta.RequestIdFromContext(ctx)
-	entryMap["User-Agent"] = r.Header.Get("User-Agent")
-	entryMap["X-Dashboard-UID"] = r.Header.Get("X-Dashboard-UID")
-	entryMap["X-Panel-Id"] = r.Header.Get("X-Panel-Id")
+	entryMap["TenantID"], _ = users.TenantID(ctx)
+	entryMap["RequestID"] = requestmeta.RequestIdFromContext(ctx)
+	entryMap["UserAgent"] = r.Header.Get("User-Agent")
+	entryMap["DashboardUID"] = r.Header.Get("X-Dashboard-UID")
+	entryMap["PanelId"] = r.Header.Get("X-Panel-Id")
 
 	return entryMap
 }
@@ -64,9 +64,7 @@ func (e *ApiExtractor) Extract(r *http.Request) []byte {
 
 func (e *InstantQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
-	entryMap["limit"] = r.URL.Query().Get("limit")
 	entryMap["time"] = r.URL.Query().Get("time")
-	entryMap["lookback_delta"] = r.URL.Query().Get("lookback_delta")
 
 	minEntryJSON := generateJSONEntry(entryMap)
 	query := r.URL.Query().Get("query")
@@ -78,11 +76,9 @@ func (e *InstantQueryExtractor) Extract(r *http.Request) []byte {
 
 func (e *RangedQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
-	entryMap["limit"] = r.URL.Query().Get("limit")
 	entryMap["start"] = r.URL.Query().Get("start")
 	entryMap["end"] = r.URL.Query().Get("end")
 	entryMap["step"] = r.URL.Query().Get("step")
-	entryMap["lookback_delta"] = r.URL.Query().Get("lookback_delta")
 
 	minEntryJSON := generateJSONEntry(entryMap)
 	query := r.URL.Query().Get("query")

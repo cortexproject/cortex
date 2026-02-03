@@ -52,26 +52,15 @@ func (e *ApiExtractor) Extract(r *http.Request) []byte {
 
 	matches := r.URL.Query()["match[]"]
 	entryMap["number-of-matches"] = len(matches)
-
-	minEntryJSON := generateJSONEntry(entryMap)
-
 	matchesStr := strings.Join(matches, ",")
-	matchesStr = trimStringByBytes(matchesStr, maxEntrySize-(len(minEntryJSON)+1))
-	entryMap["matches"] = matchesStr
 
-	return generateJSONEntry(entryMap)
+	return generateJSONEntryWithTruncatedField(entryMap, "matches", matchesStr)
 }
 
 func (e *InstantQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
 	entryMap["time"] = r.URL.Query().Get("time")
-
-	minEntryJSON := generateJSONEntry(entryMap)
-	query := r.URL.Query().Get("query")
-	query = trimStringByBytes(query, maxEntrySize-(len(minEntryJSON)+1))
-	entryMap["query"] = query
-
-	return generateJSONEntry(entryMap)
+	return generateJSONEntryWithTruncatedField(entryMap, "query", r.URL.Query().Get("query"))
 }
 
 func (e *RangedQueryExtractor) Extract(r *http.Request) []byte {
@@ -79,13 +68,7 @@ func (e *RangedQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap["start"] = r.URL.Query().Get("start")
 	entryMap["end"] = r.URL.Query().Get("end")
 	entryMap["step"] = r.URL.Query().Get("step")
-
-	minEntryJSON := generateJSONEntry(entryMap)
-	query := r.URL.Query().Get("query")
-	query = trimStringByBytes(query, maxEntrySize-(len(minEntryJSON)+1))
-	entryMap["query"] = query
-
-	return generateJSONEntry(entryMap)
+	return generateJSONEntryWithTruncatedField(entryMap, "query", r.URL.Query().Get("query"))
 }
 
 func generateJSONEntry(entryMap map[string]interface{}) []byte {
@@ -97,9 +80,14 @@ func generateJSONEntry(entryMap map[string]interface{}) []byte {
 	return jsonEntry
 }
 
-func trimStringByBytes(str string, size int) string {
-	bytesStr := []byte(str)
+func generateJSONEntryWithTruncatedField(entryMap map[string]interface{}, fieldName, fieldValue string) []byte {
+	entryMap[fieldName] = ""
+	minEntryJSON := generateJSONEntry(entryMap)
+	entryMap[fieldName] = trimForJsonMarshal(fieldValue, maxEntrySize-(len(minEntryJSON)+1))
+	return generateJSONEntry(entryMap)
+}
 
+func trimStringByBytes(bytesStr []byte, size int) string {
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
 		for !utf8.RuneStart(bytesStr[size]) {
@@ -109,4 +97,27 @@ func trimStringByBytes(str string, size int) string {
 	}
 
 	return string(bytesStr[:trimIndex])
+}
+
+func trimForJsonMarshal(field string, size int) string {
+	fieldValueEncoded, err := json.Marshal(field)
+	if err != nil {
+		return ""
+	}
+	fieldValueEncoded = fieldValueEncoded[1 : len(fieldValueEncoded)-1]
+	fieldValueEncodedTrimmed := trimStringByBytes(fieldValueEncoded, size)
+	fieldValueEncodedTrimmed = "\"" + removeHalfCutEscapeChar(fieldValueEncodedTrimmed) + "\""
+	var fieldValue string
+	print(fieldValueEncodedTrimmed)
+	json.Unmarshal([]byte(fieldValueEncodedTrimmed), &fieldValue)
+
+	return fieldValue
+}
+
+func removeHalfCutEscapeChar(str string) string {
+	trailingBashslashCount := len(str) - len(strings.TrimRight(str, "\\"))
+	if trailingBashslashCount%2 == 1 {
+		str = str[0 : len(str)-1]
+	}
+	return str
 }

@@ -127,3 +127,29 @@ func TestAPITrackerAboveMaxConcurrency(t *testing.T) {
 	tracker.Delete(index2)
 	tracker.Delete(index3)
 }
+
+func TestAPITrackerLongQueryTruncate(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "api-tracker-test")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	tracker := NewRequestTracker(tmpDir, "apis.active", 10, logger)
+	require.NotNil(t, tracker)
+	defer tracker.Close()
+
+	longQuery := strings.Repeat("metric_name{label=\"value\"} or ", maxEntrySize*2) + "final_metric"
+	req := httptest.NewRequest("GET", "/api/v1/query", nil)
+	q := req.URL.Query()
+	q.Add("query", longQuery)
+	req.URL.RawQuery = q.Encode()
+
+	extractor := &InstantQueryExtractor{}
+	extractedData := extractor.Extract(req)
+
+	require.NotEmpty(t, extractedData)
+	assert.True(t, len(extractedData) > 0)
+	assert.LessOrEqual(t, len(extractedData), maxEntrySize)
+	assert.Contains(t, string(extractedData), "metric_name")
+	assert.NotContains(t, string(extractedData), "final_metric")
+}

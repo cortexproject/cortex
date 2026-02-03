@@ -17,7 +17,7 @@ pipelines:
         - touch build-image/.uptodate
         - ./scripts/build.sh
     machine:
-      baseImage: docker.apple.com/base-images/ubi9/go1.22-builder
+      baseImage: docker.apple.com/base-images/ubi9/go1.24-builder
       env:
         TARGETARCH: arm64
     package:

@@ -296,6 +296,15 @@ func NewQuerierHandler(
 		legacyAPIHandler = request_tracker.NewRequestWrapper(legacyPromRouter, requestTracker, &request_tracker.ApiExtractor{})
 		instantQueryHandler = request_tracker.NewRequestWrapper(queryAPI.Wrap(queryAPI.InstantQueryHandler), requestTracker, &request_tracker.InstantQueryExtractor{})
 		rangedQueryHandler = request_tracker.NewRequestWrapper(queryAPI.Wrap(queryAPI.RangeQueryHandler), requestTracker, &request_tracker.RangedQueryExtractor{})
+
+		httpHeaderMiddleware := &HTTPHeaderMiddleware{
+			TargetHeaders:   cfg.HTTPRequestHeadersToLog,
+			RequestIdHeader: cfg.RequestIdHeader,
+		}
+		apiHandler = httpHeaderMiddleware.Wrap(apiHandler)
+		legacyAPIHandler = httpHeaderMiddleware.Wrap(legacyAPIHandler)
+		instantQueryHandler = httpHeaderMiddleware.Wrap(instantQueryHandler)
+		rangedQueryHandler = httpHeaderMiddleware.Wrap(rangedQueryHandler)
 	} else {
 		apiHandler = promRouter
 		legacyAPIHandler = legacyPromRouter

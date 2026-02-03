@@ -118,12 +118,18 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 				v1Req.Source = cortexpb.API
 			}
 
-			if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
-				setPRW2RespHeader(w, 0, 0, 0)
 				if !ok {
+					setPRW2RespHeader(w, 0, 0, 0)
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
+				}
+				// For the case of HA deduplication, add the stats headers from the push response.
+				if writeResp != nil {
+					setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
+				} else {
+					setPRW2RespHeader(w, 0, 0, 0)
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
@@ -132,7 +138,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
 			} else {
-				setPRW2RespHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
+				setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
 				w.WriteHeader(http.StatusNoContent)
 			}
 		}

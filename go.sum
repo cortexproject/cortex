@@ -1681,8 +1681,8 @@ github.com/prometheus/common v0.67.4 h1:yR3NqWO1/UyO1w2PhUvXlGQs/PtFmoveVO0KZ4+L
 github.com/prometheus/common v0.67.4/go.mod h1:gP0fq6YjjNCLssJCQp0yk4M8W6ikLURwkdd/YKtTbyI=
 github.com/prometheus/exporter-toolkit v0.15.0 h1:Pcle5sSViwR1x0gdPd0wtYrPQENBieQAM7TmT0qtb2U=
 github.com/prometheus/exporter-toolkit v0.15.0/go.mod h1:OyRWd2iTo6Xge9Kedvv0IhCrJSBu36JCfJ2yVniRIYk=
-github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588 h1:QlySqDdSESgWDePeAYskbbcKKdowI26m9aU9zloHyYE=
-github.com/prometheus/otlptranslator v0.0.0-20250620074007-94f535e0c588/go.mod h1:P8AwMgdD7XEr6QRUJ2QWLpiAZTgTE2UYgjlu3svompI=
+github.com/prometheus/otlptranslator v1.0.0 h1:s0LJW/iN9dkIH+EnhiD3BlkkP5QVIUVEoIwkU+A6qos=
+github.com/prometheus/otlptranslator v1.0.0/go.mod h1:vRYWnXvI6aWGpsdY/mOT/cbeVRBlPWtBNDb7kGR3uKM=
 github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d/go.mod h1:c3At6R/oaqEKCNdg8wHV1ftS6bRYblBhIjjI8uT2IGk=
 github.com/prometheus/procfs v0.0.2/go.mod h1:TjEm7ze935MbeOT/UhFTIMYKhuLP4wbCsTZCD3I8kEA=
 github.com/prometheus/procfs v0.0.8/go.mod h1:7Qr8sr6344vo1JqZ6HhLceV9o3AJ1Ff+GxbHq6oeK9A=
@@ -1789,8 +1789,6 @@ github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488 h1:khBsQLLRoF1K
 github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488/go.mod h1:uDHLkMKOGDAnlN75EAz8VrRzob1+VbgYSuUleatWuF0=
 github.com/thanos-io/promql-engine v0.0.0-20260119085929-dd5223783674 h1:C5yBEuIZCaeLh90lcUGfnGepmwDfGGYLu6+w7RxR7og=
 github.com/thanos-io/promql-engine v0.0.0-20260119085929-dd5223783674/go.mod h1:uzn40oZHPXvfdP498h+MiRL2fN7RF519gNaV3LyhChc=
-github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b h1:KIQzAcxtdxi3PhrOpGP5t/TP7NBZqYvvcUvlu0q8fEQ=
-github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b/go.mod h1:B9TgiYdhZdVxB1jXi4hRV+XDhiMmhHFykb8cxsZyWG8=
 github.com/tinylib/msgp v1.6.1 h1:ESRv8eL3u+DNHUoSAAQRE50Hm162zqAnBoGv9PzScPY=
 github.com/tinylib/msgp v1.6.1/go.mod h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA=
 github.com/tjhop/slog-gokit v0.1.4 h1:uj/vbDt3HaF0Py8bHPV4ti/s0utnO0miRbO277FLBKM=
@@ -1812,6 +1810,8 @@ github.com/xhit/go-str2duration/v2 v2.1.0 h1:lxklc02Drh6ynqX+DdPyp5pCKLUQpRT8bp8
 github.com/xhit/go-str2duration/v2 v2.1.0/go.mod h1:ohY8p+0f07DiV6Em5LKB0s2YpLtXVyJfNt1+BlmyAsU=
 github.com/xyproto/randomstring v1.0.5 h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZqKjWU=
 github.com/xyproto/randomstring v1.0.5/go.mod h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3iGxZ18UQApw/E=
+github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af h1:7BchkWxg+wfa/21myRZ5IxGvfrC9aLX4LWKTmzbLp+I=
+github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af/go.mod h1:2EZLdOCRR9WgDsUWCLfwCphjMKRmDdnSR47x4CwUgOQ=
 github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 h1:ilQV1hzziu+LLM3zUTJ0trRztfwgjqKnBWNtSRkbmwM=
 github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78/go.mod h1:aL8wCCfTfSfmXjznFBSZNN13rSJjlIOI1fUNAtF7rmI=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

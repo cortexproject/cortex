@@ -271,7 +271,6 @@ func CreateNHBlock(
 	seriesSize int64,
 ) (id ulid.ULID, err error) {
 	headOpts := tsdb.DefaultHeadOptions()
-	headOpts.EnableNativeHistograms = *atomic.NewBool(true)
 	headOpts.ChunkDirRoot = filepath.Join(dir, "chunks")
 	headOpts.ChunkRange = 10000000000
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))

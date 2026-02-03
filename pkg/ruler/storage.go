@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
@@ -16,7 +17,7 @@ import (
 )
 
 // NewRuleStore returns a rule store backend client based on the provided cfg.
-func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer) (rulestore.RuleStore, error) {
+func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.TenantConfigProvider, loader promRules.GroupLoader, logger log.Logger, reg prometheus.Registerer, nameValidationScheme model.ValidationScheme) (rulestore.RuleStore, error) {
 	if cfg.Backend == configdb.Name {
 		c, err := client.New(cfg.ConfigDB)
 
@@ -24,11 +25,11 @@ func NewRuleStore(ctx context.Context, cfg rulestore.Config, cfgProvider bucket.
 			return nil, err
 		}
 
-		return configdb.NewConfigRuleStore(c), nil
+		return configdb.NewConfigRuleStore(c, nameValidationScheme), nil
 	}
 
 	if cfg.Backend == local.Name {
-		return local.NewLocalRulesClient(cfg.Local, loader)
+		return local.NewLocalRulesClient(cfg.Local, loader, nameValidationScheme)
 	}
 
 	bucketClient, err := bucket.NewClient(ctx, cfg.Config, nil, "ruler-storage", logger, reg)

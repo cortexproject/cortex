@@ -4214,11 +4214,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "foo", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"cluster"},
-					Action:       relabel.DefaultRelabelConfig.Action,
-					Regex:        relabel.DefaultRelabelConfig.Regex,
-					TargetLabel:  "cluster",
-					Replacement:  "two",
+					SourceLabels:         []model.LabelName{"cluster"},
+					Action:               relabel.DefaultRelabelConfig.Action,
+					Regex:                relabel.DefaultRelabelConfig.Regex,
+					TargetLabel:          "cluster",
+					Replacement:          "two",
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4231,9 +4232,10 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "bar", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"__name__"},
-					Action:       relabel.Drop,
-					Regex:        relabel.MustNewRegexp("(foo)"),
+					SourceLabels:         []model.LabelName{"__name__"},
+					Action:               relabel.Drop,
+					Regex:                relabel.MustNewRegexp("(foo)"),
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4401,9 +4403,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	t.Parallel()
 	metricRelabelConfigs := []*relabel.Config{
 		{
-			SourceLabels: []model.LabelName{"__name__"},
-			Action:       relabel.Drop,
-			Regex:        relabel.MustNewRegexp("(foo)"),
+			SourceLabels:         []model.LabelName{"__name__"},
+			Action:               relabel.Drop,
+			Regex:                relabel.MustNewRegexp("(foo)"),
+			NameValidationScheme: model.LegacyValidation,
 		},
 	}
 

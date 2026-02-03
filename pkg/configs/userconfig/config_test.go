@@ -129,7 +129,7 @@ groups:
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			rules, err := tc.cfg.Parse()
+			rules, err := tc.cfg.Parse(model.UTF8Validation)
 			if tc.err != nil {
 				require.Equal(t, err, tc.err)
 			} else {
@@ -193,7 +193,7 @@ func TestParseFormatted(t *testing.T) {
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			rules, err := tc.cfg.ParseFormatted()
+			rules, err := tc.cfg.ParseFormatted(model.UTF8Validation)
 			if tc.err != nil {
 				require.Equal(t, err, tc.err)
 			} else {

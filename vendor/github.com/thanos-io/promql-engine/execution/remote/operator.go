@@ -32,7 +32,7 @@ type Execution struct {
 	vectorSelector model.VectorOperator
 }
 
-func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, queryRangeEnd time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) model.VectorOperator {
+func NewExecution(query promql.Query, queryRangeStart, queryRangeEnd time.Time, engineLabels []labels.Labels, opts *query.Options, _ storage.SelectHints) model.VectorOperator {
 	storage := newStorageFromQuery(query, opts, engineLabels)
 	oper := &Execution{
 		storage:         storage,
@@ -40,7 +40,7 @@ func NewExecution(query promql.Query, pool *model.VectorPool, queryRangeStart, q
 		opts:            opts,
 		queryRangeStart: queryRangeStart,
 		queryRangeEnd:   queryRangeEnd,
-		vectorSelector:  promstorage.NewVectorSelector(pool, storage, opts, 0, 0, false, 0, 1),
+		vectorSelector:  promstorage.NewVectorSelector(storage, opts, 0, 0, false, 0, 1),
 	}
 
 	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
@@ -58,19 +58,15 @@ func (e *Execution) String() string {
 	return fmt.Sprintf("[remoteExec] %s (%d, %d)", e.query, e.queryRangeStart.Unix(), e.queryRangeEnd.Unix())
 }
 
-func (e *Execution) Next(ctx context.Context) ([]model.StepVector, error) {
-	next, err := e.vectorSelector.Next(ctx)
-	if next == nil {
+func (e *Execution) Next(ctx context.Context, buf []model.StepVector) (int, error) {
+	n, err := e.vectorSelector.Next(ctx, buf)
+	if n == 0 {
 		// Closing the storage prematurely can lead to results from the query
 		// engine to be recycled. Because of this, we close the storage only
 		// when we are done with processing all samples returned by the query.
 		e.storage.Close()
 	}
-	return next, err
-}
-
-func (e *Execution) GetPool() *model.VectorPool {
-	return e.vectorSelector.GetPool()
+	return n, err
 }
 
 func (e *Execution) Explain() (next []model.VectorOperator) {

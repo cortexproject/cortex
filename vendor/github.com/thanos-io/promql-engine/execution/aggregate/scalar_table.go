@@ -14,8 +14,10 @@ import (
 	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/parser/posrange"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -26,10 +28,9 @@ type aggregateTable interface {
 	// If the table is empty, it returns math.MinInt64.
 	timestamp() int64
 	// aggregate aggregates the given vector into the table.
-	aggregate(ctx context.Context, vector model.StepVector)
-	// toVector writes out the accumulated result to the given vector and
-	// resets the table.
-	toVector(ctx context.Context, pool *model.VectorPool) model.StepVector
+	aggregate(vector model.StepVector) error
+	// populateVector writes out the accumulated result into the provided vector.
+	populateVector(ctx context.Context, vec *model.StepVector)
 	// reset resets the table with a new aggregation argument.
 	// The argument is currently used for quantile aggregation.
 	reset(arg float64)
@@ -75,23 +76,31 @@ func newScalarTable(inputSampleIDs []uint64, outputs []*model.Series, aggregatio
 	}, nil
 }
 
-func (t *scalarTable) aggregate(ctx context.Context, vector model.StepVector) {
+func (t *scalarTable) aggregate(vector model.StepVector) error {
 	t.ts = vector.T
 
+	var err error
 	for i := range vector.Samples {
-		outputSampleID := t.inputs[vector.SampleIDs[i]]
-		output := t.outputs[outputSampleID]
-		if err := t.accumulators[output.ID].Add(vector.Samples[i], nil); err != nil {
-			warnings.AddToContext(err, ctx)
-		}
+		err = warnings.Coalesce(err, t.addSample(vector.SampleIDs[i], vector.Samples[i]))
 	}
 	for i := range vector.Histograms {
-		outputSampleID := t.inputs[vector.HistogramIDs[i]]
-		output := t.outputs[outputSampleID]
-		if err := t.accumulators[output.ID].Add(0, vector.Histograms[i]); err != nil {
-			warnings.AddToContext(err, ctx)
-		}
+		err = warnings.Coalesce(err, t.addHistogram(vector.HistogramIDs[i], vector.Histograms[i]))
 	}
+	return err
+}
+
+func (t *scalarTable) addSample(sampleID uint64, sample float64) error {
+	outputSampleID := t.inputs[sampleID]
+	output := t.outputs[outputSampleID]
+
+	return t.accumulators[output.ID].Add(sample, nil)
+}
+
+func (t *scalarTable) addHistogram(sampleID uint64, h *histogram.FloatHistogram) error {
+	outputSampleID := t.inputs[sampleID]
+	output := t.outputs[outputSampleID]
+
+	return t.accumulators[output.ID].Add(0, h)
 }
 
 func (t *scalarTable) reset(arg float64) {
@@ -101,28 +110,44 @@ func (t *scalarTable) reset(arg float64) {
 	t.ts = math.MinInt64
 }
 
-func (t *scalarTable) toVector(ctx context.Context, pool *model.VectorPool) model.StepVector {
-	result := pool.GetStepVector(t.ts)
+func (t *scalarTable) populateVector(ctx context.Context, vec *model.StepVector) {
+	hint := len(t.outputs)
 	for i, v := range t.outputs {
 		acc := t.accumulators[i]
-		if acc.HasIgnoredHistograms() {
-			warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
-		}
+		emitAccumulatorWarnings(ctx, acc.Warnings())
 		switch acc.ValueType() {
-		case compute.NoValue:
+		case compute.NoValue, compute.MixedTypeValue:
+			// MixedTypeValue: warning already emitted by emitAccumulatorWarnings
+			// for accumulators that track mixed floats/histograms.
 			continue
 		case compute.SingleTypeValue:
 			f, h := acc.Value()
 			if h == nil {
-				result.AppendSample(pool, v.ID, f)
+				vec.AppendSampleWithSizeHint(v.ID, f, hint)
 			} else {
-				result.AppendHistogram(pool, v.ID, h)
+				vec.AppendHistogramWithSizeHint(v.ID, h, hint)
 			}
-		case compute.MixedTypeValue:
-			warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
 		}
 	}
-	return result
+}
+
+// emitAccumulatorWarnings converts accumulator warning flags to annotations and adds them to context.
+func emitAccumulatorWarnings(ctx context.Context, warn warnings.Warnings) {
+	if warn == 0 {
+		return
+	}
+	if warn&warnings.WarnHistogramIgnoredInAggregation != 0 {
+		warnings.AddToContext(annotations.HistogramIgnoredInAggregationInfo, ctx)
+	}
+	if warn&warnings.WarnMixedFloatsHistograms != 0 {
+		warnings.AddToContext(warnings.MixedFloatsHistogramsAggWarning, ctx)
+	}
+	if warn&warnings.WarnCounterResetCollision != 0 {
+		warnings.AddToContext(annotations.NewHistogramCounterResetCollisionWarning(posrange.PositionRange{}, annotations.HistogramAgg), ctx)
+	}
+	if warn&warnings.WarnNHCBBoundsReconciledAgg != 0 {
+		warnings.AddToContext(annotations.NewMismatchedCustomBucketsHistogramsInfo(posrange.PositionRange{}, annotations.HistogramAgg), ctx)
+	}
 }
 
 func hashMetric(

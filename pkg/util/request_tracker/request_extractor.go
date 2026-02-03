@@ -31,6 +31,9 @@ func generateCommonMap(r *http.Request) map[string]interface{} {
 	entryMap["Method"] = r.Method
 	entryMap["X-Scope-OrgID"], _ = users.TenantID(ctx)
 	entryMap["X-Request-ID"] = requestmeta.RequestIdFromContext(ctx)
+	entryMap["User-Agent"] = r.Header.Get("User-Agent")
+	entryMap["X-Dashboard-UID"] = r.Header.Get("X-Dashboard-UID")
+	entryMap["X-Panel-Id"] = r.Header.Get("X-Panel-Id")
 
 	return entryMap
 }

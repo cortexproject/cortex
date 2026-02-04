@@ -63,6 +63,18 @@ var (
 )
 
 func init() {
+	// Prometheus 3.x replaced holt_winters with double_exponential_smoothing.
+	// Register holt_winters as a copy so we still support it for query generation.
+	if parser.Functions["holt_winters"] == nil && parser.Functions["double_exponential_smoothing"] != nil {
+		des := parser.Functions["double_exponential_smoothing"]
+		parser.Functions["holt_winters"] = &parser.Function{
+			Name:         "holt_winters",
+			ArgTypes:     append([]parser.ValueType{}, des.ArgTypes...),
+			ReturnType:   des.ReturnType,
+			Experimental: false, // treat as stable like the old holt_winters
+		}
+	}
+
 	for _, f := range parser.Functions {
 		// Ignore experimental functions for now.
 		if !f.Experimental {

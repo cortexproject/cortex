@@ -1,13 +1,13 @@
 module github.com/cortexproject/cortex
 
-go 1.25.3
+go 1.25.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/bradfitz/gomemcache v0.0.0-20250403215159-8d39553ac7cf
-	github.com/cortexproject/promqlsmith v0.0.0-20250407233056-90db95b1a4e4
+	github.com/cortexproject/promqlsmith v0.0.0-20260205182022-60fd1dcb0bd6
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
@@ -44,7 +44,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.67.4
 	// Prometheus maps version 3.x.y to tags v0.30x.y.
-	github.com/prometheus/prometheus v0.308.0
+	github.com/prometheus/prometheus v0.308.1
 	github.com/segmentio/fasthash v1.0.3
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.11.0
@@ -90,7 +90,7 @@ require (
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.26.4
 	github.com/prometheus-community/parquet-common v0.0.0-20251211092633-65ebeae24e94
-	github.com/prometheus/client_golang/exp v0.0.0-20250914183048-a974e0d45e0a
+	github.com/prometheus/client_golang/exp v0.0.0-20251212205219-7ba246a648ca
 	github.com/prometheus/procfs v0.16.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/tjhop/slog-gokit v0.1.4

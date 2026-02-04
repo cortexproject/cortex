@@ -35,7 +35,7 @@ var (
 
 // Config configures Configs API
 type Config struct {
-	Notifications        NotificationsConfig      `yaml:"notifications"`
+	Notifications        NotificationsConfig    `yaml:"notifications"`
 	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 

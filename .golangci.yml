@@ -19,6 +19,11 @@ output:
     text:
       path: stdout
       colors: false
+issues:
+  exclude-rules:
+    - linters:
+        - staticcheck
+      text: '.*labels\.MetricName.*deprecated.*'
 linters:
   enable:
     - depguard

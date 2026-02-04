@@ -250,7 +250,7 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.Equal(t, sortTimeSeries(test.expectedSeries), sortTimeSeries(promSeries))
-			require.Equal(t, test.expectedMetadata, metadata)
+			require.ElementsMatch(t, test.expectedMetadata, metadata)
 			if test.expectedErr != "" {
 				require.Equal(t, test.expectedErr, err.Error())
 			} else {

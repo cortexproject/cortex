@@ -3,6 +3,7 @@ package querier
 import (
 	"net/url"
 
+	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/scrape"
 )
@@ -23,6 +24,11 @@ func (DummyTargetRetriever) TargetsDropped() map[string][]*scrape.Target {
 // TargetsDroppedCounts implements targetRetriever.
 func (DummyTargetRetriever) TargetsDroppedCounts() map[string]int {
 	return map[string]int{}
+}
+
+// ScrapePoolConfig implements TargetRetriever.
+func (DummyTargetRetriever) ScrapePoolConfig(string) (*config.ScrapeConfig, error) {
+	return nil, nil
 }
 
 // DummyAlertmanagerRetriever implements AlertmanagerRetriever.

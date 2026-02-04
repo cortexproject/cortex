@@ -109,7 +109,10 @@ func trimForJsonMarshal(field string, size int) string {
 	fieldValueEncodedTrimmed = "\"" + removeHalfCutEscapeChar(fieldValueEncodedTrimmed) + "\""
 	var fieldValue string
 	print(fieldValueEncodedTrimmed)
-	json.Unmarshal([]byte(fieldValueEncodedTrimmed), &fieldValue)
+	err = json.Unmarshal([]byte(fieldValueEncodedTrimmed), &fieldValue)
+	if err != nil {
+		return ""
+	}
 
 	return fieldValue
 }

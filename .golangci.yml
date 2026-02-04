@@ -19,11 +19,6 @@ output:
     text:
       path: stdout
       colors: false
-issues:
-  exclude-rules:
-    - linters:
-        - staticcheck
-      text: '.*labels\.MetricName.*deprecated.*'
 linters:
   enable:
     - depguard
@@ -59,6 +54,10 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: 'labels.MetricName is deprecated: .*'    
 formatters:
   enable:
     - gofmt

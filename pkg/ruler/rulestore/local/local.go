@@ -31,9 +31,9 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 //
 //	cfg.Directory / userID / namespace
 type Client struct {
-	cfg                   Config
-	loader                promRules.GroupLoader
-	nameValidationScheme  model.ValidationScheme
+	cfg                  Config
+	loader               promRules.GroupLoader
+	nameValidationScheme model.ValidationScheme
 }
 
 func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader, nameValidationScheme model.ValidationScheme) (*Client, error) {

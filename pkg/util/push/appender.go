@@ -17,9 +17,9 @@ type collectingAppender struct {
 }
 
 type collectedSeries struct {
-	labels    labels.Labels
-	samples   []prompb.Sample
-	exemplars []prompb.Exemplar
+	labels     labels.Labels
+	samples    []prompb.Sample
+	exemplars  []prompb.Exemplar
 	histograms []prompb.Histogram
 }
 
@@ -95,9 +95,9 @@ func (c *collectingAppender) TimeSeries() []prompb.TimeSeries {
 	out := make([]prompb.TimeSeries, 0, len(c.series))
 	for _, s := range c.series {
 		ts := prompb.TimeSeries{
-			Labels:    prompb.FromLabels(s.labels, nil),
-			Samples:   s.samples,
-			Exemplars: s.exemplars,
+			Labels:     prompb.FromLabels(s.labels, nil),
+			Samples:    s.samples,
+			Exemplars:  s.exemplars,
 			Histograms: s.histograms,
 		}
 		out = append(out, ts)

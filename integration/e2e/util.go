@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"go.uber.org/atomic"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )

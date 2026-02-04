@@ -18,10 +18,10 @@ const (
 
 // ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
 type ConfigRuleStore struct {
-	configClient          client.Client
-	nameValidationScheme  model.ValidationScheme
-	since                 userconfig.ID
-	ruleGroupList         map[string]rulespb.RuleGroupList
+	configClient         client.Client
+	nameValidationScheme model.ValidationScheme
+	since                userconfig.ID
+	ruleGroupList        map[string]rulespb.RuleGroupList
 }
 
 func (c *ConfigRuleStore) SupportsModifications() bool {

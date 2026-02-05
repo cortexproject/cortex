@@ -18,7 +18,9 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
@@ -238,22 +240,31 @@ func (p *PartitionedGroupInfo) isBlockNoCompact(ctx context.Context, userBucket 
 
 func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blocksMarkedForDeletion *prometheus.CounterVec, userID string) (int, error) {
 	blocks := p.getAllBlocks()
-	deleteBlocksCount := 0
+	var deleteBlocksCount atomic.Int64
 	partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", p.PartitionedGroupID, "partitioned_group_creation_time", p.CreationTimeString())
 	defer func() {
-		level.Info(partitionedGroupLogger).Log("msg", "total number of blocks marked for deletion during partitioned group info clean up", "count", deleteBlocksCount)
+		level.Info(partitionedGroupLogger).Log("msg", "total number of blocks marked for deletion during partitioned group info clean up", "count", deleteBlocksCount.Load())
 	}()
+
+	blocksForDeletion := make([]any, 0, len(blocks))
 	for _, blockID := range blocks {
+		blocksForDeletion = append(blocksForDeletion, blockID)
+	}
+
+	err := concurrency.ForEach(ctx, blocksForDeletion, defaultDeleteBlocksConcurrency, func(ctx context.Context, blockForDeletion any) error {
+		blockID := blockForDeletion.(ulid.ULID)
 		if p.doesBlockExist(ctx, userBucket, partitionedGroupLogger, blockID) && !p.isBlockDeleted(ctx, userBucket, partitionedGroupLogger, blockID) && !p.isBlockNoCompact(ctx, userBucket, partitionedGroupLogger, blockID) {
 			if err := block.MarkForDeletion(ctx, partitionedGroupLogger, userBucket, blockID, "delete block during partitioned group completion check", blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
 				level.Warn(partitionedGroupLogger).Log("msg", "unable to mark block for deletion", "block", blockID.String())
-				return deleteBlocksCount, err
+				return err
 			}
-			deleteBlocksCount++
+			deleteBlocksCount.Add(1)
 			level.Debug(partitionedGroupLogger).Log("msg", "marked block for deletion during partitioned group info clean up", "block", blockID.String())
 		}
-	}
-	return deleteBlocksCount, nil
+		return nil
+	})
+
+	return int(deleteBlocksCount.Load()), err
 }
 
 func (p *PartitionedGroupInfo) String() string {

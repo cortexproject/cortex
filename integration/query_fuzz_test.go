@@ -144,8 +144,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
@@ -247,8 +246,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 		promqlsmith.WithEnableExperimentalPromQLFunctions(true),
@@ -352,8 +350,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
@@ -534,8 +531,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
@@ -764,8 +760,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
@@ -881,8 +876,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
@@ -1581,8 +1575,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 
 	rnd := rand.New(rand.NewSource(now.Unix()))
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
@@ -1682,8 +1675,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
 	opts := []promqlsmith.Option{
-		promqlsmith.WithEnableOffset(true),
-		promqlsmith.WithEnableAtModifier(true),
+		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}

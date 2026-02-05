@@ -38,7 +38,7 @@ Think of query rejection as an “emergency stop” in a factory. It sits in fro
 
 Heavy queries often share identifiable traits. Query rejection lets you match on a variety of attributes and reject only those requests. You can combine as many of these as needed:
 
-- **API type:** `query`, `query_range`. For now, query rejection only applies to these two API types.
+- **API type:** `query`, `query_range`, `series`, etc.
 - **Query string (regex):** Match by pattern, e.g., any query containing “ALERT”.
 - **Time range:** Match queries whose range falls between a configured **min** and **max**.
 - **Time window:** Match queries based on how far their time window is from now by specifying relative **min** and **max** boundaries. This is often used to distinguish queries that hit hot storage versus cold storage.

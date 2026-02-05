@@ -51,6 +51,12 @@ func init() {
 		if strings.Contains(f.Name, "histogram") && f.Name != "histogram_quantile" {
 			continue
 		}
+		// holt_winters was removed in Prometheus 3.x (replaced by double_exponential_smoothing).
+		// Cortex still supports it for backward compatibility, but the Prometheus container used
+		// in fuzz tests does not; exclude it so we don't generate queries that Prometheus rejects.
+		if f.Name == "holt_winters" {
+			continue
+		}
 		// Ignore experimental functions for now.
 		if !f.Experimental {
 			enabledFunctions = append(enabledFunctions, f)

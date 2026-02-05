@@ -1,13 +1,13 @@
 module github.com/cortexproject/cortex
 
-go 1.25.5
+go 1.25.3
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/bradfitz/gomemcache v0.0.0-20250403215159-8d39553ac7cf
-	github.com/cortexproject/promqlsmith v0.0.0-20260205182022-60fd1dcb0bd6
+	github.com/cortexproject/promqlsmith v0.0.0-20260205231645-0c8ef5fe46a5
 	github.com/dustin/go-humanize v1.0.1
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb

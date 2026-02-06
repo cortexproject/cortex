@@ -110,6 +110,8 @@ Currently experimental features are:
 - Store Gateway Zone Stable Shuffle Sharding
   - `-store-gateway.sharding-ring.zone-stable-shuffle-sharding` CLI flag
   - `zone_stable_shuffle_sharding` (boolean) field in config file
+- Store Gateway HonorProjectionHints in Parquet Mode
+  - `-blocks-storage.bucket-store.honor-projection-hints` CLI flag
 - Basic Lifecycler (Storegateway, Alertmanager, Ruler) Final Sleep on shutdown, which tells the pod wait before shutdown, allowing a delay to propagate ring changes.
   - `-ruler.ring.final-sleep` (duration) CLI flag
   - `store-gateway.sharding-ring.final-sleep` (duration) CLI flag

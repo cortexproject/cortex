@@ -24,6 +24,13 @@ func (d DetectHistogramStatsOptimizer) optimize(plan Node, decodeStats bool) (No
 		switch n := (*node).(type) {
 		case *VectorSelector:
 			n.DecodeNativeHistogramStats = decodeStats
+		case *Subquery:
+			// Do not propagate decodeStats through subqueries.
+			// Subqueries may apply functions like increase/rate that need
+			// full histogram bucket data for proper counter reset detection.
+			n.Expr, _ = d.optimize(n.Expr, false)
+			stop = true
+			return
 		case *FunctionCall:
 			switch n.Func.Name {
 			case "histogram_count", "histogram_sum", "histogram_avg":

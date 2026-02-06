@@ -250,7 +250,7 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.Equal(t, sortTimeSeries(test.expectedSeries), sortTimeSeries(promSeries))
-			require.Equal(t, test.expectedMetadata, metadata)
+			require.ElementsMatch(t, test.expectedMetadata, metadata)
 			if test.expectedErr != "" {
 				require.Equal(t, test.expectedErr, err.Error())
 			} else {
@@ -342,6 +342,8 @@ func createPromNativeHistogramSeries(name string, hint prompb.Histogram_ResetHin
 				Schema:        0,
 				ZeroThreshold: 1e-128,
 				ZeroCount:     &prompb.Histogram_ZeroCountInt{ZeroCountInt: 0},
+				NegativeSpans: []prompb.BucketSpan{},
+				PositiveSpans: []prompb.BucketSpan{},
 				Timestamp:     ts.UnixMilli(),
 				ResetHint:     hint,
 			},
@@ -521,11 +523,23 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			tsList, metadata, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
 
-			// test metadata conversion
-			require.Equal(t, 1, len(metadata))
-			require.Equal(t, prompb.MetricMetadata_MetricType(1), metadata[0].Type)
-			require.Equal(t, "test_counter_total", metadata[0].MetricFamilyName)
-			require.Equal(t, "test-counter-description", metadata[0].Help)
+			// test metadata conversion (counter + optionally target_info)
+			expectedMetadataLen := 1
+			if !test.cfg.DisableTargetInfo {
+				expectedMetadataLen = 2 // test_counter_total + target_info
+			}
+			require.Equal(t, expectedMetadataLen, len(metadata))
+			var counterMetadata *prompb.MetricMetadata
+			for i := range metadata {
+				if metadata[i].MetricFamilyName == "test_counter_total" {
+					counterMetadata = &metadata[i]
+					break
+				}
+			}
+			require.NotNil(t, counterMetadata)
+			require.Equal(t, prompb.MetricMetadata_MetricType(1), counterMetadata.Type)
+			require.Equal(t, "test_counter_total", counterMetadata.MetricFamilyName)
+			require.Equal(t, "test-counter-description", counterMetadata.Help)
 
 			if test.cfg.DisableTargetInfo {
 				require.Equal(t, 1, len(tsList)) // test_counter_total

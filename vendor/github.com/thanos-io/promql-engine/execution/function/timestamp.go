@@ -64,25 +64,22 @@ func (o *timestampOperator) loadSeries(ctx context.Context) error {
 	return err
 }
 
-func (o *timestampOperator) GetPool() *model.VectorPool {
-	return o.next.GetPool()
-}
-
-func (o *timestampOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *timestampOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
-	in, err := o.next.Next(ctx)
+	n, err := o.next.Next(ctx, buf)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	for _, vector := range in {
-		for i := range vector.Samples {
-			vector.Samples[i] = float64(vector.T / 1000)
+	for i := range n {
+		vector := &buf[i]
+		for j := range vector.Samples {
+			vector.Samples[j] = float64(vector.T / 1000)
 		}
 	}
-	return in, nil
+	return n, nil
 }

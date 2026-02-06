@@ -29,8 +29,9 @@ import (
 )
 
 type matrixScanner struct {
-	labels    labels.Labels
-	signature uint64
+	labels     labels.Labels
+	metricName string
+	signature  uint64
 
 	buffer           ringbuffer.Buffer
 	iterator         chunkenc.Iterator
@@ -41,7 +42,6 @@ type matrixScanner struct {
 type matrixSelector struct {
 	telemetry telemetry.OperatorTelemetry
 
-	vectorPool *model.VectorPool
 	storage    SeriesSelector
 	scalarArg  float64
 	scalarArg2 float64
@@ -80,7 +80,6 @@ var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supp
 
 // NewMatrixSelector creates operator which selects vector of series over time.
 func NewMatrixSelector(
-	pool *model.VectorPool,
 	selector SeriesSelector,
 	functionName string,
 	arg float64,
@@ -98,13 +97,12 @@ func NewMatrixSelector(
 		storage:      selector,
 		call:         call,
 		functionName: functionName,
-		vectorPool:   pool,
 		scalarArg:    arg,
 		scalarArg2:   arg2,
 		fhReader:     &histogram.FloatHistogram{},
 
 		opts:          opts,
-		numSteps:      opts.NumSteps(),
+		numSteps:      opts.NumStepsPerBatch(),
 		mint:          opts.Start.UnixMilli(),
 		maxt:          opts.End.UnixMilli(),
 		step:          opts.Step.Milliseconds(),
@@ -142,14 +140,10 @@ func (o *matrixSelector) Series(ctx context.Context) ([]labels.Labels, error) {
 	return o.series, nil
 }
 
-func (o *matrixSelector) GetPool() *model.VectorPool {
-	return o.vectorPool
-}
-
-func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *matrixSelector) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
@@ -158,16 +152,27 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			warnings.AddToContext(annotations.NewPossibleNonCounterInfo(o.nonCounterMetric, posrange.PositionRange{}), ctx)
 		}
 
-		return nil, nil
+		return 0, nil
 	}
 	if err := o.loadSeries(ctx); err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	ts := o.currentStep
-	vectors := o.vectorPool.GetVectorBatch()
-	for currStep := 0; currStep < o.numSteps && ts <= o.maxt; currStep++ {
-		vectors = append(vectors, o.vectorPool.GetStepVector(ts))
+	n := 0
+	maxSteps := min(o.numSteps, len(buf))
+
+	// Calculate expected samples per step: the actual number of series we'll process this batch.
+	// This is min(seriesBatchSize, remaining series to process).
+	remainingSeries := int64(len(o.scanners)) - o.currentSeries
+	expectedSamples := int(min(o.seriesBatchSize, remainingSeries))
+	if expectedSamples <= 0 {
+		expectedSamples = len(o.scanners)
+	}
+
+	for currStep := 0; currStep < maxSteps && ts <= o.maxt; currStep++ {
+		buf[n].Reset(ts)
+		n++
 		ts += o.step
 	}
 
@@ -180,27 +185,32 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 			seriesTs = ts
 		)
 
-		for currStep := 0; currStep < o.numSteps && seriesTs <= o.maxt; currStep++ {
+		for currStep := 0; currStep < n && seriesTs <= o.maxt; currStep++ {
 			maxt := seriesTs - o.offset
 			mint := maxt - o.selectRange
 
 			if err := scanner.selectPoints(mint, maxt, seriesTs, o.fhReader, o.isExtFunction); err != nil {
-				return nil, err
+				return 0, err
 			}
 			// TODO(saswatamcode): Handle multi-arg functions for matrixSelectors.
 			// Also, allow operator to exist independently without being nested
 			// under parser.Call by implementing new data model.
 			// https://github.com/thanos-io/promql-engine/issues/39
-			f, h, ok, err := scanner.buffer.Eval(ctx, o.scalarArg, o.scalarArg2, scanner.metricAppearedTs)
+			f, h, ok, warn, err := scanner.buffer.Eval(ctx, o.scalarArg, o.scalarArg2, scanner.metricAppearedTs)
 			if err != nil {
-				return nil, err
+				return 0, err
+			}
+			if warn != 0 {
+				emitRingbufferWarnings(ctx, warn, scanner.metricName)
 			}
 			if ok {
-				vectors[currStep].T = seriesTs
+				buf[currStep].T = seriesTs
 				if h != nil {
-					vectors[currStep].AppendHistogram(o.vectorPool, scanner.signature, h)
+					// Lazy pre-allocate histogram slices only when we actually have histograms
+					buf[currStep].AppendHistogramWithSizeHint(scanner.signature, h, expectedSamples)
 				} else {
-					vectors[currStep].AppendSample(o.vectorPool, scanner.signature, f)
+					// Lazy pre-allocate sample slices with capacity hint
+					buf[currStep].AppendSampleWithSizeHint(scanner.signature, f, expectedSamples)
 					o.hasFloats = true
 				}
 			}
@@ -209,10 +219,10 @@ func (o *matrixSelector) Next(ctx context.Context) ([]model.StepVector, error) {
 		}
 	}
 	if o.currentSeries == int64(len(o.scanners)) {
-		o.currentStep += o.step * int64(o.numSteps)
+		o.currentStep += o.step * int64(n)
 		o.currentSeries = 0
 	}
-	return vectors, nil
+	return n, nil
 }
 
 func (o *matrixSelector) loadSeries(ctx context.Context) error {
@@ -229,17 +239,14 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		var b labels.ScratchBuilder
 
 		for i, s := range series {
-			lbls := s.Labels()
-			if o.functionName != "last_over_time" {
-				// This modifies the array in place. Because labels.Labels
-				// can be re-used between different Select() calls, it means that
-				// we have to copy it here.
-				// TODO(GiedriusS): could we identify somehow whether labels.Labels
-				// is reused between Select() calls?
+			origLbls := s.Labels()
+			lbls := origLbls
+			if o.functionName != "last_over_time" && o.functionName != "first_over_time" {
 				lbls = extlabels.DropReserved(lbls, b)
 			}
 			o.scanners[i] = matrixScanner{
 				labels:           lbls,
+				metricName:       origLbls.Get(labels.MetricName),
 				signature:        s.Signature,
 				iterator:         s.Iterator(nil),
 				lastSample:       ringbuffer.Sample{T: math.MinInt64},
@@ -252,7 +259,6 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 		if o.seriesBatchSize == 0 || numSeries < o.seriesBatchSize {
 			o.seriesBatchSize = numSeries
 		}
-		o.vectorPool.SetStepSize(int(o.seriesBatchSize))
 
 		// Add a warning if rate or increase is applied on metrics which are not named like counters.
 		if o.functionName == "rate" || o.functionName == "increase" {
@@ -397,4 +403,32 @@ func (m *matrixScanner) selectPoints(
 		}
 	}
 	return m.iterator.Err()
+}
+
+// emitRingbufferWarnings converts warnings.Warnings flags to proper annotations with metric names.
+func emitRingbufferWarnings(ctx context.Context, warn warnings.Warnings, metricName string) {
+	if warn&warnings.WarnNotCounter != 0 {
+		warnings.AddToContext(annotations.NewNativeHistogramNotCounterWarning(metricName, posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnNotGauge != 0 {
+		warnings.AddToContext(annotations.NewNativeHistogramNotGaugeWarning(metricName, posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnMixedFloatsHistograms != 0 {
+		warnings.AddToContext(annotations.NewMixedFloatsHistogramsWarning(metricName, posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnMixedExponentialCustomBuckets != 0 {
+		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning(metricName, posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnHistogramIgnoredInMixedRange != 0 {
+		warnings.AddToContext(annotations.NewHistogramIgnoredInMixedRangeInfo(metricName, posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnCounterResetCollision != 0 {
+		warnings.AddToContext(annotations.NewHistogramCounterResetCollisionWarning(posrange.PositionRange{}, annotations.HistogramAgg), ctx)
+	}
+	if warn&warnings.WarnNHCBBoundsReconciled != 0 {
+		warnings.AddToContext(annotations.NewMismatchedCustomBucketsHistogramsInfo(posrange.PositionRange{}, annotations.HistogramSub), ctx)
+	}
+	if warn&warnings.WarnNHCBBoundsReconciledAgg != 0 {
+		warnings.AddToContext(annotations.NewMismatchedCustomBucketsHistogramsInfo(posrange.PositionRange{}, annotations.HistogramAgg), ctx)
+	}
 }

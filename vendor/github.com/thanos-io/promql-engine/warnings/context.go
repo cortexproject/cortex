@@ -21,6 +21,24 @@ import (
 //lint:ignore faillint We need fmt.Errorf to match Prometheus error format exactly.
 var MixedFloatsHistogramsAggWarning = fmt.Errorf("%w aggregation", annotations.MixedFloatsHistogramsWarning)
 
+// Warnings is a bitset of warning flags that can be returned by functions
+// to indicate warning conditions. The actual warning messages with metric
+// names are emitted by operators that have access to series labels.
+type Warnings uint32
+
+const (
+	WarnNotCounter Warnings = 1 << iota
+	WarnNotGauge
+	WarnMixedFloatsHistograms
+	WarnMixedExponentialCustomBuckets
+	WarnHistogramIgnoredInMixedRange  // for _over_time functions, only when both floats and histograms
+	WarnHistogramIgnoredInAggregation // for aggregations (max, min, stddev, etc.), always when histograms ignored
+	WarnCounterResetCollision
+	WarnNHCBBoundsReconciled    // for subtraction operations (rate, irate, delta)
+	WarnNHCBBoundsReconciledAgg // for aggregation operations (sum, avg, sum_over_time, avg_over_time)
+	WarnIncompatibleTypesInBinOp
+)
+
 type warningKey string
 
 const key warningKey = "promql-warnings"
@@ -86,9 +104,6 @@ func ConvertHistogramError(err error) error {
 	}
 	if errors.Is(err, histogram.ErrHistogramsIncompatibleSchema) {
 		return annotations.MixedExponentialCustomHistogramsWarning
-	}
-	if errors.Is(err, histogram.ErrHistogramsIncompatibleBounds) {
-		return annotations.IncompatibleCustomBucketsHistogramsWarning
 	}
 	return err
 }

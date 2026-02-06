@@ -17,8 +17,6 @@ import (
 
 // numberLiteralSelector returns []model.StepVector with same sample value across time range.
 type numberLiteralSelector struct {
-	vectorPool *model.VectorPool
-
 	numSteps    int
 	mint        int64
 	maxt        int64
@@ -30,10 +28,9 @@ type numberLiteralSelector struct {
 	val float64
 }
 
-func NewNumberLiteralSelector(pool *model.VectorPool, opts *query.Options, val float64) model.VectorOperator {
+func NewNumberLiteralSelector(opts *query.Options, val float64) model.VectorOperator {
 	oper := &numberLiteralSelector{
-		vectorPool:  pool,
-		numSteps:    opts.NumSteps(),
+		numSteps:    opts.NumStepsPerBatch(),
 		mint:        opts.Start.UnixMilli(),
 		maxt:        opts.End.UnixMilli(),
 		step:        opts.Step.Milliseconds(),
@@ -57,31 +54,27 @@ func (o *numberLiteralSelector) Series(context.Context) ([]labels.Labels, error)
 	return o.series, nil
 }
 
-func (o *numberLiteralSelector) GetPool() *model.VectorPool {
-	return o.vectorPool
-}
-
-func (o *numberLiteralSelector) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *numberLiteralSelector) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	if o.currentStep > o.maxt {
-		return nil, nil
+		return 0, nil
 	}
 
 	o.loadSeries()
 
 	ts := o.currentStep
-	vectors := o.vectorPool.GetVectorBatch()
-	for currStep := 0; currStep < o.numSteps && ts <= o.maxt; currStep++ {
-		stepVector := o.vectorPool.GetStepVector(ts)
-		stepVector.AppendSample(o.vectorPool, 0, o.val)
-		vectors = append(vectors, stepVector)
+	n := 0
+	for n < len(buf) && n < o.numSteps && ts <= o.maxt {
+		buf[n].Reset(ts)
+		buf[n].AppendSample(0, o.val)
 
 		ts += o.step
+		n++
 	}
 
 	// For instant queries, set the step to a positive value
@@ -89,15 +82,13 @@ func (o *numberLiteralSelector) Next(ctx context.Context) ([]model.StepVector, e
 	if o.step == 0 {
 		o.step = 1
 	}
-	o.currentStep += o.step * int64(o.numSteps)
+	o.currentStep += o.step * int64(n)
 
-	return vectors, nil
+	return n, nil
 }
 
 func (o *numberLiteralSelector) loadSeries() {
-	// If number literal is included within function, []labels.labels must be initialized.
 	o.once.Do(func() {
-		o.series = make([]labels.Labels, 1)
-		o.vectorPool.SetStepSize(len(o.series))
+		o.series = []labels.Labels{{}}
 	})
 }

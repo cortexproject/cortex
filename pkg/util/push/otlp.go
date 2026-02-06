@@ -181,7 +181,8 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 }
 
 func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
-	promConverter := prometheusremotewrite.NewPrometheusConverter()
+	collector := newCollectingAppender()
+	promConverter := prometheusremotewrite.NewPrometheusConverter(collector)
 	settings := prometheusremotewrite.Settings{
 		AddMetricSuffixes:       true,
 		DisableTargetInfo:       cfg.DisableTargetInfo,
@@ -210,7 +211,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 		level.Warn(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
 	}
 
-	return promConverter.TimeSeries(), promConverter.Metadata(), err
+	return collector.TimeSeries(), collector.Metadata(), err
 }
 
 func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {

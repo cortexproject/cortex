@@ -579,7 +579,7 @@ func numSteps(start, end time.Time, step time.Duration) int64 {
 // down since each engine's top 10 won't overlap with other engines' top 10.
 func preservesPartitionLabels(expr Node, partitionLabels map[string]struct{}) bool {
 	if len(partitionLabels) == 0 {
-		return true
+		return false
 	}
 
 	switch e := expr.(type) {

@@ -26,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
-	"go.uber.org/atomic"
 
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
@@ -271,7 +270,6 @@ func CreateNHBlock(
 	seriesSize int64,
 ) (id ulid.ULID, err error) {
 	headOpts := tsdb.DefaultHeadOptions()
-	headOpts.EnableNativeHistograms = *atomic.NewBool(true)
 	headOpts.ChunkDirRoot = filepath.Join(dir, "chunks")
 	headOpts.ChunkRange = 10000000000
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))

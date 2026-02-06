@@ -63,7 +63,23 @@ var (
 )
 
 func init() {
+	// Prometheus 3.x replaced holt_winters with double_exponential_smoothing.
+	// Register holt_winters as a copy so we still support it for query generation.
+	if parser.Functions["holt_winters"] == nil && parser.Functions["double_exponential_smoothing"] != nil {
+		des := parser.Functions["double_exponential_smoothing"]
+		parser.Functions["holt_winters"] = &parser.Function{
+			Name:         "holt_winters",
+			ArgTypes:     append([]parser.ValueType{}, des.ArgTypes...),
+			ReturnType:   des.ReturnType,
+			Experimental: false, // treat as stable like the old holt_winters
+		}
+	}
+
 	for _, f := range parser.Functions {
+		// holt_winters is excluded by default; use WithEnableHoltWinters(true) for older backends.
+		if f.Name == "holt_winters" {
+			continue
+		}
 		// Ignore experimental functions for now.
 		if !f.Experimental {
 			defaultSupportedFuncs = append(defaultSupportedFuncs, f)
@@ -82,6 +98,7 @@ type options struct {
 	enableOffset                      bool
 	enableAtModifier                  bool
 	enableVectorMatching              bool
+	enableHoltWinters                 bool // holt_winters not in Prometheus 3.x; enable for older backends
 	enableExperimentalPromQLFunctions bool
 	atModifierMaxTimestamp            int64
 
@@ -105,6 +122,10 @@ func (o *options) applyDefaults() {
 
 	if len(o.enabledFuncs) == 0 {
 		o.enabledFuncs = defaultSupportedFuncs
+	}
+
+	if o.enableHoltWinters && parser.Functions["holt_winters"] != nil {
+		o.enabledFuncs = append(o.enabledFuncs, parser.Functions["holt_winters"])
 	}
 
 	if o.enableExperimentalPromQLFunctions {
@@ -153,6 +174,15 @@ func WithEnableAtModifier(enableAtModifier bool) Option {
 func WithEnableVectorMatching(enableVectorMatching bool) Option {
 	return optionFunc(func(o *options) {
 		o.enableVectorMatching = enableVectorMatching
+	})
+}
+
+// WithEnableHoltWinters enables generation of holt_winters() in queries.
+// Disabled by default because Prometheus 3.x replaced it with double_exponential_smoothing;
+// enable only when fuzzing older backends that still support holt_winters.
+func WithEnableHoltWinters(enable bool) Option {
+	return optionFunc(func(o *options) {
+		o.enableHoltWinters = enable
 	})
 }
 

@@ -356,13 +356,14 @@ func (s *PromQLSmith) walkFunctions(expr *parser.Call, depth int) {
 	}
 
 	expr.Args = make([]parser.Expr, len(expr.Func.ArgTypes))
-	if expr.Func.Name == "holt_winters" {
+	switch expr.Func.Name {
+	case "holt_winters", "double_exponential_smoothing":
 		s.walkHoltWinters(expr, depth)
 		return
-	} else if expr.Func.Name == "label_replace" {
+	case "label_replace":
 		s.walkLabelReplace(expr, depth)
 		return
-	} else if expr.Func.Name == "info" {
+	case "info":
 		s.walkInfo(expr, depth)
 		return
 	}

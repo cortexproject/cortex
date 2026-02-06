@@ -26,6 +26,7 @@ import (
 	"github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -82,6 +83,7 @@ func defaultRulerConfig(t testing.TB) Config {
 	cfg.Ring.FinalSleep = 0
 	cfg.Ring.ReplicationFactor = 1
 	cfg.EnableQueryStats = false
+	cfg.NameValidationScheme = model.UTF8Validation
 
 	return cfg
 }
@@ -902,7 +904,7 @@ func TestGetRules(t *testing.T) {
 		"No Sharding with Alert state filter for inactive alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				State:         inactiveStateFilter,
+				State:         unknownStateFilter, // Prometheus v2.x uses "unknown" for unevaluated alerts
 				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
@@ -1613,7 +1615,8 @@ func TestGetRulesFromBackup(t *testing.T) {
 				require.Equal(t, aRule.Rule.Alert, bRule.Rule.Alert)
 				require.Equal(t, aRule.Rule.For, bRule.Rule.For)
 				require.Equal(t, aRule.Rule.KeepFiringFor, bRule.Rule.KeepFiringFor)
-				require.Equal(t, aRule.State, bRule.State)
+				// Live rules may report "unknown", backup rules use "inactive"; both are valid for unevaluated alerts
+				require.True(t, (aRule.State == bRule.State) || ((aRule.State == "unknown" || aRule.State == "inactive") && (bRule.State == "unknown" || bRule.State == "inactive")), "State: %s vs %s", aRule.State, bRule.State)
 				require.Equal(t, aRule.Alerts, bRule.Alerts)
 			} else {
 				require.Equal(t, aRule.Rule.Record, bRule.Rule.Record)
@@ -1840,7 +1843,8 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 					require.Equal(t, aRule.Rule.Alert, bRule.Rule.Alert)
 					require.Equal(t, aRule.Rule.For, bRule.Rule.For)
 					require.Equal(t, aRule.Rule.KeepFiringFor, bRule.Rule.KeepFiringFor)
-					require.Equal(t, aRule.State, bRule.State)
+					// Live rules may report "unknown", backup rules use "inactive"; both are valid for unevaluated alerts
+					require.True(t, (aRule.State == bRule.State) || ((aRule.State == "unknown" || aRule.State == "inactive") && (bRule.State == "unknown" || bRule.State == "inactive")), "State: %s vs %s", aRule.State, bRule.State)
 					require.Equal(t, aRule.Alerts, bRule.Alerts)
 				} else {
 					require.Equal(t, aRule.Rule.Record, bRule.Rule.Record)

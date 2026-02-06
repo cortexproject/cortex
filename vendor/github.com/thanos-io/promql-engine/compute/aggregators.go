@@ -21,19 +21,30 @@ const (
 	MixedTypeValue
 )
 
+// CounterResetState tracks which counter reset hints have been seen during aggregation.
+// Used to detect collisions between CounterReset and NotCounterReset hints.
+type CounterResetState uint8
+
+const (
+	SeenCounterReset    CounterResetState = 1 << iota // histogram with CounterReset hint was seen
+	SeenNotCounterReset                               // histogram with NotCounterReset hint was seen
+)
+
+// HasCollision returns true if both CounterReset and NotCounterReset hints were seen.
+func (s CounterResetState) HasCollision() bool {
+	return s&SeenCounterReset != 0 && s&SeenNotCounterReset != 0
+}
+
 // Accumulators map prometheus behavior for aggregations, either operators or
 // "[...]_over_time" functions. The caller is responsible to add all errors
 // returned by Add as annotations.
-// Accumulators might ignore histograms (for example min or max), if they do
-// the caller can check the HasIgnoredHistograms method and add appropriate
-// annotations.
-// The ValueType function can be checked to see if the aggregator encountered
-// mixed values for its slot so the caller can again add the appropriate annotations.
+// The Warnings method returns a bitset of warning conditions that occurred
+// during accumulation (e.g., ignored histograms, mixed types).
 type Accumulator interface {
 	Add(v float64, h *histogram.FloatHistogram) error
 	Value() (float64, *histogram.FloatHistogram)
 	ValueType() ValueType
-	HasIgnoredHistograms() bool
+	Warnings() warnings.Warnings
 	Reset(float64)
 }
 
@@ -42,16 +53,18 @@ type VectorAccumulator interface {
 	AddVector(vs []float64, hs []*histogram.FloatHistogram) error
 	Value() (float64, *histogram.FloatHistogram)
 	ValueType() ValueType
-	HasIgnoredHistograms() bool
+	Warnings() warnings.Warnings
 	Reset(float64)
 }
 
 type SumAcc struct {
-	value        float64
-	compensation float64
-	histSum      *histogram.FloatHistogram
-	hasFloatVal  bool
-	hasError     bool // histogram error occurred; accumulator becomes no-op
+	value             float64
+	compensation      float64
+	histSum           *histogram.FloatHistogram
+	hasFloatVal       bool
+	hasError          bool // histogram error occurred; accumulator becomes no-op
+	warn              warnings.Warnings
+	counterResetState CounterResetState
 }
 
 func NewSumAcc() *SumAcc {
@@ -68,8 +81,22 @@ func (s *SumAcc) AddVector(float64s []float64, histograms []*histogram.FloatHist
 	}
 
 	if len(histograms) > 0 {
-		var err error
-		s.histSum, err = histogramSum(s.histSum, histograms)
+		// Track counter reset hints for collision detection.
+		for _, h := range histograms {
+			switch h.CounterResetHint {
+			case histogram.CounterReset:
+				s.counterResetState |= SeenCounterReset
+			case histogram.NotCounterReset:
+				s.counterResetState |= SeenNotCounterReset
+			}
+		}
+
+		var (
+			err  error
+			warn warnings.Warnings
+		)
+		s.histSum, warn, err = histogramSum(s.histSum, histograms)
+		s.warn |= warn
 		if err != nil {
 			s.hasError = true
 			return err
@@ -91,20 +118,34 @@ func (s *SumAcc) Add(v float64, h *histogram.FloatHistogram) error {
 }
 
 func (s *SumAcc) addHistogram(h *histogram.FloatHistogram) error {
+	// Track counter reset hints for collision detection.
+	switch h.CounterResetHint {
+	case histogram.CounterReset:
+		s.counterResetState |= SeenCounterReset
+	case histogram.NotCounterReset:
+		s.counterResetState |= SeenNotCounterReset
+	}
+
 	if s.histSum == nil {
 		s.histSum = h.Copy()
 		return nil
 	}
 	// The histogram being added must have an equal or larger schema.
 	// https://github.com/prometheus/prometheus/blob/57bcbf18880f7554ae34c5b341d52fc53f059a97/promql/engine.go#L2448-L2456
-	var err error
+	var (
+		err                  error
+		nhcbBoundsReconciled bool
+	)
 	if h.Schema >= s.histSum.Schema {
-		s.histSum, err = s.histSum.Add(h)
+		s.histSum, _, nhcbBoundsReconciled, err = s.histSum.Add(h)
 	} else {
 		t := h.Copy()
-		if s.histSum, err = t.Add(s.histSum); err == nil {
+		if s.histSum, _, nhcbBoundsReconciled, err = t.Add(s.histSum); err == nil {
 			s.histSum = t
 		}
+	}
+	if nhcbBoundsReconciled {
+		s.warn |= warnings.WarnNHCBBoundsReconciledAgg
 	}
 	if err != nil {
 		s.histSum = nil
@@ -131,16 +172,26 @@ func (s *SumAcc) ValueType() ValueType {
 	return NoValue
 }
 
-func (s *SumAcc) HasIgnoredHistograms() bool {
-	return false // Sum handles histograms; use ValueType() instead
+func (s *SumAcc) Warnings() warnings.Warnings {
+	warn := s.warn
+	if s.ValueType() == MixedTypeValue {
+		warn |= warnings.WarnMixedFloatsHistograms
+	}
+	// Detect counter reset collision: if we've seen both CounterReset and NotCounterReset hints.
+	if s.counterResetState.HasCollision() {
+		warn |= warnings.WarnCounterResetCollision
+	}
+	return warn
 }
 
 func (s *SumAcc) Reset(_ float64) {
 	s.histSum = nil
 	s.hasFloatVal = false
 	s.hasError = false
+	s.warn = 0
 	s.value = 0
 	s.compensation = 0
+	s.counterResetState = 0
 }
 
 func NewMaxAcc() *MaxAcc {
@@ -148,14 +199,14 @@ func NewMaxAcc() *MaxAcc {
 }
 
 type MaxAcc struct {
-	value       float64
-	hasValue    bool
-	ignoredHist bool
+	value    float64
+	hasValue bool
+	warn     warnings.Warnings
 }
 
 func (c *MaxAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 	if len(hs) > 0 {
-		c.ignoredHist = true
+		c.warn |= warnings.WarnHistogramIgnoredInAggregation
 	}
 	if len(vs) == 0 {
 		return nil
@@ -171,15 +222,15 @@ func (c *MaxAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 
 func (c *MaxAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		c.ignoredHist = true
+		c.warn |= warnings.WarnHistogramIgnoredInAggregation
 		return nil
 	}
 	c.addFloat(v)
 	return nil
 }
 
-func (c *MaxAcc) HasIgnoredHistograms() bool {
-	return c.ignoredHist
+func (c *MaxAcc) Warnings() warnings.Warnings {
+	return c.warn
 }
 
 func (c *MaxAcc) addFloat(v float64) {
@@ -207,7 +258,7 @@ func (c *MaxAcc) ValueType() ValueType {
 
 func (c *MaxAcc) Reset(_ float64) {
 	c.hasValue = false
-	c.ignoredHist = false
+	c.warn = 0
 	c.value = 0
 }
 
@@ -216,14 +267,14 @@ func NewMinAcc() *MinAcc {
 }
 
 type MinAcc struct {
-	value       float64
-	hasValue    bool
-	ignoredHist bool
+	value    float64
+	hasValue bool
+	warn     warnings.Warnings
 }
 
 func (c *MinAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 	if len(hs) > 0 {
-		c.ignoredHist = true
+		c.warn |= warnings.WarnHistogramIgnoredInAggregation
 	}
 	if len(vs) == 0 {
 		return nil
@@ -239,15 +290,15 @@ func (c *MinAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 
 func (c *MinAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		c.ignoredHist = true
+		c.warn |= warnings.WarnHistogramIgnoredInAggregation
 		return nil
 	}
 	c.addFloat(v)
 	return nil
 }
 
-func (c *MinAcc) HasIgnoredHistograms() bool {
-	return c.ignoredHist
+func (c *MinAcc) Warnings() warnings.Warnings {
+	return c.warn
 }
 
 func (c *MinAcc) addFloat(v float64) {
@@ -275,7 +326,7 @@ func (c *MinAcc) ValueType() ValueType {
 
 func (c *MinAcc) Reset(_ float64) {
 	c.hasValue = false
-	c.ignoredHist = false
+	c.warn = 0
 	c.value = 0
 }
 
@@ -315,8 +366,8 @@ func (c *GroupAcc) ValueType() ValueType {
 	}
 }
 
-func (c *GroupAcc) HasIgnoredHistograms() bool {
-	return false
+func (c *GroupAcc) Warnings() warnings.Warnings {
+	return 0
 }
 
 func (c *GroupAcc) Reset(_ float64) {
@@ -358,8 +409,8 @@ func (c *CountAcc) ValueType() ValueType {
 		return NoValue
 	}
 }
-func (c *CountAcc) HasIgnoredHistograms() bool {
-	return false
+func (c *CountAcc) Warnings() warnings.Warnings {
+	return 0
 }
 
 func (c *CountAcc) Reset(_ float64) {
@@ -376,10 +427,12 @@ type AvgAcc struct {
 	hasValue    bool
 	hasError    bool // histogram error occurred; accumulator becomes no-op
 
-	histSum        *histogram.FloatHistogram
-	histScratch    *histogram.FloatHistogram
-	histSumScratch *histogram.FloatHistogram
-	histCount      float64
+	histSum           *histogram.FloatHistogram
+	histScratch       *histogram.FloatHistogram
+	histSumScratch    *histogram.FloatHistogram
+	histCount         float64
+	warn              warnings.Warnings
+	counterResetState CounterResetState
 }
 
 func NewAvgAcc() *AvgAcc {
@@ -397,6 +450,14 @@ func (a *AvgAcc) Add(v float64, h *histogram.FloatHistogram) error {
 }
 
 func (a *AvgAcc) addHistogram(h *histogram.FloatHistogram) error {
+	// Track counter reset hints for collision detection.
+	switch h.CounterResetHint {
+	case histogram.CounterReset:
+		a.counterResetState |= SeenCounterReset
+	case histogram.NotCounterReset:
+		a.counterResetState |= SeenNotCounterReset
+	}
+
 	a.histCount++
 	if a.histSum == nil {
 		a.histSum = h.Copy()
@@ -405,13 +466,24 @@ func (a *AvgAcc) addHistogram(h *histogram.FloatHistogram) error {
 		return nil
 	}
 
+	var (
+		err                  error
+		nhcbBoundsReconciled bool
+	)
 	h.CopyTo(a.histScratch)
 	left := a.histScratch.Div(a.histCount)
 	a.histSum.CopyTo(a.histSumScratch)
 	right := a.histSumScratch.Div(a.histCount)
-	toAdd, err := left.Sub(right)
+	toAdd, _, nhcbBoundsReconciled, err := left.Sub(right)
+	if nhcbBoundsReconciled {
+		a.warn |= warnings.WarnNHCBBoundsReconciledAgg
+	}
 	if err == nil {
-		a.histSum, err = a.histSum.Add(toAdd)
+		var nbr bool
+		a.histSum, _, nbr, err = a.histSum.Add(toAdd)
+		if nbr {
+			a.warn |= warnings.WarnNHCBBoundsReconciledAgg
+		}
 	}
 	if err != nil {
 		a.histSum = nil
@@ -518,8 +590,16 @@ func (a *AvgAcc) ValueType() ValueType {
 	return NoValue
 }
 
-func (a *AvgAcc) HasIgnoredHistograms() bool {
-	return false // Avg handles histograms; use ValueType() instead
+func (a *AvgAcc) Warnings() warnings.Warnings {
+	warn := a.warn
+	if a.ValueType() == MixedTypeValue {
+		warn |= warnings.WarnMixedFloatsHistograms
+	}
+	// Detect counter reset collision: if we've seen both CounterReset and NotCounterReset hints.
+	if a.counterResetState.HasCollision() {
+		warn |= warnings.WarnCounterResetCollision
+	}
+	return warn
 }
 
 func (a *AvgAcc) Reset(_ float64) {
@@ -532,17 +612,19 @@ func (a *AvgAcc) Reset(_ float64) {
 
 	a.histCount = 0
 	a.histSum = nil
+	a.warn = 0
+	a.counterResetState = 0
 }
 
 type statAcc struct {
-	count       float64
-	mean        float64
-	cMean       float64
-	value       float64
-	cValue      float64
-	hasValue    bool
-	hasNaN      bool
-	ignoredHist bool
+	count    float64
+	mean     float64
+	cMean    float64
+	value    float64
+	cValue   float64
+	hasValue bool
+	hasNaN   bool
+	warn     warnings.Warnings
 }
 
 func (s *statAcc) ValueType() ValueType {
@@ -552,14 +634,14 @@ func (s *statAcc) ValueType() ValueType {
 	return NoValue
 }
 
-func (s *statAcc) HasIgnoredHistograms() bool {
-	return s.ignoredHist
+func (s *statAcc) Warnings() warnings.Warnings {
+	return s.warn
 }
 
 func (s *statAcc) Reset(_ float64) {
 	s.hasValue = false
 	s.hasNaN = false
-	s.ignoredHist = false
+	s.warn = 0
 	s.count = 0
 	s.mean = 0
 	s.cMean = 0
@@ -596,7 +678,7 @@ func NewStdDevAcc() *StdDevAcc {
 
 func (s *StdDevAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		s.ignoredHist = true
+		s.warn |= warnings.WarnHistogramIgnoredInAggregation
 		return nil
 	}
 	s.add(v)
@@ -617,7 +699,7 @@ func NewStdVarAcc() *StdVarAcc {
 
 func (s *StdVarAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		s.ignoredHist = true
+		s.warn |= warnings.WarnHistogramIgnoredInAggregation
 		return nil
 	}
 	s.add(v)
@@ -629,10 +711,10 @@ func (s *StdVarAcc) Value() (float64, *histogram.FloatHistogram) {
 }
 
 type QuantileAcc struct {
-	arg         float64
-	points      []float64
-	hasValue    bool
-	ignoredHist bool
+	arg      float64
+	points   []float64
+	hasValue bool
+	warn     warnings.Warnings
 }
 
 func NewQuantileAcc() Accumulator {
@@ -641,7 +723,7 @@ func NewQuantileAcc() Accumulator {
 
 func (q *QuantileAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h != nil {
-		q.ignoredHist = true
+		q.warn |= warnings.WarnHistogramIgnoredInAggregation
 		return nil
 	}
 
@@ -662,13 +744,13 @@ func (q *QuantileAcc) ValueType() ValueType {
 	}
 }
 
-func (q *QuantileAcc) HasIgnoredHistograms() bool {
-	return q.ignoredHist
+func (q *QuantileAcc) Warnings() warnings.Warnings {
+	return q.warn
 }
 
 func (q *QuantileAcc) Reset(f float64) {
 	q.hasValue = false
-	q.ignoredHist = false
+	q.warn = 0
 	q.arg = f
 	q.points = q.points[:0]
 }
@@ -694,12 +776,12 @@ func (acc *HistogramAvgAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	}
 	var err error
 	if h.Schema >= acc.sum.Schema {
-		if acc.sum, err = acc.sum.Add(h); err != nil {
+		if acc.sum, _, _, err = acc.sum.Add(h); err != nil {
 			return err
 		}
 	} else {
 		t := h.Copy()
-		if _, err = t.Add(acc.sum); err != nil {
+		if _, _, _, err = t.Add(acc.sum); err != nil {
 			return err
 		}
 		acc.sum = t
@@ -719,8 +801,8 @@ func (acc *HistogramAvgAcc) ValueType() ValueType {
 	return NoValue
 }
 
-func (acc *HistogramAvgAcc) HasIgnoredHistograms() bool {
-	return false // HistogramAvg handles histograms; use ValueType() instead
+func (acc *HistogramAvgAcc) Warnings() warnings.Warnings {
+	return 0
 }
 
 func (acc *HistogramAvgAcc) Reset(f float64) {
@@ -768,8 +850,8 @@ func (l *LastAcc) ValueType() ValueType {
 	return NoValue
 }
 
-func (l *LastAcc) HasIgnoredHistograms() bool {
-	return false // Last handles histograms; use ValueType() instead
+func (l *LastAcc) Warnings() warnings.Warnings {
+	return 0
 }
 
 func (l *LastAcc) Reset(_ float64) {
@@ -818,12 +900,12 @@ func Quantile(q float64, points []float64) float64 {
 	return points[int(lowerIndex)]*(1-weight) + points[int(upperIndex)]*weight
 }
 
-func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
+func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, warnings.Warnings, error) {
 	if len(histograms) == 0 {
-		return current, nil
+		return current, 0, nil
 	}
 	if current == nil && len(histograms) == 1 {
-		return histograms[0].Copy(), nil
+		return histograms[0].Copy(), 0, nil
 	}
 	var histSum *histogram.FloatHistogram
 	if current != nil {
@@ -833,19 +915,26 @@ func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.Flo
 		histograms = histograms[1:]
 	}
 
-	var err error
+	var (
+		err                  error
+		warn                 warnings.Warnings
+		nhcbBoundsReconciled bool
+	)
 	for i := range histograms {
 		if histograms[i].Schema >= histSum.Schema {
-			histSum, err = histSum.Add(histograms[i])
+			histSum, _, nhcbBoundsReconciled, err = histSum.Add(histograms[i])
 		} else {
 			t := histograms[i].Copy()
-			histSum, err = t.Add(histSum)
+			histSum, _, nhcbBoundsReconciled, err = t.Add(histSum)
+		}
+		if nhcbBoundsReconciled {
+			warn |= warnings.WarnNHCBBoundsReconciledAgg
 		}
 		if err != nil {
-			return nil, warnings.ConvertHistogramError(err)
+			return nil, warn, warnings.ConvertHistogramError(err)
 		}
 	}
-	return histSum, nil
+	return histSum, warn, nil
 }
 
 // compensatedSum returns the sum of the elements of the slice calculated with greater

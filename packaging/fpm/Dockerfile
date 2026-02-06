@@ -13,6 +13,9 @@ RUN apk add --no-cache \
         tar \
         && gem install --no-document fpm
 
+RUN adduser -D -s /bin/sh fpm
+USER fpm
+
 COPY package.sh /
 ENTRYPOINT ["/package.sh"]
 

@@ -1231,11 +1231,13 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 			if !owned {
 				continue
 			}
+			start := time.Now()
 			if err := c.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
 				level.Error(c.logger).Log("msg", "failed to update user index", "err", err)
 				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
 				continue
 			}
+			level.Info(c.logger).Log("msg", "successfully updated user index", "duration_ms", time.Since(start).Milliseconds())
 		}
 	}
 }

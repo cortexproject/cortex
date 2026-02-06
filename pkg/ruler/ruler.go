@@ -738,7 +738,7 @@ func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which ruler owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(r.store.GetUserIndexUpdater().GetCleanUpInterval(), 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(r.store.GetUserIndexUpdater().GetUpdateInterval(), 0.1))
 	defer ticker.Stop()
 
 	for {
@@ -755,11 +755,13 @@ func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
 			if !owned {
 				continue
 			}
+			start := time.Now()
 			if err := r.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
 				level.Error(r.logger).Log("msg", "failed to update user index", "err", err)
 				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
 				continue
 			}
+			level.Info(r.logger).Log("msg", "successfully updated user index", "duration_ms", time.Since(start).Milliseconds())
 		}
 	}
 }

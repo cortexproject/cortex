@@ -1505,6 +1505,7 @@ func removeIgnoredLogs(input []string) []string {
 		`level=error component=compactor msg="failed to set state to LEAVING" ring=compactor err="changing instance state from LEAVING -> LEAVING is disallowed"`: {},
 		`level=error component=compactor msg="failed to set state to LEAVING" ring=compactor err="changing instance state from JOINING -> LEAVING is disallowed"`: {},
 		`level=info component=compactor msg="user index not found, fallback to base scanner"`:                                                                     {},
+		`level=info component=compactor msg="successfully updated user index"`:                                                                                    {},
 		`level=error component=compactor msg="context timeout, exit user index update loop" err="context canceled"`:                                               {},
 		`level=debug component=compactor msg="unregistering instance from ring" ring=compactor`:                                                                   {},
 		`level=info component=compactor msg="instance removed from the KV store" ring=compactor`:                                                                  {},

@@ -155,7 +155,7 @@ func (s *userIndexScanner) ScanUsers(ctx context.Context) ([]string, []string, [
 		if errors.Is(err, ErrIndexNotFound) {
 			level.Info(s.logger).Log("msg", "user index not found, fallback to base scanner")
 			s.fallbackScans.WithLabelValues("not-found").Inc()
-		} else {
+		} else if !errors.Is(err, context.Canceled) {
 			// Always fallback to the list scanner if failed to read the user index.
 			level.Error(s.logger).Log("msg", "failed to read user index, fallback to base scanner", "error", err)
 			s.fallbackScans.WithLabelValues("corrupted").Inc()

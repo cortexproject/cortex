@@ -704,7 +704,7 @@ func (am *MultitenantAlertmanager) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which alertmanager owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(am.userIndexUpdater.GetCleanUpInterval(), 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(am.userIndexUpdater.GetUpdateInterval(), 0.1))
 	defer ticker.Stop()
 
 	for {
@@ -717,11 +717,13 @@ func (am *MultitenantAlertmanager) userIndexUpdateLoop(ctx context.Context) {
 			if !owned {
 				continue
 			}
+			start := time.Now()
 			if err := am.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
 				level.Error(am.logger).Log("msg", "failed to update user index", "err", err)
 				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
 				continue
 			}
+			level.Info(am.logger).Log("msg", "successfully updated user index", "duration_ms", time.Since(start).Milliseconds())
 		}
 	}
 }

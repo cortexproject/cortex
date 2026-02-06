@@ -3718,7 +3718,7 @@
           "properties": {
             "enable_ha_tracker": {
               "default": false,
-              "description": "Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).",
+              "description": "Enable the HA tracker so that it can accept data from Prometheus HA replicas gracefully (requires labels).",
               "type": "boolean",
               "x-cli-flag": "distributor.ha-tracker.enable"
             },
@@ -3730,21 +3730,21 @@
             },
             "ha_tracker_failover_timeout": {
               "default": "30s",
-              "description": "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout",
+              "description": "The timeout after which a new replica will be accepted if the currently elected replica stops sending data. This value must be greater than the update timeout plus the maximum jitter.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.failover-timeout",
               "x-format": "duration"
             },
             "ha_tracker_update_timeout": {
               "default": "15s",
-              "description": "Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.",
+              "description": "The time interval that must pass since the last timestamp update in the KV store before updating it again for a given cluster.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.update-timeout",
               "x-format": "duration"
             },
             "ha_tracker_update_timeout_jitter_max": {
               "default": "5s",
-              "description": "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.",
+              "description": "The maximum jitter applied to the update timeout to spread KV store updates over time.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.update-timeout-jitter-max",
               "x-format": "duration"

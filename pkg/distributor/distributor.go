@@ -144,7 +144,7 @@ type Distributor struct {
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
+	HATrackerConfig ha.HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize     int           `yaml:"max_recv_msg_size"`
 	OTLPMaxRecvMsgSize int           `yaml:"otlp_max_recv_msg_size"`
@@ -207,7 +207,7 @@ type OTLPConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlagsWithPrefix("distributor.", "", f)
 	cfg.DistributorRing.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
@@ -243,9 +243,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
-
-	return haHATrackerConfig.Validate()
+	return cfg.HATrackerConfig.Validate()
 }
 
 const (
@@ -268,7 +266,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Title:             "Cortex HA Tracker Status",
 		ReplicaGroupLabel: "Cluster",
 	}
-	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
+	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig, limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
 	if err != nil {
 		return nil, err
 	}

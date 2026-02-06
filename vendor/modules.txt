@@ -1052,7 +1052,7 @@ github.com/prometheus/client_golang/exp/internal/github.com/efficientgo/core/bac
 # github.com/prometheus/client_model v0.6.2
 ## explicit; go 1.22.0
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.67.4
+# github.com/prometheus/common v0.67.5
 ## explicit; go 1.24.0
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -1235,7 +1235,7 @@ github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 github.com/thanos-io/promql-engine/warnings
-# github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af
+# github.com/thanos-io/thanos v0.40.1-0.20260204190131-802f43f3bc64
 ## explicit; go 1.25.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1637,7 +1637,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/netutil
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.32.0
+# golang.org/x/oauth2 v0.34.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
@@ -1889,7 +1889,7 @@ google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry
 google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource
 google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version
-# google.golang.org/protobuf v1.36.10
+# google.golang.org/protobuf v1.36.11
 ## explicit; go 1.23
 google.golang.org/protobuf/encoding/protodelim
 google.golang.org/protobuf/encoding/protojson
@@ -1973,4 +1973,3 @@ k8s.io/utils/clock
 # gopkg.in/alecthomas/kingpin.v2 => github.com/alecthomas/kingpin v1.3.8-0.20210301060133-17f40c25f497
 # google.golang.org/grpc => google.golang.org/grpc v1.71.2
 # github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
-# github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af

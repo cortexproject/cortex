@@ -1,6 +1,6 @@
 module github.com/cortexproject/cortex
 
-go 1.25.3
+go 1.25.5
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
@@ -42,7 +42,7 @@ require (
 	github.com/prometheus/alertmanager v0.29.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.67.4
+	github.com/prometheus/common v0.67.5
 	// Prometheus maps version 3.x.y to tags v0.30x.y.
 	github.com/prometheus/prometheus v0.308.1
 	github.com/segmentio/fasthash v1.0.3
@@ -51,7 +51,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488
 	github.com/thanos-io/promql-engine v0.0.0-20260119085929-dd5223783674
-	github.com/thanos-io/thanos v0.40.1-0.20260112164636-49dde505913b
+	github.com/thanos-io/thanos v0.40.1-0.20260204190131-802f43f3bc64
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17
@@ -96,7 +96,7 @@ require (
 	github.com/tjhop/slog-gokit v0.1.4
 	go.opentelemetry.io/collector/pdata v1.45.0
 	go.uber.org/automaxprocs v1.6.0
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -296,7 +296,7 @@ require (
 	golang.org/x/crypto v0.46.0 // indirect
 	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a // indirect
 	golang.org/x/mod v0.30.0 // indirect
-	golang.org/x/oauth2 v0.32.0 // indirect
+	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
@@ -347,5 +347,3 @@ exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3
 
 // Required by Prometheus v0.308+ config package for OTLP translation strategy types.
 replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
-
-replace github.com/thanos-io/thanos => github.com/yeya24/thanos v0.2.2-0.20260203193035-ba37115033af

@@ -38,8 +38,15 @@ const (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable, maxConcurrent int, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
-	return NewMergeQueryable(defaultTenantLabel, maxConcurrent, tenantQuerierCallback(upstream), byPassWithSingleQuerier, reg)
+func NewQueryable(upstream storage.Queryable, cfg Config, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+	return NewMergeQueryable(
+		defaultTenantLabel,
+		cfg.MaxConcurrent,
+		tenantQuerierCallback(upstream),
+		byPassWithSingleQuerier,
+		cfg.AllowPartialData,
+		reg,
+	)
 }
 
 func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
@@ -81,12 +88,13 @@ type MergeQuerierCallback func(ctx context.Context, mint int64, maxt int64) (ids
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeQueryable(idLabelName string, maxConcurrent int, callback MergeQuerierCallback, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+func NewMergeQueryable(idLabelName string, maxConcurrent int, callback MergeQuerierCallback, byPassWithSingleQuerier, allowPartialData bool, reg prometheus.Registerer) storage.Queryable {
 	return &mergeQueryable{
 		idLabelName:             idLabelName,
 		maxConcurrent:           maxConcurrent,
 		callback:                callback,
 		byPassWithSingleQuerier: byPassWithSingleQuerier,
+		allowPartialData:        allowPartialData,
 
 		tenantsPerQuery: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Namespace: "cortex",
@@ -101,6 +109,7 @@ type mergeQueryable struct {
 	idLabelName             string
 	maxConcurrent           int
 	byPassWithSingleQuerier bool
+	allowPartialData        bool
 	callback                MergeQuerierCallback
 	tenantsPerQuery         prometheus.Histogram
 }
@@ -114,6 +123,7 @@ func (m *mergeQueryable) Querier(mint int64, maxt int64) (storage.Querier, error
 		mint:                    mint,
 		maxt:                    maxt,
 		byPassWithSingleQuerier: m.byPassWithSingleQuerier,
+		allowPartialData:        m.allowPartialData,
 		callback:                m.callback,
 		tenantsPerQuery:         m.tenantsPerQuery,
 	}, nil
@@ -124,7 +134,7 @@ func (m *mergeQueryable) Querier(mint int64, maxt int64) (storage.Querier, error
 // from.
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
-// This behaviour is not implemented recursively
+// This behavior is not implemented recursively
 type mergeQuerier struct {
 	idLabelName   string
 	mint, maxt    int64
@@ -132,6 +142,7 @@ type mergeQuerier struct {
 	maxConcurrent int
 
 	byPassWithSingleQuerier bool
+	allowPartialData        bool
 	tenantsPerQuery         prometheus.Histogram
 }
 
@@ -271,6 +282,11 @@ func (m *mergeQuerier) mergeDistinctStringSliceWithTenants(ctx context.Context, 
 		newCtx := user.InjectOrgID(parentCtx, job.id)
 		job.result, job.warnings, err = f(newCtx, job.querier)
 		if err != nil {
+			if m.allowPartialData {
+				job.warnings.Add(fmt.Errorf("%w (partial data returned)", err))
+				return nil
+			}
+
 			return errors.Wrapf(err, "error querying %s %s", rewriteLabelName(m.idLabelName), job.id)
 		}
 
@@ -363,8 +379,9 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 		// Based on parent ctx here as we are using lazy querier.
 		newCtx := user.InjectOrgID(parentCtx, job.id)
 		seriesSets[job.pos] = &addLabelsSeriesSet{
-			upstream: job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
-			labels:   labels.FromStrings(m.idLabelName, job.id),
+			upstream:         job.querier.Select(newCtx, sortSeries, hints, filteredMatchers...),
+			labels:           labels.FromStrings(m.idLabelName, job.id),
+			allowPartialData: m.allowPartialData,
 		}
 		return nil
 	}
@@ -421,9 +438,10 @@ func filterValuesByMatchers(idLabelName string, ids []string, matchers ...*label
 }
 
 type addLabelsSeriesSet struct {
-	upstream   storage.SeriesSet
-	labels     labels.Labels
-	currSeries storage.Series
+	upstream         storage.SeriesSet
+	labels           labels.Labels
+	currSeries       storage.Series
+	allowPartialData bool
 }
 
 func (m *addLabelsSeriesSet) Next() bool {
@@ -446,6 +464,9 @@ func (m *addLabelsSeriesSet) At() storage.Series {
 // The error that iteration as failed with.
 // When an error occurs, set cannot continue to iterate.
 func (m *addLabelsSeriesSet) Err() error {
+	if m.allowPartialData {
+		return nil
+	}
 	return errors.Wrapf(m.upstream.Err(), "error querying %s", labelsToString(m.labels))
 }
 
@@ -456,6 +477,12 @@ func (m *addLabelsSeriesSet) Warnings() annotations.Annotations {
 	warnings := make(annotations.Annotations, len(upstream))
 	for pos := range upstream {
 		warnings[pos] = errors.Wrapf(upstream[pos], "warning querying %s", labelsToString(m.labels))
+	}
+
+	if m.allowPartialData {
+		if err := m.upstream.Err(); err != nil {
+			warnings.Add(errors.Wrapf(err, "failed to query tenant %s (partial data returned)", labelsToString(m.labels)))
+		}
 	}
 	return warnings
 }

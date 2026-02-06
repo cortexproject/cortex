@@ -39,6 +39,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
@@ -551,7 +552,5 @@ func (t *Cortex) readyHandler(sm *services.Manager) http.HandlerFunc {
 }
 
 func (t *Cortex) setupPromQLFunctions() {
-	// The holt_winters function is renamed to double_exponential_smoothing and has been experimental since Prometheus v3. (https://github.com/prometheus/prometheus/pull/14930)
-	// The cortex supports holt_winters for users using this function.
-	querier.EnableExperimentalPromQLFunctions(t.Cfg.Querier.EnablePromQLExperimentalFunctions, true)
+	cortexparser.Setup(t.Cfg.Querier.EnablePromQLExperimentalFunctions, true)
 }

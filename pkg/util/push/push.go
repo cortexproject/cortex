@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/exp/api/remote"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/schema"
@@ -34,13 +35,17 @@ const (
 	rw20WrittenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
+
+	labelValuePRW1 = "prw1"
+	labelValuePRW2 = "prw2"
+	labelValueOTLP = "otlp"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -154,6 +159,10 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 			level.Error(logger).Log("Error decoding remote write request", "err", err)
 			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 			return
+		}
+
+		if requestTotal != nil {
+			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
 		}
 
 		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
@@ -300,4 +309,12 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 		})
 	}
 	return v1Exemplars, nil
+}
+
+func getTypeLabel(msgType remote.WriteMessageType) string {
+	if msgType == remote.WriteV1MessageType {
+		return labelValuePRW1
+	}
+
+	return labelValuePRW2
 }

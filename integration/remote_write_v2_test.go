@@ -368,6 +368,8 @@ func TestIngest(t *testing.T) {
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(5), []string{"cortex_distributor_push_requests_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "prw2"))))
+
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
 	expectedNH := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
 	result, err = c.Query(`test_nh`, testHistogramTimestamp)

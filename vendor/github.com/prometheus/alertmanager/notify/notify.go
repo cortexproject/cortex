@@ -25,7 +25,12 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cespare/xxhash/v2"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
@@ -35,6 +40,8 @@ import (
 	"github.com/prometheus/alertmanager/timeinterval"
 	"github.com/prometheus/alertmanager/types"
 )
+
+var tracer = otel.Tracer("github.com/prometheus/alertmanager/notify")
 
 // ResolvedSender returns true if resolved notifications should be sent.
 type ResolvedSender interface {
@@ -80,8 +87,24 @@ func NewIntegration(notifier Notifier, rs ResolvedSender, name string, idx int, 
 }
 
 // Notify implements the Notifier interface.
-func (i *Integration) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
-	return i.notifier.Notify(ctx, alerts...)
+func (i *Integration) Notify(ctx context.Context, alerts ...*types.Alert) (recoverable bool, err error) {
+	ctx, span := tracer.Start(ctx, "notify.Integration.Notify",
+		trace.WithAttributes(attribute.String("alerting.notify.integration.name", i.name)),
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindClient),
+	)
+
+	defer func() {
+		span.SetAttributes(attribute.Bool("alerting.notify.error.recoverable", recoverable))
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+		span.End()
+	}()
+
+	recoverable, err = i.notifier.Notify(ctx, alerts...)
+	return recoverable, err
 }
 
 // SendResolved implements the ResolvedSender interface.
@@ -119,6 +142,7 @@ const (
 	keyMuteTimeIntervals
 	keyActiveTimeIntervals
 	keyRouteID
+	keyNflogStore
 )
 
 // WithReceiverName populates a context with a receiver name.
@@ -239,6 +263,15 @@ func RouteID(ctx context.Context) (string, bool) {
 	return v, ok
 }
 
+func WithNflogStore(ctx context.Context, store *nflog.Store) context.Context {
+	return context.WithValue(ctx, keyNflogStore, store)
+}
+
+func NflogStore(ctx context.Context) (*nflog.Store, bool) {
+	v, ok := ctx.Value(keyNflogStore).(*nflog.Store)
+	return v, ok
+}
+
 // A Stage processes alerts under the constraints of the given context.
 type Stage interface {
 	Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error)
@@ -253,7 +286,7 @@ func (f StageFunc) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Al
 }
 
 type NotificationLog interface {
-	Log(r *nflogpb.Receiver, gkey string, firingAlerts, resolvedAlerts []uint64, expiry time.Duration) error
+	Log(r *nflogpb.Receiver, gkey string, firingAlerts, resolvedAlerts []uint64, store *nflog.Store, expiry time.Duration) error
 	Query(params ...nflog.QueryParam) ([]*nflogpb.Entry, error)
 }
 
@@ -276,32 +309,32 @@ func NewMetrics(r prometheus.Registerer, ff featurecontrol.Flagger) *Metrics {
 	}
 
 	m := &Metrics{
-		numNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numNotifications: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_total",
 			Help:      "The total number of attempted notifications.",
 		}, labels),
-		numTotalFailedNotifications: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numTotalFailedNotifications: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_failed_total",
 			Help:      "The total number of failed notifications.",
 		}, append(labels, "reason")),
-		numNotificationRequestsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numNotificationRequestsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notification_requests_total",
 			Help:      "The total number of attempted notification requests.",
 		}, labels),
-		numNotificationRequestsFailedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numNotificationRequestsFailedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notification_requests_failed_total",
 			Help:      "The total number of failed notification requests.",
 		}, labels),
-		numNotificationSuppressedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+		numNotificationSuppressedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "alertmanager",
 			Name:      "notifications_suppressed_total",
 			Help:      "The total number of notifications suppressed for being silenced, inhibited, outside of active time intervals or within muted time intervals.",
 		}, []string{"reason"}),
-		notificationLatencySeconds: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		notificationLatencySeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace:                       "alertmanager",
 			Name:                            "notification_latency_seconds",
 			Help:                            "The latency of notifications in seconds.",
@@ -312,12 +345,6 @@ func NewMetrics(r prometheus.Registerer, ff featurecontrol.Flagger) *Metrics {
 		}, labels),
 		ff: ff,
 	}
-
-	r.MustRegister(
-		m.numNotifications, m.numTotalFailedNotifications,
-		m.numNotificationRequestsTotal, m.numNotificationRequestsFailedTotal,
-		m.numNotificationSuppressedTotal, m.notificationLatencySeconds,
-	)
 
 	return m
 }
@@ -368,6 +395,7 @@ func (m *Metrics) InitializeFor(receiver map[string][]Integration) {
 		"incidentio",
 		"jira",
 		"rocketchat",
+		"mattermost",
 	} {
 		m.numNotifications.WithLabelValues(integration)
 		m.numNotificationRequestsTotal.WithLabelValues(integration)
@@ -457,6 +485,15 @@ func (rs RoutingStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*type
 	if !ok {
 		return ctx, nil, errors.New("receiver missing")
 	}
+
+	ctx, span := tracer.Start(ctx, "notify.RoutingStage.Exec",
+		trace.WithAttributes(
+			attribute.String("alerting.notify.receiver.name", receiver),
+			attribute.Int("alerting.alerts.count", len(alerts)),
+		),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
 
 	s, ok := rs[receiver]
 	if !ok {
@@ -552,6 +589,12 @@ func NewMuteStage(m types.Muter, metrics *Metrics) *MuteStage {
 
 // Exec implements the Stage interface.
 func (n *MuteStage) Exec(ctx context.Context, logger *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+	ctx, span := tracer.Start(ctx, "notify.MuteStage.Exec",
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	var (
 		filtered []*types.Alert
 		muted    []*types.Alert
@@ -559,7 +602,7 @@ func (n *MuteStage) Exec(ctx context.Context, logger *slog.Logger, alerts ...*ty
 	for _, a := range alerts {
 		// TODO(fabxc): increment total alerts counter.
 		// Do not send the alert if muted.
-		if n.muter.Mutes(a.Labels) {
+		if n.muter.Mutes(ctx, a.Labels) {
 			muted = append(muted, a)
 		} else {
 			filtered = append(filtered, a)
@@ -576,6 +619,11 @@ func (n *MuteStage) Exec(ctx context.Context, logger *slog.Logger, alerts ...*ty
 			reason = SuppressedReasonInhibition
 		default:
 		}
+		span.SetAttributes(
+			attribute.Int("alerting.alerts.muted.count", len(muted)),
+			attribute.Int("alerting.alerts.filtered.count", len(filtered)),
+			attribute.String("alerting.suppressed.reason", reason),
+		)
 		n.metrics.numNotificationSuppressedTotal.WithLabelValues(reason).Add(float64(len(muted)))
 		logger.Debug("Notifications will not be sent for muted alerts", "alerts", fmt.Sprintf("%v", muted), "reason", reason)
 	}
@@ -704,6 +752,13 @@ func (n *DedupStage) Exec(ctx context.Context, _ *slog.Logger, alerts ...*types.
 		return ctx, nil, errors.New("group key missing")
 	}
 
+	ctx, span := tracer.Start(ctx, "notify.DedupStage.Exec",
+		trace.WithAttributes(attribute.String("alerting.group.key", gkey)),
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	repeatInterval, ok := RepeatInterval(ctx)
 	if !ok {
 		return ctx, nil, errors.New("repeat interval missing")
@@ -735,15 +790,27 @@ func (n *DedupStage) Exec(ctx context.Context, _ *slog.Logger, alerts ...*types.
 	}
 
 	var entry *nflogpb.Entry
+	var isFirstNotification bool
 	switch len(entries) {
 	case 0:
+		isFirstNotification = true
 	case 1:
 		entry = entries[0]
+		// if this condition true, we're sending a notification for a new alert group, but the nflog entry for the previous alert
+		// group is still in log
+		isFirstNotification = len(entry.FiringAlerts) == 0 && len(firing) > 0
 	default:
 		return ctx, nil, fmt.Errorf("unexpected entry result size %d", len(entries))
 	}
 
+	if isFirstNotification {
+		ctx = WithNflogStore(ctx, nflog.NewStore(nil))
+	} else {
+		ctx = WithNflogStore(ctx, nflog.NewStore(entry))
+	}
+
 	if n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval) {
+		span.AddEvent("notify.DedupStage.Exec nflog needs update")
 		return ctx, alerts, nil
 	}
 	return ctx, nil, nil
@@ -776,10 +843,23 @@ func NewRetryStage(i Integration, groupName string, metrics *Metrics) *RetryStag
 
 func (r RetryStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	r.metrics.numNotifications.WithLabelValues(r.labelValues...).Inc()
+
+	ctx, span := tracer.Start(ctx, "notify.RetryStage.Exec",
+		trace.WithAttributes(attribute.String("alerting.group.name", r.groupName)),
+		trace.WithAttributes(attribute.String("alerting.integration.name", r.integration.name)),
+		trace.WithAttributes(attribute.StringSlice("alerting.label.values", r.labelValues)),
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	ctx, alerts, err := r.exec(ctx, l, alerts...)
 
 	failureReason := DefaultReason.String()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+
 		var e *ErrorWithReason
 		if errors.As(err, &e) {
 			failureReason = e.Reason.String()
@@ -883,18 +963,6 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*types.A
 				return ctx, alerts, nil
 			}
 		case <-ctx.Done():
-			if iErr == nil {
-				iErr = ctx.Err()
-				if errors.Is(iErr, context.Canceled) {
-					iErr = NewErrorWithReason(ContextCanceledReason, iErr)
-				} else if errors.Is(iErr, context.DeadlineExceeded) {
-					iErr = NewErrorWithReason(ContextDeadlineExceededReason, iErr)
-				}
-			}
-			if iErr != nil {
-				return ctx, nil, fmt.Errorf("%s/%s: notify retry canceled after %d attempts: %w", r.groupName, r.integration.String(), i, iErr)
-			}
-			return ctx, nil, nil
 		}
 	}
 }
@@ -921,6 +989,13 @@ func (n SetNotifiesStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*t
 		return ctx, nil, errors.New("group key missing")
 	}
 
+	ctx, span := tracer.Start(ctx, "notify.SetNotifiesStage.Exec",
+		trace.WithAttributes(attribute.String("alerting.group.key", gkey)),
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	firing, ok := FiringAlerts(ctx)
 	if !ok {
 		return ctx, nil, errors.New("firing alerts missing")
@@ -937,7 +1012,14 @@ func (n SetNotifiesStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*t
 	}
 	expiry := 2 * repeat
 
-	return ctx, alerts, n.nflog.Log(n.recv, gkey, firing, resolved, expiry)
+	span.SetAttributes(
+		attribute.Int("alerting.alerts.firing.count", len(firing)),
+		attribute.Int("alerting.alerts.resolved.count", len(resolved)),
+	)
+
+	// Extract receiver data from context if present (it's ok for it to be nil).
+	store, _ := NflogStore(ctx)
+	return ctx, alerts, n.nflog.Log(n.recv, gkey, firing, resolved, store, expiry)
 }
 
 type timeStage struct {
@@ -955,15 +1037,26 @@ func NewTimeMuteStage(muter types.TimeMuter, marker types.GroupMarker, metrics *
 // Exec implements the stage interface for TimeMuteStage.
 // TimeMuteStage is responsible for muting alerts whose route is not in an active time.
 func (tms TimeMuteStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+	ctx, span := tracer.Start(ctx, "notify.TimeMuteStage.Exec",
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	routeID, ok := RouteID(ctx)
 	if !ok {
-		return ctx, nil, errors.New("route ID missing")
+		err := errors.New("route ID missing")
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+		return ctx, nil, err
 	}
+	span.SetAttributes(attribute.String("alerting.route.id", routeID))
 
 	gkey, ok := GroupKey(ctx)
 	if !ok {
 		return ctx, nil, errors.New("group key missing")
 	}
+	span.SetAttributes(attribute.String("alerting.group.key", gkey))
 
 	muteTimeIntervalNames, ok := MuteTimeIntervalNames(ctx)
 	if !ok {
@@ -981,6 +1074,8 @@ func (tms TimeMuteStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*ty
 
 	muted, mutedBy, err := tms.muter.Mutes(muteTimeIntervalNames, now)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return ctx, alerts, err
 	}
 	// If muted is false then mutedBy is nil and the muted marker is removed.
@@ -990,6 +1085,7 @@ func (tms TimeMuteStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*ty
 	if muted {
 		tms.metrics.numNotificationSuppressedTotal.WithLabelValues(SuppressedReasonMuteTimeInterval).Add(float64(len(alerts)))
 		l.Debug("Notifications not sent, route is within mute time", "alerts", len(alerts))
+		span.AddEvent("notify.TimeMuteStage.Exec muted the alerts")
 		return ctx, nil, nil
 	}
 
@@ -1009,6 +1105,13 @@ func (tas TimeActiveStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*
 	if !ok {
 		return ctx, nil, errors.New("route ID missing")
 	}
+
+	ctx, span := tracer.Start(ctx, "notify.TimeActiveStage.Exec",
+		trace.WithAttributes(attribute.String("alerting.route.id", routeID)),
+		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
 
 	gkey, ok := GroupKey(ctx)
 	if !ok {
@@ -1046,6 +1149,7 @@ func (tas TimeActiveStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*
 
 	// If the current time is not inside an active time, all alerts are removed from the pipeline
 	if !active {
+		span.AddEvent("notify.TimeActiveStage.Exec not active, removing all alerts")
 		tas.metrics.numNotificationSuppressedTotal.WithLabelValues(SuppressedReasonActiveTimeInterval).Add(float64(len(alerts)))
 		l.Debug("Notifications not sent, route is not within active time", "alerts", len(alerts))
 		return ctx, nil, nil

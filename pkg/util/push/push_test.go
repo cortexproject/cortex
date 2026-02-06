@@ -549,7 +549,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
-		handler := Handler(true, 100000, overrides, nil, pushFunc)
+		handler := Handler(true, 100000, overrides, nil, pushFunc, nil)
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()

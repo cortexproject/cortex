@@ -296,6 +296,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 2 happy ingesters should succeed, histograms": {
@@ -314,6 +315,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 1 happy ingesters should fail, histograms": {
@@ -331,6 +333,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 10
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push exceeding burst size should fail, histograms": {
@@ -349,6 +352,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 	} {
@@ -434,6 +438,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
 	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
 	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogram).Add(15)
+	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogramNHCB).Add(0)
 	d.receivedExemplars.WithLabelValues("userA").Add(5)
 	d.receivedExemplars.WithLabelValues("userB").Add(10)
 	d.receivedMetadata.WithLabelValues("userA").Add(5)
@@ -492,6 +497,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_received_samples_total{type="float",user="userA"} 5
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 0
 
 		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
 		# TYPE cortex_distributor_received_exemplars_total counter
@@ -550,6 +556,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 0
 
         # HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
         # TYPE cortex_distributor_samples_in_total counter

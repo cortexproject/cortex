@@ -10,18 +10,18 @@ import (
 )
 
 type UserIndexUpdater struct {
-	bkt             objstore.InstrumentedBucket
-	cleanupInterval time.Duration
-	scanner         Scanner
+	bkt            objstore.InstrumentedBucket
+	updateInterval time.Duration
+	scanner        Scanner
 
 	userIndexLastUpdated prometheus.Gauge
 }
 
-func NewUserIndexUpdater(bkt objstore.InstrumentedBucket, cleanupInterval time.Duration, scanner Scanner, reg prometheus.Registerer) *UserIndexUpdater {
+func NewUserIndexUpdater(bkt objstore.InstrumentedBucket, updateInterval time.Duration, scanner Scanner, reg prometheus.Registerer) *UserIndexUpdater {
 	return &UserIndexUpdater{
-		bkt:             bkt,
-		cleanupInterval: cleanupInterval,
-		scanner:         scanner,
+		bkt:            bkt,
+		updateInterval: updateInterval,
+		scanner:        scanner,
 		userIndexLastUpdated: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_user_index_last_successful_update_timestamp_seconds",
 			Help: "Timestamp of the last successful update of user index.",
@@ -29,8 +29,8 @@ func NewUserIndexUpdater(bkt objstore.InstrumentedBucket, cleanupInterval time.D
 	}
 }
 
-func (u *UserIndexUpdater) GetCleanUpInterval() time.Duration {
-	return u.cleanupInterval
+func (u *UserIndexUpdater) GetUpdateInterval() time.Duration {
+	return u.updateInterval
 }
 
 func (u *UserIndexUpdater) UpdateUserIndex(ctx context.Context) error {

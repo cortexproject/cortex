@@ -29,10 +29,11 @@ import (
 )
 
 const (
-	defaultDeleteBlocksConcurrency = 16
-	reasonValueRetention           = "retention"
-	activeStatus                   = "active"
-	deletedStatus                  = "deleted"
+	defaultDeleteBlocksConcurrency               = 16
+	defaultDeletePartitionedGroupInfoConcurrency = 5
+	reasonValueRetention                         = "retention"
+	activeStatus                                 = "active"
+	deletedStatus                                = "deleted"
 )
 
 type BlocksCleanerConfig struct {
@@ -785,7 +786,15 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
 
-	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
+	partitionsToClean := make([]any, 0, len(existentPartitionedGroupInfo))
+	for partitionedGroupInfo := range existentPartitionedGroupInfo {
+		partitionsToClean = append(partitionsToClean, partitionedGroupInfo)
+	}
+
+	_ = concurrency.ForEach(ctx, partitionsToClean, defaultDeletePartitionedGroupInfoConcurrency, func(ctx context.Context, partitionToClean any) error {
+		partitionedGroupInfo := partitionToClean.(*PartitionedGroupInfo)
+		extraInfo := existentPartitionedGroupInfo[partitionedGroupInfo]
+
 		partitionedGroupInfoFile := extraInfo.path
 		deletedBlocksCount := 0
 		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
@@ -799,7 +808,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 					// if one block can not be marked for deletion, we should
 					// skip delete this partitioned group. next iteration
 					// would try it again.
-					continue
+					return nil
 				}
 			}
 
@@ -832,7 +841,8 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 				}
 			}
 		}
-	}
+		return nil
+	})
 }
 
 func (c *BlocksCleaner) emitUserPartitionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {

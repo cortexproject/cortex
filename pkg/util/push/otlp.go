@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -35,7 +36,7 @@ const (
 )
 
 // OTLPHandler is a http.Handler which accepts OTLP metrics.
-func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := util_log.WithContext(ctx, util_log.Logger)
@@ -57,6 +58,10 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		if requestTotal != nil {
+			requestTotal.WithLabelValues(labelValueOTLP).Inc()
 		}
 
 		prwReq := cortexpb.WriteRequest{

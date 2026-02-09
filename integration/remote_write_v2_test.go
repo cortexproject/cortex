@@ -194,7 +194,7 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
 	_, err = c.PushV2(symbols1, series)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "sent v2 request; got 2xx, but PRW 2.0 response header statistics indicate 0 samples, 0 histograms and 0 exemplars were accepted")
+	require.Contains(t, err.Error(), "io.prometheus.write.v2.Request protobuf message is not accepted by this server; only accepts prometheus.WriteRequest")
 
 	// sample
 	result, err := c.Query("test_series", now)
@@ -367,6 +367,8 @@ func TestIngest(t *testing.T) {
 	writeStats, err = c.PushV2(symbols5, floatNHCB)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
+
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(5), []string{"cortex_distributor_push_requests_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "prw2"))))
 
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
 	expectedNH := tsdbutil.GenerateTestHistogram(int64(histogramIdx))

@@ -74,8 +74,8 @@ const (
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
 
-	sampleMetricTypeFloat        = "float"
-	sampleMetricTypeHistogram    = "histogram"
+	sampleMetricTypeFloat         = "float"
+	sampleMetricTypeHistogram     = "histogram"
 	sampleMetricTypeHistogramNHCB = "nhcb" // Native histogram with custom buckets schema
 )
 
@@ -842,7 +842,6 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
 		nativeHistogramErr = httpgrpc.Errorf(http.StatusTooManyRequests, "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
 		validatedHistogramSamples = 0
-		validatedNHCBSamples = 0
 	} else {
 		seriesKeys = append(seriesKeys, nhSeriesKeys...)
 		validatedTimeseries = append(validatedTimeseries, nhValidatedTimeseries...)

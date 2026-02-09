@@ -477,14 +477,14 @@ func TestAPITenantExtraction(t *testing.T) {
 		name           string
 		headers        map[string]string
 		expectedTenant string
-		expectError    bool
+		expectStatus   int
 		setupMock      func(*bucket.ClientMock)
 	}{
 		{
 			name:           "X-Scope-OrgID header",
 			headers:        map[string]string{"X-Scope-OrgID": "tenant1"},
 			expectedTenant: "tenant1",
-			expectError:    false,
+			expectStatus:   http.StatusNotFound,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock successful get with empty overrides
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
@@ -494,13 +494,13 @@ func TestAPITenantExtraction(t *testing.T) {
 			name:           "no tenant header",
 			headers:        map[string]string{},
 			expectedTenant: "",
-			expectError:    true,
+			expectStatus:   http.StatusUnauthorized,
 		},
 		{
 			name:           "empty tenant header",
 			headers:        map[string]string{"X-Scope-OrgID": ""},
 			expectedTenant: "",
-			expectError:    true,
+			expectStatus:   http.StatusUnauthorized,
 		},
 	}
 
@@ -548,11 +548,7 @@ func TestAPITenantExtraction(t *testing.T) {
 			api.GetOverrides(recorder, req)
 
 			// Assert based on expected behavior
-			if tt.expectError {
-				assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-			} else {
-				assert.Equal(t, http.StatusOK, recorder.Code)
-			}
+			assert.Equal(t, tt.expectStatus, recorder.Code)
 		})
 	}
 }

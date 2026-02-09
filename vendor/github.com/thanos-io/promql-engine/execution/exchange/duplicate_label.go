@@ -32,23 +32,23 @@ func NewDuplicateLabelCheck(next model.VectorOperator, opts *query.Options) mode
 	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
-func (d *duplicateLabelCheckOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (d *duplicateLabelCheckOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	if err := d.init(ctx); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	in, err := d.next.Next(ctx)
+	n, err := d.next.Next(ctx, buf)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if in == nil {
-		return nil, nil
+	if n == 0 {
+		return 0, nil
 	}
 
 	// TODO: currently there is a bug, we need to reset 'd.c's state
@@ -60,19 +60,20 @@ func (d *duplicateLabelCheckOperator) Next(ctx context.Context) ([]model.StepVec
 			d.c[d.p[i].a] = 0
 			d.c[d.p[i].b] = 0
 		}
-		for i, sv := range in {
+		for i := range n {
+			sv := &buf[i]
 			for _, sid := range sv.SampleIDs {
 				d.c[sid] |= 2 << i
 			}
 		}
 		for i := range d.p {
 			if d.c[d.p[i].a]&d.c[d.p[i].b] > 0 {
-				return nil, extlabels.ErrDuplicateLabelSet
+				return 0, extlabels.ErrDuplicateLabelSet
 			}
 		}
 	}
 
-	return in, nil
+	return n, nil
 }
 
 func (d *duplicateLabelCheckOperator) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -84,10 +85,6 @@ func (d *duplicateLabelCheckOperator) Series(ctx context.Context) ([]labels.Labe
 		return nil, err
 	}
 	return series, nil
-}
-
-func (d *duplicateLabelCheckOperator) GetPool() *model.VectorPool {
-	return d.next.GetPool()
 }
 
 func (d *duplicateLabelCheckOperator) Explain() (next []model.VectorOperator) {

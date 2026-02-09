@@ -17,7 +17,6 @@ type UserDefinedExpr interface {
 	Node
 	MakeExecutionOperator(
 		ctx context.Context,
-		vectors *model.VectorPool,
 		opts *query.Options,
 		hints storage.SelectHints,
 	) (model.VectorOperator, error)

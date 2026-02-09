@@ -1111,6 +1111,18 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			removeLabel(labelName, &ts.Labels)
 		}
 
+		// Reject series with missing or empty metric name before removeEmptyLabels (which would strip __name__="").
+		if validationErr, reason := validation.ValidateMetricName(limits, ts.Labels, d.cfg.NameValidationScheme); reason != "" {
+			samplesCount := float64(len(ts.Samples) + len(ts.Histograms))
+			exemplarsCount := float64(len(ts.Exemplars))
+			if firstPartialErr == nil {
+				firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErr.Error())
+			}
+			d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID).Add(samplesCount)
+			d.validateMetrics.DiscardedExemplars.WithLabelValues(reason, userID).Add(exemplarsCount)
+			continue
+		}
+
 		// Make sure no label with empty value is sent to the Ingester.
 		removeEmptyLabels(&ts.Labels)
 

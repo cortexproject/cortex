@@ -42,22 +42,10 @@ func TestValidateLabels_UTF8(t *testing.T) {
 		expectedErr             error
 	}{
 		{
-			description:             "empty metric name",
-			metric:                  map[model.LabelName]model.LabelValue{},
-			skipLabelNameValidation: false,
-			expectedErr:             newNoMetricNameError(),
-		},
-		{
 			description:             "utf8 metric name",
 			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.utf8.metric"},
 			skipLabelNameValidation: false,
 			expectedErr:             nil,
-		},
-		{
-			description:             "invalid utf8 metric name",
-			metric:                  map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.\xc5.metric"},
-			skipLabelNameValidation: false,
-			expectedErr:             newInvalidMetricNameError("test.\xc5.metric"),
 		},
 		{
 			description:             "invalid utf8 label name, but skipLabelNameValidation is true",
@@ -82,6 +70,36 @@ func TestValidateLabels_UTF8(t *testing.T) {
 			assert.Equal(t, test.expectedErr, err, "wrong error")
 		})
 	}
+}
+
+func TestValidateMetricName(t *testing.T) {
+	cfg := new(Limits)
+	cfg.EnforceMetricName = true
+
+	for _, c := range []struct {
+		metric    model.Metric
+		expectErr error
+		reason    string
+	}{
+		{map[model.LabelName]model.LabelValue{}, newNoMetricNameError(), missingMetricName},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: ""}, newInvalidMetricNameError(""), invalidMetricName},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "}, newInvalidMetricNameError(" "), invalidMetricName},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.\xc5.metric"}, newInvalidMetricNameError("test.\xc5.metric"), invalidMetricName},
+		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid"}, nil, ""},
+	} {
+		err, reason := ValidateMetricName(cfg, cortexpb.FromMetricsToLabelAdapters(c.metric), model.LegacyValidation)
+		assert.Equal(t, c.expectErr, err)
+		if c.reason != "" {
+			assert.Equal(t, c.reason, reason)
+		} else {
+			assert.Empty(t, reason)
+		}
+	}
+
+	cfg.EnforceMetricName = false
+	err, reason := ValidateMetricName(cfg, cortexpb.FromMetricsToLabelAdapters(map[model.LabelName]model.LabelValue{}), model.LegacyValidation)
+	assert.Nil(t, err)
+	assert.Empty(t, reason)
 }
 
 func TestValidateLabels(t *testing.T) {
@@ -117,16 +135,6 @@ func TestValidateLabels(t *testing.T) {
 		skipLabelNameValidation bool
 		err                     error
 	}{
-		{
-			map[model.LabelName]model.LabelValue{},
-			false,
-			newNoMetricNameError(),
-		},
-		{
-			map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "},
-			false,
-			newInvalidMetricNameError(" "),
-		},
 		{
 			map[model.LabelName]model.LabelValue{model.MetricNameLabel: "valid", "foo ": "bar"},
 			false,
@@ -192,8 +200,6 @@ func TestValidateLabels(t *testing.T) {
 			cortex_discarded_samples_total{reason="label_name_too_long",user="testUser"} 1
 			cortex_discarded_samples_total{reason="label_value_too_long",user="testUser"} 1
 			cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
-			cortex_discarded_samples_total{reason="metric_name_invalid",user="testUser"} 1
-			cortex_discarded_samples_total{reason="missing_metric_name",user="testUser"} 1
 			cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",user="testUser"} 1
 
 			cortex_discarded_samples_total{reason="random reason",user="different user"} 1

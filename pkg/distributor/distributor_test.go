@@ -2267,6 +2267,10 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test", "", "bar"}, 0, nil),
 			errMsg: "invalid label",
 		},
+		"rejects exemplar with empty metric name": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, ""}, 1000, []string{"foo", "bar"}),
+			errMsg: "invalid metric name",
+		},
 	}
 
 	for testName, tc := range tests {
@@ -4014,6 +4018,28 @@ func TestDistributorValidation(t *testing.T) {
 				Value:       1,
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
+		},
+		// Test series with empty metric name is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "", "foo", "bar"),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
+		},
+		// Test series with only empty metric name (no other labels) is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, ""),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
 		},
 		// Test maximum labels names per series for histogram samples.
 		{

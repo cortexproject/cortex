@@ -26,7 +26,7 @@ type RangedQueryExtractor struct{}
 func generateCommonMap(r *http.Request) map[string]interface{} {
 	ctx := r.Context()
 	entryMap := make(map[string]interface{})
-	entryMap["timestamp-sec"] = time.Now().Unix()
+	entryMap["timestampSec"] = time.Now().Unix()
 	entryMap["Path"] = r.URL.Path
 	entryMap["Method"] = r.Method
 	entryMap["TenantID"], _ = users.TenantID(ctx)
@@ -51,7 +51,7 @@ func (e *ApiExtractor) Extract(r *http.Request) []byte {
 	entryMap["end"] = r.URL.Query().Get("end")
 
 	matches := r.URL.Query()["match[]"]
-	entryMap["number-of-matches"] = len(matches)
+	entryMap["numberOfMatches"] = len(matches)
 	matchesStr := strings.Join(matches, ",")
 
 	return generateJSONEntryWithTruncatedField(entryMap, "matches", matchesStr)

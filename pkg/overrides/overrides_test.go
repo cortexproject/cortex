@@ -179,16 +179,10 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "GET",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user123",
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusNotFound,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock that no overrides exist by passing empty content
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
-			},
-			validateResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response map[string]any
-				err := json.Unmarshal(recorder.Body.Bytes(), &response)
-				require.NoError(t, err)
-				assert.Empty(t, response)
 			},
 		},
 		{

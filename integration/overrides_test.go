@@ -307,6 +307,74 @@ func TestOverridesAPIHardLimits(t *testing.T) {
 	require.NoError(t, s.Stop(cortexSvc))
 }
 
+func TestOverridesAPIWithS3Error(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Configure Cortex to use S3 but don't start any S3 backend
+	// This will cause all S3 operations to fail
+	flags := map[string]string{
+		"-target": "overrides",
+
+		"-runtime-config.file":                 "runtime.yaml",
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       "cortex",
+		"-runtime-config.s3.endpoint":          "localhost:9002",
+		"-runtime-config.s3.insecure":          "true",
+	}
+
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-s3-error", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortexSvc))
+
+	t.Run("GET overrides when S3 is unavailable", func(t *testing.T) {
+		req, err := http.NewRequest("GET", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "user1")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("POST overrides when S3 is unavailable", func(t *testing.T) {
+		newOverrides := map[string]interface{}{
+			"ingestion_rate": 6000,
+		}
+		requestBody, err := json.Marshal(newOverrides)
+		require.NoError(t, err)
+
+		req, err := http.NewRequest("POST", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", bytes.NewReader(requestBody))
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "user1")
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	t.Run("DELETE overrides when S3 is unavailable", func(t *testing.T) {
+		req, err := http.NewRequest("DELETE", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
+		require.NoError(t, err)
+		req.Header.Set("X-Scope-OrgID", "user1")
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	})
+
+	require.NoError(t, s.Stop(cortexSvc))
+}
+
 func TestOverridesAPITenantExtraction(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)

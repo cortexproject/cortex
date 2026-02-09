@@ -29,10 +29,14 @@ const (
 // getAllowedLimitsFromBucket reads allowed limits from the runtime config file
 func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
+	defer func() {
+		if reader != nil {
+			reader.Close()
+		}
+	}()
 	if err != nil {
-		return []string{}, nil // No allowed limits if config doesn't exist
+		return []string{}, err
 	}
-	defer reader.Close()
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
@@ -55,6 +59,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	overrides, err := a.getOverridesFromBucket(r.Context(), userID)
 	if err != nil {
 		if err.Error() == ErrUserNotFound {
+			level.Info(a.logger).Log("msg", "User not found", "user", userID)
 			http.Error(w, "user not found", http.StatusBadRequest)
 		} else {
 			level.Error(a.logger).Log("msg", "failed to get overrides from bucket", "userID", userID, "err", err)
@@ -64,6 +69,10 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	if len(overrides) == 0 {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 	if err := json.NewEncoder(w).Encode(overrides); err != nil {
 		level.Error(a.logger).Log("msg", "failed to encode overrides response", "err", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

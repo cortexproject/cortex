@@ -35,13 +35,13 @@ func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) 
 		}
 	}()
 	if err != nil {
-		return []string{}, err
+		return nil, err
 	}
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
 		level.Error(a.logger).Log("msg", "failed to decode runtime config", "err", err)
-		return []string{}, fmt.Errorf("failed to decode runtime config")
+		return nil, fmt.Errorf("failed to decode runtime config")
 	}
 
 	return config.APIAllowedLimits, nil
@@ -146,10 +146,14 @@ func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
 // getOverridesFromBucket reads overrides for a specific tenant from the runtime config file
 func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[string]any, error) {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
+	defer func() {
+		if reader != nil {
+			reader.Close()
+		}
+	}()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get runtime config: %w", err)
 	}
-	defer reader.Close()
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
@@ -201,11 +205,16 @@ func mergeLimits(existing map[string]any, overrides map[string]any) map[string]a
 func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides map[string]any) error {
 	var config runtimeconfig.RuntimeConfigValues
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
-	if err == nil {
-		defer reader.Close()
-		if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
-			return fmt.Errorf("%s: %w", ErrRuntimeConfig, err)
+	if err != nil {
+		return fmt.Errorf("failed to get runtime config: %w", err)
+	}
+	defer func() {
+		if reader != nil {
+			reader.Close()
 		}
+	}()
+	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {
+		return fmt.Errorf("%s: %w", ErrRuntimeConfig, err)
 	}
 
 	if config.TenantLimits == nil {
@@ -253,10 +262,14 @@ func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides
 // deleteOverridesFromBucket removes overrides for a specific tenant from the runtime config file
 func (a *API) deleteOverridesFromBucket(ctx context.Context, userID string) error {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
+	defer func() {
+		if reader != nil {
+			reader.Close()
+		}
+	}()
 	if err != nil {
-		return nil
+		return fmt.Errorf("failed to get runtime config: %w", err)
 	}
-	defer reader.Close()
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {

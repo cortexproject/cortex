@@ -21,9 +21,9 @@ type InstantQueryExtractor struct{}
 
 type RangedQueryExtractor struct{}
 
-func generateCommonMap(r *http.Request) map[string]interface{} {
+func generateCommonMap(r *http.Request) map[string]any {
 	ctx := r.Context()
-	entryMap := make(map[string]interface{})
+	entryMap := make(map[string]any)
 	entryMap["timestampSec"] = time.Now().Unix()
 	entryMap["Path"] = r.URL.Path
 	entryMap["Method"] = r.Method
@@ -63,7 +63,7 @@ func (e *RangedQueryExtractor) Extract(r *http.Request) []byte {
 	return generateJSONEntryWithTruncatedField(entryMap, "query", r.URL.Query().Get("query"))
 }
 
-func generateJSONEntry(entryMap map[string]interface{}) []byte {
+func generateJSONEntry(entryMap map[string]any) []byte {
 	jsonEntry, err := json.Marshal(entryMap)
 	if err != nil {
 		return []byte{}
@@ -72,7 +72,7 @@ func generateJSONEntry(entryMap map[string]interface{}) []byte {
 	return jsonEntry
 }
 
-func generateJSONEntryWithTruncatedField(entryMap map[string]interface{}, fieldName, fieldValue string) []byte {
+func generateJSONEntryWithTruncatedField(entryMap map[string]any, fieldName, fieldValue string) []byte {
 	entryMap[fieldName] = ""
 	minEntryJSON := generateJSONEntry(entryMap)
 	entryMap[fieldName] = trimForJsonMarshal(fieldValue, maxEntrySize-(len(minEntryJSON)+1))

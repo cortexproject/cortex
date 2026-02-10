@@ -158,7 +158,7 @@ func NewRequestTracker(localStoragePath string, fileName string, maxConcurrent i
 }
 
 func (tracker *RequestTracker) generateIndices(maxConcurrent int) {
-	for i := 0; i < maxConcurrent; i++ {
+	for i := range maxConcurrent {
 		tracker.getNextIndex <- 1 + (i * maxEntrySize)
 	}
 }
@@ -186,7 +186,7 @@ func (tracker *RequestTracker) Insert(ctx context.Context, entry []byte) (int, e
 }
 
 func generateMinEntry() []byte {
-	entryMap := make(map[string]interface{})
+	entryMap := make(map[string]any)
 	entryMap["timestamp_sec"] = time.Now().Unix()
 	return generateJSONEntry(entryMap)
 }

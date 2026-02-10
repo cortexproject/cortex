@@ -22,7 +22,7 @@ func TestGetSeriesExtractor(t *testing.T) {
 	result := extractor.Extract(req)
 	require.NotEmpty(t, result)
 
-	var data map[string]interface{}
+	var data map[string]any
 	require.NoError(t, json.Unmarshal(result, &data))
 
 	assert.Equal(t, "100", data["limit"])
@@ -41,7 +41,7 @@ func TestInstantQueryExtractor(t *testing.T) {
 	result := extractor.Extract(req)
 	require.NotEmpty(t, result)
 
-	var data map[string]interface{}
+	var data map[string]any
 	require.NoError(t, json.Unmarshal(result, &data))
 
 	assert.Equal(t, "1234567890", data["time"])
@@ -61,7 +61,7 @@ func TestRangedQueryExtractor(t *testing.T) {
 	result := extractor.Extract(req)
 	require.NotEmpty(t, result)
 
-	var data map[string]interface{}
+	var data map[string]any
 	require.NoError(t, json.Unmarshal(result, &data))
 
 	assert.Equal(t, "1000", data["start"])

@@ -43,7 +43,15 @@ func New(cfg runtimeconfig.Config, logger log.Logger, registerer prometheus.Regi
 }
 
 func (a *API) starting(ctx context.Context) error {
-	level.Info(a.logger).Log("msg", "overrides API starting", "runtime_config_file", a.cfg.LoadPath, "backend", a.cfg.StorageConfig.Backend)
+	level.Info(a.logger).Log(
+		"msg", "overrides API starting",
+		"runtime_config_file", a.cfg.LoadPath,
+		"backend", a.cfg.StorageConfig.Backend,
+		"s3_endpoint", a.cfg.StorageConfig.S3.Endpoint,
+		"response_header_timeout", a.cfg.StorageConfig.S3.HTTP.ResponseHeaderTimeout,
+		"idle_conn_timeout", a.cfg.StorageConfig.S3.HTTP.IdleConnTimeout,
+		"tls_handshake_timeout", a.cfg.StorageConfig.S3.HTTP.TLSHandshakeTimeout,
+	)
 
 	bucketClient, err := bucket.NewClient(ctx, a.cfg.StorageConfig, nil, "overrides", a.logger, a.registerer)
 	if err != nil {

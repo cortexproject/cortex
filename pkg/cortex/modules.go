@@ -273,7 +273,7 @@ func (t *Cortex) initGrpcClientServices() (serv services.Service, err error) {
 }
 
 func (t *Cortex) initDistributor() (serv services.Service, err error) {
-	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor, t.OverridesConfig)
+	t.API.RegisterDistributor(t.Distributor, t.Cfg.Distributor, t.OverridesConfig, prometheus.DefaultRegisterer)
 
 	return nil, nil
 }

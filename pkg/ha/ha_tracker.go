@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"maps"
 	"math/rand"
 	"slices"
 	"strings"
@@ -64,6 +65,12 @@ type HATrackerConfig struct {
 	// between the stored timestamp and the time we received a sample is
 	// more than this duration
 	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
+	// EnableStartupSync controls whether to fetch all tracked keys from the KV store
+	// on startup to populate the local cache.
+	// This prevents duplicate GET calls for the same key while the cache is cold,
+	// but could cause a spike in GET requests during initialization if the number
+	// of tracked keys is large.
+	EnableStartupSync bool `yaml:"enable_startup_sync"`
 
 	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
 }
@@ -89,6 +96,7 @@ func (cfg *HATrackerConfig) RegisterFlagsWithPrefix(flagPrefix string, kvPrefix 
 	f.DurationVar(&cfg.UpdateTimeout, finalFlagPrefix+"ha-tracker.update-timeout", 15*time.Second, "Update the timestamp in the KV store for a given cluster/replicaGroup only after this amount of time has passed since the current stored timestamp.")
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, finalFlagPrefix+"ha-tracker.update-timeout-jitter-max", 5*time.Second, "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.")
 	f.DurationVar(&cfg.FailoverTimeout, finalFlagPrefix+"ha-tracker.failover-timeout", 30*time.Second, "If we don't receive any data from the accepted replica for a cluster/replicaGroup in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout")
+	f.BoolVar(&cfg.EnableStartupSync, finalFlagPrefix+"ha-tracker.enable-startup-sync", false, "[Experimental] If enabled, fetches all tracked keys on startup to populate the local cache. This prevents duplicate GET calls for the same key while the cache is cold, but could cause a spike in GET requests during initialization if the number of tracked keys is large.")
 
 	// We want the ability to use different Consul instances for the ring and
 	// for HA cluster tracking. We also customize the default keys prefix, in
@@ -222,8 +230,86 @@ func NewHATracker(cfg HATrackerConfig, limits HATrackerLimits, trackerStatusConf
 		t.client = client
 	}
 
-	t.Service = services.NewBasicService(nil, t.loop, nil)
+	t.Service = services.NewBasicService(t.syncKVStoreToLocalMap, t.loop, nil)
 	return t, nil
+}
+
+// syncKVStoreToLocalMap warms up the local cache by fetching all active entries from the KV store.
+func (c *HATracker) syncKVStoreToLocalMap(ctx context.Context) error {
+	if !c.cfg.EnableHATracker {
+		return nil
+	}
+
+	if !c.cfg.EnableStartupSync {
+		return nil
+	}
+
+	start := time.Now()
+	level.Info(c.logger).Log("msg", "starting HA tracker cache warmup")
+
+	keys, err := c.client.List(ctx, "")
+	if err != nil {
+		level.Error(c.logger).Log("msg", "failed to list keys during HA tracker cache warmup", "err", err)
+		return err
+	}
+
+	if len(keys) == 0 {
+		level.Info(c.logger).Log("msg", "HA tracker cache warmup finished", "reason", "no keys found in KV store")
+		return nil
+	}
+
+	// create temporarily map
+	tempElected := make(map[string]ReplicaDesc, len(keys))
+	tempReplicaGroups := make(map[string]map[string]struct{})
+	successCount := 0
+
+	for _, key := range keys {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		val, err := c.client.Get(ctx, key)
+		if err != nil {
+			level.Warn(c.logger).Log("msg", "failed to fetch key during cache warmup", "key", key, "err", err)
+			continue
+		}
+
+		desc, ok := val.(*ReplicaDesc)
+		if !ok || desc == nil || desc.DeletedAt > 0 {
+			continue
+		}
+
+		user, cluster, keyHasSeparator := strings.Cut(key, "/")
+		if !keyHasSeparator {
+			continue
+		}
+
+		tempElected[key] = *desc
+		if tempReplicaGroups[user] == nil {
+			tempReplicaGroups[user] = make(map[string]struct{})
+		}
+		tempReplicaGroups[user][cluster] = struct{}{}
+		successCount++
+	}
+
+	c.electedLock.Lock()
+
+	// Update local map
+	maps.Copy(c.elected, tempElected)
+	for user, clusters := range tempReplicaGroups {
+		if c.replicaGroups[user] == nil {
+			c.replicaGroups[user] = make(map[string]struct{})
+		}
+		for cluster := range clusters {
+			c.replicaGroups[user][cluster] = struct{}{}
+		}
+	}
+	c.electedLock.Unlock()
+
+	c.updateUserReplicaGroupCount()
+
+	level.Info(c.logger).Log("msg", "HA tracker cache warmup completed", "duration", time.Since(start), "synced keys", successCount)
+	return nil
 }
 
 // Follows pattern used by ring for WatchKey.

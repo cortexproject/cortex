@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/golang/snappy"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -17,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
@@ -126,7 +129,7 @@ func Benchmark_Handler(b *testing.B) {
 	testSeriesNums := []int{10, 100, 500, 1000}
 	for _, seriesNum := range testSeriesNums {
 		b.Run(fmt.Sprintf("PRW1 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler)
+			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW1HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -140,7 +143,7 @@ func Benchmark_Handler(b *testing.B) {
 			}
 		})
 		b.Run(fmt.Sprintf("PRW2 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler)
+			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -452,29 +455,112 @@ func TestHandler_remoteWrite(t *testing.T) {
 	flagext.DefaultValues(&limits)
 	overrides := validation.NewOverrides(limits, nil)
 
-	t.Run("remote write v1", func(t *testing.T) {
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
-		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
-		resp := httptest.NewRecorder()
-		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusOK, resp.Code)
-	})
-	t.Run("remote write v2", func(t *testing.T) {
+	tests := []struct {
+		name           string
+		createBody     func() ([]byte, bool) // returns (bodyBytes, isV2)
+		expectedStatus int
+		expectedBody   string
+		verifyResponse func(resp *httptest.ResponseRecorder)
+	}{
+		{
+			name: "remote write v1",
+			createBody: func() ([]byte, bool) {
+				return createPrometheusRemoteWriteProtobuf(t), false
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "remote write v2",
+			createBody: func() ([]byte, bool) {
+				return createPrometheusRemoteWriteV2Protobuf(t), true
+			},
+			expectedStatus: http.StatusNoContent,
+			verifyResponse: func(resp *httptest.ResponseRecorder) {
+				respHeader := resp.Header()
+				assert.Equal(t, "1", respHeader[rw20WrittenSamplesHeader][0])
+				assert.Equal(t, "1", respHeader[rw20WrittenHistogramsHeader][0])
+				assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
+			},
+		},
+		{
+			name: "remote write v2 with empty samples and histograms should return 400",
+			createBody: func() ([]byte, bool) {
+				// Create a request with a TimeSeries that has no samples and no histograms
+				reqProto := writev2.Request{
+					Symbols: []string{"", "__name__", "foo"},
+					Timeseries: []writev2.TimeSeries{
+						{
+							LabelsRefs: []uint32{1, 2},
+							Exemplars: []writev2.Exemplar{
+								{
+									LabelsRefs: []uint32{},
+									Value:      1.0,
+									Timestamp:  time.Now().UnixMilli(),
+								},
+							},
+						},
+					},
+				}
+				reqBytes, err := reqProto.Marshal()
+				require.NoError(t, err)
+				return reqBytes, true
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "TimeSeries must contain at least one sample or histogram for series {__name__=\"foo\"}",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, "user-1")
+			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
+
+			body, isV2 := test.createBody()
+			req := createRequest(t, body, isV2)
+			req = req.WithContext(ctx)
+
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+
+			assert.Equal(t, test.expectedStatus, resp.Code)
+
+			if test.expectedBody != "" {
+				assert.Contains(t, resp.Body.String(), test.expectedBody)
+			}
+
+			if test.verifyResponse != nil {
+				test.verifyResponse(resp)
+			}
+		})
+	}
+
+	t.Run("remote write v2 HA dedup", func(t *testing.T) {
+		// HA dedup: push returns error with StatusAccepted (202) but also a non-nil WriteResponse with stats.
+		dedupWriteResp := &cortexpb.WriteResponse{
+			Samples:    5,
+			Histograms: 2,
+			Exemplars:  1,
+		}
+		dedupErr := httpgrpc.Errorf(http.StatusAccepted, "HA deduplication: samples deduped")
+		pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+			return dedupWriteResp, dedupErr
+		}
+
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
-
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API))
+		handler := Handler(true, 100000, overrides, nil, pushFunc, nil)
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()
 		handler.ServeHTTP(resp, req)
-		assert.Equal(t, http.StatusNoContent, resp.Code)
 
-		// test header value
+		assert.Equal(t, http.StatusAccepted, resp.Code)
 		respHeader := resp.Header()
-		assert.Equal(t, "1", respHeader[rw20WrittenSamplesHeader][0])
-		assert.Equal(t, "1", respHeader[rw20WrittenHistogramsHeader][0])
+		assert.Equal(t, "5", respHeader[rw20WrittenSamplesHeader][0])
+		assert.Equal(t, "2", respHeader[rw20WrittenHistogramsHeader][0])
 		assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
+		assert.Contains(t, resp.Body.String(), "HA deduplication")
 	})
 }
 
@@ -484,13 +570,13 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
 
 	tests := []struct {
-		description  string
-		reqHeaders   map[string]string
-		expectedCode int
-		isV2         bool
+		description         string
+		reqHeaders          map[string]string
+		expectedCode        int
+		isV2                bool
+		remoteWrite2Enabled bool
 	}{
 		{
 			description: "[RW 2.0] correct content-type",
@@ -499,8 +585,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "[RW 1.0] correct content-type",
@@ -529,8 +616,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusUnsupportedMediaType,
-			isV2:         true,
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "[RW 2.0] wrong content-encoding",
@@ -539,13 +627,26 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "zstd",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusUnsupportedMediaType,
-			isV2:         true,
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
-			description:  "no header, should treated as RW 1.0",
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			description: "[RW 2.0] V2 disabled",
+			reqHeaders: map[string]string{
+				"Content-Type":           appProtoV2ContentType,
+				"Content-Encoding":       "snappy",
+				remoteWriteVersionHeader: "2.0.0",
+			},
+			expectedCode:        http.StatusUnsupportedMediaType,
+			isV2:                true,
+			remoteWrite2Enabled: false,
+		},
+		{
+			description:         "no header, should treated as RW 1.0",
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing content-type, should treated as RW 1.0",
@@ -553,8 +654,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Encoding":       "snappy",
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing content-encoding",
@@ -562,8 +664,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":           appProtoV2ContentType,
 				remoteWriteVersionHeader: "2.0.0",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing remote write version, should treated based on Content-type",
@@ -571,8 +674,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     appProtoV2ContentType,
 				"Content-Encoding": "snappy",
 			},
-			expectedCode: http.StatusNoContent,
-			isV2:         true,
+			expectedCode:        http.StatusNoContent,
+			isV2:                true,
+			remoteWrite2Enabled: true,
 		},
 		{
 			description: "missing remote write version, should treated based on Content-type",
@@ -580,13 +684,16 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     appProtoV1ContentType,
 				"Content-Encoding": "snappy",
 			},
-			expectedCode: http.StatusOK,
-			isV2:         false,
+			expectedCode:        http.StatusOK,
+			isV2:                false,
+			remoteWrite2Enabled: true,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
+			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
+
 			if test.isV2 {
 				ctx := context.Background()
 				ctx = user.InjectOrgID(ctx, "user-1")
@@ -612,7 +719,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API))
+	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
@@ -642,10 +749,47 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 		createRequest(t, createCortexWriteRequestProtobuf(t, true, cortexpb.RULE), false),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE))
+		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
+}
+
+func TestHandler_MetricCollection(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "test help",
+	}, []string{"type"})
+
+	handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+
+	t.Run("counts v1 requests", func(t *testing.T) {
+		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusOK, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("prw1"))
+		assert.Equal(t, 1.0, val)
+	})
+
+	t.Run("counts v2 requests", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = user.InjectOrgID(ctx, "user-1")
+
+		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+		req = req.WithContext(ctx)
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusNoContent, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("prw2"))
+		assert.Equal(t, 1.0, val)
+	})
 }
 
 func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {

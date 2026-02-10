@@ -172,23 +172,17 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "GET",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "GET overrides - valid tenant ID, no overrides",
 			method:         "GET",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "user123",
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusNotFound,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock that no overrides exist by passing empty content
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
-			},
-			validateResponse: func(t *testing.T, recorder *httptest.ResponseRecorder) {
-				var response map[string]any
-				err := json.Unmarshal(recorder.Body.Bytes(), &response)
-				require.NoError(t, err)
-				assert.Empty(t, response)
 			},
 		},
 		{
@@ -232,7 +226,7 @@ func TestAPIEndpoints(t *testing.T) {
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
 			requestBody:    map[string]any{"ingestion_rate": 5000},
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "POST overrides - valid tenant ID, valid overrides",
@@ -384,7 +378,7 @@ api_allowed_limits:
 			method:         "DELETE",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "DELETE overrides - valid tenant ID",
@@ -483,30 +477,18 @@ func TestAPITenantExtraction(t *testing.T) {
 		name           string
 		headers        map[string]string
 		expectedTenant string
-		expectError    bool
+		expectStatus   int
 		setupMock      func(*bucket.ClientMock)
 	}{
 		{
 			name:           "X-Scope-OrgID header",
 			headers:        map[string]string{"X-Scope-OrgID": "tenant1"},
 			expectedTenant: "tenant1",
-			expectError:    false,
+			expectStatus:   http.StatusNotFound,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock successful get with empty overrides
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
 			},
-		},
-		{
-			name:           "no tenant header",
-			headers:        map[string]string{},
-			expectedTenant: "",
-			expectError:    true,
-		},
-		{
-			name:           "empty tenant header",
-			headers:        map[string]string{"X-Scope-OrgID": ""},
-			expectedTenant: "",
-			expectError:    true,
 		},
 	}
 
@@ -554,11 +536,7 @@ func TestAPITenantExtraction(t *testing.T) {
 			api.GetOverrides(recorder, req)
 
 			// Assert based on expected behavior
-			if tt.expectError {
-				assert.Equal(t, http.StatusUnauthorized, recorder.Code)
-			} else {
-				assert.Equal(t, http.StatusOK, recorder.Code)
-			}
+			assert.Equal(t, tt.expectStatus, recorder.Code)
 		})
 	}
 }

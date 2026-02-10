@@ -41,11 +41,15 @@ func ValidateOverrides(overrides map[string]any, allowedLimits []string) error {
 func (a *API) validateHardLimits(overrides map[string]any, userID string) error {
 	// Read the runtime config to get hard limits
 	reader, err := a.bucketClient.Get(context.Background(), a.runtimeConfigPath)
+	defer func() {
+		if reader != nil {
+			reader.Close()
+		}
+	}()
 	if err != nil {
 		level.Error(a.logger).Log("msg", "failed to read hard limits configuration", "userID", userID, "err", err)
 		return fmt.Errorf("failed to validate hard limits")
 	}
-	defer reader.Close()
 
 	var config runtimeconfig.RuntimeConfigValues
 	if err := yaml.NewDecoder(reader).Decode(&config); err != nil {

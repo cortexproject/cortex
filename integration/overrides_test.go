@@ -19,6 +19,34 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
+func defaultArgsOverrides(minio *e2e.HTTPService) map[string]string {
+	return map[string]string{
+		"-log.level":                           "debug",
+		"-target":                              "overrides",
+		"-runtime-config.file":                 "runtime.yaml",
+		"-runtime-config.backend":              "s3",
+		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-runtime-config.s3.bucket-name":       "cortex",
+		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
+		"-runtime-config.s3.insecure":          "true",
+	}
+}
+
+func uploadRuntimeConfig(t *testing.T, minio *e2e.HTTPService, runtimeConfig interface{}) {
+	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
+	require.NoError(t, err)
+	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    "cortex",
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "overrides-test", nil)
+	require.NoError(t, err)
+	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
+}
+
 func TestOverridesAPIWithRunningCortex(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -42,33 +70,9 @@ func TestOverridesAPIWithRunningCortex(t *testing.T) {
 			"ruler_max_rule_groups_per_tenant",
 		},
 	}
-	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
-	require.NoError(t, err)
+	uploadRuntimeConfig(t, minio, runtimeConfig)
 
-	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
-		Endpoint:  minio.HTTPEndpoint(),
-		Insecure:  true,
-		Bucket:    "cortex",
-		AccessKey: e2edb.MinioAccessKey,
-		SecretKey: e2edb.MinioSecretKey,
-	}, "overrides-test", nil)
-	require.NoError(t, err)
-
-	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
-
-	flags := map[string]string{
-		"-target": "overrides",
-
-		"-runtime-config.file":                 "runtime.yaml",
-		"-runtime-config.backend":              "s3",
-		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-runtime-config.s3.bucket-name":       "cortex",
-		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-		"-runtime-config.s3.insecure":          "true",
-	}
-
-	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides", flags, "")
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides", defaultArgsOverrides(minio), "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 	t.Run("GET overrides for existing user", func(t *testing.T) {
@@ -217,33 +221,9 @@ func TestOverridesAPIHardLimits(t *testing.T) {
 			"max_global_series_per_user",
 		},
 	}
-	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
-	require.NoError(t, err)
+	uploadRuntimeConfig(t, minio, runtimeConfig)
 
-	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
-		Endpoint:  minio.HTTPEndpoint(),
-		Insecure:  true,
-		Bucket:    "cortex",
-		AccessKey: e2edb.MinioAccessKey,
-		SecretKey: e2edb.MinioSecretKey,
-	}, "overrides-test-hard-limits", nil)
-	require.NoError(t, err)
-
-	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
-
-	flags := map[string]string{
-		"-target": "overrides",
-
-		"-runtime-config.file":                 "runtime.yaml",
-		"-runtime-config.backend":              "s3",
-		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-runtime-config.s3.bucket-name":       "cortex",
-		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-		"-runtime-config.s3.insecure":          "true",
-	}
-
-	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-hard-limits", flags, "")
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-hard-limits", defaultArgsOverrides(minio), "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 	t.Run("POST overrides within hard limits", func(t *testing.T) {
@@ -312,24 +292,41 @@ func TestOverridesAPIWithS3Error(t *testing.T) {
 	require.NoError(t, err)
 	defer s.Close()
 
-	// Configure Cortex to use S3 but don't start any S3 backend
-	// This will cause all S3 operations to fail
-	flags := map[string]string{
-		"-target": "overrides",
+	minio := e2edb.NewMinio(9001, "cortex")
+	require.NoError(t, s.StartAndWaitReady(minio))
 
-		"-runtime-config.file":                 "runtime.yaml",
-		"-runtime-config.backend":              "s3",
-		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-runtime-config.s3.bucket-name":       "cortex",
-		"-runtime-config.s3.endpoint":          "localhost:9002",
-		"-runtime-config.s3.insecure":          "true",
+	runtimeConfig := map[string]interface{}{
+		"overrides": map[string]interface{}{
+			"user1": map[string]interface{}{
+				"ingestion_rate": 5000,
+			},
+		},
+		"api_allowed_limits": []string{
+			"ingestion_rate",
+			"max_global_series_per_user",
+			"max_global_series_per_metric",
+			"ingestion_burst_size",
+			"ruler_max_rules_per_rule_group",
+			"ruler_max_rule_groups_per_tenant",
+		},
 	}
+	uploadRuntimeConfig(t, minio, runtimeConfig)
 
-	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-s3-error", flags, "")
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-s3-error", defaultArgsOverrides(minio), "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
-	t.Run("GET overrides when S3 is unavailable", func(t *testing.T) {
+	// Delete runtime.yaml from S3 to simulate file being missing
+	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
+		Endpoint:  minio.HTTPEndpoint(),
+		Insecure:  true,
+		Bucket:    "cortex",
+		AccessKey: e2edb.MinioAccessKey,
+		SecretKey: e2edb.MinioSecretKey,
+	}, "overrides-test-delete", nil)
+	require.NoError(t, err)
+	require.NoError(t, s3Client.Delete(context.Background(), "runtime.yaml"))
+
+	t.Run("GET overrides when runtime.yaml is missing", func(t *testing.T) {
 		req, err := http.NewRequest("GET", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
 		require.NoError(t, err)
 		req.Header.Set("X-Scope-OrgID", "user1")
@@ -341,7 +338,7 @@ func TestOverridesAPIWithS3Error(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	})
 
-	t.Run("POST overrides when S3 is unavailable", func(t *testing.T) {
+	t.Run("POST overrides when runtime.yaml is missing", func(t *testing.T) {
 		newOverrides := map[string]interface{}{
 			"ingestion_rate": 6000,
 		}
@@ -360,7 +357,7 @@ func TestOverridesAPIWithS3Error(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 	})
 
-	t.Run("DELETE overrides when S3 is unavailable", func(t *testing.T) {
+	t.Run("DELETE overrides when runtime.yaml is missing", func(t *testing.T) {
 		req, err := http.NewRequest("DELETE", "http://"+cortexSvc.HTTPEndpoint()+"/api/v1/user-overrides", nil)
 		require.NoError(t, err)
 		req.Header.Set("X-Scope-OrgID", "user1")
@@ -387,33 +384,9 @@ func TestOverridesAPITenantExtraction(t *testing.T) {
 	runtimeConfig := map[string]interface{}{
 		"overrides": map[string]interface{}{},
 	}
-	runtimeConfigData, err := yaml.Marshal(runtimeConfig)
-	require.NoError(t, err)
+	uploadRuntimeConfig(t, minio, runtimeConfig)
 
-	s3Client, err := s3.NewBucketWithConfig(nil, s3.Config{
-		Endpoint:  minio.HTTPEndpoint(),
-		Insecure:  true,
-		Bucket:    "cortex",
-		AccessKey: e2edb.MinioAccessKey,
-		SecretKey: e2edb.MinioSecretKey,
-	}, "overrides-test-tenant", nil)
-	require.NoError(t, err)
-
-	require.NoError(t, s3Client.Upload(context.Background(), "runtime.yaml", bytes.NewReader(runtimeConfigData)))
-
-	flags := map[string]string{
-		"-target": "overrides",
-
-		"-runtime-config.file":                 "runtime.yaml",
-		"-runtime-config.backend":              "s3",
-		"-runtime-config.s3.access-key-id":     e2edb.MinioAccessKey,
-		"-runtime-config.s3.secret-access-key": e2edb.MinioSecretKey,
-		"-runtime-config.s3.bucket-name":       "cortex",
-		"-runtime-config.s3.endpoint":          minio.NetworkHTTPEndpoint(),
-		"-runtime-config.s3.insecure":          "true",
-	}
-
-	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-tenant", flags, "")
+	cortexSvc := e2ecortex.NewSingleBinary("cortex-overrides-tenant", defaultArgsOverrides(minio), "")
 	require.NoError(t, s.StartAndWaitReady(cortexSvc))
 
 	t.Run("no tenant header", func(t *testing.T) {

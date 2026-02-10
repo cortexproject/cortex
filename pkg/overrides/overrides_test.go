@@ -172,7 +172,7 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "GET",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "GET overrides - valid tenant ID, no overrides",
@@ -226,7 +226,7 @@ func TestAPIEndpoints(t *testing.T) {
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
 			requestBody:    map[string]any{"ingestion_rate": 5000},
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "POST overrides - valid tenant ID, valid overrides",
@@ -378,7 +378,7 @@ api_allowed_limits:
 			method:         "DELETE",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "",
-			expectedStatus: http.StatusUnauthorized,
+			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "DELETE overrides - valid tenant ID",
@@ -489,18 +489,6 @@ func TestAPITenantExtraction(t *testing.T) {
 				// Mock successful get with empty overrides
 				mock.MockGet("runtime.yaml", "overrides:\n", nil)
 			},
-		},
-		{
-			name:           "no tenant header",
-			headers:        map[string]string{},
-			expectedTenant: "",
-			expectStatus:   http.StatusUnauthorized,
-		},
-		{
-			name:           "empty tenant header",
-			headers:        map[string]string{"X-Scope-OrgID": ""},
-			expectedTenant: "",
-			expectStatus:   http.StatusUnauthorized,
 		},
 	}
 

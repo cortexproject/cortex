@@ -51,7 +51,7 @@ func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) 
 func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -67,12 +67,11 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 	if len(overrides) == 0 {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(overrides); err != nil {
 		level.Error(a.logger).Log("msg", "failed to encode overrides response", "err", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -84,7 +83,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -130,7 +129,7 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
 	userID, _, err := users.ExtractTenantIDFromHTTPRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

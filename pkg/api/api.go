@@ -400,9 +400,6 @@ func (a *API) RegisterOverrides(o *overrides.API) {
 	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.GetOverrides), true, "GET")
 	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.SetOverrides), true, "POST")
 	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.DeleteOverrides), true, "DELETE")
-
-	// Add link to the index page
-	a.indexPage.AddLink(SectionAdminEndpoints, "/api/v1/user-overrides", "User Overrides API")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.

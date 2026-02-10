@@ -79,7 +79,8 @@ func generateJSONEntryWithTruncatedField(entryMap map[string]interface{}, fieldN
 	return generateJSONEntry(entryMap)
 }
 
-func trimStringByBytes(bytesStr []byte, size int) string {
+func trimStringByBytes(str string, size int) string {
+	bytesStr := []byte(str)
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
 		for !utf8.RuneStart(bytesStr[size]) {
@@ -92,26 +93,23 @@ func trimStringByBytes(bytesStr []byte, size int) string {
 }
 
 func trimForJsonMarshal(field string, size int) string {
-	fieldValueEncoded, err := json.Marshal(field)
-	if err != nil {
-		return ""
-	}
-	fieldValueEncoded = fieldValueEncoded[1 : len(fieldValueEncoded)-1]
-	fieldValueEncodedTrimmed := trimStringByBytes(fieldValueEncoded, size)
-	fieldValueEncodedTrimmed = "\"" + removeHalfCutEscapeChar(fieldValueEncodedTrimmed) + "\""
-	var fieldValue string
-	err = json.Unmarshal([]byte(fieldValueEncodedTrimmed), &fieldValue)
-	if err != nil {
-		return ""
-	}
-
-	return fieldValue
+	return trimForJsonMarshalRecursive(field, size, 0, size)
 }
 
-func removeHalfCutEscapeChar(str string) string {
-	trailingBashslashCount := len(str) - len(strings.TrimRight(str, "\\"))
-	if trailingBashslashCount%2 == 1 {
-		str = str[0 : len(str)-1]
+func trimForJsonMarshalRecursive(field string, size int, repeatCount int, repeatSize int) string {
+	//Should only repeat once since were over slightly over cutting based on the encoded size if we miss once
+	if repeatCount > 1 {
+		return ""
 	}
-	return str
+
+	fieldTrimmed := trimStringByBytes(field, repeatSize)
+	fieldEncoded, err := json.Marshal(fieldTrimmed)
+	if err != nil {
+		return ""
+	}
+	if len(fieldEncoded) > size {
+		repeatSize = repeatSize - (len(fieldEncoded) - repeatSize)
+		return trimForJsonMarshalRecursive(fieldTrimmed, size, repeatCount+1, repeatSize)
+	}
+	return fieldTrimmed
 }

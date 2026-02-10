@@ -1,7 +1,6 @@
 package request_tracker
 
 import (
-	"context"
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
@@ -9,31 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
-
-	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
-
-func TestDefaultExtractor(t *testing.T) {
-	extractor := &DefaultExtractor{}
-	req := httptest.NewRequest("GET", "/api/v1/test", nil)
-	req.Header.Set("User-Agent", "test-agent")
-
-	ctx := user.InjectOrgID(context.Background(), "test-tenant")
-	ctx = requestmeta.ContextWithRequestId(ctx, "req-123")
-	req = req.WithContext(ctx)
-
-	result := extractor.Extract(req)
-	require.NotEmpty(t, result)
-
-	var data map[string]interface{}
-	require.NoError(t, json.Unmarshal(result, &data))
-
-	assert.Equal(t, "/api/v1/test", data["Path"])
-	assert.Equal(t, "GET", data["Method"])
-	assert.Equal(t, "test-tenant", data["TenantID"])
-	assert.Equal(t, "req-123", data["RequestID"])
-}
 
 func TestGetSeriesExtractor(t *testing.T) {
 	extractor := &ApiExtractor{}

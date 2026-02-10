@@ -15,8 +15,6 @@ type Extractor interface {
 	Extract(r *http.Request) []byte
 }
 
-type DefaultExtractor struct{}
-
 type ApiExtractor struct{}
 
 type InstantQueryExtractor struct{}
@@ -36,12 +34,6 @@ func generateCommonMap(r *http.Request) map[string]interface{} {
 	entryMap["PanelId"] = r.Header.Get("X-Panel-Id")
 
 	return entryMap
-}
-
-func (e *DefaultExtractor) Extract(r *http.Request) []byte {
-	entryMap := generateCommonMap(r)
-
-	return generateJSONEntry(entryMap)
 }
 
 func (e *ApiExtractor) Extract(r *http.Request) []byte {

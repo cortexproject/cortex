@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cortexproject/cortex/integration/e2ecortex"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 func testMetadataQueriesWithBlocksStorage(

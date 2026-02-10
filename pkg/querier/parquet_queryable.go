@@ -144,11 +144,6 @@ func NewParquetQueryable(
 	}
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
-	// This is a noop cache for now as we didn't expose any config to enable this cache.
-	rrConstraintsCache := search.NewConstraintRowRangeCacheSyncMap()
-	constraintCacheFunc := func(ctx context.Context) (search.RowRangesForConstraintsCache, error) {
-		return rrConstraintsCache, nil
-	}
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
 		queryable.WithHonorProjectionHints(config.HonorProjectionHints),
@@ -278,7 +273,7 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
+	}, nil, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,

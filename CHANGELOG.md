@@ -13,7 +13,10 @@
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
+* [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
+* [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
+* [ENHANCEMENT] Distributor: Add validation to ensure remote write v2 requests contain at least one sample or histogram. #7201
 * [ENHANCEMENT] Ingester: Add support for ingesting Native Histogram with Custom Buckets. #7191
 * [ENHANCEMENT] Ingester: Optimize labels out-of-order (ooo) check by allowing the iteration to terminate immediately upon finding the first unsorted label. #7186
 * [ENHANCEMENT] Distributor: Skip attaching `__unit__` and `__type__` labels when `-distributor.enable-type-and-unit-labels` is enabled, as these are appended from metadata. #7145
@@ -37,6 +40,8 @@
 * [ENHANCEMENT] Ingester: Add feature flag to collect metrics of how expensive an unoptimized regex matcher is and new limits to protect Ingester query path against expensive unoptimized regex matchers. #7194 #7210
 * [ENHANCEMENT] Querier: Add active API requests tracker logging to help with OOMKill troubleshooting. #7216
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
+* [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
+* [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
 * [BUGFIX] Querier: propagate Prometheus info annotations in protobuf responses. #7132
@@ -45,6 +50,7 @@
 * [BUGFIX] Query Frontend: Add Native Histogram extraction logic in results cache #7167
 * [BUGFIX] Alertmanager: Fix alertmanager reloading bug that removes user template files #7196
 * [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
+* [BUGFIX] Distributor: Return remote write V2 stats headers properly when the request is HA deduplicated. #7240
 
 ## 1.20.1 2025-12-03
 

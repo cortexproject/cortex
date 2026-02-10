@@ -3722,6 +3722,12 @@
               "type": "boolean",
               "x-cli-flag": "distributor.ha-tracker.enable"
             },
+            "enable_startup_sync": {
+              "default": false,
+              "description": "[Experimental] If enabled, fetches all tracked keys on startup to populate the local cache. This prevents duplicate GET calls for the same key while the cache is cold, but could cause a spike in GET requests during initialization if the number of tracked keys is large.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.ha-tracker.enable-startup-sync"
+            },
             "ha_tracker_failover_timeout": {
               "default": "30s",
               "description": "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout",

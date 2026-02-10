@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/exp/api/remote"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/schema"
@@ -34,13 +35,17 @@ const (
 	rw20WrittenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
+
+	labelValuePRW1 = "prw1"
+	labelValuePRW2 = "prw2"
+	labelValueOTLP = "otlp"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -118,12 +123,18 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 				v1Req.Source = cortexpb.API
 			}
 
-			if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
-				setPRW2RespHeader(w, 0, 0, 0)
 				if !ok {
+					setPRW2RespHeader(w, 0, 0, 0)
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
+				}
+				// For the case of HA deduplication, add the stats headers from the push response.
+				if writeResp != nil {
+					setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
+				} else {
+					setPRW2RespHeader(w, 0, 0, 0)
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
@@ -132,48 +143,53 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
 			} else {
-				setPRW2RespHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
+				setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
 				w.WriteHeader(http.StatusNoContent)
 			}
 		}
 
-		if remoteWrite2Enabled {
-			// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
-			contentType := r.Header.Get("Content-Type")
-			if contentType == "" {
-				contentType = appProtoContentType
-			}
+		// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = appProtoContentType
+		}
 
-			msgType, err := remote.ParseProtoMsg(contentType)
-			if err != nil {
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		msgType, err := remote.ParseProtoMsg(contentType)
+		if err != nil {
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
-				level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		if requestTotal != nil {
+			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
+		}
 
-			enc := r.Header.Get("Content-Encoding")
-			if enc == "" {
-			} else if enc != compression.Snappy {
-				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
+			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			switch msgType {
-			case remote.WriteV1MessageType:
-				handlePRW1()
-			case remote.WriteV2MessageType:
-				handlePRW2()
-			}
-		} else {
+		enc := r.Header.Get("Content-Encoding")
+		if enc == "" {
+		} else if enc != compression.Snappy {
+			err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
+
+		switch msgType {
+		case remote.WriteV1MessageType:
 			handlePRW1()
+		case remote.WriteV2MessageType:
+			if !remoteWrite2Enabled {
+				errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v", msgType, remote.WriteV1MessageType)
+				http.Error(w, errMsg, http.StatusUnsupportedMediaType)
+				return
+			}
+			handlePRW2()
 		}
 	})
 }
@@ -195,6 +211,10 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 		lbs, err := v2Ts.ToLabels(&b, symbols)
 		if err != nil {
 			return v1Req, err
+		}
+
+		if len(v2Ts.Samples) == 0 && len(v2Ts.Histograms) == 0 {
+			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
 		}
 
 		unit := symbols[v2Ts.Metadata.UnitRef]
@@ -289,4 +309,12 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 		})
 	}
 	return v1Exemplars, nil
+}
+
+func getTypeLabel(msgType remote.WriteMessageType) string {
+	if msgType == remote.WriteV1MessageType {
+		return labelValuePRW1
+	}
+
+	return labelValuePRW2
 }

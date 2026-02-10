@@ -38,6 +38,7 @@
 * [ENHANCEMENT] Ingester: Instrument Ingester CPU profile with userID for read APIs. #7184
 * [ENHANCEMENT] Ingester: Add fetch timeout for Ingester expanded postings cache. #7185
 * [ENHANCEMENT] Ingester: Add feature flag to collect metrics of how expensive an unoptimized regex matcher is and new limits to protect Ingester query path against expensive unoptimized regex matchers. #7194 #7210
+* [ENHANCEMENT] Querier: Add active API requests tracker logging to help with OOMKill troubleshooting. #7216
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238

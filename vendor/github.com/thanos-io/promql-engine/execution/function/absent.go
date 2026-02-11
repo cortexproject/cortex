@@ -19,19 +19,16 @@ type absentOperator struct {
 	once     sync.Once
 	funcExpr *logicalplan.FunctionCall
 	series   []labels.Labels
-	pool     *model.VectorPool
 	next     model.VectorOperator
 }
 
 func newAbsentOperator(
 	funcExpr *logicalplan.FunctionCall,
-	pool *model.VectorPool,
 	next model.VectorOperator,
 	opts *query.Options,
 ) model.VectorOperator {
 	oper := &absentOperator{
 		funcExpr: funcExpr,
-		pool:     pool,
 		next:     next,
 	}
 	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
@@ -53,8 +50,6 @@ func (o *absentOperator) Series(_ context.Context) ([]labels.Labels, error) {
 func (o *absentOperator) loadSeries() {
 	// we need to put the filtered labels back for absent to compute its series properly
 	o.once.Do(func() {
-		o.pool.SetStepSize(1)
-
 		// https://github.com/prometheus/prometheus/blob/df1b4da348a7c2f8c0b294ffa1f05db5f6641278/promql/functions.go#L1857
 		var lm []*labels.Matcher
 		switch n := o.funcExpr.Args[0].(type) {
@@ -85,36 +80,27 @@ func (o *absentOperator) loadSeries() {
 	})
 }
 
-func (o *absentOperator) GetPool() *model.VectorPool {
-	return o.pool
-}
-
-func (o *absentOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *absentOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	o.loadSeries()
 
-	vectors, err := o.next.Next(ctx)
+	n, err := o.next.Next(ctx, buf)
 	if err != nil {
-		return nil, err
-	}
-	if len(vectors) == 0 {
-		return nil, nil
+		return 0, err
 	}
 
-	result := o.GetPool().GetVectorBatch()
-	for i := range vectors {
-		sv := o.GetPool().GetStepVector(vectors[i].T)
-		if len(vectors[i].Samples) == 0 && len(vectors[i].Histograms) == 0 {
-			sv.AppendSample(o.GetPool(), 0, 1)
+	for i := range n {
+		vector := &buf[i]
+		isEmpty := len(vector.Samples) == 0 && len(vector.Histograms) == 0
+		vector.Reset(vector.T)
+		if isEmpty {
+			vector.AppendSample(0, 1)
 		}
-		result = append(result, sv)
-		o.next.GetPool().PutStepVector(vectors[i])
 	}
-	o.next.GetPool().PutVectors(vectors)
-	return result, nil
+	return n, nil
 }

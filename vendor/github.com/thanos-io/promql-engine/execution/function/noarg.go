@@ -20,7 +20,6 @@ type noArgFunctionOperator struct {
 	stepsBatch  int
 	funcExpr    *logicalplan.FunctionCall
 	call        noArgFunctionCall
-	vectorPool  *model.VectorPool
 	series      []labels.Labels
 	sampleIDs   []uint64
 }
@@ -37,29 +36,26 @@ func (o *noArgFunctionOperator) Series(_ context.Context) ([]labels.Labels, erro
 	return o.series, nil
 }
 
-func (o *noArgFunctionOperator) GetPool() *model.VectorPool {
-	return o.vectorPool
-}
-
-func (o *noArgFunctionOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (o *noArgFunctionOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	if o.currentStep > o.maxt {
-		return nil, nil
+		return 0, nil
 	}
 
-	ret := o.vectorPool.GetVectorBatch()
-	for i := 0; i < o.stepsBatch && o.currentStep <= o.maxt; i++ {
-		sv := o.vectorPool.GetStepVector(o.currentStep)
-		sv.Samples = []float64{o.call(o.currentStep)}
-		sv.SampleIDs = o.sampleIDs
-		ret = append(ret, sv)
+	n := 0
+	maxSteps := min(o.stepsBatch, len(buf))
+
+	for i := 0; i < maxSteps && o.currentStep <= o.maxt; i++ {
+		buf[n].Reset(o.currentStep)
+		buf[n].AppendSample(o.sampleIDs[0], o.call(o.currentStep))
+		n++
 		o.currentStep += o.step
 	}
 
-	return ret, nil
+	return n, nil
 }

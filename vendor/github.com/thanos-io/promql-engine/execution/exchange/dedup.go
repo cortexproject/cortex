@@ -34,38 +34,39 @@ type dedupOperator struct {
 	once   sync.Once
 	series []labels.Labels
 
-	pool *model.VectorPool
 	next model.VectorOperator
 	// outputIndex is a slice that is used as an index from input sample ID to output sample ID.
 	outputIndex []uint64
 	dedupCache  dedupCache
 }
 
-func NewDedupOperator(pool *model.VectorPool, next model.VectorOperator, opts *query.Options) model.VectorOperator {
+func NewDedupOperator(next model.VectorOperator, opts *query.Options) model.VectorOperator {
 	oper := &dedupOperator{
 		next: next,
-		pool: pool,
 	}
 	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
-func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (d *dedupOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	var err error
 	d.once.Do(func() { err = d.loadSeries(ctx) })
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	in, err := d.next.Next(ctx)
+	n, err := d.next.Next(ctx, buf)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if in == nil {
-		return nil, nil
+	if n == 0 {
+		return 0, nil
 	}
 
-	result := d.pool.GetVectorBatch()
-	for _, vector := range in {
+	// Process each input vector and overwrite it with the deduplicated output
+	for idx := range n {
+		vector := &buf[idx]
+
+		// Update dedup cache with all samples from this vector
 		for i, inputSampleID := range vector.SampleIDs {
 			outputSampleID := d.outputIndex[inputSampleID]
 			d.dedupCache[outputSampleID].t = vector.T
@@ -78,24 +79,27 @@ func (d *dedupOperator) Next(ctx context.Context) ([]model.StepVector, error) {
 			d.dedupCache[outputSampleID].h = vector.Histograms[i]
 		}
 
-		out := d.pool.GetStepVector(vector.T)
+		// Clear the vector and rebuild it with deduplicated data
+		t := vector.T
+		buf[idx].Reset(t)
+
+		hint := len(d.series)
 		for outputSampleID, sample := range d.dedupCache {
 			// To avoid clearing the dedup cache for each step vector, we use the `t` field
 			// to detect whether a sample for the current step should be mapped to the output.
 			// If the timestamp of the sample does not match the input vector timestamp, it means that
 			// the sample was added in a previous iteration and should be skipped.
-			if sample.t == vector.T {
+			if sample.t == t {
 				if sample.h == nil {
-					out.AppendSample(d.pool, uint64(outputSampleID), sample.v)
+					buf[idx].AppendSampleWithSizeHint(uint64(outputSampleID), sample.v, hint)
 				} else {
-					out.AppendHistogram(d.pool, uint64(outputSampleID), sample.h)
+					buf[idx].AppendHistogramWithSizeHint(uint64(outputSampleID), sample.h, hint)
 				}
 			}
 		}
-		result = append(result, out)
 	}
 
-	return result, nil
+	return n, nil
 }
 
 func (d *dedupOperator) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -105,10 +109,6 @@ func (d *dedupOperator) Series(ctx context.Context) ([]labels.Labels, error) {
 		return nil, err
 	}
 	return d.series, nil
-}
-
-func (d *dedupOperator) GetPool() *model.VectorPool {
-	return d.pool
 }
 
 func (d *dedupOperator) Explain() (next []model.VectorOperator) {

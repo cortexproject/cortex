@@ -10,6 +10,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/prometheus/prometheus/model/histogram"
 )
@@ -177,9 +178,9 @@ func (r *RateBuffer) Reset(mint int64, evalt int64) {
 	r.firstSamples[lastSample].T = math.MaxInt64
 }
 
-func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, error) {
+func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	if r.firstSamples[0].T == math.MaxInt64 || r.firstSamples[0].T == r.lastSample.T {
-		return 0, nil, false, nil
+		return 0, nil, false, 0, nil
 	}
 
 	r.rateBuffer = append(append(
@@ -189,7 +190,7 @@ func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, 
 	)
 	r.rateBuffer = slices.CompactFunc(r.rateBuffer, func(s1 Sample, s2 Sample) bool { return s1.T == s2.T })
 	numSamples := r.stepRanges[0].numSamples
-	return extrapolatedRate(ctx, r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
+	return extrapolatedRate(r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
 }
 
 func (r *RateBuffer) ReadIntoLast(func(*Sample)) {}

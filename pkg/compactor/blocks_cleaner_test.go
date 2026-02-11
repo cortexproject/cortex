@@ -984,6 +984,10 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, partitionedGroupFileExists)
 
+	visitMarkerExists, err := userBucket.Exists(ctx, visitMarker.GetVisitMarkerFilePath())
+	require.NoError(t, err)
+	require.True(t, visitMarkerExists)
+
 	block1DeletionMarkerExists, err := userBucket.Exists(ctx, path.Join(block1.String(), metadata.DeletionMarkFilename))
 	require.NoError(t, err)
 	require.True(t, block1DeletionMarkerExists)
@@ -1000,7 +1004,7 @@ func TestBlocksCleaner_CleanPartitionedGroupInfo(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, partitionedGroupFileExists)
 
-	visitMarkerExists, err := userBucket.Exists(ctx, visitMarker.GetVisitMarkerFilePath())
+	visitMarkerExists, err = userBucket.Exists(ctx, visitMarker.GetVisitMarkerFilePath())
 	require.NoError(t, err)
 	require.False(t, visitMarkerExists)
 }

@@ -798,6 +798,7 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		partitionedGroupInfoFile := extraInfo.path
 		deletedBlocksCount := 0
 		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
+		isPartitionGroupInfoDeleted := false
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
@@ -820,11 +821,13 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_file", partitionedGroupInfoFile, "err", err)
 				} else {
 					level.Info(partitionedGroupLogger).Log("msg", "deleted partitioned group info", "partitioned_group_file", partitionedGroupInfoFile)
+					isPartitionGroupInfoDeleted = true
 				}
 			}
 		}
 
-		if extraInfo.status.CanDelete {
+		if extraInfo.status.CanDelete && (isPartitionGroupInfoDeleted || c.cannotFindPartitionGroupInfoFile(ctx, userBucket, userLogger, partitionedGroupInfoFile)) {
+			level.Info(partitionedGroupLogger).Log("msg", "partition group info file has been deleted or does not exist, removing all related partition visit markers")
 			// Remove all partition visit markers for completed partitions
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
 				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete all partition visit markers for partitioned group", "err", err)
@@ -843,6 +846,11 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		}
 		return nil
 	})
+}
+
+func (c *BlocksCleaner) cannotFindPartitionGroupInfoFile(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, partitionedGroupInfoFile string) bool {
+	_, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, partitionedGroupInfoFile)
+	return err != nil && errors.Is(err, ErrorPartitionedGroupInfoNotFound)
 }
 
 func (c *BlocksCleaner) emitUserPartitionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {

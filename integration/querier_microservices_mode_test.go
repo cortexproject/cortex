@@ -293,10 +293,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(3), "cortex_ingester_memory_series_created_total"))
 				require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 
-				// Start the compactor to have the bucket index created before querying.
-				compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
-				require.NoError(t, s.StartAndWaitReady(compactor))
-
 				switch testCfg.bucketStorageType {
 				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. When sharding is enabled

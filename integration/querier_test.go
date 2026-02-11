@@ -203,11 +203,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(3*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
 
-				// Start the compactor to have the bucket index created before querying. We need to run the compactor
-				// as a separate service because it's currently not part of the single binary.
-				compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
-				require.NoError(t, s.StartAndWaitReady(compactor))
-
 				switch testCfg.bucketStorageType {
 				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded

@@ -1269,6 +1269,7 @@ func (m *mockResourceMonitor) GetHeapUtilization() float64 {
 func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
+	cfg.BucketStore.BucketIndex.Enabled = false
 
 	cfg.BucketStore.ConsistencyDelay = 0
 	cfg.BucketStore.SyncDir = t.TempDir()

@@ -440,7 +440,7 @@ type BucketIndexConfig struct {
 }
 
 func (cfg *BucketIndexConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
-	f.BoolVar(&cfg.Enabled, prefix+"enabled", false, "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning.")
+	f.BoolVar(&cfg.Enabled, prefix+"enabled", true, "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning. Disabling the bucket index is not recommended for production.")
 	f.DurationVar(&cfg.UpdateOnErrorInterval, prefix+"update-on-error-interval", time.Minute, "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used only by querier.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"idle-timeout", time.Hour, "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used only by querier.")
 	f.DurationVar(&cfg.MaxStalePeriod, prefix+"max-stale-period", time.Hour, "The maximum allowed age of a bucket index (last updated) before queries start failing because the bucket index is too old. The bucket index is periodically updated by the compactor, while this check is enforced in the querier (at query time).")

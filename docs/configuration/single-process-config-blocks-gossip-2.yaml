@@ -66,6 +66,8 @@ blocks_storage:
 
   bucket_store:
     sync_dir: /tmp/cortex/tsdb-sync-querier2
+    bucket_index:
+      enabled: false
 
   # This is where Cortex uploads generated blocks. Queriers will fetch blocks from here as well.
   # Cortex of course supports multiple options (S3, GCS, Azure), but for demonstration purposes

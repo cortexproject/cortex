@@ -139,18 +139,19 @@ var (
 
 	BlocksStorageFlags = func() map[string]string {
 		return map[string]string{
-			"-store.engine":                                 blocksStorageEngine,
-			"-blocks-storage.backend":                       "s3",
-			"-blocks-storage.tsdb.block-ranges-period":      "1m",
-			"-blocks-storage.bucket-store.sync-interval":    "5s",
-			"-blocks-storage.tsdb.retention-period":         "5m",
-			"-blocks-storage.tsdb.ship-interval":            "1m",
-			"-blocks-storage.tsdb.head-compaction-interval": "1s",
-			"-blocks-storage.s3.access-key-id":              e2edb.MinioAccessKey,
-			"-blocks-storage.s3.secret-access-key":          e2edb.MinioSecretKey,
-			"-blocks-storage.s3.bucket-name":                bucketName,
-			"-blocks-storage.s3.endpoint":                   fmt.Sprintf("%s-minio-9000:9000", networkName),
-			"-blocks-storage.s3.insecure":                   "true",
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "s3",
+			"-blocks-storage.tsdb.block-ranges-period":          "1m",
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			"-blocks-storage.bucket-store.sync-interval":        "5s",
+			"-blocks-storage.tsdb.retention-period":             "5m",
+			"-blocks-storage.tsdb.ship-interval":                "1m",
+			"-blocks-storage.tsdb.head-compaction-interval":     "1s",
+			"-blocks-storage.s3.access-key-id":                  e2edb.MinioAccessKey,
+			"-blocks-storage.s3.secret-access-key":              e2edb.MinioSecretKey,
+			"-blocks-storage.s3.bucket-name":                    bucketName,
+			"-blocks-storage.s3.endpoint":                       fmt.Sprintf("%s-minio-9000:9000", networkName),
+			"-blocks-storage.s3.insecure":                       "true",
 		}
 	}
 

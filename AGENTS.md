@@ -23,9 +23,7 @@ make ./cmd/cortex/.uptodate    # Build Cortex Docker image for integration tests
 ### Unit Tests
 
 ```bash
-go test ./...                                    # Run all unit tests
-go test ./pkg/distributor/...                    # Run tests for specific package
-go test -tags "netgo slicelabels" ./...          # Run with build tags (matches CI)
+go test -timeout 2400s -tags "netgo slicelabels" ./...          # Run tests with CI configuration
 ```
 
 ### Integration Tests

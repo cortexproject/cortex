@@ -30,70 +30,24 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 		indexCacheBackend      string
 		chunkCacheBackend      string
 		parquetLabelsCache     string
-		bucketIndexEnabled     bool
 	}{
 		// tsdb bucket storage
-		"[TSDB] blocks sharding disabled, memcached index cache": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "",
-			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[TSDB] blocks sharding disabled, multilevel index cache (inmemory, memcached)": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "",
-			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendMemcached),
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[TSDB] blocks sharding disabled, redis index cache": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "",
-			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
-			chunkCacheBackend:      tsdb.CacheBackendRedis,
-		},
-		"[TSDB] blocks sharding disabled, multilevel index cache (inmemory, redis)": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "",
-			indexCacheBackend:      fmt.Sprintf("%v,%v", tsdb.IndexCacheBackendInMemory, tsdb.IndexCacheBackendRedis),
-			chunkCacheBackend:      tsdb.CacheBackendRedis,
-		},
-		"[TSDB] blocks default sharding, inmemory index cache": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "default",
-			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
-		},
-		"[TSDB] blocks default sharding, memcached index cache": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "default",
-			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[TSDB] blocks shuffle sharding, memcached index cache": {
-			bucketStorageType:      "tsdb",
-			blocksShardingStrategy: "shuffle-sharding",
-			tenantShardSize:        1,
-			indexCacheBackend:      tsdb.IndexCacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
 		"[TSDB] blocks default sharding, inmemory index cache, bucket index enabled": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks shuffle sharding, memcached index cache, bucket index enabled": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks default sharding, redis index cache, bucket index enabled": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks shuffle sharding, redis index cache, bucket index enabled": {
 			bucketStorageType:      "tsdb",
@@ -101,21 +55,18 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks sharding disabled, in-memory chunk cache": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks default sharding, in-memory chunk cache": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] blocks shuffle sharding, in-memory chunk cache": {
 			bucketStorageType:      "tsdb",
@@ -123,21 +74,18 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] block sharding disabled, multi-level chunk cache": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] block default sharding, multi-level chunk cache": {
 			bucketStorageType:      "tsdb",
 			blocksShardingStrategy: "default",
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 		"[TSDB] block shuffle sharding, multi-level chunk cache": {
 			bucketStorageType:      "tsdb",
@@ -145,70 +93,24 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			indexCacheBackend:      tsdb.IndexCacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 		//parquet bucket storage
-		"[Parquet] blocks sharding disabled, memcached parquet label cache, memcached chunks cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "",
-			parquetLabelsCache:     tsdb.CacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[Parquet] blocks sharding disabled, multilevel parquet label cache (inmemory, memcached)": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "",
-			parquetLabelsCache:     fmt.Sprintf("%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached),
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[Parquet] blocks sharding disabled, redis parquet label cache, redis chunks cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "",
-			parquetLabelsCache:     tsdb.CacheBackendRedis,
-			chunkCacheBackend:      tsdb.CacheBackendRedis,
-		},
-		"[Parquet] blocks sharding disabled, multilevel parquet label cache cache (inmemory, redis), redis chunks cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "",
-			parquetLabelsCache:     fmt.Sprintf("%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendRedis),
-			chunkCacheBackend:      tsdb.CacheBackendRedis,
-		},
-		"[Parquet] blocks default sharding, inmemory parquet label cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "default",
-			parquetLabelsCache:     tsdb.CacheBackendInMemory,
-		},
-		"[Parquet] blocks default sharding, memcached parquet label cache, memcached chunks cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "default",
-			parquetLabelsCache:     tsdb.CacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
-		"[Parquet] blocks shuffle sharding, memcached parquet label cache, memcached chunks cache": {
-			bucketStorageType:      "parquet",
-			blocksShardingStrategy: "shuffle-sharding",
-			tenantShardSize:        1,
-			parquetLabelsCache:     tsdb.CacheBackendMemcached,
-			chunkCacheBackend:      tsdb.CacheBackendMemcached,
-		},
 		"[Parquet] blocks default sharding, inmemory parquet label cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "default",
 			parquetLabelsCache:     tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks shuffle sharding, memcached parquet label cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "shuffle-sharding",
 			tenantShardSize:        1,
 			parquetLabelsCache:     tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks default sharding, redis parquet label cache, redis chunks cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "default",
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks shuffle sharding, redis parquet label cache, redis chunks cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
@@ -216,21 +118,18 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendRedis,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks sharding disabled, redis parquet label cache, in-memory chunks cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "",
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks default sharding, redis parquet label cache, in-memory chunk cache": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "default",
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] blocks shuffle sharding, redis parquet label cache, in-memory chunk cache, bucket index enabled": {
 			bucketStorageType:      "parquet",
@@ -238,21 +137,18 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      tsdb.CacheBackendInMemory,
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] block sharding disabled, redis parquet label cache, multi-level chunk cache (in-memory, memcached, redis), bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "",
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] block default sharding, redis parquet label cache, multi-level chunk cache (in-memory, memcached, redis), bucket index enabled": {
 			bucketStorageType:      "parquet",
 			blocksShardingStrategy: "default",
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 		"[Parquet] block shuffle sharding, redis parquet label cache, multi-level chunk cache ((in-memory, memcached, redis), bucket index enabled)": {
 			bucketStorageType:      "parquet",
@@ -260,7 +156,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 			tenantShardSize:        1,
 			parquetLabelsCache:     tsdb.CacheBackendRedis,
 			chunkCacheBackend:      fmt.Sprintf("%v,%v,%v", tsdb.CacheBackendInMemory, tsdb.CacheBackendMemcached, tsdb.CacheBackendRedis),
-			bucketIndexEnabled:     true,
 		},
 	}
 
@@ -287,7 +182,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					"-store-gateway.sharding-strategy":                  testCfg.blocksShardingStrategy,
 					"-store-gateway.tenant-shard-size":                  fmt.Sprintf("%d", testCfg.tenantShardSize),
 					"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
-					"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
 					"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
 				})
 
@@ -399,11 +293,9 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(3), "cortex_ingester_memory_series_created_total"))
 				require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 
-				if testCfg.bucketIndexEnabled {
-					// Start the compactor to have the bucket index created before querying.
-					compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
-					require.NoError(t, s.StartAndWaitReady(compactor))
-				}
+				// Start the compactor to have the bucket index created before querying.
+				compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+				require.NoError(t, s.StartAndWaitReady(compactor))
 
 				switch testCfg.bucketStorageType {
 				case "tsdb":
@@ -426,10 +318,6 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 						require.NoError(t, storeGateways.WaitSumMetrics(e2e.Equals(float64(1*storeGateways.NumInstances())), "cortex_bucket_stores_tenants_synced"))
 					}
 
-					if !testCfg.bucketIndexEnabled {
-						// Wait until the querier has discovered the uploaded blocks.
-						require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
-					}
 				case "parquet":
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))

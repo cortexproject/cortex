@@ -694,6 +694,7 @@ func prepareStorageConfig(t testing.TB) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
 	cfg.BucketStore.SyncDir = t.TempDir()
+	cfg.BucketStore.BucketIndex.Enabled = false
 
 	return cfg
 }

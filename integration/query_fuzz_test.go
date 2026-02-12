@@ -1160,6 +1160,8 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		"-consul.hostname":                           consul1.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 	// Enable lazy expanded postings.
 	flags2 := mergeFlags(flags, map[string]string{
@@ -1321,6 +1323,8 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])

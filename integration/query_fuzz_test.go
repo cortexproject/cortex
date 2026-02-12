@@ -1630,6 +1630,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
 			"-frontend.query-vertical-shard-size": "2",
 			"-frontend.max-cache-freshness":       "1m",
+			// TODO: run a compactor here instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 		},
 	)
 	// make alert manager config dir

@@ -77,6 +77,8 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			// TODO: run a compactor here instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),

@@ -187,6 +187,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 			"-frontend.max-cache-freshness":       "1m",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",
+			// TODO: make sure compactor works instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 		},
 	)
 	// make alert manager config dir

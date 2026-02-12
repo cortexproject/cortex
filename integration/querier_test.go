@@ -113,6 +113,13 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-store-gateway.sharding-ring.replication-factor": "1",
 						// alert manager
 						"-alertmanager.web.external-url": "http://localhost/alertmanager",
+						// compactor
+						"-compactor.sharding-enabled":                 "true",
+						"-compactor.ring.store":                       "consul",
+						"-compactor.ring.consul.hostname":             consul.NetworkHTTPEndpoint(),
+						"-compactor.ring.wait-stability-min-duration": "0",
+						"-compactor.ring.wait-stability-max-duration": "0",
+						"-compactor.cleanup-interval":                 "1s",
 					},
 				)
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
@@ -154,10 +161,9 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					parquetConverter = e2ecortex.NewParquetConverter("parquet-converter", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 					require.NoError(t, s.StartAndWaitReady(parquetConverter))
 				}
-
 				// Wait until Cortex replicas have updated the ring state.
 				for _, replica := range cluster.Instances() {
-					numTokensPerInstance := 512 // Ingesters ring.
+					numTokensPerInstance := 512 + 512 // Ingesters ring + compactor ring.
 					if testCfg.blocksShardingEnabled {
 						numTokensPerInstance += 512 * 2 // Store-gateway ring (read both by the querier and store-gateway).
 					}
@@ -202,7 +208,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_memory_series"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(3*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
-
 				switch testCfg.bucketStorageType {
 				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
@@ -290,6 +295,8 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -377,6 +384,8 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -476,6 +485,8 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -556,6 +567,8 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
 		"-querier.max-fetched-series-per-query":      "3",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.

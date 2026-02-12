@@ -121,6 +121,8 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 				"-blocks-storage.tsdb.ship-interval":            "1s",
 				"-blocks-storage.tsdb.retention-period":         ((blockRangePeriod * 2) - 1).String(),
 				"-blocks-storage.tsdb.enable-native-histograms": "true",
+				// TODO: run a compactor here instead of disabling the bucket-index
+				"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 			})
 
 			// Start dependencies.

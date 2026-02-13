@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -x
-VER="28.0.4"
+VER="29.2.1"
 
 # Detect architecture
 ARCH=$(uname -m)

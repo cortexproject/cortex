@@ -1074,8 +1074,8 @@
             "bucket_index": {
               "properties": {
                 "enabled": {
-                  "default": false,
-                  "description": "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning.",
+                  "default": true,
+                  "description": "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning. Disabling the bucket index is not recommended for production.",
                   "type": "boolean",
                   "x-cli-flag": "blocks-storage.bucket-store.bucket-index.enabled"
                 },

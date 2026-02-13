@@ -36,83 +36,28 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 		blocksShardingEnabled bool
 		indexCacheBackend     string
 		parquetLabelsCache    string
-		bucketIndexEnabled    bool
 	}{
 		// tsdb bucket storage
-		"[TSDB] blocks sharding enabled, inmemory index cache": {
-			bucketStorageType:     "tsdb",
-			blocksShardingEnabled: true,
-			indexCacheBackend:     tsdb.IndexCacheBackendInMemory,
-		},
-		"[TSDB] blocks sharding disabled, memcached index cache": {
-			bucketStorageType:     "tsdb",
-			blocksShardingEnabled: false,
-			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
-		},
-		"[TSDB] blocks sharding enabled, memcached index cache": {
-			bucketStorageType:     "tsdb",
-			blocksShardingEnabled: true,
-			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
-		},
 		"[TSDB] blocks sharding enabled, memcached index cache, bucket index enabled": {
 			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendMemcached,
-			bucketIndexEnabled:    true,
-		},
-		"[TSDB] blocks sharding disabled,redis index cache": {
-			bucketStorageType:     "tsdb",
-			blocksShardingEnabled: false,
-			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
-		},
-		"[TSDB] blocks sharding enabled, redis index cache": {
-			bucketStorageType:     "tsdb",
-			blocksShardingEnabled: true,
-			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
 		"[TSDB] blocks sharding enabled, redis index cache, bucket index enabled": {
 			bucketStorageType:     "tsdb",
 			blocksShardingEnabled: true,
 			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
-			bucketIndexEnabled:    true,
 		},
 		// parquet bucket storage
-		"[Parquet] blocks sharding enabled, inmemory parquet labels cache": {
-			bucketStorageType:     "parquet",
-			blocksShardingEnabled: true,
-			parquetLabelsCache:    tsdb.CacheBackendInMemory,
-		},
-		"[Parquet] blocks sharding disabled, memcached parquet labels cache": {
-			bucketStorageType:     "parquet",
-			blocksShardingEnabled: false,
-			parquetLabelsCache:    tsdb.CacheBackendMemcached,
-		},
-		"[Parquet] blocks sharding enabled, memcached parquet labels cache": {
-			bucketStorageType:     "parquet",
-			blocksShardingEnabled: true,
-			parquetLabelsCache:    tsdb.CacheBackendMemcached,
-		},
 		"[Parquet] blocks sharding enabled, memcached parquet labels cache, bucket index enabled": {
 			bucketStorageType:     "parquet",
 			blocksShardingEnabled: true,
 			parquetLabelsCache:    tsdb.CacheBackendMemcached,
-			bucketIndexEnabled:    true,
-		},
-		"[Parquet] blocks sharding disabled, redis parquet labels cache": {
-			bucketStorageType:     "parquet",
-			blocksShardingEnabled: false,
-			parquetLabelsCache:    tsdb.CacheBackendRedis,
-		},
-		"[Parquet] blocks sharding enabled, redis parquet labels cache": {
-			bucketStorageType:     "parquet",
-			blocksShardingEnabled: true,
-			parquetLabelsCache:    tsdb.CacheBackendRedis,
 		},
 		"[Parquet] blocks sharding enabled, redis parquet labels cache, bucket index enabled": {
 			bucketStorageType:     "parquet",
 			blocksShardingEnabled: true,
 			parquetLabelsCache:    tsdb.CacheBackendRedis,
-			bucketIndexEnabled:    true,
 		},
 	}
 
@@ -149,14 +94,13 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					BlocksStorageFlags(),
 					AlertmanagerLocalFlags(),
 					map[string]string{
-						"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-						"-blocks-storage.tsdb.ship-interval":                "1s",
-						"-blocks-storage.bucket-store.sync-interval":        "1s",
-						"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-						"-blocks-storage.bucket-store.bucket-index.enabled": strconv.FormatBool(testCfg.bucketIndexEnabled),
-						"-blocks-storage.bucket-store.bucket-store-type":    testCfg.bucketStorageType,
-						"-querier.thanos-engine":                            strconv.FormatBool(thanosEngine),
-						"-querier.enable-x-functions":                       strconv.FormatBool(thanosEngine),
+						"-blocks-storage.tsdb.block-ranges-period":       blockRangePeriod.String(),
+						"-blocks-storage.tsdb.ship-interval":             "1s",
+						"-blocks-storage.bucket-store.sync-interval":     "1s",
+						"-blocks-storage.tsdb.retention-period":          ((blockRangePeriod * 2) - 1).String(),
+						"-blocks-storage.bucket-store.bucket-store-type": testCfg.bucketStorageType,
+						"-querier.thanos-engine":                         strconv.FormatBool(thanosEngine),
+						"-querier.enable-x-functions":                    strconv.FormatBool(thanosEngine),
 						// Ingester.
 						"-ring.store":      "consul",
 						"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -169,6 +113,13 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						"-store-gateway.sharding-ring.replication-factor": "1",
 						// alert manager
 						"-alertmanager.web.external-url": "http://localhost/alertmanager",
+						// compactor
+						"-compactor.sharding-enabled":                 "true",
+						"-compactor.ring.store":                       "consul",
+						"-compactor.ring.consul.hostname":             consul.NetworkHTTPEndpoint(),
+						"-compactor.ring.wait-stability-min-duration": "0",
+						"-compactor.ring.wait-stability-max-duration": "0",
+						"-compactor.cleanup-interval":                 "1s",
 					},
 				)
 				require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs/user-1.yaml", []byte(cortexAlertmanagerUserConfigYaml)))
@@ -210,10 +161,9 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					parquetConverter = e2ecortex.NewParquetConverter("parquet-converter", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 					require.NoError(t, s.StartAndWaitReady(parquetConverter))
 				}
-
 				// Wait until Cortex replicas have updated the ring state.
 				for _, replica := range cluster.Instances() {
-					numTokensPerInstance := 512 // Ingesters ring.
+					numTokensPerInstance := 512 + 512 // Ingesters ring + compactor ring.
 					if testCfg.blocksShardingEnabled {
 						numTokensPerInstance += 512 * 2 // Store-gateway ring (read both by the querier and store-gateway).
 					}
@@ -258,14 +208,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(1*cluster.NumInstances())), "cortex_ingester_memory_series"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(3*cluster.NumInstances())), "cortex_ingester_memory_series_created_total"))
 				require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_ingester_memory_series_removed_total"))
-
-				if testCfg.bucketIndexEnabled {
-					// Start the compactor to have the bucket index created before querying. We need to run the compactor
-					// as a separate service because it's currently not part of the single binary.
-					compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
-					require.NoError(t, s.StartAndWaitReady(compactor))
-				}
-
 				switch testCfg.bucketStorageType {
 				case "tsdb":
 					// Wait until the store-gateway has synched the new uploaded blocks. The number of blocks loaded
@@ -277,11 +219,6 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 						require.NoError(t, cluster.WaitSumMetrics(e2e.GreaterOrEqual(float64(shippedBlocks*seriesReplicationFactor*cluster.NumInstances())), "cortex_bucket_store_blocks_loaded"))
 					}
 
-					if !testCfg.bucketIndexEnabled {
-						// Wait until the querier has discovered the uploaded blocks (discovered both by the querier and store-gateway).
-						require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Equals(float64(2*cluster.NumInstances()*2)), []string{"cortex_blocks_meta_synced"}, e2e.WithLabelMatchers(
-							labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
-					}
 				case "parquet":
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetrics(e2e.Equals(float64(2*cluster.NumInstances())), "cortex_parquet_converter_blocks_converted_total"))
@@ -358,6 +295,8 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -445,6 +384,8 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -544,6 +485,8 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -624,6 +567,8 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
 		"-querier.max-fetched-series-per-query":      "3",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.

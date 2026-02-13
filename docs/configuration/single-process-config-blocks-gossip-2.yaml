@@ -104,3 +104,5 @@ alertmanager_storage:
   local:
     # Make sure file exist
     path: /tmp/cortex/alerts
+compactor:
+  cleanup_interval: 10s

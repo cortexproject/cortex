@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Blocks storage: Bucket index is now enabled by default. Disabling the bucket index (`-blocks-storage.bucket-store.bucket-index.enabled=false`) is not recommended for production. #7259
 * [CHANGE] Users Scanner: Rename user index update configuration. #7180
   * Flag: Renamed `-*.users-scanner.user-index.cleanup-interval` to `-*.users-scanner.user-index.update-interval`.
   * Config: Renamed `clean_up_interval` to `update_interval` within the `users_scanner` configuration block..

@@ -77,6 +77,8 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			// TODO: run a compactor here instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -185,6 +187,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 			"-frontend.max-cache-freshness":       "1m",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",
+			// TODO: make sure compactor works instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 		},
 	)
 	// make alert manager config dir
@@ -1156,6 +1160,8 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		"-consul.hostname":                           consul1.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 	// Enable lazy expanded postings.
 	flags2 := mergeFlags(flags, map[string]string{
@@ -1317,6 +1323,8 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
@@ -1622,6 +1630,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
 			"-frontend.query-vertical-shard-size": "2",
 			"-frontend.max-cache-freshness":       "1m",
+			// TODO: run a compactor here instead of disabling the bucket-index
+			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 		},
 	)
 	// make alert manager config dir

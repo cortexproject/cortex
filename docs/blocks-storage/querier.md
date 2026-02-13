@@ -1716,9 +1716,10 @@ blocks_storage:
 
     bucket_index:
       # True to enable querier and store-gateway to discover blocks in the
-      # storage via bucket index instead of bucket scanning.
+      # storage via bucket index instead of bucket scanning. Disabling the
+      # bucket index is not recommended for production.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
-      [enabled: <boolean> | default = false]
+      [enabled: <boolean> | default = true]
 
       # How frequently a bucket index, which previously failed to load, should
       # be tried to load again. This option is used only by querier.

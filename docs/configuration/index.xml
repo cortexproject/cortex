@@ -2354,9 +2354,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bucket_index&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># True to enable querier and store-gateway to discover blocks in the storage&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># via bucket index instead of bucket scanning.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># via bucket index instead of bucket scanning. Disabling the bucket index is&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># not recommended for production.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = true]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How frequently a bucket index, which previously failed to load, should be&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># tried to load again. This option is used only by querier.&lt;/span>
@@ -7261,12 +7262,7 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/li>
 &lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
 &lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>Blocks storage bucket index
-&lt;ul>
-&lt;li>The bucket index support in the querier and store-gateway (enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code>) is experimental&lt;/li>
 &lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
-&lt;/ul>
-&lt;/li>
 &lt;li>Blocks storage user index&lt;/li>
 &lt;li>Querier: tenant federation
 &lt;ul>

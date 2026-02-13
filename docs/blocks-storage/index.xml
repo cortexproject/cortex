@@ -1674,9 +1674,10 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bucket_index&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># True to enable querier and store-gateway to discover blocks in the&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># storage via bucket index instead of bucket scanning.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># storage via bucket index instead of bucket scanning. Disabling the&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># bucket index is not recommended for production.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = true]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How frequently a bucket index, which previously failed to load, should&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># be tried to load again. This option is used only by querier.&lt;/span>
@@ -3644,9 +3645,10 @@ Displays the status of the store-gateways ring, including the tokens owned by ea
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bucket_index&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># True to enable querier and store-gateway to discover blocks in the&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># storage via bucket index instead of bucket scanning.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># storage via bucket index instead of bucket scanning. Disabling the&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># bucket index is not recommended for production.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.bucket-store.bucket-index.enabled&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = true]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># How frequently a bucket index, which previously failed to load, should&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># be tried to load again. This option is used only by querier.&lt;/span>
@@ -4305,7 +4307,7 @@ Displays the status of the compactors ring, including the tokens owned by each c
 └─────────────────────────────────────────────────────────────┘
 &lt;/code>&lt;/pre></description></item><item><title>Docs: Bucket Index</title><link>/docs/blocks-storage/bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/bucket-index/</guid><description>
 &lt;p>The bucket index is a &lt;strong>per-tenant file containing the list of blocks and block deletion marks&lt;/strong> in the storage. The bucket index itself is stored in the backend object storage, is periodically updated by the compactor, and used by queriers, store-gateways and rulers to discover blocks in the storage.&lt;/p>
-&lt;p>The bucket index usage is &lt;strong>optional&lt;/strong> and can be enabled via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=true&lt;/code> (or its respective YAML config option).&lt;/p>
+&lt;p>The bucket index is &lt;strong>enabled by default&lt;/strong>. Disabling it via &lt;code>-blocks-storage.bucket-store.bucket-index.enabled=false&lt;/code> is not recommended for production environments.&lt;/p>
 &lt;h2 id="benefits">Benefits&lt;/h2>
 &lt;p>The &lt;a href="/docs/blocks-storage/querier/">querier&lt;/a>, &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> and ruler need to have an almost up-to-date view over the entire storage bucket, in order to find the right blocks to lookup at query time (querier) and load block&amp;rsquo;s &lt;a href="/docs/blocks-storage/binary-index-header/">index-header&lt;/a> (store-gateway). Because of this, they need to periodically scan the bucket to look for new blocks uploaded by ingester or compactor, and blocks deleted (or marked for deletion) by compactor.&lt;/p>
 &lt;p>When the bucket index is enabled, the querier, store-gateway and ruler periodically look up the per-tenant bucket index instead of scanning the bucket via &amp;ldquo;list objects&amp;rdquo; operations. This brings few benefits:&lt;/p>
@@ -4326,7 +4328,7 @@ Unix timestamp (seconds precision) of when the index has been updated (written i
 &lt;/ul>
 &lt;h2 id="how-it-gets-updated">How it gets updated&lt;/h2>
 &lt;p>The &lt;a href="/docs/blocks-storage/compactor/">compactor&lt;/a> periodically scans the bucket and uploads an updated bucket index to the storage. The frequency at which the bucket index is updated can be configured via &lt;code>-compactor.cleanup-interval&lt;/code>.&lt;/p>
-&lt;p>Despite using the bucket index is optional, the index itself is built and updated by the compactor even if &lt;code>-blocks-storage.bucket-store.bucket-index.enabled&lt;/code> has &lt;strong>not&lt;/strong> been enabled. This is intentional, so that once a Cortex cluster operator decides to enable the bucket index in a live cluster, the bucket index for any tenant is already existing and query results consistency is guaranteed. The overhead introduced by keeping the bucket index updated is expected to be non significative.&lt;/p>
+&lt;p>The index itself is built and updated by the compactor even if &lt;code>-blocks-storage.bucket-store.bucket-index.enabled&lt;/code> has &lt;strong>not&lt;/strong> been enabled. This is intentional, so that once a Cortex cluster operator decides to enable the bucket index in a live cluster, the bucket index for any tenant is already existing and query results consistency is guaranteed. The overhead introduced by keeping the bucket index updated is expected to be non significative.&lt;/p>
 &lt;h2 id="how-its-used-by-the-querier">How it&amp;rsquo;s used by the querier&lt;/h2>
 &lt;p>At query time the &lt;a href="/docs/blocks-storage/querier/">querier&lt;/a> and ruler check whether the bucket index for the tenant has already been loaded in memory. If not, the querier and ruler download it from the storage and cache it in memory.&lt;/p>
 &lt;p>&lt;em>Given it&amp;rsquo;s a small file, lazy downloading it doesn&amp;rsquo;t significantly impact on first query performances, but allows to get a querier up and running without pre-downloading every tenant&amp;rsquo;s bucket index. Moreover, if the &lt;a href="/docs/blocks-storage/querier/#metadata-cache">metadata cache&lt;/a> is enabled, the bucket index will be cached for a short time in a shared cache, reducing the actual latency and number of API calls to the object storage in case multiple queriers and rulers will fetch the same tenant&amp;rsquo;s bucket index in a short time.&lt;/em>&lt;/p>

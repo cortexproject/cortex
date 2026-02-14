@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -40,6 +41,9 @@ const (
 )
 
 var (
+	// errBearerTokenAndCredentialsFileNotAllowed covers both bearer_token_file and credentials_file
+	// because prometheus/common normalizes bearer_token_file to authorization.credentials_file
+	// during YAML unmarshaling (see HTTPClientConfig.Validate in prometheus/common/config).
 	errBearerTokenAndCredentialsFileNotAllowed  = errors.New("setting bearer_token_file and credentials_file is not allowed")
 	errPasswordFileNotAllowed                   = errors.New("setting password_file is not allowed")
 	errUsernameFileNotAllowed                   = errors.New("setting username_file is not allowed")
@@ -330,6 +334,43 @@ func (am *MultitenantAlertmanager) ListAllConfigs(w http.ResponseWriter, r *http
 	<-done
 }
 
+// noopValidator is a sentinel to mark known non-receiver config types that should be ignored.
+var noopValidator = func(any) error { return nil }
+
+// configValidators maps config types to their validation functions.
+// - Actual validator: receiver config with file-based fields to validate
+// - nil: receiver config with no file-based fields to validate
+// - noopValidator: non-receiver config type to ignore
+var configValidators = map[reflect.Type]func(any) error{
+	reflect.TypeFor[config.GlobalConfig]():        func(v any) error { return validateGlobalConfig(v.(config.GlobalConfig)) },
+	reflect.TypeFor[commoncfg.HTTPClientConfig](): func(v any) error { return validateReceiverHTTPConfig(v.(commoncfg.HTTPClientConfig)) },
+	reflect.TypeFor[commoncfg.TLSConfig]():        func(v any) error { return validateReceiverTLSConfig(v.(commoncfg.TLSConfig)) },
+	reflect.TypeFor[config.OpsGenieConfig]():      func(v any) error { return validateOpsGenieConfig(v.(config.OpsGenieConfig)) },
+	reflect.TypeFor[config.SlackConfig]():         func(v any) error { return validateSlackConfig(v.(config.SlackConfig)) },
+	reflect.TypeFor[config.VictorOpsConfig]():     func(v any) error { return validateVictorOpsConfig(v.(config.VictorOpsConfig)) },
+	reflect.TypeFor[config.PagerdutyConfig]():     func(v any) error { return validatePagerdutyConfig(v.(config.PagerdutyConfig)) },
+	reflect.TypeFor[config.WebhookConfig]():       func(v any) error { return validateWebhookConfig(v.(config.WebhookConfig)) },
+	reflect.TypeFor[config.PushoverConfig]():      func(v any) error { return validatePushOverConfig(v.(config.PushoverConfig)) },
+	reflect.TypeFor[config.TelegramConfig]():      func(v any) error { return validateTelegramConfig(v.(config.TelegramConfig)) },
+	reflect.TypeFor[config.MSTeamsConfig]():       func(v any) error { return validateMSTeamsConfig(v.(config.MSTeamsConfig)) },
+	reflect.TypeFor[config.MSTeamsV2Config]():     func(v any) error { return validateMSTeamsV2Config(v.(config.MSTeamsV2Config)) },
+	reflect.TypeFor[config.RocketchatConfig]():    func(v any) error { return validateRocketChatConfig(v.(config.RocketchatConfig)) },
+	reflect.TypeFor[config.DiscordConfig]():       func(v any) error { return validateDiscordConfig(v.(config.DiscordConfig)) },
+	reflect.TypeFor[config.EmailConfig]():         func(v any) error { return validateEmailConfig(v.(config.EmailConfig)) },
+	reflect.TypeFor[config.IncidentioConfig]():    func(v any) error { return validateIncidentIOConfig(v.(config.IncidentioConfig)) },
+	reflect.TypeFor[config.MattermostConfig]():    func(v any) error { return validateMattermostConfig(v.(config.MattermostConfig)) },
+	reflect.TypeFor[config.WechatConfig]():        func(v any) error { return validateWeChatConfig(v.(config.WechatConfig)) },
+	reflect.TypeFor[config.WebexConfig]():         nil, // No file-based fields to validate
+	reflect.TypeFor[config.SNSConfig]():           nil, // No file-based fields to validate
+	reflect.TypeFor[config.JiraConfig]():          nil, // No file-based fields to validate
+	// Non-receiver config types (ignored during validation)
+	reflect.TypeFor[config.Config]():          noopValidator,
+	reflect.TypeFor[config.NotifierConfig]():  noopValidator,
+	reflect.TypeFor[config.TracingConfig]():   noopValidator,
+	reflect.TypeFor[config.ThreadingConfig](): noopValidator,
+	reflect.TypeFor[config.JiraFieldConfig](): noopValidator,
+}
+
 // validateAlertmanagerConfig recursively scans the input config looking for data types for which
 // we have a specific validation and, whenever encountered, it runs their validation. Returns the
 // first error or nil if validation succeeds.
@@ -350,87 +391,16 @@ func validateAlertmanagerConfig(cfg any) error {
 	}
 
 	// Check if the input config is a data type for which we have a specific validation.
-	// At this point the value can't be a pointer anymore.
-	switch t {
-	case reflect.TypeFor[config.GlobalConfig]():
-		if err := validateGlobalConfig(v.Interface().(config.GlobalConfig)); err != nil {
-			return err
+	if validator, ok := configValidators[t]; ok {
+		if validator != nil {
+			if err := validator(v.Interface()); err != nil {
+				return err
+			}
 		}
-
-	case reflect.TypeFor[commoncfg.HTTPClientConfig]():
-		if err := validateReceiverHTTPConfig(v.Interface().(commoncfg.HTTPClientConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[config.OpsGenieConfig]():
-		if err := validateOpsGenieConfig(v.Interface().(config.OpsGenieConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[commoncfg.TLSConfig]():
-		if err := validateReceiverTLSConfig(v.Interface().(commoncfg.TLSConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[config.SlackConfig]():
-		if err := validateSlackConfig(v.Interface().(config.SlackConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[config.VictorOpsConfig]():
-		if err := validateVictorOpsConfig(v.Interface().(config.VictorOpsConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[config.PagerdutyConfig]():
-		if err := validatePagerdutyConfig(v.Interface().(config.PagerdutyConfig)); err != nil {
-			return err
-		}
-
-	case reflect.TypeFor[config.WebhookConfig]():
-		if err := validateWebhookConfig(v.Interface().(config.WebhookConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.PushoverConfig]():
-		if err := validatePushOverConfig(v.Interface().(config.PushoverConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.TelegramConfig]():
-		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.MSTeamsConfig]():
-		if err := validateMSTeamsConfig(v.Interface().(config.MSTeamsConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.MSTeamsV2Config]():
-		if err := validateMSTeamsV2Config(v.Interface().(config.MSTeamsV2Config)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.RocketchatConfig]():
-		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.DiscordConfig]():
-		if err := validateDiscordConfig(v.Interface().(config.DiscordConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.EmailConfig]():
-		if err := validateEmailConfig(v.Interface().(config.EmailConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.IncidentioConfig]():
-		if err := validateIncidentIOConfig(v.Interface().(config.IncidentioConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.MattermostConfig]():
-		if err := validateMattermostConfig(v.Interface().(config.MattermostConfig)); err != nil {
-			return err
-		}
-	case reflect.TypeFor[config.WechatConfig]():
-		if err := validateWeChatConfig(v.Interface().(config.WechatConfig)); err != nil {
-			return err
-		}
+	} else if strings.Contains(t.PkgPath(), "alertmanager/config") &&
+		strings.HasSuffix(t.Name(), "Config") {
+		// Unhandled config type - fail to ensure we don't miss new types.
+		return fmt.Errorf("unsupported receiver config type: %s", t.Name())
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.

@@ -382,6 +382,9 @@ templates:
 }
 
 func TestMultitenantAlertmanager_FirewallShouldBlockHTTPBasedReceiversWhenEnabled(t *testing.T) {
+	// TODO: Pushover is probably blocked by the firewall already (it uses httpOpts with the firewall dialer),
+	// but we can't test it here because it has a hardcoded API URL (https://api.pushover.net/1/messages.json)
+	// with no configuration option to redirect requests to our test server.
 	tests := map[string]struct {
 		getAlertmanagerConfig func(backendURL string) string
 	}{
@@ -606,6 +609,45 @@ receivers:
       - api_url: %s
         bot_token: secret
         chat_id: 12345
+`, backendURL)
+			},
+		},
+		"sns": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: sns
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: sns
+    sns_configs:
+      - api_url: %s
+        topic_arn: arn:aws:sns:us-east-1:123456789012:test
+        sigv4:
+          region: us-east-1
+          access_key: test-access-key
+          secret_key: test-secret-key
+`, backendURL)
+			},
+		},
+		"webex": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: webex
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: webex
+    webex_configs:
+      - api_url: %s
+        room_id: test-room
+        http_config:
+          authorization:
+            credentials: secret
 `, backendURL)
 			},
 		},

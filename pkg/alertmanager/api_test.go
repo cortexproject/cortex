@@ -427,6 +427,41 @@ alertmanager_config: |
 			err: errors.Wrap(errOAuth2SecretFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if receiver's TLS ca_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            tls_config:
+              ca_file: /ca.crt
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errTLSFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if receiver's TLS cert_file and key_file are set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            tls_config:
+              cert_file: /cert.crt
+              key_file: /key.key
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errTLSFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if global opsgenie_api_key_file is set",
 			cfg: `
 alertmanager_config: |
@@ -1013,6 +1048,51 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errWeChatAPISecretFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should pass with valid Jira config",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      jira_configs:
+        - api_url: http://jira.example.com
+          project: TEST
+          issue_type: Bug
+  route:
+    receiver: 'default-receiver'
+`,
+		},
+		{
+			name: "Should pass with valid SNS config",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      sns_configs:
+        - api_url: http://sns.example.com
+          topic_arn: arn:aws:sns:us-east-1:123456789012:test
+          sigv4:
+            region: us-east-1
+  route:
+    receiver: 'default-receiver'
+`,
+		},
+		{
+			name: "Should pass with valid Webex config",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webex_configs:
+        - api_url: http://webex.example.com
+          room_id: test-room
+          http_config:
+            authorization:
+              credentials: secret
+  route:
+    receiver: 'default-receiver'
+`,
 		},
 	}
 

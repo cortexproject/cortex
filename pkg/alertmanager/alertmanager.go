@@ -288,7 +288,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, callback, util_log.GoKitLogToSlog(am.logger), am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), am.registry, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}

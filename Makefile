@@ -41,7 +41,7 @@ SED ?= $(shell which gsed 2>/dev/null || which sed)
 # declared.
 %/$(UPTODATE): %/Dockerfile
 	for arch in $(ARCHS); do \
-		$(SUDO) docker buildx build --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-$$arch $(@D)/ ; \
+		$(SUDO) docker buildx build --provenance false --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$(IMAGE_TAG)-$$arch $(@D)/ ; \
 	done
 	@echo
 	@echo Please use push-multiarch-build-image to build and push build image for all supported architectures.

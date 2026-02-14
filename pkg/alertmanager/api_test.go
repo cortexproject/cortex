@@ -240,6 +240,22 @@ alertmanager_config: |
 `,
 		},
 		{
+			name: "Should return error if global HTTP username_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    http_config:
+      basic_auth:
+        username_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+  receivers:
+    - name: default-receiver
+`,
+			err: errors.Wrap(errUsernameFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if global HTTP password_file is set",
 			cfg: `
 alertmanager_config: |
@@ -268,7 +284,7 @@ alertmanager_config: |
   receivers:
     - name: default-receiver
 `,
-			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+			err: errors.Wrap(errBearerTokenAndCredentialsFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if global HTTP credentials_file is set",
@@ -284,7 +300,25 @@ alertmanager_config: |
   receivers:
     - name: default-receiver
 `,
-			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+			err: errors.Wrap(errBearerTokenAndCredentialsFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global OAuth2 client_certificate_key_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    http_config:
+      oauth2:
+        client_id: test
+        token_url: http://example.com
+        client_certificate_key_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+  receivers:
+    - name: default-receiver
+`,
+			err: errors.Wrap(errOAuth2CertificateKeyFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if global OAuth2 client_secret_file is set",
@@ -335,7 +369,7 @@ alertmanager_config: |
   route:
     receiver: 'default-receiver'
 `,
-			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+			err: errors.Wrap(errBearerTokenAndCredentialsFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if receiver's HTTP credentials_file is set",
@@ -352,7 +386,26 @@ alertmanager_config: |
   route:
     receiver: 'default-receiver'
 `,
-			err: errors.Wrap(errPasswordFileNotAllowed, "error validating Alertmanager config"),
+			err: errors.Wrap(errBearerTokenAndCredentialsFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if receiver's OAuth2 client_certificate_key_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            oauth2:
+              client_id: test
+              token_url: http://example.com
+              client_certificate_key_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errOAuth2CertificateKeyFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if receiver's OAuth2 client_secret_file is set",
@@ -408,6 +461,57 @@ alertmanager_config: |
 			err: errors.Wrap(errSlackAPIURLFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if global slack_app_token_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    slack_app_token_file: /secrets
+
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errSlackAppTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global smtp_auth_password_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    smtp_auth_password_file: /secrets
+
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errEmailAuthPasswordFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global smtp_auth_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    smtp_auth_secret_file: /secrets
+
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errEmailAuthSecretFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if Slack api_url_file is set",
 			cfg: `
 alertmanager_config: |
@@ -422,6 +526,20 @@ alertmanager_config: |
 			err: errors.Wrap(errSlackAPIURLFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if Slack app_token_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      slack_configs:
+        - app_token_file: /secrets
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errSlackAppTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if OpsGenie api_key_file is set",
 			cfg: `
 alertmanager_config: |
@@ -434,6 +552,22 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errOpsGenieAPIKeyFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global victorops_api_key_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    victorops_api_key_file: /secret
+  receivers:
+    - name: default-receiver
+      victorops_configs:
+        - routing_key: test
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errVictorOpsAPIKeyFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if VictorOps api_key_file is set",
@@ -638,6 +772,21 @@ alertmanager_config: |
 			err: errors.Wrap(errPushOverTokenFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if global telegram_bot_token_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    telegram_bot_token_file: /secret
+  receivers:
+    - name: default-receiver
+      telegram_configs:
+        - chat_id: 5
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errTelegramBotTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if Telegram bot_token_file is set",
 			cfg: `
 alertmanager_config: |
@@ -650,6 +799,20 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errTelegramBotTokenFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if Telegram chat_id_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      telegram_configs:
+        - bot_token: token
+          chat_id_file: /secrets
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errTelegramChatIdFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if MSTeams webhook_url_file is set",
@@ -678,6 +841,21 @@ alertmanager_config: |
 			err: errors.Wrap(errMSTeamsV2WebhookUrlFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if RocketChat rocketchat_token_id_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    rocketchat_token_id_file: /secret
+  receivers:
+    - name: default-receiver
+      rocketchat_configs:
+        - token: 'token'
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errRocketChatTokenIdFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if RocketChat token_id_file is set",
 			cfg: `
 alertmanager_config: |
@@ -690,6 +868,21 @@ alertmanager_config: |
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errRocketChatTokenIdFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global rocketchat_token_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    rocketchat_token_file: /secret
+  receivers:
+    - name: default-receiver
+      rocketchat_configs:
+        - token_id: 'tokenId'
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errRocketChatTokenFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
 			name: "Should return error if RocketChat token_file is set",
@@ -735,6 +928,22 @@ alertmanager_config: |
 			err: errors.Wrap(errEmailAuthPasswordFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if Email auth_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      email_configs:
+        - to: user@example.com
+          from: admin@example.com
+          smarthost: example.com:25
+          auth_secret_file: /secretFile
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errEmailAuthSecretFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
 			name: "Should return error if IncidentIO url_file is set",
 			cfg: `
 alertmanager_config: |
@@ -771,11 +980,39 @@ alertmanager_config: |
   receivers:
     - name: default-receiver
       mattermost_configs:
-        - webhook_url_file: /urlFile
+        - webhook_url_file: /secret
   route:
     receiver: 'default-receiver'
 `,
 			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		}, {
+			name: "Should return error if global wechat_api_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    wechat_api_secret_file: /secret
+  receivers:
+    - name: default-receiver
+      wechat_configs:
+        - corp_id: id
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errWeChatAPISecretFileNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if WeChat api_secret_file is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      wechat_configs:
+        - corp_id: id
+          api_secret_file: /secret
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errWeChatAPISecretFileNotAllowed, "error validating Alertmanager config"),
 		},
 	}
 
@@ -958,10 +1195,10 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 		"*HTTPClientConfig": {
 			input: &commoncfg.HTTPClientConfig{
 				BasicAuth: &commoncfg.BasicAuth{
-					PasswordFile: "/secrets",
+					UsernameFile: "/secrets",
 				},
 			},
-			expected: errPasswordFileNotAllowed,
+			expected: errUsernameFileNotAllowed,
 		},
 		"HTTPClientConfig": {
 			input: commoncfg.HTTPClientConfig{

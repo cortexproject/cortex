@@ -40,27 +40,34 @@ const (
 )
 
 var (
-	errPasswordFileNotAllowed                   = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
+	errBearerTokenAndCredentialsFileNotAllowed  = errors.New("setting bearer_token_file and credentials_file is not allowed")
+	errPasswordFileNotAllowed                   = errors.New("setting password_file is not allowed")
+	errUsernameFileNotAllowed                   = errors.New("setting username_file is not allowed")
+	errOAuth2CertificateKeyFileNotAllowed       = errors.New("setting OAuth2 client_certificate_key_file is not allowed")
 	errOAuth2SecretFileNotAllowed               = errors.New("setting OAuth2 client_secret_file is not allowed")
 	errTLSFileNotAllowed                        = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
 	errSlackAPIURLFileNotAllowed                = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
-	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file is not allowed")
-	errOpsGenieAPIKeyFileNotAllowed             = errors.New("setting OpsGenie api_key_file is not allowed")
+	errSlackAppTokenFileNotAllowed              = errors.New("setting Slack slack_app_token_file and global slack_app_token_file is not allowed")
+	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file and global victorops_api_key_file is not allowed")
+	errOpsGenieAPIKeyFileNotAllowed             = errors.New("setting OpsGenie api_key_file and global opsgenie_api_key_file is not allowed")
 	errPagerDutyRoutingKeyFileNotAllowed        = errors.New("setting PagerDuty routing_key_file is not allowed")
 	errPagerDutyServiceKeyFileNotAllowed        = errors.New("setting PagerDuty service_key_file is not allowed")
 	errWebhookURLFileNotAllowed                 = errors.New("setting Webhook url_file is not allowed")
 	errPushOverUserKeyFileNotAllowed            = errors.New("setting PushOver user_key_file is not allowed")
 	errPushOverTokenFileNotAllowed              = errors.New("setting PushOver token_file is not allowed")
-	errTelegramBotTokenFileNotAllowed           = errors.New("setting Telegram bot_token_file is not allowed")
+	errTelegramBotTokenFileNotAllowed           = errors.New("setting Telegram bot_token_file and global telegram_bot_token_file are not allowed")
+	errTelegramChatIdFileNotAllowed             = errors.New("setting Telegram chat_id_file is not allowed")
 	errMSTeamsWebhookUrlFileNotAllowed          = errors.New("setting MSTeams webhook_url_file is not allowed")
 	errMSTeamsV2WebhookUrlFileNotAllowed        = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
-	errRocketChatTokenIdFileNotAllowed          = errors.New("setting RocketChat token_id_file is not allowed")
-	errRocketChatTokenFileNotAllowed            = errors.New("setting RocketChat token_file is not allowed")
+	errRocketChatTokenIdFileNotAllowed          = errors.New("setting RocketChat token_id_file and global rocketchat_token_id_file is not allowed")
+	errRocketChatTokenFileNotAllowed            = errors.New("setting RocketChat token_file and global rocketchat_token_file is not allowed")
 	errDiscordWebhookUrlFileNotAllowed          = errors.New("setting Discord webhook_url_file is not allowed")
-	errEmailAuthPasswordFileNotAllowed          = errors.New("setting Email auth_password_file is not allowed")
+	errEmailAuthPasswordFileNotAllowed          = errors.New("setting Email auth_password_file and global smtp_auth_password_file is not allowed")
+	errEmailAuthSecretFileNotAllowed            = errors.New("setting Email auth_secret_file and global smtp_auth_secret_file is not allowed")
 	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
 	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
 	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file is not allowed")
+	errWeChatAPISecretFileNotAllowed            = errors.New("setting Wechat api_secret_file and global wechat_api_secret_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -420,6 +427,10 @@ func validateAlertmanagerConfig(cfg any) error {
 		if err := validateMattermostConfig(v.Interface().(config.MattermostConfig)); err != nil {
 			return err
 		}
+	case reflect.TypeFor[config.WechatConfig]():
+		if err := validateWeChatConfig(v.Interface().(config.WechatConfig)); err != nil {
+			return err
+		}
 	}
 
 	// If the input config is a struct, recursively iterate on all fields.
@@ -472,11 +483,17 @@ func validateReceiverHTTPConfig(cfg commoncfg.HTTPClientConfig) error {
 	if cfg.BasicAuth != nil && cfg.BasicAuth.PasswordFile != "" {
 		return errPasswordFileNotAllowed
 	}
+	if cfg.BasicAuth != nil && cfg.BasicAuth.UsernameFile != "" {
+		return errUsernameFileNotAllowed
+	}
 	if cfg.Authorization != nil && cfg.Authorization.CredentialsFile != "" {
-		return errPasswordFileNotAllowed
+		return errBearerTokenAndCredentialsFileNotAllowed
 	}
 	if cfg.BearerTokenFile != "" {
-		return errPasswordFileNotAllowed
+		return errBearerTokenAndCredentialsFileNotAllowed
+	}
+	if cfg.OAuth2 != nil && cfg.OAuth2.ClientCertificateKeyFile != "" {
+		return errOAuth2CertificateKeyFileNotAllowed
 	}
 	if cfg.OAuth2 != nil && cfg.OAuth2.ClientSecretFile != "" {
 		return errOAuth2SecretFileNotAllowed
@@ -499,8 +516,32 @@ func validateGlobalConfig(cfg config.GlobalConfig) error {
 	if cfg.OpsGenieAPIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}
+	if cfg.RocketchatTokenFile != "" {
+		return errRocketChatTokenFileNotAllowed
+	}
+	if cfg.RocketchatTokenIDFile != "" {
+		return errRocketChatTokenIdFileNotAllowed
+	}
 	if cfg.SlackAPIURLFile != "" {
 		return errSlackAPIURLFileNotAllowed
+	}
+	if cfg.SlackAppTokenFile != "" {
+		return errSlackAppTokenFileNotAllowed
+	}
+	if cfg.SMTPAuthPasswordFile != "" {
+		return errEmailAuthPasswordFileNotAllowed
+	}
+	if cfg.SMTPAuthSecretFile != "" {
+		return errEmailAuthSecretFileNotAllowed
+	}
+	if cfg.TelegramBotTokenFile != "" {
+		return errTelegramBotTokenFileNotAllowed
+	}
+	if cfg.VictorOpsAPIKeyFile != "" {
+		return errVictorOpsAPIKeyFileNotAllowed
+	}
+	if cfg.WeChatAPISecretFile != "" {
+		return errWeChatAPISecretFileNotAllowed
 	}
 	return nil
 }
@@ -519,6 +560,9 @@ func validateOpsGenieConfig(cfg config.OpsGenieConfig) error {
 func validateSlackConfig(cfg config.SlackConfig) error {
 	if cfg.APIURLFile != "" {
 		return errSlackAPIURLFileNotAllowed
+	}
+	if cfg.AppTokenFile != "" {
+		return errSlackAppTokenFileNotAllowed
 	}
 	return nil
 }
@@ -575,6 +619,9 @@ func validateTelegramConfig(cfg config.TelegramConfig) error {
 	if cfg.BotTokenFile != "" {
 		return errTelegramBotTokenFileNotAllowed
 	}
+	if cfg.ChatIDFile != "" {
+		return errTelegramChatIdFileNotAllowed
+	}
 	return nil
 }
 
@@ -625,6 +672,9 @@ func validateEmailConfig(cfg config.EmailConfig) error {
 	if cfg.AuthPasswordFile != "" {
 		return errEmailAuthPasswordFileNotAllowed
 	}
+	if cfg.AuthSecretFile != "" {
+		return errEmailAuthSecretFileNotAllowed
+	}
 	return nil
 }
 
@@ -647,6 +697,15 @@ func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
 func validateMattermostConfig(cfg config.MattermostConfig) error {
 	if cfg.WebhookURLFile != "" {
 		return errMatterMostWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateWeChatConfig validates the WeChat Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateWeChatConfig(cfg config.WechatConfig) error {
+	if cfg.APISecretFile != "" {
+		return errWeChatAPISecretFileNotAllowed
 	}
 	return nil
 }

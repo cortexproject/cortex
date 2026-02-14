@@ -544,6 +544,71 @@ receivers:
 `, backendURL)
 			},
 		},
+		"discord": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: discord
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: discord
+    discord_configs:
+      - webhook_url: %s
+`, backendURL)
+			},
+		},
+		"incidentio": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: incidentio
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: incidentio
+    incidentio_configs:
+      - url: %s
+        alert_source_token: secret
+`, backendURL)
+			},
+		},
+		"victorops": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: victorops
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: victorops
+    victorops_configs:
+      - api_url: %s
+        api_key: secret
+        routing_key: test-route
+`, backendURL)
+			},
+		},
+		"telegram": {
+			getAlertmanagerConfig: func(backendURL string) string {
+				return fmt.Sprintf(`
+route:
+  receiver: telegram
+  group_wait: 0s
+  group_interval: 1s
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - api_url: %s
+        bot_token: secret
+        chat_id: 12345
+`, backendURL)
+			},
+		},
 	}
 
 	for receiverName, testData := range tests {

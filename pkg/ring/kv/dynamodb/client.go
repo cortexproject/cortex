@@ -233,6 +233,8 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 	watchBackoffConfig := c.backoffConfig
 	watchBackoffConfig.MaxRetries = 0
 	bo := backoff.New(ctx, watchBackoffConfig)
+	syncTimer := time.NewTimer(c.pullerSyncTime)
+	defer syncTimer.Stop()
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -265,10 +267,11 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 		}
 
 		bo.Reset()
+		resetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(c.pullerSyncTime):
+		case <-syncTimer.C:
 		}
 	}
 }
@@ -277,6 +280,8 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 	watchBackoffConfig := c.backoffConfig
 	watchBackoffConfig.MaxRetries = 0
 	bo := backoff.New(ctx, watchBackoffConfig)
+	syncTimer := time.NewTimer(c.pullerSyncTime)
+	defer syncTimer.Stop()
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -300,12 +305,23 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		}
 
 		bo.Reset()
+		resetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(c.pullerSyncTime):
+		case <-syncTimer.C:
 		}
 	}
+}
+
+func resetTimer(timer *time.Timer, d time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(d)
 }
 
 func (c *Client) decodeMultikey(data map[string]dynamodbItem) (codec.MultiKey, error) {

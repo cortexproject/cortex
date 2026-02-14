@@ -173,13 +173,25 @@ func (n *Notifier) prepareIssueRequestBody(_ context.Context, logger *slog.Logge
 		logger.Warn("Truncated description", "max_runes", maxDescriptionLenRunes)
 	}
 
+	var description *jiraDescription
 	descriptionCopy := issueDescriptionString
 	if isAPIv3Path(n.conf.APIURL.Path) {
-		if !json.Valid([]byte(descriptionCopy)) {
-			return issue{}, fmt.Errorf("description template: invalid JSON for API v3")
+		descriptionCopy = strings.TrimSpace(descriptionCopy)
+		if descriptionCopy != "" {
+			if !json.Valid([]byte(descriptionCopy)) {
+				return issue{}, fmt.Errorf("description template: invalid JSON for API v3")
+			}
+			raw := json.RawMessage(descriptionCopy)
+			description = &jiraDescription{
+				RawJSONDescription: append(json.RawMessage(nil), raw...),
+			}
 		}
+	} else if descriptionCopy != "" {
+		desc := descriptionCopy
+		description = &jiraDescription{StringDescription: &desc}
 	}
-	requestBody.Fields.Description = &descriptionCopy
+
+	requestBody.Fields.Description = description
 
 	for i, label := range n.conf.Labels {
 		label, err = tmplTextFunc(label)
@@ -283,7 +295,7 @@ func (n *Notifier) prepareSearchRequest(jql string) (issueSearch, string) {
 	}
 
 	if n.conf.APIType == "cloud" || n.conf.APIType == "auto" && strings.HasSuffix(n.conf.APIURL.Host, "atlassian.net") {
-		searchPath := strings.Replace(n.conf.APIURL.JoinPath("/search/jql").String(), "/2", "/3", 1)
+		searchPath := strings.Replace(n.conf.APIURL.JoinPath("/search/jql").String(), "/rest/api/2/", "/rest/api/3/", 1)
 		return requestBody, searchPath
 	}
 

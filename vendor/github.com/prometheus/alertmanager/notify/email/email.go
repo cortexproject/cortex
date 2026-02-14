@@ -83,7 +83,11 @@ func (n *Email) auth(mechs string) (smtp.Auth, error) {
 	for mech := range strings.SplitSeq(mechs, " ") {
 		switch mech {
 		case "CRAM-MD5":
-			secret := string(n.conf.AuthSecret)
+			secret, secretErr := n.getAuthSecret()
+			if secretErr != nil {
+				err.Add(secretErr)
+				continue
+			}
 			if secret == "" {
 				err.Add(errors.New("missing secret for CRAM-MD5 auth mechanism"))
 				continue
@@ -130,7 +134,16 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 		err     error
 		success = false
 	)
-	if n.conf.Smarthost.Port == "465" {
+	// Determine whether to use Implicit TLS
+	var useImplicitTLS bool
+	if n.conf.ForceImplicitTLS != nil {
+		useImplicitTLS = *n.conf.ForceImplicitTLS
+	} else {
+		// Default logic: port 465 uses implicit TLS (backward compatibility)
+		useImplicitTLS = n.conf.Smarthost.Port == "465"
+	}
+
+	if useImplicitTLS {
 		tlsConfig, err := commoncfg.NewTLSConfig(n.conf.TLSConfig)
 		if err != nil {
 			return false, fmt.Errorf("parse TLS configuration: %w", err)
@@ -173,7 +186,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	}
 
 	// Global Config guarantees RequireTLS is not nil.
-	if *n.conf.RequireTLS {
+	if *n.conf.RequireTLS && !useImplicitTLS {
 		if ok, _ := c.Extension("STARTTLS"); !ok {
 			return true, fmt.Errorf("'require_tls' is true (default) but %q does not advertise the STARTTLS extension", n.conf.Smarthost)
 		}
@@ -409,4 +422,15 @@ func (n *Email) getPassword() (string, error) {
 		return strings.TrimSpace(string(content)), nil
 	}
 	return string(n.conf.AuthPassword), nil
+}
+
+func (n *Email) getAuthSecret() (string, error) {
+	if len(n.conf.AuthSecretFile) > 0 {
+		content, err := os.ReadFile(n.conf.AuthSecretFile)
+		if err != nil {
+			return "", fmt.Errorf("could not read %s: %w", n.conf.AuthSecretFile, err)
+		}
+		return string(content), nil
+	}
+	return string(n.conf.AuthSecret), nil
 }

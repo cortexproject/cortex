@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"net/textproto"
 	"regexp"
+	"slices"
 	"strings"
-	"text/template"
 	"time"
 
 	commoncfg "github.com/prometheus/common/config"
@@ -309,13 +309,19 @@ type EmailConfig struct {
 	AuthPassword     Secret               `yaml:"auth_password,omitempty" json:"auth_password,omitempty"`
 	AuthPasswordFile string               `yaml:"auth_password_file,omitempty" json:"auth_password_file,omitempty"`
 	AuthSecret       Secret               `yaml:"auth_secret,omitempty" json:"auth_secret,omitempty"`
+	AuthSecretFile   string               `yaml:"auth_secret_file,omitempty" json:"auth_secret_file,omitempty"`
 	AuthIdentity     string               `yaml:"auth_identity,omitempty" json:"auth_identity,omitempty"`
 	Headers          map[string]string    `yaml:"headers,omitempty" json:"headers,omitempty"`
 	HTML             string               `yaml:"html,omitempty" json:"html,omitempty"`
 	Text             string               `yaml:"text,omitempty" json:"text,omitempty"`
 	RequireTLS       *bool                `yaml:"require_tls,omitempty" json:"require_tls,omitempty"`
 	TLSConfig        *commoncfg.TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
-	Threading        ThreadingConfig      `yaml:"threading,omitempty" json:"threading,omitempty"`
+	// ForceImplicitTLS controls whether to use implicit TLS (direct TLS connection).
+	// true: force use of implicit TLS (direct TLS connection)
+	// false: force disable implicit TLS (use explicit TLS/STARTTLS if required)
+	// nil (default): auto-detect based on port (465=implicit, other=explicit) for backward compatibility
+	ForceImplicitTLS *bool           `yaml:"force_implicit_tls,omitempty" json:"force_implicit_tls,omitempty"`
+	Threading        ThreadingConfig `yaml:"threading,omitempty" json:"threading,omitempty"`
 }
 
 // ThreadingConfig configures mail threading.
@@ -351,6 +357,9 @@ func (c *EmailConfig) UnmarshalYAML(unmarshal func(any) error) error {
 		}
 		if _, ok := normalizedHeaders["In-Reply-To"]; ok {
 			return errors.New("conflicting configuration: threading.enabled conflicts with custom In-Reply-To header")
+		}
+		if !slices.Contains([]string{"none", "daily"}, c.Threading.ThreadByDate) {
+			return errors.New("threading.thread_by_date must be either 'none' or 'daily'")
 		}
 	}
 
@@ -533,6 +542,7 @@ type SlackConfig struct {
 	TitleLink   string         `yaml:"title_link,omitempty" json:"title_link,omitempty"`
 	Pretext     string         `yaml:"pretext,omitempty" json:"pretext,omitempty"`
 	Text        string         `yaml:"text,omitempty" json:"text,omitempty"`
+	MessageText string         `yaml:"message_text,omitempty" json:"message_text,omitempty"`
 	Fields      []*SlackField  `yaml:"fields,omitempty" json:"fields,omitempty"`
 	ShortFields bool           `yaml:"short_fields" json:"short_fields,omitempty"`
 	Footer      string         `yaml:"footer,omitempty" json:"footer,omitempty"`
@@ -630,8 +640,8 @@ type WebhookConfig struct {
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
 	// URL to send POST request to.
-	URL     *SecretURL `yaml:"url" json:"url"`
-	URLFile string     `yaml:"url_file" json:"url_file"`
+	URL     SecretTemplateURL `yaml:"url,omitempty" json:"url,omitempty"`
+	URLFile string            `yaml:"url_file" json:"url_file"`
 
 	// MaxAlerts is the maximum number of alerts to be sent per webhook message.
 	// Alerts exceeding this threshold will be truncated. Setting this to 0
@@ -650,10 +660,10 @@ func (c *WebhookConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
-	if c.URL == nil && c.URLFile == "" {
+	if c.URL == "" && c.URLFile == "" {
 		return errors.New("one of url or url_file must be configured")
 	}
-	if c.URL != nil && c.URLFile != "" {
+	if c.URL != "" && c.URLFile != "" {
 		return errors.New("at most one of url & url_file must be configured")
 	}
 	return nil
@@ -665,15 +675,16 @@ type WechatConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	APISecret   Secret `yaml:"api_secret,omitempty" json:"api_secret,omitempty"`
-	CorpID      string `yaml:"corp_id,omitempty" json:"corp_id,omitempty"`
-	Message     string `yaml:"message,omitempty" json:"message,omitempty"`
-	APIURL      *URL   `yaml:"api_url,omitempty" json:"api_url,omitempty"`
-	ToUser      string `yaml:"to_user,omitempty" json:"to_user,omitempty"`
-	ToParty     string `yaml:"to_party,omitempty" json:"to_party,omitempty"`
-	ToTag       string `yaml:"to_tag,omitempty" json:"to_tag,omitempty"`
-	AgentID     string `yaml:"agent_id,omitempty" json:"agent_id,omitempty"`
-	MessageType string `yaml:"message_type,omitempty" json:"message_type,omitempty"`
+	APISecret     Secret `yaml:"api_secret,omitempty" json:"api_secret,omitempty"`
+	APISecretFile string `yaml:"api_secret_file,omitempty" json:"api_secret_file,omitempty"`
+	CorpID        string `yaml:"corp_id,omitempty" json:"corp_id,omitempty"`
+	Message       string `yaml:"message,omitempty" json:"message,omitempty"`
+	APIURL        *URL   `yaml:"api_url,omitempty" json:"api_url,omitempty"`
+	ToUser        string `yaml:"to_user,omitempty" json:"to_user,omitempty"`
+	ToParty       string `yaml:"to_party,omitempty" json:"to_party,omitempty"`
+	ToTag         string `yaml:"to_tag,omitempty" json:"to_tag,omitempty"`
+	AgentID       string `yaml:"agent_id,omitempty" json:"agent_id,omitempty"`
+	MessageType   string `yaml:"message_type,omitempty" json:"message_type,omitempty"`
 }
 
 const wechatValidTypesRe = `^(text|markdown)$`
@@ -694,6 +705,10 @@ func (c *WechatConfig) UnmarshalYAML(unmarshal func(any) error) error {
 
 	if !wechatTypeMatcher.MatchString(c.MessageType) {
 		return fmt.Errorf("weChat message type %q does not match valid options %s", c.MessageType, wechatValidTypesRe)
+	}
+
+	if c.APISecret != "" && len(c.APISecretFile) > 0 {
+		return errors.New("at most one of api_secret & api_secret_file must be configured")
 	}
 
 	return nil
@@ -742,12 +757,11 @@ func (c *OpsGenieConfig) UnmarshalYAML(unmarshal func(any) error) error {
 			return fmt.Errorf("opsGenieConfig responder %v has to have at least one of id, username or name specified", r)
 		}
 
-		if strings.Contains(r.Type, "{{") {
-			_, err := template.New("").Parse(r.Type)
-			if err != nil {
-				return fmt.Errorf("opsGenieConfig responder %v type is not a valid template: %w", r, err)
-			}
-		} else {
+		isTemplated, err := containsTemplating(r.Type)
+		if err != nil {
+			return fmt.Errorf("opsGenieConfig responder %v type contains invalid template syntax: %w", r, err)
+		}
+		if !isTemplated {
 			r.Type = strings.ToLower(r.Type)
 			if !opsgenieTypeMatcher.MatchString(r.Type) {
 				return fmt.Errorf("opsGenieConfig responder %v type does not match valid options %s", r, opsgenieValidTypesRe)
@@ -910,6 +924,7 @@ type TelegramConfig struct {
 	BotToken             Secret `yaml:"bot_token,omitempty" json:"token,omitempty"`
 	BotTokenFile         string `yaml:"bot_token_file,omitempty" json:"token_file,omitempty"`
 	ChatID               int64  `yaml:"chat_id,omitempty" json:"chat,omitempty"`
+	ChatIDFile           string `yaml:"chat_id_file,omitempty" json:"chat_file,omitempty"`
 	MessageThreadID      int    `yaml:"message_thread_id,omitempty" json:"message_thread_id,omitempty"`
 	Message              string `yaml:"message,omitempty" json:"message,omitempty"`
 	DisableNotifications bool   `yaml:"disable_notifications,omitempty" json:"disable_notifications,omitempty"`
@@ -923,14 +938,14 @@ func (c *TelegramConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
 	}
-	if c.BotToken == "" && c.BotTokenFile == "" {
-		return errors.New("missing bot_token or bot_token_file on telegram_config")
-	}
 	if c.BotToken != "" && c.BotTokenFile != "" {
 		return errors.New("at most one of bot_token & bot_token_file must be configured")
 	}
-	if c.ChatID == 0 {
-		return errors.New("missing chat_id on telegram_config")
+	if c.ChatID == 0 && c.ChatIDFile == "" {
+		return errors.New("missing chat_id or chat_id_file on telegram_config")
+	}
+	if c.ChatID != 0 && c.ChatIDFile != "" {
+		return errors.New("at most one of chat_id & chat_id_file must be configured")
 	}
 	if c.ParseMode != "" &&
 		c.ParseMode != "Markdown" &&

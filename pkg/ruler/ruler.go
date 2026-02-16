@@ -20,6 +20,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -84,6 +85,7 @@ const (
 	firingStateFilter   string = "firing"
 	pendingStateFilter  string = "pending"
 	inactiveStateFilter string = "inactive"
+	unknownStateFilter  string = "unknown"
 
 	unknownHealthFilter string = "unknown"
 	okHealthFilter      string = "ok"
@@ -177,6 +179,9 @@ type Config struct {
 	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
 
 	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
+
+	// NameValidationScheme is the scheme for validating metric and label names (set from root config).
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // Validate config and returns error on failure

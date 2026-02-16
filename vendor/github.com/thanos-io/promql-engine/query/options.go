@@ -20,19 +20,6 @@ type Options struct {
 	DecodingConcurrency      int
 }
 
-func (o *Options) NumSteps() int {
-	// Instant evaluation is executed as a range evaluation with one step.
-	if o.Step.Milliseconds() == 0 {
-		return 1
-	}
-
-	totalSteps := (o.End.UnixMilli()-o.Start.UnixMilli())/o.Step.Milliseconds() + 1
-	if int64(o.StepsBatch) < totalSteps {
-		return o.StepsBatch
-	}
-	return int(totalSteps)
-}
-
 // TotalSteps returns the total number of steps in the query, regardless of batching.
 // This is useful for pre-allocating result slices.
 func (o *Options) TotalSteps() int {
@@ -43,8 +30,16 @@ func (o *Options) TotalSteps() int {
 	return int((o.End.UnixMilli()-o.Start.UnixMilli())/o.Step.Milliseconds() + 1)
 }
 
+func (o *Options) NumStepsPerBatch() int {
+	totalSteps := o.TotalSteps()
+	if o.StepsBatch < totalSteps {
+		return o.StepsBatch
+	}
+	return totalSteps
+}
+
 func (o *Options) IsInstantQuery() bool {
-	return o.NumSteps() == 1
+	return o.TotalSteps() == 1
 }
 
 func (o *Options) WithEndTime(end time.Time) *Options {

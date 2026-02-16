@@ -362,7 +362,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			}
 			return resp, err
 		},
-	}, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
+	}, r.cfg.NameValidationScheme, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
 
 	n.run()
 
@@ -445,7 +445,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	r.userExternalLabels.cleanup()
 }
 
-func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
+func (m *DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	var errs []error
 
 	if g.Name == "" {
@@ -478,7 +478,7 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 		}
 
 		// Validate other rule fields using Prometheus validation
-		for _, err := range r.Validate(rulefmt.RuleNode{}) {
+		for _, err := range r.Validate(rulefmt.RuleNode{}, m.cfg.NameValidationScheme) {
 			// Skip expression validation errors since we handle them above
 			if !strings.Contains(err.Error(), "could not parse expression") {
 				var ruleName string

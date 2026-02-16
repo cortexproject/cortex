@@ -243,6 +243,8 @@ func NewQuerierHandler(
 		false,
 		querierCfg.LookbackDelta,
 		false,
+		false,
+		nil,
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()

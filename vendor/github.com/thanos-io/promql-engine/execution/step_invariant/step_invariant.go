@@ -17,7 +17,6 @@ import (
 )
 
 type stepInvariantOperator struct {
-	vectorPool  *model.VectorPool
 	next        model.VectorOperator
 	cacheResult bool
 
@@ -42,14 +41,12 @@ func (u *stepInvariantOperator) String() string {
 }
 
 func NewStepInvariantOperator(
-	pool *model.VectorPool,
 	next model.VectorOperator,
 	expr logicalplan.Node,
 	opts *query.Options,
 ) (model.VectorOperator, error) {
 	// We set interval to be at least 1.
 	u := &stepInvariantOperator{
-		vectorPool:  pool,
 		next:        next,
 		currentStep: opts.Start.UnixMilli(),
 		mint:        opts.Start.UnixMilli(),
@@ -75,7 +72,6 @@ func (u *stepInvariantOperator) Series(ctx context.Context) ([]labels.Labels, er
 	var err error
 	u.seriesOnce.Do(func() {
 		u.series, err = u.next.Series(ctx)
-		u.vectorPool.SetStepSize(len(u.series))
 	})
 	if err != nil {
 		return nil, err
@@ -83,57 +79,56 @@ func (u *stepInvariantOperator) Series(ctx context.Context) ([]labels.Labels, er
 	return u.series, nil
 }
 
-func (u *stepInvariantOperator) GetPool() *model.VectorPool {
-	return u.vectorPool
-}
-
-func (u *stepInvariantOperator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (u *stepInvariantOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	if u.currentStep > u.maxt {
-		return nil, nil
+		return 0, nil
 	}
 
 	if !u.cacheResult {
-		return u.next.Next(ctx)
+		return u.next.Next(ctx, buf)
 	}
 
 	if err := u.cacheInputVector(ctx); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	result := u.vectorPool.GetVectorBatch()
-	for i := 0; i < u.stepsBatch && u.currentStep <= u.maxt; i++ {
-		outVector := u.vectorPool.GetStepVector(u.currentStep)
-		outVector.AppendSamples(u.vectorPool, u.cachedVector.SampleIDs, u.cachedVector.Samples)
-		outVector.AppendHistograms(u.vectorPool, u.cachedVector.HistogramIDs, u.cachedVector.Histograms)
-		result = append(result, outVector)
+	n := 0
+	maxSteps := min(u.stepsBatch, len(buf))
+
+	for i := 0; i < maxSteps && u.currentStep <= u.maxt; i++ {
+		buf[n].Reset(u.currentStep)
+		buf[n].AppendSamples(u.cachedVector.SampleIDs, u.cachedVector.Samples)
+		buf[n].AppendHistograms(u.cachedVector.HistogramIDs, u.cachedVector.Histograms)
+		n++
 		u.currentStep += u.step
 	}
 
-	return result, nil
+	return n, nil
 }
 
 func (u *stepInvariantOperator) cacheInputVector(ctx context.Context) error {
 	var err error
-	var in []model.StepVector
 	u.cacheVectorOnce.Do(func() {
-		in, err = u.next.Next(ctx)
-		if err != nil {
+		// Create a temporary buffer for reading one vector
+		tempBuf := make([]model.StepVector, 1)
+		n, readErr := u.next.Next(ctx, tempBuf)
+		if readErr != nil {
+			err = readErr
 			return
 		}
-		defer u.next.GetPool().PutVectors(in)
 
-		if len(in) == 0 || (len(in[0].Samples) == 0 && len(in[0].Histograms) == 0) {
+		if n == 0 || (len(tempBuf[0].Samples) == 0 && len(tempBuf[0].Histograms) == 0) {
 			return
 		}
 
 		// Make sure we only have exactly one step vector.
-		if len(in) != 1 {
+		if n != 1 {
 			err = errors.New("unexpected number of samples")
 			return
 		}
@@ -141,10 +136,9 @@ func (u *stepInvariantOperator) cacheInputVector(ctx context.Context) error {
 		// Copy the evaluated step vector.
 		// The timestamp of the vector is not relevant since we will produce
 		// new output vectors with the current step's timestamp.
-		u.cachedVector = u.vectorPool.GetStepVector(0)
-		u.cachedVector.AppendSamples(u.vectorPool, in[0].SampleIDs, in[0].Samples)
-		u.cachedVector.AppendHistograms(u.vectorPool, in[0].HistogramIDs, in[0].Histograms)
-		u.next.GetPool().PutStepVector(in[0])
+		u.cachedVector = model.StepVector{T: 0}
+		u.cachedVector.AppendSamples(tempBuf[0].SampleIDs, tempBuf[0].Samples)
+		u.cachedVector.AppendHistograms(tempBuf[0].HistogramIDs, tempBuf[0].Histograms)
 	})
 	return err
 }

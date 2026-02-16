@@ -641,7 +641,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
-	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer)
+	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.NameValidationScheme)
 	return
 }
 
@@ -666,6 +666,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.FrontendTimeout = t.Cfg.Querier.Timeout
 	t.Cfg.Ruler.PrometheusHTTPPrefix = t.Cfg.API.PrometheusHTTPPrefix
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+	t.Cfg.Ruler.NameValidationScheme = t.Cfg.NameValidationScheme
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
@@ -739,6 +740,7 @@ func (t *Cortex) initConfig() (serv services.Service, err error) {
 		return
 	}
 
+	t.Cfg.Configs.API.NameValidationScheme = t.Cfg.NameValidationScheme
 	t.ConfigAPI = configAPI.New(t.ConfigDB, t.Cfg.Configs.API)
 	t.ConfigAPI.RegisterRoutes(t.Server.HTTP)
 	return services.NewIdleService(nil, func(_ error) error {

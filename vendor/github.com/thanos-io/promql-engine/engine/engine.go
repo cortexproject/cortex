@@ -548,53 +548,54 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 		return newErrResult(ret, err)
 	}
 
+	totalSteps := q.opts.TotalSteps()
 	series := make([]promql.Series, len(resultSeries))
 	for i, s := range resultSeries {
 		series[i].Metric = s
 	}
-	totalSteps := q.opts.TotalSteps()
+
+	buf := make([]model.StepVector, q.opts.StepsBatch)
 loop:
 	for {
 		select {
 		case <-ctx.Done():
 			return newErrResult(ret, ctx.Err())
 		default:
-			r, err := q.Query.exec.Next(ctx)
+			n, err := q.Query.exec.Next(ctx, buf)
 			if err != nil {
 				return newErrResult(ret, err)
 			}
-			if r == nil {
+			if n == 0 {
 				break loop
 			}
 
 			// Case where Series call might return nil, but samples are present.
 			// For example scalar(http_request_total) where http_request_total has multiple values.
-			if len(series) == 0 && len(r) != 0 {
-				series = make([]promql.Series, len(r[0].Samples))
+			if len(series) == 0 && n > 0 {
+				series = make([]promql.Series, len(buf[0].Samples))
 			}
 
-			for _, vector := range r {
-				for i, s := range vector.SampleIDs {
-					if len(series[s].Floats) == 0 {
+			for i := range n {
+				vector := &buf[i]
+				for j, s := range vector.SampleIDs {
+					if series[s].Floats == nil {
 						series[s].Floats = make([]promql.FPoint, 0, totalSteps)
 					}
 					series[s].Floats = append(series[s].Floats, promql.FPoint{
 						T: vector.T,
-						F: vector.Samples[i],
+						F: vector.Samples[j],
 					})
 				}
-				for i, s := range vector.HistogramIDs {
-					if len(series[s].Histograms) == 0 {
+				for j, s := range vector.HistogramIDs {
+					if series[s].Histograms == nil {
 						series[s].Histograms = make([]promql.HPoint, 0, totalSteps)
 					}
 					series[s].Histograms = append(series[s].Histograms, promql.HPoint{
 						T: vector.T,
-						H: vector.Histograms[i],
+						H: vector.Histograms[j],
 					})
 				}
-				q.Query.exec.GetPool().PutStepVector(vector)
 			}
-			q.Query.exec.GetPool().PutVectors(r)
 		}
 	}
 

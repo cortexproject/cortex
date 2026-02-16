@@ -38,6 +38,7 @@ import (
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -323,7 +324,8 @@ type Cortex struct {
 	Server                   *server.Server
 	Ring                     *ring.Ring
 	TenantLimits             validation.TenantLimits
-	Overrides                *validation.Overrides
+	OverridesConfig          *validation.Overrides
+	Overrides                *overrides.API
 	Distributor              *distributor.Distributor
 	Ingester                 *ingester.Ingester
 	Flusher                  *flusher.Flusher

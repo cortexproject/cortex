@@ -191,6 +191,9 @@ jobs:
             tags: integration_memberlist
           - runner: ubuntu-24.04
             arch: amd64
+            tags: integration_overrides
+          - runner: ubuntu-24.04
+            arch: amd64
             tags: integration_querier
           - runner: ubuntu-24.04
             arch: amd64
@@ -213,6 +216,9 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_memberlist
+          - runner: ubuntu-24.04
+            arch: arm64
+            tags: integration_overrides
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_ruler

@@ -32,6 +32,7 @@ import (
 	frontendv2 "github.com/cortexproject/cortex/pkg/frontend/v2"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -391,6 +392,14 @@ func (a *API) RegisterRulerAPI(r *ruler.API) {
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.CreateRuleGroup), true, "POST")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}/{groupName}"), http.HandlerFunc(r.DeleteRuleGroup), true, "DELETE")
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/rules/{namespace}"), http.HandlerFunc(r.DeleteNamespace), true, "DELETE")
+}
+
+// RegisterOverrides registers routes associated with the Overrides API
+func (a *API) RegisterOverrides(o *overrides.API) {
+	// Register individual overrides API routes with the main API
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.GetOverrides), true, "GET")
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.SetOverrides), true, "POST")
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.DeleteOverrides), true, "DELETE")
 }
 
 // RegisterRing registers the ring UI page associated with the distributor for writes.

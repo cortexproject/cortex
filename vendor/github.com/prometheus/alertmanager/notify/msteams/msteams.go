@@ -61,7 +61,7 @@ type teamsMessage struct {
 
 // New returns a new notifier that uses the Microsoft Teams Webhook API.
 func New(c *config.MSTeamsConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "msteams", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "msteams", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +85,10 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		return false, err
 	}
 
-	n.logger.Debug("extracted group key", "key", key)
+	logger := n.logger.With("group_key", key)
+	logger.Debug("extracted group key")
 
-	data := notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
+	data := notify.GetTemplateData(ctx, n.tmpl, as, logger)
 	tmpl := notify.TmplText(n.tmpl, data, &err)
 	if err != nil {
 		return false, err

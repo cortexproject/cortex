@@ -10034,7 +10034,7 @@ Blocks: B1, B3, B5, B7&lt;/li>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;max_global_series_per_metric&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">200000&lt;/span>,
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#960050;background-color:#1e0010">...&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="2-put-apiv1user-overrides">2. PUT /api/v1/user-overrides&lt;/h4>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="2-post-apiv1user-overrides">2. POST /api/v1/user-overrides&lt;/h4>
 &lt;p>Updates overrides for a specific tenant. The request body should contain only the overrides that need to be updated.&lt;/p>
 &lt;p>Request body:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{

@@ -60,6 +60,7 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 		// Enable cache
 		"-blocks-storage.bucket-store.parquet-labels-cache.backend":             "inmemory,memcached",
 		"-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-blocks-storage.bucket-store.sync-interval":                            "1s",
 
 		// Compactor
 		"-compactor.cleanup-interval": "1s", // to update bucket index quickly

@@ -1,20 +1,17 @@
 package dynamodb
 
 import (
-	"context"
 	"testing"
 	"time"
 )
 
 func BenchmarkWatchLoopWaitWithTimeAfter(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	const interval = time.Nanosecond
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		select {
 		case <-ctx.Done():
 			b.Fatal("context canceled unexpectedly")
@@ -24,17 +21,15 @@ func BenchmarkWatchLoopWaitWithTimeAfter(b *testing.B) {
 }
 
 func BenchmarkWatchLoopWaitWithReusableTimer(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	const interval = time.Nanosecond
 	timer := time.NewTimer(interval)
 	defer timer.Stop()
 
 	b.ReportAllocs()
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		resetTimer(timer, interval)
 
 		select {

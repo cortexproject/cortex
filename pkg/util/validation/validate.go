@@ -276,22 +276,27 @@ func ValidateExemplar(validateMetrics *ValidateMetrics, userID string, ls []cort
 	return nil
 }
 
+// ValidateMetricName checks that ls has a valid non-empty metric name when limits.EnforceMetricName is true.
+// It returns (nil, "") when valid, or (error, discardReason) when invalid.
+// Callers should increment DiscardedSamples/DiscardedExemplars with the returned reason when non-empty.
+func ValidateMetricName(limits *Limits, ls []cortexpb.LabelAdapter, nameValidationScheme model.ValidationScheme) (ValidationError, string) {
+	if !limits.EnforceMetricName {
+		return nil, ""
+	}
+	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
+	if err != nil {
+		return newNoMetricNameError(), missingMetricName
+	}
+	if !nameValidationScheme.IsValidMetricName(unsafeMetricName) {
+		return newInvalidMetricNameError(unsafeMetricName), invalidMetricName
+	}
+	return nil, ""
+}
+
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
+// Callers must validate metric name (e.g. via ValidateMetricName) before calling this when EnforceMetricName is true.
 func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool, nameValidationScheme model.ValidationScheme) ValidationError {
-	if limits.EnforceMetricName {
-		unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
-		if err != nil {
-			validateMetrics.DiscardedSamples.WithLabelValues(missingMetricName, userID).Inc()
-			return newNoMetricNameError()
-		}
-
-		if !nameValidationScheme.IsValidMetricName(unsafeMetricName) {
-			validateMetrics.DiscardedSamples.WithLabelValues(invalidMetricName, userID).Inc()
-			return newInvalidMetricNameError(unsafeMetricName)
-		}
-	}
-
 	numLabelNames := len(ls)
 	if numLabelNames > limits.MaxLabelNamesPerSeries {
 		validateMetrics.DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID).Inc()

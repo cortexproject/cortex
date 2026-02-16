@@ -60,6 +60,9 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 		// Enable cache
 		"-blocks-storage.bucket-store.parquet-labels-cache.backend":             "inmemory,memcached",
 		"-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+
+		// Compactor
+		"-compactor.cleanup-interval": "1s", // to update bucket index quickly
 	})
 
 	// Store Gateway
@@ -78,6 +81,9 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
 
 	// Create block
 	now := time.Now()

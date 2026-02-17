@@ -3075,24 +3075,24 @@ pool:
   [health_check_ingesters: <boolean> | default = true]
 
 ha_tracker:
-  # Enable the distributors HA tracker so that it can accept samples from
-  # Prometheus HA replicas gracefully (requires labels).
+  # Enable the HA tracker so that it can accept data from Prometheus HA replicas
+  # gracefully (requires labels).
   # CLI flag: -distributor.ha-tracker.enable
   [enable_ha_tracker: <boolean> | default = false]
 
-  # Update the timestamp in the KV store for a given cluster/replica only after
-  # this amount of time has passed since the current stored timestamp.
+  # The time interval that must pass since the last timestamp update in the KV
+  # store before updating it again for a given cluster.
   # CLI flag: -distributor.ha-tracker.update-timeout
   [ha_tracker_update_timeout: <duration> | default = 15s]
 
-  # Maximum jitter applied to the update timeout, in order to spread the HA
-  # heartbeats over time.
+  # The maximum jitter applied to the update timeout to spread KV store updates
+  # over time.
   # CLI flag: -distributor.ha-tracker.update-timeout-jitter-max
   [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
 
-  # If we don't receive any samples from the accepted replica for a cluster in
-  # this amount of time we will failover to the next replica we receive a sample
-  # from. This value must be greater than the update timeout
+  # The timeout after which a new replica will be accepted if the currently
+  # elected replica stops sending data. This value must be greater than the
+  # update timeout plus the maximum jitter.
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
 

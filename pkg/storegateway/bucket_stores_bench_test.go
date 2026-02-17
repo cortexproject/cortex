@@ -48,7 +48,7 @@ func BenchmarkThanosBucketStores_SeriesBatch(b *testing.B) {
 			require.NoError(b, err)
 
 			reg := prometheus.NewPedanticRegistry()
-			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), reg)
+			stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), reg, nil)
 			require.NoError(b, err)
 
 			// Perform Initial Sync to load blocks

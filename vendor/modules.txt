@@ -1533,20 +1533,9 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/envconf
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/observ
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/otlpconfig
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/retry
-<<<<<<< HEAD
-# go.opentelemetry.io/otel/metric v1.38.0
-## explicit; go 1.23.0
-=======
 go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp/internal/x
-# go.opentelemetry.io/otel/log v0.12.2
-## explicit; go 1.23.0
-go.opentelemetry.io/otel/log
-go.opentelemetry.io/otel/log/embedded
-go.opentelemetry.io/otel/log/global
-go.opentelemetry.io/otel/log/internal/global
 # go.opentelemetry.io/otel/metric v1.39.0
 ## explicit; go 1.24.0
->>>>>>> e97f2eedb4 (Upgrade to v0.31.1)
 go.opentelemetry.io/otel/metric
 go.opentelemetry.io/otel/metric/embedded
 go.opentelemetry.io/otel/metric/noop

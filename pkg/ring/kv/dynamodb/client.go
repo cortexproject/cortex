@@ -185,7 +185,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, r
 			continue
 		}
 
-		putRequests := map[dynamodbKey]dynamodbItem{}
+		putRequests := make(map[dynamodbKey]dynamodbItem, len(buf))
 		for childKey, bytes := range buf {
 			version := int64(0)
 			if ddbItem, ok := resp[childKey]; ok {

@@ -29,6 +29,7 @@ type Backoff struct {
 	numRetries   int
 	nextDelayMin time.Duration
 	nextDelayMax time.Duration
+	waitTimer    *time.Timer
 }
 
 // New creates a Backoff object. Pass a Context that can also terminate the operation.
@@ -77,9 +78,16 @@ func (b *Backoff) Wait() {
 	sleepTime := b.NextDelay()
 
 	if b.Ongoing() {
+		if b.waitTimer == nil {
+			b.waitTimer = time.NewTimer(sleepTime)
+		} else {
+			resetTimer(b.waitTimer, sleepTime)
+		}
+
 		select {
 		case <-b.ctx.Done():
-		case <-time.After(sleepTime):
+			stopAndDrainTimer(b.waitTimer)
+		case <-b.waitTimer.C:
 		}
 	}
 }
@@ -114,4 +122,22 @@ func doubleDuration(value time.Duration, max time.Duration) time.Duration {
 	}
 
 	return max
+}
+
+func stopAndDrainTimer(timer *time.Timer) {
+	if timer == nil {
+		return
+	}
+
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+}
+
+func resetTimer(timer *time.Timer, d time.Duration) {
+	stopAndDrainTimer(timer)
+	timer.Reset(d)
 }

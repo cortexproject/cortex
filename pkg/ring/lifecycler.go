@@ -526,11 +526,34 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	}
 
 	// We do various period tasks
+	var autoJoinTimer *time.Timer
 	var autoJoinAfter <-chan time.Time
+	var observeTimer *time.Timer
 	var observeChan <-chan time.Time
 
+	setAutoJoinAfter := func(d time.Duration) {
+		if autoJoinTimer == nil {
+			autoJoinTimer = time.NewTimer(d)
+		} else {
+			resetTimer(autoJoinTimer, d)
+		}
+		autoJoinAfter = autoJoinTimer.C
+	}
+
+	setObserveAfter := func(d time.Duration) {
+		if observeTimer == nil {
+			observeTimer = time.NewTimer(d)
+		} else {
+			resetTimer(observeTimer, d)
+		}
+		observeChan = observeTimer.C
+	}
+
+	defer stopAndDrainTimer(autoJoinTimer)
+	defer stopAndDrainTimer(observeTimer)
+
 	if i.autoJoinOnStartup {
-		autoJoinAfter = time.After(i.cfg.JoinAfter)
+		setAutoJoinAfter(i.cfg.JoinAfter)
 	}
 
 	var heartbeatTickerChan <-chan time.Time
@@ -556,7 +579,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 	for {
 		select {
 		case <-i.autojoinChan:
-			autoJoinAfter = time.After(i.cfg.JoinAfter)
+			setAutoJoinAfter(i.cfg.JoinAfter)
 		case <-autoJoinAfter:
 			if joined {
 				continue
@@ -576,7 +599,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 					}
 
 					level.Info(i.logger).Log("msg", "observing tokens before going ACTIVE", "ring", i.RingName)
-					observeChan = time.After(i.cfg.ObservePeriod)
+					setObserveAfter(i.cfg.ObservePeriod)
 				} else {
 					if err := i.autoJoin(context.Background(), i.getPreviousState(), addedInRing); err != nil {
 						return errors.Wrapf(err, "failed to pick tokens in the KV store, ring: %s, state: %s", i.RingName, i.getPreviousState())
@@ -593,6 +616,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			// When observing is done, observeChan is set to nil.
 
 			observeChan = nil
+			stopAndDrainTimer(observeTimer)
 			if s := i.GetState(); s != JOINING {
 				level.Error(i.logger).Log("msg", "unexpected state while observing tokens", "state", s, "ring", i.RingName)
 			}
@@ -611,7 +635,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			} else {
 				level.Info(i.logger).Log("msg", "token verification failed, observing", "ring", i.RingName)
 				// keep observing
-				observeChan = time.After(i.cfg.ObservePeriod)
+				setObserveAfter(i.cfg.ObservePeriod)
 			}
 
 		case <-heartbeatTickerChan:

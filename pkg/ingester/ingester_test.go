@@ -2127,7 +2127,7 @@ func TestIngester_Push(t *testing.T) {
 	}
 }
 
-// Referred from https://github.com/prometheus/prometheus/blob/v2.52.1/model/histogram/histogram_test.go#L985.
+// Referred from https://github.com/prometheus/prometheus/blob/v3.9.1/model/histogram/histogram_test.go#L1384.
 func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
@@ -2268,6 +2268,186 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 				}),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountMismatch),
+		},
+		{
+			name: "rejects an exponential histogram with custom buckets schema",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:         12,
+					ZeroCount:     2,
+					ZeroThreshold: 0.001,
+					Sum:           19.4,
+					Schema:        histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					NegativeSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					NegativeBuckets: []int64{1, 1, -1, 0},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: only 0 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
+		},
+		{
+			name: "rejects a custom buckets histogram with exponential schema",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: 0,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: histogram.ErrHistogramExpSchemaCustomBounds,
+		},
+		{
+			name: "rejects a custom buckets histogram with zero/negative buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:         12,
+					ZeroCount:     2,
+					ZeroThreshold: 0.001,
+					Sum:           19.4,
+					Schema:        histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					NegativeSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					NegativeBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: histogram.ErrHistogramCustomBucketsZeroCount,
+		},
+		{
+			name: "rejects a custom buckets histogram with negative offset in first span",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: -1, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: span number 1 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a custom buckets histogram with negative offset in subsequent spans",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: -1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a custom buckets histogram with non-matching bucket counts",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: spans need 4 buckets, have 3 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects a custom buckets histogram with too few bounds",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: only 3 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
+		},
+		{
+			name: "reject custom buckets histogram with non-increasing bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{0, 0},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: previous bound is 0.000000 and current is 0.000000: %w", histogram.ErrHistogramCustomBucketsInvalid),
+		},
+		{
+			name: "reject custom buckets histogram with explicit +Inf bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{1, math.Inf(1)},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: last +Inf bound must not be explicitly defined: %w", histogram.ErrHistogramCustomBucketsInfinite),
+		},
+		{
+			name: "reject custom buckets histogram with NaN bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{1, math.NaN(), 3},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: %w", histogram.ErrHistogramCustomBucketsNaN),
+		},
+		{
+			name: "schema too high",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema: 10,
+				}),
+			},
+			expectedErr: histogram.InvalidSchemaError(10),
+		},
+		{
+			name: "schema too low",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema: -10,
+				}),
+			},
+			expectedErr: histogram.InvalidSchemaError(-10),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

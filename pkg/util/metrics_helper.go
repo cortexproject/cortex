@@ -474,10 +474,14 @@ type HistogramData struct {
 
 // A histogram is considered native if it has positive/negative spans or a non-zero zero bucket.
 func isNative(histo *dto.Histogram) bool {
-	return len(histo.GetPositiveSpan()) > 0 ||
+	native := len(histo.GetPositiveSpan()) > 0 ||
 		len(histo.GetNegativeSpan()) > 0 ||
 		histo.GetZeroCount() > 0 ||
 		histo.GetZeroThreshold() > 0
+
+	classic := len(histo.GetBucket()) > 0
+
+	return native && !classic
 }
 
 func (d *HistogramData) hasNative() bool {

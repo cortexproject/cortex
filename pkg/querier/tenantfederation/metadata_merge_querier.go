@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -85,6 +86,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 		res, err := job.querier.MetricsMetadata(user.InjectOrgID(ctx, job.id), req)
 		if err != nil {
 			if m.allowPartialData {
+				level.Warn(log).Log("msg", "error metadata querying (partial data allowed)", "user", job.id, "err", err)
 				return nil
 			}
 			return errors.Wrapf(err, "error metadata querying %s %s", job.id, err)

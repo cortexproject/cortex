@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -182,6 +183,7 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 		res, err := job.querier.Select(start, end, allUnrelatedMatchers...)
 		if err != nil {
 			if m.allowPartialData {
+				level.Warn(log).Log("msg", "error exemplars querying (partial data allowed)", "user", job.id, "err", err)
 				return nil
 			}
 			return errors.Wrapf(err, "error exemplars querying %s %s", rewriteLabelName(m.idLabelName), job.id)

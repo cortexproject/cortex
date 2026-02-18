@@ -621,7 +621,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbOOOHistogram: prometheus.NewDesc(
 			"cortex_ingester_tsdb_sample_ooo_delta",
 			"Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).",
-			nil, nil),
+			[]string{"user"}, nil),
 		tsdbMmapChunksTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_mmap_chunks_total",
 			"Total number of chunks that were memory-mapped.",
@@ -764,7 +764,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOOOSamples, "prometheus_tsdb_out_of_order_samples_total", "type")
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOutOfOrderSamplesAppended, "prometheus_tsdb_head_out_of_order_samples_appended_total", "type")
 	data.SendSumOfCounters(out, sm.tsdbSnapshotReplayErrorTotal, "prometheus_tsdb_snapshot_replay_error_total")
-	data.SendSumOfHistograms(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
+	data.SendSumOfHistogramsPerUser(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
 	data.SendSumOfCounters(out, sm.tsdbMmapChunksTotal, "prometheus_tsdb_mmap_chunks_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")

@@ -505,16 +505,36 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_reloads_total 30
         	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
         	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
-        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="+Inf"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_sum{user="user1"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user1"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="3600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user2"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user2"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="3600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="+Inf"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_sum{user="user3"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user3"} 1
         	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
         	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
         	cortex_ingester_tsdb_snapshot_replay_error_total 309
@@ -778,16 +798,26 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			cortex_ingester_tsdb_reloads_total 30
         	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
         	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
-        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="1800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="7200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="10800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="21600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="43200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user1"} 900
+        	cortex_ingester_tsdb_sample_ooo_delta_count{user="user1"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="1800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="7200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="10800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="21600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="43200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user2"} 900
+        	cortex_ingester_tsdb_sample_ooo_delta_count{user="user2"} 1
         	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
         	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
         	cortex_ingester_tsdb_snapshot_replay_error_total 309

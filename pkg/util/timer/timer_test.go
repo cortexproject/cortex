@@ -72,7 +72,7 @@ func TestResetTimer_MultipleTimes(t *testing.T) {
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ResetTimer(timer, time.Nanosecond)
 
 		select {

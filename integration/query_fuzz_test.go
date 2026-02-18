@@ -83,8 +83,6 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":       "1s",
 			"-blocks-storage.tsdb.retention-period":            "24h",
 			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-			// TODO: run a compactor here instead of disabling the bucket-index
-			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -92,6 +90,8 @@ func TestNativeHistogramFuzz(t *testing.T) {
 			"-distributor.replication-factor": "1",
 			// alert manager
 			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			// Compactor.
+			"-compactor.cleanup-interval": "1s",
 		},
 	)
 	// make alert manager config dir
@@ -133,9 +133,8 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
 
-	// Wait for querier and store to sync blocks.
+	// Wait for store-gateway to sync blocks.
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 
 	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
@@ -192,8 +191,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 			"-frontend.max-cache-freshness":       "1m",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",
-			// TODO: make sure compactor works instead of disabling the bucket-index
-			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			// Compactor.
+			"-compactor.cleanup-interval": "1s",
 		},
 	)
 	// make alert manager config dir
@@ -235,9 +234,8 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
 
-	// Wait for querier and store to sync blocks.
+	// Wait for store-gateway to sync blocks.
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 
 	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")
@@ -1160,8 +1158,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		"-consul.hostname":                           consul1.NetworkHTTPEndpoint(),
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 	// Enable lazy expanded postings.
 	flags2 := mergeFlags(flags, map[string]string{
@@ -1215,6 +1211,10 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	require.NoError(t, err)
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
+
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul1.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
 
 	// Wait for store to sync blocks.
 	require.NoError(t, storeGateway1.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
@@ -1323,8 +1323,6 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		"-store-gateway.sharding-enabled":            "false",
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
@@ -1370,6 +1368,10 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	require.NoError(t, err)
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
+
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
 
 	// Wait for store to sync blocks.
 	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
@@ -1629,8 +1631,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
 			"-frontend.query-vertical-shard-size": "2",
 			"-frontend.max-cache-freshness":       "1m",
-			// TODO: run a compactor here instead of disabling the bucket-index
-			"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+			// Compactor.
+			"-compactor.cleanup-interval": "1s",
 		},
 	)
 	// make alert manager config dir
@@ -1672,9 +1674,8 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	err = block.Upload(ctx, log.Logger, bkt, filepath.Join(dir, id.String()), metadata.NoneFunc)
 	require.NoError(t, err)
 
-	// Wait for querier and store to sync blocks.
+	// Wait for store-gateway to sync blocks.
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "querier"))))
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 
 	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-1")

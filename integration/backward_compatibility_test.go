@@ -271,8 +271,6 @@ func TestCanSupportHoltWintersFunc(t *testing.T) {
 func blocksStorageFlagsWithFlushOnShutdown() map[string]string {
 	return mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.tsdb.flush-blocks-on-shutdown": "true",
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 }
 
@@ -420,6 +418,13 @@ func checkQueries(
 
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
+			// Start compactor to create the bucket index.
+			compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), c.storeGatewayFlags, c.storeGatewayImage)
+			require.NoError(t, s.StartAndWaitReady(compactor))
+			defer func() {
+				require.NoError(t, s.Stop(compactor))
+			}()
+
 			// Start store gateway.
 			storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), c.storeGatewayFlags, c.storeGatewayImage)
 

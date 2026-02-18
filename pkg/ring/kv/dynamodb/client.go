@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 const (
@@ -267,7 +268,7 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 		}
 
 		bo.Reset()
-		resetTimer(syncTimer, c.pullerSyncTime)
+		utiltimer.ResetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
@@ -305,23 +306,13 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		}
 
 		bo.Reset()
-		resetTimer(syncTimer, c.pullerSyncTime)
+		utiltimer.ResetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
 		case <-syncTimer.C:
 		}
 	}
-}
-
-func resetTimer(timer *time.Timer, d time.Duration) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
-	timer.Reset(d)
 }
 
 func (c *Client) decodeMultikey(data map[string]dynamodbItem) (codec.MultiKey, error) {

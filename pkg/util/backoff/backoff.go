@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 // Config configures a Backoff
@@ -81,12 +83,12 @@ func (b *Backoff) Wait() {
 		if b.waitTimer == nil {
 			b.waitTimer = time.NewTimer(sleepTime)
 		} else {
-			resetTimer(b.waitTimer, sleepTime)
+			utiltimer.ResetTimer(b.waitTimer, sleepTime)
 		}
 
 		select {
 		case <-b.ctx.Done():
-			stopAndDrainTimer(b.waitTimer)
+			utiltimer.StopAndDrainTimer(b.waitTimer)
 		case <-b.waitTimer.C:
 		}
 	}
@@ -122,22 +124,4 @@ func doubleDuration(value time.Duration, max time.Duration) time.Duration {
 	}
 
 	return max
-}
-
-func stopAndDrainTimer(timer *time.Timer) {
-	if timer == nil {
-		return
-	}
-
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
-}
-
-func resetTimer(timer *time.Timer, d time.Duration) {
-	stopAndDrainTimer(timer)
-	timer.Reset(d)
 }

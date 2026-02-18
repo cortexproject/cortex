@@ -21,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 var (
@@ -535,7 +536,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		if autoJoinTimer == nil {
 			autoJoinTimer = time.NewTimer(d)
 		} else {
-			resetTimer(autoJoinTimer, d)
+			utiltimer.ResetTimer(autoJoinTimer, d)
 		}
 		autoJoinAfter = autoJoinTimer.C
 	}
@@ -544,13 +545,13 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 		if observeTimer == nil {
 			observeTimer = time.NewTimer(d)
 		} else {
-			resetTimer(observeTimer, d)
+			utiltimer.ResetTimer(observeTimer, d)
 		}
 		observeChan = observeTimer.C
 	}
 
-	defer stopAndDrainTimer(autoJoinTimer)
-	defer stopAndDrainTimer(observeTimer)
+	defer utiltimer.StopAndDrainTimer(autoJoinTimer)
+	defer utiltimer.StopAndDrainTimer(observeTimer)
 
 	if i.autoJoinOnStartup {
 		setAutoJoinAfter(i.cfg.JoinAfter)
@@ -616,7 +617,7 @@ func (i *Lifecycler) loop(ctx context.Context) error {
 			// When observing is done, observeChan is set to nil.
 
 			observeChan = nil
-			stopAndDrainTimer(observeTimer)
+			utiltimer.StopAndDrainTimer(observeTimer)
 			if s := i.GetState(); s != JOINING {
 				level.Error(i.logger).Log("msg", "unexpected state while observing tokens", "state", s, "ring", i.RingName)
 			}

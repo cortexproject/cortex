@@ -48,7 +48,7 @@ type Notifier struct {
 
 // New returns a new Slack notification handler.
 func New(c *config.SlackConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*c.HTTPConfig, "slack", httpOpts...)
+	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "slack", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +70,7 @@ type request struct {
 	IconEmoji   string       `json:"icon_emoji,omitempty"`
 	IconURL     string       `json:"icon_url,omitempty"`
 	LinkNames   bool         `json:"link_names,omitempty"`
+	Text        string       `json:"text,omitempty"`
 	Attachments []attachment `json:"attachments"`
 }
 
@@ -93,8 +94,16 @@ type attachment struct {
 // Notify implements the Notifier interface.
 func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	var err error
+
+	key, err := notify.ExtractGroupKey(ctx)
+	if err != nil {
+		return false, err
+	}
+	logger := n.logger.With("group_key", key)
+	logger.Debug("extracted group key")
+
 	var (
-		data     = notify.GetTemplateData(ctx, n.tmpl, as, n.logger)
+		data     = notify.GetTemplateData(ctx, n.tmpl, as, logger)
 		tmplText = notify.TmplText(n.tmpl, data, &err)
 	)
 	var markdownIn []string
@@ -107,11 +116,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 
 	title, truncated := notify.TruncateInRunes(tmplText(n.conf.Title), maxTitleLenRunes)
 	if truncated {
-		key, err := notify.ExtractGroupKey(ctx)
-		if err != nil {
-			return false, err
-		}
-		n.logger.Warn("Truncated title", "key", key, "max_runes", maxTitleLenRunes)
+		logger.Warn("Truncated title", "max_runes", maxTitleLenRunes)
 	}
 	att := &attachment{
 		Title:      title,
@@ -182,6 +187,7 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		IconEmoji:   tmplText(n.conf.IconEmoji),
 		IconURL:     tmplText(n.conf.IconURL),
 		LinkNames:   n.conf.LinkNames,
+		Text:        tmplText(n.conf.MessageText),
 		Attachments: []attachment{*att},
 	}
 	if err != nil {
@@ -204,8 +210,17 @@ func (n *Notifier) Notify(ctx context.Context, as ...*types.Alert) (bool, error)
 		u = strings.TrimSpace(string(content))
 	}
 
+	if n.conf.Timeout > 0 {
+		postCtx, cancel := context.WithTimeoutCause(ctx, n.conf.Timeout, fmt.Errorf("configured slack timeout reached (%s)", n.conf.Timeout))
+		defer cancel()
+		ctx = postCtx
+	}
+
 	resp, err := n.postJSONFunc(ctx, n.client, u, &buf)
 	if err != nil {
+		if ctx.Err() != nil {
+			err = fmt.Errorf("%w: %w", err, context.Cause(ctx))
+		}
 		return true, notify.RedactURL(err)
 	}
 	defer notify.Drain(resp)

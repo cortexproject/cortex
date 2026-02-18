@@ -292,6 +292,16 @@ func (d MetricFamiliesPerUser) SendSumOfSummariesPerUser(out chan<- prometheus.M
 	}
 }
 
+func (d MetricFamiliesPerUser) SendSumOfHistogramsPerUser(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string) {
+	for _, userEntry := range d {
+		if userEntry.user == "" {
+			continue
+		}
+		hd := userEntry.metrics.SumHistograms(histogramName)
+		out <- hd.Metric(desc, userEntry.user)
+	}
+}
+
 func (d MetricFamiliesPerUser) SendSumOfHistograms(out chan<- prometheus.Metric, desc *prometheus.Desc, histogramName string) {
 	hd := HistogramData{}
 	for _, userEntry := range d {

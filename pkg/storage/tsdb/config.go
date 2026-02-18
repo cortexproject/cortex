@@ -334,7 +334,8 @@ type BucketStoreConfig struct {
 	// Token bucket configs
 	TokenBucketBytesLimiter TokenBucketBytesLimiterConfig `yaml:"token_bucket_bytes_limiter"`
 	// Parquet shard cache config
-	ParquetShardCache parquetutil.CacheConfig `yaml:",inline"`
+	ParquetShardCache    parquetutil.CacheConfig `yaml:",inline"`
+	HonorProjectionHints bool                    `yaml:"honor_projection_hints"`
 }
 
 type TokenBucketBytesLimiterConfig struct {
@@ -397,6 +398,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "blocks-storage.bucket-store.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("blocks-storage.bucket-store.", f)
+	f.BoolVar(&cfg.HonorProjectionHints, "blocks-storage.bucket-store.honor-projection-hints", false, "[Experimental] If enabled, Store Gateway will honor projection hints and only materialize requested labels. It is only effect when `-blocks-storage.bucket-store.bucket-store-type` is parquet.")
 }
 
 // Validate the config.

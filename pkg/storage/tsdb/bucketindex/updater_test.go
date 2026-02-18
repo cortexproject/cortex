@@ -23,7 +23,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
 )
 
 func TestUpdater_UpdateIndex(t *testing.T) {
@@ -316,8 +316,8 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
 	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
 	block2Mark := testutil.MockStorageDeletionMark(t, bkt, userID, block2)
-	// Add parquet marker to block 1.
-	block1ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block1)
+	// Add parquet marker to block 1 with 3 shards.
+	block1ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block1, 3)
 
 	w := NewUpdater(bkt, userID, nil, logger).EnableParquet()
 	returnedIdx, _, _, err := w.UpdateIndex(ctx, nil)
@@ -325,7 +325,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block2},
 		[]*metadata.DeletionMark{block2Mark}, map[string]*parquet.ConverterMarkMeta{
-			block1.ULID.String(): {Version: block1ParquetMark.Version},
+			block1.ULID.String(): {Version: block1ParquetMark.Version, Shards: block1ParquetMark.Shards},
 		})
 
 	// Create new blocks, and update the index.
@@ -339,7 +339,7 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 		[]tsdb.BlockMeta{block1, block2, block3, block4},
 		[]*metadata.DeletionMark{block2Mark, block4Mark},
 		map[string]*parquet.ConverterMarkMeta{
-			block1.ULID.String(): {Version: block1ParquetMark.Version},
+			block1.ULID.String(): {Version: block1ParquetMark.Version, Shards: block1ParquetMark.Shards},
 		})
 
 	// Hard delete a block and update the index.
@@ -350,18 +350,18 @@ func TestUpdater_UpdateIndex_WithParquet(t *testing.T) {
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
 		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ConverterMarkMeta{
-			block1.ULID.String(): {Version: block1ParquetMark.Version},
+			block1.ULID.String(): {Version: block1ParquetMark.Version, Shards: block1ParquetMark.Shards},
 		})
 
-	// Upload parquet marker to an old block and update index
-	block3ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block3)
+	// Upload parquet marker to an old block and update index with 5 shards
+	block3ParquetMark := testutil.MockStorageParquetConverterMark(t, bkt, userID, block3, 5)
 	returnedIdx, _, _, err = w.UpdateIndex(ctx, returnedIdx)
 	require.NoError(t, err)
 	assertBucketIndexEqualWithParquet(t, returnedIdx, bkt, userID,
 		[]tsdb.BlockMeta{block1, block3, block4},
 		[]*metadata.DeletionMark{block4Mark}, map[string]*parquet.ConverterMarkMeta{
-			block1.ULID.String(): {Version: block1ParquetMark.Version},
-			block3.ULID.String(): {Version: block3ParquetMark.Version},
+			block1.ULID.String(): {Version: block1ParquetMark.Version, Shards: block1ParquetMark.Shards},
+			block3.ULID.String(): {Version: block3ParquetMark.Version, Shards: block3ParquetMark.Shards},
 		})
 }
 
@@ -391,6 +391,22 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 			expectedError:     nil,
 			expectParquet:     true,
 			expectParquetMeta: &parquet.ConverterMarkMeta{Version: 1},
+		},
+		{
+			name: "should successfully read parquet marker with shards",
+			setupBucket: func(t *testing.T, bkt objstore.InstrumentedBucket, blockID ulid.ULID) objstore.InstrumentedBucket {
+				parquetMark := parquet.ConverterMarkMeta{
+					Version: 2,
+					Shards:  4,
+				}
+				data, err := json.Marshal(parquetMark)
+				require.NoError(t, err)
+				require.NoError(t, bkt.Upload(ctx, path.Join(userID, blockID.String(), parquet.ConverterMarkerFileName), bytes.NewReader(data)))
+				return bkt
+			},
+			expectedError:     nil,
+			expectParquet:     true,
+			expectParquetMeta: &parquet.ConverterMarkMeta{Version: 2, Shards: 4},
 		},
 		{
 			name: "should handle missing parquet marker",

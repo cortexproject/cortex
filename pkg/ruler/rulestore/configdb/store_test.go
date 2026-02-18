@@ -6,11 +6,11 @@ import (
 	"testing"
 	time "time"
 
-	"github.com/cortexproject/cortex/pkg/configs/userconfig"
-
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/configs/client"
+	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
 
 var zeroTime time.Time
@@ -34,7 +34,7 @@ func Test_ConfigRuleStoreError(t *testing.T) {
 		err:  fmt.Errorf("Error"),
 	}
 
-	store := NewConfigRuleStore(mock)
+	store := NewConfigRuleStore(mock, model.UTF8Validation)
 	_, err := store.ListAllRuleGroups(context.Background())
 
 	assert.Equal(t, mock.err, err, "Unexpected error returned")
@@ -53,7 +53,7 @@ func Test_ConfigRuleStoreReturn(t *testing.T) {
 		err: nil,
 	}
 
-	store := NewConfigRuleStore(mock)
+	store := NewConfigRuleStore(mock, model.UTF8Validation)
 	rules, _ := store.ListAllRuleGroups(context.Background())
 
 	assert.Equal(t, 1, len(rules["user"]))
@@ -72,7 +72,7 @@ func Test_ConfigRuleStoreDelete(t *testing.T) {
 		err: nil,
 	}
 
-	store := NewConfigRuleStore(mock)
+	store := NewConfigRuleStore(mock, model.UTF8Validation)
 	_, _ = store.ListAllRuleGroups(context.Background())
 
 	mock.cfgs["user"] = userconfig.VersionedRulesConfig{
@@ -98,7 +98,7 @@ func Test_ConfigRuleStoreAppend(t *testing.T) {
 		err: nil,
 	}
 
-	store := NewConfigRuleStore(mock)
+	store := NewConfigRuleStore(mock, model.UTF8Validation)
 	_, _ = store.ListAllRuleGroups(context.Background())
 
 	delete(mock.cfgs, "user")
@@ -135,7 +135,7 @@ func Test_ConfigRuleStoreSinceSet(t *testing.T) {
 		err: nil,
 	}
 
-	store := NewConfigRuleStore(mock)
+	store := NewConfigRuleStore(mock, model.UTF8Validation)
 	_, _ = store.ListAllRuleGroups(context.Background())
 	assert.Equal(t, userconfig.ID(100), store.since)
 

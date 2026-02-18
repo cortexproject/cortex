@@ -56,7 +56,7 @@ func init() {
 type Secret string
 
 // MarshalYAML implements the yaml.Marshaler interface for Secret.
-func (s Secret) MarshalYAML() (interface{}, error) {
+func (s Secret) MarshalYAML() (any, error) {
 	if MarshalSecretValue {
 		return string(s), nil
 	}
@@ -67,7 +67,7 @@ func (s Secret) MarshalYAML() (interface{}, error) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Secret.
-func (s *Secret) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (s *Secret) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain Secret
 	return unmarshal((*plain)(s))
 }
@@ -95,15 +95,15 @@ func (u *URL) Copy() *URL {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface for URL.
-func (u URL) MarshalYAML() (interface{}, error) {
+func (u URL) MarshalYAML() (any, error) {
 	if u.URL != nil {
-		return u.URL.String(), nil
+		return u.String(), nil
 	}
 	return nil, nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for URL.
-func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (u *URL) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -119,7 +119,7 @@ func (u *URL) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // MarshalJSON implements the json.Marshaler interface for URL.
 func (u URL) MarshalJSON() ([]byte, error) {
 	if u.URL != nil {
-		return json.Marshal(u.URL.String())
+		return json.Marshal(u.String())
 	}
 	return []byte("null"), nil
 }
@@ -142,10 +142,10 @@ func (u *URL) UnmarshalJSON(data []byte) error {
 type SecretURL URL
 
 // MarshalYAML implements the yaml.Marshaler interface for SecretURL.
-func (s SecretURL) MarshalYAML() (interface{}, error) {
+func (s SecretURL) MarshalYAML() (any, error) {
 	if s.URL != nil {
 		if MarshalSecretValue {
-			return s.URL.String(), nil
+			return s.String(), nil
 		}
 		return secretToken, nil
 	}
@@ -153,7 +153,7 @@ func (s SecretURL) MarshalYAML() (interface{}, error) {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for SecretURL.
-func (s *SecretURL) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (s *SecretURL) UnmarshalYAML(unmarshal func(any) error) error {
 	var str string
 	if err := unmarshal(&str); err != nil {
 		return err
@@ -174,7 +174,7 @@ func (s SecretURL) MarshalJSON() ([]byte, error) {
 		return json.Marshal("")
 	}
 	if MarshalSecretValue {
-		return json.Marshal(s.URL.String())
+		return json.Marshal(s.String())
 	}
 	return json.Marshal(secretToken)
 }
@@ -308,7 +308,7 @@ type MuteTimeInterval struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for MuteTimeInterval.
-func (mt *MuteTimeInterval) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (mt *MuteTimeInterval) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain MuteTimeInterval
 	if err := unmarshal((*plain)(mt)); err != nil {
 		return err
@@ -326,7 +326,7 @@ type TimeInterval struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for MuteTimeInterval.
-func (ti *TimeInterval) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (ti *TimeInterval) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain TimeInterval
 	if err := unmarshal((*plain)(ti)); err != nil {
 		return err
@@ -361,7 +361,7 @@ func (c Config) String() string {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Config.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.
@@ -475,6 +475,11 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 					return errors.New("no global PagerDuty URL set")
 				}
 				pdc.URL = c.Global.PagerdutyURL
+			}
+		}
+		for _, iio := range rcv.IncidentioConfigs {
+			if iio.HTTPConfig == nil {
+				iio.HTTPConfig = c.Global.HTTPConfig
 			}
 		}
 		for _, ogc := range rcv.OpsGenieConfigs {
@@ -768,7 +773,7 @@ type HostPort struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for HostPort.
-func (hp *HostPort) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (hp *HostPort) UnmarshalYAML(unmarshal func(any) error) error {
 	var (
 		s   string
 		err error
@@ -812,7 +817,7 @@ func (hp *HostPort) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface for HostPort.
-func (hp HostPort) MarshalYAML() (interface{}, error) {
+func (hp HostPort) MarshalYAML() (any, error) {
 	return hp.String(), nil
 }
 
@@ -870,7 +875,7 @@ type GlobalConfig struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for GlobalConfig.
-func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *GlobalConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultGlobalConfig()
 	type plain GlobalConfig
 	return unmarshal((*plain)(c))
@@ -899,7 +904,7 @@ type Route struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Route.
-func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (r *Route) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain Route
 	if err := unmarshal((*plain)(r)); err != nil {
 		return err
@@ -924,7 +929,7 @@ func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	}
 
 	if len(r.GroupBy) > 0 && r.GroupByAll {
-		return errors.New("cannot have wildcard group_by (`...`) and other other labels at the same time")
+		return errors.New("cannot have wildcard group_by (`...`) and other labels at the same time")
 	}
 
 	groupBy := map[model.LabelName]struct{}{}
@@ -972,7 +977,7 @@ type InhibitRule struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for InhibitRule.
-func (r *InhibitRule) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (r *InhibitRule) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain InhibitRule
 	if err := unmarshal((*plain)(r)); err != nil {
 		return err
@@ -1007,6 +1012,7 @@ type Receiver struct {
 
 	DiscordConfigs    []*DiscordConfig    `yaml:"discord_configs,omitempty" json:"discord_configs,omitempty"`
 	EmailConfigs      []*EmailConfig      `yaml:"email_configs,omitempty" json:"email_configs,omitempty"`
+	IncidentioConfigs []*IncidentioConfig `yaml:"incidentio_configs,omitempty" json:"incidentio_configs,omitempty"`
 	PagerdutyConfigs  []*PagerdutyConfig  `yaml:"pagerduty_configs,omitempty" json:"pagerduty_configs,omitempty"`
 	SlackConfigs      []*SlackConfig      `yaml:"slack_configs,omitempty" json:"slack_configs,omitempty"`
 	WebhookConfigs    []*WebhookConfig    `yaml:"webhook_configs,omitempty" json:"webhook_configs,omitempty"`
@@ -1024,7 +1030,7 @@ type Receiver struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Receiver.
-func (c *Receiver) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Receiver) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain Receiver
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err
@@ -1039,7 +1045,7 @@ func (c *Receiver) UnmarshalYAML(unmarshal func(interface{}) error) error {
 type MatchRegexps map[string]Regexp
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for MatchRegexps.
-func (m *MatchRegexps) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m *MatchRegexps) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain MatchRegexps
 	if err := unmarshal((*plain)(m)); err != nil {
 		return err
@@ -1062,7 +1068,7 @@ type Regexp struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Regexp.
-func (re *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (re *Regexp) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -1077,7 +1083,7 @@ func (re *Regexp) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface for Regexp.
-func (re Regexp) MarshalYAML() (interface{}, error) {
+func (re Regexp) MarshalYAML() (any, error) {
 	if re.original != "" {
 		return re.original, nil
 	}
@@ -1112,7 +1118,7 @@ func (re Regexp) MarshalJSON() ([]byte, error) {
 type Matchers labels.Matchers
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for Matchers.
-func (m *Matchers) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m *Matchers) UnmarshalYAML(unmarshal func(any) error) error {
 	var lines []string
 	if err := unmarshal(&lines); err != nil {
 		return err
@@ -1129,7 +1135,7 @@ func (m *Matchers) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements the yaml.Marshaler interface for Matchers.
-func (m Matchers) MarshalYAML() (interface{}, error) {
+func (m Matchers) MarshalYAML() (any, error) {
 	result := make([]string, len(m))
 	for i, matcher := range m {
 		result[i] = matcher.String()

@@ -12,7 +12,7 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/weaveworks/common/user"
 
-	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestDeleteTenant(t *testing.T) {
@@ -34,7 +34,7 @@ func TestDeleteTenant(t *testing.T) {
 		api.DeleteTenant(resp, req.WithContext(ctx))
 
 		require.Equal(t, http.StatusOK, resp.Code)
-		exists, err := tsdb.TenantDeletionMarkExists(ctx, bkt, "fake")
+		exists, err := users.TenantDeletionMarkExists(ctx, bkt, "fake")
 		require.NoError(t, err)
 		require.True(t, exists)
 	}

@@ -139,6 +139,53 @@ func TestLimits_Validate(t *testing.T) {
 			expected:             errInvalidLabelValue,
 			nameValidationScheme: model.UTF8Validation,
 		},
+		"metric_relabel_configs nil entry": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{nil},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs valid config": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               relabel.Drop,
+						Regex:                relabel.MustNewRegexp("(foo)"),
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: nil,
+		},
+		"metric_relabel_configs invalid config empty action": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               "",
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs invalid target_label for legacy": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"cluster"},
+						Action:               relabel.Replace,
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						TargetLabel:          "invalid-label-with-dash",
+						Replacement:          "x",
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -231,7 +278,7 @@ func TestLimitsLoadingFromJson(t *testing.T) {
 }
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
-	limits := reflect.TypeOf(Limits{})
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var mismatch []string
 
@@ -301,8 +348,8 @@ max_query_length: 1s
 }
 
 func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
-	stdlibDuration := reflect.TypeOf(time.Duration(0))
-	limits := reflect.TypeOf(Limits{})
+	stdlibDuration := reflect.TypeFor[time.Duration]()
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var badDurationType []string
 

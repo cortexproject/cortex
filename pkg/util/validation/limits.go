@@ -32,6 +32,7 @@ var errCompilingQueryPriorityRegex = errors.New("error compiling query priority 
 var errDuplicatePerLabelSetLimit = errors.New("duplicate per labelSet limits found. Make sure they are all unique")
 var errInvalidLabelName = errors.New("invalid label name")
 var errInvalidLabelValue = errors.New("invalid label value")
+var errInvalidMetricRelabelConfigs = errors.New("invalid metric_relabel_configs")
 
 // Supported values for enum limits
 const (
@@ -152,6 +153,7 @@ type Limits struct {
 	MetricRelabelConfigs              []*relabel.Config   `yaml:"metric_relabel_configs,omitempty" json:"metric_relabel_configs,omitempty" doc:"nocli|description=List of metric relabel configurations. Note that in most situations, it is more effective to use metrics relabeling directly in the Prometheus server, e.g. remote_write.write_relabel_configs."`
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
+	EnableTypeAndUnitLabels           bool                `yaml:"enable_type_and_unit_labels" json:"enable_type_and_unit_labels"`
 
 	// Ingester enforced limits.
 	// Series
@@ -163,6 +165,11 @@ type Limits struct {
 	MaxGlobalNativeHistogramSeriesPerUser int                 `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
 	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
 	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
+
+	// Regex matcher query limits.
+	MaxRegexPatternLength                       int `yaml:"max_regex_pattern_length" json:"max_regex_pattern_length"`
+	MaxLabelCardinalityForUnoptimizedRegex      int `yaml:"max_label_cardinality_for_unoptimized_regex" json:"max_label_cardinality_for_unoptimized_regex"`
+	MaxTotalLabelValueLengthForUnoptimizedRegex int `yaml:"max_total_label_value_length_for_unoptimized_regex" json:"max_total_label_value_length_for_unoptimized_regex"`
 
 	// Metadata
 	MaxLocalMetricsWithMetadataPerUser  int `yaml:"max_metadata_per_user" json:"max_metadata_per_user"`
@@ -264,6 +271,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
+	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -278,6 +286,11 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.EnforceMetricName, "validation.enforce-metric-name", true, "Enforce every sample has a metric name.")
 	f.BoolVar(&l.EnforceMetadataMetricName, "validation.enforce-metadata-metric-name", true, "Enforce every metadata has a metric name.")
 	f.IntVar(&l.MaxNativeHistogramBuckets, "validation.max-native-histogram-buckets", 0, "Limit on total number of positive and negative buckets allowed in a single native histogram. The resolution of a histogram with more buckets will be reduced until the number of buckets is within the limit. If the limit cannot be reached, the sample will be discarded. 0 means no limit. Enforced at Distributor.")
+
+	// Regex limits.
+	f.IntVar(&l.MaxRegexPatternLength, "validation.max-regex-pattern-length", 0, "Maximum length (in bytes) of an unoptimized regex pattern. This is a pre-flight check to reject expensive regex queries. 0 to disable. This is only enforced in Ingester.")
+	f.IntVar(&l.MaxLabelCardinalityForUnoptimizedRegex, "validation.max-label-cardinality-for-unoptimized-regex", 0, "Maximum cardinality of a label that can be queried with an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.")
+	f.IntVar(&l.MaxTotalLabelValueLengthForUnoptimizedRegex, "validation.max-total-label-value-length-for-unoptimized-regex", 0, "Maximum total length (in bytes) of all label values combined for an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.")
 
 	f.IntVar(&l.MaxLocalSeriesPerUser, "ingester.max-series-per-user", 5000000, "The maximum number of active series per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxLocalSeriesPerMetric, "ingester.max-series-per-metric", 50000, "The maximum number of active series per metric name, per ingester. 0 to disable.")
@@ -386,6 +399,17 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 		return nil
 	}); err != nil {
 		return err
+	}
+
+	for i, rc := range l.MetricRelabelConfigs {
+		if rc == nil {
+			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", "nil config")
+			return errInvalidMetricRelabelConfigs
+		}
+		if err := rc.Validate(nameValidationScheme); err != nil {
+			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", err)
+			return errInvalidMetricRelabelConfigs
+		}
 	}
 
 	return nil
@@ -1092,6 +1116,10 @@ func (o *Overrides) AlertmanagerMaxSilenceSizeBytes(userID string) int {
 	return o.GetOverridesForUser(userID).AlertmanagerMaxSilencesSizeBytes
 }
 
+func (o *Overrides) EnableTypeAndUnitLabels(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableTypeAndUnitLabels
+}
+
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)
@@ -1114,6 +1142,24 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 
 func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
+}
+
+// MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.
+// This is only used in Ingester.
+func (o *Overrides) MaxRegexPatternLength(userID string) int {
+	return o.GetOverridesForUser(userID).MaxRegexPatternLength
+}
+
+// MaxLabelCardinalityForUnoptimizedRegex returns the maximum cardinality for a label with an unoptimized regex matcher.
+// This is only used in Ingester.
+func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
+	return o.GetOverridesForUser(userID).MaxLabelCardinalityForUnoptimizedRegex
+}
+
+// MaxTotalLabelValueLengthForUnoptimizedRegex returns the maximum total length of all label values for an unoptimized regex matcher.
+// This is only used in Ingester.
+func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
+	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

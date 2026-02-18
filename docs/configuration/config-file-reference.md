@@ -544,6 +544,12 @@ sharding_ring:
   # CLI flag: -alertmanager.sharding-ring.detailed-metrics-enabled
   [detailed_metrics_enabled: <boolean> | default = true]
 
+  # Disable extending the replica set when instances are unhealthy. This limits
+  # blast radius during config corruption incidents but reduces availability
+  # during normal failures.
+  # CLI flag: -alertmanager.sharding-ring.disable-replica-set-extension
+  [disable_replica_set_extension: <boolean> | default = false]
+
   # The sleep seconds when alertmanager is shutting down. Need to be close to or
   # larger than KV Store information propagation delay
   # CLI flag: -alertmanager.sharding-ring.final-sleep
@@ -986,6 +992,26 @@ local:
   # Path at which alertmanager configurations are stored.
   # CLI flag: -alertmanager-storage.local.path
   [path: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -alertmanager-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -alertmanager-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `blocks_storage_config`
@@ -2368,9 +2394,10 @@ bucket_store:
 
   bucket_index:
     # True to enable querier and store-gateway to discover blocks in the storage
-    # via bucket index instead of bucket scanning.
+    # via bucket index instead of bucket scanning. Disabling the bucket index is
+    # not recommended for production.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
-    [enabled: <boolean> | default = false]
+    [enabled: <boolean> | default = true]
 
     # How frequently a bucket index, which previously failed to load, should be
     # tried to load again. This option is used only by querier.
@@ -2400,6 +2427,10 @@ bucket_store:
   # of cleaner creating bucket index.
   # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
   [block_discovery_strategy: <string> | default = "concurrent"]
+
+  # Type of bucket store to use (tsdb or parquet).
+  # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+  [bucket_store_type: <string> | default = "tsdb"]
 
   # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
   # The pool is shared across all tenants. 0 to disable the limit.
@@ -2452,6 +2483,14 @@ bucket_store:
     # Request token bucket size
     # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
     [request_token_bucket_size: <int> | default = 4194304]
+
+  # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-size
+  [parquet_shard_cache_size: <int> | default = 512]
+
+  # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+  # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
+  [parquet_shard_cache_ttl: <duration> | default = 24h]
 
 tsdb:
   # Local directory to store TSDBs in the ingesters.
@@ -2573,6 +2612,12 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
       [ttl: <duration> | default = 10m]
 
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
+
     # If enabled, ingesters will cache expanded postings for the compacted
     # blocks. The cache is shared between all blocks.
     blocks:
@@ -2588,6 +2633,12 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
       [ttl: <duration> | default = 10m]
 
+      # Timeout for fetching postings from TSDB index when cache miss occurs.
+      # This prevents runaway queries from consuming resources when all callers
+      # have given up.
+      # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
+      [fetch_timeout: <duration> | default = 0s]
+
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.
   # CLI flag: -blocks-storage.users-scanner.strategy
@@ -2597,6 +2648,11 @@ users_scanner:
   # base scanner if stale. Only valid when strategy is user_index.
   # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
   [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -blocks-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
 
   # TTL of the cached users. 0 disables caching and relies on caching at bucket
   # client level.
@@ -3019,26 +3075,33 @@ pool:
   [health_check_ingesters: <boolean> | default = true]
 
 ha_tracker:
-  # Enable the distributors HA tracker so that it can accept samples from
-  # Prometheus HA replicas gracefully (requires labels).
+  # Enable the HA tracker so that it can accept data from Prometheus HA replicas
+  # gracefully (requires labels).
   # CLI flag: -distributor.ha-tracker.enable
   [enable_ha_tracker: <boolean> | default = false]
 
-  # Update the timestamp in the KV store for a given cluster/replica only after
-  # this amount of time has passed since the current stored timestamp.
+  # The time interval that must pass since the last timestamp update in the KV
+  # store before updating it again for a given cluster.
   # CLI flag: -distributor.ha-tracker.update-timeout
   [ha_tracker_update_timeout: <duration> | default = 15s]
 
-  # Maximum jitter applied to the update timeout, in order to spread the HA
-  # heartbeats over time.
+  # The maximum jitter applied to the update timeout to spread KV store updates
+  # over time.
   # CLI flag: -distributor.ha-tracker.update-timeout-jitter-max
   [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
 
-  # If we don't receive any samples from the accepted replica for a cluster in
-  # this amount of time we will failover to the next replica we receive a sample
-  # from. This value must be greater than the update timeout
+  # The timeout after which a new replica will be accepted if the currently
+  # elected replica stops sending data. This value must be greater than the
+  # update timeout plus the maximum jitter.
   # CLI flag: -distributor.ha-tracker.failover-timeout
   [ha_tracker_failover_timeout: <duration> | default = 30s]
+
+  # [Experimental] If enabled, fetches all tracked keys on startup to populate
+  # the local cache. This prevents duplicate GET calls for the same key while
+  # the cache is cold, but could cause a spike in GET requests during
+  # initialization if the number of tracked keys is large.
+  # CLI flag: -distributor.ha-tracker.enable-startup-sync
+  [enable_startup_sync: <boolean> | default = false]
 
   # Backend storage to use for the ring. Please be aware that memberlist is not
   # supported by the HA tracker since gossip propagation is too slow for HA
@@ -3271,8 +3334,7 @@ otlp:
   # CLI flag: -distributor.otlp.allow-delta-temporality
   [allow_delta_temporality: <boolean> | default = false]
 
-  # EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for
-  # the OTLP metrics.
+  # Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
 ```
@@ -3674,6 +3736,30 @@ lifecycler:
 # CLI flag: -ingester.active-series-metrics-idle-timeout
 [active_series_metrics_idle_timeout: <duration> | default = 10m]
 
+# Enable tracking of active queried series using probabilistic data structure
+# and export them as metrics.
+# CLI flag: -ingester.active-queried-series-metrics-enabled
+[active_queried_series_metrics_enabled: <boolean> | default = false]
+
+# How often to update active queried series metrics.
+# CLI flag: -ingester.active-queried-series-metrics-update-period
+[active_queried_series_metrics_update_period: <duration> | default = 1m]
+
+# Duration of each sub-window for active queried series tracking (e.g., 1
+# minute). Used to divide the total tracking period into smaller windows.
+# CLI flag: -ingester.active-queried-series-metrics-window-duration
+[active_queried_series_metrics_window_duration: <duration> | default = 15m]
+
+# Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 =
+# 10% sampling). By default, all queries are sampled.
+# CLI flag: -ingester.active-queried-series-metrics-sample-rate
+[active_queried_series_metrics_sample_rate: <float> | default = 1]
+
+# Time windows to expose queried series metric. Each window tracks queried
+# series within that time period.
+# CLI flag: -ingester.active-queried-series-metrics-windows
+[active_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]
@@ -3737,6 +3823,18 @@ instance_limits:
 # If enabled, the metadata API returns all metadata regardless of the limits.
 # CLI flag: -ingester.skip-metadata-limits
 [skip_metadata_limits: <boolean> | default = true]
+
+# Enable optimization of label matchers when query chunks. When enabled,
+# matchers with low selectivity such as =~.+ are applied lazily during series
+# scanning instead of being used for postings matching.
+# CLI flag: -ingester.enable-matcher-optimization
+[enable_matcher_optimization: <boolean> | default = false]
+
+# Enable regex matcher limits and metrics collection for unoptimized regex
+# queries. When enabled, the ingester will track pattern length, label
+# cardinality, and total value length for unoptimized regex matchers.
+# CLI flag: -ingester.enable-regex-matcher-limits
+[enable_regex_matcher_limits: <boolean> | default = false]
 
 query_protection:
   rejection:
@@ -3988,6 +4086,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.promote-resource-attributes
 [promote_resource_attributes: <list of string> | default = ]
 
+# EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics.
+# This applies to remote write v2 and OTLP requests.
+# CLI flag: -distributor.enable-type-and-unit-labels
+[enable_type_and_unit_labels: <boolean> | default = false]
+
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]
@@ -4027,6 +4130,24 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [EXPERIMENTAL] True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
 [enable_native_histograms: <boolean> | default = false]
+
+# Maximum length (in bytes) of an unoptimized regex pattern. This is a
+# pre-flight check to reject expensive regex queries. 0 to disable. This is only
+# enforced in Ingester.
+# CLI flag: -validation.max-regex-pattern-length
+[max_regex_pattern_length: <int> | default = 0]
+
+# Maximum cardinality of a label that can be queried with an unoptimized regex
+# matcher. If exceeded, the query will be rejected with a limit error. 0 to
+# disable. This is only enforced in Ingester.
+# CLI flag: -validation.max-label-cardinality-for-unoptimized-regex
+[max_label_cardinality_for_unoptimized_regex: <int> | default = 0]
+
+# Maximum total length (in bytes) of all label values combined for an
+# unoptimized regex matcher. If exceeded, the query will be rejected with a
+# limit error. 0 to disable. This is only enforced in Ingester.
+# CLI flag: -validation.max-total-label-value-length-for-unoptimized-regex
+[max_total_label_value_length_for_unoptimized_regex: <int> | default = 0]
 
 # The maximum number of active metrics with metadata per user, per ingester. 0
 # to disable.
@@ -4716,6 +4837,11 @@ store_gateway_client:
 # CLI flag: -querier.store-gateway-consistency-check-max-attempts
 [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
+# [Experimental] The maximum number of series to be batched in a single gRPC
+# response message from Store Gateways. A value of 0 or 1 disables batching.
+# CLI flag: -querier.store-gateway-series-batch-size
+[store_gateway_series_batch_size: <int> | default = 1]
+
 # The maximum number of times we attempt fetching data from ingesters for
 # retryable errors (ex. partial data returned).
 # CLI flag: -querier.ingester-query-max-attempts
@@ -4744,9 +4870,14 @@ thanos_engine:
 
   # Logical plan optimizers. Multiple optimizers can be provided as a
   # comma-separated list. Supported values: default, all, propagate-matchers,
-  # sort-matchers, merge-selects, detect-histogram-stats
+  # sort-matchers, merge-selects, detect-histogram-stats, projection
   # CLI flag: -querier.optimizers
   [optimizers: <string> | default = "default"]
+
+  # Maximum number of goroutines that can be used to decode samples. 0 defaults
+  # to GOMAXPROCS / 2.
+  # CLI flag: -querier.decoding-concurrency
+  [decoding_concurrency: <int> | default = 0]
 
 # If enabled, ignore max query length check at Querier select method. Users can
 # choose to ignore it since the validation can be done before Querier evaluation
@@ -4763,10 +4894,13 @@ thanos_engine:
 # CLI flag: -querier.enable-parquet-queryable
 [enable_parquet_queryable: <boolean> | default = false]
 
-# [Experimental] Maximum size of the Parquet queryable shard cache. 0 to
-# disable.
-# CLI flag: -querier.parquet-queryable-shard-cache-size
-[parquet_queryable_shard_cache_size: <int> | default = 512]
+# [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+# CLI flag: -querier.parquet-shard-cache-size
+[parquet_shard_cache_size: <int> | default = 512]
+
+# [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+# CLI flag: -querier.parquet-shard-cache-ttl
+[parquet_shard_cache_ttl: <duration> | default = 24h]
 
 # [Experimental] Parquet queryable's default block store to query. Valid options
 # are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback
@@ -4780,6 +4914,13 @@ thanos_engine:
 # need to make sure Parquet files are created before it is queryable.
 # CLI flag: -querier.parquet-queryable-fallback-disabled
 [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+# [Experimental] If true, querier will honor projection hints and only
+# materialize requested labels. Today, projection is only effective when Parquet
+# Queryable is enabled. Projection is only applied when not querying mixed block
+# types (parquet and non-parquet) and not querying ingesters.
+# CLI flag: -querier.honor-projection-hints
+[honor_projection_hints: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -5067,9 +5208,10 @@ The `redis_config` configures the Redis backend cache.
 The `ruler_config` configures the Cortex ruler.
 
 ```yaml
-# [Experimental] GRPC listen address of the Query Frontend, in host:port format.
-# If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries
-# to Ingesters directly.
+# [Experimental] gRPC address of the Query Frontend (host:port). If set, the
+# Ruler send queries to the Query Frontend to utilize splitting and caching, at
+# the cost of additional network hops compared to direct querying to Ingesters
+# and Store Gateway.
 # CLI flag: -ruler.frontend-address
 [frontend_address: <string> | default = ""]
 
@@ -5506,9 +5648,14 @@ thanos_engine:
 
   # Logical plan optimizers. Multiple optimizers can be provided as a
   # comma-separated list. Supported values: default, all, propagate-matchers,
-  # sort-matchers, merge-selects, detect-histogram-stats
+  # sort-matchers, merge-selects, detect-histogram-stats, projection
   # CLI flag: -ruler.optimizers
   [optimizers: <string> | default = "default"]
+
+  # Maximum number of goroutines that can be used to decode samples. 0 defaults
+  # to GOMAXPROCS / 2.
+  # CLI flag: -ruler.decoding-concurrency
+  [decoding_concurrency: <int> | default = 0]
 ```
 
 ### `ruler_storage_config`
@@ -5808,6 +5955,26 @@ local:
   # Directory to scan for rules
   # CLI flag: -ruler-storage.local.directory
   [directory: <string> | default = ""]
+
+users_scanner:
+  # Strategy to use to scan users. Supported values are: list, user_index.
+  # CLI flag: -ruler-storage.users-scanner.strategy
+  [strategy: <string> | default = "list"]
+
+  # Maximum period of time to consider the user index as stale. Fall back to the
+  # base scanner if stale. Only valid when strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.max-stale-period
+  [max_stale_period: <duration> | default = 1h]
+
+  # How frequently user index file is updated. It only takes effect when user
+  # scan strategy is user_index.
+  # CLI flag: -ruler-storage.users-scanner.user-index.update-interval
+  [update_interval: <duration> | default = 15m]
+
+  # TTL of the cached users. 0 disables caching and relies on caching at bucket
+  # client level.
+  # CLI flag: -ruler-storage.users-scanner.cache-ttl
+  [cache_ttl: <duration> | default = 0s]
 ```
 
 ### `runtime_configuration_storage_config`

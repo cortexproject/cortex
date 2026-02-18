@@ -8,7 +8,10 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/exp/api/remote"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/compression"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
@@ -17,6 +20,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -30,13 +35,17 @@ const (
 	rw20WrittenSamplesHeader    = "X-Prometheus-Remote-Write-Samples-Written"
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
+
+	labelValuePRW1 = "prw1"
+	labelValuePRW2 = "prw2"
+	labelValueOTLP = "otlp"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -78,8 +87,19 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 		}
 
 		handlePRW2 := func() {
+			userID, err := users.TenantID(ctx)
+			if err != nil {
+				return
+			}
+
 			var req cortexpb.PreallocWriteRequestV2
-			err := util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
+			// v1 request is put back into the pool by the Distributor.
+			defer func() {
+				cortexpb.ReuseWriteRequestV2(&req)
+				req.Free()
+			}()
+
+			err = util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -91,7 +111,7 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(&req)
+			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -103,12 +123,18 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				v1Req.Source = cortexpb.API
 			}
 
-			if resp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
-				setPRW2RespHeader(w, 0, 0, 0)
 				if !ok {
+					setPRW2RespHeader(w, 0, 0, 0)
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
+				}
+				// For the case of HA deduplication, add the stats headers from the push response.
+				if writeResp != nil {
+					setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
+				} else {
+					setPRW2RespHeader(w, 0, 0, 0)
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
@@ -117,48 +143,53 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, sourceIPs *middleware
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
 			} else {
-				setPRW2RespHeader(w, resp.Samples, resp.Histograms, resp.Exemplars)
+				setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
 				w.WriteHeader(http.StatusNoContent)
 			}
 		}
 
-		if remoteWrite2Enabled {
-			// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
-			contentType := r.Header.Get("Content-Type")
-			if contentType == "" {
-				contentType = appProtoContentType
-			}
+		// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
+		contentType := r.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = appProtoContentType
+		}
 
-			msgType, err := remote.ParseProtoMsg(contentType)
-			if err != nil {
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		msgType, err := remote.ParseProtoMsg(contentType)
+		if err != nil {
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
-				level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		if requestTotal != nil {
+			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
+		}
 
-			enc := r.Header.Get("Content-Encoding")
-			if enc == "" {
-			} else if enc != compression.Snappy {
-				err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
-				level.Error(logger).Log("Error decoding remote write request", "err", err)
-				http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-				return
-			}
+		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
+			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
 
-			switch msgType {
-			case remote.WriteV1MessageType:
-				handlePRW1()
-			case remote.WriteV2MessageType:
-				handlePRW2()
-			}
-		} else {
+		enc := r.Header.Get("Content-Encoding")
+		if enc == "" {
+		} else if enc != compression.Snappy {
+			err := fmt.Errorf("%v encoding (compression) is not accepted by this server; only %v is acceptable", enc, compression.Snappy)
+			level.Error(logger).Log("Error decoding remote write request", "err", err)
+			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+			return
+		}
+
+		switch msgType {
+		case remote.WriteV1MessageType:
 			handlePRW1()
+		case remote.WriteV2MessageType:
+			if !remoteWrite2Enabled {
+				errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v", msgType, remote.WriteV1MessageType)
+				http.Error(w, errMsg, http.StatusUnsupportedMediaType)
+				return
+			}
+			handlePRW2()
 		}
 	})
 }
@@ -169,7 +200,7 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2) (cortexpb.PreallocWriteRequest, error) {
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool) (cortexpb.PreallocWriteRequest, error) {
 	var v1Req cortexpb.PreallocWriteRequest
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
@@ -177,12 +208,42 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2) (cortexpb.Preall
 	b := labels.NewScratchBuilder(0)
 	symbols := req.Symbols
 	for _, v2Ts := range req.Timeseries {
-		lbs := v2Ts.ToLabels(&b, symbols)
+		lbs, err := v2Ts.ToLabels(&b, symbols)
+		if err != nil {
+			return v1Req, err
+		}
+
+		if len(v2Ts.Samples) == 0 && len(v2Ts.Histograms) == 0 {
+			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
+		}
+
+		unit := symbols[v2Ts.Metadata.UnitRef]
+		metricType := v2Ts.Metadata.Type
+		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")
+		if shouldAttachTypeAndUnitLabels {
+			slb := labels.NewScratchBuilder(lbs.Len() + 2) // for __type__ and __unit__
+			lbs.Range(func(l labels.Label) {
+				// Skip __type__ and __unit__ labels to prevent duplication,
+				// We append these labels from metadata.
+				if l.Name != model.MetricTypeLabel && l.Name != model.MetricUnitLabel {
+					slb.Add(l.Name, l.Value)
+				}
+			})
+			schema.Metadata{Type: cortexpb.MetadataV2MetricTypeToMetricType(metricType), Unit: unit}.AddToLabels(&slb)
+			slb.Sort()
+			lbs = slb.Labels()
+		}
+
+		exemplars, err := convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars)
+		if err != nil {
+			return v1Req, err
+		}
+
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: &cortexpb.TimeSeries{
 				Labels:     cortexpb.FromLabelsToLabelAdapters(lbs),
 				Samples:    v2Ts.Samples,
-				Exemplars:  convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars),
+				Exemplars:  exemplars,
 				Histograms: v2Ts.Histograms,
 			},
 		})
@@ -234,14 +295,26 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 	}
 }
 
-func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) []cortexpb.Exemplar {
+func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) ([]cortexpb.Exemplar, error) {
 	v1Exemplars := make([]cortexpb.Exemplar, 0, len(v2Exemplars))
 	for _, e := range v2Exemplars {
+		lbs, err := e.ToLabels(b, symbols)
+		if err != nil {
+			return nil, err
+		}
 		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
-			Labels:      cortexpb.FromLabelsToLabelAdapters(e.ToLabels(b, symbols)),
+			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
 			Value:       e.Value,
 			TimestampMs: e.Timestamp,
 		})
 	}
-	return v1Exemplars
+	return v1Exemplars, nil
+}
+
+func getTypeLabel(msgType remote.WriteMessageType) string {
+	if msgType == remote.WriteV1MessageType {
+		return labelValuePRW1
+	}
+
+	return labelValuePRW2
 }

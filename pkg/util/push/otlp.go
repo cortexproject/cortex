@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -23,9 +24,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -35,7 +36,7 @@ const (
 )
 
 // OTLPHandler is a http.Handler which accepts OTLP metrics.
-func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func) http.Handler {
+func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distributor.OTLPConfig, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := util_log.WithContext(ctx, util_log.Logger)
@@ -47,7 +48,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			}
 		}
 
-		userID, err := tenant.TenantID(ctx)
+		userID, err := users.TenantID(ctx)
 		if err != nil {
 			return
 		}
@@ -57,6 +58,10 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			level.Error(logger).Log("err", err.Error())
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		if requestTotal != nil {
+			requestTotal.WithLabelValues(labelValueOTLP).Inc()
 		}
 
 		prwReq := cortexpb.WriteRequest{
@@ -176,12 +181,13 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 }
 
 func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) ([]prompb.TimeSeries, []prompb.MetricMetadata, error) {
-	promConverter := prometheusremotewrite.NewPrometheusConverter()
+	collector := newCollectingAppender()
+	promConverter := prometheusremotewrite.NewPrometheusConverter(collector)
 	settings := prometheusremotewrite.Settings{
 		AddMetricSuffixes:       true,
 		DisableTargetInfo:       cfg.DisableTargetInfo,
 		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
-		EnableTypeAndUnitLabels: cfg.EnableTypeAndUnitLabels,
+		EnableTypeAndUnitLabels: overrides.EnableTypeAndUnitLabels(userID),
 	}
 
 	var annots annotations.Annotations
@@ -205,7 +211,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 		level.Warn(logger).Log("msg", "Error translating OTLP metrics to Prometheus write request", "err", err)
 	}
 
-	return promConverter.TimeSeries(), promConverter.Metadata(), err
+	return collector.TimeSeries(), collector.Metadata(), err
 }
 
 func makeLabels(in []prompb.Label) []cortexpb.LabelAdapter {

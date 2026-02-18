@@ -1,5 +1,4 @@
 //go:build requires_docker
-// +build requires_docker
 
 package integration
 
@@ -475,6 +474,8 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 		"-blocks-storage.tsdb.ship-interval":                "1s",
 		"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
 		"-blocks-storage.bucket-store.max-chunk-pool-bytes": "1",
+		// TODO: run a compactor here instead of disabling the bucket-index
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.

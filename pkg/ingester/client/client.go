@@ -8,11 +8,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/cortexproject/cortex/pkg/cortexpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util/grpcclient"
-	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
-
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +17,11 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/grpcclient"
+	"github.com/cortexproject/cortex/pkg/util/grpcencoding/snappyblock"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -101,7 +101,7 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 		default:
 		}
 
-		tenantID, err := tenant.TenantID(ctx)
+		tenantID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -207,15 +207,13 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	var wg sync.WaitGroup
 	for i := range INGESTER_CLIENT_STREAM_WORKER_COUNT {
 		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", c.addr, i)
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)
 			if err != nil {
 				workerErr = err
 			}
-			wg.Done()
-		}()
+		})
 	}
 	wg.Wait()
 	return workerErr
@@ -231,7 +229,10 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				return
-			case job := <-c.streamPushChan:
+			case job, ok := <-c.streamPushChan:
+				if !ok {
+					return
+				}
 				err = stream.Send(job.req)
 				if err == io.EOF {
 					job.resp = &cortexpb.WriteResponse{}

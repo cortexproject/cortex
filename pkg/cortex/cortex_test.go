@@ -38,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestCortex(t *testing.T) {
@@ -88,9 +89,10 @@ func TestCortex(t *testing.T) {
 				IndexCache: tsdb.IndexCacheConfig{
 					Backend: tsdb.IndexCacheBackendInMemory,
 				},
+				BucketStoreType: string(tsdb.TSDBBucketStore),
 			},
-			UsersScanner: tsdb.UsersScannerConfig{
-				Strategy: tsdb.UserScanStrategyList,
+			UsersScanner: users.UsersScannerConfig{
+				Strategy: users.UserScanStrategyList,
 			},
 		},
 		RulerStorage: rulestore.Config{

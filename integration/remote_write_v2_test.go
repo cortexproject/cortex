@@ -1,5 +1,4 @@
 //go:build integration_remote_write_v2
-// +build integration_remote_write_v2
 
 package integration
 
@@ -41,17 +40,15 @@ func TestIngesterRollingUpdate(t *testing.T) {
 	flags := mergeFlags(
 		AlertmanagerLocalFlags(),
 		map[string]string{
-			"-store.engine":                                     blocksStorageEngine,
-			"-blocks-storage.backend":                           "filesystem",
-			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
-			"-blocks-storage.bucket-store.sync-interval":        "15m",
-			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
-			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
-			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-			"-blocks-storage.tsdb.ship-interval":                "1s",
-			"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -111,12 +108,12 @@ func TestIngesterRollingUpdate(t *testing.T) {
 
 	// histogram
 	histogramIdx := rand.Uint32()
-	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
 	writeStats, err := c.PushV2(symbols2, histogramSeries)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
 	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
@@ -151,17 +148,15 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	flags := mergeFlags(
 		AlertmanagerLocalFlags(),
 		map[string]string{
-			"-store.engine":                                     blocksStorageEngine,
-			"-blocks-storage.backend":                           "filesystem",
-			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
-			"-blocks-storage.bucket-store.sync-interval":        "15m",
-			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
-			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
-			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-			"-blocks-storage.tsdb.ship-interval":                "1s",
-			"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -197,12 +192,81 @@ func TestIngest_SenderSendPRW2_DistributorNotAllowPRW2(t *testing.T) {
 	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
 	_, err = c.PushV2(symbols1, series)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "sent v2 request; got 2xx, but PRW 2.0 response header statistics indicate 0 samples, 0 histograms and 0 exemplars were accepted")
+	require.Contains(t, err.Error(), "io.prometheus.write.v2.Request protobuf message is not accepted by this server; only accepts prometheus.WriteRequest")
 
 	// sample
 	result, err := c.Query("test_series", now)
 	require.NoError(t, err)
 	require.Empty(t, result)
+}
+
+func TestIngest_EnableTypeAndUnitLabels(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor":          "1",
+			"-distributor.remote-writev2-enabled":      "true",
+			"-distributor.enable-type-and-unit-labels": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// series push
+	symbols1, series, _ := e2e.GenerateSeriesV2("test_series", now, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "foo", Value: "bar"})
+	writeStats, err := c.PushV2(symbols1, series)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 1, 0, 0)
+
+	value, err := c.Query("test_series", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, value.Type())
+	vec := value.(model.Vector)
+	require.True(t, vec[0].Metric["__unit__"] != "")
+	require.True(t, vec[0].Metric["__type__"] != "")
 }
 
 func TestIngest(t *testing.T) {
@@ -219,17 +283,15 @@ func TestIngest(t *testing.T) {
 	flags := mergeFlags(
 		AlertmanagerLocalFlags(),
 		map[string]string{
-			"-store.engine":                                     blocksStorageEngine,
-			"-blocks-storage.backend":                           "filesystem",
-			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
-			"-blocks-storage.bucket-store.sync-interval":        "15m",
-			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
-			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
-			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),
-			"-blocks-storage.tsdb.ship-interval":                "1s",
-			"-blocks-storage.tsdb.retention-period":             ((blockRangePeriod * 2) - 1).String(),
-			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
 			// Ingester.
 			"-ring.store":      "consul",
 			"-consul.hostname": consul.NetworkHTTPEndpoint(),
@@ -279,28 +341,54 @@ func TestIngest(t *testing.T) {
 
 	// histogram
 	histogramIdx := rand.Uint32()
-	symbols2, histogramSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
-	writeStats, err = c.PushV2(symbols2, histogramSeries)
+	symbols2, intNH := e2e.GenerateHistogramSeriesV2("test_nh", now, histogramIdx, false, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	writeStats, err = c.PushV2(symbols2, intNH)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
 	// float histogram
-	symbols3, histogramFloatSeries := e2e.GenerateHistogramSeriesV2("test_histogram", now, histogramIdx, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
-	writeStats, err = c.PushV2(symbols3, histogramFloatSeries)
+	symbols3, floatNH := e2e.GenerateHistogramSeriesV2("test_nh", now, histogramIdx, false, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	writeStats, err = c.PushV2(symbols3, floatNH)
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 0, 1, 0)
 
+	// histogram with Custom Bucket
+	symbols4, intNHCB := e2e.GenerateHistogramSeriesV2("test_nhcb", now, histogramIdx, true, false, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "false"})
+	writeStats, err = c.PushV2(symbols4, intNHCB)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 0, 1, 0)
+
+	// float histogram with Custom Bucket
+	symbols5, floatNHCB := e2e.GenerateHistogramSeriesV2("test_nhcb", now, histogramIdx, true, true, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "float", Value: "true"})
+	writeStats, err = c.PushV2(symbols5, floatNHCB)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 0, 1, 0)
+
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(5), []string{"cortex_distributor_push_requests_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "prw2"))))
+
 	testHistogramTimestamp := now.Add(blockRangePeriod * 2)
-	expectedHistogram := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
-	result, err = c.Query(`test_histogram`, testHistogramTimestamp)
+	expectedNH := tsdbutil.GenerateTestHistogram(int64(histogramIdx))
+	result, err = c.Query(`test_nh`, testHistogramTimestamp)
 	require.NoError(t, err)
 	require.Equal(t, model.ValVector, result.Type())
 	v := result.(model.Vector)
 	require.Equal(t, 2, v.Len())
 	for _, s := range v {
 		require.NotNil(t, s.Histogram)
-		require.Equal(t, float64(expectedHistogram.Count), float64(s.Histogram.Count))
-		require.Equal(t, float64(expectedHistogram.Sum), float64(s.Histogram.Sum))
+		require.Equal(t, float64(expectedNH.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedNH.Sum), float64(s.Histogram.Sum))
+	}
+
+	expectedNHCB := tsdbutil.GenerateTestCustomBucketsHistogram(int64(histogramIdx))
+	result, err = c.Query(`test_nhcb`, testHistogramTimestamp)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	v = result.(model.Vector)
+	require.Equal(t, 2, v.Len())
+	for _, s := range v {
+		require.NotNil(t, s.Histogram)
+		require.Equal(t, float64(expectedNHCB.Count), float64(s.Histogram.Count))
+		require.Equal(t, float64(expectedNHCB.Sum), float64(s.Histogram.Sum))
 	}
 }
 
@@ -322,7 +410,6 @@ func TestExemplar(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":        "15m",
 			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
 			"-blocks-storage.tsdb.ship-interval":                "1s",
 			"-blocks-storage.tsdb.enable-native-histograms":     "true",
 			// Ingester.
@@ -405,7 +492,6 @@ func Test_WriteStatWithReplication(t *testing.T) {
 			"-blocks-storage.bucket-store.sync-interval":        "15m",
 			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
 			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
-			"-querier.query-store-for-labels-enabled":           "true",
 			"-blocks-storage.tsdb.ship-interval":                "1s",
 			"-blocks-storage.tsdb.enable-native-histograms":     "true",
 			// Ingester.

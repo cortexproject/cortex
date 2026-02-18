@@ -34,7 +34,6 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
@@ -43,6 +42,7 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -104,7 +104,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsersCleanupService
+	activeUsers *users.ActiveUsersCleanupService
 
 	ingestionRate          *util_math.EwmaRate
 	inflightPushRequests   atomic.Int64
@@ -129,6 +129,7 @@ type Distributor struct {
 	ingesterPartialDataQueries       prometheus.Counter
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	distributorIngesterPushTimeout   prometheus.Counter
 
 	validateMetrics *validation.ValidateMetrics
 
@@ -143,7 +144,7 @@ type Distributor struct {
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
+	HATrackerConfig ha.HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize     int           `yaml:"max_recv_msg_size"`
 	OTLPMaxRecvMsgSize int           `yaml:"otlp_max_recv_msg_size"`
@@ -206,7 +207,7 @@ type OTLPConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlagsWithPrefix("distributor.", "", f)
 	cfg.DistributorRing.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
@@ -229,7 +230,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
-	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.")
+	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
 }
 
 // Validate config and returns error on failure
@@ -242,9 +243,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
-
-	return haHATrackerConfig.Validate()
+	return cfg.HATrackerConfig.Validate()
 }
 
 const (
@@ -267,7 +266,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Title:             "Cortex HA Tracker Status",
 		ReplicaGroupLabel: "Cluster",
 	}
-	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
+	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig, limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
 	if err != nil {
 		return nil, err
 	}
@@ -409,6 +408,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+		distributorIngesterPushTimeout: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_distributor_ingester_push_timeouts_total",
+			Help: "The total number of push requests to ingesters that were canceled due to timeout.",
+		}),
 
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
@@ -458,7 +461,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	})
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
+	d.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
@@ -706,7 +709,15 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	var validationError = true
+	defer func() {
+		if validationError {
+			cortexpb.ReuseSlice(req.Timeseries)
+			req.Free()
+		}
+	}()
+
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -760,20 +771,23 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
-			// Ensure the request slice is reused if the series get deduped.
-			cortexpb.ReuseSlice(req.Timeseries)
-
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
-				return nil, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
+				var dedupResp *cortexpb.WriteResponse
+				if d.cfg.RemoteWriteV2Enabled {
+					dedupResp = &cortexpb.WriteResponse{}
+					dedupResp.Samples = int64(numFloatSamples)
+					dedupResp.Histograms = int64(numHistogramSamples)
+					dedupResp.Exemplars = int64(numExemplars)
+				}
+				return dedupResp, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
-
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
@@ -795,18 +809,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(nhSeriesKeys) == 0 && len(metadataKeys) == 0 {
-		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
@@ -843,6 +851,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	if len(keys) == 0 && nativeHistogramErr != nil {
 		return nil, nativeHistogramErr
 	}
+
+	//DoBatch will be responsible to call cleanup after all async ingester requests finish.
+	validationError = false
 
 	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
 	if err != nil {
@@ -931,6 +942,12 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 
 	// Use a background context to make sure all ingesters get samples even if we return early
 	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	defer func() {
+		if errors.Is(localCtx.Err(), context.DeadlineExceeded) {
+			d.distributorIngesterPushTimeout.Inc()
+		}
+	}()
+
 	localCtx = user.InjectOrgID(localCtx, userID)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)
@@ -1090,6 +1107,18 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 
 		for _, labelName := range limits.DropLabels {
 			removeLabel(labelName, &ts.Labels)
+		}
+
+		// Reject series with missing or empty metric name before removeEmptyLabels (which would strip __name__="").
+		if validationErr, reason := validation.ValidateMetricName(limits, ts.Labels, d.cfg.NameValidationScheme); reason != "" {
+			samplesCount := float64(len(ts.Samples) + len(ts.Histograms))
+			exemplarsCount := float64(len(ts.Exemplars))
+			if firstPartialErr == nil {
+				firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErr.Error())
+			}
+			d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID).Add(samplesCount)
+			d.validateMetrics.DiscardedExemplars.WithLabelValues(reason, userID).Add(exemplarsCount)
+			continue
 		}
 
 		// Make sure no label with empty value is sent to the Ingester.

@@ -42,6 +42,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/runutil"
 	"github.com/thanos-io/thanos/pkg/shipper"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
@@ -64,6 +65,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -2125,7 +2127,7 @@ func TestIngester_Push(t *testing.T) {
 	}
 }
 
-// Referred from https://github.com/prometheus/prometheus/blob/v2.52.1/model/histogram/histogram_test.go#L985.
+// Referred from https://github.com/prometheus/prometheus/blob/v3.9.1/model/histogram/histogram_test.go#L1384.
 func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
@@ -2266,6 +2268,186 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 				}),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountMismatch),
+		},
+		{
+			name: "rejects an exponential histogram with custom buckets schema",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:         12,
+					ZeroCount:     2,
+					ZeroThreshold: 0.001,
+					Sum:           19.4,
+					Schema:        histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					NegativeSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					NegativeBuckets: []int64{1, 1, -1, 0},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: only 0 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
+		},
+		{
+			name: "rejects a custom buckets histogram with exponential schema",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: 0,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: histogram.ErrHistogramExpSchemaCustomBounds,
+		},
+		{
+			name: "rejects a custom buckets histogram with zero/negative buckets",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:         12,
+					ZeroCount:     2,
+					ZeroThreshold: 0.001,
+					Sum:           19.4,
+					Schema:        histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					NegativeSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					NegativeBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: histogram.ErrHistogramCustomBucketsZeroCount,
+		},
+		{
+			name: "rejects a custom buckets histogram with negative offset in first span",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: -1, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: span number 1 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a custom buckets histogram with negative offset in subsequent spans",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: -1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
+		},
+		{
+			name: "rejects a custom buckets histogram with non-matching bucket counts",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1},
+					CustomValues:    []float64{1, 2, 3, 4},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: spans need 4 buckets, have 3 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
+		},
+		{
+			name: "rejects a custom buckets histogram with too few bounds",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Count:  5,
+					Sum:    19.4,
+					Schema: histogram.CustomBucketsSchema,
+					PositiveSpans: []histogram.Span{
+						{Offset: 0, Length: 2},
+						{Offset: 1, Length: 2},
+					},
+					PositiveBuckets: []int64{1, 1, -1, 0},
+					CustomValues:    []float64{1, 2, 3},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: only 3 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
+		},
+		{
+			name: "reject custom buckets histogram with non-increasing bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{0, 0},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: previous bound is 0.000000 and current is 0.000000: %w", histogram.ErrHistogramCustomBucketsInvalid),
+		},
+		{
+			name: "reject custom buckets histogram with explicit +Inf bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{1, math.Inf(1)},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: last +Inf bound must not be explicitly defined: %w", histogram.ErrHistogramCustomBucketsInfinite),
+		},
+		{
+			name: "reject custom buckets histogram with NaN bound",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema:       histogram.CustomBucketsSchema,
+					CustomValues: []float64{1, math.NaN(), 3},
+				}),
+			},
+			expectedErr: fmt.Errorf("custom buckets: %w", histogram.ErrHistogramCustomBucketsNaN),
+		},
+		{
+			name: "schema too high",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema: 10,
+				}),
+			},
+			expectedErr: histogram.InvalidSchemaError(10),
+		},
+		{
+			name: "schema too low",
+			histograms: []cortexpb.Histogram{
+				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+					Schema: -10,
+				}),
+			},
+			expectedErr: histogram.InvalidSchemaError(-10),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -3941,6 +4123,136 @@ func BenchmarkIngester_QueryStream_Chunks(b *testing.B) {
 	}
 }
 
+func BenchmarkIngester_QueryStreamChunks_MatcherOptimization(b *testing.B) {
+	tests := map[string]struct {
+		matchers    []*labels.Matcher
+		description string
+	}{
+		"metric name with regex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+			},
+			description: "Metric name with .+ regex matchers",
+		},
+		"metric name with not equal empty": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchNotEqual, "env", ""),
+				labels.MustNewMatcher(labels.MatchNotEqual, "pod", ""),
+			},
+			description: "Metric name with != \"\" matchers",
+		},
+		"metric name with sparse label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "sparse_label", ".+"),
+			},
+			description: "Metric name with sparse label matcher",
+		},
+		"complex matchers": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, model.MetricNameLabel, "test_metric"),
+				labels.MustNewMatcher(labels.MatchRegexp, "region", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "job", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "env", ".+"),
+				labels.MustNewMatcher(labels.MatchRegexp, "pod", ".+"),
+			},
+			description: "Complex matchers with .+ regex",
+		},
+	}
+
+	for testName, testData := range tests {
+		b.Run(testName+"_optimization_disabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, false, testData.matchers, testData.description+" without optimization")
+		})
+		b.Run(testName+"_optimization_enabled", func(b *testing.B) {
+			benchmarkQueryStreamChunksWithMatcherOptimization(b, true, testData.matchers, testData.description+" with optimization")
+		})
+	}
+}
+
+func benchmarkQueryStreamChunksWithMatcherOptimization(b *testing.B, enableMatcherOptimization bool, matchers []*labels.Matcher, description string) {
+	const userID = "test"
+
+	cfg := defaultIngesterTestConfig(b)
+	cfg.EnableMatcherOptimization = enableMatcherOptimization
+
+	i, err := prepareIngesterWithBlocksStorage(b, cfg, prometheus.NewRegistry())
+	require.NoError(b, err)
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(b, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for s := range 1000 {
+		// Create base labels
+		labelPairs := []string{
+			labels.MetricName, "test_metric",
+			"region", fmt.Sprintf("region-%d", s%10),
+			"job", fmt.Sprintf("job-%d", s%20),
+			"env", fmt.Sprintf("env-%d", s%5),
+			"pod", fmt.Sprintf("pod-%d", s%1000),
+		}
+
+		// Add sparse label only for half of the series
+		if s%2 == 0 {
+			labelPairs = append(labelPairs, "sparse_label", fmt.Sprintf("sparse-%d", s%50))
+		}
+
+		lbls := labels.FromStrings(labelPairs...)
+
+		samples := make([]cortexpb.Sample, 0, 5)
+		for t := range 5 {
+			samples = append(samples, cortexpb.Sample{
+				Value:       float64(s + t),
+				TimestampMs: int64(s*5 + t),
+			})
+		}
+
+		// Create labels slice with same length as samples
+		labelsSlice := make([]labels.Labels, len(samples))
+		for j := range labelsSlice {
+			labelsSlice[j] = lbls
+		}
+
+		req := cortexpb.ToWriteRequest(labelsSlice, samples, nil, nil, cortexpb.API)
+		_, err = i.Push(ctx, req)
+		require.NoError(b, err)
+	}
+
+	db, err := i.getTSDB(userID)
+	require.NoError(b, err)
+	require.NotNil(b, db)
+
+	mockStream := &mockQueryStreamServer{ctx: ctx}
+	sm := (&storepb.ShardInfo{
+		TotalShards: 0,
+	}).Matcher(nil)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		numSeries, numSamples, _, numChunks, err := i.queryStreamChunks(
+			ctx, userID, db, 0, 5000, matchers, sm, mockStream)
+
+		require.NoError(b, err)
+		require.Greater(b, numSeries, 0)
+		require.Greater(b, numSamples, 0)
+		require.Greater(b, numChunks, 0)
+
+		// Reset the mock stream for next iteration
+		mockStream.series = mockStream.series[:0]
+	}
+}
+
 func benchmarkQueryStream(b *testing.B, samplesCount, seriesCount int) {
 	cfg := defaultIngesterTestConfig(b)
 
@@ -4389,7 +4701,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 	numObjects := len(bucket.Objects())
 	require.NotZero(t, numObjects)
 
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, users.NewTenantDeletionMark(time.Now())))
 	numObjects++ // For deletion marker
 
 	db, err := i.getTSDB(userID)
@@ -4422,7 +4734,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 	bucket := objstore.NewInMemBucket()
 
 	// Write tenant deletion mark.
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucket), userID, users.NewTenantDeletionMark(time.Now())))
 
 	i.TSDBState.bucket = bucket
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -6179,13 +6491,13 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		testName := ""
+		var testName strings.Builder
 		for _, matcher := range tc.matchers {
 			t, _ := matcher.MatcherType()
-			testName += matcher.Name + t.String() + matcher.Value + "|"
+			testName.WriteString(matcher.Name + t.String() + matcher.Value + "|")
 
 		}
-		t.Run(fmt.Sprintf("%v", testName), func(t *testing.T) {
+		t.Run(fmt.Sprintf("%v", testName.String()), func(t *testing.T) {
 			for _, r := range ranges {
 				t.Run(fmt.Sprintf("start=%v,end=%v", r.startTs, r.endTs), func(t *testing.T) {
 					db.postingCache.Clear()
@@ -7174,4 +7486,380 @@ func (*panickingMatchersCache) GetOrSet(_ storecache.ConversionLabelMatcher, _ s
 	var a []int
 	a[1] = 2 // index out of range
 	return nil, nil
+}
+
+func TestIngester_ActiveQueriedSeries(t *testing.T) {
+	registry := prometheus.NewRegistry()
+
+	// Create ingester config with active queried series enabled
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.ActiveQueriedSeriesMetricsEnabled = true
+	cfg.ActiveQueriedSeriesMetricsUpdatePeriod = 5 * time.Second
+	cfg.ActiveQueriedSeriesMetricsWindowDuration = 5 * time.Second
+	cfg.ActiveQueriedSeriesMetricsSampleRate = 1.0 // Sample all queries
+	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{5 * time.Second, 10 * time.Second}
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	// Wait until the ingester is ACTIVE
+	test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	// Push some sample data
+	now := time.Now()
+	for idx := range 10 {
+		req := &cortexpb.WriteRequest{}
+		for seriesIdx := range 5 {
+			req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: labels.MetricName, Value: "test_metric"},
+						{Name: "series", Value: fmt.Sprintf("series_%d", seriesIdx)},
+					},
+					Samples: []cortexpb.Sample{
+						{Value: float64(idx), TimestampMs: now.Add(time.Duration(idx) * time.Second).UnixMilli()},
+					},
+				},
+			})
+		}
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Verify initial state - no queries run yet, so metric should be 0 or not exist
+	metricsBefore := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Metrics before query: %v", metricsBefore)
+
+	// Run a query to trigger active queried series tracking
+	matcher := &client.LabelMatcher{
+		Type:  client.REGEX_MATCH,
+		Name:  labels.MetricName,
+		Value: ".*",
+	}
+
+	req := &client.QueryRequest{
+		StartTimestampMs: now.Add(-1 * time.Hour).UnixMilli(),
+		EndTimestampMs:   now.Add(1 * time.Hour).UnixMilli(),
+		Matchers:         []*client.LabelMatcher{matcher},
+	}
+
+	s := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(req, s)
+	require.NoError(t, err)
+	require.NotEmpty(t, s.series, "Query should return some series")
+	t.Logf("Query returned %d series", len(s.series))
+
+	// Wait a bit for the async updates to be processed by the worker goroutines
+	time.Sleep(100 * time.Millisecond)
+
+	// Manually trigger the update of active queried series metrics
+	// This simulates the periodic update that would normally happen
+	i.updateActiveQueriedSeries(context.Background())
+
+	// Check that the metric was updated
+	metricsAfter := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Metrics after query: %v", metricsAfter)
+
+	// Verify the metric exists and has a reasonable value
+	found := false
+	for _, metric := range metricsAfter {
+		if strings.Contains(metric, "cortex_ingester_active_queried_series") &&
+			strings.Contains(metric, `user="test-user"`) {
+			found = true
+			t.Logf("Found active queried series metric: %s", metric)
+
+			// Extract the value from the metric line
+			// Format: cortex_ingester_active_queried_series{user="test-user",window="5s"} VALUE
+			parts := strings.Fields(metric)
+			if len(parts) >= 2 {
+				value := parts[len(parts)-1]
+				t.Logf("Metric value: %s", value)
+				// Value should be greater than 0 since we queried series
+				assert.NotEqual(t, "0", value, "Active queried series should be greater than 0 after running a query")
+			}
+		}
+	}
+	assert.True(t, found, "Should find cortex_ingester_active_queried_series metric for test-user")
+
+	// Run another query with a more specific matcher to verify tracking
+	specificMatcher := &client.LabelMatcher{
+		Type:  client.EQUAL,
+		Name:  "series",
+		Value: "series_0",
+	}
+	req2 := &client.QueryRequest{
+		StartTimestampMs: now.Add(-1 * time.Hour).UnixMilli(),
+		EndTimestampMs:   now.Add(1 * time.Hour).UnixMilli(),
+		Matchers:         []*client.LabelMatcher{matcher, specificMatcher},
+	}
+
+	s2 := &mockQueryStreamServer{ctx: ctx}
+	err = i.QueryStream(req2, s2)
+	require.NoError(t, err)
+	t.Logf("Second query returned %d series", len(s2.series))
+
+	// Wait a bit for the async updates to be processed
+	time.Sleep(100 * time.Millisecond)
+
+	// Update metrics again
+	i.updateActiveQueriedSeries(context.Background())
+
+	// Verify metrics are still present
+	finalMetrics := fetchMetrics(t, registry, "cortex_ingester_active_queried_series")
+	t.Logf("Final metrics: %v", finalMetrics)
+
+	foundFinal := false
+	for _, metric := range finalMetrics {
+		if strings.Contains(metric, "cortex_ingester_active_queried_series") &&
+			strings.Contains(metric, `user="test-user"`) {
+			foundFinal = true
+			break
+		}
+	}
+	assert.True(t, foundFinal, "Active queried series metric should still be present after second query")
+}
+
+// fetchMetrics is a helper function to fetch metrics from a registry that match a prefix
+func fetchMetrics(t *testing.T, registry *prometheus.Registry, prefix string) []string {
+	metricFamilies, err := registry.Gather()
+	require.NoError(t, err)
+
+	var metrics []string
+	for _, mf := range metricFamilies {
+		if strings.HasPrefix(mf.GetName(), prefix) {
+			for _, m := range mf.GetMetric() {
+				var labels []string
+				for _, label := range m.GetLabel() {
+					labels = append(labels, fmt.Sprintf(`%s="%s"`, label.GetName(), label.GetValue()))
+				}
+				labelStr := strings.Join(labels, ",")
+
+				var value string
+				if m.Counter != nil {
+					value = fmt.Sprintf("%v", m.Counter.GetValue())
+				} else if m.Gauge != nil {
+					value = fmt.Sprintf("%v", m.Gauge.GetValue())
+				}
+
+				metricLine := fmt.Sprintf("%s{%s} %s", mf.GetName(), labelStr, value)
+				metrics = append(metrics, metricLine)
+			}
+		}
+	}
+	return metrics
+}
+
+func TestIngester_checkRegexMatcherLimits(t *testing.T) {
+	const userID = "test-user"
+
+	// Helper to validate matchers are truly unoptimized when we expect them to be
+	validateUnoptimized := func(t *testing.T, testName string, matchers []*labels.Matcher, shouldBeUnoptimized bool) {
+		t.Helper()
+		for _, m := range matchers {
+			if m.Type == labels.MatchRegexp {
+				isUnopt := isRegexUnOptimized(m)
+				if shouldBeUnoptimized && !isUnopt {
+					t.Fatalf("Test %q: matcher %q is optimized but should be unoptimized for this test", testName, m.String())
+				}
+			}
+		}
+	}
+
+	tests := map[string]struct {
+		maxPatternLength     int
+		maxCardinality       int
+		maxTotalValueLength  int
+		labelValues          map[string][]string // label name -> values
+		matchers             []*labels.Matcher
+		expectError          bool
+		expectedErrSubstring string
+	}{
+		// Pattern length tests
+		"no limits, any pattern should succeed": {
+			maxPatternLength: 0,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("(a|b)", 200))}, // Unoptimized: 800 chars
+			expectError:      false,
+		},
+		"pattern length below limit should succeed": {
+			maxPatternLength: 100,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized: 16 chars
+			expectError:      false,
+		},
+		"pattern length exceeds limit should fail": {
+			maxPatternLength:     50,
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", strings.Repeat("(x|y)", 20))}, // Unoptimized: 100 chars
+			expectError:          true,
+			expectedErrSubstring: "regex pattern length 100 exceeds limit 50",
+		},
+		"pattern length limit should not apply to .* (optimized)": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".*")},
+			expectError:      false,
+		},
+		"pattern length limit should not apply to .+ (optimized)": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".+")},
+			expectError:      false,
+		},
+		"pattern length limit should not apply to optimized prefix match": {
+			maxPatternLength: 10,
+			matchers:         []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "very_long_prefix.*")},
+			expectError:      false,
+		},
+
+		// Cardinality tests
+		"cardinality below limit should succeed": {
+			maxCardinality: 10,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
+			expectError:    false,
+		},
+		"cardinality exceeds limit should fail": {
+			maxCardinality:       3,
+			labelValues:          map[string][]string{"status": {"val1", "val2", "val3", "val4", "val5"}},
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
+			expectError:          true,
+			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
+		},
+		"cardinality limit should not apply to .* (optimized)": {
+			maxCardinality: 3,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3", "val4", "val5"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".*")},
+			expectError:    false,
+		},
+		"cardinality limit should not apply to optimized regex": {
+			maxCardinality: 3,
+			labelValues:    map[string][]string{"status": {"value1", "value2", "value3", "value4", "value5"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "value.*")},
+			expectError:    false,
+		},
+
+		// Total value length tests
+		"total value length below limit should succeed": {
+			maxTotalValueLength: 1000,
+			labelValues:         map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}, // Unoptimized
+			expectError:         false,
+		},
+		"total value length exceeds limit should fail": {
+			maxTotalValueLength:  50,
+			labelValues:          map[string][]string{"status": {"value1234567890a", "value1234567890b", "value1234567890c", "value1234567890d"}}, // 4*16=64 bytes > 50
+			matchers:             []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")},                       // Unoptimized
+			expectError:          true,
+			expectedErrSubstring: "total value length 64 bytes",
+		},
+		"total value length limit should not apply to .+ (optimized)": {
+			maxTotalValueLength: 50,
+			labelValues:         map[string][]string{"status": {"value1234567890", "value1234567890", "value1234567890", "value1234567890", "value1234567890"}},
+			matchers:            []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", ".+")},
+			expectError:         false,
+		},
+
+		// Multiple matchers
+		"multiple matchers, one exceeds limit should fail": {
+			maxCardinality: 3,
+			labelValues: map[string][]string{
+				"status": {"val1", "val2"},
+				"host":   {"host1", "host2", "host3", "host4", "host5"},
+			},
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+"), // Unoptimized
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "[a-zA-Z]+[0-9]+"),   // Unoptimized
+			},
+			expectError:          true,
+			expectedErrSubstring: "cardinality 5 which exceeds limit 3",
+		},
+		"multiple matchers, mix of optimized and unoptimized": {
+			maxCardinality: 3,
+			labelValues: map[string][]string{
+				"status": {"val1", "val2", "val3", "val4", "val5"},
+				"host":   {"host1", "host2"},
+			},
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "status", ".*"),            // Optimized - should not be checked
+				labels.MustNewMatcher(labels.MatchRegexp, "host", "[a-zA-Z]+[0-9]+"), // Unoptimized
+			},
+			expectError: false,
+		},
+
+		// Non-regex matchers should not be affected
+		"equal matcher should not be checked": {
+			maxCardinality: 1,
+			labelValues:    map[string][]string{"status": {"val1", "val2", "val3"}},
+			matchers:       []*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "status", "val1")},
+			expectError:    false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Create ingester with custom per-tenant limits
+			cfg := defaultIngesterTestConfig(t)
+			cfg.EnableRegexMatcherLimits = true // Enable the feature flag
+			limits := defaultLimitsTestConfig()
+			limits.MaxRegexPatternLength = testData.maxPatternLength
+			limits.MaxLabelCardinalityForUnoptimizedRegex = testData.maxCardinality
+			limits.MaxTotalLabelValueLengthForUnoptimizedRegex = testData.maxTotalValueLength
+
+			tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+			registry := prometheus.NewRegistry()
+
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, t.TempDir(), registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			// Wait until it's ACTIVE
+			test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+				return i.lifecycler.GetState()
+			})
+
+			// Validate that matchers requiring TSDB queries are truly unoptimized
+			// Only validate if the test expects an error (which means we need unoptimized matchers to trigger the limit)
+			// or if the test name doesn't indicate it's testing optimized patterns
+			needsUnoptimized := testData.expectError && len(testData.labelValues) > 0
+			if needsUnoptimized {
+				validateUnoptimized(t, testName, testData.matchers, true)
+			}
+
+			// Push series with label values
+			ctx := user.InjectOrgID(context.Background(), userID)
+			timestamp := int64(123000)
+
+			for labelName, values := range testData.labelValues {
+				for idx, labelValue := range values {
+					lbls := labels.FromStrings(labels.MetricName, "test_metric", labelName, labelValue, "id", strconv.Itoa(idx))
+					req, _ := mockWriteRequest(t, lbls, float64(idx), timestamp)
+					_, err := i.Push(ctx, req)
+					require.NoError(t, err)
+				}
+			}
+
+			// Get the TSDB for the user
+			db, err := i.getOrCreateTSDB(userID, false)
+			require.NoError(t, err)
+			require.NotNil(t, db)
+
+			// Call checkRegexMatcherLimits directly
+			err = i.checkRegexMatcherLimits(ctx, userID, db, testData.matchers, 0, math.MaxInt64)
+
+			if testData.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), testData.expectedErrSubstring)
+
+				// Verify it's a LimitError (won't be retried, won't be marked as partial data)
+				require.True(t, validation.IsLimitError(err), "expected error to be a validation.LimitError")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

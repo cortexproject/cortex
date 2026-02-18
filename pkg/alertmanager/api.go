@@ -18,10 +18,10 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -40,22 +40,26 @@ const (
 )
 
 var (
-	errPasswordFileNotAllowed            = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
-	errOAuth2SecretFileNotAllowed        = errors.New("setting OAuth2 client_secret_file is not allowed")
-	errTLSFileNotAllowed                 = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
-	errSlackAPIURLFileNotAllowed         = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
-	errVictorOpsAPIKeyFileNotAllowed     = errors.New("setting VictorOps api_key_file is not allowed")
-	errOpsGenieAPIKeyFileNotAllowed      = errors.New("setting OpsGenie api_key_file is not allowed")
-	errPagerDutyRoutingKeyFileNotAllowed = errors.New("setting PagerDuty routing_key_file is not allowed")
-	errPagerDutyServiceKeyFileNotAllowed = errors.New("setting PagerDuty service_key_file is not allowed")
-	errWebhookURLFileNotAllowed          = errors.New("setting Webhook url_file is not allowed")
-	errPushOverUserKeyFileNotAllowed     = errors.New("setting PushOver user_key_file is not allowed")
-	errPushOverTokenFileNotAllowed       = errors.New("setting PushOver token_file is not allowed")
-	errTelegramBotTokenFileNotAllowed    = errors.New("setting Telegram bot_token_file is not allowed")
-	errMSTeamsWebhookUrlFileNotAllowed   = errors.New("setting MSTeams webhook_url_file is not allowed")
-	errMSTeamsV2WebhookUrlFileNotAllowed = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
-	errRocketChatTokenIdFileNotAllowed   = errors.New("setting RocketChat token_id_file is not allowed")
-	errRocketChatTokenFileNotAllowed     = errors.New("setting RocketChat token_file is not allowed")
+	errPasswordFileNotAllowed                   = errors.New("setting password_file, bearer_token_file and credentials_file is not allowed")
+	errOAuth2SecretFileNotAllowed               = errors.New("setting OAuth2 client_secret_file is not allowed")
+	errTLSFileNotAllowed                        = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
+	errSlackAPIURLFileNotAllowed                = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
+	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file is not allowed")
+	errOpsGenieAPIKeyFileNotAllowed             = errors.New("setting OpsGenie api_key_file is not allowed")
+	errPagerDutyRoutingKeyFileNotAllowed        = errors.New("setting PagerDuty routing_key_file is not allowed")
+	errPagerDutyServiceKeyFileNotAllowed        = errors.New("setting PagerDuty service_key_file is not allowed")
+	errWebhookURLFileNotAllowed                 = errors.New("setting Webhook url_file is not allowed")
+	errPushOverUserKeyFileNotAllowed            = errors.New("setting PushOver user_key_file is not allowed")
+	errPushOverTokenFileNotAllowed              = errors.New("setting PushOver token_file is not allowed")
+	errTelegramBotTokenFileNotAllowed           = errors.New("setting Telegram bot_token_file is not allowed")
+	errMSTeamsWebhookUrlFileNotAllowed          = errors.New("setting MSTeams webhook_url_file is not allowed")
+	errMSTeamsV2WebhookUrlFileNotAllowed        = errors.New("setting MSTeamsV2 webhook_url_file is not allowed")
+	errRocketChatTokenIdFileNotAllowed          = errors.New("setting RocketChat token_id_file is not allowed")
+	errRocketChatTokenFileNotAllowed            = errors.New("setting RocketChat token_file is not allowed")
+	errDiscordWebhookUrlFileNotAllowed          = errors.New("setting Discord webhook_url_file is not allowed")
+	errEmailAuthPasswordFileNotAllowed          = errors.New("setting Email auth_password_file is not allowed")
+	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
+	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
 )
 
 // UserConfig is used to communicate a users alertmanager configs
@@ -67,7 +71,7 @@ type UserConfig struct {
 func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
 
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
@@ -107,7 +111,7 @@ func (am *MultitenantAlertmanager) GetUserConfig(w http.ResponseWriter, r *http.
 
 func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
@@ -167,7 +171,7 @@ func (am *MultitenantAlertmanager) SetUserConfig(w http.ResponseWriter, r *http.
 // Note that if no config exists for a user, StatusOK is returned.
 func (am *MultitenantAlertmanager) DeleteUserConfig(w http.ResponseWriter, r *http.Request) {
 	logger := util_log.WithContext(r.Context(), am.logger)
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		level.Error(logger).Log("msg", errNoOrgID, "err", err.Error())
 		http.Error(w, fmt.Sprintf("%s: %s", errNoOrgID, err.Error()), http.StatusUnauthorized)
@@ -340,63 +344,75 @@ func validateAlertmanagerConfig(cfg any) error {
 	// Check if the input config is a data type for which we have a specific validation.
 	// At this point the value can't be a pointer anymore.
 	switch t {
-	case reflect.TypeOf(config.GlobalConfig{}):
+	case reflect.TypeFor[config.GlobalConfig]():
 		if err := validateGlobalConfig(v.Interface().(config.GlobalConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(commoncfg.HTTPClientConfig{}):
+	case reflect.TypeFor[commoncfg.HTTPClientConfig]():
 		if err := validateReceiverHTTPConfig(v.Interface().(commoncfg.HTTPClientConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.OpsGenieConfig{}):
+	case reflect.TypeFor[config.OpsGenieConfig]():
 		if err := validateOpsGenieConfig(v.Interface().(config.OpsGenieConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(commoncfg.TLSConfig{}):
+	case reflect.TypeFor[commoncfg.TLSConfig]():
 		if err := validateReceiverTLSConfig(v.Interface().(commoncfg.TLSConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.SlackConfig{}):
+	case reflect.TypeFor[config.SlackConfig]():
 		if err := validateSlackConfig(v.Interface().(config.SlackConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.VictorOpsConfig{}):
+	case reflect.TypeFor[config.VictorOpsConfig]():
 		if err := validateVictorOpsConfig(v.Interface().(config.VictorOpsConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.PagerdutyConfig{}):
+	case reflect.TypeFor[config.PagerdutyConfig]():
 		if err := validatePagerdutyConfig(v.Interface().(config.PagerdutyConfig)); err != nil {
 			return err
 		}
 
-	case reflect.TypeOf(config.WebhookConfig{}):
+	case reflect.TypeFor[config.WebhookConfig]():
 		if err := validateWebhookConfig(v.Interface().(config.WebhookConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.PushoverConfig{}):
+	case reflect.TypeFor[config.PushoverConfig]():
 		if err := validatePushOverConfig(v.Interface().(config.PushoverConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.TelegramConfig{}):
+	case reflect.TypeFor[config.TelegramConfig]():
 		if err := validateTelegramConfig(v.Interface().(config.TelegramConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.MSTeamsConfig{}):
+	case reflect.TypeFor[config.MSTeamsConfig]():
 		if err := validateMSTeamsConfig(v.Interface().(config.MSTeamsConfig)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.MSTeamsV2Config{}):
+	case reflect.TypeFor[config.MSTeamsV2Config]():
 		if err := validateMSTeamsV2Config(v.Interface().(config.MSTeamsV2Config)); err != nil {
 			return err
 		}
-	case reflect.TypeOf(config.RocketchatConfig{}):
+	case reflect.TypeFor[config.RocketchatConfig]():
 		if err := validateRocketChatConfig(v.Interface().(config.RocketchatConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeFor[config.DiscordConfig]():
+		if err := validateDiscordConfig(v.Interface().(config.DiscordConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeFor[config.EmailConfig]():
+		if err := validateEmailConfig(v.Interface().(config.EmailConfig)); err != nil {
+			return err
+		}
+	case reflect.TypeFor[config.IncidentioConfig]():
+		if err := validateIncidentIOConfig(v.Interface().(config.IncidentioConfig)); err != nil {
 			return err
 		}
 	}
@@ -584,6 +600,38 @@ func validateRocketChatConfig(cfg config.RocketchatConfig) error {
 
 	if cfg.TokenFile != "" {
 		return errRocketChatTokenFileNotAllowed
+	}
+
+	return nil
+}
+
+// validateDiscordConfig validates the Discord Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateDiscordConfig(cfg config.DiscordConfig) error {
+	if cfg.WebhookURLFile != "" {
+		return errDiscordWebhookUrlFileNotAllowed
+	}
+	return nil
+}
+
+// validateEmailConfig validates the Email Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateEmailConfig(cfg config.EmailConfig) error {
+	if cfg.AuthPasswordFile != "" {
+		return errEmailAuthPasswordFileNotAllowed
+	}
+	return nil
+}
+
+// validateIncidentIOConfig validates the IncidentIO Config and returns an error if it contains
+// settings not allowed by Cortex.
+func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
+	if cfg.URLFile != "" {
+		return errIncidentIOURLFileNotAllowed
+	}
+
+	if cfg.AlertSourceTokenFile != "" {
+		return errIncidentIOAlertSourceTokenFileNotAllowed
 	}
 
 	return nil

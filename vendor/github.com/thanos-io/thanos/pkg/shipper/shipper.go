@@ -85,6 +85,7 @@ type Shipper struct {
 	allowOutOfOrderUploads bool
 	skipCorruptedBlocks    bool
 	hashFunc               metadata.HashFunc
+	uploadConcurrency      int
 
 	labels func() labels.Labels
 	mtx    sync.RWMutex
@@ -104,6 +105,7 @@ type shipperOptions struct {
 	uploadCompacted        bool
 	allowOutOfOrderUploads bool
 	skipCorruptedBlocks    bool
+	uploadConcurrency      int
 }
 
 type Option func(*shipperOptions)
@@ -171,6 +173,13 @@ func WithSkipCorruptedBlocks(skip bool) Option {
 	}
 }
 
+// WithUploadConcurrency sets the number of goroutines to use when uploading block files.
+func WithUploadConcurrency(concurrency int) Option {
+	return func(o *shipperOptions) {
+		o.uploadConcurrency = concurrency
+	}
+}
+
 func applyOptions(opts []Option) *shipperOptions {
 	so := new(shipperOptions)
 	for _, o := range opts {
@@ -209,6 +218,7 @@ func New(bucket objstore.Bucket, dir string, opts ...Option) *Shipper {
 		skipCorruptedBlocks:    options.skipCorruptedBlocks,
 		uploadCompacted:        options.uploadCompacted,
 		hashFunc:               options.hashFunc,
+		uploadConcurrency:      options.uploadConcurrency,
 		metadataFilePath:       filepath.Join(dir, filepath.Clean(options.metaFileName)),
 	}
 }
@@ -463,7 +473,11 @@ func (s *Shipper) upload(ctx context.Context, meta *metadata.Meta) error {
 	if err := meta.WriteToDir(s.logger, updir); err != nil {
 		return errors.Wrap(err, "write meta file")
 	}
-	return block.Upload(ctx, s.logger, s.bucket, updir, s.hashFunc)
+	var uploadOptions []objstore.UploadOption
+	if s.uploadConcurrency > 0 {
+		uploadOptions = append(uploadOptions, objstore.WithUploadConcurrency(s.uploadConcurrency))
+	}
+	return block.Upload(ctx, s.logger, s.bucket, updir, s.hashFunc, uploadOptions...)
 }
 
 // blockMetasFromOldest returns the block meta of each block found in dir
@@ -507,7 +521,7 @@ func (s *Shipper) blockMetasFromOldest() (metas []*metadata.Meta, failedBlocks [
 		metas = append(metas, m)
 	}
 	sort.Slice(metas, func(i, j int) bool {
-		return metas[i].BlockMeta.MinTime < metas[j].BlockMeta.MinTime
+		return metas[i].MinTime < metas[j].MinTime
 	})
 
 	if len(failedBlocks) > 0 {

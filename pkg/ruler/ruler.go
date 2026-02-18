@@ -20,6 +20,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
@@ -36,7 +37,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
@@ -44,6 +44,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -84,6 +85,7 @@ const (
 	firingStateFilter   string = "firing"
 	pendingStateFilter  string = "pending"
 	inactiveStateFilter string = "inactive"
+	unknownStateFilter  string = "unknown"
 
 	unknownHealthFilter string = "unknown"
 	okHealthFilter      string = "ok"
@@ -177,6 +179,9 @@ type Config struct {
 	LivenessCheckTimeout time.Duration `yaml:"liveness_check_timeout"`
 
 	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
+
+	// NameValidationScheme is the scheme for validating metric and label names (set from root config).
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 // Validate config and returns error on failure
@@ -231,7 +236,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "ruler.alertmanager-use-v2", "This flag is no longer functional. V1 API is deprecated and removed", util_log.Logger)
 
-	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.")
+	f.StringVar(&cfg.FrontendAddress, "ruler.frontend-address", "", "[Experimental] gRPC address of the Query Frontend (host:port). If set, the Ruler send queries to the Query Frontend to utilize splitting and caching, at the cost of additional network hops compared to direct querying to Ingesters and Store Gateway.")
 	f.StringVar(&cfg.QueryResponseFormat, "ruler.query-response-format", queryResponseFormatProtobuf, fmt.Sprintf("[Experimental] Query response format to get query results from Query Frontend when the rule evaluation. It will only take effect when `-ruler.frontend-address` is configured. Supported values: %s", strings.Join(supportedQueryResponseFormats, ",")))
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
@@ -341,10 +346,12 @@ type Ruler struct {
 	rulerGetRulesFailures      *prometheus.CounterVec
 	ruleGroupMetrics           *RuleGroupMetrics
 
-	allowedTenants *util.AllowedTenants
+	allowedTenants *users.AllowedTenants
 
 	registry prometheus.Registerer
 	logger   log.Logger
+
+	userIndexUpdater *users.UserIndexUpdater
 }
 
 // NewRuler creates a new ruler from a distributor and chunk store.
@@ -354,14 +361,15 @@ func NewRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer,
 
 func newRuler(cfg Config, manager MultiTenantManager, reg prometheus.Registerer, logger log.Logger, ruleStore rulestore.RuleStore, limits RulesLimits, clientPool ClientsPool) (*Ruler, error) {
 	ruler := &Ruler{
-		cfg:            cfg,
-		store:          ruleStore,
-		manager:        manager,
-		registry:       reg,
-		logger:         logger,
-		limits:         limits,
-		clientsPool:    clientPool,
-		allowedTenants: util.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
+		cfg:              cfg,
+		userIndexUpdater: ruleStore.GetUserIndexUpdater(),
+		store:            ruleStore,
+		manager:          manager,
+		registry:         reg,
+		logger:           logger,
+		limits:           limits,
+		clientsPool:      clientPool,
+		allowedTenants:   users.NewAllowedTenants(cfg.EnabledTenants, cfg.DisabledTenants),
 
 		ringCheckErrors: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ruler_ring_check_errors_total",
@@ -694,6 +702,10 @@ func (r *Ruler) run(ctx context.Context) error {
 		ringTickerChan = ringTicker.C
 	}
 
+	if r.userIndexUpdater != nil {
+		go r.userIndexUpdateLoop(ctx)
+	}
+
 	syncRuleErrMsg := func(syncRulesErr error) {
 		level.Error(r.logger).Log("msg", "failed to sync rules", "err", syncRulesErr)
 	}
@@ -725,6 +737,72 @@ func (r *Ruler) run(ctx context.Context) error {
 			syncRuleErrMsg(syncRulesErr)
 		}
 	}
+}
+
+func (r *Ruler) userIndexUpdateLoop(ctx context.Context) {
+	// Hardcode ID to check which ruler owns updating user index.
+	userID := users.UserIndexCompressedFilename
+	// Align with clean up interval.
+	ticker := time.NewTicker(util.DurationWithJitter(r.store.GetUserIndexUpdater().GetUpdateInterval(), 0.1))
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			level.Error(r.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
+			return
+		case <-ticker.C:
+			owned, err := r.isUserOwned(userID)
+			if err != nil {
+				level.Error(r.logger).Log("msg", "failed to check if ruler owns updating user index", "err", err)
+				continue
+			}
+			if !owned {
+				continue
+			}
+			start := time.Now()
+			if err := r.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
+				level.Error(r.logger).Log("msg", "failed to update user index", "err", err)
+				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
+				continue
+			}
+			level.Info(r.logger).Log("msg", "successfully updated user index", "duration_ms", time.Since(start).Milliseconds())
+		}
+	}
+}
+
+func (r *Ruler) isUserOwned(userID string) (bool, error) {
+	if !r.allowedTenants.IsAllowed(userID) {
+		return false, nil
+	}
+
+	// If sharding is disabled, any ruler instance owns all users.
+	if !r.cfg.EnableSharding {
+		return true, nil
+	}
+
+	if r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		shardSize := r.getShardSizeForUser(userID)
+		subRing := r.ring.ShuffleShard(userID, shardSize)
+
+		rs, err := subRing.GetAllHealthy(RingOp)
+		if err != nil {
+			r.ringCheckErrors.Inc()
+			level.Error(r.logger).Log("msg", "failed to get rulers from ring", "user", userID, "err", err)
+			return false, err
+		}
+
+		return rs.Includes(r.lifecycler.GetInstanceAddr()), nil
+	}
+
+	rulers, err := r.ring.Get(users.ShardByUser(userID), RingOp, nil, nil, nil)
+	if err != nil {
+		r.ringCheckErrors.Inc()
+		level.Error(r.logger).Log("msg", "failed to get rulers from ring", "user", userID, "err", err)
+		return false, err
+	}
+
+	return rulers.Includes(r.lifecycler.GetInstanceAddr()), nil
 }
 
 func (r *Ruler) syncRules(ctx context.Context, reason string) error {
@@ -1028,7 +1106,7 @@ func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.Rule
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
 func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
@@ -1448,7 +1526,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 
 // Rules implements the rules service
 func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
@@ -1502,7 +1580,7 @@ func (r *Ruler) AssertMaxRulesPerRuleGroup(userID string, rules int) error {
 func (r *Ruler) DeleteTenantConfiguration(w http.ResponseWriter, req *http.Request) {
 	logger := util_log.WithContext(req.Context(), r.logger)
 
-	userID, err := tenant.TenantID(req.Context())
+	userID, err := users.TenantID(req.Context())
 	if err != nil {
 		// When Cortex is running, it uses Auth Middleware for checking X-Scope-OrgID and injecting tenant into context.
 		// Auth Middleware sends http.StatusUnauthorized if X-Scope-OrgID is missing, so we do too here, for consistency.

@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -37,7 +38,6 @@ type coalesce struct {
 	once   sync.Once
 	series []labels.Labels
 
-	pool      *model.VectorPool
 	wg        sync.WaitGroup
 	operators []model.VectorOperator
 	batchSize int64
@@ -46,14 +46,17 @@ type coalesce struct {
 	inVectors [][]model.StepVector
 	// sampleOffsets holds per-operator offsets needed to map an input sample ID to an output sample ID.
 	sampleOffsets []uint64
+	// seriesCounts holds the number of series per operator for pre-allocation.
+	seriesCounts []int
+	// tempBufs are reusable buffers for reading from operators
+	tempBufs [][]model.StepVector
 }
 
-func NewCoalesce(pool *model.VectorPool, opts *query.Options, batchSize int64, operators ...model.VectorOperator) model.VectorOperator {
+func NewCoalesce(opts *query.Options, batchSize int64, operators ...model.VectorOperator) model.VectorOperator {
 	if len(operators) == 1 {
 		return operators[0]
 	}
 	oper := &coalesce{
-		pool:          pool,
 		sampleOffsets: make([]uint64, len(operators)),
 		operators:     operators,
 		inVectors:     make([][]model.StepVector, len(operators)),
@@ -71,10 +74,6 @@ func (c *coalesce) String() string {
 	return "[coalesce]"
 }
 
-func (c *coalesce) GetPool() *model.VectorPool {
-	return c.pool
-}
-
 func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
@@ -84,25 +83,41 @@ func (c *coalesce) Series(ctx context.Context) ([]labels.Labels, error) {
 	return c.series, nil
 }
 
-func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
+func (c *coalesce) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
 	var err error
 	c.once.Do(func() { err = c.loadSeries(ctx) })
 	if err != nil {
-		return nil, err
+		return 0, err
+	}
+
+	// Allocate temporary buffers on first use.
+	// Inner slices will be lazily pre-allocated by child operators when they append data.
+	if c.tempBufs == nil {
+		c.tempBufs = make([][]model.StepVector, len(c.operators))
+		for i := range c.tempBufs {
+			c.tempBufs[i] = make([]model.StepVector, len(buf))
+		}
 	}
 
 	var mu sync.Mutex
 	var minTs int64 = math.MaxInt64
 	var errChan = make(errorChan, len(c.operators))
+	vectorCounts := make([]int, len(c.operators))
+
 	for idx, o := range c.operators {
 		// We already have a batch from the previous iteration.
 		if c.inVectors[idx] != nil {
+			mu.Lock()
+			if len(c.inVectors[idx]) > 0 {
+				minTs = min(minTs, c.inVectors[idx][0].T)
+			}
+			mu.Unlock()
 			continue
 		}
 
@@ -110,67 +125,90 @@ func (c *coalesce) Next(ctx context.Context) ([]model.StepVector, error) {
 		go func(opIdx int, o model.VectorOperator) {
 			defer c.wg.Done()
 
-			in, err := o.Next(ctx)
+			n, err := o.Next(ctx, c.tempBufs[opIdx])
 			if err != nil {
 				errChan <- err
 				return
 			}
+			vectorCounts[opIdx] = n
 
 			// Map input IDs to output IDs.
-			for _, vector := range in {
-				for i := range vector.SampleIDs {
-					vector.SampleIDs[i] = vector.SampleIDs[i] + c.sampleOffsets[opIdx]
+			for i := range n {
+				vector := &c.tempBufs[opIdx][i]
+				for j := range vector.SampleIDs {
+					vector.SampleIDs[j] = vector.SampleIDs[j] + c.sampleOffsets[opIdx]
 				}
-				for i := range vector.HistogramIDs {
-					vector.HistogramIDs[i] = vector.HistogramIDs[i] + c.sampleOffsets[opIdx]
+				for j := range vector.HistogramIDs {
+					vector.HistogramIDs[j] = vector.HistogramIDs[j] + c.sampleOffsets[opIdx]
 				}
-			}
-			c.inVectors[opIdx] = in
-			if in == nil {
-				return
 			}
 
-			mu.Lock()
-			if minTs > in[0].T {
-				minTs = in[0].T
+			if n > 0 {
+				c.inVectors[opIdx] = c.tempBufs[opIdx][:n]
+				mu.Lock()
+				minTs = min(minTs, c.tempBufs[opIdx][0].T)
+				mu.Unlock()
+			} else {
+				c.inVectors[opIdx] = nil
 			}
-			mu.Unlock()
 		}(idx, o)
 	}
 	c.wg.Wait()
 	close(errChan)
 
 	if err := errChan.getError(); err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	var out []model.StepVector = nil
+	// Count vectors with minTs and prepare output
+	n := 0
 	for opIdx, vectors := range c.inVectors {
 		if len(vectors) == 0 || vectors[0].T != minTs {
 			continue
 		}
 
-		if len(vectors) > 0 && out == nil {
-			out = c.pool.GetVectorBatch()
-			for i := range vectors {
-				out = append(out, c.pool.GetStepVector(vectors[i].T))
+		// Initialize output vectors if needed
+		if n == 0 {
+			maxSteps := min(len(vectors), len(buf))
+			for i := range maxSteps {
+				buf[i].Reset(vectors[i].T)
+				// Ensure sufficient capacity for float samples.
+				// Histogram slices will grow on demand since most queries don't use them.
+				totalSamples := 0
+				totalHistograms := 0
+				for _, v := range c.inVectors {
+					if len(v) > i {
+						totalSamples += len(v[i].SampleIDs)
+						totalHistograms += len(v[i].HistogramIDs)
+					}
+				}
+				if cap(buf[i].SampleIDs) < totalSamples {
+					buf[i].SampleIDs = make([]uint64, 0, totalSamples)
+					buf[i].Samples = make([]float64, 0, totalSamples)
+				}
+				if totalHistograms > 0 && cap(buf[i].HistogramIDs) < totalHistograms {
+					buf[i].HistogramIDs = make([]uint64, 0, totalHistograms)
+					buf[i].Histograms = make([]*histogram.FloatHistogram, 0, totalHistograms)
+				}
 			}
+			n = maxSteps
 		}
 
-		for i := range vectors {
-			out[i].AppendSamples(c.pool, vectors[i].SampleIDs, vectors[i].Samples)
-			out[i].AppendHistograms(c.pool, vectors[i].HistogramIDs, vectors[i].Histograms)
-			c.operators[opIdx].GetPool().PutStepVector(vectors[i])
+		// Append samples from this operator
+		for i := 0; i < n && i < len(vectors); i++ {
+			buf[i].AppendSamples(vectors[i].SampleIDs, vectors[i].Samples)
+			buf[i].AppendHistograms(vectors[i].HistogramIDs, vectors[i].Histograms)
 		}
-		c.inVectors[opIdx] = nil
-		c.operators[opIdx].GetPool().PutVectors(vectors)
+
+		// Keep remaining vectors for next iteration
+		if n < len(vectors) {
+			c.inVectors[opIdx] = vectors[n:]
+		} else {
+			c.inVectors[opIdx] = nil
+		}
 	}
 
-	if out == nil {
-		return nil, nil
-	}
-
-	return out, nil
+	return n, nil
 }
 
 func (c *coalesce) loadSeries(ctx context.Context) error {
@@ -211,15 +249,16 @@ func (c *coalesce) loadSeries(ctx context.Context) error {
 	}
 
 	c.sampleOffsets = make([]uint64, len(c.operators))
+	c.seriesCounts = make([]int, len(c.operators))
 	c.series = make([]labels.Labels, 0, numSeries)
 	for i, series := range allSeries {
 		c.sampleOffsets[i] = uint64(len(c.series))
+		c.seriesCounts[i] = len(series)
 		c.series = append(c.series, series...)
 	}
 
 	if c.batchSize == 0 || c.batchSize > int64(len(c.series)) {
 		c.batchSize = int64(len(c.series))
 	}
-	c.pool.SetStepSize(int(c.batchSize))
 	return nil
 }

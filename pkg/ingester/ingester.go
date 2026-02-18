@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"sync"
@@ -55,7 +56,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/extract"
@@ -66,6 +66,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -106,6 +107,7 @@ var (
 	errExemplarRef      = errors.New("exemplars not ingested because series not already present")
 	errIngesterStopping = errors.New("ingester stopping")
 	errNoUserDb         = errors.New("no user db")
+	errLabelsOutOfOrder = errors.New("labels out of order")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 )
@@ -123,6 +125,12 @@ type Config struct {
 	ActiveSeriesMetricsEnabled      bool          `yaml:"active_series_metrics_enabled"`
 	ActiveSeriesMetricsUpdatePeriod time.Duration `yaml:"active_series_metrics_update_period"`
 	ActiveSeriesMetricsIdleTimeout  time.Duration `yaml:"active_series_metrics_idle_timeout"`
+
+	ActiveQueriedSeriesMetricsEnabled        bool                     `yaml:"active_queried_series_metrics_enabled"`
+	ActiveQueriedSeriesMetricsUpdatePeriod   time.Duration            `yaml:"active_queried_series_metrics_update_period"`
+	ActiveQueriedSeriesMetricsWindowDuration time.Duration            `yaml:"active_queried_series_metrics_window_duration"`
+	ActiveQueriedSeriesMetricsSampleRate     float64                  `yaml:"active_queried_series_metrics_sample_rate"`
+	ActiveQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"active_queried_series_metrics_windows"`
 
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
@@ -162,6 +170,15 @@ type Config struct {
 	// If enabled, the metadata API returns all metadata regardless of the limits.
 	SkipMetadataLimits bool `yaml:"skip_metadata_limits"`
 
+	// When enabled, matchers with low selectivity are applied lazily during series scanning
+	// instead of being used for postings selection.
+	EnableMatcherOptimization bool `yaml:"enable_matcher_optimization"`
+
+	// Enable regex matcher limits and metrics collection for unoptimized regex queries.
+	// When enabled, the ingester will track pattern length, label cardinality, and total value length
+	// for unoptimized regex matchers, and enforce per-tenant limits if configured.
+	EnableRegexMatcherLimits bool `yaml:"enable_regex_matcher_limits"`
+
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
@@ -177,6 +194,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ActiveSeriesMetricsUpdatePeriod, "ingester.active-series-metrics-update-period", 1*time.Minute, "How often to update active series metrics.")
 	f.DurationVar(&cfg.ActiveSeriesMetricsIdleTimeout, "ingester.active-series-metrics-idle-timeout", 10*time.Minute, "After what time a series is considered to be inactive.")
 
+	f.BoolVar(&cfg.ActiveQueriedSeriesMetricsEnabled, "ingester.active-queried-series-metrics-enabled", false, "Enable tracking of active queried series using probabilistic data structure and export them as metrics.")
+	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsUpdatePeriod, "ingester.active-queried-series-metrics-update-period", 1*time.Minute, "How often to update active queried series metrics.")
+	f.DurationVar(&cfg.ActiveQueriedSeriesMetricsWindowDuration, "ingester.active-queried-series-metrics-window-duration", 15*time.Minute, "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.")
+	f.Float64Var(&cfg.ActiveQueriedSeriesMetricsSampleRate, "ingester.active-queried-series-metrics-sample-rate", 1.0, "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.")
+	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
+	f.Var(&cfg.ActiveQueriedSeriesMetricsWindows, "ingester.active-queried-series-metrics-windows", "Time windows to expose queried series metric. Each window tracks queried series within that time period.")
+
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
@@ -185,7 +209,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
-
+	f.BoolVar(&cfg.EnableMatcherOptimization, "ingester.enable-matcher-optimization", false, "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.")
+	f.BoolVar(&cfg.EnableRegexMatcherLimits, "ingester.enable-regex-matcher-limits", false, "Enable regex matcher limits and metrics collection for unoptimized regex queries. When enabled, the ingester will track pattern length, label cardinality, and total value length for unoptimized regex matchers.")
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
 }
@@ -201,6 +226,37 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 
 	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
 		return err
+	}
+
+	// Validate active queried series metrics windows
+	if cfg.ActiveQueriedSeriesMetricsEnabled {
+		if len(cfg.ActiveQueriedSeriesMetricsWindows) == 0 {
+			return fmt.Errorf("active queried series metrics windows must be configured when enabled")
+		}
+
+		// Validate window duration
+		if cfg.ActiveQueriedSeriesMetricsWindowDuration <= 0 {
+			return fmt.Errorf("active queried series metrics sub-window duration must be > 0, got %v", cfg.ActiveQueriedSeriesMetricsWindowDuration)
+		}
+
+		// Validate sample rate
+		if cfg.ActiveQueriedSeriesMetricsSampleRate <= 0 {
+			return fmt.Errorf("active queried series metrics sample rate must be > 0, got %v", cfg.ActiveQueriedSeriesMetricsSampleRate)
+		}
+		if cfg.ActiveQueriedSeriesMetricsSampleRate > 1.0 {
+			return fmt.Errorf("active queried series metrics sample rate must be <= 1.0, got %v", cfg.ActiveQueriedSeriesMetricsSampleRate)
+		}
+
+		for _, window := range cfg.ActiveQueriedSeriesMetricsWindows {
+			if window <= 0 {
+				return fmt.Errorf("active queried series metrics window duration must be > 0, got %v", window)
+			}
+
+			// Query window duration must be at least as large as the window duration.
+			if window < cfg.ActiveQueriedSeriesMetricsWindowDuration {
+				return fmt.Errorf("active queried series metrics window duration (%v) must be at least as large as sub-window duration (%v)", window, cfg.ActiveQueriedSeriesMetricsWindowDuration)
+			}
+		}
 	}
 
 	return nil
@@ -265,6 +321,8 @@ type Ingester struct {
 
 	matchersCache                storecache.MatchersCache
 	expandedPostingsCacheFactory *cortex_tsdb.ExpandedPostingsCacheFactory
+
+	activeQueriedSeriesService *ActiveQueriedSeriesService
 }
 
 // Shipper interface is used to have an easy way to mock it in tests.
@@ -304,12 +362,13 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 }
 
 type userTSDB struct {
-	db              *tsdb.DB
-	userID          string
-	activeSeries    *ActiveSeries
-	seriesInMetric  *metricCounter
-	labelSetCounter *labelSetCounter
-	limiter         *Limiter
+	db                  *tsdb.DB
+	userID              string
+	activeSeries        *ActiveSeries
+	activeQueriedSeries *ActiveQueriedSeries
+	seriesInMetric      *metricCounter
+	labelSetCounter     *labelSetCounter
+	limiter             *Limiter
 
 	instanceSeriesCount *atomic.Int64 // Shared across all userTSDB instances created by ingester.
 	instanceLimitsFn    func() *InstanceLimits
@@ -658,8 +717,8 @@ type TSDBState struct {
 }
 
 type requestWithUsersAndCallback struct {
-	users    *util.AllowedTenants // if nil, all tenants are allowed.
-	callback chan<- struct{}      // when compaction/shipping is finished, this channel is closed
+	users    *users.AllowedTenants // if nil, all tenants are allowed.
+	callback chan<- struct{}       // when compaction/shipping is finished, this channel is closed
 }
 
 func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer) TSDBState {
@@ -738,6 +797,10 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		matchersCache:                storecache.NoopMatchersCache,
 	}
 
+	if cfg.ActiveQueriedSeriesMetricsEnabled {
+		i.activeQueriedSeriesService = NewActiveQueriedSeriesService(logger, registerer)
+	}
+
 	if cfg.MatchersCacheMaxItems > 0 {
 		r := prometheus.NewRegistry()
 		registerer.MustRegister(cortex_tsdb.NewMatchCacheMetrics("cortex_ingester", r, logger))
@@ -750,11 +813,13 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
+		cfg.ActiveQueriedSeriesMetricsEnabled,
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.maxInflightPushRequests,
 		&i.maxInflightQueryRequests,
-		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled)
+		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
+		cfg.EnableRegexMatcherLimits)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -846,11 +911,13 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 	i.metrics = newIngesterMetrics(registerer,
 		false,
 		false,
+		false,
 		i.getInstanceLimits,
 		nil,
 		&i.maxInflightPushRequests,
 		&i.maxInflightQueryRequests,
 		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
+		cfg.EnableRegexMatcherLimits,
 	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
@@ -893,6 +960,11 @@ func (i *Ingester) starting(ctx context.Context) error {
 
 	// let's start the rest of subservices via manager
 	servs := []services.Service(nil)
+
+	// Start active queried series service if enabled
+	if i.activeQueriedSeriesService != nil {
+		servs = append(servs, i.activeQueriedSeriesService)
+	}
 
 	compactionService := services.NewBasicService(nil, i.compactionLoop, nil)
 	servs = append(servs, compactionService)
@@ -978,6 +1050,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		defer t.Stop()
 	}
 
+	var activeQueriedSeriesTickerChan <-chan time.Time
+	if i.cfg.ActiveQueriedSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveQueriedSeriesMetricsUpdatePeriod)
+		activeQueriedSeriesTickerChan = t.C
+		defer t.Stop()
+	}
+
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
@@ -1004,6 +1083,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 
 		case <-activeSeriesTickerChan:
 			i.updateActiveSeries(ctx)
+		case <-activeQueriedSeriesTickerChan:
+			i.updateActiveQueriedSeries(ctx)
 		case <-maxTrackerResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
 			i.maxInflightPushRequests.Tick()
@@ -1072,6 +1153,31 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
+		}
+	}
+}
+
+func (i *Ingester) updateActiveQueriedSeries(ctx context.Context) {
+	now := time.Now()
+	for _, userID := range i.getTSDBUsers() {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil || userDB.activeQueriedSeries == nil {
+			continue
+		}
+
+		// Purge expired windows for all trackers
+		userDB.activeQueriedSeries.Purge(now)
+
+		// Get estimated cardinality for each configured window
+		for _, windowDuration := range i.cfg.ActiveQueriedSeriesMetricsWindows {
+			estimatedCount, err := userDB.activeQueriedSeries.GetSeriesQueried(now, windowDuration)
+			if err != nil {
+				level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to get active queried series count", "user", userID, "window", windowDuration, "err", err)
+				continue
+			}
+
+			// Update metric with window label
+			i.metrics.activeQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
 		}
 	}
 }
@@ -1149,15 +1255,16 @@ type extendedAppender interface {
 
 func (i *Ingester) isLabelSetOutOfOrder(lbls labels.Labels) bool {
 	last := ""
-	ooo := false
-	lbls.Range(func(l labels.Label) {
-		if strings.Compare(last, l.Name) > 0 {
-			ooo = true
+
+	err := lbls.Validate(func(l labels.Label) error {
+		if last > l.Name {
+			return errLabelsOutOfOrder
 		}
 		last = l.Name
+		return nil
 	})
 
-	return ooo
+	return errors.Is(err, errLabelsOutOfOrder)
 }
 
 // Push adds metrics to a block
@@ -1169,7 +1276,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	span, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.Push")
 	defer span.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -1309,19 +1416,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
-			case errors.Is(cause, histogram.ErrHistogramSpanNegativeOffset):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramSpansBucketsMismatch):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramNegativeBucketCount):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramCountNotBigEnough):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
+			case isHistogramValidationError(cause):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			default:
@@ -1678,11 +1773,19 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		resp, err = i.queryExemplars(ctx, userID, req)
+	})
+	return resp, err
+}
+
+func (i *Ingester) queryExemplars(ctx context.Context, userID string, req *client.ExemplarQueryRequest) (*client.ExemplarQueryResponse, error) {
 	from, through, matchers, err := client.FromExemplarQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return nil, err
@@ -1739,33 +1842,55 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 // LabelValues returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesRequest) (resp *client.LabelValuesResponse, err error) {
 	defer recoverIngester(i.logger, &err)
-	resp, cleanup, err := i.labelsValuesCommon(ctx, req)
-	defer cleanup()
+
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return nil, userErr
+	}
+
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		var cleanup func()
+		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
+		defer cleanup()
+	})
 	return resp, err
 }
 
 // LabelValuesStream returns all label values that are associated with a given label name.
 func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream client.Ingester_LabelValuesStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
-	resp, cleanup, err := i.labelsValuesCommon(stream.Context(), req)
-	defer cleanup()
 
-	if err != nil {
-		return err
+	ctx := stream.Context()
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return userErr
 	}
 
-	for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
-		j := min(i+metadataStreamBatchSize, len(resp.LabelValues))
-		resp := &client.LabelValuesStreamResponse{
-			LabelValues: resp.LabelValues[i:j],
-		}
-		err := client.SendLabelValuesStream(stream, resp)
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		var resp *client.LabelValuesResponse
+		var cleanup func()
+		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
+		defer cleanup()
+
 		if err != nil {
-			return err
+			return
 		}
-	}
 
-	return nil
+		for i := 0; i < len(resp.LabelValues); i += metadataStreamBatchSize {
+			j := min(i+metadataStreamBatchSize, len(resp.LabelValues))
+			resp := &client.LabelValuesStreamResponse{
+				LabelValues: resp.LabelValues[i:j],
+			}
+			err = client.SendLabelValuesStream(stream, resp)
+			if err != nil {
+				return
+			}
+		}
+	})
+
+	return err
 }
 
 // labelsValuesCommon returns all label values that are associated with a given label name.
@@ -1782,7 +1907,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1833,33 +1958,55 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 // LabelNames return all the label names.
 func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest) (resp *client.LabelNamesResponse, err error) {
 	defer recoverIngester(i.logger, &err)
-	resp, cleanup, err := i.labelNamesCommon(ctx, req)
-	defer cleanup()
+
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return nil, userErr
+	}
+
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		var cleanup func()
+		resp, cleanup, err = i.labelNamesCommon(ctx, req)
+		defer cleanup()
+	})
 	return resp, err
 }
 
 // LabelNamesStream return all the label names.
 func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client.Ingester_LabelNamesStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
-	resp, cleanup, err := i.labelNamesCommon(stream.Context(), req)
-	defer cleanup()
 
-	if err != nil {
-		return err
+	ctx := stream.Context()
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return userErr
 	}
 
-	for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
-		j := min(i+metadataStreamBatchSize, len(resp.LabelNames))
-		resp := &client.LabelNamesStreamResponse{
-			LabelNames: resp.LabelNames[i:j],
-		}
-		err = client.SendLabelNamesStream(stream, resp)
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		var resp *client.LabelNamesResponse
+		var cleanup func()
+		resp, cleanup, err = i.labelNamesCommon(ctx, req)
+		defer cleanup()
+
 		if err != nil {
-			return err
+			return
 		}
-	}
 
-	return nil
+		for i := 0; i < len(resp.LabelNames); i += metadataStreamBatchSize {
+			j := min(i+metadataStreamBatchSize, len(resp.LabelNames))
+			resp := &client.LabelNamesStreamResponse{
+				LabelNames: resp.LabelNames[i:j],
+			}
+			err = client.SendLabelNamesStream(stream, resp)
+			if err != nil {
+				return
+			}
+		}
+	})
+
+	return err
 }
 
 // labelNamesCommon return all the label names.
@@ -1876,7 +2023,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 		return nil, cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1927,49 +2074,70 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 // MetricsForLabelMatchers returns all the metrics which match a set of matchers.
 func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.MetricsForLabelMatchersRequest) (result *client.MetricsForLabelMatchersResponse, err error) {
 	defer recoverIngester(i.logger, &err)
-	result = &client.MetricsForLabelMatchersResponse{}
-	cleanup, err := i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
-		result.Metric = append(result.Metric, &cortexpb.Metric{
-			Labels: cortexpb.FromLabelsToLabelAdapters(l),
+
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return nil, userErr
+	}
+
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		result = &client.MetricsForLabelMatchersResponse{}
+		var cleanup func()
+		cleanup, err = i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
+			result.Metric = append(result.Metric, &cortexpb.Metric{
+				Labels: cortexpb.FromLabelsToLabelAdapters(l),
+			})
+			return nil
 		})
-		return nil
+		defer cleanup()
 	})
-	defer cleanup()
 	return result, err
 }
 
 func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatchersRequest, stream client.Ingester_MetricsForLabelMatchersStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
-	result := &client.MetricsForLabelMatchersStreamResponse{}
 
-	cleanup, err := i.metricsForLabelMatchersCommon(stream.Context(), req, func(l labels.Labels) error {
-		result.Metric = append(result.Metric, &cortexpb.Metric{
-			Labels: cortexpb.FromLabelsToLabelAdapters(l),
-		})
+	ctx := stream.Context()
+	userID, userErr := users.TenantID(ctx)
+	if userErr != nil {
+		return userErr
+	}
 
-		if len(result.Metric) >= metadataStreamBatchSize {
-			err := client.SendMetricsForLabelMatchersStream(stream, result)
-			if err != nil {
-				return err
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		result := &client.MetricsForLabelMatchersStreamResponse{}
+
+		var cleanup func()
+		cleanup, err = i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
+			result.Metric = append(result.Metric, &cortexpb.Metric{
+				Labels: cortexpb.FromLabelsToLabelAdapters(l),
+			})
+
+			if len(result.Metric) >= metadataStreamBatchSize {
+				err := client.SendMetricsForLabelMatchersStream(stream, result)
+				if err != nil {
+					return err
+				}
+				result.Metric = result.Metric[:0]
 			}
-			result.Metric = result.Metric[:0]
-		}
-		return nil
-	})
-	defer cleanup()
-	if err != nil {
-		return err
-	}
-
-	// Send last batch
-	if len(result.Metric) > 0 {
-		err = client.SendMetricsForLabelMatchersStream(stream, result)
+			return nil
+		})
+		defer cleanup()
 		if err != nil {
-			return err
+			return
 		}
-	}
 
-	return nil
+		// Send last batch
+		if len(result.Metric) > 0 {
+			err = client.SendMetricsForLabelMatchersStream(stream, result)
+			if err != nil {
+				return
+			}
+		}
+	})
+
+	return err
 }
 
 // metricsForLabelMatchersCommon returns all the metrics which match a set of matchers.
@@ -1981,7 +2149,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return cleanup, err
 	}
@@ -2063,7 +2231,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 }
 
 // MetricsMetadata returns all the metric metadata of a user.
-func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) (*client.MetricsMetadataResponse, error) {
+func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) (resp *client.MetricsMetadataResponse, err error) {
 	i.stoppedMtx.RLock()
 	if err := i.checkRunningOrStopping(); err != nil {
 		i.stoppedMtx.RUnlock()
@@ -2071,18 +2239,24 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 	i.stoppedMtx.RUnlock()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	userMetadata := i.getUserMetadata(userID)
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		userMetadata := i.getUserMetadata(userID)
 
-	if userMetadata == nil {
-		return &client.MetricsMetadataResponse{}, nil
-	}
+		if userMetadata == nil {
+			resp = &client.MetricsMetadataResponse{}
+			return
+		}
 
-	return &client.MetricsMetadataResponse{Metadata: userMetadata.toClientMetadata(req)}, nil
+		resp = &client.MetricsMetadataResponse{Metadata: userMetadata.toClientMetadata(req)}
+	})
+
+	return resp, nil
 }
 
 // CheckReady is the readiness handler used to indicate to k8s when the ingesters
@@ -2100,7 +2274,7 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		return nil, err
 	}
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -2198,6 +2372,7 @@ const queryStreamBatchMessageSize = 1 * 1024 * 1024
 // Streams metrics from a TSDB. This implements the client.IngesterServer interface
 func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_QueryStreamServer) (err error) {
 	defer recoverIngester(i.logger, &err)
+	defer req.Free()
 
 	if err = i.checkRunning(); err != nil {
 		return err
@@ -2206,11 +2381,20 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	spanlog, ctx := spanlogger.New(stream.Context(), "QueryStream")
 	defer spanlog.Finish()
 
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return err
 	}
 
+	// Set pprof labels for profiling
+	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+		err = i.queryStream(ctx, userID, req, stream, spanlog)
+	})
+
+	return err
+}
+
+func (i *Ingester) queryStream(ctx context.Context, userID string, req *client.QueryRequest, stream client.Ingester_QueryStreamServer, spanlog *spanlogger.SpanLogger) error {
 	from, through, matchers, err := client.FromQueryRequest(i.matchersCache, req)
 	if err != nil {
 		return err
@@ -2239,7 +2423,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	numSeries := 0
 	totalDataBytes := 0
 	numChunks := 0
-	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, db, int64(from), int64(through), matchers, shardMatcher, stream)
+	numSeries, numSamples, totalDataBytes, numChunks, err = i.queryStreamChunks(ctx, userID, db, int64(from), int64(through), matchers, shardMatcher, stream)
 
 	if err != nil {
 		return err
@@ -2278,13 +2462,124 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 	}, nil
 }
 
+func isRegexUnOptimized(matcher *labels.Matcher) bool {
+	if matcher.Type != labels.MatchRegexp {
+		return false
+	}
+	// PostingsForMatchers will optimize .* and .+ matchers, so we don't need to check them.
+	if matcher.Value == ".*" || matcher.Value == ".+" {
+		return false
+	}
+	return !matcher.IsRegexOptimized()
+}
+
+// checkRegexMatcherLimits validates regex matchers against configured limits to prevent expensive queries.
+func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, db *userTSDB, matchers []*labels.Matcher, from, through int64) error {
+	// Collect all unoptimized regex matchers upfront
+	var unoptimizedMatchers []*labels.Matcher
+	for _, matcher := range matchers {
+		if isRegexUnOptimized(matcher) {
+			unoptimizedMatchers = append(unoptimizedMatchers, matcher)
+			// Record pattern length metric
+			if i.metrics.unoptimizedRegexPatternLength != nil {
+				i.metrics.unoptimizedRegexPatternLength.Observe(float64(len(matcher.Value)))
+			}
+		}
+	}
+
+	if len(unoptimizedMatchers) == 0 {
+		return nil
+	}
+
+	// Check pattern length limit if configured
+	maxPatternLength := i.limits.MaxRegexPatternLength(userID)
+	if maxPatternLength > 0 {
+		for _, matcher := range unoptimizedMatchers {
+			patternLength := len(matcher.Value)
+			if patternLength > maxPatternLength {
+				if i.metrics.unoptimizedRegexRejectedTotal != nil {
+					i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "pattern_length").Inc()
+				}
+				return validation.LimitError(fmt.Sprintf(
+					"regex pattern length %d exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific pattern.",
+					patternLength, maxPatternLength, matcher.String(),
+				))
+			}
+		}
+	}
+
+	// Query TSDB to collect cardinality and total value length metrics and check limits.
+	labelQuerier, err := db.Querier(from, through)
+	if err != nil {
+		return err
+	}
+	defer labelQuerier.Close()
+
+	maxCardinality := i.limits.MaxLabelCardinalityForUnoptimizedRegex(userID)
+	maxTotalValueLength := i.limits.MaxTotalLabelValueLengthForUnoptimizedRegex(userID)
+
+	for _, matcher := range unoptimizedMatchers {
+		labelVals, _, err := labelQuerier.LabelValues(ctx, matcher.Name, nil)
+		if err != nil {
+			// If we can't get label values, skip this matcher and continue checking others
+			continue
+		}
+
+		cardinality := len(labelVals)
+
+		// Calculate total length of all values
+		var totalValueLength int
+		for _, val := range labelVals {
+			totalValueLength += len(val)
+		}
+
+		// Always record metrics regardless of whether limits are configured (if metrics are enabled)
+		if i.metrics.unoptimizedRegexLabelCardinality != nil {
+			i.metrics.unoptimizedRegexLabelCardinality.Observe(float64(cardinality))
+		}
+		if i.metrics.unoptimizedRegexTotalValueLength != nil {
+			i.metrics.unoptimizedRegexTotalValueLength.Observe(float64(totalValueLength))
+		}
+
+		// Check limits only if configured
+		if maxCardinality > 0 && cardinality > maxCardinality {
+			if i.metrics.unoptimizedRegexRejectedTotal != nil {
+				i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "cardinality").Inc()
+			}
+			return validation.LimitError(fmt.Sprintf(
+				"label %q has cardinality %d which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
+				matcher.Name, cardinality, maxCardinality, matcher.String(),
+			))
+		}
+
+		if maxTotalValueLength > 0 && totalValueLength > maxTotalValueLength {
+			if i.metrics.unoptimizedRegexRejectedTotal != nil {
+				i.metrics.unoptimizedRegexRejectedTotal.WithLabelValues(userID, "total_value_length").Inc()
+			}
+			return validation.LimitError(fmt.Sprintf(
+				"label %q has total value length %d bytes (across %d values) which exceeds limit %d for unoptimized regex matcher %q. Consider using a more specific matcher.",
+				matcher.Name, totalValueLength, cardinality, maxTotalValueLength, matcher.String(),
+			))
+		}
+	}
+
+	return nil
+}
+
 // queryStreamChunks streams metrics from a TSDB. This implements the client.IngesterServer interface
-func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
+func (i *Ingester) queryStreamChunks(ctx context.Context, userID string, db *userTSDB, from, through int64, matchers []*labels.Matcher, sm *storepb.ShardMatcher, stream client.Ingester_QueryStreamServer) (numSeries, numSamples, totalBatchSizeBytes, numChunks int, _ error) {
 	q, err := db.ChunkQuerier(from, through)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
 	defer q.Close()
+
+	// Check regex matcher limits before executing query if enabled
+	if i.cfg.EnableRegexMatcherLimits {
+		if err := i.checkRegexMatcherLimits(ctx, userID, db, matchers, from, through); err != nil {
+			return 0, 0, 0, 0, err
+		}
+	}
 
 	c, err := i.trackInflightQueryRequest()
 	if err != nil {
@@ -2294,6 +2589,10 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 		Start:           from,
 		End:             through,
 		DisableTrimming: i.cfg.DisableChunkTrimming,
+	}
+	var lazyMatchers []*labels.Matcher
+	if i.cfg.EnableMatcherOptimization {
+		matchers, lazyMatchers = optimizeMatchers(matchers)
 	}
 	// It's not required to return sorted series because series are sorted by the Cortex querier.
 	ss := q.Select(ctx, false, hints, matchers...)
@@ -2306,16 +2605,39 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	defer putTimeSeriesChunksSlice(chunkSeries)
 	batchSizeBytes := 0
 	var it chunks.Iterator
+
+	now := time.Now()
+	// Check sampling decision early to avoid calculating hashes if batch will be skipped
+	var queriedSeriesHashes []uint64
+	sampled := false
+	if db.activeQueriedSeries != nil {
+		sampled = db.activeQueriedSeries.SampleRequest()
+		if sampled {
+			queriedSeriesHashes = getQueriedSeriesHashesSlice()
+		}
+	}
+
 	for ss.Next() {
 		series := ss.At()
+		lbls := series.Labels()
 
-		if sm.IsSharded() && !sm.MatchesLabels(series.Labels()) {
+		if !labelsMatches(lbls, lazyMatchers) {
 			continue
+		}
+
+		if sm.IsSharded() && !sm.MatchesLabels(lbls) {
+			continue
+		}
+
+		// Collect hash for batched tracking (only if sampling decision allows)
+		if sampled {
+			hash := lbls.Hash()
+			queriedSeriesHashes = append(queriedSeriesHashes, hash)
 		}
 
 		// convert labels to LabelAdapter
 		ts := client.TimeSeriesChunk{
-			Labels: cortexpb.FromLabelsToLabelAdapters(series.Labels()),
+			Labels: cortexpb.FromLabelsToLabelAdapters(lbls),
 		}
 
 		it := series.Iterator(it)
@@ -2375,6 +2697,11 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, db *userTSDB, from, th
 	// Ensure no error occurred while iterating the series set.
 	if err := ss.Err(); err != nil {
 		return 0, 0, 0, 0, err
+	}
+
+	// Update active queried series tracking in a single batched call
+	if sampled && len(queriedSeriesHashes) > 0 && db.activeQueriedSeries != nil && i.activeQueriedSeriesService != nil {
+		i.activeQueriedSeriesService.UpdateSeriesBatch(db.activeQueriedSeries, queriedSeriesHashes, now, db.userID)
 	}
 
 	// Final flush any existing metrics
@@ -2497,9 +2824,20 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		postingCache = i.expandedPostingsCacheFactory.NewExpandedPostingsCache(userID, i.metrics.expandedPostingsCacheMetrics)
 	}
 
+	var activeQueriedSeries *ActiveQueriedSeries
+	if i.cfg.ActiveQueriedSeriesMetricsEnabled {
+		activeQueriedSeries = NewActiveQueriedSeries(
+			i.cfg.ActiveQueriedSeriesMetricsWindows,
+			i.cfg.ActiveQueriedSeriesMetricsWindowDuration,
+			i.cfg.ActiveQueriedSeriesMetricsSampleRate,
+			i.logger,
+		)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
+		activeQueriedSeries: activeQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
@@ -2546,7 +2884,6 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderTimeWindow:           time.Duration(oooTimeWindow).Milliseconds(),
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
-		EnableNativeHistograms:         true,  // Always enable Native Histograms. Gate keeping is done though a per-tenant limit at ingestion.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
 	}, nil)
 	if err != nil {
@@ -2800,7 +3137,7 @@ func (i *Ingester) shipBlocksLoop(ctx context.Context) error {
 }
 
 // shipBlocks runs shipping for all users.
-func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants) {
+func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants) {
 	// Do not ship blocks if the ingester is PENDING or JOINING. It's
 	// particularly important for the JOINING state because there could
 	// be a blocks transfer in progress (from another ingester) and if we
@@ -2833,7 +3170,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *util.AllowedTenants)
 			// Even if check fails with error, we don't want to repeat it too often.
 			userDB.lastDeletionMarkCheck.Store(time.Now().Unix())
 
-			deletionMarkExists, err := cortex_tsdb.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
+			deletionMarkExists, err := users.TenantDeletionMarkExists(ctx, i.TSDBState.bucket, userID)
 			if err != nil {
 				// If we cannot check for deletion mark, we continue anyway, even though in production shipper will likely fail too.
 				// This however simplifies unit tests, where tenant deletion check is enabled by default, but tests don't setup bucket.
@@ -2917,7 +3254,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 }
 
 // Compacts all compactable blocks. Force flag will force compaction even if head is not compactable yet.
-func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *util.AllowedTenants) {
+func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users.AllowedTenants) {
 	// Don't compact TSDB blocks while JOINING as there may be ongoing blocks transfers.
 	// Compaction loop is not running in LEAVING state, so if we get here in LEAVING state, we're flushing blocks.
 	if i.lifecycler != nil {
@@ -3227,7 +3564,7 @@ func (i *Ingester) flushHandler(w http.ResponseWriter, r *http.Request) {
 
 	tenants := r.Form[tenantParam]
 
-	allowedUsers := util.NewAllowedTenants(tenants, nil)
+	allowedUsers := users.NewAllowedTenants(tenants, nil)
 	run := func() {
 		ingCtx := i.ServiceContext()
 		if ingCtx == nil || ingCtx.Err() != nil {
@@ -3485,4 +3822,10 @@ func recoverIngester(logger log.Logger, errp *error) {
 		level.Error(logger).Log("msg", "runtime panic in ingester", "err", err, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
 	}
+}
+
+// isHistogramValidationError checks if the error is a native histogram validation error.
+func isHistogramValidationError(err error) bool {
+	var e histogram.Error
+	return errors.As(err, &e)
 }

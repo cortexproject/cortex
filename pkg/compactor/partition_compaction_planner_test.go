@@ -289,9 +289,24 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 				Version:            PartitionVisitMarkerVersion1,
 			}
 			visitMarkerFileContent, _ := json.Marshal(visitMarker)
+			// Mock partition group info for race condition fix
+			partitionedGroupInfo := PartitionedGroupInfo{
+				PartitionedGroupID: partitionedGroupID,
+				PartitionCount:     1,
+				Partitions: []Partition{
+					{PartitionID: partitionID, Blocks: []ulid.ULID{}},
+				},
+				RangeStart:   0,
+				RangeEnd:     2 * time.Hour.Milliseconds(),
+				CreationTime: time.Now().Unix(),
+				Version:      PartitionedGroupInfoVersion1,
+			}
+			partitionedGroupContent, _ := json.Marshal(partitionedGroupInfo)
+			partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupID)
+
 			bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
+			bkt.MockGet(partitionedGroupFile, string(partitionedGroupContent), nil)
 			bkt.MockUpload(mock.Anything, nil)
-			bkt.MockGet(mock.Anything, "", nil)
 
 			registerer := prometheus.NewPedanticRegistry()
 
@@ -316,9 +331,10 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			)
 			actual, err := p.Plan(context.Background(), testData.blocks, nil, &cortextsdb.CortexMetaExtensions{
 				PartitionInfo: &cortextsdb.PartitionInfo{
-					PartitionCount:     1,
-					PartitionID:        partitionID,
-					PartitionedGroupID: partitionedGroupID,
+					PartitionCount:               1,
+					PartitionID:                  partitionID,
+					PartitionedGroupID:           partitionedGroupID,
+					PartitionedGroupCreationTime: partitionedGroupInfo.CreationTime,
 				},
 			})
 

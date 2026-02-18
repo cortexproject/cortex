@@ -32,10 +32,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -222,7 +222,7 @@ func NewResultsCacheMiddleware(
 }
 
 func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperware.Response, error) {
-	tenantIDs, err := tenant.TenantIDs(ctx)
+	tenantIDs, err := users.TenantIDs(ctx)
 	respWithStats := r.GetStats() != "" && s.cacheQueryableSamplesStats
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
@@ -240,7 +240,7 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
-	key := s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+	key := s.splitter.GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), r)
 
 	var (
 		extents  []tripperware.Extent
@@ -842,7 +842,17 @@ func extractSampleStream(start, end int64, stream tripperware.SampleStream) (tri
 			result.Samples = append(result.Samples, sample)
 		}
 	}
-	if len(result.Samples) == 0 {
+	if stream.Histograms != nil {
+		for _, histogram := range stream.Histograms {
+			if start <= histogram.TimestampMs && histogram.TimestampMs <= end {
+				if result.Histograms == nil {
+					result.Histograms = make([]tripperware.SampleHistogramPair, 0, len(stream.Histograms))
+				}
+				result.Histograms = append(result.Histograms, histogram)
+			}
+		}
+	}
+	if len(result.Samples) == 0 && len(result.Histograms) == 0 {
 		return tripperware.SampleStream{}, false
 	}
 	return result, true

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
@@ -80,8 +82,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
 			cfg := distributor.OTLPConfig{
-				EnableTypeAndUnitLabels: test.enableTypeAndUnitLabels,
-				AllowDeltaTemporality:   test.allowDeltaTemporality,
+				AllowDeltaTemporality: test.allowDeltaTemporality,
 			}
 			metrics := pmetric.NewMetrics()
 			rm := metrics.ResourceMetrics().AppendEmpty()
@@ -90,6 +91,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 			test.otlpSeries.CopyTo(sm.Metrics().AppendEmpty())
 
 			limits := validation.Limits{}
+			limits.EnableTypeAndUnitLabels = test.enableTypeAndUnitLabels
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
@@ -248,7 +250,7 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.Equal(t, sortTimeSeries(test.expectedSeries), sortTimeSeries(promSeries))
-			require.Equal(t, test.expectedMetadata, metadata)
+			require.ElementsMatch(t, test.expectedMetadata, metadata)
 			if test.expectedErr != "" {
 				require.Equal(t, test.expectedErr, err.Error())
 			} else {
@@ -340,6 +342,8 @@ func createPromNativeHistogramSeries(name string, hint prompb.Histogram_ResetHin
 				Schema:        0,
 				ZeroThreshold: 1e-128,
 				ZeroCount:     &prompb.Histogram_ZeroCountInt{ZeroCountInt: 0},
+				NegativeSpans: []prompb.BucketSpan{},
+				PositiveSpans: []prompb.BucketSpan{},
 				Timestamp:     ts.UnixMilli(),
 				ResetHint:     hint,
 			},
@@ -519,11 +523,23 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			tsList, metadata, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
 
-			// test metadata conversion
-			require.Equal(t, 1, len(metadata))
-			require.Equal(t, prompb.MetricMetadata_MetricType(1), metadata[0].Type)
-			require.Equal(t, "test_counter_total", metadata[0].MetricFamilyName)
-			require.Equal(t, "test-counter-description", metadata[0].Help)
+			// test metadata conversion (counter + optionally target_info)
+			expectedMetadataLen := 1
+			if !test.cfg.DisableTargetInfo {
+				expectedMetadataLen = 2 // test_counter_total + target_info
+			}
+			require.Equal(t, expectedMetadataLen, len(metadata))
+			var counterMetadata *prompb.MetricMetadata
+			for i := range metadata {
+				if metadata[i].MetricFamilyName == "test_counter_total" {
+					counterMetadata = &metadata[i]
+					break
+				}
+			}
+			require.NotNil(t, counterMetadata)
+			require.Equal(t, prompb.MetricMetadata_MetricType(1), counterMetadata.Type)
+			require.Equal(t, "test_counter_total", counterMetadata.MetricFamilyName)
+			require.Equal(t, "test-counter-description", counterMetadata.Help)
 
 			if test.cfg.DisableTargetInfo {
 				require.Equal(t, 1, len(tsList)) // test_counter_total
@@ -631,7 +647,7 @@ func BenchmarkOTLPWriteHandlerCompression(b *testing.B) {
 	mockPushFunc := func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 		return &cortexpb.WriteResponse{}, nil
 	}
-	handler := OTLPHandler(10000, overrides, cfg, nil, mockPushFunc)
+	handler := OTLPHandler(10000, overrides, cfg, nil, mockPushFunc, nil)
 
 	b.Run("json with no compression", func(b *testing.B) {
 		req, err := getOTLPHttpRequest(&exportRequest, jsonContentType, "")
@@ -701,7 +717,7 @@ func BenchmarkOTLPWriteHandlerPush(b *testing.B) {
 	mockPushFunc := func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
 		return &cortexpb.WriteResponse{}, nil
 	}
-	handler := OTLPHandler(1000000, overrides, cfg, nil, mockPushFunc)
+	handler := OTLPHandler(1000000, overrides, cfg, nil, mockPushFunc, nil)
 
 	tests := []struct {
 		description      string
@@ -773,6 +789,36 @@ func BenchmarkOTLPWriteHandlerPush(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestOTLPHandler_MetricCollection(t *testing.T) {
+	cfg := distributor.OTLPConfig{
+		ConvertAllAttributes: false,
+		DisableTargetInfo:    false,
+	}
+
+	exportRequest := generateOTLPWriteRequest()
+
+	counter := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "test_counter",
+		Help: "test help",
+	}, []string{"type"})
+
+	req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "")
+	require.NoError(t, err)
+
+	push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
+	overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+	handler := OTLPHandler(100000, overrides, cfg, nil, push, counter)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	resp := recorder.Result()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	val := testutil.ToFloat64(counter.WithLabelValues("otlp"))
+	assert.Equal(t, 1.0, val)
 }
 
 func TestOTLPWriteHandler(t *testing.T) {
@@ -863,7 +909,7 @@ func TestOTLPWriteHandler(t *testing.T) {
 
 			push := verifyOTLPWriteRequestHandler(t, cortexpb.API)
 			overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
-			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push)
+			handler := OTLPHandler(test.maxRecvMsgSize, overrides, cfg, nil, push, nil)
 
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req)

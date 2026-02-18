@@ -3,11 +3,11 @@ package querier
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/opentracing/opentracing-go"
 	"github.com/parquet-go/parquet-go"
 	"github.com/pkg/errors"
@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/thanos-io/thanos/pkg/extprom"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
@@ -28,13 +29,15 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/multierror"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -97,6 +100,7 @@ type parquetQueryableWithFallback struct {
 	fallbackDisabled      bool
 	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
+	cache                 parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	blockStorageQueryable *BlocksStoreQueryable
 
 	finder BlocksFinder
@@ -112,6 +116,8 @@ type parquetQueryableWithFallback struct {
 	logger log.Logger
 
 	defaultBlockStoreType blockStoreType
+
+	honorProjectionHints bool
 }
 
 func NewParquetQueryable(
@@ -132,7 +138,7 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
-	cache, err := newCache[parquet_storage.ParquetShard]("parquet-shards", config.ParquetQueryableShardCacheSize, newCacheMetrics(reg))
+	cache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&config.ParquetShardCache, "parquet-shards", extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
 		return nil, err
 	}
@@ -140,22 +146,23 @@ func NewParquetQueryable(
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
+		queryable.WithHonorProjectionHints(config.HonorProjectionHints),
 		queryable.WithRowCountLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedRowCount(userID))
 		}),
 		queryable.WithChunkBytesLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedChunkBytes(userID))
 		}),
 		queryable.WithDataBytesLimitFunc(func(ctx context.Context) int64 {
 			// Ignore error as this shouldn't happen.
 			// If failed to resolve tenant we will just use the default limit value.
-			userID, _ := tenant.TenantID(ctx)
+			userID, _ := users.TenantID(ctx)
 			return int64(limits.ParquetMaxFetchedDataBytes(userID))
 		}),
 		queryable.WithMaterializedLabelsFilterCallback(materializedLabelsFilterCallback),
@@ -192,8 +199,8 @@ func NewParquetQueryable(
 			return nil
 		}),
 	}
-	parquetQueryable, err := queryable.NewParquetQueryable(cDecoder, func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
-		userID, err := tenant.TenantID(ctx)
+	parquetQueryable, err := queryable.NewParquetQueryable(func(ctx context.Context, mint, maxt int64) ([]parquet_storage.ParquetShard, error) {
+		userID, err := users.TenantID(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -204,50 +211,75 @@ func NewParquetQueryable(
 		}
 		userBkt := bucket.NewUserBucketClient(userID, bucketClient, limits)
 		bucketOpener := parquet_storage.NewParquetBucketOpener(userBkt)
-		shards := make([]parquet_storage.ParquetShard, len(blocks))
+
+		// Calculate total number of shards across all blocks
+		totalShards := 0
+		for _, block := range blocks {
+			numShards := 1 // Default to 1 shard for backward compatibility
+			if block.Parquet != nil && block.Parquet.Shards > 0 {
+				numShards = block.Parquet.Shards
+			}
+			totalShards += numShards
+		}
+
+		shards := make([]parquet_storage.ParquetShard, totalShards)
 		errGroup := &errgroup.Group{}
 
 		span, ctx := opentracing.StartSpanFromContext(ctx, "parquetQuerierWithFallback.OpenShards")
 		defer span.Finish()
 
-		for i, block := range blocks {
-			errGroup.Go(func() error {
-				cacheKey := fmt.Sprintf("%v-%v", userID, block.ID)
-				shard := cache.Get(cacheKey)
-				if shard == nil {
-					// we always only have 1 shard - shard 0
-					// Use context.Background() here as the file can be cached and live after the request ends.
-					shard, err = parquet_storage.NewParquetShardOpener(
-						context.WithoutCancel(ctx),
-						block.ID.String(),
-						bucketOpener,
-						bucketOpener,
-						0,
-						parquet_storage.WithFileOptions(
-							parquet.SkipMagicBytes(true),
-							parquet.ReadBufferSize(100*1024),
-							parquet.SkipBloomFilters(true),
-							parquet.OptimisticRead(true),
-						),
-					)
-					if err != nil {
-						return errors.Wrapf(err, "failed to open parquet shard. block: %v", block.ID.String())
-					}
-					cache.Set(cacheKey, shard)
-				}
+		shardIdx := 0
+		for _, block := range blocks {
+			numShards := 1 // Default to 1 shard for backward compatibility
+			if block.Parquet != nil && block.Parquet.Shards > 0 {
+				numShards = block.Parquet.Shards
+			}
 
-				shards[i] = shard
-				return nil
-			})
+			for shardID := 0; shardID < numShards; shardID++ {
+				idx := shardIdx
+				shardIdx++
+				blockID := block.ID
+				currentShardID := shardID
+
+				errGroup.Go(func() error {
+					cacheKey := fmt.Sprintf("%v-%v-%v", userID, blockID, currentShardID)
+					shard := cache.Get(cacheKey)
+					if shard == nil {
+						// Use context.Background() here as the file can be cached and live after the request ends.
+						var err error
+						shard, err = parquet_storage.NewParquetShardOpener(
+							context.WithoutCancel(ctx),
+							blockID.String(),
+							bucketOpener,
+							bucketOpener,
+							currentShardID,
+							parquet_storage.WithFileOptions(
+								parquet.SkipMagicBytes(true),
+								parquet.ReadBufferSize(100*1024),
+								parquet.SkipBloomFilters(true),
+								parquet.OptimisticRead(true),
+							),
+						)
+						if err != nil {
+							return errors.Wrapf(err, "failed to open parquet shard. block: %v, shard: %v", blockID.String(), currentShardID)
+						}
+						cache.Set(cacheKey, shard)
+					}
+
+					shards[idx] = shard
+					return nil
+				})
+			}
 		}
 
 		return shards, errGroup.Wait()
-	}, parquetQueryableOpts...)
+	}, nil, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,
 		blockStorageQueryable: blockStorageQueryable,
 		parquetQueryable:      parquetQueryable,
+		cache:                 cache,
 		queryStoreAfter:       config.QueryStoreAfter,
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
@@ -256,6 +288,7 @@ func NewParquetQueryable(
 		logger:                logger,
 		defaultBlockStoreType: blockStoreType(config.ParquetQueryableDefaultBlockStore),
 		fallbackDisabled:      config.ParquetQueryableFallbackDisabled,
+		honorProjectionHints:  config.HonorProjectionHints,
 	}
 
 	p.Service = services.NewBasicService(p.starting, p.running, p.stopping)
@@ -283,6 +316,10 @@ func (p *parquetQueryableWithFallback) running(ctx context.Context) error {
 }
 
 func (p *parquetQueryableWithFallback) stopping(_ error) error {
+	if p.cache != nil {
+		p.cache.Close()
+	}
+
 	return services.StopManagerAndAwaitStopped(context.Background(), p.subservices)
 }
 
@@ -309,6 +346,7 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		logger:                p.logger,
 		defaultBlockStoreType: p.defaultBlockStoreType,
 		fallbackDisabled:      p.fallbackDisabled,
+		honorProjectionHints:  p.honorProjectionHints,
 	}, nil
 }
 
@@ -333,6 +371,8 @@ type parquetQuerierWithFallback struct {
 	defaultBlockStoreType blockStoreType
 
 	fallbackDisabled bool
+
+	honorProjectionHints bool
 }
 
 func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
@@ -487,6 +527,21 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		sortSeries = true
 	}
 
+	// Reset projection hints if:
+	// - there are mixed blocks (both parquet and non-parquet)
+	// - not all parquet blocks have hash column (version < 2)
+	if q.honorProjectionHints {
+		if len(remaining) > 0 || !allParquetBlocksHaveHashColumn(parquet) {
+			hints.ProjectionLabels = nil
+			hints.ProjectionInclude = false
+		}
+		if hints.ProjectionInclude && !slices.Contains(hints.ProjectionLabels, schema.SeriesHashColumn) {
+			// Series hash column is always required for projection unless duplicate label check is disabled.
+			hints.ProjectionLabels = append(hints.ProjectionLabels, schema.SeriesHashColumn)
+
+		}
+	}
+
 	promises := make([]chan storage.SeriesSet, 0, 2)
 
 	if len(parquet) > 0 {
@@ -543,7 +598,7 @@ func (q *parquetQuerierWithFallback) Close() error {
 }
 
 func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT int64, matchers []*labels.Matcher) ([]*bucketindex.Block, []*bucketindex.Block, error) {
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -586,6 +641,17 @@ func (q *parquetQuerierWithFallback) incrementOpsMetric(method string, remaining
 	}
 }
 
+// allParquetBlocksHaveHashColumn checks if all parquet blocks have version >= 2, which means they have the hash column.
+// Parquet blocks with version 1 don't have the hash column, so projection cannot be enabled for them.
+func allParquetBlocksHaveHashColumn(blocks []*bucketindex.Block) bool {
+	for _, b := range blocks {
+		if b.Parquet == nil || b.Parquet.Version < cortex_parquet.ParquetConverterMarkVersion2 {
+			return false
+		}
+	}
+	return true
+}
+
 type shardMatcherLabelsFilter struct {
 	shardMatcher *storepb.ShardMatcher
 }
@@ -608,92 +674,6 @@ func materializedLabelsFilterCallback(ctx context.Context, _ *storage.SelectHint
 		return nil, false
 	}
 	return &shardMatcherLabelsFilter{shardMatcher: sm}, true
-}
-
-type cacheInterface[T any] interface {
-	Get(path string) T
-	Set(path string, reader T)
-}
-
-type cacheMetrics struct {
-	hits      *prometheus.CounterVec
-	misses    *prometheus.CounterVec
-	evictions *prometheus.CounterVec
-	size      *prometheus.GaugeVec
-}
-
-func newCacheMetrics(reg prometheus.Registerer) *cacheMetrics {
-	return &cacheMetrics{
-		hits: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_hits_total",
-			Help: "Total number of parquet cache hits",
-		}, []string{"name"}),
-		misses: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_misses_total",
-			Help: "Total number of parquet cache misses",
-		}, []string{"name"}),
-		evictions: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_parquet_queryable_cache_evictions_total",
-			Help: "Total number of parquet cache evictions",
-		}, []string{"name"}),
-		size: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_parquet_queryable_cache_item_count",
-			Help: "Current number of cached parquet items",
-		}, []string{"name"}),
-	}
-}
-
-type Cache[T any] struct {
-	cache   *lru.Cache[string, T]
-	name    string
-	metrics *cacheMetrics
-}
-
-func newCache[T any](name string, size int, metrics *cacheMetrics) (cacheInterface[T], error) {
-	if size <= 0 {
-		return &noopCache[T]{}, nil
-	}
-	cache, err := lru.NewWithEvict(size, func(key string, value T) {
-		metrics.evictions.WithLabelValues(name).Inc()
-		metrics.size.WithLabelValues(name).Dec()
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return &Cache[T]{
-		cache:   cache,
-		name:    name,
-		metrics: metrics,
-	}, nil
-}
-
-func (c *Cache[T]) Get(path string) (r T) {
-	if reader, ok := c.cache.Get(path); ok {
-		c.metrics.hits.WithLabelValues(c.name).Inc()
-		return reader
-	}
-	c.metrics.misses.WithLabelValues(c.name).Inc()
-	return
-}
-
-func (c *Cache[T]) Set(path string, reader T) {
-	if !c.cache.Contains(path) {
-		c.metrics.size.WithLabelValues(c.name).Inc()
-	}
-	c.metrics.misses.WithLabelValues(c.name).Inc()
-	c.cache.Add(path, reader)
-}
-
-type noopCache[T any] struct {
-}
-
-func (n noopCache[T]) Get(_ string) (r T) {
-	return
-}
-
-func (n noopCache[T]) Set(_ string, _ T) {
-
 }
 
 var (

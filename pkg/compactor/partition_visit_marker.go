@@ -28,18 +28,22 @@ type partitionVisitMarker struct {
 	CompactorID        string      `json:"compactorID"`
 	Status             VisitStatus `json:"status"`
 	PartitionedGroupID uint32      `json:"partitionedGroupID"`
-	PartitionID        int         `json:"partitionID"`
+	// VisitTime is a unix timestamp of when the partitioning group plan was created, in order to validate if the marker
+	// is referring to the latest version of the group plan
+	PartitionedGroupCreationTime int64 `json:"partitionedGroupCreationTime"`
+	PartitionID                  int   `json:"partitionID"`
 	// VisitTime is a unix timestamp of when the partition was visited (mark updated).
 	VisitTime int64 `json:"visitTime"`
 	// Version of the file.
 	Version int `json:"version"`
 }
 
-func newPartitionVisitMarker(compactorID string, partitionedGroupID uint32, partitionID int) *partitionVisitMarker {
+func newPartitionVisitMarker(compactorID string, partitionedGroupID uint32, partitioned_group_creation_time int64, partitionID int) *partitionVisitMarker {
 	return &partitionVisitMarker{
-		CompactorID:        compactorID,
-		PartitionedGroupID: partitionedGroupID,
-		PartitionID:        partitionID,
+		CompactorID:                  compactorID,
+		PartitionedGroupID:           partitionedGroupID,
+		PartitionedGroupCreationTime: partitioned_group_creation_time,
+		PartitionID:                  partitionID,
 	}
 }
 

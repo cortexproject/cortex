@@ -1,5 +1,4 @@
 //go:build requires_docker
-// +build requires_docker
 
 package integration
 
@@ -68,8 +67,8 @@ func TestParseQueryAPIQuerier(t *testing.T) {
 
 	// check for AST contents.
 	require.Contains(t, string(parsed.Data), "\"op\":\"/\"")
-	require.Contains(t, string(parsed.Data), `"lhs":{"matchers":[{"name":"__name__","type":"=","value":"foo"}]`)
-	require.Contains(t, string(parsed.Data), `"rhs":{"matchers":[{"name":"__name__","type":"=","value":"bar"}]`)
+	require.Contains(t, string(parsed.Data), `"lhs":{"anchored":false,"matchers":[{"name":"__name__","type":"=","value":"foo"}]`)
+	require.Contains(t, string(parsed.Data), `"rhs":{"anchored":false,"matchers":[{"name":"__name__","type":"=","value":"bar"}]`)
 }
 
 func TestParseQueryAPIQueryFrontend(t *testing.T) {
@@ -130,6 +129,6 @@ func TestParseQueryAPIQueryFrontend(t *testing.T) {
 
 	// check for AST contents.
 	require.Contains(t, string(parsed.Data), "\"op\":\"/\"")
-	require.Contains(t, string(parsed.Data), `"lhs":{"matchers":[{"name":"__name__","type":"=","value":"foo"}]`)
-	require.Contains(t, string(parsed.Data), `"rhs":{"matchers":[{"name":"__name__","type":"=","value":"bar"}]`)
+	require.Contains(t, string(parsed.Data), `"lhs":{"anchored":false,"matchers":[{"name":"__name__","type":"=","value":"foo"}]`)
+	require.Contains(t, string(parsed.Data), `"rhs":{"anchored":false,"matchers":[{"name":"__name__","type":"=","value":"bar"}]`)
 }

@@ -1,7 +1,9 @@
 package parquetconverter
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,12 +35,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -108,6 +110,8 @@ func TestConverter(t *testing.T) {
 			require.NoError(t, err)
 			if m.Version == parquet.CurrentVersion {
 				blocksConverted = append(blocksConverted, bIds)
+				// Verify that shards field is populated (should be > 0)
+				require.Greater(t, m.Shards, 0, "expected shards to be greater than 0 for block %s", bIds.String())
 			}
 		}
 		return len(blocksConverted)
@@ -137,7 +141,7 @@ func TestConverter(t *testing.T) {
 	require.Contains(t, syncedTenants, user)
 
 	// Mark user as deleted
-	require.NoError(t, cortex_tsdb.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, cortex_tsdb.NewTenantDeletionMark(time.Now())))
+	require.NoError(t, users.WriteTenantDeletionMark(context.Background(), objstore.WithNoopInstr(bucketClient), user, users.NewTenantDeletionMark(time.Now())))
 
 	// Should clean sync folders
 	test.Poll(t, time.Minute, 0, func() any {
@@ -190,8 +194,8 @@ func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket,
 
 	overrides := validation.NewOverrides(*limits, tenantLimits)
 
-	scanner, err := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-		Strategy: cortex_tsdb.UserScanStrategyList,
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
 	}, bucketClient, logger, registry)
 	require.NoError(t, err)
 	c := newConverter(cfg, bucketClient, storageCfg, blockRanges.ToMilliseconds(), logger, registry, overrides, scanner)
@@ -413,4 +417,74 @@ func (m *mockTenantLimits) ByUserID(userID string) *validation.Limits {
 
 func (m *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 	return m.limits
+}
+
+func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
+	cfg := prepareConfig()
+	user := "user"
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+	dir := t.TempDir()
+
+	cfg.Ring.InstanceID = "parquet-converter-1"
+	cfg.Ring.InstanceAddr = "1.2.3.4"
+	cfg.Ring.KVStore.Mock = ringStore
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
+
+	ctx := context.Background()
+
+	lbls := labels.FromStrings("__name__", "test")
+
+	// Create a block
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	blockID, err := e2e.CreateBlock(ctx, rnd, dir, []labels.Labels{lbls}, 2, 0, 2*time.Hour.Milliseconds(), time.Minute.Milliseconds(), 10)
+	require.NoError(t, err)
+
+	// Upload the block to the bucket
+	blockDir := fmt.Sprintf("%s/%s", dir, blockID.String())
+	b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
+	require.NoError(t, err)
+	err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Write a converter mark with version 1 to simulate an already converted block
+	markerV1 := parquet.ConverterMark{
+		Version: parquet.ParquetConverterMarkVersion1,
+		Shards:  2, // Simulate a block with 2 shards
+	}
+	markerBytes, err := json.Marshal(markerV1)
+	require.NoError(t, err)
+	markerPath := path.Join(blockID.String(), parquet.ConverterMarkerFileName)
+	err = userBucket.Upload(ctx, markerPath, bytes.NewReader(markerBytes))
+	require.NoError(t, err)
+
+	// Verify the marker exists with version 1 and has shards
+	marker, err := parquet.ReadConverterMark(ctx, blockID, userBucket, logger)
+	require.NoError(t, err)
+	require.Equal(t, parquet.ParquetConverterMarkVersion1, marker.Version)
+	require.Equal(t, 2, marker.Shards)
+
+	// Start the converter
+	err = services.StartAndAwaitRunning(context.Background(), c)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
+
+	// Wait a bit for the converter to process blocks
+	time.Sleep(5 * time.Second)
+
+	// Verify the marker version is still 1 (i.e., the block was not converted again)
+	markerAfter, err := parquet.ReadConverterMark(ctx, blockID, userBucket, logger)
+	require.NoError(t, err)
+	require.Equal(t, parquet.ParquetConverterMarkVersion1, markerAfter.Version, "block with existing marker version 1 should not be converted again")
+
+	// Verify that no conversion happened by checking the convertedBlocks metric
+	// It should be 0 since the block was already converted
+	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
 }

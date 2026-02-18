@@ -347,6 +347,12 @@
               "type": "boolean",
               "x-cli-flag": "alertmanager.sharding-ring.detailed-metrics-enabled"
             },
+            "disable_replica_set_extension": {
+              "default": false,
+              "description": "Disable extending the replica set when instances are unhealthy. This limits blast radius during config corruption incidents but reduces availability during normal failures.",
+              "type": "boolean",
+              "x-cli-flag": "alertmanager.sharding-ring.disable-replica-set-extension"
+            },
             "final_sleep": {
               "default": "0s",
               "description": "The sleep seconds when alertmanager is shutting down. Need to be close to or larger than KV Store information propagation delay",
@@ -902,6 +908,38 @@
             }
           },
           "type": "object"
+        },
+        "users_scanner": {
+          "properties": {
+            "cache_ttl": {
+              "default": "0s",
+              "description": "TTL of the cached users. 0 disables caching and relies on caching at bucket client level.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.users-scanner.cache-ttl",
+              "x-format": "duration"
+            },
+            "max_stale_period": {
+              "default": "1h0m0s",
+              "description": "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.users-scanner.user-index.max-stale-period",
+              "x-format": "duration"
+            },
+            "strategy": {
+              "default": "list",
+              "description": "Strategy to use to scan users. Supported values are: list, user_index.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"
@@ -1036,8 +1074,8 @@
             "bucket_index": {
               "properties": {
                 "enabled": {
-                  "default": false,
-                  "description": "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning.",
+                  "default": true,
+                  "description": "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning. Disabling the bucket index is not recommended for production.",
                   "type": "boolean",
                   "x-cli-flag": "blocks-storage.bucket-store.bucket-index.enabled"
                 },
@@ -1064,6 +1102,12 @@
                 }
               },
               "type": "object"
+            },
+            "bucket_store_type": {
+              "default": "tsdb",
+              "description": "Type of bucket store to use (tsdb or parquet).",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.bucket-store.bucket-store-type"
             },
             "chunks_cache": {
               "properties": {
@@ -2562,6 +2606,19 @@
               },
               "type": "object"
             },
+            "parquet_shard_cache_size": {
+              "default": 512,
+              "description": "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-shard-cache-size"
+            },
+            "parquet_shard_cache_ttl": {
+              "default": "24h0m0s",
+              "description": "[Experimental] TTL of the Parquet shard cache. 0 to no TTL.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-shard-cache-ttl",
+              "x-format": "duration"
+            },
             "series_batch_size": {
               "default": 10000,
               "description": "Controls how many series to fetch per batch in Store Gateway. Default value is 10000.",
@@ -2921,6 +2978,13 @@
                       "type": "boolean",
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.block.enabled"
                     },
+                    "fetch_timeout": {
+                      "default": "0s",
+                      "description": "Timeout for fetching postings from TSDB index when cache miss occurs. This prevents runaway queries from consuming resources when all callers have given up.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.expanded_postings_cache.block.fetch-timeout",
+                      "x-format": "duration"
+                    },
                     "max_bytes": {
                       "default": 10485760,
                       "description": "Max bytes for postings cache",
@@ -2945,6 +3009,13 @@
                       "description": "Whether the postings cache is enabled or not",
                       "type": "boolean",
                       "x-cli-flag": "blocks-storage.expanded_postings_cache.head.enabled"
+                    },
+                    "fetch_timeout": {
+                      "default": "0s",
+                      "description": "Timeout for fetching postings from TSDB index when cache miss occurs. This prevents runaway queries from consuming resources when all callers have given up.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.expanded_postings_cache.head.fetch-timeout",
+                      "x-format": "duration"
                     },
                     "max_bytes": {
                       "default": 10485760,
@@ -3088,6 +3159,13 @@
               "description": "Strategy to use to scan users. Supported values are: list, user_index.",
               "type": "string",
               "x-cli-flag": "blocks-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
             }
           },
           "type": "object"
@@ -3640,27 +3718,33 @@
           "properties": {
             "enable_ha_tracker": {
               "default": false,
-              "description": "Enable the distributors HA tracker so that it can accept samples from Prometheus HA replicas gracefully (requires labels).",
+              "description": "Enable the HA tracker so that it can accept data from Prometheus HA replicas gracefully (requires labels).",
               "type": "boolean",
               "x-cli-flag": "distributor.ha-tracker.enable"
             },
+            "enable_startup_sync": {
+              "default": false,
+              "description": "[Experimental] If enabled, fetches all tracked keys on startup to populate the local cache. This prevents duplicate GET calls for the same key while the cache is cold, but could cause a spike in GET requests during initialization if the number of tracked keys is large.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.ha-tracker.enable-startup-sync"
+            },
             "ha_tracker_failover_timeout": {
               "default": "30s",
-              "description": "If we don't receive any samples from the accepted replica for a cluster in this amount of time we will failover to the next replica we receive a sample from. This value must be greater than the update timeout",
+              "description": "The timeout after which a new replica will be accepted if the currently elected replica stops sending data. This value must be greater than the update timeout plus the maximum jitter.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.failover-timeout",
               "x-format": "duration"
             },
             "ha_tracker_update_timeout": {
               "default": "15s",
-              "description": "Update the timestamp in the KV store for a given cluster/replica only after this amount of time has passed since the current stored timestamp.",
+              "description": "The time interval that must pass since the last timestamp update in the KV store before updating it again for a given cluster.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.update-timeout",
               "x-format": "duration"
             },
             "ha_tracker_update_timeout_jitter_max": {
               "default": "5s",
-              "description": "Maximum jitter applied to the update timeout, in order to spread the HA heartbeats over time.",
+              "description": "The maximum jitter applied to the update timeout to spread KV store updates over time.",
               "type": "string",
               "x-cli-flag": "distributor.ha-tracker.update-timeout-jitter-max",
               "x-format": "duration"
@@ -3819,7 +3903,7 @@
             },
             "enable_type_and_unit_labels": {
               "default": false,
-              "description": "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.",
+              "description": "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
             }
@@ -4434,6 +4518,41 @@
     "ingester_config": {
       "description": "The ingester_config configures the Cortex ingester.",
       "properties": {
+        "active_queried_series_metrics_enabled": {
+          "default": false,
+          "description": "Enable tracking of active queried series using probabilistic data structure and export them as metrics.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.active-queried-series-metrics-enabled"
+        },
+        "active_queried_series_metrics_sample_rate": {
+          "default": 1,
+          "description": "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.",
+          "type": "number",
+          "x-cli-flag": "ingester.active-queried-series-metrics-sample-rate"
+        },
+        "active_queried_series_metrics_update_period": {
+          "default": "1m0s",
+          "description": "How often to update active queried series metrics.",
+          "type": "string",
+          "x-cli-flag": "ingester.active-queried-series-metrics-update-period",
+          "x-format": "duration"
+        },
+        "active_queried_series_metrics_window_duration": {
+          "default": "15m0s",
+          "description": "Duration of each sub-window for active queried series tracking (e.g., 1 minute). Used to divide the total tracking period into smaller windows.",
+          "type": "string",
+          "x-cli-flag": "ingester.active-queried-series-metrics-window-duration",
+          "x-format": "duration"
+        },
+        "active_queried_series_metrics_windows": {
+          "default": "2h0m0s",
+          "description": "Time windows to expose queried series metric. Each window tracks queried series within that time period.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "ingester.active-queried-series-metrics-windows"
+        },
         "active_series_metrics_enabled": {
           "default": true,
           "description": "Enable tracking of active series and export them as metrics.",
@@ -4465,6 +4584,18 @@
           "description": "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.",
           "type": "boolean",
           "x-cli-flag": "ingester.disable-chunk-trimming"
+        },
+        "enable_matcher_optimization": {
+          "default": false,
+          "description": "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.enable-matcher-optimization"
+        },
+        "enable_regex_matcher_limits": {
+          "default": false,
+          "description": "Enable regex matcher limits and metrics collection for unoptimized regex queries. When enabled, the ingester will track pattern length, label cardinality, and total value length for unoptimized regex matchers.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.enable-regex-matcher-limits"
         },
         "ignore_series_limit_for_metric_names": {
           "description": "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.",
@@ -4934,6 +5065,12 @@
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
         },
+        "enable_type_and_unit_labels": {
+          "default": false,
+          "description": "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.enable-type-and-unit-labels"
+        },
         "enforce_metadata_metric_name": {
           "default": true,
           "description": "Enforce every metadata has a metric name.",
@@ -5069,6 +5206,12 @@
           "type": "number",
           "x-cli-flag": "ingester.max-global-series-per-user"
         },
+        "max_label_cardinality_for_unoptimized_regex": {
+          "default": 0,
+          "description": "Maximum cardinality of a label that can be queried with an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-label-cardinality-for-unoptimized-regex"
+        },
         "max_label_name_length": {
           "default": 1024,
           "description": "Maximum length accepted for label names",
@@ -5167,6 +5310,12 @@
           "type": "number",
           "x-cli-flag": "frontend.max-query-response-size"
         },
+        "max_regex_pattern_length": {
+          "default": 0,
+          "description": "Maximum length (in bytes) of an unoptimized regex pattern. This is a pre-flight check to reject expensive regex queries. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-regex-pattern-length"
+        },
         "max_series_per_metric": {
           "default": 50000,
           "description": "The maximum number of active series per metric name, per ingester. 0 to disable.",
@@ -5178,6 +5327,12 @@
           "description": "The maximum number of active series per user, per ingester. 0 to disable.",
           "type": "number",
           "x-cli-flag": "ingester.max-series-per-user"
+        },
+        "max_total_label_value_length_for_unoptimized_regex": {
+          "default": 0,
+          "description": "Maximum total length (in bytes) of all label values combined for an unoptimized regex matcher. If exceeded, the query will be rejected with a limit error. 0 to disable. This is only enforced in Ingester.",
+          "type": "number",
+          "x-cli-flag": "validation.max-total-label-value-length-for-unoptimized-regex"
         },
         "metric_relabel_configs": {
           "default": [],
@@ -5715,6 +5870,12 @@
           "type": "boolean",
           "x-cli-flag": "querier.enable-promql-experimental-functions"
         },
+        "honor_projection_hints": {
+          "default": false,
+          "description": "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.",
+          "type": "boolean",
+          "x-cli-flag": "querier.honor-projection-hints"
+        },
         "ignore_max_query_length": {
           "default": false,
           "description": "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.",
@@ -5783,11 +5944,18 @@
           "type": "boolean",
           "x-cli-flag": "querier.parquet-queryable-fallback-disabled"
         },
-        "parquet_queryable_shard_cache_size": {
+        "parquet_shard_cache_size": {
           "default": 512,
-          "description": "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.",
+          "description": "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.",
           "type": "number",
-          "x-cli-flag": "querier.parquet-queryable-shard-cache-size"
+          "x-cli-flag": "querier.parquet-shard-cache-size"
+        },
+        "parquet_shard_cache_ttl": {
+          "default": "24h0m0s",
+          "description": "[Experimental] TTL of the Parquet shard cache. 0 to no TTL.",
+          "type": "string",
+          "x-cli-flag": "querier.parquet-shard-cache-ttl",
+          "x-format": "duration"
         },
         "per_step_stats_enabled": {
           "default": false,
@@ -5914,8 +6082,20 @@
           "type": "boolean",
           "x-cli-flag": "querier.store-gateway-query-stats-enabled"
         },
+        "store_gateway_series_batch_size": {
+          "default": 1,
+          "description": "[Experimental] The maximum number of series to be batched in a single gRPC response message from Store Gateways. A value of 0 or 1 disables batching.",
+          "type": "number",
+          "x-cli-flag": "querier.store-gateway-series-batch-size"
+        },
         "thanos_engine": {
           "properties": {
+            "decoding_concurrency": {
+              "default": 0,
+              "description": "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.",
+              "type": "number",
+              "x-cli-flag": "querier.decoding-concurrency"
+            },
             "enable_x_functions": {
               "default": false,
               "description": "Enable xincrease, xdelta, xrate etc from Thanos engine.",
@@ -5930,7 +6110,7 @@
             },
             "optimizers": {
               "default": "default",
-              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats",
+              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats, projection",
               "type": "string",
               "x-cli-flag": "querier.optimizers"
             }
@@ -6476,7 +6656,7 @@
           "x-format": "duration"
         },
         "frontend_address": {
-          "description": "[Experimental] GRPC listen address of the Query Frontend, in host:port format. If set, Ruler queries to Query Frontends via gRPC. If not set, ruler queries to Ingesters directly.",
+          "description": "[Experimental] gRPC address of the Query Frontend (host:port). If set, the Ruler send queries to the Query Frontend to utilize splitting and caching, at the cost of additional network hops compared to direct querying to Ingesters and Store Gateway.",
           "type": "string",
           "x-cli-flag": "ruler.frontend-address"
         },
@@ -6931,6 +7111,12 @@
         },
         "thanos_engine": {
           "properties": {
+            "decoding_concurrency": {
+              "default": 0,
+              "description": "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.",
+              "type": "number",
+              "x-cli-flag": "ruler.decoding-concurrency"
+            },
             "enable_x_functions": {
               "default": false,
               "description": "Enable xincrease, xdelta, xrate etc from Thanos engine.",
@@ -6945,7 +7131,7 @@
             },
             "optimizers": {
               "default": "default",
-              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats",
+              "description": "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: default, all, propagate-matchers, sort-matchers, merge-selects, detect-histogram-stats, projection",
               "type": "string",
               "x-cli-flag": "ruler.optimizers"
             }
@@ -7342,6 +7528,38 @@
               "description": "OpenStack Swift username.",
               "type": "string",
               "x-cli-flag": "ruler-storage.swift.username"
+            }
+          },
+          "type": "object"
+        },
+        "users_scanner": {
+          "properties": {
+            "cache_ttl": {
+              "default": "0s",
+              "description": "TTL of the cached users. 0 disables caching and relies on caching at bucket client level.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.users-scanner.cache-ttl",
+              "x-format": "duration"
+            },
+            "max_stale_period": {
+              "default": "1h0m0s",
+              "description": "Maximum period of time to consider the user index as stale. Fall back to the base scanner if stale. Only valid when strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.users-scanner.user-index.max-stale-period",
+              "x-format": "duration"
+            },
+            "strategy": {
+              "default": "list",
+              "description": "Strategy to use to scan users. Supported values are: list, user_index.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.users-scanner.strategy"
+            },
+            "update_interval": {
+              "default": "15m0s",
+              "description": "How frequently user index file is updated. It only takes effect when user scan strategy is user_index.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.users-scanner.user-index.update-interval",
+              "x-format": "duration"
             }
           },
           "type": "object"

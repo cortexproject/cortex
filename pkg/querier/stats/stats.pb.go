@@ -10,7 +10,7 @@ import (
 	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
 	_ "github.com/gogo/protobuf/types"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	_ "github.com/golang/protobuf/ptypes/duration"
+	_ "google.golang.org/protobuf/types/known/durationpb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -557,7 +557,7 @@ func (this *Stats) String() string {
 	}
 	mapStringForExtraFields += "}"
 	s := strings.Join([]string{`&Stats{`,
-		`WallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.WallTime), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`WallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.WallTime), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`FetchedSeriesCount:` + fmt.Sprintf("%v", this.FetchedSeriesCount) + `,`,
 		`FetchedChunkBytes:` + fmt.Sprintf("%v", this.FetchedChunkBytes) + `,`,
 		`FetchedDataBytes:` + fmt.Sprintf("%v", this.FetchedDataBytes) + `,`,
@@ -566,7 +566,7 @@ func (this *Stats) String() string {
 		`FetchedSamplesCount:` + fmt.Sprintf("%v", this.FetchedSamplesCount) + `,`,
 		`LimitHit:` + fmt.Sprintf("%v", this.LimitHit) + `,`,
 		`SplitQueries:` + fmt.Sprintf("%v", this.SplitQueries) + `,`,
-		`QueryStorageWallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.QueryStorageWallTime), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`QueryStorageWallTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.QueryStorageWallTime), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`StoreGatewayTouchedPostingsCount:` + fmt.Sprintf("%v", this.StoreGatewayTouchedPostingsCount) + `,`,
 		`StoreGatewayTouchedPostingBytes:` + fmt.Sprintf("%v", this.StoreGatewayTouchedPostingBytes) + `,`,
 		`ScannedSamples:` + fmt.Sprintf("%v", this.ScannedSamples) + `,`,

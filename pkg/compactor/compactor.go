@@ -34,12 +34,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -403,7 +403,7 @@ type Compactor struct {
 	logger         log.Logger
 	parentLogger   log.Logger
 	registerer     prometheus.Registerer
-	allowedTenants *util.AllowedTenants
+	allowedTenants *users.AllowedTenants
 	limits         *validation.Overrides
 
 	// Functions that creates bucket client, grouper, planner and compactor using the context.
@@ -541,7 +541,7 @@ func newCompactor(
 		blocksCompactorFactory:             blocksCompactorFactory,
 		blockDeletableCheckerFactory:       blockDeletableCheckerFactory,
 		compactionLifecycleCallbackFactory: compactionLifecycleCallbackFactory,
-		allowedTenants:                     util.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
+		allowedTenants:                     users.NewAllowedTenants(compactorCfg.EnabledTenants, compactorCfg.DisabledTenants),
 
 		CompactorStartDurationSeconds: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_compactor_start_duration_seconds",
@@ -757,12 +757,12 @@ func (c *Compactor) starting(ctx context.Context) error {
 
 	// If sharding is disabled, there is no need to have every compactor to run the user index updater
 	// as it will be the same to fallback to list strategy.
-	if c.compactorCfg.ShardingEnabled && c.storageCfg.UsersScanner.Strategy == cortex_tsdb.UserScanStrategyUserIndex {
+	if c.compactorCfg.ShardingEnabled && c.storageCfg.UsersScanner.Strategy == users.UserScanStrategyUserIndex {
 		// We hardcode strategy to be list so can ignore error.
-		baseScanner, _ := users.NewScanner(cortex_tsdb.UsersScannerConfig{
-			Strategy: cortex_tsdb.UserScanStrategyList,
+		baseScanner, _ := users.NewScanner(users.UsersScannerConfig{
+			Strategy: users.UserScanStrategyList,
 		}, c.bucketClient, c.logger, c.registerer)
-		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, baseScanner, c.registerer)
+		c.userIndexUpdater = users.NewUserIndexUpdater(c.bucketClient, c.storageCfg.UsersScanner.UpdateInterval, baseScanner, extprom.WrapRegistererWith(prometheus.Labels{"component": "compactor"}, c.registerer))
 	}
 
 	return nil
@@ -846,25 +846,25 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 	}()
 
 	level.Info(c.logger).Log("msg", "discovering users from bucket")
-	users, err := c.discoverUsersWithRetries(ctx)
+	userIDs, err := c.discoverUsersWithRetries(ctx)
 	if err != nil {
 		level.Error(c.logger).Log("msg", "failed to discover users from bucket", "err", err)
 		return
 	}
 
-	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(users))
-	c.CompactionRunDiscoveredTenants.Set(float64(len(users)))
+	level.Info(c.logger).Log("msg", "discovered users from bucket", "users", len(userIDs))
+	c.CompactionRunDiscoveredTenants.Set(float64(len(userIDs)))
 
 	// When starting multiple compactor replicas nearly at the same time, running in a cluster with
 	// a large number of tenants, we may end up in a situation where the 1st user is compacted by
 	// multiple replicas at the same time. Shuffling users helps reduce the likelihood this will happen.
-	rand.Shuffle(len(users), func(i, j int) {
-		users[i], users[j] = users[j], users[i]
+	rand.Shuffle(len(userIDs), func(i, j int) {
+		userIDs[i], userIDs[j] = userIDs[j], userIDs[i]
 	})
 
 	// Keep track of users owned by this shard, so that we can delete the local files for all other users.
 	ownedUsers := map[string]struct{}{}
-	for _, userID := range users {
+	for _, userID := range userIDs {
 		// Ensure the context has not been canceled (ie. compactor shutdown has been triggered).
 		if ctx.Err() != nil {
 			interrupted = true
@@ -894,7 +894,7 @@ func (c *Compactor) compactUsers(ctx context.Context) {
 
 		ownedUsers[userID] = struct{}{}
 
-		if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
+		if markedForDeletion, err := users.TenantDeletionMarkExists(ctx, c.bucketClient, userID); err != nil {
 			c.CompactionRunSkippedTenants.Inc()
 			level.Warn(c.logger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 			continue
@@ -1024,7 +1024,8 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 	noCompactMarkerFilter := compact.NewGatherNoCompactionMarkFilter(ulogger, bucket, c.compactorCfg.MetaSyncConcurrency)
 
 	var blockLister block.Lister
-	switch cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy) {
+	blockDiscoveryStrategy := cortex_tsdb.BlockDiscoveryStrategy(c.storageCfg.BucketStore.BlockDiscoveryStrategy)
+	switch blockDiscoveryStrategy {
 	case cortex_tsdb.ConcurrentDiscovery:
 		blockLister = block.NewConcurrentLister(ulogger, bucket)
 	case cortex_tsdb.RecursiveDiscovery:
@@ -1038,6 +1039,24 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		return cortex_tsdb.ErrBlockDiscoveryStrategy
 	}
 
+	// List of filters to apply (order matters).
+	filterList := []block.MetadataFilter{
+		// Remove the ingester ID because we don't shard blocks anymore, while still
+		// honoring the shard ID if sharding was done in the past.
+		NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
+		block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
+	}
+
+	// Add ignoreDeletionMarkFilter only when not using bucket index discovery.
+	if blockDiscoveryStrategy != cortex_tsdb.BucketIndexDiscovery {
+		filterList = append(filterList, ignoreDeletionMarkFilter)
+	}
+
+	filterList = append(filterList,
+		deduplicateBlocksFilter,
+		noCompactMarkerFilter,
+	)
+
 	fetcher, err := block.NewMetaFetcherWithMetrics(
 		ulogger,
 		c.compactorCfg.MetaSyncConcurrency,
@@ -1046,16 +1065,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.metaSyncDirForUser(userID),
 		c.compactorMetrics.getBaseFetcherMetrics(),
 		c.compactorMetrics.getMetaFetcherMetrics(),
-		// List of filters to apply (order matters).
-		[]block.MetadataFilter{
-			// Remove the ingester ID because we don't shard blocks anymore, while still
-			// honoring the shard ID if sharding was done in the past.
-			NewLabelRemoverFilter([]string{cortex_tsdb.IngesterIDExternalLabel}),
-			block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
-			ignoreDeletionMarkFilter,
-			deduplicateBlocksFilter,
-			noCompactMarkerFilter,
-		},
+		filterList,
 	)
 	if err != nil {
 		return err
@@ -1089,6 +1099,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		bucket,
 		c.compactorCfg.CompactionConcurrency,
 		c.compactorCfg.SkipBlocksWithOutOfOrderChunksEnabled,
+		nil, // Pass nil for blocksCleaner to maintain current behavior.
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to create bucket compactor")
@@ -1202,7 +1213,7 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 	// Hardcode ID to check which compactor owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.
-	ticker := time.NewTicker(util.DurationWithJitter(c.compactorCfg.CleanupInterval, 0.1))
+	ticker := time.NewTicker(util.DurationWithJitter(c.storageCfg.UsersScanner.UpdateInterval, 0.1))
 	defer ticker.Stop()
 
 	for {
@@ -1220,11 +1231,13 @@ func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
 			if !owned {
 				continue
 			}
+			start := time.Now()
 			if err := c.userIndexUpdater.UpdateUserIndex(ctx); err != nil {
 				level.Error(c.logger).Log("msg", "failed to update user index", "err", err)
 				// Wait for next interval. Worst case, the user index scanner will fallback to list strategy.
 				continue
 			}
+			level.Info(c.logger).Log("msg", "successfully updated user index", "duration_ms", time.Since(start).Milliseconds())
 		}
 	}
 }

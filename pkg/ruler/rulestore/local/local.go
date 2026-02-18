@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 	promRules "github.com/prometheus/prometheus/rules"
 
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -29,18 +31,20 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 //
 //	cfg.Directory / userID / namespace
 type Client struct {
-	cfg    Config
-	loader promRules.GroupLoader
+	cfg                  Config
+	loader               promRules.GroupLoader
+	nameValidationScheme model.ValidationScheme
 }
 
-func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, error) {
+func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader, nameValidationScheme model.ValidationScheme) (*Client, error) {
 	if cfg.Directory == "" {
 		return nil, errors.New("directory required for local rules config")
 	}
 
 	return &Client{
-		cfg:    cfg,
-		loader: loader,
+		cfg:                  cfg,
+		loader:               loader,
+		nameValidationScheme: nameValidationScheme,
 	}, nil
 }
 
@@ -123,6 +127,10 @@ func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, 
 	return errors.New("DeleteRuleGroup unsupported in rule local store")
 }
 
+func (l *Client) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
+}
+
 // DeleteNamespace implements RulerStore
 func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) error {
 	return errors.New("DeleteNamespace unsupported in rule local store")
@@ -170,7 +178,7 @@ func (l *Client) loadAllRulesGroupsForUser(ctx context.Context, userID string) (
 func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID string, namespace string) (rulespb.RuleGroupList, error) {
 	filename := filepath.Join(l.cfg.Directory, userID, namespace)
 
-	rulegroups, allErrors := l.loader.Load(filename, false)
+	rulegroups, allErrors := l.loader.Load(filename, false, l.nameValidationScheme)
 	if len(allErrors) > 0 {
 		return nil, errors.Wrapf(allErrors[0], "error parsing %s", filename)
 	}

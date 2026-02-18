@@ -15,10 +15,8 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/logicalplan"
-	"github.com/thanos-io/promql-engine/query"
 	"github.com/uber/jaeger-client-go/config"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
@@ -504,8 +502,9 @@ func TestQuerierLoopClient_WithLogicalPlan(t *testing.T) {
 	// CASE 3: request with correct logical plan --> expect to have fragment metadata
 	scheduler.cleanupMetricsForInactiveUser("test2")
 
-	lp := createTestLogicalPlan(t, time.Now(), time.Now(), 0, "up")
-	bytesLp, err := logicalplan.Marshal(lp.Root())
+	lp, err := distributed_execution.CreateTestLogicalPlan("up", time.Now(), time.Now(), 0)
+	require.NoError(t, err)
+	bytesLp, err := logicalplan.Marshal((*lp).Root())
 	form := url.Values{}
 	form.Set("plan", string(bytesLp)) // this is to imitate how the real format of http request body
 	require.NoError(t, err)
@@ -535,35 +534,95 @@ func TestQuerierLoopClient_WithLogicalPlan(t *testing.T) {
 	require.True(t, s3.IsRoot)
 }
 
-func createTestLogicalPlan(t *testing.T, startTime time.Time, endTime time.Time, step time.Duration, q string) logicalplan.Plan {
-	qOpts := query.Options{
-		Start:              startTime,
-		End:                startTime,
-		Step:               0,
-		StepsBatch:         10,
-		LookbackDelta:      0,
-		EnablePerStepStats: false,
-	}
+// TestQuerierLoopClient_WithLogicalPlan_Fragmented checks if fragments of the logical plan
+// can be picked up successfully and have the correct metadata with them
+// It also tests scheduler coordination hashmap.
+// It acts as an integration test for the scheduler for distributed query execution
+// (this test relates to the design of distributed optimizer + fragmenter, so it needs to be adjusted accordingly)
+func TestQuerierLoopClient_WithLogicalPlan_Fragmented(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
 
-	if step != 0 {
-		qOpts.End = endTime
-		qOpts.Step = step
-	}
+	scheduler, frontendClient, querierClient := setupScheduler(t, reg, true)
+	scheduler.distributedExecEnabled = true
 
-	expr, err := parser.NewParser(q, parser.WithFunctions(parser.Functions)).ParseExpr()
+	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
+	querierLoop, err := querierClient.QuerierLoop(context.Background())
 	require.NoError(t, err)
 
-	planOpts := logicalplan.PlanOptions{
-		DisableDuplicateLabelCheck: false,
-	}
+	lp_long, err := distributed_execution.CreateTestLogicalPlan("sum(rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])) + sum(rate(node_memory_Active_bytes[5m]))", time.Now(), time.Now(), 0)
+	require.NoError(t, err)
 
-	logicalPlan, _ := logicalplan.NewFromAST(expr, &qOpts, planOpts)
-	optimizedPlan, _ := logicalPlan.Optimize(logicalplan.DefaultOptimizers)
-	dOptimizer := distributed_execution.DistributedOptimizer{}
-	dOptimizedPlanNode, _ := dOptimizer.Optimize(optimizedPlan.Root(), &qOpts)
-	lp := logicalplan.New(dOptimizedPlanNode, &qOpts, planOpts)
+	bytesLp_long, err := logicalplan.Marshal((*lp_long).Root())
+	form_long := url.Values{}
+	form_long.Set("plan", string(bytesLp_long)) // this is to imitate how the real format of http request body
+	require.NoError(t, err)
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     4,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "POST", Url: "/hello", Body: []byte(form_long.Encode())},
+	})
 
-	return lp
+	// check that there are three fragments enqueued
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
+		# TYPE cortex_query_scheduler_queue_length gauge
+		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="test"} 3
+		# HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
+		# TYPE cortex_request_queue_requests_total counter
+		cortex_request_queue_requests_total{priority="0",user="test"} 3
+	`), "cortex_query_scheduler_queue_length", "cortex_request_queue_requests_total"))
+
+	// fragment 1
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1", QuerierAddress: "localhost:8000"}))
+	s1, err := querierLoop.Recv()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, s1.FragmentID)
+	require.Equal(t, uint64(4), s1.QueryID)
+	require.Empty(t, s1.ChildIDtoAddrs) // there is only one fragment for the logical plan, so no child plan_fragments
+	require.False(t, s1.IsRoot)
+
+	// check if the new address is added to the scheduler's table
+	addr1, exist := scheduler.fragmentTable.GetAddrByID(s1.QueryID, s1.FragmentID)
+	require.True(t, exist)
+	require.Equal(t, addr1, "localhost:8000")
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{})) // mark ready for the next task
+
+	// fragment 2
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1", QuerierAddress: "localhost:8000"}))
+	s2, err := querierLoop.Recv()
+
+	require.NoError(t, err)
+	require.NotEmpty(t, s2.FragmentID)
+	require.Equal(t, uint64(4), s2.QueryID)
+	require.Empty(t, s2.ChildIDtoAddrs) // there is only one fragment for the logical plan, so no child plan_fragments
+	require.False(t, s2.IsRoot)
+
+	addr2, exist := scheduler.fragmentTable.GetAddrByID(s2.QueryID, s2.FragmentID)
+	require.True(t, exist)
+	require.Equal(t, addr2, "localhost:8000")
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{})) // mark ready for the next task
+
+	// fragment 3
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{QuerierID: "querier-1", QuerierAddress: "localhost:8000"}))
+	s3, err := querierLoop.Recv()
+	require.NoError(t, err)
+	require.NotEmpty(t, s3.FragmentID)
+	require.Equal(t, uint64(4), s3.QueryID)
+	require.Equal(t, s3.ChildIDtoAddrs, map[uint64]string{s1.FragmentID: addr1, s2.FragmentID: addr2}) // equal to the child fragment IDs
+	require.True(t, s3.IsRoot)
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
+
+	// check that the 3 fragments have all been picked up
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_queue_length Number of queries in the queue.
+		# TYPE cortex_query_scheduler_queue_length gauge
+		cortex_query_scheduler_queue_length{priority="0",type="fifo",user="test"} 0
+		# HELP cortex_request_queue_requests_total Total number of query requests going to the request queue.
+		# TYPE cortex_request_queue_requests_total counter
+		cortex_request_queue_requests_total{priority="0",user="test"} 3
+	`), "cortex_query_scheduler_queue_length", "cortex_request_queue_requests_total"))
 }
 
 func initFrontendLoop(t *testing.T, client schedulerpb.SchedulerForFrontendClient, frontendAddr string) schedulerpb.SchedulerForFrontend_FrontendLoopClient {
@@ -637,4 +696,187 @@ func (f *frontendMock) getRequest(queryID uint64) *httpgrpc.HTTPResponse {
 	defer f.mu.Unlock()
 
 	return f.resp[queryID]
+}
+
+// TestQueryFragmentRegistryCleanupSingleFragment verifies that queryFragmentRegistry
+// is properly cleaned up when a single fragment completes (non-fragmenting mode).
+func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, false)
+	require.NoError(t, err)
+
+	frontendAddr := "frontend1"
+	queryID := uint64(100)
+	fragmentID := uint64(0)
+
+	// Simulate enqueue adding to both maps
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req := &schedulerRequest{
+		frontendAddress: frontendAddr,
+		userID:          "user1",
+		queryID:         queryID,
+		ctx:             ctx,
+		ctxCancel:       cancel,
+	}
+
+	s.pendingRequestsMu.Lock()
+	queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
+	s.queryFragmentRegistry[queryKey] = []uint64{fragmentID}
+	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
+	s.pendingRequestsMu.Unlock()
+
+	// Verify both entries exist
+	s.pendingRequestsMu.Lock()
+	require.Len(t, s.queryFragmentRegistry[queryKey], 1)
+	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID})
+	s.pendingRequestsMu.Unlock()
+
+	// Simulate request completion (cancelAll=false)
+	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID, false)
+
+	// Verify cleanup: both pendingRequests AND queryFragmentRegistry should be cleaned up
+	s.pendingRequestsMu.Lock()
+	_, registryExists := s.queryFragmentRegistry[queryKey]
+	require.False(t, registryExists, "queryFragmentRegistry should be cleaned up when last fragment completes")
+	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID}, "pendingRequests should be cleaned up")
+	s.pendingRequestsMu.Unlock()
+}
+
+// TestQueryFragmentRegistryCleanupMultipleFragments verifies that queryFragmentRegistry
+// properly removes only the completed fragment and keeps others when multiple fragments exist.
+func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, true)
+	require.NoError(t, err)
+
+	frontendAddr := "frontend1"
+	queryID := uint64(100)
+	fragmentID1 := uint64(0)
+	fragmentID2 := uint64(1)
+	fragmentID3 := uint64(2)
+
+	// Simulate multiple fragments for the same query
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	ctx3, cancel3 := context.WithCancel(context.Background())
+	defer cancel3()
+
+	req1 := &schedulerRequest{
+		frontendAddress: frontendAddr,
+		userID:          "user1",
+		queryID:         queryID,
+		ctx:             ctx1,
+		ctxCancel:       cancel1,
+	}
+	req2 := &schedulerRequest{
+		frontendAddress: frontendAddr,
+		userID:          "user1",
+		queryID:         queryID,
+		ctx:             ctx2,
+		ctxCancel:       cancel2,
+	}
+	req3 := &schedulerRequest{
+		frontendAddress: frontendAddr,
+		userID:          "user1",
+		queryID:         queryID,
+		ctx:             ctx3,
+		ctxCancel:       cancel3,
+	}
+
+	s.pendingRequestsMu.Lock()
+	queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
+	s.queryFragmentRegistry[queryKey] = []uint64{fragmentID1, fragmentID2, fragmentID3}
+	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID1}] = req1
+	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID2}] = req2
+	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID3}] = req3
+	s.pendingRequestsMu.Unlock()
+
+	// Verify all three fragments exist
+	s.pendingRequestsMu.Lock()
+	require.Len(t, s.queryFragmentRegistry[queryKey], 3)
+	require.Len(t, s.pendingRequests, 3)
+	s.pendingRequestsMu.Unlock()
+
+	// Fragment 1 completes
+	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID1, false)
+
+	// Verify fragment 1 removed, but fragments 2 and 3 remain
+	s.pendingRequestsMu.Lock()
+	require.Len(t, s.queryFragmentRegistry[queryKey], 2, "should have 2 fragments remaining")
+	require.ElementsMatch(t, []uint64{fragmentID2, fragmentID3}, s.queryFragmentRegistry[queryKey])
+	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID1})
+	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
+	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
+	s.pendingRequestsMu.Unlock()
+
+	// Fragment 2 completes
+	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID2, false)
+
+	// Verify fragment 2 removed, only fragment 3 remains
+	s.pendingRequestsMu.Lock()
+	require.Len(t, s.queryFragmentRegistry[queryKey], 1, "should have 1 fragment remaining")
+	require.Equal(t, []uint64{fragmentID3}, s.queryFragmentRegistry[queryKey])
+	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
+	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
+	s.pendingRequestsMu.Unlock()
+
+	// Fragment 3 completes (last fragment)
+	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID3, false)
+
+	// Verify all cleaned up
+	s.pendingRequestsMu.Lock()
+	_, registryExists := s.queryFragmentRegistry[queryKey]
+	require.False(t, registryExists, "queryFragmentRegistry should be deleted when last fragment completes")
+	require.Empty(t, s.pendingRequests, "all pendingRequests should be cleaned up")
+	s.pendingRequestsMu.Unlock()
+}
+
+// TestQueryFragmentRegistryNoLeak verifies that repeated request completions
+// don't cause queryFragmentRegistry to grow unbounded.
+func TestQueryFragmentRegistryNoLeak(t *testing.T) {
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, false)
+	require.NoError(t, err)
+
+	frontendAddr := "frontend1"
+
+	// Simulate 100 requests completing normally
+	for i := range 100 {
+		queryID := uint64(i)
+		fragmentID := uint64(0)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		req := &schedulerRequest{
+			frontendAddress: frontendAddr,
+			userID:          "user1",
+			queryID:         queryID,
+			ctx:             ctx,
+			ctxCancel:       cancel,
+		}
+
+		// Add to registry and pending requests
+		s.pendingRequestsMu.Lock()
+		queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
+		s.queryFragmentRegistry[queryKey] = []uint64{fragmentID}
+		s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
+		s.pendingRequestsMu.Unlock()
+
+		// Complete the request
+		s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID, false)
+
+		cancel()
+	}
+
+	// Verify no leak: registry should be empty
+	s.pendingRequestsMu.Lock()
+	require.Empty(t, s.queryFragmentRegistry, "queryFragmentRegistry should be empty after all requests complete")
+	require.Empty(t, s.pendingRequests, "pendingRequests should be empty after all requests complete")
+	s.pendingRequestsMu.Unlock()
 }

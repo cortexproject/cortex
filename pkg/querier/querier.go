@@ -28,12 +28,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -80,6 +81,9 @@ type Config struct {
 	// The maximum number of times we attempt fetching missing blocks from different Store Gateways.
 	StoreGatewayConsistencyCheckMaxAttempts int `yaml:"store_gateway_consistency_check_max_attempts"`
 
+	// The maximum number of series to be batched in a single gRPC response message from Store Gateways.
+	StoreGatewaySeriesBatchSize int64 `yaml:"store_gateway_series_batch_size"`
+
 	// The maximum number of times we attempt fetching data from Ingesters.
 	IngesterQueryMaxAttempts int `yaml:"ingester_query_max_attempts"`
 
@@ -92,12 +96,14 @@ type Config struct {
 	EnablePromQLExperimentalFunctions bool `yaml:"enable_promql_experimental_functions"`
 
 	// Query Parquet files if available
-	EnableParquetQueryable            bool   `yaml:"enable_parquet_queryable"`
-	ParquetQueryableShardCacheSize    int    `yaml:"parquet_queryable_shard_cache_size"`
-	ParquetQueryableDefaultBlockStore string `yaml:"parquet_queryable_default_block_store"`
-	ParquetQueryableFallbackDisabled  bool   `yaml:"parquet_queryable_fallback_disabled"`
+	EnableParquetQueryable            bool                    `yaml:"enable_parquet_queryable"`
+	ParquetShardCache                 parquetutil.CacheConfig `yaml:",inline"`
+	ParquetQueryableDefaultBlockStore string                  `yaml:"parquet_queryable_default_block_store"`
+	ParquetQueryableFallbackDisabled  bool                    `yaml:"parquet_queryable_fallback_disabled"`
 
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
+
+	HonorProjectionHints bool `yaml:"honor_projection_hints"`
 }
 
 var (
@@ -106,6 +112,7 @@ var (
 	errEmptyTimeRange                                 = errors.New("empty time range")
 	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
 	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
+	errInvalidSeriesBatchSize                         = errors.New("store gateway series batch size should be greater or equal than 0")
 	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
 	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
 )
@@ -139,6 +146,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.BoolVar(&cfg.StoreGatewayQueryStatsEnabled, "querier.store-gateway-query-stats-enabled", true, "If enabled, store gateway query stats will be logged using `info` log level.")
 	f.IntVar(&cfg.StoreGatewayConsistencyCheckMaxAttempts, "querier.store-gateway-consistency-check-max-attempts", maxFetchSeriesAttempts, "The maximum number of times we attempt fetching missing blocks from different store-gateways. If no more store-gateways are left (ie. due to lower replication factor) than we'll end the retries earlier")
+	f.Int64Var(&cfg.StoreGatewaySeriesBatchSize, "querier.store-gateway-series-batch-size", 1, "[Experimental] The maximum number of series to be batched in a single gRPC response message from Store Gateways. A value of 0 or 1 disables batching.")
 	f.IntVar(&cfg.IngesterQueryMaxAttempts, "querier.ingester-query-max-attempts", 1, "The maximum number of times we attempt fetching data from ingesters for retryable errors (ex. partial data returned).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
 	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
@@ -146,8 +154,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
 	f.BoolVar(&cfg.EnableParquetQueryable, "querier.enable-parquet-queryable", false, "[Experimental] If true, querier will try to query the parquet files if available.")
-	f.IntVar(&cfg.ParquetQueryableShardCacheSize, "querier.parquet-queryable-shard-cache-size", 512, "[Experimental] Maximum size of the Parquet queryable shard cache. 0 to disable.")
+	cfg.ParquetShardCache.RegisterFlagsWithPrefix("querier.", f)
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
+	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 }
@@ -173,6 +182,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.StoreGatewayConsistencyCheckMaxAttempts < 1 {
 		return errInvalidConsistencyCheckAttempts
+	}
+
+	if cfg.StoreGatewaySeriesBatchSize < 0 {
+		return errInvalidSeriesBatchSize
 	}
 
 	if cfg.IngesterQueryMaxAttempts < 1 {
@@ -302,6 +315,7 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 			limits:               limits,
 			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
 			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
+			honorProjectionHints: cfg.HonorProjectionHints,
 			distributor:          distributor,
 			stores:               stores,
 			limiterHolder:        &limiterHolder{},
@@ -312,20 +326,21 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	now                time.Time
-	mint, maxt         int64
-	limits             *validation.Overrides
-	maxQueryIntoFuture time.Duration
-	distributor        QueryableWithFilter
-	stores             []QueryableWithFilter
-	limiterHolder      *limiterHolder
+	now                  time.Time
+	mint, maxt           int64
+	limits               *validation.Overrides
+	maxQueryIntoFuture   time.Duration
+	honorProjectionHints bool
+	distributor          QueryableWithFilter
+	stores               []QueryableWithFilter
+	limiterHolder        *limiterHolder
 
 	ignoreMaxQueryLength bool
 }
 
 func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_stats.QueryStats, string, int64, int64, storage.Querier, []storage.Querier, error) {
 	stats := querier_stats.FromContext(ctx)
-	userID, err := tenant.TenantID(ctx)
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return ctx, stats, userID, 0, 0, nil, nil, err
 	}
@@ -431,6 +446,15 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		if maxQueryLength := q.limits.MaxQueryLength(userID); maxQueryLength > 0 && endTime.Sub(startTime) > maxQueryLength {
 			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 			return storage.ErrSeriesSet(limitErr)
+		}
+	}
+
+	// Reset projection hints if querying ingesters or projection is not included.
+	// Projection can only be applied when not querying mixed sources (ingester + store).
+	if q.honorProjectionHints {
+		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, mint, maxt) {
+			sp.ProjectionLabels = nil
+			sp.ProjectionInclude = false
 		}
 	}
 

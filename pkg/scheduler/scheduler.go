@@ -30,13 +30,12 @@ import (
 	"github.com/cortexproject/cortex/pkg/scheduler/fragment_table"
 	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
-	"github.com/cortexproject/cortex/pkg/tenant"
-	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -57,7 +56,7 @@ type Scheduler struct {
 	connectedFrontends   map[string]*connectedFrontend
 
 	requestQueue *queue.RequestQueue
-	activeUsers  *util.ActiveUsersCleanupService
+	activeUsers  *users.ActiveUsersCleanupService
 
 	pendingRequestsMu sync.Mutex
 
@@ -125,7 +124,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		connectedFrontends: map[string]*connectedFrontend{},
 
 		fragmentTable:          fragment_table.NewFragmentTable(2 * time.Minute),
-		fragmenter:             plan_fragments.NewDummyFragmenter(),
+		fragmenter:             plan_fragments.NewPlanFragmenter(),
 		distributedExecEnabled: distributedExecEnabled,
 		queryFragmentRegistry:  map[queryKey][]uint64{},
 	}
@@ -156,7 +155,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 
-	s.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
+	s.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
 	var err error
 	s.subservices, err = services.NewManager(s.requestQueue, s.activeUsers)
@@ -351,7 +350,7 @@ func (s *Scheduler) fragmentAndEnqueueRequest(frontendContext context.Context, f
 		return err
 	}
 
-	fragments, err := s.fragmenter.Fragment(lpNode)
+	fragments, err := s.fragmenter.Fragment(msg.QueryID, lpNode)
 	if err != nil {
 		return err
 	}
@@ -420,7 +419,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := tenant.TenantIDsFromOrgID(userID)
+	tenantIDs, err := users.TenantIDsFromOrgID(userID)
 	if err != nil {
 		return err
 	}
@@ -463,6 +462,30 @@ func (s *Scheduler) cancelRequestAndRemoveFromPending(frontendAddr string, query
 			req.ctxCancel()
 		}
 		delete(s.pendingRequests, key)
+
+		// Clean up queryFragmentRegistry for this specific fragment
+		if fragmentIDs, ok := s.queryFragmentRegistry[querykey]; ok {
+			// Fast path: if there's only one fragment and it's the one we're deleting,
+			// just delete the entire entry without allocating a new slice
+			if len(fragmentIDs) == 1 && fragmentIDs[0] == fragmentID {
+				delete(s.queryFragmentRegistry, querykey)
+			} else {
+				// Slow path: remove this fragmentID from the slice
+				newFragmentIDs := make([]uint64, 0, len(fragmentIDs)-1)
+				for _, fid := range fragmentIDs {
+					if fid != fragmentID {
+						newFragmentIDs = append(newFragmentIDs, fid)
+					}
+				}
+
+				// If no more fragments remain, delete the entire entry
+				if len(newFragmentIDs) == 0 {
+					delete(s.queryFragmentRegistry, querykey)
+				} else {
+					s.queryFragmentRegistry[querykey] = newFragmentIDs
+				}
+			}
+		}
 	}
 }
 

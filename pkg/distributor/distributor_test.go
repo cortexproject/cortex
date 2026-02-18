@@ -44,13 +44,13 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -1280,7 +1280,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 					d := ds[0]
 
-					userID, err := tenant.TenantID(ctx)
+					userID, err := users.TenantID(ctx)
 					assert.NoError(t, err)
 					err = d.HATracker.CheckReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 					assert.NoError(t, err)
@@ -1298,6 +1298,57 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestDistributor_PushHA_RWv2DedupReturnsStats(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	// When HA dedup occurs and RemoteWriteV2 is enabled, distributor must return
+	// WriteResponse with Samples/Histograms/Exemplars so the push handler can set RWv2 headers.
+	for _, enableHistogram := range []bool{false, true} {
+		t.Run(fmt.Sprintf("histogram=%v", enableHistogram), func(t *testing.T) {
+			t.Parallel()
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+			limits.AcceptHASamples = true
+			limits.MaxLabelValueLength = 15
+
+			ds, _, _, _ := prepare(t, prepConfig{
+				numIngesters:         3,
+				happyIngesters:       3,
+				numDistributors:      1,
+				shardByAllLabels:     true,
+				limits:               &limits,
+				enableTracker:        true,
+				remoteWriteV2Enabled: true,
+			})
+
+			d := ds[0]
+
+			// Accept "instance2" for cluster0; we will push from "instance0" so all samples are deduped.
+			err := d.HATracker.CheckReplica(ctx, "user", "cluster0", "instance2", time.Now())
+			require.NoError(t, err)
+
+			const numSamples = 5
+			request := makeWriteRequestHA(numSamples, "instance0", "cluster0", enableHistogram)
+			response, err := d.Push(ctx, request)
+
+			require.NotNil(t, response, "RWv2 HA dedup must return WriteResponse with stats")
+			if enableHistogram {
+				assert.Equal(t, int64(0), response.Samples)
+				assert.Equal(t, int64(numSamples), response.Histograms)
+			} else {
+				assert.Equal(t, int64(numSamples), response.Samples)
+				assert.Equal(t, int64(0), response.Histograms)
+			}
+			assert.Equal(t, int64(0), response.Exemplars)
+
+			httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "expected HTTP error")
+			assert.Equal(t, int32(http.StatusAccepted), httpResp.Code)
+		})
 	}
 }
 
@@ -2216,6 +2267,10 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test", "", "bar"}, 0, nil),
 			errMsg: "invalid label",
 		},
+		"rejects exemplar with empty metric name": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, ""}, 1000, []string{"foo", "bar"}),
+			errMsg: "invalid metric name",
+		},
 	}
 
 	for testName, tc := range tests {
@@ -3075,10 +3130,12 @@ type prepConfig struct {
 	maxIngestionRate             float64
 	replicationFactor            int
 	enableTracker                bool
+	remoteWriteV2Enabled         bool
 	errFail                      error
 	tokens                       [][]uint32
 	useStreamPush                bool
 	nameValidationScheme         model.ValidationScheme
+	remoteTimeout                time.Duration
 }
 
 type prepState struct {
@@ -3199,6 +3256,10 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			distributorCfg.NameValidationScheme = cfg.nameValidationScheme
 		}
 
+		if cfg.remoteTimeout > 0 {
+			distributorCfg.RemoteTimeout = cfg.remoteTimeout
+		}
+
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
 			distributorCfg.ShuffleShardingLookbackPeriod = time.Hour
@@ -3211,7 +3272,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 			tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 			mock := kv.PrefixClient(ringStore, "prefix")
-			distributorCfg.HATrackerConfig = HATrackerConfig{
+			distributorCfg.HATrackerConfig = ha.HATrackerConfig{
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
@@ -3219,6 +3280,8 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			}
 			cfg.limits.HAMaxClusters = 100
 		}
+
+		distributorCfg.RemoteWriteV2Enabled = cfg.remoteWriteV2Enabled
 
 		overrides := validation.NewOverrides(*cfg.limits, nil)
 
@@ -3574,7 +3637,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		i.metadata = map[uint32]map[cortexpb.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := tenant.TenantID(ctx)
+	orgid, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -3956,6 +4019,28 @@ func TestDistributorValidation(t *testing.T) {
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
 		},
+		// Test series with empty metric name is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "", "foo", "bar"),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
+		},
+		// Test series with only empty metric name (no other labels) is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, ""),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
+		},
 		// Test maximum labels names per series for histogram samples.
 		{
 			labels: []labels.Labels{
@@ -4075,7 +4160,6 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 }
 
 func TestSortLabels(t *testing.T) {
-	t.Parallel()
 	sorted := []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -4130,11 +4214,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "foo", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"cluster"},
-					Action:       relabel.DefaultRelabelConfig.Action,
-					Regex:        relabel.DefaultRelabelConfig.Regex,
-					TargetLabel:  "cluster",
-					Replacement:  "two",
+					SourceLabels:         []model.LabelName{"cluster"},
+					Action:               relabel.DefaultRelabelConfig.Action,
+					Regex:                relabel.DefaultRelabelConfig.Regex,
+					TargetLabel:          "cluster",
+					Replacement:          "two",
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4147,9 +4232,10 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "bar", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"__name__"},
-					Action:       relabel.Drop,
-					Regex:        relabel.MustNewRegexp("(foo)"),
+					SourceLabels:         []model.LabelName{"__name__"},
+					Action:               relabel.Drop,
+					Regex:                relabel.MustNewRegexp("(foo)"),
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4317,9 +4403,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	t.Parallel()
 	metricRelabelConfigs := []*relabel.Config{
 		{
-			SourceLabels: []model.LabelName{"__name__"},
-			Action:       relabel.Drop,
-			Regex:        relabel.MustNewRegexp("(foo)"),
+			SourceLabels:         []model.LabelName{"__name__"},
+			Action:               relabel.Drop,
+			Regex:                relabel.MustNewRegexp("(foo)"),
+			NameValidationScheme: model.LegacyValidation,
 		},
 	}
 
@@ -4519,4 +4606,37 @@ func TestFindHALabels(t *testing.T) {
 		assert.Equal(t, c.expected.cluster, cluster)
 		assert.Equal(t, c.expected.replica, replica)
 	}
+}
+
+func TestDistributor_BatchTimeoutMetric(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	distributors, _, regs, _ := prepare(t, prepConfig{
+		numIngesters:    3,
+		happyIngesters:  3,
+		numDistributors: 1,
+		limits:          limits,
+		remoteTimeout:   time.Nanosecond, // To produce timeout
+	})
+
+	distributor := distributors[0]
+	reg := regs[0]
+
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, "user-1")
+
+	for range 5 {
+		request := makeWriteRequest(0, 30, 0, 0)
+		_, err := distributor.Push(ctx, request)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_ingester_push_timeouts_total The total number of push requests to ingesters that were canceled due to timeout.
+		# TYPE cortex_distributor_ingester_push_timeouts_total counter
+		cortex_distributor_ingester_push_timeouts_total 5
+	`), "cortex_distributor_ingester_push_timeouts_total"))
 }

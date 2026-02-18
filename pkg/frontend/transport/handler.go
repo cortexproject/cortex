@@ -28,12 +28,12 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -64,14 +64,16 @@ const (
 	reasonSeriesLimitStoreGateway  = "store_gateway_series_limit"
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
+	reasonUnOptimizedRegexMatcher  = `unoptimized_regex_matcher`
 
-	limitTooManySamples       = `query processing would load too many samples into memory`
-	limitTimeRangeExceeded    = `the query time range exceeds the limit`
-	limitResponseSizeExceeded = `the query response size exceeds limit`
-	limitSeriesFetched        = `the query hit the max number of series limit`
-	limitChunksFetched        = `the query hit the max number of chunks limit`
-	limitChunkBytesFetched    = `the query hit the aggregated chunks size limit`
-	limitDataBytesFetched     = `the query hit the aggregated data size limit`
+	limitTooManySamples          = `query processing would load too many samples into memory`
+	limitTimeRangeExceeded       = `the query time range exceeds the limit`
+	limitResponseSizeExceeded    = `the query response size exceeds limit`
+	limitSeriesFetched           = `the query hit the max number of series limit`
+	limitChunksFetched           = `the query hit the max number of chunks limit`
+	limitChunkBytesFetched       = `the query hit the aggregated chunks size limit`
+	limitDataBytesFetched        = `the query hit the aggregated data size limit`
+	limitUnOptimizedRegexMatcher = `unoptimized regex matcher`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -112,7 +114,7 @@ type Handler struct {
 	queryDataBytes      *prometheus.CounterVec
 	rejectedQueries     *prometheus.CounterVec
 	slowQueries         *prometheus.CounterVec
-	activeUsers         *util.ActiveUsersCleanupService
+	activeUsers         *users.ActiveUsersCleanupService
 
 	initSlowQueryMetric sync.Once
 	reg                 prometheus.Registerer
@@ -175,7 +177,7 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 			},
 			[]string{"reason", "source", "user"},
 		)
-		h.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
+		h.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
 	}
@@ -242,13 +244,13 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		queryString url.Values
 	)
 
-	tenantIDs, err := tenant.TenantIDs(r.Context())
+	tenantIDs, err := users.TenantIDs(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	userID := tenant.JoinTenantIDs(tenantIDs)
+	userID := users.JoinTenantIDs(tenantIDs)
 	source := tripperware.GetSource(r)
 
 	if f.tenantFederationCfg.Enabled {
@@ -585,6 +587,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonChunksLimitStoreGateway
 		} else if strings.Contains(errMsg, limitBytesStoreGateway) {
 			reason = reasonBytesLimitStoreGateway
+		} else if strings.Contains(errMsg, limitUnOptimizedRegexMatcher) {
+			reason = reasonUnOptimizedRegexMatcher
 		}
 	} else if statusCode == http.StatusServiceUnavailable && error != nil {
 		errMsg := error.Error()

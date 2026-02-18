@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context/ctxhttp"
 
+	"github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 )
@@ -360,7 +362,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			}
 			return resp, err
 		},
-	}, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
+	}, r.cfg.NameValidationScheme, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
 
 	n.run()
 
@@ -443,7 +445,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	r.userExternalLabels.cleanup()
 }
 
-func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
+func (m *DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {
 	var errs []error
 
 	if g.Name == "" {
@@ -457,19 +459,41 @@ func (*DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error
 	}
 
 	for i, r := range g.Rules {
-		for _, err := range r.Validate(rulefmt.RuleNode{}) {
-			var ruleName string
-			if r.Alert != "" {
-				ruleName = r.Alert
-			} else {
-				ruleName = r.Record
+		// Use Cortex parser for expression validation (supports XFunctions)
+		if r.Expr != "" {
+			if _, err := parser.ParseExpr(r.Expr); err != nil {
+				var ruleName string
+				if r.Alert != "" {
+					ruleName = r.Alert
+				} else {
+					ruleName = r.Record
+				}
+				errs = append(errs, &rulefmt.Error{
+					Group:    g.Name,
+					Rule:     i,
+					RuleName: ruleName,
+					Err:      rulefmt.WrappedError{},
+				})
 			}
-			errs = append(errs, &rulefmt.Error{
-				Group:    g.Name,
-				Rule:     i,
-				RuleName: ruleName,
-				Err:      err,
-			})
+		}
+
+		// Validate other rule fields using Prometheus validation
+		for _, err := range r.Validate(rulefmt.RuleNode{}, m.cfg.NameValidationScheme) {
+			// Skip expression validation errors since we handle them above
+			if !strings.Contains(err.Error(), "could not parse expression") {
+				var ruleName string
+				if r.Alert != "" {
+					ruleName = r.Alert
+				} else {
+					ruleName = r.Record
+				}
+				errs = append(errs, &rulefmt.Error{
+					Group:    g.Name,
+					Rule:     i,
+					RuleName: ruleName,
+					Err:      err,
+				})
+			}
 		}
 	}
 

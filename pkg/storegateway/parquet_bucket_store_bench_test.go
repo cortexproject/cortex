@@ -77,7 +77,7 @@ func BenchmarkParquetBucketStore_SeriesBatch(b *testing.B) {
 			blockID := prepareParquetBlock(b, ctx, storageCfg, bucketClient, dataDir, userID, series, samplePerSeries)
 
 			reg := prometheus.NewPedanticRegistry()
-			stores, err := NewBucketStores(storageCfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), reg, nil)
+			stores, err := NewBucketStores(storageCfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), reg)
 			require.NoError(b, err)
 
 			// Start gRPC Server

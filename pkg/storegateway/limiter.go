@@ -128,7 +128,7 @@ func newSeriesLimiterFactory(limits *validation.Overrides, userID string) store.
 	}
 }
 
-func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTokenBucket, instanceTokenBucket *util.TokenBucket, tokenBucketBytesLimiterCfg tsdb.TokenBucketBytesLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64, concurrentBytesTracker ConcurrentBytesTracker, registryHolder *trackingLimiterRegistryHolder) store.BytesLimiterFactory {
+func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTokenBucket, instanceTokenBucket *util.TokenBucket, tokenBucketBytesLimiterCfg tsdb.TokenBucketBytesLimiterConfig, getTokensToRetrieve func(tokens uint64, dataType store.StoreDataType) int64, trackerHolder *requestBytesTrackerHolder) store.BytesLimiterFactory {
 	return func(failedCounter prometheus.Counter) store.BytesLimiter {
 		limiters := []store.BytesLimiter{}
 		// Since limit overrides could be live reloaded, we have to get the current user's limit
@@ -145,15 +145,11 @@ func newBytesLimiterFactory(limits *validation.Overrides, userID string, userTok
 			limiters: limiters,
 		}
 
-		if concurrentBytesTracker != nil {
-			trackingLimiter := newTrackingBytesLimiter(innerLimiter, concurrentBytesTracker)
-			if registryHolder != nil {
-				registry := registryHolder.GetRegistry()
-				if registry != nil {
-					registry.Register(trackingLimiter)
-				}
+		if trackerHolder != nil {
+			reqTracker := trackerHolder.Get()
+			if reqTracker != nil {
+				return newTrackingBytesLimiter(innerLimiter, reqTracker)
 			}
-			return trackingLimiter
 		}
 		return innerLimiter
 	}

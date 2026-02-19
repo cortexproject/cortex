@@ -302,23 +302,22 @@ func TestProperty_PanicRecoveryCleanup(t *testing.T) {
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }
 
-func TestProperty_PanicRecoveryWithRegistry(t *testing.T) {
+func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 	f := func(seed int64) bool {
 		rng := rand.New(rand.NewSource(seed))
 		bytesLimit := uint64(rng.Intn(1024*1024*1024)) + 1024
 		numLimiters := rng.Intn(10) + 1
 
 		tracker := NewConcurrentBytesTracker(bytesLimit, nil)
-		registry := newTrackingBytesLimiterRegistry()
+		reqTracker := newRequestBytesTracker(tracker)
 
 		func() {
 			defer func() { recover() }()
-			defer registry.ReleaseAll()
+			defer reqTracker.ReleaseAll()
 
 			for range numLimiters {
 				inner := newMockBytesLimiter(bytesLimit)
-				limiter := newTrackingBytesLimiter(inner, tracker)
-				registry.Register(limiter)
+				limiter := newTrackingBytesLimiter(inner, reqTracker)
 
 				bytes := uint64(rng.Intn(1024*1024)) + 1
 				limiter.ReserveWithType(bytes, store.PostingsFetched)

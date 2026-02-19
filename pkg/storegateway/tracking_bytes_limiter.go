@@ -10,17 +10,49 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 )
 
-type trackingBytesLimiter struct {
-	inner    store.BytesLimiter
+type requestBytesTracker struct {
 	tracker  ConcurrentBytesTracker
-	tracked  atomic.Uint64
+	total    atomic.Uint64
 	released atomic.Bool
 }
 
-func newTrackingBytesLimiter(inner store.BytesLimiter, tracker ConcurrentBytesTracker) *trackingBytesLimiter {
-	return &trackingBytesLimiter{
-		inner:   inner,
+func newRequestBytesTracker(tracker ConcurrentBytesTracker) *requestBytesTracker {
+	return &requestBytesTracker{
 		tracker: tracker,
+	}
+}
+
+func (r *requestBytesTracker) Add(bytes uint64) error {
+	if err := r.tracker.Add(bytes); err != nil {
+		return err
+	}
+	r.total.Add(bytes)
+	return nil
+}
+
+func (r *requestBytesTracker) ReleaseAll() {
+	if !r.released.CompareAndSwap(false, true) {
+		return
+	}
+	bytes := r.total.Load()
+	if bytes > 0 {
+		r.tracker.Release(bytes)
+	}
+}
+
+func (r *requestBytesTracker) Total() uint64 {
+	return r.total.Load()
+}
+
+type trackingBytesLimiter struct {
+	inner          store.BytesLimiter
+	requestTracker *requestBytesTracker
+}
+
+func newTrackingBytesLimiter(inner store.BytesLimiter, requestTracker *requestBytesTracker) *trackingBytesLimiter {
+	return &trackingBytesLimiter{
+		inner:          inner,
+		requestTracker: requestTracker,
 	}
 }
 
@@ -28,74 +60,27 @@ func (t *trackingBytesLimiter) ReserveWithType(num uint64, dataType store.StoreD
 	if err := t.inner.ReserveWithType(num, dataType); err != nil {
 		return err
 	}
-
-	if err := t.tracker.Add(num); err != nil {
-		return err
-	}
-	_ = t.tracked.Add(num)
-
-	return nil
+	return t.requestTracker.Add(num)
 }
 
-func (t *trackingBytesLimiter) Release() {
-	if !t.released.CompareAndSwap(false, true) {
-		return
-	}
-
-	bytes := t.tracked.Load()
-	if bytes > 0 {
-		t.tracker.Release(bytes)
-		t.tracked.Store(0)
-	}
+type requestBytesTrackerHolder struct {
+	trackers sync.Map
 }
 
-func (t *trackingBytesLimiter) TrackedBytes() uint64 {
-	return t.tracked.Load()
+func (h *requestBytesTrackerHolder) Set(tracker *requestBytesTracker) {
+	h.trackers.Store(getGoroutineID(), tracker)
 }
 
-type trackingBytesLimiterRegistry struct {
-	mu       sync.Mutex
-	limiters []*trackingBytesLimiter
-}
-
-func newTrackingBytesLimiterRegistry() *trackingBytesLimiterRegistry {
-	return &trackingBytesLimiterRegistry{}
-}
-
-func (r *trackingBytesLimiterRegistry) Register(limiter *trackingBytesLimiter) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.limiters = append(r.limiters, limiter)
-}
-
-func (r *trackingBytesLimiterRegistry) ReleaseAll() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for _, limiter := range r.limiters {
-		limiter.Release()
-	}
-	r.limiters = nil
-}
-
-type trackingLimiterRegistryHolder struct {
-	registries sync.Map
-}
-
-func (h *trackingLimiterRegistryHolder) SetRegistry(registry *trackingBytesLimiterRegistry) {
-	h.registries.Store(getGoroutineID(), registry)
-}
-
-func (h *trackingLimiterRegistryHolder) GetRegistry() *trackingBytesLimiterRegistry {
-	val, ok := h.registries.Load(getGoroutineID())
+func (h *requestBytesTrackerHolder) Get() *requestBytesTracker {
+	val, ok := h.trackers.Load(getGoroutineID())
 	if !ok {
 		return nil
 	}
-	return val.(*trackingBytesLimiterRegistry)
+	return val.(*requestBytesTracker)
 }
 
-func (h *trackingLimiterRegistryHolder) ClearRegistry() {
-	h.registries.Delete(getGoroutineID())
+func (h *requestBytesTrackerHolder) Clear() {
+	h.trackers.Delete(getGoroutineID())
 }
 
 func getGoroutineID() int64 {

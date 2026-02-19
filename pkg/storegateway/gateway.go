@@ -131,9 +131,6 @@ type StoreGateway struct {
 
 	resourceBasedLimiter *util_limiter.ResourceBasedLimiter
 
-	// Concurrent bytes tracker for limiting bytes being processed across all queries.
-	concurrentBytesTracker ConcurrentBytesTracker
-
 	bucketSync *prometheus.CounterVec
 }
 
@@ -241,8 +238,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 		shardingStrategy = NewNoShardingStrategy(logger, allowedTenants)
 	}
 
-	g.concurrentBytesTracker = NewConcurrentBytesTracker(uint64(storageCfg.BucketStore.MaxConcurrentBytes), reg)
-	g.stores, err = NewBucketStores(storageCfg, shardingStrategy, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg), g.concurrentBytesTracker)
+	g.stores, err = NewBucketStores(storageCfg, shardingStrategy, bucketClient, limits, logLevel, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-gateway"}, reg))
 	if err != nil {
 		return nil, errors.Wrap(err, "create bucket stores")
 	}

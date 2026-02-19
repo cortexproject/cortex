@@ -112,20 +112,19 @@ type ThanosBucketStores struct {
 var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many inflight requests in store gateway")
 
 // NewBucketStores makes a new BucketStores.
-// Note: concurrentBytesTracker is currently only used by the TSDB bucket store implementation.
-func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, concurrentBytesTracker ConcurrentBytesTracker) (BucketStores, error) {
+func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (BucketStores, error) {
 	switch cfg.BucketStore.BucketStoreType {
 	case string(tsdb.ParquetBucketStore):
 		return newParquetBucketStores(cfg, bucketClient, limits, logger, reg)
 	case string(tsdb.TSDBBucketStore):
-		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg, concurrentBytesTracker)
+		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg)
 	default:
 		return nil, fmt.Errorf("unsupported bucket store type: %s", cfg.BucketStore.BucketStoreType)
 	}
 }
 
 // newThanosBucketStores creates a new TSDB-based bucket stores
-func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer, concurrentBytesTracker ConcurrentBytesTracker) (*ThanosBucketStores, error) {
+func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*ThanosBucketStores, error) {
 	matchers := tsdb.NewMatchers()
 	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, tsdb.ParquetLabelsCacheConfig{}, matchers, bucketClient, logger, reg)
 	if err != nil {
@@ -155,7 +154,7 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 		partitioner:            newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
 		userTokenBuckets:       make(map[string]*util.TokenBucket),
 		inflightRequests:       util.NewInflightRequestTracker(),
-		concurrentBytesTracker: concurrentBytesTracker,
+		concurrentBytesTracker: NewConcurrentBytesTracker(uint64(cfg.BucketStore.MaxConcurrentBytes), reg),
 		trackingRegistryHolder: &trackingLimiterRegistryHolder{},
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",

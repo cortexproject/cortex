@@ -60,6 +60,7 @@ func NewConcurrentBytesTracker(maxConcurrentBytes uint64, reg prometheus.Registe
 
 func (t *concurrentBytesTracker) Add(bytes uint64) error {
 	if t.maxConcurrentBytes > 0 && t.Current()+bytes > t.maxConcurrentBytes {
+		t.rejectedRequestsTotal.Inc()
 		return pool.ErrPoolExhausted
 	}
 

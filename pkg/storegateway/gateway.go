@@ -416,9 +416,6 @@ func (g *StoreGateway) Series(req *storepb.SeriesRequest, srv storegatewaypb.Sto
 	if err := g.checkResourceUtilization(); err != nil {
 		return err
 	}
-	if err := g.concurrentBytesTracker.TryAccept(srv.Context()); err != nil {
-		return err
-	}
 	return g.stores.Series(req, srv)
 }
 

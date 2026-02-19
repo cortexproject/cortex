@@ -1,21 +1,17 @@
 package storegateway
 
 import (
-	"context"
-	"net/http"
 	"sync/atomic"
 	"time"
 
-	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/thanos-io/thanos/pkg/pool"
 )
 
 const peakResetInterval = 30 * time.Second
 
 type ConcurrentBytesTracker interface {
-	TryAccept(ctx context.Context) error
-	Add(bytes uint64) func()
+	Add(bytes uint64) error
 	Release(bytes uint64)
 	Current() uint64
 	Stop()
@@ -62,31 +58,11 @@ func NewConcurrentBytesTracker(maxConcurrentBytes uint64, reg prometheus.Registe
 	return tracker
 }
 
-func (t *concurrentBytesTracker) TryAccept(ctx context.Context) error {
-	if ctx != nil {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			// Context is not cancelled, continue
-		}
+func (t *concurrentBytesTracker) Add(bytes uint64) error {
+	if t.maxConcurrentBytes > 0 && t.Current()+bytes > t.maxConcurrentBytes {
+		return pool.ErrPoolExhausted
 	}
 
-	if t.maxConcurrentBytes == 0 {
-		return nil
-	}
-
-	current := t.currentBytes.Load()
-	if current >= t.maxConcurrentBytes {
-		t.rejectedRequestsTotal.Inc()
-		reqID := requestmeta.RequestIdFromContext(ctx)
-		return httpgrpc.Errorf(http.StatusServiceUnavailable,
-			"concurrent bytes limit reached: current=%d, max=%d, request_id=%s", current, t.maxConcurrentBytes, reqID)
-	}
-	return nil
-}
-
-func (t *concurrentBytesTracker) Add(bytes uint64) func() {
 	newValue := t.currentBytes.Add(bytes)
 	for {
 		peak := t.peakBytes.Load()
@@ -99,9 +75,7 @@ func (t *concurrentBytesTracker) Add(bytes uint64) func() {
 		// CAS failed, retry
 	}
 
-	return func() {
-		t.Release(bytes)
-	}
+	return nil
 }
 
 func (t *concurrentBytesTracker) Release(bytes uint64) {

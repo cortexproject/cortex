@@ -29,7 +29,9 @@ func (t *trackingBytesLimiter) ReserveWithType(num uint64, dataType store.StoreD
 		return err
 	}
 
-	_ = t.tracker.Add(num)
+	if err := t.tracker.Add(num); err != nil {
+		return err
+	}
 	_ = t.tracked.Add(num)
 
 	return nil

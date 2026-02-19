@@ -3103,9 +3103,9 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.enable-startup-sync
   [enable_startup_sync: <boolean> | default = false]
 
-  # Backend storage to use for the ring. Please be aware that memberlist is not
-  # supported by the HA tracker since gossip propagation is too slow for HA
-  # purposes.
+  # Backend storage to use for the ring. Please be aware that memberlist support
+  # in the HA tracker is currently experimental since gossip propagation is too
+  # slow for HA purposes.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,
     # dynamodb, etcd, inmemory, memberlist, multi.

@@ -6931,7 +6931,7 @@ If memberlist library detects that a new node is trying to reuse the name of a p
 &lt;ul>
 &lt;li>&lt;code>multi.primary&lt;/code> - name of primary KV store. Same values as in &lt;code>ring.store&lt;/code> are supported, except &lt;code>multi&lt;/code>.&lt;/li>
 &lt;li>&lt;code>multi.secondary&lt;/code> - name of secondary KV store.&lt;/li>
-&lt;li>&lt;code>multi.mirror-enabled&lt;/code> - enable mirroring of values to secondary store, defaults to true&lt;/li>
+&lt;li>&lt;code>multi.mirror-enabled&lt;/code> - enable mirroring of values to secondary store, defaults to false&lt;/li>
 &lt;li>&lt;code>multi.mirror-timeout&lt;/code> - wait max this time for write to secondary store to finish. Defaults to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via &lt;code>cortex_multikv_mirror_write_errors_total&lt;/code> metric.&lt;/li>
 &lt;/ul>
 &lt;p>Multi KV also reacts to changes done via runtime configuration. It uses this section:&lt;/p>

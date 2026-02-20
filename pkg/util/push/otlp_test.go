@@ -39,6 +39,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 		description             string
 		enableTypeAndUnitLabels bool
 		allowDeltaTemporality   bool
+		addMetricSuffixes       bool
 		otlpSeries              pmetric.Metric
 		expectedLabels          labels.Labels
 		expectedMetadata        prompb.MetricMetadata
@@ -46,6 +47,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 		{
 			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should be attached when the type is the gauge",
 			enableTypeAndUnitLabels: true,
+			addMetricSuffixes:       true,
 			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityCumulative, ts),
 			expectedLabels: labels.FromMap(map[string]string{
 				"__name__":   "test_seconds",
@@ -59,6 +61,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 			description:             "[enableTypeAndUnitLabels: true], the '__type__' label should not be attached when the type is unknown",
 			enableTypeAndUnitLabels: true,
 			allowDeltaTemporality:   true,
+			addMetricSuffixes:       true,
 			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityDelta, ts),
 			expectedLabels: labels.FromMap(map[string]string{
 				"__name__":   "test_seconds",
@@ -70,6 +73,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 		{
 			description:             "[enableTypeAndUnitLabels: false]",
 			enableTypeAndUnitLabels: false,
+			addMetricSuffixes:       true,
 			otlpSeries:              createOtelSum("test", "seconds", pmetric.AggregationTemporalityCumulative, ts),
 			expectedLabels: labels.FromMap(map[string]string{
 				"__name__":   "test_seconds",
@@ -83,6 +87,7 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 		t.Run(test.description, func(t *testing.T) {
 			cfg := distributor.OTLPConfig{
 				AllowDeltaTemporality: test.allowDeltaTemporality,
+				AddMetricSuffixes:     test.addMetricSuffixes,
 			}
 			metrics := pmetric.NewMetrics()
 			rm := metrics.ResourceMetrics().AppendEmpty()
@@ -388,6 +393,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			cfg: distributor.OTLPConfig{
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    false,
+				AddMetricSuffixes:    true,
 			},
 			expectedLabels: []prompb.Label{
 				{
@@ -410,6 +416,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			cfg: distributor.OTLPConfig{
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    true,
+				AddMetricSuffixes:    true,
 			},
 			expectedLabels: []prompb.Label{
 				{
@@ -432,6 +439,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			cfg: distributor.OTLPConfig{
 				ConvertAllAttributes: false,
 				DisableTargetInfo:    true,
+				AddMetricSuffixes:    true,
 			},
 			expectedLabels: []prompb.Label{
 				{
@@ -450,6 +458,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			cfg: distributor.OTLPConfig{
 				ConvertAllAttributes: true,
 				DisableTargetInfo:    true,
+				AddMetricSuffixes:    true,
 			},
 			expectedLabels: []prompb.Label{
 				{
@@ -484,6 +493,7 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 			cfg: distributor.OTLPConfig{
 				ConvertAllAttributes: true,
 				DisableTargetInfo:    true,
+				AddMetricSuffixes:    true,
 			},
 			expectedLabels: []prompb.Label{
 				{

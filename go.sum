@@ -1791,8 +1791,8 @@ github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488 h1:khBsQLLRoF1K
 github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488/go.mod h1:uDHLkMKOGDAnlN75EAz8VrRzob1+VbgYSuUleatWuF0=
 github.com/thanos-io/promql-engine v0.0.0-20260119085929-dd5223783674 h1:C5yBEuIZCaeLh90lcUGfnGepmwDfGGYLu6+w7RxR7og=
 github.com/thanos-io/promql-engine v0.0.0-20260119085929-dd5223783674/go.mod h1:uzn40oZHPXvfdP498h+MiRL2fN7RF519gNaV3LyhChc=
-github.com/thanos-io/thanos v0.40.1-0.20260204190131-802f43f3bc64 h1:9gQnp3k3te0BIbLFA/diuOgoJMQ2vhvTo8hzrPMcfiI=
-github.com/thanos-io/thanos v0.40.1-0.20260204190131-802f43f3bc64/go.mod h1:ZgknkTTliTvUeZy4lqVYrRp2l5TxUGLWcaonGyUbynw=
+github.com/thanos-io/thanos v0.41.0 h1:GDPGynjHBa8ORAX7DfluBFjHbMeY1BzjLTGdviFvo7Q=
+github.com/thanos-io/thanos v0.41.0/go.mod h1:ppdHafpAT8WAbcwgLiNU4jNtNe17Ct3xX9dXq+h6g2k=
 github.com/tinylib/msgp v1.6.1 h1:ESRv8eL3u+DNHUoSAAQRE50Hm162zqAnBoGv9PzScPY=
 github.com/tinylib/msgp v1.6.1/go.mod h1:RSp0LW9oSxFut3KzESt5Voq4GVWyS+PSulT77roAqEA=
 github.com/tjhop/slog-gokit v0.1.4 h1:uj/vbDt3HaF0Py8bHPV4ti/s0utnO0miRbO277FLBKM=
@@ -2696,8 +2696,8 @@ google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697/go.
 google.golang.org/genproto/googleapis/rpc v0.0.0-20241202173237-19429a94021a/go.mod h1:5uTbfoYQed2U9p3KIj2/Zzm02PYhndfdmML0qC3q3FU=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20250102185135-69823020774d/go.mod h1:3ENsm/5D1mzDyhpzeRi1NR784I0BcofWBoSc5QqqMK4=
 google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f/go.mod h1:+2Yz8+CLJbIfL9z73EW45avw8Lmge3xVElCP9zEKi50=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 h1:gRkg/vSppuSQoDjxyiGfN4Upv/h/DQmIR10ZU8dh4Ww=
-google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217/go.mod h1:7i2o+ce6H/6BluujYR+kqX3GKH+dChPTQU19wjRPiGk=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260114163908-3f89685c29c3 h1:C4WAdL+FbjnGlpp2S+HMVhBeCq2Lcib4xZqfPNF6OoQ=
+google.golang.org/genproto/googleapis/rpc v0.0.0-20260114163908-3f89685c29c3/go.mod h1:j9x/tPzZkyxcgEFkiKEEGxfvyumM01BEtsW8xzOahRQ=
 google.golang.org/grpc v1.71.2 h1:KnzCueW4s+8ojAPZ+NnyZAELjsIMJGteKjKejieEC7M=
 google.golang.org/grpc v1.71.2/go.mod h1:H0GRtasmQOh9LkFoCPDu3ZrwUtD1YGE+b2vYBYd/8Ec=
 google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0/go.mod h1:6Kw0yEErY5E/yWrBtf03jp27GLLJujG4z/JK95pnjjw=

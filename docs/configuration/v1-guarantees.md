@@ -68,6 +68,7 @@ Currently experimental features are:
   - `-tenant-federation.enabled`
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.user-sync-interval`
+  - `-tenant-federation.allow-partial-data`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
 - Instance limits in ingester and distributor

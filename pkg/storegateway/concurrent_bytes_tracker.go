@@ -1,12 +1,14 @@
 package storegateway
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/pool"
 )
+
+var ErrMaxConcurrentBytesLimitExceeded = errors.New("max concurrent bytes limit exceeded")
 
 const peakResetInterval = 30 * time.Second
 
@@ -61,7 +63,7 @@ func NewConcurrentBytesTracker(maxConcurrentBytes uint64, reg prometheus.Registe
 func (t *concurrentBytesTracker) Add(bytes uint64) error {
 	if t.maxConcurrentBytes > 0 && t.Current()+bytes > t.maxConcurrentBytes {
 		t.rejectedRequestsTotal.Inc()
-		return pool.ErrPoolExhausted
+		return ErrMaxConcurrentBytesLimitExceeded
 	}
 
 	newValue := t.currentBytes.Add(bytes)

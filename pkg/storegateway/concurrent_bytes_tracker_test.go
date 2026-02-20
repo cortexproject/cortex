@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 )
 
@@ -30,7 +29,7 @@ func TestConcurrentBytesTracker_Basic(t *testing.T) {
 		require.NoError(t, tracker.Add(100))
 
 		err := tracker.Add(1)
-		assert.ErrorIs(t, err, pool.ErrPoolExhausted)
+		assert.ErrorIs(t, err, ErrMaxConcurrentBytesLimitExceeded)
 		assert.Equal(t, uint64(100), tracker.Current())
 	})
 
@@ -219,7 +218,7 @@ func TestProperty_RejectionReturnsPoolExhausted(t *testing.T) {
 		bytesToAdd = limit + (bytesToAdd % (1024 * 1024 * 1024)) + 1
 
 		tracker := NewConcurrentBytesTracker(limit, nil)
-		return tracker.Add(bytesToAdd) == pool.ErrPoolExhausted
+		return tracker.Add(bytesToAdd) == ErrMaxConcurrentBytesLimitExceeded
 	}
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }
@@ -331,7 +330,7 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }
 
-func TestPropertyAddReturnsErrPoolExhaustedIffOverLimit(t *testing.T) {
+func TestPropertyAddReturnsErrMaxConcurrentBytesLimitExceededIffOverLimit(t *testing.T) {
 	f := func(seed int64) bool {
 		rng := rand.New(rand.NewSource(seed))
 		limit := uint64(rng.Intn(10*1024*1024)) + 1
@@ -347,7 +346,7 @@ func TestPropertyAddReturnsErrPoolExhaustedIffOverLimit(t *testing.T) {
 			err := tracker.Add(bytes)
 
 			if cumulativeBytes+bytes > limit {
-				if err != pool.ErrPoolExhausted {
+				if err != ErrMaxConcurrentBytesLimitExceeded {
 					return false
 				}
 			} else {

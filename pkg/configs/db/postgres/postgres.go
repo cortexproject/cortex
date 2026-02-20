@@ -16,7 +16,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres" // Import the postgres migrations driver
 	_ "github.com/golang-migrate/migrate/v4/source/file"       // Import the postgres migrations driver
-	"github.com/lib/pq"                                        // Import the postgres sql driver
 	"github.com/pkg/errors"
 )
 
@@ -120,7 +119,7 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]userconfig.View, er
 		var cfg userconfig.View
 		var cfgBytes []byte
 		var userID string
-		var deletedAt pq.NullTime
+		var deletedAt sql.NullTime
 		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &deletedAt)
 		if err != nil {
 			return nil, err
@@ -146,7 +145,7 @@ func (d DB) findConfigs(filter squirrel.Sqlizer) (map[string]userconfig.View, er
 func (d DB) GetConfig(ctx context.Context, userID string) (userconfig.View, error) {
 	var cfgView userconfig.View
 	var cfgBytes []byte
-	var deletedAt pq.NullTime
+	var deletedAt sql.NullTime
 	err := d.Select("id", "config", "deleted_at").
 		From("configs").
 		Where(squirrel.And{allConfigs, squirrel.Eq{"owner_id": userID}}).
@@ -257,7 +256,7 @@ func (d DB) findRulesConfigs(filter squirrel.Sqlizer) (map[string]userconfig.Ver
 		var userID string
 		var cfgBytes []byte
 		var rfvBytes []byte
-		var deletedAt pq.NullTime
+		var deletedAt sql.NullTime
 		err = rows.Scan(&cfg.ID, &userID, &cfgBytes, &rfvBytes, &deletedAt)
 		if err != nil {
 			return nil, err
@@ -303,7 +302,7 @@ func (d DB) GetRulesConfigs(ctx context.Context, since userconfig.ID) (map[strin
 // SetDeletedAtConfig sets a deletedAt for configuration
 // by adding a single new row with deleted_at set
 // the same as SetConfig is actually insert
-func (d DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt pq.NullTime, cfg userconfig.Config) error {
+func (d DB) SetDeletedAtConfig(ctx context.Context, userID string, deletedAt sql.NullTime, cfg userconfig.Config) error {
 	cfgBytes, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -321,7 +320,7 @@ func (d DB) DeactivateConfig(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	return d.SetDeletedAtConfig(ctx, userID, pq.NullTime{Time: time.Now(), Valid: true}, cfg.Config)
+	return d.SetDeletedAtConfig(ctx, userID, sql.NullTime{Time: time.Now(), Valid: true}, cfg.Config)
 }
 
 // RestoreConfig restores configuration.
@@ -330,7 +329,7 @@ func (d DB) RestoreConfig(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	return d.SetDeletedAtConfig(ctx, userID, pq.NullTime{}, cfg.Config)
+	return d.SetDeletedAtConfig(ctx, userID, sql.NullTime{}, cfg.Config)
 }
 
 // Transaction runs the given function in a postgres transaction. If fn returns

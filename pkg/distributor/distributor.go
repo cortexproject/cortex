@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/scrape"
@@ -73,8 +74,9 @@ const (
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
 
-	sampleMetricTypeFloat     = "float"
-	sampleMetricTypeHistogram = "histogram"
+	sampleMetricTypeFloat         = "float"
+	sampleMetricTypeHistogram     = "histogram"
+	sampleMetricTypeHistogramNHCB = "nhcb" // Native histogram with custom buckets schema
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -521,10 +523,12 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
+	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
+	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.incomingExemplars.DeleteLabelValues(userID)
 	d.incomingMetadata.DeleteLabelValues(userID)
 	d.nonHASamples.DeleteLabelValues(userID)
@@ -734,15 +738,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	numFloatSamples := 0
 	numHistogramSamples := 0
+	numNHCBSamples := 0
 	numExemplars := 0
 	for _, ts := range req.Timeseries {
 		numFloatSamples += len(ts.Samples)
+		nhcb := countNHCB(ts.Histograms)
+		numNHCBSamples += nhcb
 		numHistogramSamples += len(ts.Histograms)
 		numExemplars += len(ts.Exemplars)
 	}
 	// Count the total samples, exemplars in, prior to validation or deduplication, for comparison with other metrics.
 	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(numFloatSamples))
 	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(numHistogramSamples))
+	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogramNHCB).Add(float64(numNHCBSamples))
 	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
@@ -797,7 +805,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedNHCBSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
 	if err != nil {
 		return nil, err
 	}
@@ -805,6 +813,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(validatedFloatSamples))
 	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(validatedHistogramSamples))
+	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogramNHCB).Add(float64(validatedNHCBSamples))
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
@@ -1012,7 +1021,18 @@ type samplesLabelSetEntry struct {
 	labels           labels.Labels
 }
 
-func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
+// countNHCB returns the number of native histograms with custom buckets schema in the given slice.
+func countNHCB(histograms []cortexpb.Histogram) int {
+	n := 0
+	for _, h := range histograms {
+		if histogram.IsCustomBucketsSchema(h.GetSchema()) {
+			n++
+		}
+	}
+	return n
+}
+
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, int, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
@@ -1024,6 +1044,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	nhSeriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
+	validatedNHCBSamples := 0
 	validatedExemplars := 0
 	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
@@ -1043,9 +1064,10 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-	for _, ts := range req.Timeseries {
+	for i := range req.Timeseries {
+		ts := &req.Timeseries[i]
 		if len(ts.Labels) == 0 {
-			return nil, nil, nil, nil, 0, 0, 0, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", "empty labels found")
+			return nil, nil, nil, nil, 0, 0, 0, 0, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", "empty labels found")
 		}
 
 		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
@@ -1148,9 +1170,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, nil, nil, 0, 0, 0, nil, err
+			return nil, nil, nil, nil, 0, 0, 0, 0, nil, err
 		}
-		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
+		validatedSeries, validationErr := d.validateSeries(*ts, userID, skipLabelNameValidation, limits)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
@@ -1170,6 +1192,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			// TODO: use pool.
 			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
 		}
+		nhcb := countNHCB(ts.Histograms)
 		for _, l := range matchedLabelSetLimits {
 			if c, exists := labelSetCounters[l.Hash]; exists {
 				c.floatSamples += int64(len(ts.Samples))
@@ -1192,6 +1215,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
+		validatedNHCBSamples += nhcb
 		validatedExemplars += len(ts.Exemplars)
 	}
 	for h, counter := range labelSetCounters {
@@ -1205,7 +1229,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 	}
 
-	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
+	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedNHCBSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {

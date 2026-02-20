@@ -132,6 +132,9 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.52.0
 ## explicit; go 1.23.8
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
+# github.com/KimMachineGun/automemlimit v0.7.3
+## explicit; go 1.22.0
+github.com/KimMachineGun/automemlimit/memlimit
 # github.com/Masterminds/squirrel v1.5.4
 ## explicit; go 1.14
 github.com/Masterminds/squirrel

@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 const (
@@ -830,6 +831,8 @@ func (m *KV) notifyWatchers(key string) {
 // After too many failed retries, this method returns error.
 func (m *KV) CAS(ctx context.Context, key string, codec codec.Codec, f func(in any) (out any, retry bool, err error)) error {
 	var lastError error
+	var retryTimer *time.Timer
+	defer utiltimer.StopAndDrainTimer(retryTimer)
 
 outer:
 	for retries := m.maxCasRetries; retries > 0; retries-- {
@@ -839,9 +842,14 @@ outer:
 			// We only get here, if 'f' reports some change, but Merge function reports no change. This can happen
 			// with Ring's merge function, which depends on timestamps (and not the tokens) with 1-second resolution.
 			// By waiting for one second, we hope that Merge will be able to detect change from 'f' function.
+			if retryTimer == nil {
+				retryTimer = time.NewTimer(noChangeDetectedRetrySleep)
+			} else {
+				utiltimer.ResetTimer(retryTimer, noChangeDetectedRetrySleep)
+			}
 
 			select {
-			case <-time.After(noChangeDetectedRetrySleep):
+			case <-retryTimer.C:
 				// ok
 			case <-ctx.Done():
 				lastError = ctx.Err()

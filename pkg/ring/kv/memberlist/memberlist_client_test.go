@@ -1355,3 +1355,55 @@ func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string, flushOld 
 func (p dnsProviderMock) Addresses() []string {
 	return p.resolved
 }
+
+func BenchmarkCASTimerAllocation(b *testing.B) {
+	c := dataCodec{}
+
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{}
+	cfg.Codecs = []codec.Codec{c}
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	// Reduce max retries for faster benchmark
+	mkv.maxCasRetries = 3
+
+	require.NoError(b, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(b, err)
+
+	// Set up initial data
+	err = kv.CAS(context.Background(), "bench", func(in any) (out any, retry bool, err error) {
+		d := &data{Members: map[string]member{}}
+		d.Members["test"] = member{
+			Timestamp: time.Now().Unix(),
+			State:     JOINING,
+		}
+		return d, true, nil
+	})
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+
+	for b.Loop() {
+		retryCount := 0
+		// This will trigger 2 retries (total 3 attempts) before succeeding
+		_ = kv.CAS(context.Background(), "bench", func(in any) (out any, retry bool, err error) {
+			d := in.(*data)
+			retryCount++
+
+			// Trigger retries by returning same data
+			if retryCount < 3 {
+				return d, true, nil
+			}
+
+			// Make change on 3rd attempt
+			m := d.Members["test"]
+			m.Timestamp = time.Now().Unix()
+			d.Members["test"] = m
+			return d, true, nil
+		})
+	}
+}

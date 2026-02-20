@@ -80,7 +80,7 @@ func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", "", f)
 }
 
-func (d *ReplicaDesc) Clone() interface{} {
+func (d *ReplicaDesc) Clone() any {
 	return proto.Clone(d)
 }
 

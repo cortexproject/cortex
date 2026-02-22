@@ -77,6 +77,7 @@ distributor:
     disable_target_info: <boolean>
     allow_delta_temporality: <boolean>
     enable_type_and_unit_labels: <boolean>
+    add_metric_suffixes: <boolean> // pending more here
 ```
 
 ### Ingest `target_info` metric
@@ -156,3 +157,8 @@ overrides:
     promote_resource_attributes: ["attr1", "attr2"]
 `
 ```
+
+### Configure adding suffixes to metrics
+
+The flag `add_metric_suffixes` allows control to add suffixes to metrics for normalization.
+This flag is enabled by default.

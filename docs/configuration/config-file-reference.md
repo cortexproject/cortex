@@ -3337,6 +3337,10 @@ otlp:
   # Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
+
+  # If true, suffixes will be added to the metrics.
+  # CLI flag: -distributor.otlp.add-metric-suffixes
+  [add_metric_suffixes: <boolean> | default = true]
 ```
 
 ### `etcd_config`

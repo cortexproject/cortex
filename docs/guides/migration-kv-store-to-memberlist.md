@@ -2,7 +2,7 @@
 title: "Migration KV Store to Memberlist"
 linkTitle: "Migration KV Store to Memberlist"
 weight: 10
-slug: migration-kv-store-to-memberlist 
+slug: migration-kv-store-to-memberlist
 ---
 
 This guide explains how to perform a live migration of the Cortex Key-Value (KV) Store from an external backend (such as Consul or Etcd) to Memberlist.
@@ -50,9 +50,9 @@ ingester:
 ...
 ```
 > **Why `join_after: 60s`?**
-> 
+>
 > The Memberlist gossip protocol requires a bit of time to propagate the state across the cluster. Setting a 60-second delay ensures that the ingester has enough time to fully sync the existing ring topology from other peers before actively joining and receiving traffic.
-> 
+>
 > **Note:** Make sure to apply this multi KV store configuration to all other components that interact with the ring (e.g. distributors, store-gateways), not just the ingesters.
 
 Once deployed, Cortex will begin mirroring primary (Consul) data to Memberlist.

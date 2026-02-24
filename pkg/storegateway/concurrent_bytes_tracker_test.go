@@ -113,7 +113,6 @@ func TestProperty_ThreadSafeCounterUpdates(t *testing.T) {
 		var wg sync.WaitGroup
 		for range numOps {
 			wg.Go(func() {
-				defer wg.Done()
 				_ = tracker.Add(bytesPerOp)
 			})
 		}
@@ -125,7 +124,6 @@ func TestProperty_ThreadSafeCounterUpdates(t *testing.T) {
 
 		for range numOps {
 			wg.Go(func() {
-				defer wg.Done()
 				tracker.Release(bytesPerOp)
 			})
 		}

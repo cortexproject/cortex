@@ -36,9 +36,10 @@ const (
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
 
-	labelValuePRW1 = "prw1"
-	labelValuePRW2 = "prw2"
-	labelValueOTLP = "otlp"
+	labelValuePRW1   = "prw1"
+	labelValuePRW2   = "prw2"
+	labelValueOTLP   = "otlp"
+	labelValueUnknown = "unknown"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
@@ -155,8 +156,10 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 		}
 
 		msgType, err := remote.ParseProtoMsg(contentType)
+		contentTypeUnknownOrInvalid := false
 		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
 			if acceptUnknownRemoteWriteContentType {
+				contentTypeUnknownOrInvalid = true
 				msgType = remote.WriteV1MessageType
 				level.Debug(logger).Log("msg", "Treating unknown or invalid content-type as remote write v1", "content_type", contentType, "msgType", msgType, "err", err)
 			} else {
@@ -173,7 +176,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 		}
 
 		if requestTotal != nil {
-			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
+			requestTotal.WithLabelValues(getTypeLabel(msgType, contentTypeUnknownOrInvalid)).Inc()
 		}
 
 		enc := r.Header.Get("Content-Encoding")
@@ -316,10 +319,12 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 	return v1Exemplars, nil
 }
 
-func getTypeLabel(msgType remote.WriteMessageType) string {
+func getTypeLabel(msgType remote.WriteMessageType, unknownOrInvalidContentType bool) string {
+	if unknownOrInvalidContentType {
+		return labelValueUnknown
+	}
 	if msgType == remote.WriteV1MessageType {
 		return labelValuePRW1
 	}
-
 	return labelValuePRW2
 }

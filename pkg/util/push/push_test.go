@@ -813,6 +813,20 @@ func TestHandler_MetricCollection(t *testing.T) {
 		val := testutil.ToFloat64(counter.WithLabelValues("prw2"))
 		assert.Equal(t, 1.0, val)
 	})
+
+	t.Run("counts unknown or invalid content-type as unknown when acceptUnknownRemoteWriteContentType is true", func(t *testing.T) {
+		handlerWithUnknown := Handler(true, true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+		req := createRequestWithHeaders(t, map[string]string{
+			"Content-Type":     "yolo",
+			"Content-Encoding": "snappy",
+		}, createCortexWriteRequestProtobuf(t, false, cortexpb.API))
+		resp := httptest.NewRecorder()
+		handlerWithUnknown.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusOK, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("unknown"))
+		assert.Equal(t, 1.0, val)
+	})
 }
 
 func verifyWriteRequestHandler(t *testing.T, expectSource cortexpb.SourceEnum) func(ctx context.Context, request *cortexpb.WriteRequest) (response *cortexpb.WriteResponse, err error) {

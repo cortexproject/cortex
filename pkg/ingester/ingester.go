@@ -1416,19 +1416,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					return makeMetricLimitError(perLabelsetSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
-			case errors.Is(cause, histogram.ErrHistogramSpanNegativeOffset):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramSpansBucketsMismatch):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramNegativeBucketCount):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramCountNotBigEnough):
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
-
-			case errors.Is(cause, histogram.ErrHistogramCountMismatch):
+			case isHistogramValidationError(cause):
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			default:
@@ -3834,4 +3822,10 @@ func recoverIngester(logger log.Logger, errp *error) {
 		level.Error(logger).Log("msg", "runtime panic in ingester", "err", err, "stacktrace", string(buf))
 		*errp = errors.Wrap(err, "unexpected error")
 	}
+}
+
+// isHistogramValidationError checks if the error is a native histogram validation error.
+func isHistogramValidationError(err error) bool {
+	var e histogram.Error
+	return errors.As(err, &e)
 }

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 // Config configures a Backoff
@@ -29,6 +31,7 @@ type Backoff struct {
 	numRetries   int
 	nextDelayMin time.Duration
 	nextDelayMax time.Duration
+	waitTimer    *time.Timer
 }
 
 // New creates a Backoff object. Pass a Context that can also terminate the operation.
@@ -77,9 +80,16 @@ func (b *Backoff) Wait() {
 	sleepTime := b.NextDelay()
 
 	if b.Ongoing() {
+		if b.waitTimer == nil {
+			b.waitTimer = time.NewTimer(sleepTime)
+		} else {
+			utiltimer.ResetTimer(b.waitTimer, sleepTime)
+		}
+
 		select {
 		case <-b.ctx.Done():
-		case <-time.After(sleepTime):
+			utiltimer.StopAndDrainTimer(b.waitTimer)
+		case <-b.waitTimer.C:
 		}
 	}
 }

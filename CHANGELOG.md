@@ -15,6 +15,7 @@
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
 * [FEATURE] StoreGateway: Add optional limit `blocks-storage.bucket-store.max-concurrent-bytes` on series bytes per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
+* [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to mattermost. #7267
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
@@ -44,6 +45,8 @@
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
 * [ENHANCEMENT] Distributor: Validate metric name before removing empty labels. #7253
+* [ENHANCEMENT] Make cortex_ingester_tsdb_sample_ooo_delta metric per-tenant #7278
+* [ENHANCEMENT] Distributor: Add dimension `nhcb` to keep track of nhcb samples in `cortex_distributor_received_samples_total` and `cortex_distributor_samples_in_total` metrics.
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111

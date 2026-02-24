@@ -18,6 +18,18 @@ make doc                       # Generate config documentation (run after changi
 make ./cmd/cortex/.uptodate    # Build Cortex Docker image for integration tests
 ```
 
+## Vendored Dependencies
+
+Go modules are vendored in the `vendor/` folder. When upgrading a dependency or component:
+
+```bash
+go get github.com/some/dependency@version  # Update go.mod
+go mod vendor                               # Sync vendor folder
+go mod tidy                                 # Clean up go.mod/go.sum
+```
+
+**Important**: Always check the `vendor/` folder for upstream library code (e.g., `vendor/github.com/prometheus/alertmanager/` for Alertmanager internals). Do not modify vendored code directly.
+
 ## Testing
 
 ### Unit Tests

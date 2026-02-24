@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 func TestBackoff_NextDelay(t *testing.T) {
@@ -98,5 +100,63 @@ func TestBackoff_NextDelay(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBackoff_WaitReusesTimer(t *testing.T) {
+	t.Parallel()
+
+	b := New(context.Background(), Config{
+		MinBackoff: time.Nanosecond,
+		MaxBackoff: time.Nanosecond,
+		MaxRetries: 0,
+	})
+
+	b.Wait()
+	if b.waitTimer == nil {
+		t.Fatal("expected wait timer to be initialized")
+	}
+
+	firstTimer := b.waitTimer
+
+	b.Wait()
+	if b.waitTimer != firstTimer {
+		t.Fatal("expected wait timer to be reused")
+	}
+}
+
+func TestBackoff_WaitReturnsWhenContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	b := New(ctx, Config{
+		MinBackoff: time.Second,
+		MaxBackoff: time.Second,
+		MaxRetries: 0,
+	})
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	startedAt := time.Now()
+	b.Wait()
+
+	if time.Since(startedAt) >= 900*time.Millisecond {
+		t.Fatal("expected Wait to return quickly after context cancellation")
+	}
+
+	if b.waitTimer == nil {
+		t.Fatal("expected wait timer to be initialized")
+	}
+
+	utiltimer.ResetTimer(b.waitTimer, time.Nanosecond)
+	select {
+	case <-b.waitTimer.C:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected wait timer to be reusable after cancellation")
 	}
 }

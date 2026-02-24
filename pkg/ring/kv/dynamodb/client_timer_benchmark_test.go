@@ -3,6 +3,8 @@ package dynamodb
 import (
 	"testing"
 	"time"
+
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 func BenchmarkWatchLoopWaitWithTimeAfter(b *testing.B) {
@@ -30,7 +32,7 @@ func BenchmarkWatchLoopWaitWithReusableTimer(b *testing.B) {
 	b.ReportAllocs()
 
 	for b.Loop() {
-		resetTimer(timer, interval)
+		utiltimer.ResetTimer(timer, interval)
 
 		select {
 		case <-ctx.Done():

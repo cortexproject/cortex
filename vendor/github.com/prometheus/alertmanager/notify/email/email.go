@@ -80,10 +80,14 @@ func (n *Email) auth(mechs string) (smtp.Auth, error) {
 	}
 
 	err := &types.MultiError{}
-	for _, mech := range strings.Split(mechs, " ") {
+	for mech := range strings.SplitSeq(mechs, " ") {
 		switch mech {
 		case "CRAM-MD5":
-			secret := string(n.conf.AuthSecret)
+			secret, secretErr := n.getAuthSecret()
+			if secretErr != nil {
+				err.Add(secretErr)
+				continue
+			}
 			if secret == "" {
 				err.Add(errors.New("missing secret for CRAM-MD5 auth mechanism"))
 				continue
@@ -130,7 +134,16 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 		err     error
 		success = false
 	)
-	if n.conf.Smarthost.Port == "465" {
+	// Determine whether to use Implicit TLS
+	var useImplicitTLS bool
+	if n.conf.ForceImplicitTLS != nil {
+		useImplicitTLS = *n.conf.ForceImplicitTLS
+	} else {
+		// Default logic: port 465 uses implicit TLS (backward compatibility)
+		useImplicitTLS = n.conf.Smarthost.Port == "465"
+	}
+
+	if useImplicitTLS {
 		tlsConfig, err := commoncfg.NewTLSConfig(n.conf.TLSConfig)
 		if err != nil {
 			return false, fmt.Errorf("parse TLS configuration: %w", err)
@@ -173,7 +186,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	}
 
 	// Global Config guarantees RequireTLS is not nil.
-	if *n.conf.RequireTLS {
+	if *n.conf.RequireTLS && !useImplicitTLS {
 		if ok, _ := c.Extension("STARTTLS"); !ok {
 			return true, fmt.Errorf("'require_tls' is true (default) but %q does not advertise the STARTTLS extension", n.conf.Smarthost)
 		}
@@ -263,6 +276,31 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 
 	if _, ok := n.conf.Headers["Message-Id"]; !ok {
 		fmt.Fprintf(buffer, "Message-Id: %s\r\n", fmt.Sprintf("<%d.%d@%s>", time.Now().UnixNano(), rand.Uint64(), n.hostname))
+	}
+
+	if n.conf.Threading.Enabled {
+		key, err := notify.ExtractGroupKey(ctx)
+		if err != nil {
+			return false, err
+		}
+		// Add threading headers. All notifications for the same alert group
+		// (identified by key hash) are threaded together.
+		threadBy := ""
+		if n.conf.Threading.ThreadByDate != "none" {
+			// ThreadByDate is 'daily':
+			// Use current date so all mails for this alert today thread together.
+			threadBy = time.Now().Format("2006-01-02")
+		}
+		keyHash := key.Hash()
+		if len(keyHash) > 16 {
+			keyHash = keyHash[:16]
+		}
+		// The thread root ID is a Message-ID that doesn't correspond to
+		// any actual email. Email clients following the (commonly used) JWZ
+		// algorithm will create a dummy container to group these messages.
+		threadRootID := fmt.Sprintf("<alert-%s-%s@alertmanager>", keyHash, threadBy)
+		fmt.Fprintf(buffer, "References: %s\r\n", threadRootID)
+		fmt.Fprintf(buffer, "In-Reply-To: %s\r\n", threadRootID)
 	}
 
 	multipartBuffer := &bytes.Buffer{}
@@ -384,4 +422,15 @@ func (n *Email) getPassword() (string, error) {
 		return strings.TrimSpace(string(content)), nil
 	}
 	return string(n.conf.AuthPassword), nil
+}
+
+func (n *Email) getAuthSecret() (string, error) {
+	if len(n.conf.AuthSecretFile) > 0 {
+		content, err := os.ReadFile(n.conf.AuthSecretFile)
+		if err != nil {
+			return "", fmt.Errorf("could not read %s: %w", n.conf.AuthSecretFile, err)
+		}
+		return string(content), nil
+	}
+	return string(n.conf.AuthSecret), nil
 }

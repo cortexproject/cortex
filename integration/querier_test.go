@@ -295,8 +295,6 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -336,6 +334,10 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
+
 	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "5s",
@@ -345,10 +347,10 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
-	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
+	// Wait until the querier and store-gateway have updated the ring, and wait until the store-gateway has loaded the blocks
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
@@ -384,8 +386,6 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -431,6 +431,10 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
+
 	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval": "5s",
@@ -441,10 +445,10 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
-	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
+	// Wait until the querier and store-gateway have updated the ring, and wait until the store-gateway has loaded the blocks
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
@@ -485,8 +489,6 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
 		"-blocks-storage.tsdb.ship-interval":       "1s",
 		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -526,6 +528,10 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
+
 	// Start the querier and store-gateway, and configure them to frequently sync blocks fast enough to trigger consistency check.
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
 		"-blocks-storage.bucket-store.sync-interval":      "5s",
@@ -536,10 +542,10 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 	}), "")
 	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
-	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
+	// Wait until the querier and store-gateway have updated the ring, and wait until the store-gateway has loaded the blocks
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
@@ -567,8 +573,6 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 		"-blocks-storage.bucket-store.sync-interval": "1s",
 		"-blocks-storage.tsdb.retention-period":      ((blockRangePeriod * 2) - 1).String(),
 		"-querier.max-fetched-series-per-query":      "3",
-		// TODO: run a compactor here instead of disabling the bucket-index
-		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 	})
 
 	// Start dependencies.
@@ -584,7 +588,8 @@ func TestQueryLimitsWithBlocksStorageRunningInMicroServices(t *testing.T) {
 	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
-	require.NoError(t, s.StartAndWaitReady(distributor, ingester, storeGateway))
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, storeGateway, compactor))
 
 	// Start the querier with configuring store-gateway addresses if sharding is disabled.
 	flags = mergeFlags(flags, map[string]string{

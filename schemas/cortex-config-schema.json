@@ -1861,7 +1861,7 @@
               "x-cli-flag": "blocks-storage.bucket-store.max-concurrent"
             },
             "max_concurrent_bytes": {
-              "default": 100,
+              "default": 0,
               "description": "Max number of bytes being processed concurrently across all queries. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.",
               "type": "number",
               "x-cli-flag": "blocks-storage.bucket-store.max-concurrent-bytes"

@@ -2,8 +2,9 @@ package storegateway
 
 import (
 	"errors"
-	"sync/atomic"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )

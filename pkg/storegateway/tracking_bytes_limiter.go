@@ -5,7 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
+
+	"go.uber.org/atomic"
 
 	"github.com/thanos-io/thanos/pkg/store"
 )

@@ -105,10 +105,7 @@ func (t *concurrentBytesTracker) publishPeakLoop() {
 		select {
 		case <-ticker.C:
 			current := t.currentBytes.Load()
-			peak := t.peakBytes.Swap(current)
-			if current > peak {
-				peak = current
-			}
+			peak := max(current, t.peakBytes.Swap(current))
 			t.peakBytesGauge.Set(float64(peak))
 		case <-t.stop:
 			return

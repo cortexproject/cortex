@@ -112,11 +112,10 @@ func TestProperty_ThreadSafeCounterUpdates(t *testing.T) {
 
 		var wg sync.WaitGroup
 		for range numOps {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				defer wg.Done()
 				_ = tracker.Add(bytesPerOp)
-			}()
+			})
 		}
 		wg.Wait()
 
@@ -125,11 +124,10 @@ func TestProperty_ThreadSafeCounterUpdates(t *testing.T) {
 		}
 
 		for range numOps {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				defer wg.Done()
 				tracker.Release(bytesPerOp)
-			}()
+			})
 		}
 		wg.Wait()
 
@@ -341,7 +339,7 @@ func TestPropertyAddReturnsErrMaxConcurrentBytesLimitExceededIffOverLimit(t *tes
 		numAdds := rng.Intn(20) + 1
 		var cumulativeBytes uint64
 
-		for i := 0; i < numAdds; i++ {
+		for range numAdds {
 			bytes := uint64(rng.Intn(int(limit))) + 1
 			err := tracker.Add(bytes)
 

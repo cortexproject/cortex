@@ -190,8 +190,6 @@ func TestCanSupportHoltWintersFunc(t *testing.T) {
 			"-alertmanager.web.external-url": "http://localhost/alertmanager",
 			// enable experimental promQL funcs
 			"-querier.enable-promql-experimental-functions": "true",
-			// max query length
-			"-store.max-query-length": "30d",
 		},
 	)
 	// make alert manager config dir

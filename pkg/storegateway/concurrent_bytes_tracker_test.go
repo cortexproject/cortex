@@ -286,7 +286,7 @@ func TestProperty_PanicRecoveryCleanup(t *testing.T) {
 		tracker := NewConcurrentBytesTracker(bytesLimit, nil)
 
 		func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 
 			if err := tracker.Add(bytesToTrack); err != nil {
 				return
@@ -311,7 +311,7 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 		reqTracker := newRequestBytesTracker(tracker)
 
 		func() {
-			defer func() { recover() }()
+			defer func() { _ = recover() }()
 			defer reqTracker.ReleaseAll()
 
 			for range numLimiters {
@@ -319,7 +319,7 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 				limiter := newTrackingBytesLimiter(inner, reqTracker)
 
 				bytes := uint64(rng.Intn(1024*1024)) + 1
-				limiter.ReserveWithType(bytes, store.PostingsFetched)
+				_ = limiter.ReserveWithType(bytes, store.PostingsFetched)
 			}
 
 			panic("simulated panic")

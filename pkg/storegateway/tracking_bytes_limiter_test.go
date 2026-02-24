@@ -129,7 +129,7 @@ func TestRequestBytesTracker_PanicRecovery(t *testing.T) {
 
 	func() {
 		reqTracker := newRequestBytesTracker(tracker)
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		defer reqTracker.ReleaseAll()
 
 		require.NoError(t, reqTracker.Add(100))

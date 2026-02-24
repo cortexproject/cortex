@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
+
+	"github.com/cortexproject/cortex/pkg/storegateway"
 )
 
 func TestRetry(t *testing.T) {

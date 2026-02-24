@@ -557,7 +557,72 @@ no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;li>Before proceeding to the next ingester, wait 2x the maximum between &lt;code>-blocks-storage.bucket-store.sync-interval&lt;/code> and &lt;code>-compactor.cleanup-interval&lt;/code>&lt;/li>
 &lt;/ol>
 &lt;/li>
-&lt;/ul></description></item><item><title>Docs: Native Histograms</title><link>/docs/guides/native-histograms/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/native-histograms/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Migration KV Store to Memberlist</title><link>/docs/guides/migration-kv-store-to-memberlist/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/migration-kv-store-to-memberlist/</guid><description>
+&lt;p>This guide explains how to perform a live migration of the Cortex Key-Value (KV) Store from an external backend (such as Consul or Etcd) to Memberlist.&lt;/p>
+&lt;h2 id="context">Context&lt;/h2>
+&lt;p>When deployed as microservices, Cortex relies on a KV Store to discover other Cortex components and manage ring topologies.&lt;/p>
+&lt;p>To reduce external dependencies and simplify operations, you may want to migrate your existing KV store to Memberlist, a built-in gossip protocol implementation.&lt;/p>
+&lt;h2 id="step-by-step-migration-process">Step-by-step Migration Process&lt;/h2>
+&lt;p>We can leverage the &lt;a href="https://cortexmetrics.io/docs/configuration/arguments/#multi-kv">multi KV Store&lt;/a> feature to achieve a live migration.&lt;/p>
+&lt;h3 id="set-memberlist-as-the-secondary-kv-store">Set Memberlist as the Secondary KV Store&lt;/h3>
+&lt;p>In this example, we will walk through migrating from Consul to Memberlist.&lt;/p>
+&lt;p>Using the Multi KV Store feature, you will designate your existing KV store (Consul) as the &lt;code>primary&lt;/code> and Memberlist as the &lt;code>secondary&lt;/code>. By setting &lt;code>mirror_enabled: true&lt;/code>, Cortex will automatically replicate all data written to the primary store into the secondary store.&lt;/p>
+&lt;p>Update your configuration file and deploy the changes:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ring&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">store&lt;/span>: &lt;span style="color:#ae81ff">memberlist&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">memberlist&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">abort_if_join_fails&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bind_port&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;gossip-ring-port&amp;gt;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">join_members&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#ae81ff">gossip-ring.&amp;lt;namespace&amp;gt;.svc.cluster.local:&amp;lt;gossip-ring-port&amp;gt;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ingester&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">lifecycler&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">join_after&lt;/span>: &lt;span style="color:#ae81ff">60s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">heartbeat_period&lt;/span>: &lt;span style="color:#ae81ff">5s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ring&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">kvstore&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">store&lt;/span>: &lt;span style="color:#ae81ff">multi&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">multi&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">mirror_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">primary&lt;/span>: &lt;span style="color:#ae81ff">consul&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">secondary&lt;/span>: &lt;span style="color:#ae81ff">memberlist&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">consul&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">host&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;consul-host&amp;gt;:&amp;lt;consul-port&amp;gt;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>...
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;blockquote>
+&lt;p>&lt;strong>Why &lt;code>join_after: 60s&lt;/code>?&lt;/strong>&lt;/p>
+&lt;p>The Memberlist gossip protocol requires a bit of time to propagate the state across the cluster. Setting a 60-second delay ensures that the ingester has enough time to fully sync the existing ring topology from other peers before actively joining and receiving traffic.&lt;/p>
+&lt;p>&lt;strong>Note:&lt;/strong> Make sure to apply this multi KV store configuration to all other components that interact with the ring (e.g. distributors, store-gateways), not just the ingesters.&lt;/p>
+&lt;/blockquote>
+&lt;p>Once deployed, Cortex will begin mirroring primary (Consul) data to Memberlist.&lt;/p>
+&lt;h3 id="verify-data-mirroring">Verify Data Mirroring&lt;/h3>
+&lt;p>You can verify that data is safely replicating to the secondary store by monitoring the following metrics:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>cortex_multikv_mirror_enabled&lt;/code>: Indicates whether data mirroring is currently active (a value of &lt;code>1&lt;/code> means active).&lt;/li>
+&lt;li>&lt;code>cortex_multikv_mirror_writes_total&lt;/code>: The total number of successful write operations replicated to the secondary store.&lt;/li>
+&lt;li>&lt;code>cortex_multikv_mirror_write_errors_total&lt;/code>: The total number of failed write operations to the secondary store.&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Validation Check:&lt;/strong>&lt;/p>
+&lt;ol>
+&lt;li>Check that the &lt;code>cortex_multikv_mirror_enabled&lt;/code> metric is exposing a value of &lt;code>1&lt;/code>.&lt;/li>
+&lt;li>Monitor the write rate using a query like &lt;code>rate(cortex_multikv_mirror_writes_total[5m])&lt;/code>. This rate should remain stable.&lt;/li>
+&lt;li>Ensure that &lt;code>cortex_multikv_mirror_write_errors_total&lt;/code> is not increasing.&lt;/li>
+&lt;/ol>
+&lt;p>If these conditions are met, you can safely assume that the primary data is being successfully mirrored to Memberlist.&lt;/p>
+&lt;h3 id="set-memberlist-as-the-sole-kv-store">Set Memberlist as the Sole KV Store&lt;/h3>
+&lt;p>Once the data migration is verified and stable, you can finalize the migration by configuring Memberlist as the primary and only KV store.&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ingester&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">lifecycler&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">join_after&lt;/span>: &lt;span style="color:#ae81ff">60s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">heartbeat_period&lt;/span>: &lt;span style="color:#ae81ff">5s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">ring&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">kvstore&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">store&lt;/span>: &lt;span style="color:#ae81ff">memberlist&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;blockquote>
+&lt;p>&lt;strong>Note:&lt;/strong> Again, ensure this update is applied across all components.&lt;/p>
+&lt;/blockquote>
+&lt;p>After the updated configuration is fully deployed across your cluster and everything is running stably, you can remove your Consul cluster.&lt;/p></description></item><item><title>Docs: Native Histograms</title><link>/docs/guides/native-histograms/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/native-histograms/</guid><description>
 &lt;h2 id="context">Context&lt;/h2>
 &lt;p>The Prometheus introduces a native histogram, a new sample type, to address several problems that the classic histograms (originally implemented histograms) have.
 Please read to &lt;a href="https://prometheus.io/docs/specs/native_histograms/">Prometheus Native Histograms Document&lt;/a> if more detailed information is necessary.&lt;/p>

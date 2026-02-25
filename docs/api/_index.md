@@ -63,6 +63,9 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager || `DELETE /api/v1/alerts` |
 | [Tenant delete request](#tenant-delete-request) | Purger || `POST /purger/delete_tenant` |
 | [Tenant delete status](#tenant-delete-status) | Purger || `GET /purger/delete_tenant_status` |
+| [Get user overrides](#get-user-overrides) | Overrides || `GET /api/v1/user-overrides` |
+| [Set user overrides](#set-user-overrides) | Overrides || `POST /api/v1/user-overrides` |
+| [Delete user overrides](#delete-user-overrides) | Overrides || `DELETE /api/v1/user-overrides` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway || `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor || `GET /compactor/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) || `GET /api/prom/configs/rules` |
@@ -833,6 +836,64 @@ GET /purger/delete_tenant_status
 Returns status of tenant deletion. Output format to be defined. Experimental.
 
 _Requires [authentication](#authentication)._
+
+## Overrides
+
+The Overrides service provides an API for managing user overrides.
+
+### Get user overrides
+
+```
+GET /api/v1/user-overrides
+```
+
+Get the current overrides for the authenticated tenant. Returns the overrides in JSON format.
+
+_Requires [authentication](#authentication)._
+
+### Set user overrides
+
+```
+POST /api/v1/user-overrides
+```
+
+Set or update overrides for the authenticated tenant. The request body should contain a JSON object with the override values.
+
+_Requires [authentication](#authentication)._
+
+### Delete user overrides
+
+```
+DELETE /api/v1/user-overrides
+```
+
+Delete all overrides for the authenticated tenant. This will revert the tenant to using default values.
+
+_Requires [authentication](#authentication)._
+
+#### Example request body for PUT
+
+```json
+{
+  "ingestion_rate": 50000,
+  "max_global_series_per_user": 1000000,
+  "ruler_max_rules_per_rule_group": 100
+}
+```
+
+#### Supported limits
+
+The following limits can be modified via the API:
+- `max_global_series_per_user`
+- `max_global_series_per_metric`
+- `ingestion_rate`
+- `ingestion_burst_size`
+- `ruler_max_rules_per_rule_group`
+- `ruler_max_rule_groups_per_tenant`
+
+#### Hard limits
+
+Overrides are validated against hard limits defined in the runtime configuration file. If a requested override exceeds the hard limit for the tenant, the request will be rejected with a 400 status code.
 
 ## Store-gateway
 

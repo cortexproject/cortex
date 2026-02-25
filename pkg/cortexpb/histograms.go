@@ -160,3 +160,19 @@ func spansPromProtoToSpansProto(s []prompb.BucketSpan) []BucketSpan {
 
 	return spans
 }
+
+func (h Histogram) BucketCount() int {
+	count := 0
+	if h.IsFloatHistogram() {
+		count = len(h.PositiveCounts) + len(h.NegativeCounts)
+		if h.GetZeroCountFloat() > 0 {
+			count++
+		}
+	} else {
+		count = len(h.PositiveDeltas) + len(h.NegativeDeltas)
+		if h.GetZeroCountInt() > 0 {
+			count++
+		}
+	}
+	return count
+}

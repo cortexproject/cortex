@@ -1342,6 +1342,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		succeededExemplarsCount                = 0
 		failedExemplarsCount                   = 0
 		startAppend                            = time.Now()
+		succeededHistogramBucketsCount         = 0
 		sampleOutOfBoundsCount                 = 0
 		sampleOutOfOrderCount                  = 0
 		sampleTooOldCount                      = 0
@@ -1507,6 +1508,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
+						succeededHistogramBucketsCount += hp.BucketCount()
 						continue
 					}
 				} else {
@@ -1518,6 +1520,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
+						succeededHistogramBucketsCount += hp.BucketCount()
 						continue
 					}
 				}
@@ -1612,6 +1615,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.metrics.ingestedSamplesFail.Add(float64(failedSamplesCount))
 	i.metrics.ingestedHistograms.Add(float64(succeededHistogramsCount))
 	i.metrics.ingestedHistogramsFail.Add(float64(failedHistogramsCount))
+	i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Add(float64(succeededHistogramBucketsCount))
 	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 

@@ -36,6 +36,10 @@ import (
 // contain that attribute, the attribute_not_exists function will only succeed if
 // no matching item exists.
 //
+// To determine whether PutItem overwrote an existing item, use ReturnValues set
+// to ALL_OLD . If the response includes the Attributes element, an existing item
+// was overwritten.
+//
 // For more information about PutItem , see [Working with Items] in the Amazon DynamoDB Developer
 // Guide.
 //
@@ -392,40 +396,7 @@ func (c *Client) addOperationPutItemMiddlewares(stack *middleware.Stack, options
 	if err = addInterceptAttempt(stack, options); err != nil {
 		return err
 	}
-	if err = addInterceptExecution(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSerialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterSigning(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptTransmit(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addInterceptAfterDeserialization(stack, options); err != nil {
-		return err
-	}
-	if err = addSpanInitializeStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanInitializeEnd(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestStart(stack); err != nil {
-		return err
-	}
-	if err = addSpanBuildRequestEnd(stack); err != nil {
+	if err = addInterceptors(stack, options); err != nil {
 		return err
 	}
 	return nil

@@ -30,29 +30,29 @@ const (
 )
 
 type ingesterMetrics struct {
-	ingestedSamples         prometheus.Counter
-	ingestedHistograms      prometheus.Counter
-	ingestedExemplars       prometheus.Counter
-	ingestedMetadata        prometheus.Counter
-	ingestedSamplesFail     prometheus.Counter
-	ingestedHistogramsFail  prometheus.Counter
-	ingestedExemplarsFail   prometheus.Counter
-	ingestedMetadataFail    prometheus.Counter
-	ingestedHistogramBuckets *prometheus.CounterVec
-	oooLabelsTotal          *prometheus.CounterVec
-	queries                 prometheus.Counter
-	queriedSamples          prometheus.Histogram
-	queriedExemplars        prometheus.Histogram
-	queriedSeries           prometheus.Histogram
-	queriedChunks           prometheus.Histogram
-	memSeries               prometheus.Gauge
-	memMetadata             prometheus.Gauge
-	memUsers                prometheus.Gauge
-	memSeriesCreatedTotal   *prometheus.CounterVec
-	memMetadataCreatedTotal *prometheus.CounterVec
-	memSeriesRemovedTotal   *prometheus.CounterVec
-	memMetadataRemovedTotal *prometheus.CounterVec
-	pushErrorsTotal         *prometheus.CounterVec
+	ingestedSamples          prometheus.Counter
+	ingestedHistograms       prometheus.Counter
+	ingestedExemplars        prometheus.Counter
+	ingestedMetadata         prometheus.Counter
+	ingestedSamplesFail      prometheus.Counter
+	ingestedHistogramsFail   prometheus.Counter
+	ingestedExemplarsFail    prometheus.Counter
+	ingestedMetadataFail     prometheus.Counter
+	ingestedHistogramBuckets *prometheus.HistogramVec
+	oooLabelsTotal           *prometheus.CounterVec
+	queries                  prometheus.Counter
+	queriedSamples           prometheus.Histogram
+	queriedExemplars         prometheus.Histogram
+	queriedSeries            prometheus.Histogram
+	queriedChunks            prometheus.Histogram
+	memSeries                prometheus.Gauge
+	memMetadata              prometheus.Gauge
+	memUsers                 prometheus.Gauge
+	memSeriesCreatedTotal    *prometheus.CounterVec
+	memMetadataCreatedTotal  *prometheus.CounterVec
+	memSeriesRemovedTotal    *prometheus.CounterVec
+	memMetadataRemovedTotal  *prometheus.CounterVec
+	pushErrorsTotal          *prometheus.CounterVec
 
 	activeSeriesPerUser        *prometheus.GaugeVec
 	activeNHSeriesPerUser      *prometheus.GaugeVec
@@ -131,9 +131,13 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_metadata_failures_total",
 			Help: "The total number of metadata that errored on ingestion.",
 		}),
-		ingestedHistogramBuckets: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
-			Name: "cortex_ingester_ingested_histogram_buckets_total",
-			Help: "The total number of histogram buckets ingested per user.",
+		ingestedHistogramBuckets: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_ingested_histogram_buckets",
+			Help:                            "The number of ingested native histogram buckets per user.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
 		}, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_out_of_order_labels_total",

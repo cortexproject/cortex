@@ -36,9 +36,9 @@ const (
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
 
-	labelValuePRW1   = "prw1"
-	labelValuePRW2   = "prw2"
-	labelValueOTLP   = "otlp"
+	labelValuePRW1    = "prw1"
+	labelValuePRW2    = "prw2"
+	labelValueOTLP    = "otlp"
 	labelValueUnknown = "unknown"
 )
 

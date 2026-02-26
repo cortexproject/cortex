@@ -572,11 +572,11 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
 
 	tests := []struct {
-		description                        string
-		reqHeaders                         map[string]string
-		expectedCode                       int
-		isV2                               bool
-		remoteWrite2Enabled                bool
+		description                         string
+		reqHeaders                          map[string]string
+		expectedCode                        int
+		isV2                                bool
+		remoteWrite2Enabled                 bool
 		acceptUnknownRemoteWriteContentType bool
 	}{
 		{
@@ -695,9 +695,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     "yolo",
 				"Content-Encoding": "snappy",
 			},
-			expectedCode:                       http.StatusOK,
-			isV2:                               false,
-			remoteWrite2Enabled:                true,
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
 			acceptUnknownRemoteWriteContentType: true,
 		},
 		{
@@ -706,9 +706,9 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 				"Content-Type":     "application/x-protobuf;proto=yolo",
 				"Content-Encoding": "snappy",
 			},
-			expectedCode:                       http.StatusOK,
-			isV2:                               false,
-			remoteWrite2Enabled:                true,
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
 			acceptUnknownRemoteWriteContentType: true,
 		},
 	}

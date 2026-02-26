@@ -154,12 +154,21 @@ func TestProperty_PeakBytesMetricTracksPeak(t *testing.T) {
 			}
 		}
 
-		if tracker.peakBytes.Load() < maxSeen {
+		tracker.mu.Lock()
+		peak := tracker.peakBytes
+		tracker.mu.Unlock()
+
+		if peak < maxSeen {
 			return false
 		}
 
 		tracker.Release(totalBytes)
-		return tracker.Current() == 0 && tracker.peakBytes.Load() >= maxSeen
+
+		tracker.mu.Lock()
+		peakAfter := tracker.peakBytes
+		tracker.mu.Unlock()
+
+		return tracker.Current() == 0 && peakAfter >= maxSeen
 	}
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }

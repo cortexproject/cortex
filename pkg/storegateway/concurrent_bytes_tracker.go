@@ -2,9 +2,8 @@ package storegateway
 
 import (
 	"errors"
+	"sync"
 	"time"
-
-	"go.uber.org/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -21,9 +20,10 @@ type ConcurrentBytesTracker interface {
 }
 
 type concurrentBytesTracker struct {
+	mu                 sync.Mutex
 	maxConcurrentBytes uint64
-	currentBytes       atomic.Uint64
-	peakBytes          atomic.Uint64
+	currentBytes       uint64
+	peakBytes          uint64
 	stop               chan struct{}
 
 	peakBytesGauge        prometheus.Gauge
@@ -62,39 +62,34 @@ func NewConcurrentBytesTracker(maxConcurrentBytes uint64, reg prometheus.Registe
 }
 
 func (t *concurrentBytesTracker) Add(bytes uint64) error {
-	if t.maxConcurrentBytes > 0 && t.Current()+bytes > t.maxConcurrentBytes {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	newValue := t.currentBytes + bytes
+	if t.maxConcurrentBytes > 0 && newValue > t.maxConcurrentBytes {
 		t.rejectedRequestsTotal.Inc()
 		return ErrMaxConcurrentBytesLimitExceeded
 	}
 
-	newValue := t.currentBytes.Add(bytes)
-	for {
-		peak := t.peakBytes.Load()
-		if newValue <= peak {
-			break
-		}
-		if t.peakBytes.CompareAndSwap(peak, newValue) {
-			break
-		}
-		// CAS failed, retry
+	t.currentBytes = newValue
+	if newValue > t.peakBytes {
+		t.peakBytes = newValue
 	}
 
 	return nil
 }
 
 func (t *concurrentBytesTracker) Release(bytes uint64) {
-	for {
-		current := t.currentBytes.Load()
-		newValue := current - bytes
-		if t.currentBytes.CompareAndSwap(current, newValue) {
-			return
-		}
-		// CAS failed, retry
-	}
+	t.mu.Lock()
+	t.currentBytes -= bytes
+	t.mu.Unlock()
 }
 
 func (t *concurrentBytesTracker) Current() uint64 {
-	return t.currentBytes.Load()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	return t.currentBytes
 }
 
 func (t *concurrentBytesTracker) publishPeakLoop() {
@@ -104,8 +99,11 @@ func (t *concurrentBytesTracker) publishPeakLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			current := t.currentBytes.Load()
-			peak := max(current, t.peakBytes.Swap(current))
+			t.mu.Lock()
+			peak := t.peakBytes
+			t.peakBytes = t.currentBytes
+			t.mu.Unlock()
+
 			t.peakBytesGauge.Set(float64(peak))
 		case <-t.stop:
 			return

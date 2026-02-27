@@ -116,6 +116,11 @@ func ReuseTimeseriesV2(ts *TimeSeriesV2) {
 	ts.LabelsRefs = ts.LabelsRefs[:0]
 	ts.Samples = ts.Samples[:0]
 
+	// clear metadata
+	ts.Metadata.Type = 0
+	ts.Metadata.UnitRef = 0
+	ts.Metadata.HelpRef = 0
+
 	// clear exemplar label refs
 	for i := range ts.Exemplars {
 		ts.Exemplars[i].LabelsRefs = ts.Exemplars[i].LabelsRefs[:0]

@@ -924,3 +924,71 @@ func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool
 	require.NoError(t, err)
 	return inoutBytes
 }
+
+// TestHandler_RemoteWriteV2_MetadataPoolReset verifies that reusing a WriteRequestV2
+// from the sync.Pool does not carry over omitted Metadata fields (UnitRef and HelpRef),
+// which would otherwise cause an index-out-of-range panic
+func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	mockPush := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		return &cortexpb.WriteResponse{}, nil
+	}
+
+	handler := Handler(true, 1000000, overrides, nil, mockPush, nil)
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+
+	sendRequest := func(reqProto *writev2.Request) *httptest.ResponseRecorder {
+		reqBytes, err := reqProto.Marshal()
+		require.NoError(t, err)
+
+		req := createRequest(t, reqBytes, true).WithContext(ctx)
+		resp := httptest.NewRecorder()
+
+		// Should not panic
+		require.NotPanics(t, func() {
+			handler.ServeHTTP(resp, req)
+		})
+
+		return resp
+	}
+
+	symbols := make([]string, 100)
+	symbols[0], symbols[1], symbols[2] = "", "__name__", "test_metric"
+	for i := 3; i < 100; i++ {
+		symbols[i] = fmt.Sprintf("sym-%d", i)
+	}
+
+	req1Proto := writev2.Request{
+		Symbols: symbols,
+		Timeseries: []writev2.TimeSeries{
+			{
+				LabelsRefs: []uint32{1, 2},
+				Samples:    []writev2.Sample{{Value: 1, Timestamp: 1000}},
+				Metadata: writev2.Metadata{
+					Type:    writev2.Metadata_METRIC_TYPE_COUNTER,
+					UnitRef: 99,
+					HelpRef: 98,
+				},
+			},
+		},
+	}
+
+	resp1 := sendRequest(&req1Proto)
+	require.Equal(t, http.StatusNoContent, resp1.Code)
+
+	req2Proto := writev2.Request{
+		Symbols: []string{"", "__name__", "foo", "bar"},
+		Timeseries: []writev2.TimeSeries{
+			{
+				LabelsRefs: []uint32{1, 2},
+				Samples:    []writev2.Sample{{Value: 2, Timestamp: 2000}},
+			},
+		},
+	}
+
+	resp2 := sendRequest(&req2Proto)
+	require.Equal(t, http.StatusNoContent, resp2.Code)
+}

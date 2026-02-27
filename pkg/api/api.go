@@ -25,6 +25,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertmanagerpb"
 	"github.com/cortexproject/cortex/pkg/compactor"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/distributed_execution"
+	"github.com/cortexproject/cortex/pkg/distributed_execution/querierpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/distributor/distributorpb"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
@@ -497,6 +499,10 @@ func (a *API) RegisterQueryFrontend2(f *frontendv2.Frontend) {
 func (a *API) RegisterQueryScheduler(f *scheduler.Scheduler) {
 	schedulerpb.RegisterSchedulerForFrontendServer(a.server.GRPC, f)
 	schedulerpb.RegisterSchedulerForQuerierServer(a.server.GRPC, f)
+}
+
+func (a *API) RegisterQuerierServer(f *distributed_execution.QuerierServer) {
+	querierpb.RegisterQuerierServer(a.server.GRPC, f)
 }
 
 // RegisterServiceMapHandler registers the Cortex structs service handler

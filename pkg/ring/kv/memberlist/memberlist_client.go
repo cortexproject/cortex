@@ -902,7 +902,7 @@ outer:
 	}
 
 	m.casFailures.Inc()
-	return fmt.Errorf("failed to CAS-update key %s: %v", key, lastError)
+	return fmt.Errorf("failed to CAS-update key %s: %w", key, lastError)
 }
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
@@ -915,7 +915,7 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in any) (out any
 
 	out, retry, err := f(val)
 	if err != nil {
-		return nil, 0, retry, fmt.Errorf("fn returned error: %v", err)
+		return nil, 0, retry, fmt.Errorf("fn returned error: %w", err)
 	}
 
 	if out == nil {

@@ -214,7 +214,11 @@ type Limits struct {
 	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
 	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
 	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
-	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	RulerExternalURL             string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
+	RulerAlertGeneratorURLFormat string         `yaml:"ruler_alert_generator_url_format" json:"ruler_alert_generator_url_format" doc:"nocli|description=Format for alert generator URLs. Supported values: prometheus (default), grafana-explore."`
+	RulerGrafanaDatasourceUID    string         `yaml:"ruler_grafana_datasource_uid" json:"ruler_grafana_datasource_uid" doc:"nocli|description=Grafana datasource UID for alert generator URLs when format is grafana-explore."`
+	RulerGrafanaOrgID            int64          `yaml:"ruler_grafana_org_id" json:"ruler_grafana_org_id" doc:"nocli|description=Grafana organization ID for alert generator URLs when format is grafana-explore.|default=1"`
+	RulesPartialData             bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -1142,6 +1146,22 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 
 func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
+}
+
+func (o *Overrides) RulerExternalURL(userID string) string {
+	return o.GetOverridesForUser(userID).RulerExternalURL
+}
+
+func (o *Overrides) RulerAlertGeneratorURLFormat(userID string) string {
+	return o.GetOverridesForUser(userID).RulerAlertGeneratorURLFormat
+}
+
+func (o *Overrides) RulerGrafanaDatasourceUID(userID string) string {
+	return o.GetOverridesForUser(userID).RulerGrafanaDatasourceUID
+}
+
+func (o *Overrides) RulerGrafanaOrgID(userID string) int64 {
+	return o.GetOverridesForUser(userID).RulerGrafanaOrgID
 }
 
 // MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.

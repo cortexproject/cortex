@@ -214,15 +214,13 @@ func makeWriteFunc[T any](t reflect.Type, writeRows writeRowsFunc) writeFunc[T] 
 	}
 }
 
+// Close must be called after all values were produced to the writer in order to
+// flush all buffers and write the parquet footer. The writer can only be reused
+// if Reset is called first. Failure to do so will result in defined behavior.
 func (w *GenericWriter[T]) Close() error {
 	if err := w.base.Close(); err != nil {
 		return err
 	}
-	// Nil out the columns slice to allow the column buffers to be garbage
-	// collected and to ensure that any subsequent use of this writer after
-	// Close will result in a clear panic rather than operating on closed
-	// resources.
-	w.columns = nil
 	return nil
 }
 
@@ -230,6 +228,9 @@ func (w *GenericWriter[T]) Flush() error {
 	return w.base.Flush()
 }
 
+// Reset clears the state of the writer without flushing any of the buffers,
+// and setting the output to the io.Writer passed as argument, allowing the
+// writer to be reused to produce another parquet file.
 func (w *GenericWriter[T]) Reset(output io.Writer) {
 	w.base.Reset(output)
 }
@@ -313,27 +314,16 @@ func (w *GenericWriter[T]) File() FileView {
 //
 // While multiple row groups can be created concurrently, a single row group must be written
 // sequentially.
-type ConcurrentRowGroupWriter interface {
-	RowWriterWithSchema
-
-	// Flush flushes any buffered data in the row group's column writers.
-	// This could be called before Commit to ensure all data pages are flushed.
-	Flush() error
-
-	// ColumnWriters returns the column writers for this row group, allowing
-	// direct access to write values to individual columns.
-	ColumnWriters() []*ColumnWriter
-
-	// Commit commits the row group to the parent writer, returning the number
-	// of rows written and an error if any. This method must be called serially
-	// (not concurrently) to maintain row group order in the file.
-	//
-	// If the parent writer has any pending rows buffered, they will be flushed
-	// before this row group is written.
-	//
-	// After Commit returns successfully, the row group will be empty and can
-	// be reused.
-	Commit() (int64, error)
+type ConcurrentRowGroupWriter struct {
+	writer      *writer
+	config      *WriterConfig
+	values      [][]Value
+	numRows     int64
+	maxRows     int64
+	columns     []*ColumnWriter
+	columnChunk []format.ColumnChunk
+	columnIndex []format.ColumnIndex
+	offsetIndex []format.OffsetIndex
 }
 
 // BeginRowGroup returns a new ConcurrentRowGroupWriter that can be written to in parallel with
@@ -343,7 +333,7 @@ type ConcurrentRowGroupWriter interface {
 // Example usage could look something like:
 //
 //	writer := parquet.NewGenericWriter[any](...)
-//	rgs := make([]parquet.ConcurrentRowGroupWriter, 5)
+//	rgs := make([]*parquet.ConcurrentRowGroupWriter, 5)
 //	var wg sync.WaitGroup
 //	for i := range rgs {
 //	  rg := writer.BeginRowGroup()
@@ -361,8 +351,8 @@ type ConcurrentRowGroupWriter interface {
 //	  }
 //	}
 //	return writer.Close()
-func (w *GenericWriter[T]) BeginRowGroup() ConcurrentRowGroupWriter {
-	return newWriterRowGroup(w.base.writer, w.base.config)
+func (w *GenericWriter[T]) BeginRowGroup() *ConcurrentRowGroupWriter {
+	return newConcurrentRowGroupWriter(w.base.writer, w.base.config)
 }
 
 var (
@@ -377,8 +367,6 @@ var (
 	_ RowWriterWithSchema = (*GenericWriter[map[struct{}]struct{}])(nil)
 	_ RowReaderFrom       = (*GenericWriter[map[struct{}]struct{}])(nil)
 	_ RowGroupWriter      = (*GenericWriter[map[struct{}]struct{}])(nil)
-
-	_ ConcurrentRowGroupWriter = (*writerRowGroup)(nil)
 )
 
 // Deprecated: A Writer uses a parquet schema and sequence of Go values to
@@ -617,8 +605,8 @@ func (w *Writer) ColumnWriters() []*ColumnWriter { return w.writer.currentRowGro
 // BeginRowGroup returns a new ConcurrentRowGroupWriter that can be written to in parallel with
 // other row groups. However these need to be committed back to the writer serially using the
 // Commit method on the row group.
-func (w *Writer) BeginRowGroup() ConcurrentRowGroupWriter {
-	return newWriterRowGroup(w.writer, w.config)
+func (w *Writer) BeginRowGroup() *ConcurrentRowGroupWriter {
+	return newConcurrentRowGroupWriter(w.writer, w.config)
 }
 
 type writerFileView struct {
@@ -678,20 +666,8 @@ func (w *writerFileView) RowGroups() []RowGroup {
 	return makeRowGroups(fileRowGroups)
 }
 
-type writerRowGroup struct {
-	writer      *writer
-	config      *WriterConfig
-	values      [][]Value
-	numRows     int64
-	maxRows     int64
-	columns     []*ColumnWriter
-	columnChunk []format.ColumnChunk
-	columnIndex []format.ColumnIndex
-	offsetIndex []format.OffsetIndex
-}
-
-func newWriterRowGroup(w *writer, config *WriterConfig) *writerRowGroup {
-	rg := &writerRowGroup{
+func newConcurrentRowGroupWriter(w *writer, config *WriterConfig) *ConcurrentRowGroupWriter {
+	rg := &ConcurrentRowGroupWriter{
 		writer:  w,
 		config:  config,
 		maxRows: config.MaxRowsPerRowGroup,
@@ -821,14 +797,14 @@ func newWriterRowGroup(w *writer, config *WriterConfig) *writerRowGroup {
 	return rg
 }
 
-func (rg *writerRowGroup) reset() {
+func (rg *ConcurrentRowGroupWriter) reset() {
 	rg.numRows = 0
 	for _, c := range rg.columns {
 		c.reset()
 	}
 }
 
-func (rg *writerRowGroup) configureBloomFilters(columnChunks []ColumnChunk) {
+func (rg *ConcurrentRowGroupWriter) configureBloomFilters(columnChunks []ColumnChunk) {
 	for i, c := range rg.columns {
 		if c.columnFilter != nil {
 			c.resizeBloomFilter(columnChunks[i].NumValues())
@@ -836,15 +812,20 @@ func (rg *writerRowGroup) configureBloomFilters(columnChunks []ColumnChunk) {
 	}
 }
 
-func (rg *writerRowGroup) Schema() *Schema {
+// Schema returns the schema for this row group.
+func (rg *ConcurrentRowGroupWriter) Schema() *Schema {
 	return rg.config.Schema
 }
 
-func (rg *writerRowGroup) ColumnWriters() []*ColumnWriter {
+// ColumnWriters returns the column writers for this row group, allowing
+// direct access to write values to individual columns.
+func (rg *ConcurrentRowGroupWriter) ColumnWriters() []*ColumnWriter {
 	return rg.columns
 }
 
-func (rg *writerRowGroup) Flush() error {
+// Flush flushes any buffered data in the row group's column writers.
+// This could be called before Commit to ensure all data pages are flushed.
+func (rg *ConcurrentRowGroupWriter) Flush() error {
 	for _, c := range rg.columns {
 		if err := c.Flush(); err != nil {
 			return err
@@ -853,14 +834,24 @@ func (rg *writerRowGroup) Flush() error {
 	return nil
 }
 
-func (rg *writerRowGroup) Commit() (int64, error) {
+// Commit commits the row group to the parent writer, returning the number
+// of rows written and an error if any. This method must be called serially
+// (not concurrently) to maintain row group order in the file.
+//
+// If the parent writer has any pending rows buffered, they will be flushed
+// before this row group is written.
+//
+// After Commit returns successfully, the row group will be empty and can
+// be reused.
+func (rg *ConcurrentRowGroupWriter) Commit() (int64, error) {
 	if err := rg.writer.flush(); err != nil {
 		return 0, err
 	}
 	return rg.writer.writeRowGroup(rg, nil, nil)
 }
 
-func (rg *writerRowGroup) WriteRows(rows []Row) (int, error) {
+// WriteRows writes rows to the row group.
+func (rg *ConcurrentRowGroupWriter) WriteRows(rows []Row) (int, error) {
 	return rg.writeRows(len(rows), func(start, end int) (int, error) {
 		defer func() {
 			for i, values := range rg.values {
@@ -891,7 +882,7 @@ func (rg *writerRowGroup) WriteRows(rows []Row) (int, error) {
 	})
 }
 
-func (rg *writerRowGroup) writeRows(numRows int, write func(i, j int) (int, error)) (int, error) {
+func (rg *ConcurrentRowGroupWriter) writeRows(numRows int, write func(i, j int) (int, error)) (int, error) {
 	written := 0
 
 	for written < numRows {
@@ -929,7 +920,7 @@ func (rg *writerRowGroup) writeRows(numRows int, write func(i, j int) (int, erro
 type writer struct {
 	buffer          *bufio.Writer
 	writer          offsetTrackingWriter
-	currentRowGroup *writerRowGroup
+	currentRowGroup *ConcurrentRowGroupWriter
 
 	createdBy string
 	metadata  []format.KeyValue
@@ -1003,7 +994,7 @@ func newWriter(output io.Writer, config *WriterConfig) *writer {
 		})
 	})
 
-	w.currentRowGroup = newWriterRowGroup(w, config)
+	w.currentRowGroup = newConcurrentRowGroupWriter(w, config)
 
 	if len(config.Sorting.SortingColumns) > 0 {
 		forEachLeafColumnOf(config.Schema, func(leaf leafColumn) {
@@ -1035,13 +1026,19 @@ func (w *writer) reset(writer io.Writer) {
 	}
 	w.currentRowGroup.reset()
 	for i := range w.rowGroups {
-		w.rowGroups[i] = format.RowGroup{}
+		w.rowGroups[i].Reset()
 	}
 	for i := range w.columnIndexes {
-		w.columnIndexes[i] = nil
+		for j := range w.columnIndexes[i] {
+			w.columnIndexes[i][j].Reset()
+		}
+		w.columnIndexes[i] = w.columnIndexes[i][:0]
 	}
 	for i := range w.offsetIndexes {
-		w.offsetIndexes[i] = nil
+		for j := range w.offsetIndexes[i] {
+			w.offsetIndexes[i][j].Reset()
+		}
+		w.offsetIndexes[i] = w.offsetIndexes[i][:0]
 	}
 	w.rowGroups = w.rowGroups[:0]
 	w.columnIndexes = w.columnIndexes[:0]
@@ -1155,7 +1152,7 @@ func (w *writer) writeFileFooter() error {
 	return err
 }
 
-func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGroupSortingColumns []SortingColumn) (int64, error) {
+func (w *writer) writeRowGroup(rg *ConcurrentRowGroupWriter, rowGroupSchema *Schema, rowGroupSortingColumns []SortingColumn) (int64, error) {
 	if len(rg.columns) == 0 {
 		return 0, nil
 	}
@@ -1163,6 +1160,10 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 	if numRows == 0 {
 		return 0, nil
 	}
+
+	rowGroupIndex := len(w.rowGroups)
+	columnIndexIndex := len(w.columnIndexes)
+	offsetIndexIndex := len(w.offsetIndexes)
 
 	if len(w.rowGroups) == MaxRowGroups {
 		return 0, ErrTooManyRowGroups
@@ -1187,10 +1188,9 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 	fileOffset := w.writer.offset
 
 	for i, c := range rg.columns {
-		columnIndex := c.columnIndex.ColumnIndex()
-		columnIndex.RepetitionLevelHistogram = slices.Clone(c.pageRepetitionLevelHistograms)
-		columnIndex.DefinitionLevelHistogram = slices.Clone(c.pageDefinitionLevelHistograms)
-		rg.columnIndex[i] = columnIndex
+		rg.columnIndex[i] = c.columnIndex.ColumnIndex()
+		rg.columnIndex[i].RepetitionLevelHistogram = append(rg.columnIndex[i].RepetitionLevelHistogram[:0], c.pageRepetitionLevelHistograms...)
+		rg.columnIndex[i].DefinitionLevelHistogram = append(rg.columnIndex[i].DefinitionLevelHistogram[:0], c.pageDefinitionLevelHistograms...)
 
 		c.columnChunk.MetaData.SizeStatistics = format.SizeStatistics{
 			UnencodedByteArrayDataBytes: c.totalUnencodedByteArrayBytes,
@@ -1248,9 +1248,20 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 		totalCompressedSize += int64(c.TotalCompressedSize)
 	}
 
+	var reuseRowGroup *format.RowGroup = nil
+	if cap(w.rowGroups) > rowGroupIndex {
+		w.rowGroups = w.rowGroups[:rowGroupIndex+1] // Extend the slice by one element
+		reuseRowGroup = &w.rowGroups[rowGroupIndex] // Pointer to the last element
+	}
+
 	sortingColumns := w.sortingColumns
 	if len(sortingColumns) == 0 && len(rowGroupSortingColumns) > 0 {
-		sortingColumns = make([]format.SortingColumn, 0, len(rowGroupSortingColumns))
+		scLen := len(rowGroupSortingColumns)
+		if reuseRowGroup == nil {
+			sortingColumns = make([]format.SortingColumn, 0, scLen)
+		} else {
+			sortingColumns = reuseRowGroup.SortingColumns
+		}
 		forEachLeafColumnOf(rowGroupSchema, func(leaf leafColumn) {
 			if sortingIndex := searchSortingColumn(rowGroupSortingColumns, leaf.path); sortingIndex < len(sortingColumns) {
 				sortingColumns[sortingIndex] = format.SortingColumn{
@@ -1262,13 +1273,47 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 		})
 	}
 
-	columns := slices.Clone(rg.columnChunk)
-	columnIndex := slices.Clone(rg.columnIndex)
-	offsetIndex := slices.Clone(rg.offsetIndex)
+	var reuseColumnIndex *[]format.ColumnIndex = nil
+	if cap(w.columnIndexes) > columnIndexIndex {
+		// Extend the slice by one element
+		w.columnIndexes = w.columnIndexes[:columnIndexIndex+1]
+		reuseColumnIndex = &w.columnIndexes[columnIndexIndex]
+	}
+	var columnIndex []format.ColumnIndex
+	if reuseColumnIndex != nil {
+		// Copy the slice
+		columnIndex = append(*reuseColumnIndex, rg.columnIndex...)
+		w.columnIndexes[columnIndexIndex] = columnIndex
+	} else {
+		columnIndex = slices.Clone(rg.columnIndex)
+		w.columnIndexes = append(w.columnIndexes, columnIndex)
+	}
 
+	var reuseOffsetIndex *[]format.OffsetIndex = nil
+	if cap(w.offsetIndexes) > offsetIndexIndex {
+		// Extend the slice by one element
+		w.offsetIndexes = w.offsetIndexes[:offsetIndexIndex+1]
+		reuseOffsetIndex = &w.offsetIndexes[offsetIndexIndex]
+	}
+	var offsetIndex []format.OffsetIndex
+	if reuseOffsetIndex != nil {
+		offsetIndex = append(*reuseOffsetIndex, rg.offsetIndex...)
+		w.offsetIndexes[offsetIndexIndex] = offsetIndex
+	} else {
+		offsetIndex = slices.Clone(rg.offsetIndex)
+		w.offsetIndexes = append(w.offsetIndexes, offsetIndex)
+	}
+
+	// If the existing row group slice is full, we need to create a new element
+	var columns []format.ColumnChunk = nil
+	if reuseRowGroup == nil {
+		columns = slices.Clone(rg.columnChunk)
+	} else {
+		columns = append(reuseRowGroup.Columns, rg.columnChunk...)
+	}
 	for i := range columns {
 		c := &columns[i]
-		c.MetaData.EncodingStats = slices.Clone(rg.columnChunk[i].MetaData.EncodingStats)
+		c.MetaData.EncodingStats = append(c.MetaData.EncodingStats[:0], rg.columnChunk[i].MetaData.EncodingStats...)
 	}
 
 	for i := range offsetIndex {
@@ -1276,18 +1321,26 @@ func (w *writer) writeRowGroup(rg *writerRowGroup, rowGroupSchema *Schema, rowGr
 		c.PageLocations = slices.Clone(rg.offsetIndex[i].PageLocations)
 	}
 
-	w.rowGroups = append(w.rowGroups, format.RowGroup{
-		Columns:             columns,
-		TotalByteSize:       totalByteSize,
-		NumRows:             numRows,
-		SortingColumns:      sortingColumns,
-		FileOffset:          fileOffset,
-		TotalCompressedSize: totalCompressedSize,
-		Ordinal:             int16(len(w.rowGroups)),
-	})
+	if reuseRowGroup == nil {
+		w.rowGroups = append(w.rowGroups, format.RowGroup{
+			Columns:             columns,
+			TotalByteSize:       totalByteSize,
+			NumRows:             numRows,
+			SortingColumns:      sortingColumns,
+			FileOffset:          fileOffset,
+			TotalCompressedSize: totalCompressedSize,
+			Ordinal:             int16(len(w.rowGroups)),
+		})
+	} else {
+		reuseRowGroup.Columns = columns
+		reuseRowGroup.TotalByteSize = totalByteSize
+		reuseRowGroup.NumRows = numRows
+		reuseRowGroup.SortingColumns = sortingColumns
+		reuseRowGroup.FileOffset = fileOffset
+		reuseRowGroup.TotalCompressedSize = totalCompressedSize
+		reuseRowGroup.Ordinal = int16(len(w.rowGroups) - 1)
+	}
 
-	w.columnIndexes = append(w.columnIndexes, columnIndex)
-	w.offsetIndexes = append(w.offsetIndexes, offsetIndex)
 	return numRows, nil
 }
 
@@ -1723,8 +1776,8 @@ func (c *ColumnWriter) WriteRowValues(rows []Value) (int, error) {
 	return numRows, nil
 }
 
-// Close closes the column writer and releases all dependent resources.
-// New values should not be written after the ColumnWriter is closed.
+// Close closes the column writer and resets all dependent resources.
+// It can be reused after Close is called.
 func (c *ColumnWriter) Close() (err error) {
 	if c.columnBuffer == nil {
 		return nil
@@ -1733,7 +1786,6 @@ func (c *ColumnWriter) Close() (err error) {
 		return err
 	}
 	c.columnBuffer.Reset()
-	c.columnBuffer = nil
 	return nil
 }
 
@@ -1956,7 +2008,15 @@ func (c *ColumnWriter) fallbackDictionaryToPlain() error {
 		c.columnType = indexedType.Type
 	}
 	if c.plainColumnBuffer == nil {
-		c.plainColumnBuffer = c.columnType.NewColumnBuffer(int(c.bufferIndex), int(c.bufferSize))
+		base := c.columnType.NewColumnBuffer(int(c.bufferIndex), int(c.bufferSize))
+		switch {
+		case c.maxRepetitionLevel > 0:
+			c.plainColumnBuffer = newRepeatedColumnBuffer(base, c.maxRepetitionLevel, c.maxDefinitionLevel, nullsGoLast)
+		case c.maxDefinitionLevel > 0:
+			c.plainColumnBuffer = newOptionalColumnBuffer(base, c.maxDefinitionLevel, nullsGoLast)
+		default:
+			c.plainColumnBuffer = base
+		}
 	}
 	c.columnBuffer = c.plainColumnBuffer
 	c.encoding = &plain.Encoding{}
@@ -2055,16 +2115,20 @@ func (c *ColumnWriter) recordPageStats(headerSize int32, header *format.PageHead
 		definitionLevels := page.DefinitionLevels()
 
 		if c.maxRepetitionLevel > 0 {
-			accumulateLevelHistogram(c.repetitionLevelHistogram, repetitionLevels)
-			c.pageRepetitionLevelHistograms = appendPageLevelHistogram(
-				c.pageRepetitionLevelHistograms, repetitionLevels, c.maxRepetitionLevel,
+			c.pageRepetitionLevelHistograms = accumulateAndAppendPageLevelHistogram(
+				c.repetitionLevelHistogram,
+				c.pageRepetitionLevelHistograms,
+				repetitionLevels,
+				c.maxRepetitionLevel,
 			)
 		}
 
 		if c.maxDefinitionLevel > 0 {
-			accumulateLevelHistogram(c.definitionLevelHistogram, definitionLevels)
-			c.pageDefinitionLevelHistograms = appendPageLevelHistogram(
-				c.pageDefinitionLevelHistograms, definitionLevels, c.maxDefinitionLevel,
+			c.pageDefinitionLevelHistograms = accumulateAndAppendPageLevelHistogram(
+				c.definitionLevelHistogram,
+				c.pageDefinitionLevelHistograms,
+				definitionLevels,
+				c.maxDefinitionLevel,
 			)
 		}
 	}

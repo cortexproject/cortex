@@ -3750,7 +3750,7 @@
               "x-format": "duration"
             },
             "kvstore": {
-              "description": "Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes.",
+              "description": "Backend storage to use for the ring. Memberlist support in the HA tracker is experimental, as gossip propagation delays may impact HA performance.",
               "properties": {
                 "consul": {
                   "$ref": "#/definitions/consul_config"

@@ -15,6 +15,7 @@
   * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
   * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.
   * Config: Renamed `parquet_queryable_shard_cache_size` to `parquet_shard_cache_size` and `parquet_queryable_shard_cache_ttl` to `parquet_shard_cache_ttl`.
+* [FEATURE] HATracker: Add experimental support for `memberlist` and `multi` as a KV store backend. #7284
 * [FEATURE] Distributor: Add `-distributor.otlp.add-metric-suffixes` flag. If true, suffixes will be added to the metrics for name normalization. #7286
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [FEATURE] StoreGateway: Add a parquet shard cache to parquet mode. #7166

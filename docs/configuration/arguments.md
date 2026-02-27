@@ -117,7 +117,7 @@ The next three options only apply when the querier is used together with the Que
 
 ### Ring/HA Tracker Store
 
-The KVStore client is used by both the Ring and HA Tracker (HA Tracker doesn't support memberlist as KV store).
+The KVStore client is used by both the Ring and HA Tracker (HA Tracker supports memberlist as a KV store as an experimental feature).
 - `{ring,distributor.ha-tracker}.prefix`
    The prefix for the keys in the store. Should end with a /. For example with a prefix of foo/, the key bar would be stored under foo/bar.
 - `{ring,distributor.ha-tracker}.store`

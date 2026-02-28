@@ -450,6 +450,145 @@ func Test_convertV2RequestToV1(t *testing.T) {
 	assert.Equal(t, 1, len(v1Req.Metadata))
 }
 
+func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		v2Req         *cortexpb.PreallocWriteRequestV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef out of bounds",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 1983,
+									HelpRef: 0,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid UnitRef 1983: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef out of bounds in metadata conversion",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_GAUGE,
+									UnitRef: 0,
+									HelpRef: 9999,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid HelpRef 9999: exceeds symbols length 5",
+		},
+		{
+			name: "valid symbol refs should not error",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 3,
+									HelpRef: 4,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2RequestToV1(tt.v2Req, false)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
+
+func Test_convertV2ToV1Metadata_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		metadata      cortexpb.MetadataV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 100,
+				HelpRef: 0,
+			},
+			expectedError: "invalid UnitRef 100: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_GAUGE,
+				UnitRef: 0,
+				HelpRef: 200, // Out of bounds
+			},
+			expectedError: "invalid HelpRef 200: exceeds symbols length 5",
+		},
+		{
+			name: "valid refs",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 3,
+				HelpRef: 4,
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2ToV1Metadata("test_metric", symbols, tt.metadata)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
+
 func TestHandler_remoteWrite(t *testing.T) {
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)

@@ -21,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -72,12 +73,98 @@ type HATrackerConfig struct {
 	// of tracked keys is large.
 	EnableStartupSync bool `yaml:"enable_startup_sync"`
 
-	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes."`
+	KVStore kv.Config `yaml:"kvstore" doc:"description=Backend storage to use for the ring. Memberlist support in the HA tracker is experimental, as gossip propagation delays may impact HA performance."`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet with a specified prefix
 func (cfg *HATrackerConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("", "", f)
+}
+
+func (d *ReplicaDesc) Clone() any {
+	return proto.Clone(d)
+}
+
+// Merge merges other ReplicaDesc into this one and can be sent out to other clients.
+func (d *ReplicaDesc) Merge(mergeable memberlist.Mergeable, _ bool) (memberlist.Mergeable, error) {
+	if mergeable == nil {
+		return nil, nil
+	}
+
+	other, ok := mergeable.(*ReplicaDesc)
+	if !ok {
+		return nil, fmt.Errorf("expected *ha.ReplicaDesc, got %T", mergeable)
+	}
+
+	if other == nil {
+		return nil, nil
+	}
+
+	getLatestTime := func(desc *ReplicaDesc) int64 {
+		if desc.DeletedAt > desc.ReceivedAt {
+			return desc.DeletedAt
+		}
+		return desc.ReceivedAt
+	}
+
+	curLatest := getLatestTime(d)
+	otherLatest := getLatestTime(other)
+
+	if otherLatest > curLatest {
+		// If other is more recent, take it.
+		return d.apply(other), nil
+	}
+
+	if otherLatest < curLatest {
+		// If the current is more recent, ignore the incoming data.
+		return nil, nil
+	}
+
+	// If timestamps are the same, we take deleted one.
+	isCurDeleted := d.DeletedAt == curLatest && d.DeletedAt > 0
+	isOtherIsDeleted := other.DeletedAt == otherLatest && other.DeletedAt > 0
+
+	if isOtherIsDeleted && !isCurDeleted {
+		// If other has been deleted, take it.
+		return d.apply(other), nil
+	}
+	if isCurDeleted && !isOtherIsDeleted {
+		// If the current has been deleted, ignore the incoming data.
+		return nil, nil
+	}
+
+	// If timestamps are exactly equal but replicas differ, use lexicographic ordering
+	if other.Replica != d.Replica {
+		if other.Replica < d.Replica {
+			return d.apply(other), nil
+		}
+	}
+
+	// No change (same timestamp, same replica)
+	return nil, nil
+}
+
+// apply performs an in-place update of the current descriptor and returns a cloned result.
+func (d *ReplicaDesc) apply(other *ReplicaDesc) *ReplicaDesc {
+	d.Replica = other.Replica
+	d.ReceivedAt = other.ReceivedAt
+	d.DeletedAt = other.DeletedAt
+	return proto.Clone(d).(*ReplicaDesc)
+}
+
+// MergeContent describes content of this Mergeable.
+// For ReplicaDesc, we return the replica name.
+func (d *ReplicaDesc) MergeContent() []string {
+	if d.Replica == "" {
+		return nil
+	}
+	return []string{d.Replica}
+}
+
+// RemoveTombstones is a no-op for ReplicaDesc.
+func (d *ReplicaDesc) RemoveTombstones(_ time.Time) (total, removed int) {
+	// No-op: HATracker manages tombstones via cleanupOldReplicas
+	return
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -116,12 +203,13 @@ func (cfg *HATrackerConfig) Validate() error {
 		return fmt.Errorf(errInvalidFailoverTimeout, cfg.FailoverTimeout, minFailureTimeout)
 	}
 
-	// Tracker kv store only supports consul and etcd.
-	storeAllowedList := []string{"consul", "etcd"}
-	if slices.Contains(storeAllowedList, cfg.KVStore.Store) {
-		return nil
+	// Tracker kv store only supports consul, etcd, memberlist, and multi.
+	storeAllowedList := []string{"consul", "etcd", "memberlist", "multi"}
+	if !slices.Contains(storeAllowedList, cfg.KVStore.Store) {
+		return fmt.Errorf("invalid HATracker KV store type: %s", cfg.KVStore.Store)
 	}
-	return fmt.Errorf("invalid HATracker KV store type: %s", cfg.KVStore.Store)
+
+	return nil
 }
 
 func GetReplicaDescCodec() codec.Proto {

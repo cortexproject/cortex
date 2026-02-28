@@ -72,7 +72,12 @@ func (c *Client) Get(ctx context.Context, key string) (any, error) {
 
 // Delete is part of kv.Client interface.
 func (c *Client) Delete(ctx context.Context, key string) error {
-	return errors.New("memberlist does not support Delete")
+	err := c.awaitKVRunningOrStopping(ctx)
+	if err != nil {
+		return err
+	}
+
+	return c.kv.Delete(key)
 }
 
 // CAS is part of kv.Client interface
@@ -679,6 +684,15 @@ func (m *KV) get(key string, codec codec.Codec) (out any, version uint, err erro
 	return v.value, v.version, nil
 }
 
+func (m *KV) Delete(key string) error {
+	// TODO(Sungjin1212): Mark as delete and broadcast to peers
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	delete(m.store, key)
+	return nil
+}
+
 // WatchKey watches for value changes for given key. When value changes, 'f' function is called with the
 // latest value. Notifications that arrive while 'f' is running are coalesced into one subsequent 'f' call.
 //
@@ -888,7 +902,7 @@ outer:
 	}
 
 	m.casFailures.Inc()
-	return fmt.Errorf("failed to CAS-update key %s: %v", key, lastError)
+	return fmt.Errorf("failed to CAS-update key %s: %w", key, lastError)
 }
 
 // returns change, error (or nil, if CAS succeeded), and whether to retry or not.
@@ -901,7 +915,7 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in any) (out any
 
 	out, retry, err := f(val)
 	if err != nil {
-		return nil, 0, retry, fmt.Errorf("fn returned error: %v", err)
+		return nil, 0, retry, fmt.Errorf("fn returned error: %w", err)
 	}
 
 	if out == nil {

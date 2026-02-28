@@ -107,6 +107,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="reject_old_samples",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples_max_age",user="tenant-a"} 1.2096e+06
 		cortex_overrides{limit_name="ruler_evaluation_delay_duration",user="tenant-a"} 0
+		cortex_overrides{limit_name="ruler_grafana_org_id",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rule_groups_per_tenant",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rules_per_rule_group",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_query_offset",user="tenant-a"} 0

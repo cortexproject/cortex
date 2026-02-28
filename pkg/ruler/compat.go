@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -164,6 +165,10 @@ type RulesLimits interface {
 	RulerQueryOffset(userID string) time.Duration
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 	RulerExternalLabels(userID string) labels.Labels
+	RulerExternalURL(userID string) string
+	RulerAlertGeneratorURLFormat(userID string) string
+	RulerGrafanaDatasourceUID(userID string) string
+	RulerGrafanaOrgID(userID string) int64
 }
 
 type QueryExecutor func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
@@ -369,11 +374,25 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Appendable: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
 				evalMetrics.FailedWritesVec.WithLabelValues(userID)),
-			Queryable:              q,
-			QueryFunc:              queryFunc,
-			Context:                prometheusContext,
-			ExternalURL:            cfg.ExternalURL.URL,
-			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Queryable:   q,
+			QueryFunc:   queryFunc,
+			Context:     prometheusContext,
+			ExternalURL: cfg.ExternalURL.URL,
+			NotifyFunc: SendAlerts(notifier, func(expr string) string {
+				externalURL := cfg.ExternalURL.String()
+				if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
+					externalURL = tenantURL
+				}
+				if overrides.RulerAlertGeneratorURLFormat(userID) == "grafana-explore" {
+					datasourceUID := overrides.RulerGrafanaDatasourceUID(userID)
+					orgID := overrides.RulerGrafanaOrgID(userID)
+					if orgID == 0 {
+						orgID = 1
+					}
+					return grafanaExploreLink(externalURL, expr, datasourceUID, orgID)
+				}
+				return externalURL + strutil.TableLinkForExpression(expr)
+			}),
 			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,
 			OutageTolerance:        cfg.OutageTolerance,

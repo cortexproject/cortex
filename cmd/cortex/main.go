@@ -23,6 +23,8 @@ import (
 	_ "go.uber.org/automaxprocs"
 	"gopkg.in/yaml.v2"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
+
 	"github.com/cortexproject/cortex/pkg/cortex"
 	"github.com/cortexproject/cortex/pkg/tracing"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -171,6 +173,17 @@ func main() {
 
 	util_log.InitLogger(&cfg.Server)
 	util.InitEvents(eventSampleRate)
+
+	if _, err := memlimit.SetGoMemLimitWithOpts(
+		memlimit.WithProvider(
+			memlimit.ApplyFallback(
+				memlimit.FromCgroup,
+				memlimit.FromSystem,
+			),
+		),
+	); err != nil {
+		level.Warn(util_log.Logger).Log("msg", "Failed to set GOMEMLIMIT automatically", "err", err.Error())
+	}
 
 	ctx, cancelFn := context.WithCancel(context.Background())
 	// In testing mode skip tracing setup to avoid panic due to

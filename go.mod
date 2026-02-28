@@ -74,6 +74,7 @@ require (
 )
 
 require (
+	github.com/KimMachineGun/automemlimit v0.7.3
 	github.com/VictoriaMetrics/fastcache v1.12.2
 	github.com/aws/aws-sdk-go-v2 v1.41.1
 	github.com/aws/aws-sdk-go-v2/config v1.32.7

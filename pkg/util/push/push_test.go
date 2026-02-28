@@ -129,7 +129,7 @@ func Benchmark_Handler(b *testing.B) {
 	testSeriesNums := []int{10, 100, 500, 1000}
 	for _, seriesNum := range testSeriesNums {
 		b.Run(fmt.Sprintf("PRW1 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
+			handler := Handler(true, false, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW1HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -143,7 +143,7 @@ func Benchmark_Handler(b *testing.B) {
 			}
 		})
 		b.Run(fmt.Sprintf("PRW2 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
+			handler := Handler(true, false, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -514,7 +514,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "user-1")
-			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
+			handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			body, isV2 := test.createBody()
 			req := createRequest(t, body, isV2)
@@ -549,7 +549,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
-		handler := Handler(true, 100000, overrides, nil, pushFunc, nil)
+		handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()
@@ -572,11 +572,12 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
 
 	tests := []struct {
-		description         string
-		reqHeaders          map[string]string
-		expectedCode        int
-		isV2                bool
-		remoteWrite2Enabled bool
+		description                         string
+		reqHeaders                          map[string]string
+		expectedCode                        int
+		isV2                                bool
+		remoteWrite2Enabled                 bool
+		acceptUnknownRemoteWriteContentType bool
 	}{
 		{
 			description: "[RW 2.0] correct content-type",
@@ -688,11 +689,33 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 			isV2:                false,
 			remoteWrite2Enabled: true,
 		},
+		{
+			description: "unknown content-type with acceptUnknownRemoteWriteContentType, treated as RW v1",
+			reqHeaders: map[string]string{
+				"Content-Type":     "yolo",
+				"Content-Encoding": "snappy",
+			},
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
+			acceptUnknownRemoteWriteContentType: true,
+		},
+		{
+			description: "invalid proto param with acceptUnknownRemoteWriteContentType, treated as RW v1",
+			reqHeaders: map[string]string{
+				"Content-Type":     "application/x-protobuf;proto=yolo",
+				"Content-Encoding": "snappy",
+			},
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
+			acceptUnknownRemoteWriteContentType: true,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
+			handler := Handler(test.remoteWrite2Enabled, test.acceptUnknownRemoteWriteContentType, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			if test.isV2 {
 				ctx := context.Background()
@@ -719,7 +742,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
+	handler := Handler(true, false, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
@@ -749,7 +772,7 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 		createRequest(t, createCortexWriteRequestProtobuf(t, true, cortexpb.RULE), false),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
+		handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
@@ -765,7 +788,7 @@ func TestHandler_MetricCollection(t *testing.T) {
 		Help: "test help",
 	}, []string{"type"})
 
-	handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+	handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
 
 	t.Run("counts v1 requests", func(t *testing.T) {
 		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
@@ -788,6 +811,20 @@ func TestHandler_MetricCollection(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, resp.Code)
 
 		val := testutil.ToFloat64(counter.WithLabelValues("prw2"))
+		assert.Equal(t, 1.0, val)
+	})
+
+	t.Run("counts unknown or invalid content-type as unknown when acceptUnknownRemoteWriteContentType is true", func(t *testing.T) {
+		handlerWithUnknown := Handler(true, true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+		req := createRequestWithHeaders(t, map[string]string{
+			"Content-Type":     "yolo",
+			"Content-Encoding": "snappy",
+		}, createCortexWriteRequestProtobuf(t, false, cortexpb.API))
+		resp := httptest.NewRecorder()
+		handlerWithUnknown.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusOK, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("unknown"))
 		assert.Equal(t, 1.0, val)
 	})
 }

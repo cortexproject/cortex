@@ -153,12 +153,13 @@ type Config struct {
 	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy         string `yaml:"sharding_strategy"`
-	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites             bool   `yaml:"extend_writes"`
-	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
-	UseStreamPush            bool   `yaml:"use_stream_push"`
-	RemoteWriteV2Enabled     bool   `yaml:"remote_writev2_enabled"`
+	ShardingStrategy                    string `yaml:"sharding_strategy"`
+	ShardByAllLabels                    bool   `yaml:"shard_by_all_labels"`
+	ExtendWrites                        bool   `yaml:"extend_writes"`
+	SignWriteRequestsEnabled            bool   `yaml:"sign_write_requests"`
+	UseStreamPush                       bool   `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled                bool   `yaml:"remote_writev2_enabled"`
+	AcceptUnknownRemoteWriteContentType bool   `yaml:"accept_unknown_remote_write_content_type"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -224,6 +225,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 	f.IntVar(&cfg.NumPushWorkers, "distributor.num-push-workers", 0, "EXPERIMENTAL: Number of go routines to handle push calls from distributors to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.")
 	f.BoolVar(&cfg.RemoteWriteV2Enabled, "distributor.remote-writev2-enabled", false, "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.")
+	f.BoolVar(&cfg.AcceptUnknownRemoteWriteContentType, "distributor.accept-unknown-remote-write-content-type", false, "If true, treat requests with unknown or invalid Content-Type header as remote write v1 (legacy behavior). If false, return 415 Unsupported Media Type for non-standard content types.")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")

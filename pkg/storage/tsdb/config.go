@@ -64,6 +64,7 @@ var (
 	ErrInvalidTokenBucketBytesLimiterMode               = errors.New("invalid token bucket bytes limiter mode")
 	ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio = errors.New("lazy expanded posting group max key series ratio needs to be equal or greater than 0")
 	ErrInvalidBucketStoreType                           = errors.New("invalid bucket store type")
+	ErrInvalidMaxConcurrentBytes                        = errors.New("max concurrent bytes must be non-negative")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -281,6 +282,7 @@ type BucketStoreConfig struct {
 	SyncInterval             time.Duration            `yaml:"sync_interval"`
 	MaxConcurrent            int                      `yaml:"max_concurrent"`
 	MaxInflightRequests      int                      `yaml:"max_inflight_requests"`
+	MaxConcurrentBytes       int64                    `yaml:"max_concurrent_bytes"`
 	TenantSyncConcurrency    int                      `yaml:"tenant_sync_concurrency"`
 	BlockSyncConcurrency     int                      `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency      int                      `yaml:"meta_sync_concurrency"`
@@ -365,6 +367,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkPoolMaxBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-max-bucket-size-bytes", ChunkPoolDefaultMaxBucketSize, "Size - in bytes - of the largest chunks pool bucket.")
 	f.IntVar(&cfg.MaxConcurrent, "blocks-storage.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
 	f.IntVar(&cfg.MaxInflightRequests, "blocks-storage.bucket-store.max-inflight-requests", 0, "Max number of inflight queries to execute against the long-term storage. The limit is shared across all tenants. 0 to disable.")
+	f.Int64Var(&cfg.MaxConcurrentBytes, "blocks-storage.bucket-store.max-concurrent-bytes", 0, "Max number of bytes being processed concurrently across all queries. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "blocks-storage.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants syncing blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "blocks-storage.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks syncing per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "blocks-storage.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
@@ -428,6 +431,9 @@ func (cfg *BucketStoreConfig) Validate() error {
 	}
 	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio < 0 {
 		return ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio
+	}
+	if cfg.MaxConcurrentBytes < 0 {
+		return ErrInvalidMaxConcurrentBytes
 	}
 	return nil
 }

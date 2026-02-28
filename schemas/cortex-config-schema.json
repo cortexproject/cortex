@@ -1860,6 +1860,12 @@
               "type": "number",
               "x-cli-flag": "blocks-storage.bucket-store.max-concurrent"
             },
+            "max_concurrent_bytes": {
+              "default": 0,
+              "description": "Max number of bytes being processed concurrently across all queries. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.bucket-store.max-concurrent-bytes"
+            },
             "max_inflight_requests": {
               "default": 0,
               "description": "Max number of inflight queries to execute against the long-term storage. The limit is shared across all tenants. 0 to disable.",

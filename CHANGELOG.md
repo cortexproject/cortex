@@ -14,6 +14,7 @@
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
+* [FEATURE] StoreGateway: Add optional limit `blocks-storage.bucket-store.max-concurrent-bytes` on series bytes per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
 * [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to mattermost. #7267
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203

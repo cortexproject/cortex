@@ -90,18 +90,18 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
-	mtx                        sync.RWMutex
-	tenantShard                float64
-	maxRulesPerRuleGroup       int
-	maxRuleGroups              int
-	disabledRuleGroups         validation.DisabledRuleGroups
-	maxQueryLength             time.Duration
-	queryOffset                time.Duration
-	externalLabels             labels.Labels
-	externalURL                string
-	alertGeneratorURLFormat    string
-	grafanaDatasourceUID       string
-	grafanaOrgID               int64
+	mtx                     sync.RWMutex
+	tenantShard             float64
+	maxRulesPerRuleGroup    int
+	maxRuleGroups           int
+	disabledRuleGroups      validation.DisabledRuleGroups
+	maxQueryLength          time.Duration
+	queryOffset             time.Duration
+	externalLabels          labels.Labels
+	externalURL             string
+	alertGeneratorURLFormat string
+	grafanaDatasourceUID    string
+	grafanaOrgID            int64
 }
 
 func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {

@@ -208,12 +208,12 @@ type Limits struct {
 	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
-	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulerEvaluationDelay         model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize         float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup    int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant  int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerQueryOffset             model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels          labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
 	RulerExternalURL             string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
 	RulerAlertGeneratorURLFormat string         `yaml:"ruler_alert_generator_url_format" json:"ruler_alert_generator_url_format" doc:"nocli|description=Format for alert generator URLs. Supported values: prometheus (default), grafana-explore."`
 	RulerGrafanaDatasourceUID    string         `yaml:"ruler_grafana_datasource_uid" json:"ruler_grafana_datasource_uid" doc:"nocli|description=Grafana datasource UID for alert generator URLs when format is grafana-explore."`

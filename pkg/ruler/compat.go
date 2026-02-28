@@ -374,10 +374,10 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Appendable: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
 				evalMetrics.FailedWritesVec.WithLabelValues(userID)),
-			Queryable:              q,
-			QueryFunc:              queryFunc,
-			Context:                prometheusContext,
-			ExternalURL:            cfg.ExternalURL.URL,
+			Queryable:   q,
+			QueryFunc:   queryFunc,
+			Context:     prometheusContext,
+			ExternalURL: cfg.ExternalURL.URL,
 			NotifyFunc: SendAlerts(notifier, func(expr string) string {
 				externalURL := cfg.ExternalURL.String()
 				if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {

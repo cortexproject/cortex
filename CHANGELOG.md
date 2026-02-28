@@ -75,6 +75,7 @@
 * [BUGFIX] Cache: Fix Redis Cluster EXECABORT error in MSet by using individual SET commands instead of transactions for cluster mode. #7262
 * [BUGFIX] Distributor: Fix an `index out of range` panic in PRW2.0 handler caused by dirty metadata when reusing requests from `sync.Pool`. #7299
 * [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
+* [BUGFIX] Compactor: Fix compaction concurrency limit not being respected across compaction levels. When `compaction-concurrency` was set to 1, multiple compactions (e.g., 12h and 24h) could still run in the same pass due to the BucketCompactor loop calling `Groups()` repeatedly. The grouper now tracks cumulative groups returned and enforces the limit across calls. #7298
 
 
 ## 1.20.1 2025-12-03

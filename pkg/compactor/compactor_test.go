@@ -22,6 +22,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb"
@@ -2448,4 +2449,128 @@ func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
 			// Continue polling
 		}
 	}
+}
+
+func TestCompactor_ShouldRespectConcurrencyLimitAcrossCompactionLevels(t *testing.T) {
+	block0hto2hUlid := ulid.MustNew(301, nil)
+	block2hto4hUlid := ulid.MustNew(302, nil)
+	block4hto6hUlid := ulid.MustNew(303, nil)
+	block6hto8hUlid := ulid.MustNew(304, nil)
+	block8hto10hUlid := ulid.MustNew(305, nil)
+	block10hto12hUlid := ulid.MustNew(306, nil)
+	block24hto36hUlid := ulid.MustNew(307, nil)
+	block36hto48hUlid := ulid.MustNew(308, nil)
+
+	h := time.Hour.Milliseconds()
+
+	blocks := map[ulid.ULID]*metadata.Meta{
+		block0hto2hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block0hto2hUlid, MinTime: 0, MaxTime: 2 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block2hto4hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block2hto4hUlid, MinTime: 2 * h, MaxTime: 4 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block4hto6hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block4hto6hUlid, MinTime: 4 * h, MaxTime: 6 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block6hto8hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block6hto8hUlid, MinTime: 6 * h, MaxTime: 8 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block8hto10hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block8hto10hUlid, MinTime: 8 * h, MaxTime: 10 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block10hto12hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block10hto12hUlid, MinTime: 10 * h, MaxTime: 12 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block24hto36hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block24hto36hUlid, MinTime: 24 * h, MaxTime: 36 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block36hto48hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block36hto48hUlid, MinTime: 36 * h, MaxTime: 48 * h},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+	}
+
+	compactorCfg := &Config{
+		BlockRanges: cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour},
+	}
+
+	limits := &validation.Limits{}
+	overrides := validation.NewOverrides(*limits, nil)
+
+	rs := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Addr: "test-addr"},
+		},
+	}
+	subring := &ring.RingMock{}
+	subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
+
+	r := &ring.RingMock{}
+	r.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
+
+	registerer := prometheus.NewPedanticRegistry()
+	blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_block_visit_marker_read_failed",
+	})
+	blockVisitMarkerWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_block_visit_marker_write_failed",
+	})
+
+	bkt := &bucket.ClientMock{}
+	bkt.MockUpload(mock.Anything, nil)
+	bkt.MockGet(mock.Anything, "", nil)
+
+	metrics := newCompactorMetrics(registerer)
+
+	noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+		return nil
+	}
+
+	ctx := t.Context()
+	g := NewShuffleShardingGrouper(
+		ctx,
+		nil,
+		objstore.WithNoopInstr(bkt),
+		false,
+		true,
+		nil,
+		metadata.NoneFunc,
+		metrics.getSyncerMetrics("test-user"),
+		metrics,
+		*compactorCfg,
+		r,
+		"test-addr",
+		"test-compactor",
+		overrides,
+		"test-user",
+		10,
+		3,
+		1, // concurrency = 1
+		5*time.Minute,
+		blockVisitMarkerReadFailed,
+		blockVisitMarkerWriteFailed,
+		noCompactFilter,
+	)
+
+	totalGroupsAcrossCalls := 0
+	for i := 0; i < 5; i++ {
+		result, err := g.Groups(blocks)
+		require.NoError(t, err)
+		totalGroupsAcrossCalls += len(result)
+		if len(result) == 0 {
+			break
+		}
+	}
+
+	require.Equal(t, 1, totalGroupsAcrossCalls,
+		"with concurrency=1, the grouper should return at most 1 group total across multiple Groups() calls, "+
+			"but got %d (bug: BucketCompactor loop causes cascading compactions at different levels)", totalGroupsAcrossCalls)
 }

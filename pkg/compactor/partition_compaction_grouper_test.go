@@ -2253,3 +2253,93 @@ type expectedCompactionJob struct {
 	rangeStart     int64
 	rangeEnd       int64
 }
+
+func TestPartitionCompactionGrouper_ShouldRespectCumulativeConcurrencyLimit(t *testing.T) {
+	block1 := ulid.MustNew(201, nil)
+	block2 := ulid.MustNew(202, nil)
+	block3 := ulid.MustNew(203, nil)
+	block4 := ulid.MustNew(204, nil)
+
+	userID := "test-user"
+	testCompactorID := "test-compactor"
+
+	blocks := map[ulid.ULID]*metadata.Meta{
+		block1: {
+			BlockMeta: tsdb.BlockMeta{ULID: block1, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+		},
+		block2: {
+			BlockMeta: tsdb.BlockMeta{ULID: block2, MinTime: 0 * H, MaxTime: 2 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+		},
+		block3: {
+			BlockMeta: tsdb.BlockMeta{ULID: block3, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+		},
+		block4: {
+			BlockMeta: tsdb.BlockMeta{ULID: block4, MinTime: 2 * H, MaxTime: 4 * H, Compaction: tsdb.BlockMetaCompaction{Level: 1}},
+		},
+	}
+
+	compactorCfg := &Config{
+		BlockRanges: []time.Duration{2 * time.Hour, 12 * time.Hour, 24 * time.Hour},
+	}
+
+	limits := &validation.Limits{}
+	overrides := validation.NewOverrides(*limits, nil)
+
+	rs := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Addr: "test-addr"},
+		},
+	}
+	subring := &ring.RingMock{}
+	subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
+	subring.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(rs, nil)
+
+	r := &ring.RingMock{}
+	r.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
+
+	registerer := prometheus.NewPedanticRegistry()
+	metrics := newCompactorMetrics(registerer)
+
+	noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+		return nil
+	}
+
+	bkt := &bucket.ClientMock{}
+	bkt.MockUpload(mock.Anything, nil)
+	bkt.MockGet(mock.Anything, "", nil)
+	bkt.MockIter(mock.Anything, nil, nil)
+
+	ctx := t.Context()
+	g := NewPartitionCompactionGrouper(
+		ctx,
+		nil,
+		objstore.WithNoopInstr(bkt),
+		false,
+		true,
+		nil,
+		metrics.getSyncerMetrics(userID),
+		metrics,
+		metadata.NoneFunc,
+		*compactorCfg,
+		r,
+		"test-addr",
+		testCompactorID,
+		overrides,
+		userID,
+		10,
+		3,
+		1, // concurrency = 1
+		false,
+		5*time.Minute,
+		noCompactFilter,
+		1,
+	)
+
+	result1, err := g.Groups(blocks)
+	require.NoError(t, err)
+	require.Len(t, result1, 1, "first Groups() call should return exactly 1 group")
+
+	result2, err := g.Groups(blocks)
+	require.NoError(t, err)
+	require.Len(t, result2, 0, "second Groups() call should return 0 groups when cumulative concurrency limit is reached")
+}

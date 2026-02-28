@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] Compactor: Fix compaction concurrency limit not being respected across compaction levels. When `compaction-concurrency` was set to 1, multiple compactions (e.g., 12h and 24h) could still run in the same pass due to the BucketCompactor loop calling `Groups()` repeatedly. The grouper now tracks cumulative groups returned and enforces the limit across calls. #7298
 * [CHANGE] StoreGateway/Alertmanager: Add default 5s connection timeout on client. #6603
 * [CHANGE] Ingester: Remove EnableNativeHistograms config flag and instead gate keep through new per-tenant limit at ingestion. #6718
 * [CHANGE] Validate a tenantID when to use a single tenant resolver. #6727

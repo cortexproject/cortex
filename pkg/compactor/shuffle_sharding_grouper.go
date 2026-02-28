@@ -38,6 +38,7 @@ type ShuffleShardingGrouper struct {
 	blockFilesConcurrency    int
 	blocksFetchConcurrency   int
 	compactionConcurrency    int
+	totalGroupsPlanned       int
 
 	ring               ring.ReadRing
 	ringLifecyclerAddr string
@@ -106,6 +107,11 @@ func NewShuffleShardingGrouper(
 
 // Groups function modified from https://github.com/cortexproject/cortex/pull/2616
 func (g *ShuffleShardingGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
+	remainingConcurrency := g.compactionConcurrency - g.totalGroupsPlanned
+	if remainingConcurrency <= 0 {
+		return nil, nil
+	}
+
 	noCompactMarked := g.noCompBlocksFunc()
 	// First of all we have to group blocks using the Thanos default
 	// grouping (based on downsample resolution + external labels).
@@ -248,11 +254,12 @@ mainLoop:
 		}
 
 		outGroups = append(outGroups, thanosGroup)
-		if len(outGroups) == g.compactionConcurrency {
+		if len(outGroups) == remainingConcurrency {
 			break mainLoop
 		}
 	}
 
+	g.totalGroupsPlanned += len(outGroups)
 	level.Info(g.logger).Log("msg", fmt.Sprintf("total groups for compaction: %d", len(outGroups)))
 
 	return outGroups, nil

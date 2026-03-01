@@ -2,6 +2,7 @@ package format
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/parquet-go/parquet-go/deprecated"
 )
@@ -300,22 +301,53 @@ const (
 	Karney    EdgeInterpolationAlgorithm = 4
 )
 
+const (
+	SphericalName = "SPHERICAL"
+	VincentyName  = "VINCENTY"
+	ThomasName    = "THOMAS"
+	AndoyerName   = "ANDOYER"
+	KarneyName    = "KARNEY"
+)
+
 func (e EdgeInterpolationAlgorithm) String() string {
 	switch e {
 	case Spherical:
-		return "SPHERICAL"
+		return SphericalName
 	case Vincenty:
-		return "VINCENTY"
+		return VincentyName
 	case Thomas:
-		return "THOMAS"
+		return ThomasName
 	case Andoyer:
-		return "ANDOYER"
+		return AndoyerName
 	case Karney:
-		return "KARNEY"
+		return KarneyName
 	default:
 		return "EdgeInterpolationAlgorithm(?)"
 	}
 }
+
+func (e *EdgeInterpolationAlgorithm) FromString(s string) error {
+	switch strings.ToUpper(s) {
+	case SphericalName:
+		*e = Spherical
+	case VincentyName:
+		*e = Vincenty
+	case ThomasName:
+		*e = Thomas
+	case AndoyerName:
+		*e = Andoyer
+	case KarneyName:
+		*e = Karney
+	default:
+		return fmt.Errorf("invalid EdgeInterpolationAlgorithm: %q", s)
+	}
+	return nil
+}
+
+const (
+	defaultCRS         = "OGC:CRS84"
+	GeometryDefaultCRS = defaultCRS
+)
 
 // Embedded Geometry logical type annotation
 //
@@ -336,10 +368,12 @@ type GeometryType struct {
 func (t *GeometryType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeometryDefaultCRS
 	}
 	return fmt.Sprintf("GEOMETRY(%q)", crs)
 }
+
+const GeographyDefaultCRS = defaultCRS
 
 // Embedded Geography logical type annotation
 //
@@ -364,7 +398,7 @@ type GeographyType struct {
 func (t *GeographyType) String() string {
 	crs := t.CRS
 	if crs == "" {
-		crs = "OGC:CRS84"
+		crs = GeographyDefaultCRS
 	}
 	return fmt.Sprintf("GEOGRAPHY(%q, %s)", crs, t.Algorithm)
 }
@@ -1004,6 +1038,17 @@ type RowGroup struct {
 	Ordinal int16 `thrift:"7,optional,writezero"`
 }
 
+func (r *RowGroup) Reset() {
+	r.FileOffset = 0
+	r.NumRows = 0
+	r.TotalByteSize = 0
+	r.SortingColumns = r.SortingColumns[:0]
+	r.Columns = r.Columns[:0]
+	r.Ordinal = 0
+	r.TotalByteSize = 0
+	r.TotalCompressedSize = 0
+}
+
 // Empty struct to signal the order defined by the physical or logical type.
 type TypeDefinedOrder struct{}
 
@@ -1091,6 +1136,16 @@ type OffsetIndex struct {
 	UnencodedByteArrayDataBytes []int64 `thrift:"2,optional"`
 }
 
+func (o *OffsetIndex) Reset() {
+	for k := range o.PageLocations {
+		o.PageLocations[k].Offset = 0
+		o.PageLocations[k].CompressedPageSize = 0
+		o.PageLocations[k].FirstRowIndex = 0
+	}
+	o.PageLocations = o.PageLocations[:0]
+	o.UnencodedByteArrayDataBytes = o.UnencodedByteArrayDataBytes[:0]
+}
+
 // Description for ColumnIndex.
 // Each <array-field>[i] refers to the page at OffsetIndex.PageLocations[i]
 type ColumnIndex struct {
@@ -1138,6 +1193,22 @@ type ColumnIndex struct {
 
 	// Same as repetition_level_histograms except for definitions levels.
 	DefinitionLevelHistogram []int64 `thrift:"7,optional"`
+}
+
+func (c *ColumnIndex) Reset() {
+	c.DefinitionLevelHistogram = c.DefinitionLevelHistogram[:0]
+	c.RepetitionLevelHistogram = c.RepetitionLevelHistogram[:0]
+	c.NullCounts = c.NullCounts[:0]
+	c.NullPages = c.NullPages[:0]
+	c.BoundaryOrder = 0
+	for k := range c.MaxValues {
+		c.MaxValues[k] = c.MaxValues[k][:0]
+	}
+	c.MaxValues = c.MaxValues[:0]
+	for k := range c.MinValues {
+		c.MinValues[k] = c.MinValues[k][:0]
+	}
+	c.MinValues = c.MinValues[:0]
 }
 
 type AesGcmV1 struct {

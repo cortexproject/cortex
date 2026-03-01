@@ -1,0 +1,118 @@
+services:
+  distributor:
+    image: quay.io/cortexproject/cortex:${CORTEX_VERSION}
+    command:
+      - -config.file=/config/cortex-config.yaml
+      - -target=distributor
+      - -server.http-listen-port=8001
+      - -server.grpc-listen-port=9001
+    volumes:
+      - ./cortex-config.yaml:/config/cortex-config.yaml:ro
+    depends_on:
+      ingester:
+        condition: service_started
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: wget -qO- http://127.0.0.1:8001/ready
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+  ingester:
+    image: quay.io/cortexproject/cortex:${CORTEX_VERSION}
+    command:
+      - -config.file=/config/cortex-config.yaml
+      - -target=ingester
+      - -server.http-listen-port=8002
+      - -server.grpc-listen-port=9002
+    volumes:
+      - ./cortex-config.yaml:/config/cortex-config.yaml:ro
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: wget -qO- http://127.0.0.1:8002/ready
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+  querier:
+    image: quay.io/cortexproject/cortex:${CORTEX_VERSION}
+    command:
+      - -config.file=/config/cortex-config.yaml
+      - -target=querier
+      - -server.http-listen-port=8003
+      - -server.grpc-listen-port=9003
+    volumes:
+      - ./cortex-config.yaml:/config/cortex-config.yaml:ro
+    depends_on:
+      ingester:
+        condition: service_started
+    ports:
+      - "8003:8003"
+    healthcheck:
+      test: wget -qO- http://127.0.0.1:8003/ready
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+  store-gateway:
+    image: quay.io/cortexproject/cortex:${CORTEX_VERSION}
+    command:
+      - -config.file=/config/cortex-config.yaml
+      - -target=store-gateway
+      - -server.http-listen-port=8004
+      - -server.grpc-listen-port=9004
+    volumes:
+      - ./cortex-config.yaml:/config/cortex-config.yaml:ro
+    depends_on:
+      ingester:
+        condition: service_started
+    ports:
+      - "8004:8004"
+    healthcheck:
+      test: wget -qO- http://127.0.0.1:8004/ready
+      interval: 10s
+      timeout: 10s
+      retries: 3
+    restart: on-failure
+  grafana:
+    image: grafana/grafana:${GRAFANA_VERSION}
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_DEFAULT_THEME=light
+      - GF_LOG_MODE=console
+      - GF_LOG_LEVEL=critical
+    volumes:
+      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml:ro
+      - ../../docs/getting-started/grafana-dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml:ro
+      - ../../docs/getting-started/dashboards/:/var/lib/grafana/dashboards/:ro
+    ports:
+      - "3000:3000"
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_VERSION}
+    command:
+      - --config.file=/config/prometheus-config.yaml
+    volumes:
+      - ./prometheus-config.yaml:/config/prometheus-config.yaml:ro
+    ports:
+      - "9090:9090"
+  seaweedfs:
+    image: chrislusf/seaweedfs:${SEAWEEDFS_VERSION}
+    command:
+      - server
+      - -s3
+      - -s3.config=/workspace/seaweedfs-config.json
+    ports:
+      - "8333:8333"
+    post_start:
+      - command: /seaweedfs-init.sh
+    volumes:
+      - ../../docs/getting-started/seaweedfs-config.json:/workspace/seaweedfs-config.json:ro
+      - ../../docs/getting-started/seaweedfs-init.sh:/seaweedfs-init.sh:ro
+    healthcheck:
+      test: wget -qO- http://127.0.0.1:8333/status
+      interval: 10s
+      timeout: 10s
+      retries: 3

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/go-openapi/swag"
+	"github.com/go-openapi/swag/jsonutils"
 	v2 "github.com/prometheus/alertmanager/api/v2"
 	v2_models "github.com/prometheus/alertmanager/api/v2/models"
 	prom_model "github.com/prometheus/common/model"
@@ -20,7 +20,7 @@ func (V2AlertGroups) MergeResponses(in [][]byte) ([]byte, error) {
 	groups := make(v2_models.AlertGroups, 0)
 	for _, body := range in {
 		parsed := make(v2_models.AlertGroups, 0)
-		if err := swag.ReadJSON(body, &parsed); err != nil {
+		if err := jsonutils.ReadJSON(body, &parsed); err != nil {
 			return nil, err
 		}
 		groups = append(groups, parsed...)
@@ -31,7 +31,7 @@ func (V2AlertGroups) MergeResponses(in [][]byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return swag.WriteJSON(merged)
+	return jsonutils.WriteJSON(merged)
 }
 
 func mergeV2AlertGroups(in v2_models.AlertGroups) (v2_models.AlertGroups, error) {

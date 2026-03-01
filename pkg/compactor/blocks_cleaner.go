@@ -20,20 +20,20 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
-	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
-	defaultDeleteBlocksConcurrency = 16
-	reasonValueRetention           = "retention"
-	activeStatus                   = "active"
-	deletedStatus                  = "deleted"
+	defaultDeleteBlocksConcurrency               = 16
+	defaultDeletePartitionedGroupInfoConcurrency = 5
+	reasonValueRetention                         = "retention"
+	activeStatus                                 = "active"
+	deletedStatus                                = "deleted"
 )
 
 type BlocksCleanerConfig struct {
@@ -320,7 +320,7 @@ func (c *BlocksCleaner) runEmitPartitionMetricsWorker(ctx context.Context, jobCh
 		err := concurrency.ForEachUser(ctx, job.users, c.cfg.CleanupConcurrency, func(ctx context.Context, userID string) error {
 			userLogger := util_log.WithUserID(userID, c.logger)
 			userBucket := bucket.NewUserBucketClient(userID, c.bucketClient, c.cfgProvider)
-			c.emitUserParititionMetrics(ctx, userLogger, userBucket, userID)
+			c.emitUserPartitionMetrics(ctx, userLogger, userBucket, userID)
 			return nil
 		})
 
@@ -536,7 +536,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 	level.Info(userLogger).Log("msg", "completed deleting blocks for tenant marked for deletion", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 
-	mark, err := cortex_tsdb.ReadTenantDeletionMark(ctx, c.bucketClient, userID)
+	mark, err := users.ReadTenantDeletionMark(ctx, c.bucketClient, userID, userLogger)
 	if err != nil {
 		return errors.Wrap(err, "failed to read tenant deletion mark")
 	}
@@ -549,7 +549,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	if deletedBlocks.Load() > 0 || mark.FinishedTime == 0 {
 		level.Info(userLogger).Log("msg", "updating finished time in tenant deletion mark")
 		mark.FinishedTime = time.Now().Unix()
-		return errors.Wrap(cortex_tsdb.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
+		return errors.Wrap(users.WriteTenantDeletionMark(ctx, c.bucketClient, userID, mark), "failed to update tenant deletion mark")
 	}
 	if time.Since(time.Unix(mark.FinishedTime, 0)) < c.cfg.TenantCleanupDelay {
 		return nil
@@ -567,7 +567,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	} else if deleted > 0 {
 		level.Info(userLogger).Log("msg", "deleted marker files for tenant marked for deletion", "count", deleted, "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	if err := cortex_tsdb.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
+	if err := users.DeleteTenantDeletionMark(ctx, c.bucketClient, userID); err != nil {
 		return errors.Wrap(err, "failed to delete tenant deletion mark")
 	}
 	return nil
@@ -608,6 +608,12 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		c.tenantCleanDuration.WithLabelValues(userID).Set(time.Since(startTime).Seconds())
 	}()
+
+	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+		begin := time.Now()
+		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
+		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
+	}
 
 	// Migrate block deletion marks to the global markers location. This operation is a best-effort.
 	if firstRun && c.cfg.BlockDeletionMarksMigrationEnabled {
@@ -753,12 +759,6 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
 	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), float64(totalBlocksBlocksMarkedForNoCompaction))
-
-	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle && c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-		begin = time.Now()
-		c.cleanPartitionedGroupInfo(ctx, userBucket, userLogger, userID)
-		level.Info(userLogger).Log("msg", "finish cleaning partitioned group info files", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
-	}
 	return nil
 }
 
@@ -786,40 +786,74 @@ func (c *BlocksCleaner) cleanPartitionedGroupInfo(ctx context.Context, userBucke
 		level.Warn(userLogger).Log("msg", "error return when going through partitioned group directory", "err", err)
 	}
 
-	for partitionedGroupInfo, extraInfo := range existentPartitionedGroupInfo {
+	partitionsToClean := make([]any, 0, len(existentPartitionedGroupInfo))
+	for partitionedGroupInfo := range existentPartitionedGroupInfo {
+		partitionsToClean = append(partitionsToClean, partitionedGroupInfo)
+	}
+
+	_ = concurrency.ForEach(ctx, partitionsToClean, defaultDeletePartitionedGroupInfoConcurrency, func(ctx context.Context, partitionToClean any) error {
+		partitionedGroupInfo := partitionToClean.(*PartitionedGroupInfo)
+		extraInfo := existentPartitionedGroupInfo[partitionedGroupInfo]
+
 		partitionedGroupInfoFile := extraInfo.path
+		deletedBlocksCount := 0
+		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
+		isPartitionGroupInfoDeleted := false
 
 		if extraInfo.status.CanDelete {
 			if extraInfo.status.IsCompleted {
 				// Try to remove all blocks included in partitioned group info
-				if err := partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID); err != nil {
-					level.Warn(userLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+				deletedBlocksCount, err = partitionedGroupInfo.markAllBlocksForDeletion(ctx, userBucket, userLogger, c.blocksMarkedForDeletion, userID)
+				if err != nil {
+					level.Warn(partitionedGroupLogger).Log("msg", "unable to mark all blocks in partitioned group info for deletion")
 					// if one block can not be marked for deletion, we should
 					// skip delete this partitioned group. next iteration
 					// would try it again.
-					continue
+					return nil
 				}
 			}
 
-			if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
-				level.Warn(userLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+			if deletedBlocksCount > 0 {
+				level.Info(partitionedGroupLogger).Log("msg", "parent blocks deleted, will delete partition group file in next cleaning cycle")
 			} else {
-				level.Info(userLogger).Log("msg", "deleted partitioned group info", "partitioned_group_info", partitionedGroupInfoFile)
+				level.Info(partitionedGroupLogger).Log("msg", "deleting partition group because either all associated blocks have been deleted or partition group is invalid")
+				if err := userBucket.Delete(ctx, partitionedGroupInfoFile); err != nil {
+					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete partitioned group info", "partitioned_group_file", partitionedGroupInfoFile, "err", err)
+				} else {
+					level.Info(partitionedGroupLogger).Log("msg", "deleted partitioned group info", "partitioned_group_file", partitionedGroupInfoFile)
+					isPartitionGroupInfoDeleted = true
+				}
 			}
 		}
 
-		if extraInfo.status.CanDelete || extraInfo.status.DeleteVisitMarker {
-			// Remove partition visit markers
+		if extraInfo.status.CanDelete && (isPartitionGroupInfoDeleted || c.cannotFindPartitionGroupInfoFile(ctx, userBucket, userLogger, partitionedGroupInfoFile)) {
+			level.Info(partitionedGroupLogger).Log("msg", "partition group info file has been deleted or does not exist, removing all related partition visit markers")
+			// Remove all partition visit markers for completed partitions
 			if _, err := bucket.DeletePrefix(ctx, userBucket, GetPartitionVisitMarkerDirectoryPath(partitionedGroupInfo.PartitionedGroupID), userLogger, defaultDeleteBlocksConcurrency); err != nil {
-				level.Warn(userLogger).Log("msg", "failed to delete partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile, "err", err)
+				level.Warn(partitionedGroupLogger).Log("msg", "failed to delete all partition visit markers for partitioned group", "err", err)
 			} else {
-				level.Info(userLogger).Log("msg", "deleted partition visit markers for partitioned group", "partitioned_group_info", partitionedGroupInfoFile)
+				level.Info(partitionedGroupLogger).Log("msg", "deleted partition visit markers for partitioned group")
+			}
+		} else {
+			// Remove all invalid visit markers
+			for _, v := range extraInfo.status.VisitMarkersToDelete {
+				if err := userBucket.Delete(ctx, v.GetVisitMarkerFilePath()); err != nil {
+					level.Warn(partitionedGroupLogger).Log("msg", "failed to delete invalid visit marker", "partition_visit_marker_file", v.String(), "err", err)
+				} else {
+					level.Info(partitionedGroupLogger).Log("msg", "deleted invalid visit marker", "partition_visit_marker_file", v.String())
+				}
 			}
 		}
-	}
+		return nil
+	})
 }
 
-func (c *BlocksCleaner) emitUserParititionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
+func (c *BlocksCleaner) cannotFindPartitionGroupInfoFile(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, partitionedGroupInfoFile string) bool {
+	_, err := ReadPartitionedGroupInfoFile(ctx, userBucket, userLogger, partitionedGroupInfoFile)
+	return err != nil && errors.Is(err, ErrorPartitionedGroupInfoNotFound)
+}
+
+func (c *BlocksCleaner) emitUserPartitionMetrics(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket, userID string) {
 	existentPartitionedGroupInfo, err := c.iterPartitionGroups(ctx, userBucket, userLogger)
 	if err != nil {
 		level.Warn(userLogger).Log("msg", "error listing partitioned group directory to emit metrics", "err", err)
@@ -834,7 +868,7 @@ func (c *BlocksCleaner) emitUserParititionMetrics(ctx context.Context, userLogge
 		c.inProgressCompactions.WithLabelValues(userID).Set(float64(inProgressCompactions))
 		if oldestPartitionGroup != nil {
 			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(float64(time.Now().Unix() - oldestPartitionGroup.CreationTime))
-			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTime)
+			level.Debug(userLogger).Log("msg", "partition group info with oldest creation time", "partitioned_group_id", oldestPartitionGroup.PartitionedGroupID, "creation_time", oldestPartitionGroup.CreationTimeString())
 		} else {
 			c.oldestPartitionGroupOffset.WithLabelValues(userID).Set(0)
 		}
@@ -866,8 +900,9 @@ func (c *BlocksCleaner) iterPartitionGroups(ctx context.Context, userBucket objs
 			return nil
 		}
 
+		partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 		status := partitionedGroupInfo.getPartitionedGroupStatus(ctx, userBucket, c.compactionVisitMarkerTimeout, userLogger)
-		level.Debug(userLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
+		level.Debug(partitionedGroupLogger).Log("msg", "got partitioned group status", "partitioned_group_status", status.String())
 		existentPartitionedGroupInfo[partitionedGroupInfo] = struct {
 			path   string
 			status PartitionedGroupStatus

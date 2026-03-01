@@ -9,6 +9,7 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
+	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/histogram"
@@ -54,37 +55,34 @@ func (u *unaryNegation) loadSeries(ctx context.Context) error {
 			return
 		}
 		u.series = make([]labels.Labels, len(series))
+		var b labels.ScratchBuilder
 		for i := range series {
-			lbls := labels.NewBuilder(series[i]).Del(labels.MetricName).Labels()
+			lbls := extlabels.DropReserved(series[i], b)
 			u.series[i] = lbls
 		}
 	})
 	return err
 }
 
-func (u *unaryNegation) GetPool() *model.VectorPool {
-	return u.next.GetPool()
-}
-
-func (u *unaryNegation) Next(ctx context.Context) ([]model.StepVector, error) {
+func (u *unaryNegation) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
-	in, err := u.next.Next(ctx)
+	n, err := u.next.Next(ctx, buf)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	if in == nil {
-		return nil, nil
+	if n == 0 {
+		return 0, nil
 	}
-	for i := range in {
-		floats.Scale(-1, in[i].Samples)
-		negateHistograms(in[i].Histograms)
+	for i := range n {
+		floats.Scale(-1, buf[i].Samples)
+		negateHistograms(buf[i].Histograms)
 	}
-	return in, nil
+	return n, nil
 }
 
 func negateHistograms(hists []*histogram.FloatHistogram) {

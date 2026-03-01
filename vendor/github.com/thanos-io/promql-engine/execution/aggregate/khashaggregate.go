@@ -13,8 +13,8 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -26,26 +26,25 @@ import (
 )
 
 type kAggregate struct {
-	next    model.VectorOperator
-	paramOp model.VectorOperator
-	// params holds the aggregate parameter for each step.
-	params []float64
-
-	vectorPool *model.VectorPool
-
+	next        model.VectorOperator
+	paramOp     model.VectorOperator
 	by          bool
 	labels      []string
 	aggregation parser.ItemType
+	stepsBatch  int
+	compare     func(float64, float64) bool
 
 	once        sync.Once
 	series      []labels.Labels
 	inputToHeap []*samplesHeap
 	heaps       []*samplesHeap
-	compare     func(float64, float64) bool
+	params      []float64
+
+	tempBuf  []model.StepVector
+	paramBuf []model.StepVector
 }
 
 func NewKHashAggregate(
-	points *model.VectorPool,
 	next model.VectorOperator,
 	paramOp model.VectorOperator,
 	aggregation parser.ItemType,
@@ -72,54 +71,63 @@ func NewKHashAggregate(
 
 	op := &kAggregate{
 		next:        next,
-		vectorPool:  points,
 		by:          by,
 		aggregation: aggregation,
 		labels:      labels,
 		paramOp:     paramOp,
 		compare:     compare,
 		params:      make([]float64, opts.StepsBatch),
+		stepsBatch:  opts.StepsBatch,
 	}
 
 	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op), nil
 }
 
-func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
+func (a *kAggregate) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return 0, ctx.Err()
 	default:
 	}
 
-	in, err := a.next.Next(ctx)
+	var err error
+	a.once.Do(func() { err = a.init(ctx) })
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
-	args, err := a.paramOp.Next(ctx)
+	nIn, err := a.next.Next(ctx, a.tempBuf)
 	if err != nil {
-		return nil, err
+		return 0, err
+	}
+	if nIn == 0 {
+		return 0, nil
+	}
+	in := a.tempBuf[:nIn]
+
+	nParam, err := a.paramOp.Next(ctx, a.paramBuf)
+	if err != nil {
+		return 0, err
 	}
 
-	for i := range args {
-		a.params[i] = args[i].Samples[0]
-		a.paramOp.GetPool().PutStepVector(args[i])
+	for i := range nParam {
+		a.params[i] = a.paramBuf[i].Samples[0]
 		val := a.params[i]
 
 		switch a.aggregation {
 		case parser.TOPK, parser.BOTTOMK, parser.LIMITK:
 			if math.IsNaN(val) {
-				return nil, errors.New("Parameter value is NaN")
+				return 0, errors.New("Parameter value is NaN")
 			}
 			if val > math.MaxInt64 {
-				return nil, errors.Newf("Scalar value %v overflows int64", val)
+				return 0, errors.Newf("Scalar value %v overflows int64", val)
 			}
 			if val < math.MinInt64 {
-				return nil, errors.Newf("Scalar value %v underflows int64", val)
+				return 0, errors.Newf("Scalar value %v underflows int64", val)
 			}
 		case parser.LIMIT_RATIO:
 			if math.IsNaN(val) {
-				return nil, errors.Newf("Ratio value is NaN")
+				return 0, errors.Newf("Ratio value is NaN")
 			}
 			switch {
 			case val < -1.0:
@@ -132,22 +140,14 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 			a.params[i] = val
 		}
 	}
-	a.paramOp.GetPool().PutVectors(args)
 
-	if in == nil {
-		return nil, nil
-	}
-
-	a.once.Do(func() { err = a.init(ctx) })
-	if err != nil {
-		return nil, err
-	}
-
-	result := a.vectorPool.GetVectorBatch()
-	for i, vector := range in {
+	n := 0
+	for i := 0; i < nIn && n < len(buf); i++ {
+		vector := in[i]
 		// Skip steps where the argument is less than or equal to 0, limit_ratio is an exception.
 		if (a.aggregation != parser.LIMIT_RATIO && int(a.params[i]) <= 0) || (a.aggregation == parser.LIMIT_RATIO && a.params[i] == 0) {
-			result = append(result, a.GetPool().GetStepVector(vector.T))
+			buf[n] = model.StepVector{T: vector.T}
+			n++
 			continue
 		}
 		if a.aggregation != parser.LIMITK && a.aggregation != parser.LIMIT_RATIO && len(vector.Histograms) > 0 {
@@ -163,12 +163,12 @@ func (a *kAggregate) Next(ctx context.Context) ([]model.StepVector, error) {
 			k = int(a.params[i])
 		}
 
-		a.aggregate(vector.T, &result, k, ratio, vector.SampleIDs, vector.Samples, vector.HistogramIDs, vector.Histograms)
-		a.next.GetPool().PutStepVector(vector)
+		buf[n].Reset(vector.T)
+		a.aggregate(&buf[n], k, ratio, vector.SampleIDs, vector.Samples, vector.HistogramIDs, vector.Histograms)
+		n++
 	}
-	a.next.GetPool().PutVectors(in)
 
-	return result, nil
+	return n, nil
 }
 
 func (a *kAggregate) Series(ctx context.Context) ([]labels.Labels, error) {
@@ -178,10 +178,6 @@ func (a *kAggregate) Series(ctx context.Context) ([]labels.Labels, error) {
 		return nil, err
 	}
 	return a.series, nil
-}
-
-func (a *kAggregate) GetPool() *model.VectorPool {
-	return a.vectorPool
 }
 
 func (a *kAggregate) String() string {
@@ -222,8 +218,13 @@ func (a *kAggregate) init(ctx context.Context) error {
 		}
 		a.inputToHeap = append(a.inputToHeap, h)
 	}
-	a.vectorPool.SetStepSize(len(series))
 	a.series = series
+
+	// Allocate outer slice for buffers; inner slices will be allocated by child operators
+	// or grow on demand. This avoids over-allocation when aggregating many series to few.
+	a.tempBuf = make([]model.StepVector, a.stepsBatch)
+	a.paramBuf = make([]model.StepVector, a.stepsBatch)
+
 	return nil
 }
 
@@ -232,7 +233,7 @@ func (a *kAggregate) init(ctx context.Context) error {
 // bottomk: gives the 'k' smallest element based on the sample values
 // limitk: samples the first 'k' element from the given timeseries (has native histogram support)
 // limit_ratio: deterministically samples out the 'ratio' amount of the samples from the given timeseries (also has native histogram support).
-func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, ratio float64, sampleIDs []uint64, samples []float64, histogramIDs []uint64, histograms []*histogram.FloatHistogram) {
+func (a *kAggregate) aggregate(out *model.StepVector, k int, ratio float64, sampleIDs []uint64, samples []float64, histogramIDs []uint64, histograms []*histogram.FloatHistogram) {
 	groupsRemaining := len(a.heaps)
 
 	switch a.aggregation {
@@ -332,16 +333,24 @@ func (a *kAggregate) aggregate(t int64, result *[]model.StepVector, k int, ratio
 		}
 	}
 
-	s := a.vectorPool.GetStepVector(t)
+	// Add results from all heaps to the output step vector.
+	inputSize := len(sampleIDs) + len(histogramIDs)
+	hint := inputSize
+	if k > 0 && k*len(a.heaps) < inputSize {
+		hint = k * len(a.heaps)
+	} else if ratio != 0 {
+		estimated := int(float64(inputSize) * math.Abs(ratio))
+		if estimated < hint {
+			hint = estimated
+		}
+	}
 	for _, sampleHeap := range a.heaps {
 		// for topk and bottomk the heap keeps the lowest value on top, so reverse it.
 		if a.aggregation == parser.TOPK || a.aggregation == parser.BOTTOMK {
 			sort.Sort(sort.Reverse(sampleHeap))
 		}
-		sampleHeap.addSamplesToPool(a.vectorPool, &s)
+		sampleHeap.addSamplesToPool(out, hint)
 	}
-
-	*result = append(*result, s)
 }
 
 type entry struct {
@@ -360,12 +369,12 @@ func (s samplesHeap) Len() int {
 	return len(s.entries)
 }
 
-func (s *samplesHeap) addSamplesToPool(pool *model.VectorPool, stepVector *model.StepVector) {
+func (s *samplesHeap) addSamplesToPool(stepVector *model.StepVector, hint int) {
 	for _, e := range s.entries {
 		if e.histogramSample == nil {
-			stepVector.AppendSample(pool, e.sId, e.total)
+			stepVector.AppendSampleWithSizeHint(e.sId, e.total, hint)
 		} else {
-			stepVector.AppendHistogram(pool, e.histId, e.histogramSample)
+			stepVector.AppendHistogramWithSizeHint(e.histId, e.histogramSample, hint)
 		}
 	}
 	s.entries = s.entries[:0]

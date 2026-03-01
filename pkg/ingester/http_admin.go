@@ -25,6 +25,8 @@ const tpl = `
 		{{if (gt .ReplicationFactor 0)}}
 		<p><b>NB stats do not account for replication factor, which is currently set to {{ .ReplicationFactor }}</b></p>
 		{{end}}
+		<p><b> These stats were aggregated from {{ .QueriedIngesterNum }} ingesters.</b></p>
+		
 		<form action="" method="POST">
 			<input type="hidden" name="csrf_token" value="$__CSRF_TOKEN_PLACEHOLDER__">
 			<table border="1">
@@ -37,6 +39,7 @@ const tpl = `
 						<th>Total Ingest Rate</th>
 						<th>API Ingest Rate</th>
 						<th>Rule Ingest Rate</th>
+						<th># Queried Ingesters</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -49,6 +52,7 @@ const tpl = `
 						<td align='right'>{{ printf "%.2f" .UserStats.IngestionRate }}</td>
 						<td align='right'>{{ printf "%.2f" .UserStats.APIIngestionRate }}</td>
 						<td align='right'>{{ printf "%.2f" .UserStats.RuleIngestionRate }}</td>
+						<td align='right'>{{ .UserStats.QueriedIngesters }}</td>
 					</tr>
 					{{ end }}
 				</tbody>
@@ -87,10 +91,11 @@ type UserStats struct {
 	RuleIngestionRate float64 `json:"RuleIngestionRate"`
 	ActiveSeries      uint64  `json:"activeSeries"`
 	LoadedBlocks      uint64  `json:"loadedBlocks"`
+	QueriedIngesters  uint64  `json:"queriedIngesters"`
 }
 
 // AllUserStatsRender render data for all users or return in json format.
-func AllUserStatsRender(w http.ResponseWriter, r *http.Request, stats []UserIDStats, rf int) {
+func AllUserStatsRender(w http.ResponseWriter, r *http.Request, stats []UserIDStats, rf, queriedIngesterNum int) {
 	sort.Sort(UserStatsByTimeseries(stats))
 
 	if encodings, found := r.Header["Accept"]; found &&
@@ -102,12 +107,14 @@ func AllUserStatsRender(w http.ResponseWriter, r *http.Request, stats []UserIDSt
 	}
 
 	util.RenderHTTPResponse(w, struct {
-		Now               time.Time     `json:"now"`
-		Stats             []UserIDStats `json:"stats"`
-		ReplicationFactor int           `json:"replicationFactor"`
+		Now                time.Time     `json:"now"`
+		Stats              []UserIDStats `json:"stats"`
+		ReplicationFactor  int           `json:"replicationFactor"`
+		QueriedIngesterNum int           `json:"queriedIngesterNum"`
 	}{
-		Now:               time.Now(),
-		Stats:             stats,
-		ReplicationFactor: rf,
+		Now:                time.Now(),
+		Stats:              stats,
+		ReplicationFactor:  rf,
+		QueriedIngesterNum: queriedIngesterNum,
 	}, UserStatsTmpl, r)
 }

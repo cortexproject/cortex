@@ -98,6 +98,10 @@ func FromLabelsFile(lf parquet.FileView) (*TSDBSchema, error) {
 
 func (b *Builder) AddLabelNameColumn(lbls ...string) {
 	for _, lbl := range lbls {
+		col := LabelToColumn(lbl)
+		if _, ok := b.g[col]; ok {
+			continue
+		}
 		b.g[LabelToColumn(lbl)] = parquet.Optional(parquet.Encoded(parquet.String(), &parquet.RLEDictionary))
 	}
 }

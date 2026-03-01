@@ -203,7 +203,7 @@ func (t *Operator) Series(ctx context.Context) ([]labels.Labels, error) {
 	return s, err
 }
 
-func (t *Operator) Next(ctx context.Context) ([]model.StepVector, error) {
+func (t *Operator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
 	start := time.Now()
 	var totalSamplesBeforeCount int64
 	totalSamplesBefore := t.OperatorTelemetry.Samples()
@@ -214,9 +214,9 @@ func (t *Operator) Next(ctx context.Context) ([]model.StepVector, error) {
 	}
 
 	defer func() { t.OperatorTelemetry.AddNextExecutionTime(time.Since(start)) }()
-	out, err := t.inner.Next(ctx)
+	n, err := t.inner.Next(ctx, buf)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	var totalSamplesAfter int64
@@ -229,11 +229,7 @@ func (t *Operator) Next(ctx context.Context) ([]model.StepVector, error) {
 
 	t.OperatorTelemetry.UpdatePeak(int(totalSamplesAfter) - int(totalSamplesBeforeCount))
 
-	return out, err
-}
-
-func (t *Operator) GetPool() *model.VectorPool {
-	return t.inner.GetPool()
+	return n, err
 }
 
 func (t *Operator) Explain() []model.VectorOperator {

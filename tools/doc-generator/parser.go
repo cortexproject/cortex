@@ -361,7 +361,7 @@ func getFieldFlag(parent reflect.Type, field reflect.StructField, fieldValue ref
 }
 
 func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*configEntry, error) {
-	if field.Type == reflect.TypeOf(logging.Level{}) || field.Type == reflect.TypeOf(logging.Format{}) {
+	if field.Type == reflect.TypeFor[logging.Level]() || field.Type == reflect.TypeFor[logging.Format]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
@@ -377,7 +377,7 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.URLValue{}) {
+	if field.Type == reflect.TypeFor[flagext.URLValue]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
@@ -393,7 +393,7 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.Secret{}) {
+	if field.Type == reflect.TypeFor[flagext.Secret]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
@@ -409,7 +409,7 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(model.Duration(0)) {
+	if field.Type == reflect.TypeFor[model.Duration]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err
@@ -429,7 +429,7 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 			fieldDefault: fieldFlag.DefValue,
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.Time{}) {
+	if field.Type == reflect.TypeFor[flagext.Time]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err

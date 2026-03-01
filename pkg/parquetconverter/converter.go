@@ -35,12 +35,11 @@ import (
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	"github.com/cortexproject/cortex/pkg/storage/tsdb/users"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -139,7 +138,6 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
-			convert.WithSortBy(labels.MetricName),
 			convert.WithColDuration(time.Hour * 8),
 			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
 		},
@@ -194,17 +192,17 @@ func (c *Converter) running(ctx context.Context) error {
 			return ctx.Err()
 		case <-t.C:
 			level.Info(c.logger).Log("msg", "start scanning users")
-			users, err := c.discoverUsers(ctx)
+			userIds, err := c.discoverUsers(ctx)
 			if err != nil {
 				level.Error(c.logger).Log("msg", "failed to scan users", "err", err)
 				continue
 			}
 			ownedUsers := map[string]struct{}{}
-			rand.Shuffle(len(users), func(i, j int) {
-				users[i], users[j] = users[j], users[i]
+			rand.Shuffle(len(userIds), func(i, j int) {
+				userIds[i], userIds[j] = userIds[j], userIds[i]
 			})
 
-			for _, userID := range users {
+			for _, userID := range userIds {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
@@ -235,7 +233,7 @@ func (c *Converter) running(ctx context.Context) error {
 					continue
 				}
 
-				if markedForDeletion, err := cortex_tsdb.TenantDeletionMarkExists(ctx, c.bkt, userID); err != nil {
+				if markedForDeletion, err := users.TenantDeletionMarkExists(ctx, c.bkt, userID); err != nil {
 					level.Warn(userLogger).Log("msg", "unable to check if user is marked for deletion", "user", userID, "err", err)
 					continue
 				} else if markedForDeletion {
@@ -388,7 +386,8 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if marker.Version == cortex_parquet.CurrentVersion {
+		// We don't convert blocks again if they already have a valid converter mark.
+		if cortex_parquet.ValidConverterMarkVersion(marker.Version) {
 			continue
 		}
 
@@ -430,16 +429,22 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 
 		converterOpts := append(c.baseConverterOptions, convert.WithName(b.ULID.String()))
 
+		sortColumns := []string{labels.MetricName}
+		userConfiguredSortColumns := c.limits.ParquetConverterSortColumns(userID)
+		sortColumns = append(sortColumns, userConfiguredSortColumns...)
+		converterOpts = append(converterOpts, convert.WithSortBy(sortColumns...))
+
 		if c.cfg.FileBufferEnabled {
 			converterOpts = append(converterOpts, convert.WithColumnPageBuffers(parquet.NewFileBufferPool(bdir, "buffers.*")))
 		}
 
-		_, err = convert.ConvertTSDBBlock(
+		numShards, err := convert.ConvertTSDBBlock(
 			ctx,
 			uBucket,
 			tsdbBlock.MinTime(),
 			tsdbBlock.MaxTime(),
 			[]convert.Convertible{tsdbBlock},
+			util_log.GoKitLogToSlog(logger),
 			converterOpts...,
 		)
 
@@ -454,9 +459,9 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 		duration := time.Since(start)
 		c.metrics.convertBlockDuration.WithLabelValues(userID).Set(duration.Seconds())
-		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration)
+		level.Info(logger).Log("msg", "successfully converted block", "block", b.ULID.String(), "duration", duration, "shards", numShards)
 
-		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket); err != nil {
+		if err = cortex_parquet.WriteConverterMark(ctx, b.ULID, uBucket, numShards); err != nil {
 			level.Error(logger).Log("msg", "failed to write parquet converter marker", "block", b.ULID.String(), "err", err)
 			if c.checkConvertError(userID, err) {
 				return err
@@ -509,7 +514,7 @@ func (c *Converter) isPermissionDeniedErr(err error) bool {
 }
 
 func (c *Converter) ownUser(r ring.ReadRing, userId string) (bool, error) {
-	if userId == tenant.GlobalMarkersDir {
+	if userId == users.GlobalMarkersDir {
 		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
 		return false, nil
 	}

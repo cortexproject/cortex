@@ -102,7 +102,7 @@ func (b *bReadAt) ReadAt(p []byte, off int64) (n int, err error) {
 	if err == io.EOF {
 		err = nil
 	}
-	return
+	return n, err
 }
 
 type optimisticReaderAt struct {

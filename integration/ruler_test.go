@@ -1,5 +1,4 @@
 //go:build integration_ruler
-// +build integration_ruler
 
 package integration
 
@@ -141,6 +140,65 @@ func TestRulerAPI(t *testing.T) {
 			assertServiceMetricsPrefixes(t, Ruler, ruler)
 		})
 	}
+}
+
+func TestRulerWithUserIndexUpdater(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Configure the ruler.
+	rulerFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		RulerShardingFlags(consul.NetworkHTTPEndpoint()),
+		map[string]string{
+			"-ruler.sharding-strategy":                                "shuffle-sharding",
+			"-ruler-storage.users-scanner.strategy":                   "user_index",
+			"-ruler-storage.users-scanner.user-index.update-interval": "15s",
+			"-ruler.tenant-shard-size":                                "1",
+			// Since we're not going to run any rule, we don't need the
+			// store-gateway to be configured to a valid address.
+			"-querier.store-gateway-addresses": "localhost:12345",
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-ruler.poll-interval":                              "2s",
+			"-log.level":                                        "info",
+		},
+	)
+
+	ruler := e2ecortex.NewRuler(
+		"ruler",
+		consul.NetworkHTTPEndpoint(),
+		rulerFlags,
+		"",
+	)
+
+	require.NoError(t, s.StartAndWaitReady(ruler))
+
+	// Create a client with the ruler address configured
+	c, err := e2ecortex.NewClient("", "", "", ruler.HTTPEndpoint(), "user-1")
+	require.NoError(t, err)
+
+	ruleGroup := createTestRuleGroup(t)
+	ns := "ns"
+
+	// Set the rule group into the ruler
+	require.NoError(t, c.SetRuleGroup(ruleGroup, ns))
+
+	// To make sure user index file is updated/scanned
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Greater(float64(0)), []string{"cortex_user_index_last_successful_update_timestamp_seconds"}),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "ruler")),
+	)
+
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(float64(1)), []string{"cortex_user_index_scan_succeeded_total"}),
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "component", "ruler")),
+	)
 }
 
 func TestRulerAPISingleBinary(t *testing.T) {

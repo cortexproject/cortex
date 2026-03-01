@@ -237,6 +237,11 @@ querier:
   # CLI flag: -querier.store-gateway-consistency-check-max-attempts
   [store_gateway_consistency_check_max_attempts: <int> | default = 3]
 
+  # [Experimental] The maximum number of series to be batched in a single gRPC
+  # response message from Store Gateways. A value of 0 or 1 disables batching.
+  # CLI flag: -querier.store-gateway-series-batch-size
+  [store_gateway_series_batch_size: <int> | default = 1]
+
   # The maximum number of times we attempt fetching data from ingesters for
   # retryable errors (ex. partial data returned).
   # CLI flag: -querier.ingester-query-max-attempts
@@ -265,9 +270,14 @@ querier:
 
     # Logical plan optimizers. Multiple optimizers can be provided as a
     # comma-separated list. Supported values: default, all, propagate-matchers,
-    # sort-matchers, merge-selects, detect-histogram-stats
+    # sort-matchers, merge-selects, detect-histogram-stats, projection
     # CLI flag: -querier.optimizers
     [optimizers: <string> | default = "default"]
+
+    # Maximum number of goroutines that can be used to decode samples. 0
+    # defaults to GOMAXPROCS / 2.
+    # CLI flag: -querier.decoding-concurrency
+    [decoding_concurrency: <int> | default = 0]
 
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
@@ -284,10 +294,13 @@ querier:
   # CLI flag: -querier.enable-parquet-queryable
   [enable_parquet_queryable: <boolean> | default = false]
 
-  # [Experimental] Maximum size of the Parquet queryable shard cache. 0 to
-  # disable.
-  # CLI flag: -querier.parquet-queryable-shard-cache-size
-  [parquet_queryable_shard_cache_size: <int> | default = 512]
+  # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+  # CLI flag: -querier.parquet-shard-cache-size
+  [parquet_shard_cache_size: <int> | default = 512]
+
+  # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+  # CLI flag: -querier.parquet-shard-cache-ttl
+  [parquet_shard_cache_ttl: <duration> | default = 24h]
 
   # [Experimental] Parquet queryable's default block store to query. Valid
   # options are tsdb and parquet. If it is set to tsdb, parquet queryable always
@@ -302,6 +315,13 @@ querier:
   # queryable.
   # CLI flag: -querier.parquet-queryable-fallback-disabled
   [parquet_queryable_fallback_disabled: <boolean> | default = false]
+
+  # [Experimental] If true, querier will honor projection hints and only
+  # materialize requested labels. Today, projection is only effective when
+  # Parquet Queryable is enabled. Projection is only applied when not querying
+  # mixed block types (parquet and non-parquet) and not querying ingesters.
+  # CLI flag: -querier.honor-projection-hints
+  [honor_projection_hints: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`
@@ -1696,9 +1716,10 @@ blocks_storage:
 
     bucket_index:
       # True to enable querier and store-gateway to discover blocks in the
-      # storage via bucket index instead of bucket scanning.
+      # storage via bucket index instead of bucket scanning. Disabling the
+      # bucket index is not recommended for production.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.enabled
-      [enabled: <boolean> | default = false]
+      [enabled: <boolean> | default = true]
 
       # How frequently a bucket index, which previously failed to load, should
       # be tried to load again. This option is used only by querier.
@@ -1728,6 +1749,10 @@ blocks_storage:
     # impacted by delays of cleaner creating bucket index.
     # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
     [block_discovery_strategy: <string> | default = "concurrent"]
+
+    # Type of bucket store to use (tsdb or parquet).
+    # CLI flag: -blocks-storage.bucket-store.bucket-store-type
+    [bucket_store_type: <string> | default = "tsdb"]
 
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
     # The pool is shared across all tenants. 0 to disable the limit.
@@ -1780,6 +1805,14 @@ blocks_storage:
       # Request token bucket size
       # CLI flag: -blocks-storage.bucket-store.token-bucket-bytes-limiter.request-token-bucket-size
       [request_token_bucket_size: <int> | default = 4194304]
+
+    # [Experimental] Maximum size of the Parquet shard cache. 0 to disable.
+    # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-size
+    [parquet_shard_cache_size: <int> | default = 512]
+
+    # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
+    # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
+    [parquet_shard_cache_ttl: <duration> | default = 24h]
 
   tsdb:
     # Local directory to store TSDBs in the ingesters.
@@ -1902,6 +1935,12 @@ blocks_storage:
         # CLI flag: -blocks-storage.expanded_postings_cache.head.ttl
         [ttl: <duration> | default = 10m]
 
+        # Timeout for fetching postings from TSDB index when cache miss occurs.
+        # This prevents runaway queries from consuming resources when all
+        # callers have given up.
+        # CLI flag: -blocks-storage.expanded_postings_cache.head.fetch-timeout
+        [fetch_timeout: <duration> | default = 0s]
+
       # If enabled, ingesters will cache expanded postings for the compacted
       # blocks. The cache is shared between all blocks.
       blocks:
@@ -1917,6 +1956,12 @@ blocks_storage:
         # CLI flag: -blocks-storage.expanded_postings_cache.block.ttl
         [ttl: <duration> | default = 10m]
 
+        # Timeout for fetching postings from TSDB index when cache miss occurs.
+        # This prevents runaway queries from consuming resources when all
+        # callers have given up.
+        # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
+        [fetch_timeout: <duration> | default = 0s]
+
   users_scanner:
     # Strategy to use to scan users. Supported values are: list, user_index.
     # CLI flag: -blocks-storage.users-scanner.strategy
@@ -1926,6 +1971,11 @@ blocks_storage:
     # the base scanner if stale. Only valid when strategy is user_index.
     # CLI flag: -blocks-storage.users-scanner.user-index.max-stale-period
     [max_stale_period: <duration> | default = 1h]
+
+    # How frequently user index file is updated. It only takes effect when user
+    # scan strategy is user_index.
+    # CLI flag: -blocks-storage.users-scanner.user-index.update-interval
+    [update_interval: <duration> | default = 15m]
 
     # TTL of the cached users. 0 disables caching and relies on caching at
     # bucket client level.

@@ -49,6 +49,7 @@ func TestLimits_Validate(t *testing.T) {
 		shardByAllLabels           bool
 		activeSeriesMetricsEnabled bool
 		expected                   error
+		nameValidationScheme       model.ValidationScheme
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -123,12 +124,77 @@ func TestLimits_Validate(t *testing.T) {
 			limits:   Limits{RulerExternalLabels: labels.FromStrings("good", string([]byte{0xff, 0xfe, 0xfd}))},
 			expected: errInvalidLabelValue,
 		},
+		"utf8: external-labels utf8 label name and value": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "😄")},
+			expected:             nil,
+			nameValidationScheme: model.UTF8Validation,
+		},
+		"utf8: external-labels invalid label name": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.\xc5.metric", "😄")},
+			expected:             errInvalidLabelName,
+			nameValidationScheme: model.UTF8Validation,
+		},
+		"utf8: external-labels invalid label value": {
+			limits:               Limits{RulerExternalLabels: labels.FromStrings("test.utf8.metric", "test.\xc5.value")},
+			expected:             errInvalidLabelValue,
+			nameValidationScheme: model.UTF8Validation,
+		},
+		"metric_relabel_configs nil entry": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{nil},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs valid config": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               relabel.Drop,
+						Regex:                relabel.MustNewRegexp("(foo)"),
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: nil,
+		},
+		"metric_relabel_configs invalid config empty action": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"__name__"},
+						Action:               "",
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
+		"metric_relabel_configs invalid target_label for legacy": {
+			limits: Limits{
+				MetricRelabelConfigs: []*relabel.Config{
+					{
+						SourceLabels:         []model.LabelName{"cluster"},
+						Action:               relabel.Replace,
+						Regex:                relabel.DefaultRelabelConfig.Regex,
+						TargetLabel:          "invalid-label-with-dash",
+						Replacement:          "x",
+						NameValidationScheme: model.LegacyValidation,
+					},
+				},
+			},
+			expected: errInvalidMetricRelabelConfigs,
+		},
 	}
 
 	for testName, testData := range tests {
-
 		t.Run(testName, func(t *testing.T) {
-			assert.ErrorIs(t, testData.limits.Validate(testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
+			nameValidationScheme := model.LegacyValidation
+			if testData.nameValidationScheme == model.UTF8Validation {
+				nameValidationScheme = testData.nameValidationScheme
+			}
+			assert.ErrorIs(t, testData.limits.Validate(nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
 		})
 	}
 }
@@ -212,7 +278,7 @@ func TestLimitsLoadingFromJson(t *testing.T) {
 }
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
-	limits := reflect.TypeOf(Limits{})
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var mismatch []string
 
@@ -245,7 +311,7 @@ limits_per_label_set:
 	err := yaml.Unmarshal([]byte(inputYAML), &limitsYAML)
 	require.NoError(t, err)
 	require.Len(t, limitsYAML.LimitsPerLabelSet, 1)
-	require.Len(t, limitsYAML.LimitsPerLabelSet[0].LabelSet, 1)
+	require.Equal(t, 1, limitsYAML.LimitsPerLabelSet[0].LabelSet.Len())
 	require.Equal(t, limitsYAML.LimitsPerLabelSet[0].Limits.MaxSeries, 10)
 
 	duplicatedInputYAML := `
@@ -282,8 +348,8 @@ max_query_length: 1s
 }
 
 func TestLimitsAlwaysUsesPromDuration(t *testing.T) {
-	stdlibDuration := reflect.TypeOf(time.Duration(0))
-	limits := reflect.TypeOf(Limits{})
+	stdlibDuration := reflect.TypeFor[time.Duration]()
+	limits := reflect.TypeFor[Limits]()
 	n := limits.NumField()
 	var badDurationType []string
 

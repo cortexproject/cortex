@@ -27,14 +27,14 @@ Cortex strives to be 100% API compatible with Prometheus (under `/prometheus/*` 
 - Additional API around pushing metrics (under `/api/push`).
 - Additional API endpoints for management of Cortex itself, such as the ring.  These APIs are not part of the any compatibility guarantees.
 
-_For more information, please refer to the [limitations](../guides/limitations.md) doc._
-
 ## Experimental features
 
 Cortex is an actively developed project and we want to encourage the introduction of new features and capability.  As such, not everything in each release of Cortex is considered "production-ready". We don't provide any backwards compatibility guarantees on these and the config and flags might break.
 
 Currently experimental features are:
 
+- Overrides API
+  - Runtime configuration API for managing tenant limits
 - Ruler
   - Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address`).
   - When `-ruler.frontend-address` is specified, the response format can be specified (via `-ruler.query-response-format`).
@@ -62,9 +62,7 @@ Currently experimental features are:
   - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Query-frontend: query stats tracking (`-frontend.query-stats-enabled`)
-- Blocks storage bucket index
-  - The bucket index support in the querier and store-gateway (enabled via `-blocks-storage.bucket-store.bucket-index.enabled=true`) is experimental
-  - The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
+- The block deletion marks migration support in the compactor (`-compactor.block-deletion-marks-migration-enabled`) is temporarily and will be removed in future versions
 - Blocks storage user index
 - Querier: tenant federation
   - `-tenant-federation.enabled`
@@ -118,7 +116,6 @@ Currently experimental features are:
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
-  - Add `__type__` and `__unit__` labels (`-distributor.otlp.enable-type-and-unit-labels`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - Native Histograms
@@ -127,6 +124,7 @@ Currently experimental features are:
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
 - Querier: protobuf codec (`-api.querier-default-codec`)
+- Querier: Series batch size (`-querier.store-gateway-series-batch-size`)
 - Query-frontend: dynamic query splits
   - `querier.max-shards-per-query` (int) CLI flag
   - `querier.max-fetched-data-duration-per-query` (duration) CLI flag
@@ -135,3 +133,17 @@ Currently experimental features are:
   - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
+  - Add `__type__` and `__unit__` labels to OTLP and remote write v2 requests (`-distributor.enable-type-and-unit-labels`)
+- Ingester: Series Queried Metric
+  - Enable on Ingester via `-ingester.active-queried-series-metrics-enabled=true`
+  - Set the time window to expose via metrics using `-ingester.active-queried-series-metrics-windows=2h`. At least 1 time window is required to expose the metric.
+  - `-ingester.active-queried-series-metrics-update-period` metric update interval
+  - `-ingester.active-queried-series-metrics-window-duration` each HyperLogLog time window size
+  - `-ingester.active-queried-series-metrics-sample-rate` query sampling rate
+- Ingester: Regex Matcher Limits
+  - Enable regex matcher limits and metrics collection via `-ingester.enable-regex-matcher-limits=true`
+  - Per-tenant limits for unoptimized regex matchers:
+    - `-validation.max-regex-pattern-length` (int) - maximum pattern length in bytes
+    - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
+    - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
+- HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled, fetches all tracked keys on startup to populate the local cache.

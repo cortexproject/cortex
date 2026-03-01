@@ -1,5 +1,4 @@
 //go:build requires_docker
-// +build requires_docker
 
 package integration
 
@@ -25,7 +24,6 @@ func TestBlocksStorageWithEtcd(t *testing.T) {
 		"-blocks-storage.tsdb.block-ranges-period":      "1h",
 		"-blocks-storage.tsdb.head-compaction-interval": "1m",
 		"-store-gateway.sharding-enabled":               "true",
-		"-querier.ingester-streaming":                   "true",
 	})
 
 	// Start dependencies.

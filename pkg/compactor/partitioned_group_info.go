@@ -18,7 +18,9 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
+	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/runutil"
 )
 
@@ -41,10 +43,10 @@ type PartitionedGroupStatus struct {
 	PartitionedGroupID        uint32
 	CanDelete                 bool
 	IsCompleted               bool
-	DeleteVisitMarker         bool
 	PendingPartitions         int
 	InProgressPartitions      int
 	PendingOrFailedPartitions []Partition
+	VisitMarkersToDelete      []VisitMarker
 }
 
 func (s PartitionedGroupStatus) String() string {
@@ -52,8 +54,12 @@ func (s PartitionedGroupStatus) String() string {
 	for _, p := range s.PendingOrFailedPartitions {
 		partitions = append(partitions, fmt.Sprintf("%d", p.PartitionID))
 	}
-	return fmt.Sprintf(`{"partitioned_group_id": %d, "can_delete": %t, "is_complete": %t, "delete_visit_marker": %t, "pending_partitions": %d, "in_progress_partitions": %d, "pending_or_failed_partitions": [%s]}`,
-		s.PartitionedGroupID, s.CanDelete, s.IsCompleted, s.DeleteVisitMarker, s.PendingPartitions, s.InProgressPartitions, strings.Join(partitions, ","))
+	var visitMarkers []string
+	for _, v := range s.VisitMarkersToDelete {
+		visitMarkers = append(visitMarkers, v.GetVisitMarkerFilePath())
+	}
+	return fmt.Sprintf(`{"partitioned_group_id": %d, "can_delete": %t, "is_complete": %t, "pending_partitions": %d, "in_progress_partitions": %d, "pending_or_failed_partitions": [%s], "visit_markers_to_delete": [%s]}`,
+		s.PartitionedGroupID, s.CanDelete, s.IsCompleted, s.PendingPartitions, s.InProgressPartitions, strings.Join(partitions, ","), strings.Join(visitMarkers, ","))
 }
 
 type PartitionedGroupInfo struct {
@@ -120,14 +126,15 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 	partitionVisitMarkerTimeout time.Duration,
 	userLogger log.Logger,
 ) PartitionedGroupStatus {
+	partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", p.PartitionedGroupID, "partitioned_group_creation_time", p.CreationTimeString())
 	status := PartitionedGroupStatus{
 		PartitionedGroupID:        p.PartitionedGroupID,
 		CanDelete:                 false,
 		IsCompleted:               false,
-		DeleteVisitMarker:         false,
 		PendingPartitions:         0,
 		InProgressPartitions:      0,
 		PendingOrFailedPartitions: []Partition{},
+		VisitMarkersToDelete:      []VisitMarker{},
 	}
 	allPartitionCompleted := true
 	hasInProgressPartitions := false
@@ -136,13 +143,13 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			PartitionedGroupID: p.PartitionedGroupID,
 			PartitionID:        partition.PartitionID,
 		}
-		visitMarkerManager := NewVisitMarkerManager(userBucket, userLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", visitMarker)
+		visitMarkerManager := NewVisitMarkerManager(userBucket, partitionedGroupLogger, "PartitionedGroupInfo.getPartitionedGroupStatus", visitMarker)
 		partitionVisitMarkerExists := true
 		if err := visitMarkerManager.ReadVisitMarker(ctx, visitMarker); err != nil {
 			if errors.Is(err, errorVisitMarkerNotFound) {
 				partitionVisitMarkerExists = false
 			} else {
-				level.Warn(userLogger).Log("msg", "unable to read partition visit marker", "path", visitMarker.GetVisitMarkerFilePath(), "err", err)
+				level.Warn(partitionedGroupLogger).Log("msg", "unable to read partition visit marker", "path", visitMarker.GetVisitMarkerFilePath(), "err", err)
 				return status
 			}
 		}
@@ -151,8 +158,9 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			status.PendingPartitions++
 			allPartitionCompleted = false
 			status.PendingOrFailedPartitions = append(status.PendingOrFailedPartitions, partition)
-		} else if visitMarker.VisitTime < p.CreationTime {
-			status.DeleteVisitMarker = true
+		} else if visitMarker.VisitTime < p.CreationTime ||
+			(visitMarker.PartitionedGroupCreationTime > 0 && visitMarker.PartitionedGroupCreationTime < p.CreationTime) {
+			status.VisitMarkersToDelete = append(status.VisitMarkersToDelete, visitMarker)
 			allPartitionCompleted = false
 		} else if (visitMarker.GetStatus() == Pending || visitMarker.GetStatus() == InProgress) && !visitMarker.IsExpired(partitionVisitMarkerTimeout) {
 			status.InProgressPartitions++
@@ -173,7 +181,6 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 
 	if allPartitionCompleted {
 		status.CanDelete = true
-		status.DeleteVisitMarker = true
 		return status
 	}
 
@@ -183,22 +190,19 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 			if _, ok := checkedBlocks[blockID]; ok {
 				continue
 			}
-			if !p.doesBlockExist(ctx, userBucket, userLogger, blockID) {
-				level.Info(userLogger).Log("msg", "delete partitioned group", "reason", "block is physically deleted", "block", blockID)
+			if !p.doesBlockExist(ctx, userBucket, partitionedGroupLogger, blockID) {
+				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is physically deleted", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
-			if p.isBlockDeleted(ctx, userBucket, userLogger, blockID) {
-				level.Info(userLogger).Log("msg", "delete partitioned group", "reason", "block is marked for deletion", "block", blockID)
+			if p.isBlockDeleted(ctx, userBucket, partitionedGroupLogger, blockID) {
+				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is marked for deletion", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
-			if p.isBlockNoCompact(ctx, userBucket, userLogger, blockID) {
-				level.Info(userLogger).Log("msg", "delete partitioned group", "reason", "block is marked for no compact", "block", blockID)
+			if p.isBlockNoCompact(ctx, userBucket, partitionedGroupLogger, blockID) {
+				level.Info(partitionedGroupLogger).Log("msg", "delete partitioned group", "reason", "block is marked for no compact", "block", blockID)
 				status.CanDelete = true
-				status.DeleteVisitMarker = true
 				return status
 			}
 			checkedBlocks[blockID] = struct{}{}
@@ -207,50 +211,60 @@ func (p *PartitionedGroupInfo) getPartitionedGroupStatus(
 	return status
 }
 
-func (p *PartitionedGroupInfo) doesBlockExist(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blockID ulid.ULID) bool {
+func (p *PartitionedGroupInfo) doesBlockExist(ctx context.Context, userBucket objstore.InstrumentedBucket, partitionedGroupLogger log.Logger, blockID ulid.ULID) bool {
 	metaExists, err := userBucket.Exists(ctx, path.Join(blockID.String(), metadata.MetaFilename))
 	if err != nil {
-		level.Warn(userLogger).Log("msg", "unable to get stats of meta.json for block", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
+		level.Warn(partitionedGroupLogger).Log("msg", "unable to get stats of meta.json for block", "block", blockID.String())
 		return true
 	}
 	return metaExists
 }
 
-func (p *PartitionedGroupInfo) isBlockDeleted(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blockID ulid.ULID) bool {
+func (p *PartitionedGroupInfo) isBlockDeleted(ctx context.Context, userBucket objstore.InstrumentedBucket, partitionedGroupLogger log.Logger, blockID ulid.ULID) bool {
 	deletionMarkerExists, err := userBucket.Exists(ctx, path.Join(blockID.String(), metadata.DeletionMarkFilename))
 	if err != nil {
-		level.Warn(userLogger).Log("msg", "unable to get stats of deletion-mark.json for block", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
+		level.Warn(partitionedGroupLogger).Log("msg", "unable to get stats of deletion-mark.json for block", "block", blockID.String())
 		return false
 	}
 	return deletionMarkerExists
 }
 
-func (p *PartitionedGroupInfo) isBlockNoCompact(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blockID ulid.ULID) bool {
+func (p *PartitionedGroupInfo) isBlockNoCompact(ctx context.Context, userBucket objstore.InstrumentedBucket, partitionedGroupLogger log.Logger, blockID ulid.ULID) bool {
 	noCompactMarkerExists, err := userBucket.Exists(ctx, path.Join(blockID.String(), metadata.NoCompactMarkFilename))
 	if err != nil {
-		level.Warn(userLogger).Log("msg", "unable to get stats of no-compact-mark.json for block", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
+		level.Warn(partitionedGroupLogger).Log("msg", "unable to get stats of no-compact-mark.json for block", "block", blockID.String())
 		return false
 	}
 	return noCompactMarkerExists
 }
 
-func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blocksMarkedForDeletion *prometheus.CounterVec, userID string) error {
+func (p *PartitionedGroupInfo) markAllBlocksForDeletion(ctx context.Context, userBucket objstore.InstrumentedBucket, userLogger log.Logger, blocksMarkedForDeletion *prometheus.CounterVec, userID string) (int, error) {
 	blocks := p.getAllBlocks()
-	deleteBlocksCount := 0
+	var deleteBlocksCount atomic.Int64
+	partitionedGroupLogger := log.With(userLogger, "partitioned_group_id", p.PartitionedGroupID, "partitioned_group_creation_time", p.CreationTimeString())
 	defer func() {
-		level.Info(userLogger).Log("msg", "total number of blocks marked for deletion during partitioned group info clean up", "count", deleteBlocksCount)
+		level.Info(partitionedGroupLogger).Log("msg", "total number of blocks marked for deletion during partitioned group info clean up", "count", deleteBlocksCount.Load())
 	}()
+
+	blocksForDeletion := make([]any, 0, len(blocks))
 	for _, blockID := range blocks {
-		if p.doesBlockExist(ctx, userBucket, userLogger, blockID) && !p.isBlockDeleted(ctx, userBucket, userLogger, blockID) && !p.isBlockNoCompact(ctx, userBucket, userLogger, blockID) {
-			if err := block.MarkForDeletion(ctx, userLogger, userBucket, blockID, "delete block during partitioned group completion check", blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
-				level.Warn(userLogger).Log("msg", "unable to mark block for deletion", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
+		blocksForDeletion = append(blocksForDeletion, blockID)
+	}
+
+	err := concurrency.ForEach(ctx, blocksForDeletion, defaultDeleteBlocksConcurrency, func(ctx context.Context, blockForDeletion any) error {
+		blockID := blockForDeletion.(ulid.ULID)
+		if p.doesBlockExist(ctx, userBucket, partitionedGroupLogger, blockID) && !p.isBlockDeleted(ctx, userBucket, partitionedGroupLogger, blockID) && !p.isBlockNoCompact(ctx, userBucket, partitionedGroupLogger, blockID) {
+			if err := block.MarkForDeletion(ctx, partitionedGroupLogger, userBucket, blockID, "delete block during partitioned group completion check", blocksMarkedForDeletion.WithLabelValues(userID, reasonValueRetention)); err != nil {
+				level.Warn(partitionedGroupLogger).Log("msg", "unable to mark block for deletion", "block", blockID.String())
 				return err
 			}
-			deleteBlocksCount++
-			level.Debug(userLogger).Log("msg", "marked block for deletion during partitioned group info clean up", "partitioned_group_id", p.PartitionedGroupID, "block", blockID.String())
+			deleteBlocksCount.Add(1)
+			level.Debug(partitionedGroupLogger).Log("msg", "marked block for deletion during partitioned group info clean up", "block", blockID.String())
 		}
-	}
-	return nil
+		return nil
+	})
+
+	return int(deleteBlocksCount.Load()), err
 }
 
 func (p *PartitionedGroupInfo) String() string {
@@ -258,7 +272,11 @@ func (p *PartitionedGroupInfo) String() string {
 	for _, partition := range p.Partitions {
 		partitions = append(partitions, fmt.Sprintf("(PartitionID: %d, Blocks: %s)", partition.PartitionID, partition.Blocks))
 	}
-	return fmt.Sprintf("{PartitionedGroupID: %d, PartitionCount: %d, Partitions: %s}", p.PartitionedGroupID, p.PartitionCount, strings.Join(partitions, ", "))
+	return fmt.Sprintf("{PartitionedGroupID: %d, CreationTime: %s, PartitionCount: %d, Partitions: %s}", p.PartitionedGroupID, p.CreationTimeString(), p.PartitionCount, strings.Join(partitions, ", "))
+}
+
+func (p *PartitionedGroupInfo) CreationTimeString() string {
+	return time.Unix(p.CreationTime, 0).Format(time.RFC3339)
 }
 
 func GetPartitionedGroupFile(partitionedGroupID uint32) string {
@@ -304,7 +322,7 @@ func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBu
 	// partitioned group info which is supposed to be the correct grouping based on latest bucket store.
 	existingPartitionedGroup, _ := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID)
 	if existingPartitionedGroup != nil {
-		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 		return existingPartitionedGroup, nil
 	}
 	if partitionedGroupInfo.CreationTime <= 0 {
@@ -319,6 +337,6 @@ func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBu
 	if err := bkt.Upload(ctx, partitionedGroupFile, reader); err != nil {
 		return nil, err
 	}
-	level.Info(logger).Log("msg", "created new partitioned group info", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID)
+	level.Info(logger).Log("msg", "created new partitioned group info", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 	return &partitionedGroupInfo, nil
 }

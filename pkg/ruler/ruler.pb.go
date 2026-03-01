@@ -13,11 +13,11 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
-	_ "github.com/golang/protobuf/ptypes/duration"
-	_ "github.com/golang/protobuf/ptypes/timestamp"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	_ "google.golang.org/protobuf/types/known/durationpb"
+	_ "google.golang.org/protobuf/types/known/timestamppb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
@@ -1876,8 +1876,8 @@ func (this *GroupStateDesc) String() string {
 	s := strings.Join([]string{`&GroupStateDesc{`,
 		`Group:` + strings.Replace(fmt.Sprintf("%v", this.Group), "RuleGroupDesc", "rulespb.RuleGroupDesc", 1) + `,`,
 		`ActiveRules:` + repeatedStringForActiveRules + `,`,
-		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1897,8 +1897,8 @@ func (this *RuleStateDesc) String() string {
 		`Health:` + fmt.Sprintf("%v", this.Health) + `,`,
 		`LastError:` + fmt.Sprintf("%v", this.LastError) + `,`,
 		`Alerts:` + repeatedStringForAlerts + `,`,
-		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "duration.Duration", 1), `&`, ``, 1) + `,`,
+		`EvaluationTimestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationTimestamp), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`EvaluationDuration:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EvaluationDuration), "Duration", "durationpb.Duration", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1912,12 +1912,12 @@ func (this *AlertStateDesc) String() string {
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Annotations:` + fmt.Sprintf("%v", this.Annotations) + `,`,
 		`Value:` + fmt.Sprintf("%v", this.Value) + `,`,
-		`ActiveAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ActiveAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`FiredAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.FiredAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`ResolvedAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ResolvedAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`LastSentAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.LastSentAt), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`ValidUntil:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ValidUntil), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
-		`KeepFiringSince:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.KeepFiringSince), "Timestamp", "timestamp.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ActiveAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ActiveAt), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`FiredAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.FiredAt), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ResolvedAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ResolvedAt), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`LastSentAt:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.LastSentAt), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`ValidUntil:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.ValidUntil), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
+		`KeepFiringSince:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.KeepFiringSince), "Timestamp", "timestamppb.Timestamp", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s

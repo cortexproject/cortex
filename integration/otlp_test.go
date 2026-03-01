@@ -1,5 +1,4 @@
 //go:build requires_docker
-// +build requires_docker
 
 package integration
 
@@ -282,7 +281,7 @@ func TestOTLPEnableTypeAndUnitLabels(t *testing.T) {
 		"-auth.enabled": "true",
 
 		// OTLP
-		"-distributor.otlp.enable-type-and-unit-labels": "true",
+		"-distributor.enable-type-and-unit-labels": "true",
 
 		// alert manager
 		"-alertmanager.web.external-url":   "http://localhost/alertmanager",

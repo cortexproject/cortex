@@ -38,14 +38,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/testutil"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -164,16 +164,16 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 				assert.Equal(t, RingNumTokens, len(g.ringLifecycler.GetTokens()))
 				assert.Subset(t, g.ringLifecycler.GetTokens(), testData.initialTokens)
 			})
-			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 			bucketClient.MockIter("user-1/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-1", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-1", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-2/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-2", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-2", "markers", users.TenantDeletionMarkFile), false, nil)
 			bucketClient.MockIter("user-disabled/", []string{}, nil)
-			bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-disabled", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-			bucketClient.MockExists(path.Join("user-disabled", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-disabled", users.TenantDeletionMarkFile), false, nil)
+			bucketClient.MockExists(path.Join("user-disabled", "markers", users.TenantDeletionMarkFile), false, nil)
 
 			// Once successfully started, the instance should be ACTIVE in the ring.
 			require.NoError(t, services.StartAndAwaitRunning(ctx, g))
@@ -183,10 +183,11 @@ func TestStoreGateway_InitialSyncWithDefaultShardingEnabled(t *testing.T) {
 			assert.Equal(t, RingNumTokens, len(g.ringLifecycler.GetTokens()))
 			assert.Subset(t, g.ringLifecycler.GetTokens(), testData.initialTokens)
 
-			assert.NotNil(t, g.stores.getStore("user-1"))
-			assert.NotNil(t, g.stores.getStore("user-2"))
-			assert.Nil(t, g.stores.getStore("user-disabled"))
-			assert.Nil(t, g.stores.getStore("user-unknown"))
+			thanosStores := g.stores.(*ThanosBucketStores)
+			assert.NotNil(t, thanosStores.getStore("user-1"))
+			assert.NotNil(t, thanosStores.getStore("user-2"))
+			assert.Nil(t, thanosStores.getStore("user-disabled"))
+			assert.Nil(t, thanosStores.getStore("user-unknown"))
 		})
 	}
 }
@@ -205,22 +206,23 @@ func TestStoreGateway_InitialSyncWithShardingDisabled(t *testing.T) {
 	defer services.StopAndAwaitTerminated(ctx, g) //nolint:errcheck
 
 	bucketClient.MockIter("", []string{"user-1", "user-2", "user-disabled"}, nil)
-	bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+	bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 	bucketClient.MockIter("user-1/", []string{}, nil)
-	bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-1", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-	bucketClient.MockExists(path.Join("user-1", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-1", users.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join("user-1", "markers", users.TenantDeletionMarkFile), false, nil)
 	bucketClient.MockIter("user-2/", []string{}, nil)
-	bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-2", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-	bucketClient.MockExists(path.Join("user-2", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-2", users.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join("user-2", "markers", users.TenantDeletionMarkFile), false, nil)
 	bucketClient.MockIter("user-disabled/", []string{}, nil)
-	bucketClient.MockExists(path.Join(tenant.GlobalMarkersDir, "user-disabled", cortex_tsdb.TenantDeletionMarkFile), false, nil)
-	bucketClient.MockExists(path.Join("user-disabled", "markers", cortex_tsdb.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join(users.GlobalMarkersDir, "user-disabled", users.TenantDeletionMarkFile), false, nil)
+	bucketClient.MockExists(path.Join("user-disabled", "markers", users.TenantDeletionMarkFile), false, nil)
 
 	require.NoError(t, services.StartAndAwaitRunning(ctx, g))
-	assert.NotNil(t, g.stores.getStore("user-1"))
-	assert.NotNil(t, g.stores.getStore("user-2"))
-	assert.Nil(t, g.stores.getStore("user-disabled"))
-	assert.Nil(t, g.stores.getStore("user-unknown"))
+	thanosStores := g.stores.(*ThanosBucketStores)
+	assert.NotNil(t, thanosStores.getStore("user-1"))
+	assert.NotNil(t, thanosStores.getStore("user-2"))
+	assert.Nil(t, thanosStores.getStore("user-disabled"))
+	assert.Nil(t, thanosStores.getStore("user-unknown"))
 }
 
 func TestStoreGateway_InitialSyncFailure(t *testing.T) {
@@ -254,7 +256,7 @@ func TestStoreGateway_InitialSyncFailure(t *testing.T) {
 // at the same time, they will join the ring at a slightly different time).
 func TestStoreGateway_InitialSyncWithWaitRingStability(t *testing.T) {
 	//parallel testing causes data race
-	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient, storageDir := testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
 	// 2 users = total (24 / 12) * 2 = 24 blocks.
@@ -425,7 +427,7 @@ func TestStoreGateway_BlocksSyncWithDefaultSharding_RingTopologyChangedAfterScal
 		expectedBlocksLoaded = 3 * numBlocks // blocks are replicated 3 times
 	)
 
-	bucketClient, storageDir := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient, storageDir := testutil.PrepareFilesystemBucket(t)
 
 	// This tests uses real TSDB blocks. 24h time range, 2h block range period,
 	// 2 users = total (24 / 12) * 2 = 24 blocks.
@@ -615,7 +617,7 @@ func TestStoreGateway_ShouldSupportLoadRingTokensFromFile(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
-			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil, nil)
 			require.NoError(t, err)
@@ -825,7 +827,7 @@ func TestStoreGateway_SyncOnRingTopologyChanged(t *testing.T) {
 
 			bucketClient := &bucket.ClientMock{}
 			bucketClient.MockIter("", []string{}, nil)
-			bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+			bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 
 			g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg, nil)
 			require.NoError(t, err)
@@ -888,7 +890,7 @@ func TestStoreGateway_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testin
 
 	bucketClient := &bucket.ClientMock{}
 	bucketClient.MockIter("", []string{}, nil)
-	bucketClient.MockIter(tenant.GlobalMarkersDir, []string{}, nil)
+	bucketClient.MockIter(users.GlobalMarkersDir, []string{}, nil)
 
 	g, err := newStoreGateway(gatewayCfg, storageCfg, bucketClient, ringStore, defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil, nil)
 	require.NoError(t, err)
@@ -1267,6 +1269,7 @@ func (m *mockResourceMonitor) GetHeapUtilization() float64 {
 func mockStorageConfig(t *testing.T) cortex_tsdb.BlocksStorageConfig {
 	cfg := cortex_tsdb.BlocksStorageConfig{}
 	flagext.DefaultValues(&cfg)
+	cfg.BucketStore.BucketIndex.Enabled = false
 
 	cfg.BucketStore.ConsistencyDelay = 0
 	cfg.BucketStore.SyncDir = t.TempDir()

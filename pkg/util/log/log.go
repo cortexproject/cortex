@@ -43,6 +43,7 @@ func InitLogger(cfg *server.Config) {
 
 	// when use util_log.Logger, skip 6 stack frames.
 	Logger = newPrometheusLoggerFrom(l, cfg.LogLevel, "caller", log.Caller(6))
+	SLogger = GoKitLogToSlog(Logger)
 
 	// cfg.Log wraps log function, skip 7 stack frames to get caller information.
 	// this works in go 1.12, but doesn't work in versions earlier.

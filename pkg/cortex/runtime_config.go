@@ -20,18 +20,8 @@ var (
 	tenantLimitCheckTargets = []string{All, Distributor, Querier, Ruler}
 )
 
-// RuntimeConfigValues are values that can be reloaded from configuration file while Cortex is running.
-// Reloading is done by runtime_config.Manager, which also keeps the currently loaded config.
-// These values are then pushed to the components that are interested in them.
-type RuntimeConfigValues struct {
-	TenantLimits map[string]*validation.Limits `yaml:"overrides"`
-
-	Multi kv.MultiRuntimeConfig `yaml:"multi_kv_config"`
-
-	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
-
-	IngesterLimits *ingester.InstanceLimits `yaml:"ingester_limits"`
-}
+// avoid circular imports
+type RuntimeConfigValues = runtimeconfig.RuntimeConfigValues
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager
 // that reads limits from a configuration file on disk and periodically reloads them.
@@ -85,9 +75,11 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 		if strings.Contains(targetStr, target) {
 			// only check if target is `all`, `distributor`, "querier", and "ruler"
 			// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
-			for _, ul := range overrides.TenantLimits {
-				if err := ul.Validate(l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
-					return nil, err
+			if overrides != nil {
+				for _, ul := range overrides.TenantLimits {
+					if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}

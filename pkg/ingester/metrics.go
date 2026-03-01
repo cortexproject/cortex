@@ -53,10 +53,11 @@ type ingesterMetrics struct {
 	memMetadataRemovedTotal *prometheus.CounterVec
 	pushErrorsTotal         *prometheus.CounterVec
 
-	activeSeriesPerUser   *prometheus.GaugeVec
-	activeNHSeriesPerUser *prometheus.GaugeVec
-	limitsPerLabelSet     *prometheus.GaugeVec
-	usagePerLabelSet      *prometheus.GaugeVec
+	activeSeriesPerUser        *prometheus.GaugeVec
+	activeNHSeriesPerUser      *prometheus.GaugeVec
+	activeQueriedSeriesPerUser *prometheus.GaugeVec
+	limitsPerLabelSet          *prometheus.GaugeVec
+	usagePerLabelSet           *prometheus.GaugeVec
 
 	// Global limit metrics
 	maxUsersGauge           prometheus.GaugeFunc
@@ -71,16 +72,24 @@ type ingesterMetrics struct {
 
 	// Posting Cache Metrics
 	expandedPostingsCacheMetrics *tsdb.ExpandedPostingsCacheMetrics
+
+	// Unoptimized regex matcher metrics
+	unoptimizedRegexPatternLength    prometheus.Histogram
+	unoptimizedRegexLabelCardinality prometheus.Histogram
+	unoptimizedRegexTotalValueLength prometheus.Histogram
+	unoptimizedRegexRejectedTotal    *prometheus.CounterVec
 }
 
 func newIngesterMetrics(r prometheus.Registerer,
 	createMetricsConflictingWithTSDB bool,
 	activeSeriesEnabled bool,
+	activeQueriedSeriesEnabled bool,
 	instanceLimitsFn func() *InstanceLimits,
 	ingestionRate *util_math.EwmaRate,
 	inflightPushRequests *util_math.MaxTracker,
 	maxInflightQueryRequests *util_math.MaxTracker,
 	postingsCacheEnabled bool,
+	regexMatcherLimitsEnabled bool,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -273,6 +282,43 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_native_histogram_series",
 			Help: "Number of currently active native histogram series per user.",
 		}, []string{"user"}),
+
+		// Not registered automatically, but only if activeQueriedSeriesEnabled is true.
+		activeQueriedSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_active_queried_series",
+			Help: "Estimated number of currently active queried series per user (probabilistic count using HyperLogLog).",
+		}, []string{"user", "window"}),
+	}
+
+	if regexMatcherLimitsEnabled {
+		m.unoptimizedRegexPatternLength = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_pattern_length_bytes",
+			Help:                            "Length (in bytes) of unoptimized regex patterns in queries.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 2, 12), // 1 to 4096 bytes
+		})
+		m.unoptimizedRegexLabelCardinality = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_label_cardinality",
+			Help:                            "Cardinality of labels queried with unoptimized regex matchers.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 4, 10), // 1 to ~1M
+		})
+		m.unoptimizedRegexTotalValueLength = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_unoptimized_regex_total_value_length_bytes",
+			Help:                            "Total length (in bytes) of all label values for labels queried with unoptimized regex matchers.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         prometheus.ExponentialBuckets(1, 4, 12), // 1 to ~16M bytes
+		})
+		m.unoptimizedRegexRejectedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_unoptimized_regex_rejected_requests_total",
+			Help: "Total number of requests rejected due to unoptimized regex matcher limits per user and reason.",
+		}, []string{"user", "reason"})
 	}
 
 	if postingsCacheEnabled && r != nil {
@@ -282,6 +328,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 	if activeSeriesEnabled && r != nil {
 		r.MustRegister(m.activeSeriesPerUser)
 		r.MustRegister(m.activeNHSeriesPerUser)
+	}
+
+	if activeQueriedSeriesEnabled && r != nil {
+		r.MustRegister(m.activeQueriedSeriesPerUser)
 	}
 
 	if createMetricsConflictingWithTSDB {
@@ -305,6 +355,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
 	m.activeSeriesPerUser.DeleteLabelValues(userID)
 	m.activeNHSeriesPerUser.DeleteLabelValues(userID)
+	m.activeQueriedSeriesPerUser.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.usagePerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
@@ -315,6 +366,10 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 
 	if m.memSeriesRemovedTotal != nil {
 		m.memSeriesRemovedTotal.DeleteLabelValues(userID)
+	}
+
+	if m.unoptimizedRegexRejectedTotal != nil {
+		m.unoptimizedRegexRejectedTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 	}
 }
 
@@ -343,6 +398,7 @@ type tsdbMetrics struct {
 	tsdbHeadTruncateFail               *prometheus.Desc
 	tsdbHeadTruncateTotal              *prometheus.Desc
 	tsdbHeadGcDuration                 *prometheus.Desc
+	tsdbHeadStaleSeries                *prometheus.Desc
 	tsdbActiveAppenders                *prometheus.Desc
 	tsdbSeriesNotFound                 *prometheus.Desc
 	tsdbChunks                         *prometheus.Desc
@@ -470,6 +526,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_head_gc_duration_seconds",
 			"Runtime of garbage collection in the TSDB head.",
 			nil, nil),
+		tsdbHeadStaleSeries: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_stale_series",
+			"Total number of stale series in the head block.",
+			[]string{"user"}, nil),
 		tsdbActiveAppenders: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_active_appenders",
 			"Number of currently active TSDB appender transactions.",
@@ -561,7 +621,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbOOOHistogram: prometheus.NewDesc(
 			"cortex_ingester_tsdb_sample_ooo_delta",
 			"Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).",
-			nil, nil),
+			[]string{"user"}, nil),
 		tsdbMmapChunksTotal: prometheus.NewDesc(
 			"cortex_ingester_tsdb_mmap_chunks_total",
 			"Total number of chunks that were memory-mapped.",
@@ -623,6 +683,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbWALWritesFailed
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
+	out <- sm.tsdbHeadStaleSeries
 	out <- sm.tsdbHeadGcDuration
 	out <- sm.tsdbActiveAppenders
 	out <- sm.tsdbSeriesNotFound
@@ -684,6 +745,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateFail, "prometheus_tsdb_head_truncations_failed_total")
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbHeadGcDuration, "prometheus_tsdb_head_gc_duration_seconds")
+	data.SendSumOfGaugesPerUser(out, sm.tsdbHeadStaleSeries, "prometheus_tsdb_head_stale_series")
 	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
 	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
 	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")
@@ -702,7 +764,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOOOSamples, "prometheus_tsdb_out_of_order_samples_total", "type")
 	data.SendSumOfCountersPerUserWithLabels(out, sm.tsdbOutOfOrderSamplesAppended, "prometheus_tsdb_head_out_of_order_samples_appended_total", "type")
 	data.SendSumOfCounters(out, sm.tsdbSnapshotReplayErrorTotal, "prometheus_tsdb_snapshot_replay_error_total")
-	data.SendSumOfHistograms(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
+	data.SendSumOfHistogramsPerUser(out, sm.tsdbOOOHistogram, "prometheus_tsdb_sample_ooo_delta")
 	data.SendSumOfCounters(out, sm.tsdbMmapChunksTotal, "prometheus_tsdb_mmap_chunks_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteFail, "prometheus_tsdb_checkpoint_deletions_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")

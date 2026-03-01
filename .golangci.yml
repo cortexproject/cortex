@@ -54,6 +54,10 @@ linters:
       - common-false-positives
       - legacy
       - std-error-handling
+    rules:
+      - linters:
+          - staticcheck
+        text: 'labels.MetricName is deprecated: .*'    
 formatters:
   enable:
     - gofmt

@@ -13,6 +13,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 const (
@@ -185,7 +186,7 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, r
 			continue
 		}
 
-		putRequests := map[dynamodbKey]dynamodbItem{}
+		putRequests := make(map[dynamodbKey]dynamodbItem, len(buf))
 		for childKey, bytes := range buf {
 			version := int64(0)
 			if ddbItem, ok := resp[childKey]; ok {
@@ -230,7 +231,11 @@ func (c *Client) CAS(ctx context.Context, key string, f func(in any) (out any, r
 }
 
 func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
-	bo := backoff.New(ctx, c.backoffConfig)
+	watchBackoffConfig := c.backoffConfig
+	watchBackoffConfig.MaxRetries = 0
+	bo := backoff.New(ctx, watchBackoffConfig)
+	syncTimer := time.NewTimer(c.pullerSyncTime)
+	defer syncTimer.Stop()
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -263,16 +268,21 @@ func (c *Client) WatchKey(ctx context.Context, key string, f func(any) bool) {
 		}
 
 		bo.Reset()
+		utiltimer.ResetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(c.pullerSyncTime):
+		case <-syncTimer.C:
 		}
 	}
 }
 
 func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, any) bool) {
-	bo := backoff.New(ctx, c.backoffConfig)
+	watchBackoffConfig := c.backoffConfig
+	watchBackoffConfig.MaxRetries = 0
+	bo := backoff.New(ctx, watchBackoffConfig)
+	syncTimer := time.NewTimer(c.pullerSyncTime)
+	defer syncTimer.Stop()
 
 	for bo.Ongoing() {
 		out, _, err := c.kv.Query(ctx, dynamodbKey{
@@ -296,10 +306,11 @@ func (c *Client) WatchPrefix(ctx context.Context, prefix string, f func(string, 
 		}
 
 		bo.Reset()
+		utiltimer.ResetTimer(syncTimer, c.pullerSyncTime)
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(c.pullerSyncTime):
+		case <-syncTimer.C:
 		}
 	}
 }

@@ -37,6 +37,8 @@ func (f *BlockLister) GetActiveAndPartialBlockIDs(ctx context.Context, activeBlo
 	// Fetch the bucket index.
 	idx, err := ReadIndex(ctx, f.bkt, f.userID, f.cfgProvider, f.logger)
 	if errors.Is(err, ErrIndexNotFound) {
+		level.Warn(f.logger).Log("msg", "index not found", "user", f.userID, "err", err)
+
 		// This is a legit case happening when the first blocks of a tenant have recently been uploaded by ingesters
 		// and their bucket index has not been created yet.
 		// Fallback to BaseBlockIDsFetcher.
@@ -60,6 +62,7 @@ func (f *BlockLister) GetActiveAndPartialBlockIDs(ctx context.Context, activeBlo
 		return nil, err
 	}
 
+	level.Info(f.logger).Log("msg", "bucket index stats", "user", f.userID, "numBlocks", len(idx.Blocks), "numDeletedBlocks", len(idx.BlockDeletionMarks), "updatedAt", idx.UpdatedAt)
 	blocksMarkedForDeletion := idx.BlockDeletionMarks.GetULIDs()
 	blocksMarkedForDeletionMap := make(map[ulid.ULID]struct{})
 	for _, block := range blocksMarkedForDeletion {

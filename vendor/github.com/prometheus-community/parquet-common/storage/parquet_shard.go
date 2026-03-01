@@ -185,6 +185,8 @@ func OpenFromFile(ctx context.Context, path string, opts ...FileOption) (*Parque
 }
 
 type ParquetShard interface {
+	Name() string
+	ShardIdx() int
 	LabelsFile() ParquetFileView
 	ChunksFile() ParquetFileView
 	TSDBSchema() (*schema.TSDBSchema, error)
@@ -219,6 +221,8 @@ func (o *ParquetLocalFileOpener) Open(ctx context.Context, name string, opts ...
 }
 
 type ParquetShardOpener struct {
+	name                   string
+	shardIdx               int
 	labelsFile, chunksFile *ParquetFile
 	schema                 *schema.TSDBSchema
 	o                      sync.Once
@@ -260,9 +264,19 @@ func NewParquetShardOpener(
 	}
 
 	return &ParquetShardOpener{
+		name:       name,
+		shardIdx:   shard,
 		labelsFile: labelsFile,
 		chunksFile: chunksFile,
 	}, nil
+}
+
+func (s *ParquetShardOpener) Name() string {
+	return s.name
+}
+
+func (s *ParquetShardOpener) ShardIdx() int {
+	return s.shardIdx
 }
 
 func (s *ParquetShardOpener) LabelsFile() ParquetFileView {

@@ -247,7 +247,7 @@ Multi KV has the following parameters:
 
 - `multi.primary` - name of primary KV store. Same values as in `ring.store` are supported, except `multi`.
 - `multi.secondary` - name of secondary KV store.
-- `multi.mirror-enabled` - enable mirroring of values to secondary store, defaults to true
+- `multi.mirror-enabled` - enable mirroring of values to secondary store, defaults to false
 - `multi.mirror-timeout` - wait max this time for write to secondary store to finish. Defaults to 2 seconds. Errors writing to secondary store are not reported to caller, but are logged and also reported via `cortex_multikv_mirror_write_errors_total` metric.
 
 Multi KV also reacts to changes done via runtime configuration. It uses this section:
@@ -318,11 +318,10 @@ overrides:
   tenant1:
     ingestion_rate: 10000
     max_series_per_metric: 100000
-    max_series_per_query: 100000
+    max_fetched_series_per_query: 10000
   tenant2:
-    max_samples_per_query: 1000000
     max_series_per_metric: 100000
-    max_series_per_query: 100000
+    max_fetched_series_per_query: 100000
 
 multi_kv_config:
     mirror_enabled: false
@@ -348,11 +347,10 @@ overrides:
   tenant1:
     ingestion_rate: 10000
     max_series_per_metric: 100000
-    max_series_per_query: 100000
+    max_fetched_series_per_query: 100000
   tenant2:
-    max_samples_per_query: 1000000
     max_series_per_metric: 100000
-    max_series_per_query: 100000
+    max_fetched_series_per_query: 100000
 ```
 
 Valid per-tenant limits are (with their corresponding flags for default values):

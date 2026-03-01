@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	"github.com/prometheus/prometheus/scrape"
@@ -34,7 +35,6 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
@@ -43,6 +43,7 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -73,8 +74,9 @@ const (
 	// it was based on empirical observation: See BenchmarkMergeSlicesParallel
 	mergeSlicesParallelism = 8
 
-	sampleMetricTypeFloat     = "float"
-	sampleMetricTypeHistogram = "histogram"
+	sampleMetricTypeFloat         = "float"
+	sampleMetricTypeHistogram     = "histogram"
+	sampleMetricTypeHistogramNHCB = "nhcb" // Native histogram with custom buckets schema
 )
 
 // Distributor is a storage.SampleAppender and a client.Querier which
@@ -104,7 +106,7 @@ type Distributor struct {
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
-	activeUsers *util.ActiveUsersCleanupService
+	activeUsers *users.ActiveUsersCleanupService
 
 	ingestionRate          *util_math.EwmaRate
 	inflightPushRequests   atomic.Int64
@@ -129,6 +131,7 @@ type Distributor struct {
 	ingesterPartialDataQueries       prometheus.Counter
 	replicationFactor                prometheus.Gauge
 	latestSeenSampleTimestampPerUser *prometheus.GaugeVec
+	distributorIngesterPushTimeout   prometheus.Counter
 
 	validateMetrics *validation.ValidateMetrics
 
@@ -143,7 +146,7 @@ type Distributor struct {
 type Config struct {
 	PoolConfig PoolConfig `yaml:"pool"`
 
-	HATrackerConfig HATrackerConfig `yaml:"ha_tracker"`
+	HATrackerConfig ha.HATrackerConfig `yaml:"ha_tracker"`
 
 	MaxRecvMsgSize     int           `yaml:"max_recv_msg_size"`
 	OTLPMaxRecvMsgSize int           `yaml:"otlp_max_recv_msg_size"`
@@ -185,6 +188,9 @@ type Config struct {
 
 	// OTLPConfig
 	OTLPConfig OTLPConfig `yaml:"otlp"`
+
+	// Inject from global config
+	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
 
 type InstanceLimits struct {
@@ -203,7 +209,7 @@ type OTLPConfig struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
-	cfg.HATrackerConfig.RegisterFlags(f)
+	cfg.HATrackerConfig.RegisterFlagsWithPrefix("distributor.", "", f)
 	cfg.DistributorRing.RegisterFlags(f)
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
@@ -226,7 +232,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.ConvertAllAttributes, "distributor.otlp.convert-all-attributes", false, "If true, all resource attributes are converted to labels.")
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
-	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the '__type__' and '__unit__' labels are added for the OTLP metrics.")
+	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
 }
 
 // Validate config and returns error on failure
@@ -239,9 +245,7 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	haHATrackerConfig := cfg.HATrackerConfig.ToHATrackerConfig()
-
-	return haHATrackerConfig.Validate()
+	return cfg.HATrackerConfig.Validate()
 }
 
 const (
@@ -264,7 +268,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Title:             "Cortex HA Tracker Status",
 		ReplicaGroupLabel: "Cluster",
 	}
-	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig.ToHATrackerConfig(), limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
+	haTracker, err := ha.NewHATracker(cfg.HATrackerConfig, limits, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "distributor-hatracker", log)
 	if err != nil {
 		return nil, err
 	}
@@ -406,6 +410,10 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
 			Help: "Unix timestamp of latest received sample per user.",
 		}, []string{"user"}),
+		distributorIngesterPushTimeout: promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_distributor_ingester_push_timeouts_total",
+			Help: "The total number of push requests to ingesters that were canceled due to timeout.",
+		}),
 
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
@@ -455,7 +463,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	})
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
-	d.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
+	d.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)
 
 	subservices = append(subservices, d.ingesterPool, d.activeUsers)
 	d.subservices, err = services.NewManager(subservices...)
@@ -515,10 +523,12 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
+	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
+	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.incomingExemplars.DeleteLabelValues(userID)
 	d.incomingMetadata.DeleteLabelValues(userID)
 	d.nonHASamples.DeleteLabelValues(userID)
@@ -597,6 +607,18 @@ func removeLabel(labelName string, labels *[]cortexpb.LabelAdapter) {
 	}
 }
 
+// Remove all labels with empty values from a slice of LabelPairs.
+func removeEmptyLabels(labels *[]cortexpb.LabelAdapter) {
+	i := 0
+	for j := 0; j < len(*labels); j++ {
+		if (*labels)[j].Value != "" {
+			(*labels)[i] = (*labels)[j]
+			i++
+		}
+	}
+	*labels = (*labels)[:i]
+}
+
 // Returns a boolean that indicates whether or not we want to remove the replica label going forward,
 // and an error that indicates whether we want to accept samples based on the cluster/replica found in ts.
 // nil for the error means accept the sample.
@@ -629,7 +651,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -691,7 +713,15 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 
 // Push implements client.IngesterServer
 func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
-	userID, err := tenant.TenantID(ctx)
+	var validationError = true
+	defer func() {
+		if validationError {
+			cortexpb.ReuseSlice(req.Timeseries)
+			req.Free()
+		}
+	}()
+
+	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -708,15 +738,19 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	numFloatSamples := 0
 	numHistogramSamples := 0
+	numNHCBSamples := 0
 	numExemplars := 0
 	for _, ts := range req.Timeseries {
 		numFloatSamples += len(ts.Samples)
+		nhcb := countNHCB(ts.Histograms)
+		numNHCBSamples += nhcb
 		numHistogramSamples += len(ts.Histograms)
 		numExemplars += len(ts.Exemplars)
 	}
 	// Count the total samples, exemplars in, prior to validation or deduplication, for comparison with other metrics.
 	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(numFloatSamples))
 	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(numHistogramSamples))
+	d.incomingSamples.WithLabelValues(userID, sampleMetricTypeHistogramNHCB).Add(float64(numNHCBSamples))
 	d.incomingExemplars.WithLabelValues(userID).Add(float64(numExemplars))
 	// Count the total number of metadata in.
 	d.incomingMetadata.WithLabelValues(userID).Add(float64(len(req.Metadata)))
@@ -745,20 +779,23 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, req.Timeseries[0].Labels)
 		removeReplica, err = d.checkSample(ctx, userID, cluster, replica, limits)
 		if err != nil {
-			// Ensure the request slice is reused if the series get deduped.
-			cortexpb.ReuseSlice(req.Timeseries)
-
 			if errors.Is(err, ha.ReplicasNotMatchError{}) {
 				// These samples have been deduped.
 				d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(numFloatSamples + numHistogramSamples))
-				return nil, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
+				var dedupResp *cortexpb.WriteResponse
+				if d.cfg.RemoteWriteV2Enabled {
+					dedupResp = &cortexpb.WriteResponse{}
+					dedupResp.Samples = int64(numFloatSamples)
+					dedupResp.Histograms = int64(numHistogramSamples)
+					dedupResp.Exemplars = int64(numExemplars)
+				}
+				return dedupResp, httpgrpc.Errorf(http.StatusAccepted, "%s", err.Error())
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
 				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
-
 			return nil, err
 		}
 		// If there wasn't an error but removeReplica is false that means we didn't find both HA labels.
@@ -768,7 +805,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	// A WriteRequest can only contain series or metadata but not both. This might change in the future.
-	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
+	seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedNHCBSamples, validatedExemplars, firstPartialErr, err := d.prepareSeriesKeys(ctx, req, userID, limits, removeReplica)
 	if err != nil {
 		return nil, err
 	}
@@ -776,22 +813,17 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 
 	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeFloat).Add(float64(validatedFloatSamples))
 	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogram).Add(float64(validatedHistogramSamples))
+	d.receivedSamples.WithLabelValues(userID, sampleMetricTypeHistogramNHCB).Add(float64(validatedNHCBSamples))
 	d.receivedExemplars.WithLabelValues(userID).Add(float64(validatedExemplars))
 	d.receivedMetadata.WithLabelValues(userID).Add(float64(len(validatedMetadata)))
 
 	if len(seriesKeys) == 0 && len(nhSeriesKeys) == 0 && len(metadataKeys) == 0 {
-		// Ensure the request slice is reused if there's no series or metadata passing the validation.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		return &cortexpb.WriteResponse{}, firstPartialErr
 	}
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		// Ensure the request slice is reused if the request is rate limited.
-		cortexpb.ReuseSlice(req.Timeseries)
-
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
@@ -828,6 +860,9 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	if len(keys) == 0 && nativeHistogramErr != nil {
 		return nil, nativeHistogramErr
 	}
+
+	//DoBatch will be responsible to call cleanup after all async ingester requests finish.
+	validationError = false
 
 	err = d.doBatch(ctx, req, subRing, keys, initialMetadataIndex, validatedMetadata, validatedTimeseries, userID)
 	if err != nil {
@@ -916,6 +951,12 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 
 	// Use a background context to make sure all ingesters get samples even if we return early
 	localCtx, cancel := context.WithTimeout(context.Background(), d.cfg.RemoteTimeout)
+	defer func() {
+		if errors.Is(localCtx.Err(), context.DeadlineExceeded) {
+			d.distributorIngesterPushTimeout.Inc()
+		}
+	}()
+
 	localCtx = user.InjectOrgID(localCtx, userID)
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
 		localCtx = opentracing.ContextWithSpan(localCtx, sp)
@@ -980,7 +1021,18 @@ type samplesLabelSetEntry struct {
 	labels           labels.Labels
 }
 
-func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, error, error) {
+// countNHCB returns the number of native histograms with custom buckets schema in the given slice.
+func countNHCB(histograms []cortexpb.Histogram) int {
+	n := 0
+	for _, h := range histograms {
+		if histogram.IsCustomBucketsSchema(h.GetSchema()) {
+			n++
+		}
+	}
+	return n
+}
+
+func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.WriteRequest, userID string, limits *validation.Limits, removeReplica bool) ([]uint32, []uint32, []cortexpb.PreallocTimeseries, []cortexpb.PreallocTimeseries, int, int, int, int, error, error) {
 	pSpan, _ := opentracing.StartSpanFromContext(ctx, "prepareSeriesKeys")
 	defer pSpan.Finish()
 
@@ -992,6 +1044,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	nhSeriesKeys := make([]uint32, 0, len(req.Timeseries))
 	validatedFloatSamples := 0
 	validatedHistogramSamples := 0
+	validatedNHCBSamples := 0
 	validatedExemplars := 0
 	limitsPerLabelSet := d.limits.LimitsPerLabelSet(userID)
 
@@ -1011,7 +1064,12 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 	// For each timeseries, compute a hash to distribute across ingesters;
 	// check each sample and discard if outside limits.
 	skipLabelNameValidation := d.cfg.SkipLabelNameValidation || req.GetSkipLabelNameValidation()
-	for _, ts := range req.Timeseries {
+	for i := range req.Timeseries {
+		ts := &req.Timeseries[i]
+		if len(ts.Labels) == 0 {
+			return nil, nil, nil, nil, 0, 0, 0, 0, nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", "empty labels found")
+		}
+
 		if limits.AcceptHASamples && limits.AcceptMixedHASamples {
 			cluster, replica := findHALabels(limits.HAReplicaLabel, limits.HAClusterLabel, ts.Labels)
 			if cluster != "" && replica != "" {
@@ -1073,6 +1131,21 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			removeLabel(labelName, &ts.Labels)
 		}
 
+		// Reject series with missing or empty metric name before removeEmptyLabels (which would strip __name__="").
+		if validationErr, reason := validation.ValidateMetricName(limits, ts.Labels, d.cfg.NameValidationScheme); reason != "" {
+			samplesCount := float64(len(ts.Samples) + len(ts.Histograms))
+			exemplarsCount := float64(len(ts.Exemplars))
+			if firstPartialErr == nil {
+				firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErr.Error())
+			}
+			d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID).Add(samplesCount)
+			d.validateMetrics.DiscardedExemplars.WithLabelValues(reason, userID).Add(exemplarsCount)
+			continue
+		}
+
+		// Make sure no label with empty value is sent to the Ingester.
+		removeEmptyLabels(&ts.Labels)
+
 		if len(ts.Labels) == 0 {
 			d.validateMetrics.DiscardedSamples.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,
@@ -1097,9 +1170,9 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, nil, nil, 0, 0, 0, nil, err
+			return nil, nil, nil, nil, 0, 0, 0, 0, nil, err
 		}
-		validatedSeries, validationErr := d.validateSeries(ts, userID, skipLabelNameValidation, limits)
+		validatedSeries, validationErr := d.validateSeries(*ts, userID, skipLabelNameValidation, limits)
 
 		// Errors in validation are considered non-fatal, as one series in a request may contain
 		// invalid data but all the remaining series could be perfectly valid.
@@ -1119,6 +1192,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			// TODO: use pool.
 			labelSetCounters = make(map[uint64]*samplesLabelSetEntry, len(matchedLabelSetLimits))
 		}
+		nhcb := countNHCB(ts.Histograms)
 		for _, l := range matchedLabelSetLimits {
 			if c, exists := labelSetCounters[l.Hash]; exists {
 				c.floatSamples += int64(len(ts.Samples))
@@ -1141,6 +1215,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 		validatedFloatSamples += len(ts.Samples)
 		validatedHistogramSamples += len(ts.Histograms)
+		validatedNHCBSamples += nhcb
 		validatedExemplars += len(ts.Exemplars)
 	}
 	for h, counter := range labelSetCounters {
@@ -1154,7 +1229,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		}
 	}
 
-	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedExemplars, firstPartialErr, nil
+	return seriesKeys, nhSeriesKeys, validatedTimeseries, nhValidatedTimeseries, validatedFloatSamples, validatedHistogramSamples, validatedNHCBSamples, validatedExemplars, firstPartialErr, nil
 }
 
 func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
@@ -1179,7 +1254,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.WriteRequest_SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1603,26 +1678,31 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 
 // AllUserStats returns statistics about all users.
 // Note it does not divide by the ReplicationFactor like UserStats()
-func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, error) {
+func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, int, error) {
 	// Add up by user, across all responses from ingesters
 	perUserTotals := make(map[string]ingester.UserStats)
+	queriedIngesterNum := 0
 
 	req := &ingester_client.UserStatsRequest{}
 	ctx = user.InjectOrgID(ctx, "1") // fake: ingester insists on having an org ID
-	// Not using d.ForReplicationSet(), so we can fail after first error.
 	replicationSet, err := d.ingestersRing.GetAllHealthy(ring.Read)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	for _, ingester := range replicationSet.Instances {
 		client, err := d.ingesterPool.GetClientFor(ingester.Addr)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		resp, err := client.(ingester_client.IngesterClient).AllUserStats(ctx, req)
 		if err != nil {
-			return nil, err
+			// During an ingester rolling update, an ingester might be temporarily
+			// in stopping or starting state. Therefore, returning an error would
+			// cause the API to fail during the update. This is an expected error in
+			// that scenario, we continue the loop to work API.
+			continue
 		}
+		queriedIngesterNum++
 		for _, u := range resp.Stats {
 			s := perUserTotals[u.UserId]
 			s.IngestionRate += u.Data.IngestionRate
@@ -1631,6 +1711,7 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 			s.NumSeries += u.Data.NumSeries
 			s.ActiveSeries += u.Data.ActiveSeries
 			s.LoadedBlocks += u.Data.LoadedBlocks
+			s.QueriedIngesters += 1
 			perUserTotals[u.UserId] = s
 		}
 	}
@@ -1647,22 +1728,23 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 				NumSeries:         stats.NumSeries,
 				ActiveSeries:      stats.ActiveSeries,
 				LoadedBlocks:      stats.LoadedBlocks,
+				QueriedIngesters:  stats.QueriedIngesters,
 			},
 		})
 	}
 
-	return response, nil
+	return response, queriedIngesterNum, nil
 }
 
 // AllUserStatsHandler shows stats for all users.
 func (d *Distributor) AllUserStatsHandler(w http.ResponseWriter, r *http.Request) {
-	stats, err := d.AllUserStats(r.Context())
+	stats, queriedIngesterNum, err := d.AllUserStats(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor())
+	ingester.AllUserStatsRender(w, r, stats, d.ingestersRing.ReplicationFactor(), queriedIngesterNum)
 }
 
 func (d *Distributor) ServeHTTP(w http.ResponseWriter, req *http.Request) {

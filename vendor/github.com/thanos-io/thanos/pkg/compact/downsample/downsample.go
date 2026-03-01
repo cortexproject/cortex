@@ -6,6 +6,7 @@ package downsample
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math"
 	"math/rand"
 	"os"
@@ -171,7 +172,7 @@ func Downsample(
 
 		// Raw and already downsampled data need different processing.
 		if origMeta.Thanos.Downsample.Resolution == 0 {
-			var prevEnc chunkenc.Encoding = chks[0].Chunk.Encoding()
+			var prevEnc = chks[0].Chunk.Encoding()
 
 			for _, c := range chks {
 				if cutNewChunk(c.Chunk.Encoding(), prevEnc) {
@@ -337,9 +338,11 @@ func (h *histogramAggregator) reset() {
 	h.sum = nil
 }
 
-func mustHistogramOp(_ *histogram.FloatHistogram, err error) {
+func mustHistogramOp(_ *histogram.FloatHistogram, _, _ bool, err error) {
 	// NOTE(GiedriusS): this can only happen with custom
 	// boundaries. We do not support them yet.
+	// The two boolean return values are for NHCB (Native Histogram Custom Buckets)
+	// which we don't support yet, so we ignore them.
 	if err != nil {
 		panic(fmt.Sprintf("unexpected error: %v", err))
 	}
@@ -366,7 +369,8 @@ func (h *histogramAggregator) add(s sample) {
 			mustHistogramOp(h.counter.Add(fh))
 		} else {
 			// Add delta with previous value to the counter.
-			deltaFh, err := fh.Copy().Sub(h.previous)
+			// TODO: support NHCB.
+			deltaFh, _, _, err := fh.Copy().Sub(h.previous)
 			if err != nil {
 				// TODO(GiedriusS): support native histograms with custom buckets.
 				// This can only happen with custom buckets.
@@ -662,10 +666,7 @@ func downsampleRawLoop(
 	batchSize := (len(data) / numChunks) + 1
 
 	for len(data) > 0 {
-		j := batchSize
-		if j > len(data) {
-			j = len(data)
-		}
+		j := min(batchSize, len(data))
 		curW := currentWindow(data[j-1].t, resolution)
 
 		// The batch we took might end in the middle of a downsampling window. We additionally grab
@@ -832,14 +833,12 @@ func downsampleBatch(data []sample, resolution int64, aggr sampleAggregator, add
 				add(nextT, aggr)
 			}
 			aggr.reset()
-			nextT = currentWindow(s.t, resolution)
-			// Limit next timestamp to not go beyond the batch. A subsequent batch
-			// may overlap in time range otherwise.
-			// We have aligned batches for raw downsamplings but subsequent downsamples
-			// are forced to be chunk-boundary aligned and cannot guarantee this.
-			if nextT > lastT {
-				nextT = lastT
-			}
+			nextT = min(
+				// Limit next timestamp to not go beyond the batch. A subsequent batch
+				// may overlap in time range otherwise.
+				// We have aligned batches for raw downsamplings but subsequent downsamples
+				// are forced to be chunk-boundary aligned and cannot guarantee this.
+				currentWindow(s.t, resolution), lastT)
 		}
 		aggr.add(s)
 	}
@@ -921,10 +920,7 @@ func downsampleAggrLoop(
 	batchSize := len(chks) / numChunks
 
 	for len(chks) > 0 {
-		j := batchSize
-		if j > len(chks) {
-			j = len(chks)
-		}
+		j := min(batchSize, len(chks))
 		part := chks[:j]
 		chks = chks[j:]
 
@@ -1352,9 +1348,7 @@ func NewGatherNoDownsampleMarkFilter(logger log.Logger, bkt objstore.Instrumente
 func (f *GatherNoDownsampleMarkFilter) NoDownsampleMarkedBlocks() map[ulid.ULID]*metadata.NoDownsampleMark {
 	f.mtx.Lock()
 	copiedNoDownsampleMarked := make(map[ulid.ULID]*metadata.NoDownsampleMark, len(f.noDownsampleMarkedMap))
-	for k, v := range f.noDownsampleMarkedMap {
-		copiedNoDownsampleMarked[k] = v
-	}
+	maps.Copy(copiedNoDownsampleMarked, f.noDownsampleMarkedMap)
 	f.mtx.Unlock()
 
 	return copiedNoDownsampleMarked

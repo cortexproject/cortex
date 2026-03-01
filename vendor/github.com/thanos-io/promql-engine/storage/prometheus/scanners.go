@@ -10,9 +10,9 @@ import (
 	"github.com/thanos-io/promql-engine/execution/exchange"
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/promql"
@@ -53,6 +53,12 @@ func (p Scanners) NewVectorSelector(
 	hints storage.SelectHints,
 	logicalNode logicalplan.VectorSelector,
 ) (model.VectorOperator, error) {
+	// Update hints with projection information if available
+	if logicalNode.Projection != nil {
+		hints.ProjectionLabels = logicalNode.Projection.Labels
+		hints.ProjectionInclude = logicalNode.Projection.Include
+	}
+
 	selector := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), logicalNode.VectorSelector.LabelMatchers, logicalNode.Filters, hints)
 	if logicalNode.DecodeNativeHistogramStats {
 		selector = newHistogramStatsSelector(selector)
@@ -62,7 +68,6 @@ func (p Scanners) NewVectorSelector(
 	for i := range opts.DecodingConcurrency {
 		operator := exchange.NewConcurrent(
 			NewVectorSelector(
-				model.NewVectorPool(opts.StepsBatch),
 				selector,
 				opts,
 				logicalNode.Offset,
@@ -74,7 +79,7 @@ func (p Scanners) NewVectorSelector(
 		operators = append(operators, operator)
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, logicalNode.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
+	return exchange.NewCoalesce(opts, logicalNode.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
 }
 
 func (p Scanners) NewMatrixSelector(
@@ -121,6 +126,11 @@ func (p Scanners) NewMatrixSelector(
 	}
 
 	vs := logicalNode.VectorSelector
+	if vs.Projection != nil {
+		hints.ProjectionLabels = vs.Projection.Labels
+		hints.ProjectionInclude = vs.Projection.Include
+	}
+
 	selector := p.selectors.GetFilteredSelector(hints.Start, hints.End, opts.Step.Milliseconds(), vs.LabelMatchers, vs.Filters, hints)
 	if logicalNode.VectorSelector.DecodeNativeHistogramStats {
 		selector = newHistogramStatsSelector(selector)
@@ -129,7 +139,6 @@ func (p Scanners) NewMatrixSelector(
 	operators := make([]model.VectorOperator, 0, opts.DecodingConcurrency)
 	for i := range opts.DecodingConcurrency {
 		operator, err := NewMatrixSelector(
-			model.NewVectorPool(opts.StepsBatch),
 			selector,
 			call.Func.Name,
 			arg,
@@ -147,7 +156,7 @@ func (p Scanners) NewMatrixSelector(
 		operators = append(operators, exchange.NewConcurrent(operator, 2, opts))
 	}
 
-	return exchange.NewCoalesce(model.NewVectorPool(opts.StepsBatch), opts, vs.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
+	return exchange.NewCoalesce(opts, vs.BatchSize*int64(opts.DecodingConcurrency), operators...), nil
 }
 
 type histogramStatsSelector struct {

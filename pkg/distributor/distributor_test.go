@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
-	_ "github.com/cortexproject/cortex/pkg/cortex/configinit"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
@@ -45,13 +44,13 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -151,6 +150,7 @@ func TestDistributor_Push(t *testing.T) {
 		happyIngesters   int
 		samples          samplesIn
 		histogramSamples bool
+		nhcbSamples      int
 		metadata         int
 		expectedResponse *cortexpb.WriteResponse
 		expectedError    error
@@ -297,6 +297,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 2 happy ingesters should succeed, histograms": {
@@ -315,6 +316,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 1 happy ingesters should fail, histograms": {
@@ -332,6 +334,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 10
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push exceeding burst size should fail, histograms": {
@@ -350,6 +353,26 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
+			`,
+		},
+		"A push to 3 happy ingesters should succeed, NHCB histograms": {
+			numIngesters:     3,
+			happyIngesters:   3,
+			samples:          samplesIn{num: 0, startTimestampMs: 123456789000},
+			metadata:         2,
+			nhcbSamples:      4,
+			expectedResponse: emptyResponse,
+			metricNames:      []string{lastSeenTimestamp, distributorReceivedSamples},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.003
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 4
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 4
 			`,
 		},
 	} {
@@ -377,7 +400,13 @@ func TestDistributor_Push(t *testing.T) {
 					})
 
 					var request *cortexpb.WriteRequest
-					if !tc.histogramSamples {
+					if tc.nhcbSamples > 0 {
+						if !tc.histogramSamples {
+							request = makeWriteRequestWithNHCB(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0, tc.nhcbSamples)
+						} else {
+							request = makeWriteRequestWithNHCB(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num, tc.nhcbSamples)
+						}
+					} else if !tc.histogramSamples {
 						request = makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0)
 					} else {
 						request = makeWriteRequest(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num)
@@ -435,6 +464,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
 	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
 	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogram).Add(15)
+	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogramNHCB).Add(3)
 	d.receivedExemplars.WithLabelValues("userA").Add(5)
 	d.receivedExemplars.WithLabelValues("userB").Add(10)
 	d.receivedMetadata.WithLabelValues("userA").Add(5)
@@ -493,6 +523,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_received_samples_total{type="float",user="userA"} 5
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 3
 
 		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
 		# TYPE cortex_distributor_received_exemplars_total counter
@@ -551,6 +582,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 3
 
         # HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
         # TYPE cortex_distributor_samples_in_total counter
@@ -847,6 +879,69 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 		})
 	}
 
+}
+
+func TestPush_EmptyLabels(t *testing.T) {
+	t.Parallel()
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+
+	limits.IngestionRate = math.MaxFloat64
+
+	dists, _, _, _ := prepare(t, prepConfig{
+		numDistributors: 1,
+		numIngesters:    3,
+		happyIngesters:  3,
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	d := dists[0]
+	ts := time.Now().UnixMilli()
+
+	tests := []struct {
+		desc    string
+		request *cortexpb.WriteRequest
+		isErr   bool
+	}{
+		{
+			desc: "1 series, a series has empty labels",
+			request: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{}, ts, 3, false),
+				},
+			},
+			isErr: true,
+		},
+		{
+			desc: "2 series, one series has empty labels",
+			request: &cortexpb.WriteRequest{
+				Timeseries: []cortexpb.PreallocTimeseries{
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{}, ts, 3, false),
+					makeWriteRequestTimeseries(
+						[]cortexpb.LabelAdapter{
+							{Name: model.MetricNameLabel, Value: "foo"},
+							{Name: "bar", Value: "baz"},
+						}, ts, 3, false),
+				},
+			},
+			isErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.desc, func(t *testing.T) {
+			_, err := d.Push(ctx, test.request)
+			require.Error(t, err)
+			s, ok := status.FromError(err)
+			require.True(t, ok)
+			require.Equal(t, codes.Code(400), s.Code())
+			require.Equal(t, "empty labels found", s.Message())
+		})
+	}
 }
 
 func TestPush_QuorumError(t *testing.T) {
@@ -1218,7 +1313,7 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 
 					d := ds[0]
 
-					userID, err := tenant.TenantID(ctx)
+					userID, err := users.TenantID(ctx)
 					assert.NoError(t, err)
 					err = d.HATracker.CheckReplica(ctx, userID, tc.cluster, tc.acceptedReplica, time.Now())
 					assert.NoError(t, err)
@@ -1236,6 +1331,57 @@ func TestDistributor_PushHAInstances(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestDistributor_PushHA_RWv2DedupReturnsStats(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	// When HA dedup occurs and RemoteWriteV2 is enabled, distributor must return
+	// WriteResponse with Samples/Histograms/Exemplars so the push handler can set RWv2 headers.
+	for _, enableHistogram := range []bool{false, true} {
+		t.Run(fmt.Sprintf("histogram=%v", enableHistogram), func(t *testing.T) {
+			t.Parallel()
+			var limits validation.Limits
+			flagext.DefaultValues(&limits)
+			limits.AcceptHASamples = true
+			limits.MaxLabelValueLength = 15
+
+			ds, _, _, _ := prepare(t, prepConfig{
+				numIngesters:         3,
+				happyIngesters:       3,
+				numDistributors:      1,
+				shardByAllLabels:     true,
+				limits:               &limits,
+				enableTracker:        true,
+				remoteWriteV2Enabled: true,
+			})
+
+			d := ds[0]
+
+			// Accept "instance2" for cluster0; we will push from "instance0" so all samples are deduped.
+			err := d.HATracker.CheckReplica(ctx, "user", "cluster0", "instance2", time.Now())
+			require.NoError(t, err)
+
+			const numSamples = 5
+			request := makeWriteRequestHA(numSamples, "instance0", "cluster0", enableHistogram)
+			response, err := d.Push(ctx, request)
+
+			require.NotNil(t, response, "RWv2 HA dedup must return WriteResponse with stats")
+			if enableHistogram {
+				assert.Equal(t, int64(0), response.Samples)
+				assert.Equal(t, int64(numSamples), response.Histograms)
+			} else {
+				assert.Equal(t, int64(numSamples), response.Samples)
+				assert.Equal(t, int64(0), response.Histograms)
+			}
+			assert.Equal(t, int64(0), response.Exemplars)
+
+			httpResp, ok := httpgrpc.HTTPResponseFromError(err)
+			require.True(t, ok, "expected HTTP error")
+			assert.Equal(t, int32(http.StatusAccepted), httpResp.Code)
+		})
 	}
 }
 
@@ -2154,6 +2300,10 @@ func TestDistributor_Push_ExemplarValidation(t *testing.T) {
 			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, "test", "", "bar"}, 0, nil),
 			errMsg: "invalid label",
 		},
+		"rejects exemplar with empty metric name": {
+			req:    makeWriteRequestExemplar([]string{model.MetricNameLabel, ""}, 1000, []string{"foo", "bar"}),
+			errMsg: "invalid metric name",
+		},
 	}
 
 	for testName, tc := range tests {
@@ -3013,9 +3163,12 @@ type prepConfig struct {
 	maxIngestionRate             float64
 	replicationFactor            int
 	enableTracker                bool
+	remoteWriteV2Enabled         bool
 	errFail                      error
 	tokens                       [][]uint32
 	useStreamPush                bool
+	nameValidationScheme         model.ValidationScheme
+	remoteTimeout                time.Duration
 }
 
 type prepState struct {
@@ -3131,6 +3284,14 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 		distributorCfg.InstanceLimits.MaxInflightClientRequests = cfg.maxInflightClientRequests
 		distributorCfg.InstanceLimits.MaxIngestionRate = cfg.maxIngestionRate
 		distributorCfg.UseStreamPush = cfg.useStreamPush
+		distributorCfg.NameValidationScheme = model.LegacyValidation
+		if cfg.nameValidationScheme == model.UTF8Validation {
+			distributorCfg.NameValidationScheme = cfg.nameValidationScheme
+		}
+
+		if cfg.remoteTimeout > 0 {
+			distributorCfg.RemoteTimeout = cfg.remoteTimeout
+		}
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
@@ -3144,7 +3305,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			ringStore, closer := consul.NewInMemoryClient(codec, log.NewNopLogger(), nil)
 			tb.Cleanup(func() { assert.NoError(tb, closer.Close()) })
 			mock := kv.PrefixClient(ringStore, "prefix")
-			distributorCfg.HATrackerConfig = HATrackerConfig{
+			distributorCfg.HATrackerConfig = ha.HATrackerConfig{
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
@@ -3152,6 +3313,8 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 			}
 			cfg.limits.HAMaxClusters = 100
 		}
+
+		distributorCfg.RemoteWriteV2Enabled = cfg.remoteWriteV2Enabled
 
 		overrides := validation.NewOverrides(*cfg.limits, nil)
 
@@ -3187,6 +3350,11 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 }
 
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histograms int) *cortexpb.WriteRequest {
+	return makeWriteRequestWithNHCB(startTimestampMs, samples, metadata, histograms, 0)
+}
+
+// makeWriteRequestWithNHCB builds a write request with optional NHCB (native histogram custom buckets) timeseries.
+func makeWriteRequestWithNHCB(startTimestampMs int64, samples int, metadata int, histograms int, nhcb int) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
 	for i := range samples {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
@@ -3204,6 +3372,16 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 				{Name: "bar", Value: "baz"},
 				{Name: "histogram", Value: fmt.Sprintf("%d", i)},
 			}, startTimestampMs+int64(i), int64(i), true))
+	}
+
+	for i := range nhcb {
+		ts := startTimestampMs + int64(i)
+		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseriesNHCB(
+			[]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "nhcb", Value: fmt.Sprintf("%d", i)},
+			}, ts, int64(i)))
 	}
 
 	for i := range metadata {
@@ -3233,6 +3411,15 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 		})
 	}
 	return t
+}
+
+func makeWriteRequestTimeseriesNHCB(labels []cortexpb.LabelAdapter, ts, value int64) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels:     labels,
+			Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value))},
+		},
+	}
 }
 
 func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *cortexpb.WriteRequest {
@@ -3507,7 +3694,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 		i.metadata = map[uint32]map[cortexpb.MetricMetadata]struct{}{}
 	}
 
-	orgid, err := tenant.TenantID(ctx)
+	orgid, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -3889,6 +4076,28 @@ func TestDistributorValidation(t *testing.T) {
 			}},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `metadata missing metric name`),
 		},
+		// Test series with empty metric name is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, "", "foo", "bar"),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
+		},
+		// Test series with only empty metric name (no other labels) is rejected
+		{
+			labels: []labels.Labels{
+				labels.FromStrings(labels.MetricName, ""),
+			},
+			samples: []cortexpb.Sample{{
+				TimestampMs: int64(now),
+				Value:       1,
+			}},
+			err: httpgrpc.Errorf(http.StatusBadRequest, `sample invalid metric name: ""`),
+		},
 		// Test maximum labels names per series for histogram samples.
 		{
 			labels: []labels.Labels{
@@ -4008,7 +4217,6 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 }
 
 func TestSortLabels(t *testing.T) {
-	t.Parallel()
 	sorted := []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
@@ -4044,6 +4252,7 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 		inputSeries          []labels.Labels
 		expectedSeries       labels.Labels
 		metricRelabelConfigs []*relabel.Config
+		nameValidationScheme model.ValidationScheme
 	}
 
 	cases := []testcase{
@@ -4062,11 +4271,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "foo", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"cluster"},
-					Action:       relabel.DefaultRelabelConfig.Action,
-					Regex:        relabel.DefaultRelabelConfig.Regex,
-					TargetLabel:  "cluster",
-					Replacement:  "two",
+					SourceLabels:         []model.LabelName{"cluster"},
+					Action:               relabel.DefaultRelabelConfig.Action,
+					Regex:                relabel.DefaultRelabelConfig.Regex,
+					TargetLabel:          "cluster",
+					Replacement:          "two",
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4079,9 +4289,10 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 			expectedSeries: labels.FromStrings("__name__", "bar", "cluster", "two"),
 			metricRelabelConfigs: []*relabel.Config{
 				{
-					SourceLabels: []model.LabelName{"__name__"},
-					Action:       relabel.Drop,
-					Regex:        relabel.MustNewRegexp("(foo)"),
+					SourceLabels:         []model.LabelName{"__name__"},
+					Action:               relabel.Drop,
+					Regex:                relabel.MustNewRegexp("(foo)"),
+					NameValidationScheme: model.LegacyValidation,
 				},
 			},
 		},
@@ -4097,11 +4308,12 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 				limits.MetricRelabelConfigs = tc.metricRelabelConfigs
 
 				ds, ingesters, _, _ := prepare(t, prepConfig{
-					numIngesters:     2,
-					happyIngesters:   2,
-					numDistributors:  1,
-					shardByAllLabels: true,
-					limits:           &limits,
+					numIngesters:         2,
+					happyIngesters:       2,
+					numDistributors:      1,
+					shardByAllLabels:     true,
+					limits:               &limits,
+					nameValidationScheme: tc.nameValidationScheme,
 				})
 
 				// Push the series to the distributor
@@ -4120,6 +4332,53 @@ func TestDistributor_Push_Relabel(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestRemoveEmptyLabels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []cortexpb.LabelAdapter
+		expected []cortexpb.LabelAdapter
+	}{
+		{
+			name:     "no empty labels",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+		},
+		{
+			name:     "empty label at beginning",
+			input:    []cortexpb.LabelAdapter{{Name: "empty", Value: ""}, {Name: "job", Value: "test"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+		{
+			name:     "empty label in middle",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "empty", Value: ""}, {Name: "instance", Value: "localhost"}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "instance", Value: "localhost"}},
+		},
+		{
+			name:     "empty label at end",
+			input:    []cortexpb.LabelAdapter{{Name: "job", Value: "test"}, {Name: "empty", Value: ""}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+		{
+			name:     "multiple empty labels - removes all empty ones",
+			input:    []cortexpb.LabelAdapter{{Name: "empty1", Value: ""}, {Name: "job", Value: "test"}, {Name: "empty2", Value: ""}},
+			expected: []cortexpb.LabelAdapter{{Name: "job", Value: "test"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Make a copy of the input to avoid modifying the original
+			input := make([]cortexpb.LabelAdapter, len(tt.input))
+			copy(input, tt.input)
+
+			removeEmptyLabels(&input)
+			assert.Equal(t, tt.expected, input)
+		})
 	}
 }
 
@@ -4186,6 +4445,10 @@ func TestDistributor_Push_EmptyLabel(t *testing.T) {
 				timeseries := ingesters[i].series()
 				if len(timeseries) > 0 {
 					ingesterWithSeries++
+					// Assert on the expected series
+					for _, v := range timeseries {
+						assert.Equal(t, tc.expectedSeries, cortexpb.FromLabelAdaptersToLabels(v.Labels))
+					}
 				}
 			}
 			assert.Equal(t, 1, ingesterWithSeries)
@@ -4197,9 +4460,10 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 	t.Parallel()
 	metricRelabelConfigs := []*relabel.Config{
 		{
-			SourceLabels: []model.LabelName{"__name__"},
-			Action:       relabel.Drop,
-			Regex:        relabel.MustNewRegexp("(foo)"),
+			SourceLabels:         []model.LabelName{"__name__"},
+			Action:               relabel.Drop,
+			Regex:                relabel.MustNewRegexp("(foo)"),
+			NameValidationScheme: model.LegacyValidation,
 		},
 	}
 
@@ -4399,4 +4663,37 @@ func TestFindHALabels(t *testing.T) {
 		assert.Equal(t, c.expected.cluster, cluster)
 		assert.Equal(t, c.expected.replica, replica)
 	}
+}
+
+func TestDistributor_BatchTimeoutMetric(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+
+	distributors, _, regs, _ := prepare(t, prepConfig{
+		numIngesters:    3,
+		happyIngesters:  3,
+		numDistributors: 1,
+		limits:          limits,
+		remoteTimeout:   time.Nanosecond, // To produce timeout
+	})
+
+	distributor := distributors[0]
+	reg := regs[0]
+
+	ctx := context.Background()
+	ctx = user.InjectOrgID(ctx, "user-1")
+
+	for range 5 {
+		request := makeWriteRequest(0, 30, 0, 0)
+		_, err := distributor.Push(ctx, request)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_distributor_ingester_push_timeouts_total The total number of push requests to ingesters that were canceled due to timeout.
+		# TYPE cortex_distributor_ingester_push_timeouts_total counter
+		cortex_distributor_ingester_push_timeouts_total 5
+	`), "cortex_distributor_ingester_push_timeouts_total"))
 }

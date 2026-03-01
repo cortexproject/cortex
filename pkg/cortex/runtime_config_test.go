@@ -12,6 +12,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+func TestLoadRuntimeConfig_ShouldNoPanicWhenNull(t *testing.T) {
+	yamlFile := strings.NewReader(`
+null
+`)
+
+	loader := runtimeConfigLoader{cfg: Config{Target: []string{All}}}
+	_, err := loader.load(yamlFile)
+	require.NoError(t, err)
+}
+
 // Given limits are usually loaded via a config file, and that
 // a configmap is limited to 1MB, we need to minimise the limits file.
 // One way to do it is via YAML anchors.

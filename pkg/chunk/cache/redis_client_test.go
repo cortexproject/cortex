@@ -98,3 +98,41 @@ func mockRedisClientCluster() (*RedisClient, error) {
 		}),
 	}, nil
 }
+
+func TestRedisClusterCrossSlotMSet(t *testing.T) {
+	cluster, err := mockRedisClientCluster()
+	require.Nil(t, err)
+	defer cluster.Close()
+
+	ctx := context.Background()
+
+	// Use keys with different hash tags to ensure they hash to different slots
+	// In Redis Cluster, hash tags {xxx} determine which slot a key belongs to
+	keys := []string{
+		"{user1}:cache:query",
+		"{user2}:cache:query",
+		"{user3}:cache:query",
+		"{user4}:cache:query",
+		"{user5}:cache:query",
+	}
+	values := [][]byte{
+		[]byte("data1"),
+		[]byte("data2"),
+		[]byte("data3"),
+		[]byte("data4"),
+		[]byte("data5"),
+	}
+
+	// This should not fail even with cross-slot keys in cluster mode
+	err = cluster.MSet(ctx, keys, values)
+	require.Nil(t, err, "MSet should work with cross-slot keys in cluster mode")
+
+	// Verify all keys were set correctly
+	retrieved, err := cluster.MGet(ctx, keys)
+	require.Nil(t, err)
+	require.Len(t, retrieved, len(keys))
+
+	for i, value := range retrieved {
+		require.Equal(t, values[i], value, "Retrieved value should match set value for key %s", keys[i])
+	}
+}

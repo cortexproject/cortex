@@ -16,8 +16,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
-	cortex_testutil "github.com/cortexproject/cortex/pkg/storage/tsdb/testutil"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
+	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 )
 
 func TestBlockIDsFetcher_Fetch(t *testing.T) {
@@ -48,13 +48,11 @@ func TestBlockIDsFetcher_Fetch(t *testing.T) {
 	ch := make(chan block.ActiveBlockFetchData)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for id := range ch {
 			blockIds = append(blockIds, id.ULID)
 		}
-	}()
+	})
 	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
 	require.NoError(t, err)
 	close(ch)
@@ -100,13 +98,11 @@ func TestBlockIDsFetcherFetcher_Fetch_NoBucketIndex(t *testing.T) {
 	ch := make(chan block.ActiveBlockFetchData)
 	var wg sync.WaitGroup
 	var blockIds []ulid.ULID
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for id := range ch {
 			blockIds = append(blockIds, id.ULID)
 		}
-	}()
+	})
 	_, err := blockIdsFetcher.GetActiveAndPartialBlockIDs(ctx, ch)
 	require.NoError(t, err)
 	close(ch)

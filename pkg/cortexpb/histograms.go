@@ -16,36 +16,11 @@ package cortexpb
 import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/prompb"
-	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
 )
 
 func (h Histogram) IsFloatHistogram() bool {
 	_, ok := h.GetCount().(*Histogram_CountFloat)
 	return ok
-}
-
-func HistogramWriteV2ProtoToHistogramProto(h writev2.Histogram) Histogram {
-	ph := Histogram{
-		Sum:            h.Sum,
-		Schema:         h.Schema,
-		ZeroThreshold:  h.ZeroThreshold,
-		NegativeSpans:  spansWriteV2ProtoToSpansProto(h.NegativeSpans),
-		NegativeDeltas: h.NegativeDeltas,
-		NegativeCounts: h.NegativeCounts,
-		PositiveSpans:  spansWriteV2ProtoToSpansProto(h.PositiveSpans),
-		PositiveDeltas: h.PositiveDeltas,
-		PositiveCounts: h.PositiveCounts,
-		ResetHint:      Histogram_ResetHint(h.ResetHint),
-		TimestampMs:    h.Timestamp,
-	}
-	if h.IsFloatHistogram() {
-		ph.Count = &Histogram_CountFloat{CountFloat: h.GetCountFloat()}
-		ph.ZeroCount = &Histogram_ZeroCountFloat{ZeroCountFloat: h.GetZeroCountFloat()}
-	} else {
-		ph.Count = &Histogram_CountInt{CountInt: h.GetCountInt()}
-		ph.ZeroCount = &Histogram_ZeroCountInt{ZeroCountInt: h.GetZeroCountInt()}
-	}
-	return ph
 }
 
 // HistogramPromProtoToHistogramProto converts a prometheus protobuf Histogram to cortex protobuf Histogram.
@@ -62,6 +37,7 @@ func HistogramPromProtoToHistogramProto(h prompb.Histogram) Histogram {
 		PositiveCounts: h.PositiveCounts,
 		ResetHint:      Histogram_ResetHint(h.ResetHint),
 		TimestampMs:    h.Timestamp,
+		CustomValues:   h.CustomValues,
 	}
 	if h.IsFloatHistogram() {
 		ph.Count = &Histogram_CountFloat{CountFloat: h.GetCountFloat()}
@@ -92,6 +68,7 @@ func HistogramProtoToHistogram(hp Histogram) *histogram.Histogram {
 		PositiveBuckets:  hp.GetPositiveDeltas(),
 		NegativeSpans:    spansProtoToSpans(hp.GetNegativeSpans()),
 		NegativeBuckets:  hp.GetNegativeDeltas(),
+		CustomValues:     hp.GetCustomValues(),
 	}
 }
 
@@ -114,6 +91,7 @@ func FloatHistogramProtoToFloatHistogram(hp Histogram) *histogram.FloatHistogram
 		PositiveBuckets:  hp.GetPositiveCounts(),
 		NegativeSpans:    spansProtoToSpans(hp.GetNegativeSpans()),
 		NegativeBuckets:  hp.GetNegativeCounts(),
+		CustomValues:     hp.GetCustomValues(),
 	}
 }
 
@@ -132,6 +110,7 @@ func HistogramToHistogramProto(timestamp int64, h *histogram.Histogram) Histogra
 		PositiveDeltas: h.PositiveBuckets,
 		ResetHint:      Histogram_ResetHint(h.CounterResetHint),
 		TimestampMs:    timestamp,
+		CustomValues:   h.CustomValues,
 	}
 }
 
@@ -151,6 +130,7 @@ func FloatHistogramToHistogramProto(timestamp int64, fh *histogram.FloatHistogra
 		PositiveCounts: fh.PositiveBuckets,
 		ResetHint:      Histogram_ResetHint(fh.CounterResetHint),
 		TimestampMs:    timestamp,
+		CustomValues:   fh.CustomValues,
 	}
 }
 
@@ -173,15 +153,6 @@ func spansToSpansProto(s []histogram.Span) []BucketSpan {
 }
 
 func spansPromProtoToSpansProto(s []prompb.BucketSpan) []BucketSpan {
-	spans := make([]BucketSpan, len(s))
-	for i := range s {
-		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}
-	}
-
-	return spans
-}
-
-func spansWriteV2ProtoToSpansProto(s []writev2.BucketSpan) []BucketSpan {
 	spans := make([]BucketSpan, len(s))
 	for i := range s {
 		spans[i] = BucketSpan{Offset: s[i].Offset, Length: s[i].Length}

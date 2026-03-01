@@ -30,6 +30,7 @@ import (
 	util_limiter "github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -118,7 +119,7 @@ type StoreGateway struct {
 	gatewayCfg Config
 	storageCfg cortex_tsdb.BlocksStorageConfig
 	logger     log.Logger
-	stores     *BucketStores
+	stores     BucketStores
 
 	// Ring used for sharding blocks.
 	ringLifecycler *ring.BasicLifecycler
@@ -168,7 +169,7 @@ func newStoreGateway(gatewayCfg Config, storageCfg cortex_tsdb.BlocksStorageConf
 			Help: "Total number of times the bucket sync operation triggered.",
 		}, []string{"reason"}),
 	}
-	allowedTenants := util.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
+	allowedTenants := users.NewAllowedTenants(gatewayCfg.EnabledTenants, gatewayCfg.DisabledTenants)
 
 	// Init metrics.
 	g.bucketSync.WithLabelValues(syncReasonInitial)

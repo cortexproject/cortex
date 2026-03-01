@@ -8,6 +8,7 @@ import (
 	"io"
 	"math/rand"
 	"os"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	collectorversion "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
 	_ "go.uber.org/automaxprocs"
@@ -144,6 +146,20 @@ func main() {
 	if testMode && !printModules {
 		DumpYaml(&cfg)
 		return
+	}
+
+	// https://github.com/prometheus/prometheus/blob/release-3.7/cmd/prometheus/main.go#L331
+	// Unregister the default GoCollector, and reregister with our defaults.
+	if prometheus.Unregister(collectors.NewGoCollector()) {
+		prometheus.MustRegister(
+			collectors.NewGoCollector(
+				collectors.WithGoCollectorRuntimeMetrics(
+					collectors.MetricsGC,
+					collectors.MetricsScheduler,
+					collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile(`^/sync/mutex/wait/total:seconds$`)},
+				),
+			),
+		)
 	}
 
 	if mutexProfileFraction > 0 {

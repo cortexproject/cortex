@@ -118,9 +118,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
 	labelhash := series.Hash()
 	for range goroutines {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			<-start
 
 			now := time.Now()
@@ -129,7 +127,7 @@ func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) 
 				now = now.Add(time.Duration(ix) * time.Millisecond)
 				c.UpdateSeries(series, labelhash, now, false, copyFn)
 			}
-		}()
+		})
 	}
 
 	b.ResetTimer()

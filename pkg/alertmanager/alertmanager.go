@@ -28,7 +28,9 @@ import (
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
 	"github.com/prometheus/alertmanager/notify/email"
+	"github.com/prometheus/alertmanager/notify/incidentio"
 	"github.com/prometheus/alertmanager/notify/jira"
+	"github.com/prometheus/alertmanager/notify/mattermost"
 	"github.com/prometheus/alertmanager/notify/msteams"
 	"github.com/prometheus/alertmanager/notify/msteamsv2"
 	"github.com/prometheus/alertmanager/notify/opsgenie"
@@ -64,7 +66,8 @@ import (
 
 const (
 	// MaintenancePeriod is used for periodic storing of silences and notifications to local file.
-	maintenancePeriod = 15 * time.Minute
+	maintenancePeriod          = 15 * time.Minute
+	defaultMaintenanceInterval = 30 * time.Second
 
 	// Filenames used within tenant-directory
 	notificationLogSnapshot = "notifications"
@@ -127,6 +130,8 @@ type Alertmanager struct {
 	configHashMetric prometheus.Gauge
 
 	rateLimitedNotifications *prometheus.CounterVec
+
+	requestDuration *prometheus.HistogramVec
 }
 
 var (
@@ -181,6 +186,17 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 			Help: "Number of rate-limited notifications per integration.",
 		}, []string{"integration"}), // "integration" is consistent with other alertmanager metrics.
 
+		requestDuration: promauto.With(reg).NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:                            "alertmanager_http_request_duration_seconds",
+				Help:                            "Histogram of latencies for HTTP requests.",
+				Buckets:                         prometheus.DefBuckets,
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: 1 * time.Hour,
+			},
+			[]string{"handler", "method", "code"},
+		),
 	}
 
 	am.registry = reg
@@ -218,11 +234,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	}
 	c := am.state.AddState("nfl:"+cfg.UserID, am.nflog, am.registry)
 	am.nflog.SetBroadcast(c.Broadcast)
-	am.wg.Add(1)
-	go func() {
+	am.wg.Go(func() {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
-		am.wg.Done()
-	}()
+	})
 	memMarker := types.NewMarker(reg)
 	am.alertMarker = memMarker
 	am.groupMarker = memMarker
@@ -266,17 +280,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
 
-	am.wg.Add(1)
-	go func() {
+	am.wg.Go(func() {
 		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop, nil)
-		am.wg.Done()
-	}()
+	})
 
 	var callback mem.AlertStoreCallback
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, callback, util_log.GoKitLogToSlog(am.logger), am.registry)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), am.registry, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
@@ -290,10 +302,11 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Peer:     &NilPeer{},
 		Registry: am.registry,
 		Logger:   util_log.GoKitLogToSlog(log.With(am.logger, "component", "api")),
-		GroupFunc: func(f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string) {
-			return am.dispatcher.Groups(f1, f2)
+		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
+			return am.dispatcher.Groups(ctx, f1, f2)
 		},
-		Concurrency: am.cfg.APIConcurrency,
+		Concurrency:     am.cfg.APIConcurrency,
+		RequestDuration: am.requestDuration,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create api: %v", err)
@@ -356,7 +369,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 	}
 	tmpl.ExternalURL = am.cfg.ExternalURL
 
-	am.api.Update(conf, func(_ model.LabelSet) {})
+	am.api.Update(conf, func(_ context.Context, _ model.LabelSet) {})
 
 	// Ensure inhibitor is set before being called
 	if am.inhibitor != nil {
@@ -424,12 +437,13 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		pipeline,
 		am.groupMarker,
 		timeoutFunc,
+		defaultMaintenanceInterval, // TODO: add to config
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
 		am.dispatcherMetrics,
 	)
 
-	go am.dispatcher.Run()
+	go am.dispatcher.Run(time.Now())
 	go am.inhibitor.Run()
 
 	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))
@@ -607,6 +621,17 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 			return rocketchat.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
 		})
 	}
+	for i, c := range nc.IncidentioConfigs {
+		add("incidentio", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return incidentio.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+	for i, c := range nc.MattermostConfigs {
+		add("mattermost", i, c, func(l log.Logger) (notify.Notifier, error) {
+			return mattermost.New(c, tmpl, util_log.GoKitLogToSlog(l), httpOps...)
+		})
+	}
+
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
 	if errs.Len() > 0 {
 		return nil, &errs

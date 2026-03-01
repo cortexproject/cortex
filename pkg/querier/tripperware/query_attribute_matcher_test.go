@@ -59,10 +59,11 @@ func Test_rejectQueryOrSetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInval
 			path:                  "/api/v1/query?time=1536716898&query=",
 			expectedError:         httpgrpc.Errorf(http.StatusBadRequest, "unknown position: parse error: no expression found in input"),
 		},
-		"should miss if it's metadata query and only priority is enabled": {
+		"should set priority if it's metadata query and only priority is enabled": {
 			queryPriorityEnabled:  true,
 			queryRejectionEnabled: false,
 			path:                  "/api/v1/labels?match[]",
+			expectedPriority:      1,
 		},
 		"should set priority if regex match and rejection disabled": {
 			queryPriorityEnabled:  true,
@@ -705,4 +706,58 @@ func Test_matchAttributeForExpressionQueryShouldMatchUserAgentRegex(t *testing.T
 		})
 	}
 
+}
+
+func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
+
+	limits := mockLimits{queryPriority: validation.QueryPriority{
+		Priorities: []validation.PriorityDef{
+			{
+				Priority: 7,
+				QueryAttributes: []validation.QueryAttribute{
+					{
+						ApiType: "metadata",
+					},
+				},
+			},
+			{
+				Priority: 6,
+				QueryAttributes: []validation.QueryAttribute{
+					{
+						ApiType: "series",
+					},
+				},
+			},
+		},
+	},
+	}
+
+	type testCase struct {
+		path             string
+		expectedPriority int64
+	}
+
+	tests := map[string]testCase{
+		"should set priority based on api type for metadata": {
+			path:             "/api/v1/metadata?limit=1",
+			expectedPriority: 7,
+		},
+		"should set priority based on api type for series": {
+			path:             "/api/v1/series",
+			expectedPriority: 6,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req, err := http.NewRequest("GET", testData.path, http.NoBody)
+			require.NoError(t, err)
+			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
+			req = req.WithContext(ctx)
+			limits.queryPriority.Enabled = true
+			resultErr := rejectQueryOrSetPriority(req, time.Now(), time.Duration(1), limits, "", rejectedQueriesPerTenant)
+			assert.NoError(t, resultErr)
+			assert.Equal(t, testData.expectedPriority, reqStats.Priority)
+		})
+	}
 }

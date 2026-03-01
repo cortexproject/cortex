@@ -22,11 +22,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
+	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
 	"github.com/prometheus/alertmanager/template"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
@@ -35,6 +38,18 @@ const truncationMarker = "…"
 
 // UserAgentHeader is the default User-Agent for notification requests.
 var UserAgentHeader = version.ComponentUserAgent("Alertmanager")
+
+// NewClientWithTracing creates a new HTTP client with tracing included
+// Clients are reused across requests, so tracing is configured once at creation
+// rather than on each request.
+func NewClientWithTracing(cfg commoncfg.HTTPClientConfig, name string, httpOpts ...commoncfg.HTTPClientOption) (*http.Client, error) {
+	client, err := commoncfg.NewClientFromConfig(cfg, name, httpOpts...)
+	if err != nil {
+		return nil, err
+	}
+	client.Transport = tracing.Transport(client.Transport)
+	return client, nil
+}
 
 // RedactURL removes the URL part from an error of *url.Error type.
 func RedactURL(err error) error {
@@ -74,6 +89,7 @@ func request(ctx context.Context, client *http.Client, method, url, bodyType str
 	if bodyType != "" {
 		req.Header.Set("Content-Type", bodyType)
 	}
+
 	return client.Do(req.WithContext(ctx))
 }
 
@@ -133,7 +149,7 @@ func TruncateInBytes(s string, n int) (string, bool) {
 func TmplText(tmpl *template.Template, data *template.Data, err *error) func(string) string {
 	return func(name string) (s string) {
 		if *err != nil {
-			return
+			return s
 		}
 		s, *err = tmpl.ExecuteTextString(name, data)
 		return s
@@ -145,7 +161,7 @@ func TmplText(tmpl *template.Template, data *template.Data, err *error) func(str
 func TmplHTML(tmpl *template.Template, data *template.Data, err *error) func(string) string {
 	return func(name string) (s string) {
 		if *err != nil {
-			return
+			return s
 		}
 		s, *err = tmpl.ExecuteHTMLString(name, data)
 		return s
@@ -222,15 +238,7 @@ func (r *Retrier) Check(statusCode int, body io.Reader) (bool, error) {
 	}
 
 	// 5xx responses are considered to be always retried.
-	retry := statusCode/100 == 5
-	if !retry {
-		for _, code := range r.RetryCodes {
-			if code == statusCode {
-				retry = true
-				break
-			}
-		}
-	}
+	retry := statusCode/100 == 5 || slices.Contains(r.RetryCodes, statusCode)
 
 	s := fmt.Sprintf("unexpected status code %v", statusCode)
 	var details string

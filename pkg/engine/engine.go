@@ -64,10 +64,11 @@ func New(opts promql.EngineOpts, thanosEngineCfg ThanosEngineConfig, reg prometh
 	var thanosEngine *thanosengine.Engine
 	if thanosEngineCfg.Enabled {
 		thanosEngine = thanosengine.New(thanosengine.Opts{
-			EngineOpts:        opts,
-			LogicalOptimizers: thanosEngineCfg.LogicalOptimizers,
-			EnableAnalysis:    true,
-			EnableXFunctions:  thanosEngineCfg.EnableXFunctions,
+			EngineOpts:          opts,
+			LogicalOptimizers:   thanosEngineCfg.LogicalOptimizers,
+			EnableAnalysis:      true,
+			EnableXFunctions:    thanosEngineCfg.EnableXFunctions,
+			DecodingConcurrency: thanosEngineCfg.DecodingConcurrency,
 		})
 	}
 

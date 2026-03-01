@@ -3,6 +3,7 @@ package tsdb
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 )
@@ -17,6 +18,10 @@ type PartitionInfo struct {
 	PartitionCount               int    `json:"partition_count"`
 	PartitionID                  int    `json:"partition_id"`
 	PartitionedGroupCreationTime int64  `json:"partitioned_group_creation_time"`
+}
+
+func (p *PartitionInfo) CreationTimeString() string {
+	return time.Unix(p.PartitionedGroupCreationTime, 0).Format(time.RFC3339)
 }
 
 var (

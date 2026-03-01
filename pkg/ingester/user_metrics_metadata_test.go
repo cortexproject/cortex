@@ -25,12 +25,14 @@ func Test_UserMetricsMetadata(t *testing.T) {
 	m := newIngesterMetrics(reg,
 		false,
 		false,
+		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{}
 		},
 		ingestionRate,
 		&inflightPushRequests,
 		&maxInflightQueryRequests,
+		false,
 		false)
 
 	limits := validation.Limits{}

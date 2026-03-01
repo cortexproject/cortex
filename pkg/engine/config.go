@@ -5,23 +5,26 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/thanos-io/promql-engine/logicalplan"
 )
 
-var supportedOptimizers = []string{"default", "all", "propagate-matchers", "sort-matchers", "merge-selects", "detect-histogram-stats"}
+var supportedOptimizers = []string{"default", "all", "propagate-matchers", "sort-matchers", "merge-selects", "detect-histogram-stats", "projection"}
 
-// ThanosEngineConfig contains the configuration to create engine
+// ThanosEngineConfig contains the configuration to create engine.
 type ThanosEngineConfig struct {
-	Enabled           bool                    `yaml:"enabled"`
-	EnableXFunctions  bool                    `yaml:"enable_x_functions"`
-	Optimizers        string                  `yaml:"optimizers"`
-	LogicalOptimizers []logicalplan.Optimizer `yaml:"-"`
+	Enabled             bool                    `yaml:"enabled"`
+	EnableXFunctions    bool                    `yaml:"enable_x_functions"`
+	Optimizers          string                  `yaml:"optimizers"`
+	DecodingConcurrency int                     `yaml:"decoding_concurrency"`
+	LogicalOptimizers   []logicalplan.Optimizer `yaml:"-"`
 }
 
 func (cfg *ThanosEngineConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enabled, prefix+"thanos-engine", false, "Experimental. Use Thanos promql engine https://github.com/thanos-io/promql-engine rather than the Prometheus promql engine.")
 	f.BoolVar(&cfg.EnableXFunctions, prefix+"enable-x-functions", false, "Enable xincrease, xdelta, xrate etc from Thanos engine.")
 	f.StringVar(&cfg.Optimizers, prefix+"optimizers", "default", "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: "+strings.Join(supportedOptimizers, ", "))
+	f.IntVar(&cfg.DecodingConcurrency, prefix+"decoding-concurrency", 0, "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.")
 }
 
 func (cfg *ThanosEngineConfig) Validate() error {
@@ -57,6 +60,11 @@ func getOptimizer(name string) ([]logicalplan.Optimizer, error) {
 		return []logicalplan.Optimizer{logicalplan.MergeSelectsOptimizer{}}, nil
 	case "detect-histogram-stats":
 		return []logicalplan.Optimizer{logicalplan.DetectHistogramStatsOptimizer{}}, nil
+	case "projection":
+		po := logicalplan.ProjectionOptimizer{
+			SeriesHashLabel: schema.SeriesHashColumn,
+		}
+		return []logicalplan.Optimizer{po}, nil
 	default:
 		return nil, fmt.Errorf("unknown optimizer %s", name)
 	}

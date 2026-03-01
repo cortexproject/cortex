@@ -12,6 +12,92 @@ import (
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
 )
 
+func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+
+	// Test with feature flag disabled - metrics should be nil
+	t.Run("metrics are nil when feature flag is disabled", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
+
+		require.Nil(t, m.unoptimizedRegexPatternLength)
+		require.Nil(t, m.unoptimizedRegexLabelCardinality)
+		require.Nil(t, m.unoptimizedRegexTotalValueLength)
+		require.Nil(t, m.unoptimizedRegexRejectedTotal)
+	})
+
+	// Test with feature flag enabled - metrics should be initialized
+	t.Run("metrics are initialized when feature flag is enabled", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexPatternLength)
+		require.NotNil(t, m.unoptimizedRegexLabelCardinality)
+		require.NotNil(t, m.unoptimizedRegexTotalValueLength)
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+	})
+}
+
+func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+
+	t.Run("rejected metric increments correctly", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+
+		// Test incrementing different rejection reasons
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "cardinality").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "cardinality").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "total_value_length").Inc()
+
+		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user1"} 2
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="pattern_length",user="user1"} 1
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="total_value_length",user="user2"} 1
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		require.NoError(t, err)
+	})
+
+	t.Run("metric cleanup works correctly", func(t *testing.T) {
+		reg := prometheus.NewRegistry()
+		m := newIngesterMetrics(reg, false, false, false,
+			func() *InstanceLimits { return &InstanceLimits{} },
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+
+		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
+
+		// Add metrics for multiple users
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
+		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "cardinality").Inc()
+
+		// Delete user1 metrics
+		m.deletePerUserMetrics("user1")
+
+		// Only user2 metrics should remain
+		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
+			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user2"} 1
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		require.NoError(t, err)
+	})
+}
+
 func TestIngesterMetrics(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
@@ -23,6 +109,7 @@ func TestIngesterMetrics(t *testing.T) {
 	m := newIngesterMetrics(mainReg,
 		false,
 		true,
+		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{
 				MaxIngestionRate:        12,
@@ -34,7 +121,8 @@ func TestIngesterMetrics(t *testing.T) {
 		ingestionRate,
 		&inflightPushRequests,
 		&maxInflightQueryRequests,
-		false)
+		false,
+		true)
 
 	require.NotNil(t, m)
 
@@ -136,6 +224,57 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_queries_total The total number of queries the ingester has handled.
 			# TYPE cortex_ingester_queries_total counter
 			cortex_ingester_queries_total 0
+			# HELP cortex_ingester_unoptimized_regex_pattern_length_bytes Length (in bytes) of unoptimized regex patterns in queries.
+			# TYPE cortex_ingester_unoptimized_regex_pattern_length_bytes histogram
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="2"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="8"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="32"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="128"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="512"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="2048"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_sum 0
+			cortex_ingester_unoptimized_regex_pattern_length_bytes_count 0
+			# HELP cortex_ingester_unoptimized_regex_label_cardinality Cardinality of labels queried with unoptimized regex matchers.
+			# TYPE cortex_ingester_unoptimized_regex_label_cardinality histogram
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="4096"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="16384"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="65536"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="262144"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_label_cardinality_sum 0
+			cortex_ingester_unoptimized_regex_label_cardinality_count 0
+			# HELP cortex_ingester_unoptimized_regex_total_value_length_bytes Total length (in bytes) of all label values for labels queried with unoptimized regex matchers.
+			# TYPE cortex_ingester_unoptimized_regex_total_value_length_bytes histogram
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="16"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="64"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="256"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1024"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4096"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="16384"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="65536"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="262144"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="1.048576e+06"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="4.194304e+06"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_bucket{le="+Inf"} 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_sum 0
+			cortex_ingester_unoptimized_regex_total_value_length_bytes_count 0
+			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
+			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
 	`))
 	require.NoError(t, err)
 
@@ -366,16 +505,36 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_reloads_total 30
         	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
         	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
-        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="+Inf"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_sum{user="user1"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user1"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="3600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user2"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user2"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="600"} 0
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="1800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="3600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="7200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="10800"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="21600"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="43200"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user3",le="+Inf"} 1
+            cortex_ingester_tsdb_sample_ooo_delta_sum{user="user3"} 900
+            cortex_ingester_tsdb_sample_ooo_delta_count{user="user3"} 1
         	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
         	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
         	cortex_ingester_tsdb_snapshot_replay_error_total 309
@@ -428,6 +587,11 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_exemplars_in_storage 30
+			# HELP cortex_ingester_tsdb_head_stale_series Total number of stale series in the head block.
+			# TYPE cortex_ingester_tsdb_head_stale_series gauge
+			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
+			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
+			cortex_ingester_tsdb_head_stale_series{user="user3"} 30969
 	`))
 	require.NoError(t, err)
 }
@@ -634,16 +798,26 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			cortex_ingester_tsdb_reloads_total 30
         	# HELP cortex_ingester_tsdb_sample_ooo_delta Delta in seconds by which a sample is considered out of order (reported regardless of OOO time window and whether sample is accepted or not).
         	# TYPE cortex_ingester_tsdb_sample_ooo_delta histogram
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="600"} 0
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="1800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="3600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="7200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="10800"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="21600"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="43200"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_bucket{le="+Inf"} 3
-        	cortex_ingester_tsdb_sample_ooo_delta_sum 2700
-        	cortex_ingester_tsdb_sample_ooo_delta_count 3
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="1800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="7200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="10800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="21600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="43200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user1",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user1"} 900
+        	cortex_ingester_tsdb_sample_ooo_delta_count{user="user1"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="600"} 0
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="1800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="3600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="7200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="10800"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="21600"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="43200"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_bucket{user="user2",le="+Inf"} 1
+        	cortex_ingester_tsdb_sample_ooo_delta_sum{user="user2"} 900
+        	cortex_ingester_tsdb_sample_ooo_delta_count{user="user2"} 1
         	# HELP cortex_ingester_tsdb_snapshot_replay_error_total Total number snapshot replays that failed.
         	# TYPE cortex_ingester_tsdb_snapshot_replay_error_total counter
         	cortex_ingester_tsdb_snapshot_replay_error_total 309
@@ -691,6 +865,10 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_exemplar_exemplars_in_storage Number of TSDB exemplars currently in storage.
 			# TYPE cortex_ingester_tsdb_exemplar_exemplars_in_storage gauge
 			cortex_ingester_tsdb_exemplar_exemplars_in_storage 20
+			# HELP cortex_ingester_tsdb_head_stale_series Total number of stale series in the head block.
+			# TYPE cortex_ingester_tsdb_head_stale_series gauge
+			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
+			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
 	`))
 	require.NoError(t, err)
 }
@@ -1017,6 +1195,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of out of order exemplar ingestion failed attempts.",
 	})
 	exemplarsOutOfOrderTotal.Add(3)
+
+	headStaleSeries := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_stale_series",
+		Help: "Total number of stale series in the head block.",
+	})
+	headStaleSeries.Set(31 * base)
 
 	return r
 }

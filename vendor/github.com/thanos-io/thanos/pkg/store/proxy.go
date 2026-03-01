@@ -176,7 +176,7 @@ func NewProxyStore(
 		stores:         stores,
 		component:      component,
 		selectorLabels: selectorLabels,
-		buffers: sync.Pool{New: func() interface{} {
+		buffers: sync.Pool{New: func() any {
 			b := make([]byte, 0, initialBufSize)
 			return &b
 		}},
@@ -271,7 +271,9 @@ func (s *ProxyStore) TSDBInfos() []infopb.TSDBInfo {
 	return infos
 }
 
-func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.Store_SeriesServer) error {
+func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, seriesSrv storepb.Store_SeriesServer) error {
+	srv := newBatchableServer(seriesSrv, int(originalRequest.ResponseBatchSize))
+
 	// TODO(bwplotka): This should be part of request logger, otherwise it does not make much sense. Also, could be
 	// triggered by tracing span to reduce cognitive load.
 	reqLogger := log.With(s.logger, "component", "proxy")
@@ -324,11 +326,11 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		PartialResponseStrategy: originalRequest.PartialResponseStrategy,
 		ShardInfo:               originalRequest.ShardInfo,
 		WithoutReplicaLabels:    originalRequest.WithoutReplicaLabels,
+		ResponseBatchSize:       originalRequest.ResponseBatchSize,
 	}
 
 	storeResponses := make([]respSet, 0, len(stores))
 	for _, st := range stores {
-		st := st
 
 		respSet, err := newAsyncRespSet(ctx, st, r, s.responseTimeout, s.retrievalStrategy, &s.buffers, r.ShardInfo, reqLogger, s.metrics.emptyStreamResponses, s.lazyRetrievalMaxBufferedResponses)
 		if err != nil {
@@ -347,7 +349,6 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 		storeResponses = append(storeResponses, respSet)
 		defer respSet.Close()
 	}
-
 	level.Debug(reqLogger).Log("msg", "Series: started fanout streams", "status", strings.Join(storeDebugMsgs, ";"))
 
 	var respHeap seriesStream = NewProxyResponseLoserTree(storeResponses...)
@@ -371,6 +372,11 @@ func (s *ProxyStore) Series(originalRequest *storepb.SeriesRequest, srv storepb.
 			level.Error(reqLogger).Log("msg", "failed to stream response", "error", err)
 			return status.Error(codes.Unknown, errors.Wrap(err, "send series response").Error())
 		}
+	}
+
+	// Flush any remaining buffered series from the batchable server.
+	if f, ok := srv.(flushableServer); ok {
+		return f.Flush()
 	}
 
 	return nil
@@ -427,7 +433,6 @@ func (s *ProxyStore) LabelNames(ctx context.Context, originalRequest *storepb.La
 		g, gctx  = errgroup.WithContext(ctx)
 	)
 	for _, st := range stores {
-		st := st
 
 		storeID, storeAddr, isLocalStore := storeInfo(st)
 		g.Go(func() error {
@@ -531,7 +536,6 @@ func (s *ProxyStore) LabelValues(ctx context.Context, originalRequest *storepb.L
 		g, gctx  = errgroup.WithContext(ctx)
 	)
 	for _, st := range stores {
-		st := st
 
 		storeID, storeAddr, isLocalStore := storeInfo(st)
 		g.Go(func() error {
@@ -661,7 +665,12 @@ func storeMatches(ctx context.Context, debugLogging bool, s Client, mint, maxt i
 	}
 
 	if !s.Matches(matchers) {
-		return false, fmt.Sprintf("store does not match filter for matchers: %v", matchers)
+		const s = "store does not match filter for matchers"
+		if debugLogging {
+			return false, fmt.Sprintf("store does not match filter for matchers: %v", matchers)
+		}
+
+		return false, s
 	}
 
 	return true, ""

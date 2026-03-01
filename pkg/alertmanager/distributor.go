@@ -2,7 +2,6 @@ package alertmanager
 
 import (
 	"context"
-	"hash/fnv"
 	"io"
 	"math/rand"
 	"net/http"
@@ -21,10 +20,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/merger"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/client"
-	"github.com/cortexproject/cortex/pkg/tenant"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // Distributor forwards requests to individual alertmanagers.
@@ -37,12 +36,12 @@ type Distributor struct {
 
 	alertmanagerRing        ring.ReadRing
 	alertmanagerClientsPool ClientsPool
-
-	logger log.Logger
+	ringConfig              RingConfig
+	logger                  log.Logger
 }
 
 // NewDistributor constructs a new Distributor
-func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
+func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *ring.Ring, alertmanagerClientsPool ClientsPool, ringConfig RingConfig, logger log.Logger, reg prometheus.Registerer) (d *Distributor, err error) {
 	if alertmanagerClientsPool == nil {
 		alertmanagerClientsPool = newAlertmanagerClientsPool(client.NewRingServiceDiscovery(alertmanagersRing), cfg, logger, reg)
 	}
@@ -53,6 +52,7 @@ func NewDistributor(cfg ClientConfig, maxRecvMsgSize int64, alertmanagersRing *r
 		maxRecvMsgSize:          maxRecvMsgSize,
 		alertmanagerRing:        alertmanagersRing,
 		alertmanagerClientsPool: alertmanagerClientsPool,
+		ringConfig:              ringConfig,
 	}
 
 	d.Service = services.NewBasicService(nil, d.running, nil)
@@ -97,11 +97,11 @@ func (d *Distributor) isQuorumReadPath(p string) (bool, merger.Merger) {
 // In case of reads, it proxies the request to one of the alertmanagers.
 // DistributeRequest assumes that the caller has verified IsPathSupported returns
 // true for the route.
-func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, allowedTenants *util.AllowedTenants) {
+func (d *Distributor) DistributeRequest(w http.ResponseWriter, r *http.Request, allowedTenants *users.AllowedTenants) {
 	d.requestsInFlight.Add(1)
 	defer d.requestsInFlight.Done()
 
-	userID, err := tenant.TenantID(r.Context())
+	userID, err := users.TenantID(r.Context())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -161,7 +161,7 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 	var responses []*httpgrpc.HTTPResponse
 	var responsesMtx sync.Mutex
 	grpcHeaders := httpToHttpgrpcHeaders(r.Header)
-	err = ring.DoBatch(r.Context(), RingOp, d.alertmanagerRing, nil, []uint32{shardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
+	err = ring.DoBatch(r.Context(), getRingOp(d.ringConfig.DisableReplicaSetExtension), d.alertmanagerRing, nil, []uint32{users.ShardByUser(userID)}, func(am ring.InstanceDesc, _ []int) error {
 		// Use a background context to make sure all alertmanagers get the request even if we return early.
 		localCtx := opentracing.ContextWithSpan(user.InjectOrgID(context.Background(), userID), opentracing.SpanFromContext(r.Context()))
 		sp, localCtx := opentracing.StartSpanFromContext(localCtx, "Distributor.doQuorum")
@@ -207,8 +207,8 @@ func (d *Distributor) doQuorum(userID string, w http.ResponseWriter, r *http.Req
 }
 
 func (d *Distributor) doUnary(userID string, w http.ResponseWriter, r *http.Request, logger log.Logger) {
-	key := shardByUser(userID)
-	replicationSet, err := d.alertmanagerRing.Get(key, RingOp, nil, nil, nil)
+	key := users.ShardByUser(userID)
+	replicationSet, err := d.alertmanagerRing.Get(key, getRingOp(d.ringConfig.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		level.Error(logger).Log("msg", "failed to get replication set from the ring", "err", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -297,13 +297,6 @@ func (d *Distributor) doRequest(ctx context.Context, am ring.InstanceDesc, req *
 	}
 
 	return amClient.HandleRequest(ctx, req)
-}
-
-func shardByUser(userID string) uint32 {
-	ringHasher := fnv.New32a()
-	// Hasher never returns err.
-	_, _ = ringHasher.Write([]byte(userID))
-	return ringHasher.Sum32()
 }
 
 func httpToHttpgrpcHeaders(hs http.Header) []*httpgrpc.Header {

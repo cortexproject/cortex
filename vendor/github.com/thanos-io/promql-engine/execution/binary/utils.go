@@ -8,8 +8,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/thanos-io/promql-engine/execution/parse"
-	"github.com/thanos-io/promql-engine/execution/warnings"
+	"github.com/thanos-io/promql-engine/warnings"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
@@ -48,211 +47,146 @@ func (e *errManyToManyMatch) Error() string {
 	return fmt.Sprintf(msg, group, e.side, e.original.String(), e.duplicate.String())
 }
 
-// operands is a length 2 array which contains lhs and rhs.
-// valueIdx is used in vector comparison operator to decide
-// which operand value we should return.
-type operation func(operands [2]float64, valueIdx int) (float64, bool)
-
-var operations = map[string]operation{
-	"+":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] + operands[1], true },
-	"-":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] - operands[1], true },
-	"*":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] * operands[1], true },
-	"/":  func(operands [2]float64, _ int) (float64, bool) { return operands[0] / operands[1], true },
-	"^":  func(operands [2]float64, _ int) (float64, bool) { return math.Pow(operands[0], operands[1]), true },
-	"%":  func(operands [2]float64, _ int) (float64, bool) { return math.Mod(operands[0], operands[1]), true },
-	"==": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] == operands[1]), true },
-	"!=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] != operands[1]), true },
-	">":  func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] > operands[1]), true },
-	"<":  func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] < operands[1]), true },
-	">=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] >= operands[1]), true },
-	"<=": func(operands [2]float64, _ int) (float64, bool) { return btof(operands[0] <= operands[1]), true },
-	"atan2": func(operands [2]float64, _ int) (float64, bool) {
-		return math.Atan2(operands[0], operands[1]), true
-	},
-}
-
-// For vector, those operations are handled differently to check whether to keep
-// the value or not. https://github.com/prometheus/prometheus/blob/main/promql/engine.go#L2229
-var vectorBinaryOperations = map[string]operation{
-	"==": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] == operands[1]
-	},
-	"!=": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] != operands[1]
-	},
-	">": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] > operands[1]
-	},
-	"<": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] < operands[1]
-	},
-	">=": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] >= operands[1]
-	},
-	"<=": func(operands [2]float64, valueIdx int) (float64, bool) {
-		return operands[valueIdx], operands[0] <= operands[1]
-	},
-}
-
-func newOperation(expr parser.ItemType, vectorBinOp bool) (operation, error) {
-	t := parser.ItemTypeStr[expr]
-	if expr.IsSetOperator() && vectorBinOp {
-		// handled in the operator
-		return nil, nil
-	}
-	if expr.IsComparisonOperator() && vectorBinOp {
-		if o, ok := vectorBinaryOperations[t]; ok {
-			return o, nil
-		}
-		return nil, parse.UnsupportedOperationErr(expr)
-	}
-	if o, ok := operations[t]; ok {
-		return o, nil
-	}
-	return nil, parse.UnsupportedOperationErr(expr)
-}
-
-// histogramFloatOperation is an operation defined one histogram and one float.
-type histogramFloatOperation func(ctx context.Context, lhsHist *histogram.FloatHistogram, rhsFloat float64) *histogram.FloatHistogram
-
-func undefinedHistogramOp(_ context.Context, _ *histogram.FloatHistogram, _ float64) *histogram.FloatHistogram {
-	return nil
-}
-
-var lhsHistogramOperations = map[string]histogramFloatOperation{
-	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Mul(float).Compact(0)
-	},
-	"/": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Div(float).Compact(0)
-	},
-	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "+", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"-": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "-", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"^": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "^", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"%": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "%", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"==": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "==", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"!=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "!=", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	">": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", ">", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"<": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "<", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	">=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", ">=", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"<=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "<=", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"atan2": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("histogram", "atan2", "float", posrange.PositionRange{}), ctx)
-		return nil
-	},
-}
-
-var rhsHistogramOperations = map[string]histogramFloatOperation{
-	"*": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		return hist.Copy().Mul(float).Compact(0)
-	},
-	"+": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "+", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"-": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "-", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"/": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "/", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"^": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "^", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"%": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "%", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"==": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "==", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"!=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "!=", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	">": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", ">", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"<": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "<", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	">=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", ">=", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"<=": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "<=", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-	"atan2": func(ctx context.Context, hist *histogram.FloatHistogram, float float64) *histogram.FloatHistogram {
-		warnings.AddToContext(annotations.NewIncompatibleTypesInBinOpInfo("float", "atan2", "histogram", posrange.PositionRange{}), ctx)
-		return nil
-	},
-}
-
-func getHistogramFloatOperation(expr parser.ItemType, scalarSide ScalarSide) histogramFloatOperation {
-	t := parser.ItemTypeStr[expr]
-	var operation histogramFloatOperation
-	if scalarSide == ScalarSideLeft {
-		operation = rhsHistogramOperations[t]
-	} else {
-		operation = lhsHistogramOperations[t]
-	}
-	if operation != nil {
-		return operation
-	}
-	return undefinedHistogramOp
-}
-
-// btof returns 1 if b is true, 0 otherwise.
-func btof(b bool) float64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func shouldDropMetricName(op parser.ItemType, returnBool bool) bool {
 	switch op {
 	case parser.ADD, parser.SUB, parser.MUL, parser.DIV, parser.MOD, parser.POW, parser.ATAN2:
 		return true
 	default:
 		return op.IsComparisonOperator() && returnBool
+	}
+}
+
+// binOp evaluates a binary operation between two values.
+// Returns: value, histogram, keep, warnings, error.
+func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHistogram) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+	switch {
+	case hlhs == nil && hrhs == nil:
+		{
+			switch op {
+			case parser.ADD:
+				return lhs + rhs, nil, true, 0, nil
+			case parser.SUB:
+				return lhs - rhs, nil, true, 0, nil
+			case parser.MUL:
+				return lhs * rhs, nil, true, 0, nil
+			case parser.DIV:
+				return lhs / rhs, nil, true, 0, nil
+			case parser.POW:
+				return math.Pow(lhs, rhs), nil, true, 0, nil
+			case parser.MOD:
+				return math.Mod(lhs, rhs), nil, true, 0, nil
+			case parser.EQLC:
+				return lhs, nil, lhs == rhs, 0, nil
+			case parser.NEQ:
+				return lhs, nil, lhs != rhs, 0, nil
+			case parser.GTR:
+				return lhs, nil, lhs > rhs, 0, nil
+			case parser.LSS:
+				return lhs, nil, lhs < rhs, 0, nil
+			case parser.GTE:
+				return lhs, nil, lhs >= rhs, 0, nil
+			case parser.LTE:
+				return lhs, nil, lhs <= rhs, 0, nil
+			case parser.ATAN2:
+				return math.Atan2(lhs, rhs), nil, true, 0, nil
+			}
+		}
+	case hlhs == nil && hrhs != nil:
+		{
+			switch op {
+			case parser.MUL:
+				return 0, hrhs.Copy().Mul(lhs).Compact(0), true, 0, nil
+			case parser.ADD, parser.SUB, parser.DIV, parser.POW, parser.MOD, parser.EQLC, parser.NEQ, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
+				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
+			}
+		}
+	case hlhs != nil && hrhs == nil:
+		{
+			switch op {
+			case parser.MUL:
+				return 0, hlhs.Copy().Mul(rhs).Compact(0), true, 0, nil
+			case parser.DIV:
+				return 0, hlhs.Copy().Div(rhs).Compact(0), true, 0, nil
+			case parser.ADD, parser.SUB, parser.POW, parser.MOD, parser.EQLC, parser.NEQ, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
+				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
+			}
+		}
+	case hlhs != nil && hrhs != nil:
+		{
+			switch op {
+			case parser.ADD:
+				res, counterResetCollision, nhcbBoundsReconciled, err := hlhs.Copy().Add(hrhs)
+				if err != nil {
+					return 0, nil, false, 0, err
+				}
+				var warn warnings.Warnings
+				if counterResetCollision {
+					warn |= warnings.WarnCounterResetCollision
+				}
+				if nhcbBoundsReconciled {
+					warn |= warnings.WarnNHCBBoundsReconciled
+				}
+				return 0, res.Compact(0), true, warn, nil
+			case parser.SUB:
+				res, counterResetCollision, nhcbBoundsReconciled, err := hlhs.Copy().Sub(hrhs)
+				if err != nil {
+					return 0, nil, false, 0, err
+				}
+				var warn warnings.Warnings
+				if counterResetCollision {
+					warn |= warnings.WarnCounterResetCollision
+				}
+				if nhcbBoundsReconciled {
+					warn |= warnings.WarnNHCBBoundsReconciled
+				}
+				return 0, res.Compact(0), true, warn, nil
+			case parser.EQLC:
+				// This operation expects that both histograms are compacted.
+				return 0, hlhs, hlhs.Equals(hrhs), 0, nil
+			case parser.NEQ:
+				// This operation expects that both histograms are compacted.
+				return 0, hlhs, !hlhs.Equals(hrhs), 0, nil
+			case parser.MUL, parser.DIV, parser.POW, parser.MOD, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
+				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
+			}
+		}
+	}
+	return 0, nil, false, 0, nil
+}
+
+// emitBinaryOpWarnings emits warnings for binary operation side effects.
+func emitBinaryOpWarnings(ctx context.Context, warn warnings.Warnings, opType parser.ItemType) {
+	if warn == 0 {
+		return
+	}
+	if warn&warnings.WarnMixedExponentialCustomBuckets != 0 {
+		warnings.AddToContext(annotations.NewMixedExponentialCustomHistogramsWarning("", posrange.PositionRange{}), ctx)
+	}
+	if warn&warnings.WarnCounterResetCollision != 0 {
+		var op annotations.HistogramOperation
+		switch opType {
+		case parser.ADD:
+			op = annotations.HistogramAdd
+		case parser.SUB:
+			op = annotations.HistogramSub
+		default:
+			return
+		}
+		warnings.AddToContext(annotations.NewHistogramCounterResetCollisionWarning(posrange.PositionRange{}, op), ctx)
+	}
+	if warn&warnings.WarnNHCBBoundsReconciled != 0 {
+		var op annotations.HistogramOperation
+		switch opType {
+		case parser.ADD:
+			op = annotations.HistogramAdd
+		case parser.SUB:
+			op = annotations.HistogramSub
+		default:
+			return
+		}
+		warnings.AddToContext(annotations.NewMismatchedCustomBucketsHistogramsInfo(posrange.PositionRange{}, op), ctx)
+	}
+	if warn&warnings.WarnIncompatibleTypesInBinOp != 0 {
+		warnings.AddToContext(annotations.IncompatibleTypesInBinOpInfo, ctx)
 	}
 }

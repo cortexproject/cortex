@@ -1,5 +1,4 @@
 //go:build requires_docker
-// +build requires_docker
 
 package integration
 
@@ -38,7 +37,6 @@ import (
 type queryFrontendTestConfig struct {
 	testMissingMetricName bool
 	querySchedulerEnabled bool
-	queryStatsEnabled     bool
 	remoteReadEnabled     bool
 	testSubQueryStepSize  bool
 	setup                 func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string)
@@ -61,7 +59,6 @@ func TestQueryFrontendWithBlocksStorageViaFlags(t *testing.T) {
 func TestQueryFrontendWithBlocksStorageViaFlagsAndQueryStatsEnabled(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
-		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			flags = BlocksStorageFlags()
 
@@ -92,7 +89,6 @@ func TestQueryFrontendWithBlocksStorageViaFlagsAndWithQuerySchedulerAndQueryStat
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
 		querySchedulerEnabled: true,
-		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			flags = BlocksStorageFlags()
 
@@ -168,7 +164,6 @@ func TestQueryFrontendWithVerticalSharding(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
 		querySchedulerEnabled: false,
-		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
@@ -188,7 +183,6 @@ func TestQueryFrontendWithVerticalShardingQueryScheduler(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
 		querySchedulerEnabled: true,
-		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
@@ -208,7 +202,6 @@ func TestQueryFrontendProtobufCodec(t *testing.T) {
 	runQueryFrontendTest(t, queryFrontendTestConfig{
 		testMissingMetricName: false,
 		querySchedulerEnabled: true,
-		queryStatsEnabled:     true,
 		setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 			require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
@@ -228,7 +221,6 @@ func TestQuerierToQueryFrontendCompression(t *testing.T) {
 		runQueryFrontendTest(t, queryFrontendTestConfig{
 			testMissingMetricName: false,
 			querySchedulerEnabled: true,
-			queryStatsEnabled:     true,
 			setup: func(t *testing.T, s *e2e.Scenario) (configFile string, flags map[string]string) {
 				require.NoError(t, writeFileToSharedDir(s, cortexConfigFile, []byte(BlocksStorageConfig)))
 
@@ -294,7 +286,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 		"-querier.split-queries-by-interval": "24h",
 		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
-		"-frontend.query-stats-enabled":      strconv.FormatBool(cfg.queryStatsEnabled),
+		"-frontend.query-stats-enabled":      "true", // Always enable query stats to capture regressions
 	})
 
 	// Start the query-scheduler if enabled.
@@ -382,7 +374,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 		}
 
 		// No need to repeat the test on Server-Timing header for each user.
-		if userID == 0 && cfg.queryStatsEnabled {
+		if userID == 0 {
 			res, _, err := c.QueryRaw("{instance=~\"hello.*\"}", time.Now(), map[string]string{})
 			require.NoError(t, err)
 			require.Regexp(t, "querier_wall_time;dur=[0-9.]*, response_time;dur=[0-9.]*$", res.Header.Values("Server-Timing")[0])
@@ -433,12 +425,8 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 
 	wg.Wait()
 
-	extra := float64(2)
+	extra := float64(3) // Always include query stats test
 	if cfg.testMissingMetricName {
-		extra++
-	}
-
-	if cfg.queryStatsEnabled {
 		extra++
 	}
 
@@ -458,15 +446,11 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_request_duration_seconds"}, e2e.WithMetricCount))
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(numUsers*numQueriesPerUser), []string{"cortex_querier_request_duration_seconds"}, e2e.WithMetricCount))
 
-	// Ensure query stats metrics are tracked only when enabled.
-	if cfg.queryStatsEnabled {
-		require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(
-			e2e.Greater(0),
-			[]string{"cortex_query_seconds_total"},
-			e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
-	} else {
-		require.NoError(t, queryFrontend.WaitRemovedMetric("cortex_query_seconds_total"))
-	}
+	// Ensure query stats metrics are always tracked to capture regressions.
+	require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(
+		e2e.Greater(0),
+		[]string{"cortex_query_seconds_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
 
 	// Ensure no service-specific metrics prefix is used by the wrong service.
 	assertServiceMetricsPrefixes(t, Distributor, distributor)
@@ -529,6 +513,10 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
 	require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
 
+	// Start the compactor to create the bucket index.
+	compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(compactor))
+
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
 	require.NoError(t, s.Start(queryFrontend))
 
@@ -545,7 +533,7 @@ func TestQueryFrontendNoRetryChunkPool(t *testing.T) {
 	// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 
 	// Sleep 3 * bucket sync interval to make sure consistency checker
 	// doesn't consider block is uploaded recently.

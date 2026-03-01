@@ -166,10 +166,51 @@ type RulesLimits interface {
 	RulerExternalLabels(userID string) labels.Labels
 }
 
-// EngineQueryFunc returns a new engine query function validating max queryLength.
-// Modified from Prometheus rules.EngineQueryFunc
-// https://github.com/prometheus/prometheus/blob/v2.39.1/rules/manager.go#L189.
-func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+type QueryExecutor func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
+
+func engineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, q storage.Queryable, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
+	var executor QueryExecutor
+
+	if frontendClient != nil {
+		// query to query frontend
+		executor = frontendClient.InstantQuery
+	} else {
+		// query to engine
+		executor = func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+			return executeQuery(ctx, engine, q, qs, t)
+		}
+	}
+
+	return wrapWithMiddleware(executor, overrides, userID, lookbackDelta)
+}
+
+func executeQuery(ctx context.Context, engine promql.QueryEngine, q storage.Queryable, qs string, t time.Time) (promql.Vector, error) {
+	qry, err := engine.NewInstantQuery(ctx, q, nil, qs, t)
+	if err != nil {
+		return nil, err
+	}
+	defer qry.Close()
+
+	res := qry.Exec(ctx)
+	if res.Err != nil {
+		return nil, res.Err
+	}
+
+	switch v := res.Value.(type) {
+	case promql.Vector:
+		return v, nil
+	case promql.Scalar:
+		return promql.Vector{promql.Sample{
+			T:      v.T,
+			F:      v.V,
+			Metric: labels.Labels{},
+		}}, nil
+	default:
+		return nil, errors.New("rule result is not a vector or scalar")
+	}
+}
+
+func wrapWithMiddleware(next QueryExecutor, overrides RulesLimits, userID string, lookbackDelta time.Duration) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		// Enforce the max query length.
 		maxQueryLength := overrides.MaxQueryLength(userID)
@@ -187,42 +228,16 @@ func EngineQueryFunc(engine promql.QueryEngine, frontendClient *frontendClient, 
 		}
 
 		// Add request ID to the context so that it can be used in logs and metrics for split queries.
-		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		if requestmeta.RequestIdFromContext(ctx) == "" {
+			ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
+		}
 		ctx = requestmeta.ContextWithRequestSource(ctx, requestmeta.SourceRuler)
 
-		if frontendClient != nil {
-			v, err := frontendClient.InstantQuery(ctx, qs, t)
-			if err != nil {
-				return nil, err
-			}
-
-			return v, nil
-		} else {
-			q, err := engine.NewInstantQuery(ctx, q, nil, qs, t)
-			if err != nil {
-				return nil, err
-			}
-			res := q.Exec(ctx)
-			if res.Err != nil {
-				return nil, res.Err
-			}
-			switch v := res.Value.(type) {
-			case promql.Vector:
-				return v, nil
-			case promql.Scalar:
-				return promql.Vector{promql.Sample{
-					T:      v.T,
-					F:      v.V,
-					Metric: labels.Labels{},
-				}}, nil
-			default:
-				return nil, errors.New("rule result is not a vector or scalar")
-			}
-		}
+		return next(ctx, qs, t)
 	}
 }
 
-func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
+func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {
 	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
 		queries.Inc()
 		result, err := qf(ctx, qs, t)
@@ -254,7 +269,7 @@ func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	}
 }
 
-func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
+func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
 	queryTime := evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 	querySeries := evalMetrics.RulerQuerySeries.WithLabelValues(userID)
 	querySample := evalMetrics.RulerQuerySamples.WithLabelValues(userID)
@@ -265,6 +280,9 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 		queryStats, ctx := stats.ContextWithEmptyStats(ctx)
 		// If we've been passed a counter we want to record the wall time spent executing this request.
 		timer := prometheus.NewTimer(nil)
+
+		// Add request ID before logging so that it can be used in query stats logs.
+		ctx = requestmeta.ContextWithRequestId(ctx, uuid.NewString())
 
 		defer func() {
 			querySeconds := timer.ObserveDuration().Seconds()
@@ -332,36 +350,25 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 	// and errors returned by PromQL engine. Errors from Queryable can be either caused by user (limits) or internal errors.
 	// Errors from PromQL are always "user" errors.
 	q = querier.NewErrorTranslateQueryableWithFn(q, WrapQueryableErrors)
-
 	return func(ctx context.Context, userID string, notifier *notifier.Manager, logger log.Logger, frontendPool *client.Pool, reg prometheus.Registerer) (RulesManager, error) {
-		var client *frontendClient
-		failedQueries := evalMetrics.FailedQueriesVec.WithLabelValues(userID)
-		totalQueries := evalMetrics.TotalQueriesVec.WithLabelValues(userID)
-		totalWrites := evalMetrics.TotalWritesVec.WithLabelValues(userID)
-		failedWrites := evalMetrics.FailedWritesVec.WithLabelValues(userID)
-
-		if cfg.FrontendAddress != "" {
-			c, err := frontendPool.GetClientFor(cfg.FrontendAddress)
-			if err != nil {
-				return nil, err
-			}
-			client = c.(*frontendClient)
-		}
-		var queryFunc rules.QueryFunc
-		engineQueryFunc := EngineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
-		metricsQueryFunc := MetricsQueryFunc(engineQueryFunc, totalQueries, failedQueries)
-		if cfg.EnableQueryStats {
-			queryFunc = RecordAndReportRuleQueryMetrics(metricsQueryFunc, userID, evalMetrics, logger)
-		} else {
-			queryFunc = metricsQueryFunc
+		qfeClient, err := resolveFrontendClient(cfg.FrontendAddress, frontendPool)
+		if err != nil {
+			return nil, err
 		}
 
+		if qfeClient == nil && engine == nil {
+			return nil, fmt.Errorf("neither engine nor frontend client is configured for user %s", userID)
+		}
+
+		queryFunc := buildQueryFunc(engine, qfeClient, q, overrides, userID, cfg, evalMetrics, logger)
 		// We let the Prometheus rules manager control the context so that there is a chance
 		// for graceful shutdown of rules that are still in execution even in case the cortex context is canceled.
 		prometheusContext := user.InjectOrgID(context.WithoutCancel(ctx), userID)
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable:             NewPusherAppendable(p, userID, overrides, totalWrites, failedWrites),
+			Appendable: NewPusherAppendable(p, userID, overrides,
+				evalMetrics.TotalWritesVec.WithLabelValues(userID),
+				evalMetrics.FailedWritesVec.WithLabelValues(userID)),
 			Queryable:              q,
 			QueryFunc:              queryFunc,
 			Context:                prometheusContext,
@@ -380,6 +387,41 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			RestoreNewRuleGroups: cfg.EnableSharding,
 		}), nil
 	}
+}
+
+func resolveFrontendClient(addr string, pool *client.Pool) (*frontendClient, error) {
+	if addr == "" {
+		return nil, nil
+	}
+	c, err := pool.GetClientFor(addr)
+	if err != nil {
+		return nil, err
+	}
+	return c.(*frontendClient), nil
+}
+
+func buildQueryFunc(
+	engine promql.QueryEngine,
+	client *frontendClient,
+	q storage.Queryable,
+	overrides RulesLimits,
+	userID string,
+	cfg Config,
+	metrics *RuleEvalMetrics,
+	logger log.Logger,
+) rules.QueryFunc {
+	baseQueryFunc := engineQueryFunc(engine, client, q, overrides, userID, cfg.LookbackDelta)
+
+	// apply metric middleware
+	totalQueries := metrics.TotalQueriesVec.WithLabelValues(userID)
+	failedQueries := metrics.FailedQueriesVec.WithLabelValues(userID)
+	metricsFunc := metricsQueryFunc(baseQueryFunc, totalQueries, failedQueries)
+
+	// apply statistic middleware
+	if cfg.EnableQueryStats {
+		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+	}
+	return metricsFunc
 }
 
 type QueryableError struct {

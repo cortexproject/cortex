@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/configs/client"
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const (
@@ -15,9 +18,10 @@ const (
 
 // ConfigRuleStore is a concrete implementation of RuleStore that sources rules from the config service
 type ConfigRuleStore struct {
-	configClient  client.Client
-	since         userconfig.ID
-	ruleGroupList map[string]rulespb.RuleGroupList
+	configClient         client.Client
+	nameValidationScheme model.ValidationScheme
+	since                userconfig.ID
+	ruleGroupList        map[string]rulespb.RuleGroupList
 }
 
 func (c *ConfigRuleStore) SupportsModifications() bool {
@@ -25,11 +29,12 @@ func (c *ConfigRuleStore) SupportsModifications() bool {
 }
 
 // NewConfigRuleStore constructs a ConfigRuleStore
-func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
+func NewConfigRuleStore(c client.Client, nameValidationScheme model.ValidationScheme) *ConfigRuleStore {
 	return &ConfigRuleStore{
-		configClient:  c,
-		since:         0,
-		ruleGroupList: make(map[string]rulespb.RuleGroupList),
+		configClient:         c,
+		nameValidationScheme: nameValidationScheme,
+		since:                0,
+		ruleGroupList:        make(map[string]rulespb.RuleGroupList),
 	}
 }
 
@@ -59,7 +64,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 			delete(c.ruleGroupList, user)
 			continue
 		}
-		rMap, err := cfg.Config.ParseFormatted()
+		rMap, err := cfg.Config.ParseFormatted(c.nameValidationScheme)
 		if err != nil {
 			return nil, err
 		}
@@ -133,4 +138,8 @@ func (c *ConfigRuleStore) DeleteRuleGroup(ctx context.Context, userID, namespace
 // DeleteNamespace is not implemented
 func (c *ConfigRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
 	return errors.New("not implemented by the config service rule store")
+}
+
+func (c *ConfigRuleStore) GetUserIndexUpdater() *users.UserIndexUpdater {
+	return nil
 }

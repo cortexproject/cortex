@@ -3213,6 +3213,12 @@ ha_tracker:
 # CLI flag: -distributor.remote-writev2-enabled
 [remote_writev2_enabled: <boolean> | default = false]
 
+# If true, treat requests with unknown or invalid Content-Type header as remote
+# write v1 (legacy behavior). If false, return 415 Unsupported Media Type for
+# non-standard content types.
+# CLI flag: -distributor.accept-unknown-remote-write-content-type
+[accept_unknown_remote_write_content_type: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,

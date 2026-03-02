@@ -3701,6 +3701,12 @@
     "distributor_config": {
       "description": "The distributor_config configures the Cortex distributor.",
       "properties": {
+        "accept_unknown_remote_write_content_type": {
+          "default": false,
+          "description": "If true, treat requests with unknown or invalid Content-Type header as remote write v1 (legacy behavior). If false, return 415 Unsupported Media Type for non-standard content types.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.accept-unknown-remote-write-content-type"
+        },
         "extend_writes": {
           "default": true,
           "description": "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.",

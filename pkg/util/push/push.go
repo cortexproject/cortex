@@ -36,16 +36,17 @@ const (
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
 
-	labelValuePRW1 = "prw1"
-	labelValuePRW2 = "prw2"
-	labelValueOTLP = "otlp"
+	labelValuePRW1    = "prw1"
+	labelValuePRW2    = "prw2"
+	labelValueOTLP    = "otlp"
+	labelValueUnknown = "unknown"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
+func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -155,20 +156,27 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 		}
 
 		msgType, err := remote.ParseProtoMsg(contentType)
-		if err != nil {
-			level.Error(logger).Log("Error decoding remote write request", "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
+		contentTypeUnknownOrInvalid := false
+		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
+			if acceptUnknownRemoteWriteContentType {
+				contentTypeUnknownOrInvalid = true
+				msgType = remote.WriteV1MessageType
+				level.Debug(logger).Log("msg", "Treating unknown or invalid content-type as remote write v1", "content_type", contentType, "msgType", msgType, "err", err)
+			} else {
+				if err != nil {
+					level.Error(logger).Log("msg", "Content-type header invalid or message type not accepted", "content_type", contentType, "err", err)
+					http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+				} else {
+					errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v or %v", msgType, remote.WriteV1MessageType, remote.WriteV2MessageType)
+					level.Error(logger).Log("Not accepted msg type", "msgType", msgType)
+					http.Error(w, errMsg, http.StatusUnsupportedMediaType)
+				}
+				return
+			}
 		}
 
 		if requestTotal != nil {
-			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
-		}
-
-		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
-			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
+			requestTotal.WithLabelValues(getTypeLabel(msgType, contentTypeUnknownOrInvalid)).Inc()
 		}
 
 		enc := r.Header.Get("Content-Encoding")
@@ -311,10 +319,12 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 	return v1Exemplars, nil
 }
 
-func getTypeLabel(msgType remote.WriteMessageType) string {
+func getTypeLabel(msgType remote.WriteMessageType, unknownOrInvalidContentType bool) string {
+	if unknownOrInvalidContentType {
+		return labelValueUnknown
+	}
 	if msgType == remote.WriteV1MessageType {
 		return labelValuePRW1
 	}
-
 	return labelValuePRW2
 }

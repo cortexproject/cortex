@@ -974,7 +974,7 @@ func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
 		return &cortexpb.WriteResponse{}, nil
 	}
 
-	handler := Handler(true, 1000000, overrides, nil, mockPush, nil)
+	handler := Handler(true, false, 1000000, overrides, nil, mockPush, nil)
 	ctx := user.InjectOrgID(context.Background(), "user-1")
 
 	sendRequest := func(reqProto *writev2.Request) *httptest.ResponseRecorder {

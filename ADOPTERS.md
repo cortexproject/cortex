@@ -22,5 +22,6 @@ This is the list of organisations that are using Cortex in **production environm
 * [Platform9](https://platform9.com/)
 * [REWE Digital](https://rewe-digital.com/)
 * [Swiggy](https://www.swiggy.in/)
+* [Sophotech](https://sopho.tech/)
 * [SysEleven](https://www.syseleven.de/)
 * [Twilio](https://www.twilio.com/)

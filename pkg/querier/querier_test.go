@@ -34,6 +34,7 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -1693,32 +1694,34 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func Test_EnableExperimentalPromQLFunctions(t *testing.T) {
-	EnableExperimentalPromQLFunctions(true, true)
+	cortexparser.Setup(true, true)
+	defer cortexparser.Setup(false, false)
 
-	// holt_winters function should exist
-	holtWintersFunc, ok := parser.Functions["holt_winters"]
-	require.True(t, ok)
+	// Verify experimental functions flag is set
+	require.True(t, parser.EnableExperimentalFunctions)
 
 	// double_exponential_smoothing function should exist
 	doubleExponentialSmoothingFunc, ok := parser.Functions["double_exponential_smoothing"]
 	require.True(t, ok)
+	require.Equal(t, "double_exponential_smoothing", doubleExponentialSmoothingFunc.Name)
+	require.True(t, parser.Functions["double_exponential_smoothing"].Experimental)
 
-	// holt_winters should not experimental function.
+	// holt_winters should exist
+	holtWintersFunc, ok := parser.Functions["holt_winters"]
+	require.True(t, ok)
+	require.Equal(t, "holt_winters", holtWintersFunc.Name)
 	require.False(t, holtWintersFunc.Experimental)
-	// holt_winters's Variadic, ReturnType, and ArgTypes are the same as the double_exponential_smoothing.
+
+	// holt_winters's Variadic, ReturnType, and ArgTypes are the same as the double_exponential_smoothing
 	require.Equal(t, doubleExponentialSmoothingFunc.Variadic, holtWintersFunc.Variadic)
 	require.Equal(t, doubleExponentialSmoothingFunc.ReturnType, holtWintersFunc.ReturnType)
 	require.Equal(t, doubleExponentialSmoothingFunc.ArgTypes, holtWintersFunc.ArgTypes)
 
-	// double_exponential_smoothing shouldn't be changed.
-	require.Equal(t, "double_exponential_smoothing", doubleExponentialSmoothingFunc.Name)
-	require.True(t, parser.Functions["double_exponential_smoothing"].Experimental)
-
-	// holt_winters function calls should exist.
+	// holt_winters function calls should exist
 	_, ok = promql.FunctionCalls["holt_winters"]
 	require.True(t, ok)
 
-	// double_exponential_smoothing function calls should exist.
+	// double_exponential_smoothing function calls should exist
 	_, ok = promql.FunctionCalls["double_exponential_smoothing"]
 	require.True(t, ok)
 }

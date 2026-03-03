@@ -36,16 +36,17 @@ const (
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
 
-	labelValuePRW1 = "prw1"
-	labelValuePRW2 = "prw2"
-	labelValueOTLP = "otlp"
+	labelValuePRW1    = "prw1"
+	labelValuePRW2    = "prw2"
+	labelValueOTLP    = "otlp"
+	labelValueUnknown = "unknown"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.
 type Func func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error)
 
 // Handler is a http.Handler which accepts WriteRequests.
-func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
+func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool, maxRecvMsgSize int, overrides *validation.Overrides, sourceIPs *middleware.SourceIPExtractor, push Func, requestTotal *prometheus.CounterVec) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := log.WithContext(ctx, log.Logger)
@@ -155,20 +156,27 @@ func Handler(remoteWrite2Enabled bool, maxRecvMsgSize int, overrides *validation
 		}
 
 		msgType, err := remote.ParseProtoMsg(contentType)
-		if err != nil {
-			level.Error(logger).Log("Error decoding remote write request", "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
+		contentTypeUnknownOrInvalid := false
+		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
+			if acceptUnknownRemoteWriteContentType {
+				contentTypeUnknownOrInvalid = true
+				msgType = remote.WriteV1MessageType
+				level.Debug(logger).Log("msg", "Treating unknown or invalid content-type as remote write v1", "content_type", contentType, "msgType", msgType, "err", err)
+			} else {
+				if err != nil {
+					level.Error(logger).Log("msg", "Content-type header invalid or message type not accepted", "content_type", contentType, "err", err)
+					http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+				} else {
+					errMsg := fmt.Sprintf("%v protobuf message is not accepted by this server; only accepts %v or %v", msgType, remote.WriteV1MessageType, remote.WriteV2MessageType)
+					level.Error(logger).Log("Not accepted msg type", "msgType", msgType)
+					http.Error(w, errMsg, http.StatusUnsupportedMediaType)
+				}
+				return
+			}
 		}
 
 		if requestTotal != nil {
-			requestTotal.WithLabelValues(getTypeLabel(msgType)).Inc()
-		}
-
-		if msgType != remote.WriteV1MessageType && msgType != remote.WriteV2MessageType {
-			level.Error(logger).Log("Not accepted msg type", "msgType", msgType, "err", err)
-			http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
-			return
+			requestTotal.WithLabelValues(getTypeLabel(msgType, contentTypeUnknownOrInvalid)).Inc()
 		}
 
 		enc := r.Header.Get("Content-Encoding")
@@ -217,6 +225,10 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
 		}
 
+		if int(v2Ts.Metadata.UnitRef) >= len(symbols) {
+			return v1Req, fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", v2Ts.Metadata.UnitRef, len(symbols))
+		}
+
 		unit := symbols[v2Ts.Metadata.UnitRef]
 		metricType := v2Ts.Metadata.Type
 		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")
@@ -253,7 +265,11 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			if err != nil {
 				return v1Req, err
 			}
-			v1Metadata = append(v1Metadata, convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata))
+			metadata, err := convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+			if err != nil {
+				return v1Req, err
+			}
+			v1Metadata = append(v1Metadata, metadata)
 		}
 	}
 
@@ -267,7 +283,7 @@ func shouldConvertV2Metadata(metadata cortexpb.MetadataV2) bool {
 	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == cortexpb.METRIC_TYPE_UNSPECIFIED) //nolint:staticcheck
 }
 
-func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.MetadataV2) *cortexpb.MetricMetadata {
+func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.MetadataV2) (*cortexpb.MetricMetadata, error) {
 	t := cortexpb.UNKNOWN
 
 	switch metadata.Type {
@@ -287,12 +303,19 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 		t = cortexpb.STATESET
 	}
 
+	if int(metadata.UnitRef) >= len(symbols) {
+		return nil, fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", metadata.UnitRef, len(symbols))
+	}
+	if int(metadata.HelpRef) >= len(symbols) {
+		return nil, fmt.Errorf("invalid HelpRef %d: exceeds symbols length %d", metadata.HelpRef, len(symbols))
+	}
+
 	return &cortexpb.MetricMetadata{
 		Type:             t,
 		MetricFamilyName: name,
 		Unit:             symbols[metadata.UnitRef],
 		Help:             symbols[metadata.HelpRef],
-	}
+	}, nil
 }
 
 func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) ([]cortexpb.Exemplar, error) {
@@ -311,10 +334,12 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 	return v1Exemplars, nil
 }
 
-func getTypeLabel(msgType remote.WriteMessageType) string {
+func getTypeLabel(msgType remote.WriteMessageType, unknownOrInvalidContentType bool) string {
+	if unknownOrInvalidContentType {
+		return labelValueUnknown
+	}
 	if msgType == remote.WriteV1MessageType {
 		return labelValuePRW1
 	}
-
 	return labelValuePRW2
 }

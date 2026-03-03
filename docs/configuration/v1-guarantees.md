@@ -43,8 +43,6 @@ Currently experimental features are:
 - Zone awareness based replication.
 - Ruler API (to PUT rules).
 - Alertmanager:
-  - API (enabled via `-experimental.alertmanager.enable-api`)
-  - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - Memcached client DNS-based service discovery.
 - In-memory (FIFO) and Redis cache.

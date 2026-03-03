@@ -279,9 +279,9 @@
         },
         "enable_api": {
           "default": false,
-          "description": "Enable the experimental alertmanager config api.",
+          "description": "Enable the alertmanager config api.",
           "type": "boolean",
-          "x-cli-flag": "experimental.alertmanager.enable-api"
+          "x-cli-flag": "alertmanager.enable-api"
         },
         "enabled_tenants": {
           "description": "Comma separated list of tenants whose alerts this alertmanager can process. If specified, only these tenants will be handled by alertmanager, otherwise this alertmanager can process alerts from all tenants.",

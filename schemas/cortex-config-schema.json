@@ -5753,7 +5753,7 @@
       "description": "The memcached_client_config configures the client used to connect to Memcached.",
       "properties": {
         "addresses": {
-          "description": "EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery",
+          "description": "Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery",
           "type": "string",
           "x-cli-flag": "frontend.memcached.addresses"
         },

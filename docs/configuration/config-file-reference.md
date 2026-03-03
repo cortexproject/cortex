@@ -4656,7 +4656,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -frontend.memcached.service
 [service: <string> | default = "memcached"]
 
-# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+# Comma separated addresses list in DNS Service Discovery format:
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
 # CLI flag: -frontend.memcached.addresses
 [addresses: <string> | default = ""]

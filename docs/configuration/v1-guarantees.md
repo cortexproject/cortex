@@ -70,7 +70,6 @@ Currently experimental features are:
   - `-tenant-federation.user-sync-interval`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - HA Tracker: cleanup of old replicas from KV Store.
-- Instance limits in ingester and distributor
 - Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (`-blocks-storage.tsdb.max-exemplars`)
 - Querier limits:
   - `-querier.max-fetched-chunks-per-query`

@@ -257,7 +257,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">tenant_federation&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># If enabled on all Cortex services, queries can be federated across multiple&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># tenants. The tenant IDs involved need to be specified separated by a `|`&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># character in the `X-Scope-OrgID` header (experimental).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># character in the `X-Scope-OrgID` header.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -tenant-federation.enabled&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -4541,7 +4541,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -frontend.memcached.service&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[service&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;memcached&amp;#34;]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Comma separated addresses list in DNS Service Discovery format:&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -frontend.memcached.addresses&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[addresses&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
@@ -7254,7 +7254,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>Memcached client DNS-based service discovery.&lt;/li>
 &lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
 &lt;li>gRPC Store.&lt;/li>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
@@ -7277,14 +7276,12 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Blocks storage user index&lt;/li>
 &lt;li>Querier: tenant federation
 &lt;ul>
-&lt;li>&lt;code>-tenant-federation.enabled&lt;/code>&lt;/li>
 &lt;li>&lt;code>-tenant-federation.regex-matcher-enabled&lt;/code>&lt;/li>
 &lt;li>&lt;code>-tenant-federation.user-sync-interval&lt;/code>&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
 &lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Instance limits in ingester and distributor&lt;/li>
 &lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
 &lt;li>Querier limits:
 &lt;ul>

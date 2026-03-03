@@ -119,8 +119,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
-	f.BoolVar(&cfg.EnableAPI, "alertmanager.enable-api", false, "Enable the alertmanager config api.")
 	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Deprecated: Use -alertmanager.enable-api instead.")
+	f.BoolVar(&cfg.EnableAPI, "alertmanager.enable-api", false, "Enable the alertmanager config api.")
 	f.IntVar(&cfg.APIConcurrency, "alertmanager.api-concurrency", 0, "Maximum number of concurrent GET API requests before returning an error.")
 	f.DurationVar(&cfg.GCInterval, "alertmanager.alerts-gc-interval", 30*time.Minute, "Alertmanager alerts Garbage collection interval.")
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")

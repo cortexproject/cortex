@@ -610,8 +610,8 @@ cluster:
   # CLI flag: -alertmanager.cluster.push-pull-interval
   [push_pull_interval: <duration> | default = 1m]
 
-# Enable the alertmanager config api.
-# CLI flag: -alertmanager.enable-api
+# Deprecated: Use -alertmanager.enable-api instead.
+# CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]
 
 # Maximum number of concurrent GET API requests before returning an error.

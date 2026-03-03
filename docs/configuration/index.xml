@@ -257,7 +257,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">tenant_federation&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># If enabled on all Cortex services, queries can be federated across multiple&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># tenants. The tenant IDs involved need to be specified separated by a `|`&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># character in the `X-Scope-OrgID` header (experimental).&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># character in the `X-Scope-OrgID` header.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -tenant-federation.enabled&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -7276,7 +7276,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Blocks storage user index&lt;/li>
 &lt;li>Querier: tenant federation
 &lt;ul>
-&lt;li>&lt;code>-tenant-federation.enabled&lt;/code>&lt;/li>
 &lt;li>&lt;code>-tenant-federation.regex-matcher-enabled&lt;/code>&lt;/li>
 &lt;li>&lt;code>-tenant-federation.user-sync-interval&lt;/code>&lt;/li>
 &lt;/ul>

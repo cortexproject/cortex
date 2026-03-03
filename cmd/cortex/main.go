@@ -191,8 +191,6 @@ func main() {
 	// Initialise seed for randomness usage.
 	rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	err = nil
-
 	t, err := cortex.New(cfg)
 	util_log.CheckFatal("initializing cortex", err)
 

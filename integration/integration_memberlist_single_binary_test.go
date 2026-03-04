@@ -501,12 +501,12 @@ func TestHATrackerWithMultiKV(t *testing.T) {
 // re-gossip it back to the node that deleted it, effectively un-doing the cleanup.
 //
 // The test demonstrates the re-gossip mechanism by:
-// 1. Setting up 2 nodes with HA tracker using memberlist
-// 2. Pushing HA data to node1 → both nodes track it via gossip
-// 3. Stopping node1 (simulating loss of local state, equivalent to a local Delete)
-// 4. Restarting node1 → node2 gossips ring + HA data back via push-pull
-// 5. Verifying that the HA tracker on the restarted node works with the re-gossiped
-//    state by performing a failover
+//  1. Setting up 2 nodes with HA tracker using memberlist
+//  2. Pushing HA data to node1 → both nodes track it via gossip
+//  3. Stopping node1 (simulating loss of local state, equivalent to a local Delete)
+//  4. Restarting node1 → node2 gossips ring + HA data back via push-pull
+//  5. Verifying that the HA tracker on the restarted node works with the re-gossiped
+//     state by performing a failover
 func TestHATrackerMemberlistDeleteNotPropagated(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)

@@ -46,7 +46,6 @@ Currently experimental features are:
   - API (enabled via `-experimental.alertmanager.enable-api`)
   - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
-- In-memory (FIFO) and Redis cache.
 - gRPC Store.
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.

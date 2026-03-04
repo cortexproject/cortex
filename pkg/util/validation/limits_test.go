@@ -996,3 +996,274 @@ func TestIsLimitError(t *testing.T) {
 	assert.False(t, IsLimitError(fmt.Errorf("test error")))
 	assert.True(t, IsLimitError(LimitError("test error")))
 }
+func TestLimits_ValidateQueryLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		queryIngestersWithin                   time.Duration
+		queryStoreAfter                        time.Duration
+		shuffleShardingIngestersLookbackPeriod time.Duration
+		closeIdleTSDBTimeout                   time.Duration
+		expectedError                          string
+	}{
+		"all limits disabled (zero values) should be valid": {
+			queryIngestersWithin:                   0,
+			queryStoreAfter:                        0,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			closeIdleTSDBTimeout:                   0,
+			expectedError:                          "",
+		},
+		"valid configuration with all limits enabled": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "",
+		},
+		"valid configuration with overlap for safety": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        23 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 26 * time.Hour,
+			closeIdleTSDBTimeout:                   30 * time.Hour,
+			expectedError:                          "",
+		},
+		"valid configuration with only queryIngestersWithin enabled": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        0,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "",
+		},
+		"valid configuration with only queryStoreAfter enabled": {
+			queryIngestersWithin:                   0,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   0,
+			expectedError:                          "",
+		},
+		"invalid: queryIngestersWithin >= closeIdleTSDBTimeout": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   25 * time.Hour,
+			expectedError:                          "query_ingesters_within (25h0m0s) must be less than close_idle_tsdb_timeout (25h0m0s)",
+		},
+		"invalid: queryIngestersWithin > closeIdleTSDBTimeout": {
+			queryIngestersWithin:                   26 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 26 * time.Hour,
+			closeIdleTSDBTimeout:                   25 * time.Hour,
+			expectedError:                          "query_ingesters_within (26h0m0s) must be less than close_idle_tsdb_timeout (25h0m0s)",
+		},
+		"invalid: queryStoreAfter >= queryIngestersWithin": {
+			queryIngestersWithin:                   24 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "query_store_after (24h0m0s) must be less than query_ingesters_within (24h0m0s)",
+		},
+		"invalid: queryStoreAfter > queryIngestersWithin": {
+			queryIngestersWithin:                   24 * time.Hour,
+			queryStoreAfter:                        25 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 26 * time.Hour,
+			closeIdleTSDBTimeout:                   27 * time.Hour,
+			expectedError:                          "query_store_after (25h0m0s) must be less than query_ingesters_within (24h0m0s)",
+		},
+		"invalid: shuffleShardingLookback < queryStoreAfter": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 20 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "shuffle_sharding_ingesters_lookback_period (20h0m0s) is less than query_store_after (24h0m0s)",
+		},
+		"valid: shuffleShardingLookback between queryStoreAfter and queryIngestersWithin": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        20 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 22 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "",
+		},
+		"boundary: queryIngestersWithin exactly 1ms less than closeIdleTSDBTimeout": {
+			queryIngestersWithin:                   25*time.Hour - time.Millisecond,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   25 * time.Hour,
+			expectedError:                          "",
+		},
+		"boundary: queryStoreAfter exactly 1ms less than queryIngestersWithin": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        25*time.Hour - time.Millisecond,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "",
+		},
+		"boundary: shuffleShardingLookback exactly equal to queryStoreAfter": {
+			queryIngestersWithin:                   25 * time.Hour,
+			queryStoreAfter:                        24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 24 * time.Hour,
+			closeIdleTSDBTimeout:                   26 * time.Hour,
+			expectedError:                          "",
+		},
+		"edge case: very large values": {
+			queryIngestersWithin:                   365 * 24 * time.Hour, // 1 year
+			queryStoreAfter:                        364 * 24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 365 * 24 * time.Hour,
+			closeIdleTSDBTimeout:                   366 * 24 * time.Hour,
+			expectedError:                          "",
+		},
+		"edge case: very small values": {
+			queryIngestersWithin:                   2 * time.Second,
+			queryStoreAfter:                        1 * time.Second,
+			shuffleShardingIngestersLookbackPeriod: 2 * time.Second,
+			closeIdleTSDBTimeout:                   3 * time.Second,
+			expectedError:                          "",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			limits := Limits{
+				QueryIngestersWithin:                   model.Duration(testData.queryIngestersWithin),
+				QueryStoreAfter:                        model.Duration(testData.queryStoreAfter),
+				ShuffleShardingIngestersLookbackPeriod: model.Duration(testData.shuffleShardingIngestersLookbackPeriod),
+			}
+
+			err := limits.ValidateQueryLimits("test-tenant", testData.closeIdleTSDBTimeout)
+
+			if testData.expectedError == "" {
+				assert.NoError(t, err, "expected no error but got: %v", err)
+			} else {
+				assert.Error(t, err, "expected error but got none")
+				if err != nil {
+					assert.Contains(t, err.Error(), testData.expectedError, "error message mismatch")
+				}
+			}
+		})
+	}
+}
+
+func TestQueryLimits_TenantOverrides(t *testing.T) {
+	t.Parallel()
+
+	// Setup: Create three tenants with different query limit configurations
+	tenantLimits := map[string]*Limits{
+		"tenant-a": {
+			QueryIngestersWithin:                   model.Duration(1 * time.Hour),
+			QueryStoreAfter:                        model.Duration(30 * time.Minute),
+			ShuffleShardingIngestersLookbackPeriod: model.Duration(1 * time.Hour),
+		},
+		"tenant-b": {
+			QueryIngestersWithin:                   model.Duration(2 * time.Hour),
+			QueryStoreAfter:                        model.Duration(1 * time.Hour),
+			ShuffleShardingIngestersLookbackPeriod: model.Duration(2 * time.Hour),
+		},
+		"tenant-c": {
+			// Uses defaults (all zeros - disabled)
+			QueryIngestersWithin:                   0,
+			QueryStoreAfter:                        0,
+			ShuffleShardingIngestersLookbackPeriod: 0,
+		},
+	}
+
+	defaults := Limits{
+		QueryIngestersWithin:                   model.Duration(25 * time.Hour),
+		QueryStoreAfter:                        model.Duration(24 * time.Hour),
+		ShuffleShardingIngestersLookbackPeriod: model.Duration(25 * time.Hour),
+	}
+
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+
+	// Verify tenant-a gets their specific limits
+	assert.Equal(t, 1*time.Hour, ov.QueryIngestersWithin("tenant-a"))
+	assert.Equal(t, 30*time.Minute, ov.QueryStoreAfter("tenant-a"))
+	assert.Equal(t, 1*time.Hour, ov.ShuffleShardingIngestersLookbackPeriod("tenant-a"))
+
+	// Verify tenant-b gets their specific limits
+	assert.Equal(t, 2*time.Hour, ov.QueryIngestersWithin("tenant-b"))
+	assert.Equal(t, 1*time.Hour, ov.QueryStoreAfter("tenant-b"))
+	assert.Equal(t, 2*time.Hour, ov.ShuffleShardingIngestersLookbackPeriod("tenant-b"))
+
+	// Verify tenant-c gets their specific limits (zeros)
+	assert.Equal(t, time.Duration(0), ov.QueryIngestersWithin("tenant-c"))
+	assert.Equal(t, time.Duration(0), ov.QueryStoreAfter("tenant-c"))
+	assert.Equal(t, time.Duration(0), ov.ShuffleShardingIngestersLookbackPeriod("tenant-c"))
+
+	// Verify unknown tenant gets defaults
+	assert.Equal(t, 25*time.Hour, ov.QueryIngestersWithin("tenant-unknown"))
+	assert.Equal(t, 24*time.Hour, ov.QueryStoreAfter("tenant-unknown"))
+	assert.Equal(t, 25*time.Hour, ov.ShuffleShardingIngestersLookbackPeriod("tenant-unknown"))
+}
+
+func TestQueryLimits_TenantOverridesValidation(t *testing.T) {
+	t.Parallel()
+
+	closeIdleTSDBTimeout := 26 * time.Hour
+
+	tests := map[string]struct {
+		tenantLimits  map[string]*Limits
+		tenantID      string
+		expectedError string
+	}{
+		"valid tenant configuration": {
+			tenantLimits: map[string]*Limits{
+				"valid-tenant": {
+					QueryIngestersWithin:                   model.Duration(25 * time.Hour),
+					QueryStoreAfter:                        model.Duration(24 * time.Hour),
+					ShuffleShardingIngestersLookbackPeriod: model.Duration(25 * time.Hour),
+				},
+			},
+			tenantID:      "valid-tenant",
+			expectedError: "",
+		},
+		"invalid tenant: queryStoreAfter >= queryIngestersWithin": {
+			tenantLimits: map[string]*Limits{
+				"invalid-tenant": {
+					QueryIngestersWithin:                   model.Duration(24 * time.Hour),
+					QueryStoreAfter:                        model.Duration(25 * time.Hour),
+					ShuffleShardingIngestersLookbackPeriod: model.Duration(26 * time.Hour),
+				},
+			},
+			tenantID:      "invalid-tenant",
+			expectedError: "query_store_after (25h0m0s) must be less than query_ingesters_within (24h0m0s)",
+		},
+		"invalid tenant: queryIngestersWithin >= closeIdleTSDBTimeout": {
+			tenantLimits: map[string]*Limits{
+				"invalid-tenant": {
+					QueryIngestersWithin:                   model.Duration(26 * time.Hour),
+					QueryStoreAfter:                        model.Duration(24 * time.Hour),
+					ShuffleShardingIngestersLookbackPeriod: model.Duration(26 * time.Hour),
+				},
+			},
+			tenantID:      "invalid-tenant",
+			expectedError: "query_ingesters_within (26h0m0s) must be less than close_idle_tsdb_timeout (26h0m0s)",
+		},
+		"invalid tenant: shuffleShardingLookback < queryStoreAfter": {
+			tenantLimits: map[string]*Limits{
+				"invalid-tenant": {
+					QueryIngestersWithin:                   model.Duration(25 * time.Hour),
+					QueryStoreAfter:                        model.Duration(24 * time.Hour),
+					ShuffleShardingIngestersLookbackPeriod: model.Duration(20 * time.Hour),
+				},
+			},
+			tenantID:      "invalid-tenant",
+			expectedError: "shuffle_sharding_ingesters_lookback_period (20h0m0s) is less than query_store_after (24h0m0s)",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			limits := testData.tenantLimits[testData.tenantID]
+			err := limits.ValidateQueryLimits(testData.tenantID, closeIdleTSDBTimeout)
+
+			if testData.expectedError == "" {
+				assert.NoError(t, err, "expected no error but got: %v", err)
+			} else {
+				assert.Error(t, err, "expected error but got none")
+				if err != nil {
+					assert.Contains(t, err.Error(), testData.expectedError, "error message mismatch")
+					assert.Contains(t, err.Error(), testData.tenantID, "error should contain tenant ID")
+				}
+			}
+		})
+	}
+}

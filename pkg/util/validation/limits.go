@@ -197,6 +197,12 @@ type Limits struct {
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	QueryIngestersWithin         model.Duration `yaml:"query_ingesters_within" json:"query_ingesters_within"`
+
+	// If set, the querier manipulates the max time to not be greater than
+	// "now - queryStoreAfter" so that most recent blocks are not queried.
+	QueryStoreAfter                        model.Duration `yaml:"query_store_after" json:"query_store_after"`
+	ShuffleShardingIngestersLookbackPeriod model.Duration `yaml:"shuffle_sharding_ingesters_lookback_period" json:"shuffle_sharding_ingesters_lookback_period"`
 
 	// Parquet Queryable enforced limits.
 	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
@@ -314,6 +320,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable")
 	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxFetchedDataBytesPerQuery, "querier.max-fetched-data-bytes-per-query", 0, "The maximum combined size of all data that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler for `query`, `query_range` and `series` APIs. 0 to disable.")
+
+	_ = l.QueryIngestersWithin.Set("0")
+	f.Var(&l.QueryIngestersWithin, "limits.query-ingesters-within", "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.")
+
+	_ = l.QueryStoreAfter.Set("0")
+	f.Var(&l.QueryStoreAfter, "limits.query-store-after", "Minimum age of data before querying the long-term storage. Queries for data younger than this will only query ingesters. This is a per-tenant limit that can be overridden in the runtime configuration.")
+
+	_ = l.ShuffleShardingIngestersLookbackPeriod.Set("0")
+	f.Var(&l.ShuffleShardingIngestersLookbackPeriod, "limits.shuffle-sharding-ingesters-lookback-period", "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.")
+
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time of range query parameter and max - min of data fetched time range). This limit is enforced in the query-frontend and ruler (on the received query). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
@@ -417,6 +433,28 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", err)
 			return errInvalidMetricRelabelConfigs
 		}
+	}
+
+	return nil
+}
+func (l *Limits) ValidateQueryLimits(userID string, closeIdleTSDBTimeout time.Duration) error {
+	queryIngestersWithin := time.Duration(l.QueryIngestersWithin)
+	queryStoreAfter := time.Duration(l.QueryStoreAfter)
+	shuffleShardingLookback := time.Duration(l.ShuffleShardingIngestersLookbackPeriod)
+
+	if queryIngestersWithin > 0 && closeIdleTSDBTimeout > 0 && queryIngestersWithin >= closeIdleTSDBTimeout {
+		return fmt.Errorf("tenant %s: query_ingesters_within (%s) must be less than close_idle_tsdb_timeout (%s)",
+			userID, queryIngestersWithin, closeIdleTSDBTimeout)
+	}
+
+	if queryIngestersWithin > 0 && queryStoreAfter > 0 && queryStoreAfter >= queryIngestersWithin {
+		return fmt.Errorf("tenant %s: query_store_after (%s) must be less than query_ingesters_within (%s)",
+			userID, queryStoreAfter, queryIngestersWithin)
+	}
+
+	if queryStoreAfter > 0 && shuffleShardingLookback > 0 && shuffleShardingLookback < queryStoreAfter {
+		return fmt.Errorf("tenant %s: shuffle_sharding_ingesters_lookback_period (%s) is less than query_store_after (%s)",
+			userID, shuffleShardingLookback, queryStoreAfter)
 	}
 
 	return nil
@@ -1183,6 +1221,18 @@ func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
 // This is only used in Ingester.
 func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
 	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
+}
+
+func (o *Overrides) QueryIngestersWithin(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryIngestersWithin)
+}
+
+func (o *Overrides) QueryStoreAfter(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryStoreAfter)
+}
+
+func (o *Overrides) ShuffleShardingIngestersLookbackPeriod(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).ShuffleShardingIngestersLookbackPeriod)
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

@@ -168,9 +168,6 @@ type Config struct {
 	// this (and should never use it) but this feature is used by other projects built on top of it
 	SkipLabelNameValidation bool `yaml:"-"`
 
-	// This config is dynamically injected because defined in the querier config.
-	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
-
 	// ZoneResultsQuorumMetadata enables zone results quorum when querying ingester replication set
 	// with metadata APIs (labels names and values for now). When zone awareness is enabled, only results
 	// from quorum number of zones will be included to reduce data merged and improve performance.

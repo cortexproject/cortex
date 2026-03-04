@@ -218,6 +218,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
+	if err := c.LimitsConfig.ValidateQueryLimits("default", c.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {
+		return errors.Wrap(err, "invalid query routing config")
+	}
 	if err := c.ResourceMonitor.Validate(); err != nil {
 		return errors.Wrap(err, "invalid resource-monitor config")
 	}

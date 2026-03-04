@@ -61,7 +61,6 @@ Currently experimental features are:
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.user-sync-interval`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
-- Instance limits in ingester and distributor
 - Alertmanager limits
   - notification rate (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)
   - dispatcher groups (`-alertmanager.max-dispatcher-aggregation-groups`)

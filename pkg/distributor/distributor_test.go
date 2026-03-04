@@ -150,6 +150,7 @@ func TestDistributor_Push(t *testing.T) {
 		happyIngesters   int
 		samples          samplesIn
 		histogramSamples bool
+		nhcbSamples      int
 		metadata         int
 		expectedResponse *cortexpb.WriteResponse
 		expectedError    error
@@ -296,6 +297,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 2 happy ingesters should succeed, histograms": {
@@ -314,6 +316,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 5
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push to 1 happy ingesters should fail, histograms": {
@@ -331,6 +334,7 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 10
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
 			`,
 		},
 		"A push exceeding burst size should fail, histograms": {
@@ -349,6 +353,26 @@ func TestDistributor_Push(t *testing.T) {
 				# TYPE cortex_distributor_received_samples_total counter
 				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
 				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 25
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 0
+			`,
+		},
+		"A push to 3 happy ingesters should succeed, NHCB histograms": {
+			numIngesters:     3,
+			happyIngesters:   3,
+			samples:          samplesIn{num: 0, startTimestampMs: 123456789000},
+			metadata:         2,
+			nhcbSamples:      4,
+			expectedResponse: emptyResponse,
+			metricNames:      []string{lastSeenTimestamp, distributorReceivedSamples},
+			expectedMetrics: `
+				# HELP cortex_distributor_latest_seen_sample_timestamp_seconds Unix timestamp of latest received sample per user.
+				# TYPE cortex_distributor_latest_seen_sample_timestamp_seconds gauge
+				cortex_distributor_latest_seen_sample_timestamp_seconds{user="userDistributorPush"} 123456789.003
+				# HELP cortex_distributor_received_samples_total The total number of received samples, excluding rejected and deduped samples.
+				# TYPE cortex_distributor_received_samples_total counter
+				cortex_distributor_received_samples_total{type="float",user="userDistributorPush"} 0
+				cortex_distributor_received_samples_total{type="histogram",user="userDistributorPush"} 4
+				cortex_distributor_received_samples_total{type="nhcb",user="userDistributorPush"} 4
 			`,
 		},
 	} {
@@ -376,7 +400,13 @@ func TestDistributor_Push(t *testing.T) {
 					})
 
 					var request *cortexpb.WriteRequest
-					if !tc.histogramSamples {
+					if tc.nhcbSamples > 0 {
+						if !tc.histogramSamples {
+							request = makeWriteRequestWithNHCB(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0, tc.nhcbSamples)
+						} else {
+							request = makeWriteRequestWithNHCB(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num, tc.nhcbSamples)
+						}
+					} else if !tc.histogramSamples {
 						request = makeWriteRequest(tc.samples.startTimestampMs, tc.samples.num, tc.metadata, 0)
 					} else {
 						request = makeWriteRequest(tc.samples.startTimestampMs, 0, tc.metadata, tc.samples.num)
@@ -434,6 +464,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 	d.receivedSamples.WithLabelValues("userA", sampleMetricTypeFloat).Add(5)
 	d.receivedSamples.WithLabelValues("userB", sampleMetricTypeFloat).Add(10)
 	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogram).Add(15)
+	d.receivedSamples.WithLabelValues("userC", sampleMetricTypeHistogramNHCB).Add(3)
 	d.receivedExemplars.WithLabelValues("userA").Add(5)
 	d.receivedExemplars.WithLabelValues("userB").Add(10)
 	d.receivedMetadata.WithLabelValues("userA").Add(5)
@@ -492,6 +523,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		cortex_distributor_received_samples_total{type="float",user="userA"} 5
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 3
 
 		# HELP cortex_distributor_received_exemplars_total The total number of received exemplars, excluding rejected and deduped exemplars.
 		# TYPE cortex_distributor_received_exemplars_total counter
@@ -550,6 +582,7 @@ func TestDistributor_MetricsCleanup(t *testing.T) {
 		# TYPE cortex_distributor_received_samples_total counter
 		cortex_distributor_received_samples_total{type="float",user="userB"} 10
 		cortex_distributor_received_samples_total{type="histogram",user="userC"} 15
+		cortex_distributor_received_samples_total{type="nhcb",user="userC"} 3
 
         # HELP cortex_distributor_samples_in_total The total number of samples that have come in to the distributor, including rejected or deduped samples.
         # TYPE cortex_distributor_samples_in_total counter
@@ -3317,6 +3350,11 @@ func stopAll(ds []*Distributor, r *ring.Ring) {
 }
 
 func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histograms int) *cortexpb.WriteRequest {
+	return makeWriteRequestWithNHCB(startTimestampMs, samples, metadata, histograms, 0)
+}
+
+// makeWriteRequestWithNHCB builds a write request with optional NHCB (native histogram custom buckets) timeseries.
+func makeWriteRequestWithNHCB(startTimestampMs int64, samples int, metadata int, histograms int, nhcb int) *cortexpb.WriteRequest {
 	request := &cortexpb.WriteRequest{}
 	for i := range samples {
 		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseries(
@@ -3334,6 +3372,16 @@ func makeWriteRequest(startTimestampMs int64, samples int, metadata int, histogr
 				{Name: "bar", Value: "baz"},
 				{Name: "histogram", Value: fmt.Sprintf("%d", i)},
 			}, startTimestampMs+int64(i), int64(i), true))
+	}
+
+	for i := range nhcb {
+		ts := startTimestampMs + int64(i)
+		request.Timeseries = append(request.Timeseries, makeWriteRequestTimeseriesNHCB(
+			[]cortexpb.LabelAdapter{
+				{Name: model.MetricNameLabel, Value: "foo"},
+				{Name: "bar", Value: "baz"},
+				{Name: "nhcb", Value: fmt.Sprintf("%d", i)},
+			}, ts, int64(i)))
 	}
 
 	for i := range metadata {
@@ -3363,6 +3411,15 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 		})
 	}
 	return t
+}
+
+func makeWriteRequestTimeseriesNHCB(labels []cortexpb.LabelAdapter, ts, value int64) cortexpb.PreallocTimeseries {
+	return cortexpb.PreallocTimeseries{
+		TimeSeries: &cortexpb.TimeSeries{
+			Labels:     labels,
+			Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value))},
+		},
+	}
 }
 
 func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *cortexpb.WriteRequest {

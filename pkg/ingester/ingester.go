@@ -1026,11 +1026,6 @@ func (i *Ingester) stopping(_ error) error {
 }
 
 func (i *Ingester) updateLoop(ctx context.Context) error {
-	if limits := i.getInstanceLimits(); limits != nil && *limits != (InstanceLimits{}) {
-		// This check will not cover enabling instance limits in runtime, but it will do for now.
-		logutil.WarnExperimentalUse("ingester instance limits")
-	}
-
 	rateUpdateTicker := time.NewTicker(i.cfg.RateUpdatePeriod)
 	defer rateUpdateTicker.Stop()
 
@@ -1504,6 +1499,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
+						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
 						continue
 					}
 				} else {
@@ -1515,6 +1511,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
+						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
 						continue
 					}
 				}

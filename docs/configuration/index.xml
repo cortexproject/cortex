@@ -7254,7 +7254,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;/li>
-&lt;li>In-memory (FIFO) and Redis cache.&lt;/li>
 &lt;li>gRPC Store.&lt;/li>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
 &lt;li>TLS configuration in Etcd client.&lt;/li>

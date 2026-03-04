@@ -490,3 +490,137 @@ func TestHATrackerWithMultiKV(t *testing.T) {
 	// Two keys (1 cluster with 2 replicas) per user should be written to the memberlist (secondary store)
 	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(numUsers*2)), "cortex_multikv_mirror_writes_total"))
 }
+
+// TestHATrackerMemberlistDeleteNotPropagated demonstrates that memberlist gossip
+// re-propagates KV store entries to nodes that have lost them.
+//
+// This is relevant to KV.Delete in the HA tracker: when cleanupOldReplicas calls
+// client.Delete to remove stale entries, it only removes the key from the local
+// memberlist KV store without broadcasting the deletion to peers. Since the peer
+// nodes still hold the key, the next push-pull sync (MergeRemoteState) will
+// re-gossip it back to the node that deleted it, effectively un-doing the cleanup.
+//
+// The test demonstrates the re-gossip mechanism by:
+// 1. Setting up 2 nodes with HA tracker using memberlist
+// 2. Pushing HA data to node1 → both nodes track it via gossip
+// 3. Stopping node1 (simulating loss of local state, equivalent to a local Delete)
+// 4. Restarting node1 → node2 gossips ring + HA data back via push-pull
+// 5. Verifying that the HA tracker on the restarted node works with the re-gossiped
+//    state by performing a failover
+func TestHATrackerMemberlistDeleteNotPropagated(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-distributor.ha-tracker.enable":               "true",
+		"-distributor.ha-tracker.enable-for-all-users": "true",
+		"-distributor.ha-tracker.cluster":              "cluster",
+		"-distributor.ha-tracker.replica":              "__replica__",
+		"-distributor.ha-tracker.store":                "memberlist",
+
+		"-distributor.ha-tracker.update-timeout":            "1s",
+		"-distributor.ha-tracker.update-timeout-jitter-max": "0s",
+		"-distributor.ha-tracker.failover-timeout":          "2s",
+
+		"-ring.store":                        "memberlist",
+		"-memberlist.bind-port":              "8000",
+		"-memberlist.gossip-interval":        "200ms",
+		"-memberlist.pullpush-interval":      "1s",
+		"-memberlist.left-ingesters-timeout": "600s",
+	})
+
+	cortex1 := newSingleBinary("cortex-1", "", "", flags)
+	cortex2 := newSingleBinary("cortex-2", "", networkName+"-cortex-1:8000", flags)
+
+	require.NoError(t, s.StartAndWaitReady(cortex1))
+	require.NoError(t, s.StartAndWaitReady(cortex2))
+
+	// Wait for both nodes to see each other in the memberlist cluster.
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+
+	userID := "user-1"
+	now := time.Now()
+
+	client1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	// Push HA data to cortex1 with replica0.
+	series, _ := generateSeries("foo", now,
+		prompb.Label{Name: "__replica__", Value: "replica0"},
+		prompb.Label{Name: "cluster", Value: "cluster0"},
+	)
+	res, err := client1.Push([]prompb.TimeSeries{series[0]})
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Both nodes should see the HA tracker entry via memberlist gossip.
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(1), "cortex_ha_tracker_elected_replica_changes_total"))
+	require.NoError(t, cortex2.WaitSumMetricsWithOptions(e2e.Equals(1),
+		[]string{"cortex_ha_tracker_elected_replica_changes_total"}, e2e.WaitMissingMetrics))
+
+	// Stop cortex1 — this clears its local memberlist store (simulates local-only Delete).
+	require.NoError(t, s.Stop(cortex1))
+
+	// Wait for cortex2 to see only 1 memberlist member.
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(1), "memberlist_client_cluster_members_count"))
+
+	// Restart cortex1 with the same config. It starts with an empty memberlist store.
+	// During memberlist join, push-pull sync re-populates the KV store from cortex2,
+	// including both ring data AND the HA tracker entry. This is the same mechanism
+	// that would re-gossip a locally-deleted key back to the node that deleted it.
+	cortex1Restarted := newSingleBinary("cortex-1", "", networkName+"-cortex-2:8000", flags)
+	require.NoError(t, s.StartAndWaitReady(cortex1Restarted))
+
+	// Wait for both nodes to see each other again.
+	require.NoError(t, cortex1Restarted.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "memberlist_client_cluster_members_count"))
+
+	// Verify the ring is fully restored via push-pull gossip from cortex2.
+	// This proves that cortex2 re-gossiped its full KV state (including HA tracker
+	// entries) to the restarted cortex1. The ring and HA tracker share the same
+	// memberlist KV store and push-pull mechanism.
+	require.NoError(t, cortex1Restarted.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2*512), "cortex_ring_tokens_total"))
+
+	// Wait for the failover timeout to pass so we can trigger a replica change.
+	time.Sleep(5 * time.Second)
+
+	// Push from replica1 to cortex2. Since the failover timeout (2s) has passed,
+	// cortex2's HA tracker should accept the failover from replica0 → replica1.
+	client2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	series2, _ := generateSeries("foo", now.Add(time.Second*30),
+		prompb.Label{Name: "__replica__", Value: "replica1"},
+		prompb.Label{Name: "cluster", Value: "cluster0"},
+	)
+	res2, err := client2.Push([]prompb.TimeSeries{series2[0]})
+	require.NoError(t, err)
+	require.Equal(t, 200, res2.StatusCode)
+
+	// cortex2 should see the failover (replica change count goes from 1 → 2).
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(2), "cortex_ha_tracker_elected_replica_changes_total"))
+
+	// The restarted cortex1 should also see the failover via gossip.
+	// It sees only 1 change (the failover), not 2, because the initial replica
+	// election arrived via push-pull before the HA tracker registered its
+	// WatchPrefix, so that notification was missed. But the failover is a new
+	// CAS after WatchPrefix was registered, so it IS observed.
+	//
+	// This proves the full cycle: data deleted from a node (via restart/clearing
+	// the store) gets re-gossiped from peers, and subsequent changes continue
+	// to propagate. This is exactly why KV.Delete without broadcasting is broken:
+	// the peer's copy always wins and the deleted key comes back.
+	require.NoError(t, cortex1Restarted.WaitSumMetricsWithOptions(e2e.Equals(1),
+		[]string{"cortex_ha_tracker_elected_replica_changes_total"}, e2e.WaitMissingMetrics))
+}

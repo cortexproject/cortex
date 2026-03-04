@@ -1356,6 +1356,72 @@ func (p dnsProviderMock) Addresses() []string {
 	return p.resolved
 }
 
+// TestDeleteIsNotPropagatedToOtherNodes demonstrates that KV.Delete only
+// removes the key locally and does not broadcast the deletion to peers.
+// When a peer gossips its copy back (simulated via NotifyMsg), the deleted
+// key reappears on the node that deleted it.
+//
+// This test requires network binding (memberlist needs TCP ports).
+// Run with: go test -run TestDeleteIsNotPropagatedToOtherNodes -v ./pkg/ring/kv/memberlist/
+func TestDeleteIsNotPropagatedToOtherNodes(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	client, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	const testKey = "ha-tracker/user1/cluster1"
+	now := time.Now()
+
+	// Write a value via CAS (simulates node1 writing).
+	cas(t, client, testKey, func(in *data) (*data, bool, error) {
+		d := &data{Members: map[string]member{}}
+		d.Members["replica0"] = member{Timestamp: now.Unix(), State: ACTIVE}
+		return d, true, nil
+	})
+
+	// Drain any broadcast messages from the CAS above.
+	mkv.GetBroadcasts(0, math.MaxInt32)
+
+	// Verify the key exists.
+	d := getData(t, client, testKey)
+	require.NotNil(t, d)
+	require.Contains(t, d.Members, "replica0")
+
+	// Delete the key locally (this is what KV.Delete in PR #7284 does).
+	mkv.storeMu.Lock()
+	delete(mkv.store, testKey)
+	mkv.storeMu.Unlock()
+
+	// The key should be gone locally.
+	d = getData(t, client, testKey)
+	require.Nil(t, d, "key should be deleted locally")
+
+	// No broadcast was generated for the delete (this is the bug).
+	broadcasts := mkv.GetBroadcasts(0, math.MaxInt32)
+	require.Empty(t, broadcasts, "Delete should not generate any broadcast — the deletion is local-only")
+
+	// Simulate another node (node2) gossiping back the value it still has.
+	// This is what happens during push-pull sync or regular gossip.
+	mkv.NotifyMsg(marshalKeyValuePair(t, testKey, c, &data{
+		Members: map[string]member{
+			"replica0": {Timestamp: now.Unix(), State: ACTIVE},
+		},
+	}))
+
+	// The key reappears because the gossip brought it back.
+	d = getData(t, client, testKey)
+	require.NotNil(t, d, "key reappeared after gossip from peer — Delete was not propagated")
+	require.Contains(t, d.Members, "replica0", "replica0 came back via gossip")
+}
+
 func BenchmarkCASTimerAllocation(b *testing.B) {
 	c := dataCodec{}
 

@@ -44,7 +44,6 @@ Currently experimental features are:
   - API (enabled via `-experimental.alertmanager.enable-api`)
   - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
-- Memcached client DNS-based service discovery.
 - In-memory (FIFO) and Redis cache.
 - gRPC Store.
 - TLS configuration in gRPC and HTTP clients.
@@ -59,7 +58,6 @@ Currently experimental features are:
 - Tenant Deletion in Purger, for blocks storage.
 - Blocks storage user index
 - Querier: tenant federation
-  - `-tenant-federation.enabled`
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.user-sync-interval`
 - The thanosconvert tool for converting Thanos block metadata to Cortex

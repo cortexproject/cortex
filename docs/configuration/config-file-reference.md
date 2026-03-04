@@ -282,7 +282,7 @@ parquet_converter:
 tenant_federation:
   # If enabled on all Cortex services, queries can be federated across multiple
   # tenants. The tenant IDs involved need to be specified separated by a `|`
-  # character in the `X-Scope-OrgID` header (experimental).
+  # character in the `X-Scope-OrgID` header.
   # CLI flag: -tenant-federation.enabled
   [enabled: <boolean> | default = false]
 
@@ -4656,7 +4656,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -frontend.memcached.service
 [service: <string> | default = "memcached"]
 
-# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+# Comma separated addresses list in DNS Service Discovery format:
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
 # CLI flag: -frontend.memcached.addresses
 [addresses: <string> | default = ""]

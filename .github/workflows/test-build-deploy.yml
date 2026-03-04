@@ -170,7 +170,7 @@ jobs:
           path: ./images.tar
 
   integration:
-    needs: build
+    needs: [build, lint]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 50
     strategy:
@@ -295,7 +295,7 @@ jobs:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 
   integration-configs-db:
-    needs: build
+    needs: [build, lint]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -327,7 +327,7 @@ jobs:
           make BUILD_IMAGE=quay.io/cortexproject/build-image:master-8b48921f71 TTY='' configs-integration-test
 
   deploy_website:
-    needs: [build, test]
+    needs: [build, test, lint]
     if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:

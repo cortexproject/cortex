@@ -489,7 +489,28 @@ func TestDistributor_Push_DiscardOutOfOrder(t *testing.T) {
 			_, err := ds[0].Push(ctx, request)
 			require.NoError(t, err)
 
-			// Verify all ingesters received the correct DiscardOutOfOrder flag
+			// Poll to ensure all ingesters have received the push before verifying.
+			test.Poll(t, time.Second, nil, func() any {
+				for _, ing := range ingesters {
+					ing.Lock()
+					pushCalls := ing.calls["Push"]
+					lastDiscardOOO := ing.lastDiscardOutOfOrder
+					ing.Unlock()
+
+					// Wait for all ingesters to receive the push call
+					if pushCalls == 0 {
+						return fmt.Errorf("ingester has not received push yet")
+					}
+
+					// Wait for the DiscardOutOfOrder flag to match expected value
+					if lastDiscardOOO != tc.expectedDiscardOOO {
+						return fmt.Errorf("ingester has DiscardOutOfOrder=%v, expected %v", lastDiscardOOO, tc.expectedDiscardOOO)
+					}
+				}
+				return nil
+			})
+
+			// Final assertion: verify all ingesters received the correct DiscardOutOfOrder flag
 			for _, ing := range ingesters {
 				ing.Lock()
 				lastDiscardOOO := ing.lastDiscardOutOfOrder

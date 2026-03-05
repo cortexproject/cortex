@@ -16,6 +16,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	utiltimer "github.com/cortexproject/cortex/pkg/util/timer"
 )
 
 type BasicLifecyclerDelegate interface {
@@ -327,7 +328,9 @@ func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Dura
 
 	// The first observation will occur after the specified period.
 	level.Info(l.logger).Log("msg", "waiting stable tokens", "ring", l.ringName)
-	observeChan := time.After(period)
+	observeTimer := time.NewTimer(period)
+	defer utiltimer.StopAndDrainTimer(observeTimer)
+	observeChan := observeTimer.C
 
 	for {
 		select {
@@ -335,7 +338,7 @@ func (l *BasicLifecycler) waitStableTokens(ctx context.Context, period time.Dura
 			if !l.verifyTokens(ctx) {
 				// The verification has failed
 				level.Info(l.logger).Log("msg", "tokens verification failed, keep observing", "ring", l.ringName)
-				observeChan = time.After(period)
+				utiltimer.ResetTimer(observeTimer, period)
 				break
 			}
 

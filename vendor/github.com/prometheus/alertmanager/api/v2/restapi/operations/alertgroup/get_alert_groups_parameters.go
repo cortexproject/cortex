@@ -64,22 +64,22 @@ type GetAlertGroupsParams struct {
 	// HTTP Request Object
 	HTTPRequest *http.Request `json:"-"`
 
-	/*Show active alerts
+	/*Include active alerts within the returned groups. If false, excludes active alerts from groups and only shows suppressed (silenced or inhibited) alerts.
 	  In: query
 	  Default: true
 	*/
 	Active *bool
-	/*A list of matchers to filter alerts by
+	/*A matcher expression to filter alert groups. For example `alertname="MyAlert"`. It can be repeated to apply multiple matchers.
 	  In: query
 	  Collection Format: multi
 	*/
 	Filter []string
-	/*Show inhibited alerts
+	/*Include inhibited alerts within the returned groups. If false, excludes inhibited alerts from groups. Note that true (default) shows both inhibited and non-inhibited alerts.
 	  In: query
 	  Default: true
 	*/
 	Inhibited *bool
-	/*Show muted alerts
+	/*Include muted (silenced or inhibited) alert groups in results. If false, excludes entire groups where all alerts are muted.
 	  In: query
 	  Default: true
 	*/
@@ -88,7 +88,7 @@ type GetAlertGroupsParams struct {
 	  In: query
 	*/
 	Receiver *string
-	/*Show silenced alerts
+	/*Include silenced alerts within the returned groups. If false, excludes silenced alerts from groups. Note that true (default) shows both silenced and non-silenced alerts.
 	  In: query
 	  Default: true
 	*/

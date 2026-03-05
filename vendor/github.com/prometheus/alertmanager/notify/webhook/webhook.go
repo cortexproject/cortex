@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -42,7 +43,7 @@ type Notifier struct {
 
 // New returns a new Webhook.
 func New(conf *config.WebhookConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
-	client, err := commoncfg.NewClientFromConfig(*conf.HTTPConfig, "webhook", httpOpts...)
+	client, err := notify.NewClientWithTracing(*conf.HTTPConfig, "webhook", httpOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -82,12 +83,11 @@ func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, er
 
 	groupKey, err := notify.ExtractGroupKey(ctx)
 	if err != nil {
-		// @tjhop: should we `return false, err` here as we do in most
-		// other Notify() implementations?
-		n.logger.Error("error extracting group key", "err", err)
+		return false, err
 	}
 
-	// @tjhop: should we debug log the key here like most other Notify() implementations?
+	logger := n.logger.With("group_key", groupKey)
+	logger.Debug("extracted group key")
 
 	msg := &Message{
 		Version:         "4",
@@ -102,14 +102,25 @@ func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, er
 	}
 
 	var url string
-	if n.conf.URL != nil {
-		url = n.conf.URL.String()
+	var tmplErr error
+	tmpl := notify.TmplText(n.tmpl, data, &tmplErr)
+
+	if n.conf.URL != "" {
+		url = tmpl(string(n.conf.URL))
 	} else {
 		content, err := os.ReadFile(n.conf.URLFile)
 		if err != nil {
 			return false, fmt.Errorf("read url_file: %w", err)
 		}
-		url = strings.TrimSpace(string(content))
+		url = tmpl(strings.TrimSpace(string(content)))
+	}
+
+	if tmplErr != nil {
+		return false, fmt.Errorf("failed to template webhook URL: %w", tmplErr)
+	}
+
+	if url == "" {
+		return false, errors.New("webhook URL is empty after templating")
 	}
 
 	if n.conf.Timeout > 0 {

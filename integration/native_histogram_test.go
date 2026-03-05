@@ -121,8 +121,6 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 				"-blocks-storage.tsdb.ship-interval":            "1s",
 				"-blocks-storage.tsdb.retention-period":         ((blockRangePeriod * 2) - 1).String(),
 				"-blocks-storage.tsdb.enable-native-histograms": "true",
-				// TODO: run a compactor here instead of disabling the bucket-index
-				"-blocks-storage.bucket-store.bucket-index.enabled": "false",
 			})
 
 			// Start dependencies.
@@ -165,6 +163,10 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_removed_total"))
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series"))
 
+			// Start the compactor to create the bucket index.
+			compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+			require.NoError(t, s.StartAndWaitReady(compactor))
+
 			queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", mergeFlags(flags, config), "")
 			require.NoError(t, s.Start(queryFrontend))
 
@@ -178,10 +180,10 @@ func TestNativeHistogramIngestionAndQuery(t *testing.T) {
 			}), "")
 			require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
 
-			// Wait until the querier and store-gateway have updated the ring, and wait until the blocks are old enough for consistency check
+			// Wait until the querier and store-gateway have updated the ring, and wait until the store-gateway has loaded the blocks
 			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 			require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
-			require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(4), []string{"cortex_querier_blocks_scan_duration_seconds"}, e2e.WithMetricCount))
+			require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
 			// Sleep 3 * bucket sync interval to make sure consistency checker
 			// doesn't consider block is uploaded recently.

@@ -332,10 +332,12 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 			cfg.Cluster.PushPullInterval,
 			cfg.Cluster.GossipInterval,
 			cluster.DefaultTCPTimeout,
+			cluster.DefaultResolvePeersTimeout,
 			cluster.DefaultProbeTimeout,
 			cluster.DefaultProbeInterval,
 			nil,
 			false,
+			"",
 			"",
 		)
 		if err != nil {
@@ -966,13 +968,12 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 	if am.cfg.AutoWebhookRoot != "" {
 		for i, r := range userAmConfig.Receivers {
 			for j, w := range r.WebhookConfigs {
-				if w.URL.String() == autoWebhookURL {
+				if w.URL == autoWebhookURL {
 					u, err := url.Parse(am.cfg.AutoWebhookRoot + "/" + cfg.User + "/monitor")
 					if err != nil {
 						return err
 					}
-
-					userAmConfig.Receivers[i].WebhookConfigs[j].URL = &amconfig.SecretURL{URL: u}
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = amconfig.SecretTemplateURL(u.String())
 				}
 			}
 		}

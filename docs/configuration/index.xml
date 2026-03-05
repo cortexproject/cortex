@@ -7244,8 +7244,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/ul>
 &lt;/li>
 &lt;li>S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).&lt;/li>
-&lt;li>Azure blob storage.&lt;/li>
-&lt;li>Zone awareness based replication.&lt;/li>
 &lt;li>Ruler API (to PUT rules).&lt;/li>
 &lt;li>Alertmanager:
 &lt;ul>
@@ -7257,10 +7255,8 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>gRPC Store.&lt;/li>
 &lt;li>TLS configuration in gRPC and HTTP clients.&lt;/li>
 &lt;li>TLS configuration in Etcd client.&lt;/li>
-&lt;li>Blocksconvert tools&lt;/li>
 &lt;li>OpenStack Swift storage support.&lt;/li>
 &lt;li>Metric relabeling in the distributor.&lt;/li>
-&lt;li>Scalable query-frontend (when using query-scheduler)&lt;/li>
 &lt;li>Ingester: do not unregister from ring on shutdown (&lt;code>-ingester.unregister-on-shutdown=false&lt;/code>)&lt;/li>
 &lt;li>Distributor:
 &lt;ul>
@@ -7270,8 +7266,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/ul>
 &lt;/li>
 &lt;li>Tenant Deletion in Purger, for blocks storage.&lt;/li>
-&lt;li>Query-frontend: query stats tracking (&lt;code>-frontend.query-stats-enabled&lt;/code>)&lt;/li>
-&lt;li>The block deletion marks migration support in the compactor (&lt;code>-compactor.block-deletion-marks-migration-enabled&lt;/code>) is temporarily and will be removed in future versions&lt;/li>
 &lt;li>Blocks storage user index&lt;/li>
 &lt;li>Querier: tenant federation
 &lt;ul>
@@ -7280,15 +7274,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;/ul>
 &lt;/li>
 &lt;li>The thanosconvert tool for converting Thanos block metadata to Cortex&lt;/li>
-&lt;li>HA Tracker: cleanup of old replicas from KV Store.&lt;/li>
-&lt;li>Exemplar storage, currently in-memory only within the Ingester based on Prometheus exemplar storage (&lt;code>-blocks-storage.tsdb.max-exemplars&lt;/code>)&lt;/li>
-&lt;li>Querier limits:
-&lt;ul>
-&lt;li>&lt;code>-querier.max-fetched-chunks-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-chunk-bytes-per-query&lt;/code>&lt;/li>
-&lt;li>&lt;code>-querier.max-fetched-series-per-query&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
 &lt;li>Alertmanager limits
 &lt;ul>
 &lt;li>notification rate (&lt;code>-alertmanager.notification-rate-limit&lt;/code> and &lt;code>-alertmanager.notification-rate-limit-per-integration&lt;/code>)&lt;/li>
@@ -7316,11 +7301,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>&lt;code>-alertmanager.sharding-ring.heartbeat-period=0&lt;/code>&lt;/li>
 &lt;li>&lt;code>-compactor.ring.heartbeat-period=0&lt;/code>&lt;/li>
 &lt;li>&lt;code>-store-gateway.sharding-ring.heartbeat-period=0&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Compactor shuffle sharding
-&lt;ul>
-&lt;li>Enabled via &lt;code>-compactor.sharding-enabled=true&lt;/code>, &lt;code>-compactor.sharding-strategy=shuffle-sharding&lt;/code>, and &lt;code>-compactor.tenant-shard-size&lt;/code> set to a value larger than 0.&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;li>Vertical sharding at query frontend for range/instant queries

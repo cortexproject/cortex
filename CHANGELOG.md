@@ -43,7 +43,7 @@
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
 * [ENHANCEMENT] Distributor: Validate metric name before removing empty labels. #7253
-* [ENHANCEMENT] discard ooo samples in some special cases #7227
+* [ENHANCEMENT] Ruler/Ingester: Propagate append hints to discard out of order samples on Ingester #7226
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111

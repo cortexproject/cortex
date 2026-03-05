@@ -5745,6 +5745,13 @@
           "description": "Override the expected name on the server certificate.",
           "type": "string",
           "x-cli-flag": "memberlist.tls-server-name"
+        },
+        "tombstone_timeout": {
+          "default": "5m0s",
+          "description": "How long to keep deleted keys (tombstones) in the KV store",
+          "type": "string",
+          "x-cli-flag": "memberlist.tombstone-timeout",
+          "x-format": "duration"
         }
       },
       "type": "object"

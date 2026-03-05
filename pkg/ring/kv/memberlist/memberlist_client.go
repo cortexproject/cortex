@@ -29,6 +29,8 @@ import (
 const (
 	maxCasRetries              = 10          // max retries in CAS operation
 	noChangeDetectedRetrySleep = time.Second // how long to sleep after no change was detected in CAS
+
+	tombstoneSweepInterval = time.Second * 30
 )
 
 // Client implements kv.Client interface, by using memberlist.KV
@@ -161,6 +163,9 @@ type KVConfig struct {
 	// Remove LEFT ingesters from ring after this timeout.
 	LeftIngestersTimeout time.Duration `yaml:"left_ingesters_timeout"`
 
+	// How long to keep deleted keys (tombstones) in the KV store
+	TombstoneTimeout time.Duration `yaml:"tombstone_timeout"`
+
 	// Timeout used when leaving the memberlist cluster.
 	LeaveTimeout time.Duration `yaml:"leave_timeout"`
 
@@ -193,6 +198,7 @@ func (cfg *KVConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.AbortIfJoinFails, prefix+"memberlist.abort-if-join-fails", true, "If this node fails to join memberlist cluster, abort.")
 	f.DurationVar(&cfg.RejoinInterval, prefix+"memberlist.rejoin-interval", 0, "If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix the cluster split issue, and is harmless otherwise. For example when using only few components as a seed nodes (via -memberlist.join), then it's recommended to use rejoin. If -memberlist.join points to dynamic service that resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin is not needed.")
 	f.DurationVar(&cfg.LeftIngestersTimeout, prefix+"memberlist.left-ingesters-timeout", 5*time.Minute, "How long to keep LEFT ingesters in the ring.")
+	f.DurationVar(&cfg.TombstoneTimeout, prefix+"memberlist.tombstone-timeout", 5*time.Minute, "How long to keep deleted keys (tombstones) in the KV store")
 	f.DurationVar(&cfg.LeaveTimeout, prefix+"memberlist.leave-timeout", 5*time.Second, "Timeout for leaving memberlist cluster.")
 	f.DurationVar(&cfg.GossipInterval, prefix+"memberlist.gossip-interval", mlDefaults.GossipInterval, "How often to gossip.")
 	f.IntVar(&cfg.GossipNodes, prefix+"memberlist.gossip-nodes", mlDefaults.GossipNodes, "How many nodes to gossip to.")
@@ -284,6 +290,7 @@ type KV struct {
 	storeValuesDesc        *prometheus.Desc
 	storeTombstones        *prometheus.GaugeVec
 	storeRemovedTombstones *prometheus.CounterVec
+	sweptTombstones        prometheus.Counter
 
 	memberlistMembersCount prometheus.GaugeFunc
 	memberlistHealthScore  prometheus.GaugeFunc
@@ -319,6 +326,9 @@ type valueDesc struct {
 
 	// ID of codec used to write this value. Only used when sending full state.
 	codecID string
+
+	deleted   bool      // mark for deleted
+	updatedAt time.Time // time when deletion or update to resolve conflict
 }
 
 func (v valueDesc) Clone() (result valueDesc) {
@@ -493,13 +503,41 @@ func (m *KV) running(ctx context.Context) error {
 		tickerChan = t.C
 	}
 
+	var sweepTickerChan <-chan time.Time
+	if m.cfg.TombstoneTimeout > 0 {
+		sweepTicker := time.NewTicker(tombstoneSweepInterval)
+		defer sweepTicker.Stop()
+		sweepTickerChan = sweepTicker.C
+	}
+
 	for {
 		select {
 		case <-tickerChan:
 			m.rejoinMemberlist(ctx)
+		case <-sweepTickerChan:
+			m.sweepTombstones()
 		case <-ctx.Done():
 			return nil
 		}
+	}
+}
+
+func (m *KV) sweepTombstones() {
+	m.storeMu.Lock()
+	defer m.storeMu.Unlock()
+
+	now := time.Now()
+	sweptCount := 0
+
+	for key, val := range m.store {
+		if val.deleted && now.Sub(val.updatedAt) > m.cfg.TombstoneTimeout {
+			delete(m.store, key)
+			sweptCount++
+		}
+	}
+
+	if sweptCount > 0 {
+		m.sweptTombstones.Add(float64(sweptCount))
 	}
 }
 
@@ -654,7 +692,11 @@ func (m *KV) List(prefix string) []string {
 	defer m.storeMu.Unlock()
 
 	var keys []string
-	for k := range m.store {
+	for k, v := range m.store {
+		if v.deleted {
+			continue
+		}
+
 		if strings.HasPrefix(k, prefix) {
 			keys = append(keys, k)
 		}
@@ -675,6 +717,10 @@ func (m *KV) get(key string, codec codec.Codec) (out any, version uint, err erro
 	v := m.store[key].Clone()
 	m.storeMu.Unlock()
 
+	if v.deleted {
+		return nil, v.version, nil
+	}
+
 	if v.value != nil {
 		// remove ALL tombstones before returning to client.
 		// No need for clients to see them.
@@ -684,12 +730,34 @@ func (m *KV) get(key string, codec codec.Codec) (out any, version uint, err erro
 	return v.value, v.version, nil
 }
 
+// Delete marks the key as deleted (Tombstone) and broadcasts this state to peers.
 func (m *KV) Delete(key string) error {
-	// TODO(Sungjin1212): Mark as delete and broadcast to peers
 	m.storeMu.Lock()
-	defer m.storeMu.Unlock()
+	val, ok := m.store[key]
+	m.storeMu.Unlock()
 
-	delete(m.store, key)
+	// If the key is not found or is marked as deleted, do nothing.
+	if !ok || val.deleted {
+		return nil
+	}
+
+	codec := m.GetCodec(val.codecID)
+	if codec == nil {
+		level.Error(m.logger).Log("msg", "failed to mark for deleted: invalid codec for key", "codec", val.codecID, "key", key)
+		return fmt.Errorf("invalid codec %s for key %s", val.codecID, key)
+	}
+
+	change, newvar, err := m.mergeValueForKey(key, val.value, 0, codec, true, time.Now())
+	if err != nil {
+		level.Error(m.logger).Log("msg", "failed to mark for deleted: error ", "key", key, "err", err)
+		return err
+	}
+
+	if newvar > 0 {
+		m.notifyWatchers(key)
+		m.broadcastNewValue(key, change, newvar, codec)
+	}
+
 	return nil
 }
 
@@ -931,7 +999,7 @@ func (m *KV) trySingleCas(key string, codec codec.Codec, f func(in any) (out any
 
 	// To support detection of removed items from value, we will only allow CAS operation to
 	// succeed if version hasn't changed, i.e. state hasn't changed since running 'f'.
-	change, newver, err := m.mergeValueForKey(key, r, ver, codec)
+	change, newver, err := m.mergeValueForKey(key, r, ver, codec, false, time.Now())
 	if err == errVersionMismatch {
 		return nil, 0, retry, err
 	}
@@ -956,7 +1024,28 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 		return
 	}
 
-	kvPair := KeyValuePair{Key: key, Value: data, Codec: codec.CodecID()}
+	// Fetch current metadata from the store to broadcast
+	m.storeMu.Lock()
+	desc, ok := m.store[key]
+	m.storeMu.Unlock()
+
+	var deleted bool
+	var updatedAt int64
+	if ok {
+		deleted = desc.deleted
+		if !desc.updatedAt.IsZero() {
+			updatedAt = desc.updatedAt.UnixMilli()
+		}
+	}
+
+	kvPair := KeyValuePair{
+		Key:       key,
+		Value:     data,
+		Codec:     codec.CodecID(),
+		Deleted:   deleted,
+		UpdatedAt: updatedAt,
+	}
+
 	pairData, err := kvPair.Marshal()
 	if err != nil {
 		level.Error(m.logger).Log("msg", "failed to serialize KV pair", "key", key, "version", version, "err", err)
@@ -1011,8 +1100,14 @@ func (m *KV) NotifyMsg(msg []byte) {
 		return
 	}
 
+	// Convert int64 UnixMilli back to time.Time
+	var parsedTime time.Time
+	if kvPair.UpdatedAt != 0 {
+		parsedTime = time.UnixMilli(kvPair.UpdatedAt)
+	}
+
 	// we have a ring update! Let's merge it with our version of the ring for given key
-	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
+	mod, version, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec, kvPair.Deleted, parsedTime)
 
 	changes := []string(nil)
 	if mod != nil {
@@ -1104,6 +1199,12 @@ func (m *KV) LocalState(join bool) []byte {
 		kvPair.Key = key
 		kvPair.Value = encoded
 		kvPair.Codec = val.codecID
+		kvPair.Deleted = val.deleted
+		if !val.updatedAt.IsZero() {
+			kvPair.UpdatedAt = val.updatedAt.UnixMilli()
+		} else {
+			kvPair.UpdatedAt = 0
+		}
 
 		ser, err := kvPair.Marshal()
 		if err != nil {
@@ -1183,8 +1284,14 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 			continue
 		}
 
+		// Convert int64 UnixMilli back to time.Time
+		var parsedTime time.Time
+		if kvPair.UpdatedAt != 0 {
+			parsedTime = time.UnixMilli(kvPair.UpdatedAt)
+		}
+
 		// we have both key and value, try to merge it with our state
-		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec)
+		change, newver, err := m.mergeBytesValueForKey(kvPair.Key, kvPair.Value, codec, kvPair.Deleted, parsedTime)
 
 		changes := []string(nil)
 		if change != nil {
@@ -1212,7 +1319,7 @@ func (m *KV) MergeRemoteState(data []byte, join bool) {
 	}
 }
 
-func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.Codec) (Mergeable, uint, error) {
+func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.Codec, deleted bool, updatedAt time.Time) (Mergeable, uint, error) {
 	decodedValue, err := codec.Decode(incomingData)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to decode value: %v", err)
@@ -1223,14 +1330,14 @@ func (m *KV) mergeBytesValueForKey(key string, incomingData []byte, codec codec.
 		return nil, 0, fmt.Errorf("expected Mergeable, got: %T", decodedValue)
 	}
 
-	return m.mergeValueForKey(key, incomingValue, 0, codec)
+	return m.mergeValueForKey(key, incomingValue, 0, codec, deleted, updatedAt)
 }
 
 // Merges incoming value with value we have in our store. Returns "a change" that can be sent to other
 // cluster members to update their state, and new version of the value.
 // If CAS version is specified, then merging will fail if state has changed already, and errVersionMismatch is reported.
 // If no modification occurred, new version is 0.
-func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint, codec codec.Codec) (Mergeable, uint, error) {
+func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion uint, codec codec.Codec, deleted bool, updatedAt time.Time) (Mergeable, uint, error) {
 	m.storeMu.Lock()
 	defer m.storeMu.Unlock()
 
@@ -1247,9 +1354,40 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		return nil, 0, err
 	}
 
-	// No change, don't store it.
-	if change == nil || len(change.MergeContent()) == 0 {
+	hasDataChanged := change != nil && len(change.MergeContent()) > 0
+	// Time-based conflict resolution (LWW - Last Write Wins)
+	newUpdatedAt := curr.updatedAt
+	newDeleted := curr.deleted
+	statusChanged := false
+
+	if updatedAt.After(curr.updatedAt) {
+		// Incoming data is newer
+		if deleted != curr.deleted || deleted {
+			// The deleted state differs from the current one or deleted
+			newDeleted = deleted
+			statusChanged = true
+		}
+	} else if updatedAt.Equal(curr.updatedAt) && deleted && !curr.deleted {
+		// Timestamps are exactly the same, prioritize deletion (Tombstone)
+		newDeleted = true
+		statusChanged = true
+	}
+
+	// Neither the data nor the metadata
+	if !hasDataChanged && !statusChanged {
 		return nil, 0, nil
+	}
+
+	// data or state has been changed, update the timestamp
+	if updatedAt.After(curr.updatedAt) {
+		newUpdatedAt = updatedAt
+	}
+
+	// If the value itself hasn't changed but the delete status (Tombstone)
+	// has changed or been updated, we still need to broadcast this metadata
+	// change to ensure the cluster agrees on the deleted state.
+	if !hasDataChanged && statusChanged {
+		change = result
 	}
 
 	if m.cfg.LeftIngestersTimeout > 0 {
@@ -1264,22 +1402,28 @@ func (m *KV) mergeValueForKey(key string, incomingValue Mergeable, casVersion ui
 		// Note that "result" and "change" may actually be the same Mergeable. That is why we
 		// call RemoveTombstones on "result" first, so that we get the correct metrics. Calling
 		// RemoveTombstones twice with same limit should be noop.
-		change.RemoveTombstones(limit)
-		if len(change.MergeContent()) == 0 {
-			return nil, 0, nil
+		if change != nil {
+			change.RemoveTombstones(limit)
+			if len(change.MergeContent()) == 0 && !statusChanged {
+				return nil, 0, nil
+			}
 		}
 	}
 
 	newVersion := curr.version + 1
 	m.store[key] = valueDesc{
-		value:   result,
-		version: newVersion,
-		codecID: codec.CodecID(),
+		value:     result,
+		version:   newVersion,
+		codecID:   codec.CodecID(),
+		deleted:   newDeleted,
+		updatedAt: newUpdatedAt,
 	}
 
 	// The "changes" returned by Merge() can contain references to the "result"
 	// state. Therefore, make sure we clone it before releasing the lock.
-	change = change.Clone().(Mergeable)
+	if change != nil {
+		change = change.Clone().(Mergeable)
+	}
 
 	return change, newVersion, nil
 }

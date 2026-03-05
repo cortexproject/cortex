@@ -977,7 +977,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 			}
 		}
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source, req.DiscardOutOfOrder)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
 		req.Free()
@@ -1230,7 +1230,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum, discardOutOfOrder bool) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1248,9 +1248,10 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
-			Timeseries: timeseries,
-			Metadata:   metadata,
-			Source:     source,
+			Timeseries:        timeseries,
+			Metadata:          metadata,
+			Source:            source,
+			DiscardOutOfOrder: discardOutOfOrder,
 		}
 		_, err = c.PushStreamConnection(ctx, req)
 	} else {
@@ -1258,6 +1259,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		req.Timeseries = timeseries
 		req.Metadata = metadata
 		req.Source = source
+		req.DiscardOutOfOrder = discardOutOfOrder
 
 		_, err = c.PushPreAlloc(ctx, req)
 

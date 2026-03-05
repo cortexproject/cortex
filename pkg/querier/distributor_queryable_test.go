@@ -91,12 +91,14 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
 
 				ctx := user.InjectOrgID(context.Background(), "test")
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, testData.queryIngestersWithin, nil, 1)
-				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
-				require.NoError(t, err)
 
 				limits := DefaultLimitsConfig()
+				limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
 				overrides := validation.NewOverrides(limits, nil)
+
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, nil, 1, overrides)
+				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
+				require.NoError(t, err)
 
 				start, end, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
 				require.NoError(t, err)
@@ -129,18 +131,23 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	t.Parallel()
 
 	d := &MockDistributor{}
-	dq := newDistributorQueryable(d, false, true, nil, 1*time.Hour, nil, 1)
+
+	limits := DefaultLimitsConfig()
+	limits.QueryIngestersWithin = model.Duration(1 * time.Hour)
+	overrides := validation.NewOverrides(limits, nil)
+
+	dq := newDistributorQueryable(d, false, true, nil, nil, 1, overrides)
 
 	now := time.Now()
 
 	queryMinT := util.TimeToMillis(now.Add(-5 * time.Minute))
 	queryMaxT := util.TimeToMillis(now)
 
-	require.True(t, dq.UseQueryable(now, queryMinT, queryMaxT))
-	require.True(t, dq.UseQueryable(now.Add(time.Hour), queryMinT, queryMaxT))
+	require.True(t, dq.UseQueryable(now, "test", queryMinT, queryMaxT))
+	require.True(t, dq.UseQueryable(now.Add(time.Hour), "test", queryMinT, queryMaxT))
 
 	// Same query, hour+1ms later, is not sent to ingesters.
-	require.False(t, dq.UseQueryable(now.Add(time.Hour).Add(1*time.Millisecond), queryMinT, queryMaxT))
+	require.False(t, dq.UseQueryable(now.Add(time.Hour).Add(1*time.Millisecond), "test", queryMinT, queryMaxT))
 }
 
 func TestIngesterStreaming(t *testing.T) {
@@ -179,9 +186,13 @@ func TestIngesterStreaming(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "0")
 
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(0) // Disable time filtering for this test
+			overrides := validation.NewOverrides(limits, nil)
+
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 				return partialDataEnabled
-			}, 1)
+			}, 1, overrides)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -345,9 +356,14 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			}
 
 			ingesterQueryMaxAttempts := 3
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(0)
+			overrides := validation.NewOverrides(limits, nil)
+
+			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 				return true
-			}, ingesterQueryMaxAttempts)
+			}, ingesterQueryMaxAttempts, overrides)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -424,9 +440,12 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 							Return(metrics, partialDataErr)
 					}
 
-					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, 0, func(string) bool {
+					limits := DefaultLimitsConfig()
+					overrides := validation.NewOverrides(limits, nil)
+
+					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, func(string) bool {
 						return partialDataEnabled
-					}, 1)
+					}, 1, overrides)
 					querier, err := queryable.Querier(mint, maxt)
 					require.NoError(t, err)
 
@@ -442,5 +461,92 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	lookback := 1 * time.Hour
+
+	tests := map[string]struct {
+		queryMinT    int64
+		queryMaxT    int64
+		expectedMinT int64
+		expectedMaxT int64
+		description  string
+	}{
+		"query exactly at lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-lookback)),
+			queryMaxT:    util.TimeToMillis(now),
+			expectedMinT: util.TimeToMillis(now.Add(-lookback)),
+			expectedMaxT: util.TimeToMillis(now),
+			description:  "should not manipulate when minT is exactly at boundary",
+		},
+		"query 1ms before lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-lookback - time.Millisecond)),
+			queryMaxT:    util.TimeToMillis(now),
+			expectedMinT: util.TimeToMillis(now.Add(-lookback)),
+			expectedMaxT: util.TimeToMillis(now),
+			description:  "should manipulate when minT is 1ms before boundary",
+		},
+		"query 1ms after lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-lookback + time.Millisecond)),
+			queryMaxT:    util.TimeToMillis(now),
+			expectedMinT: util.TimeToMillis(now.Add(-lookback + time.Millisecond)),
+			expectedMaxT: util.TimeToMillis(now),
+			description:  "should not manipulate when minT is 1ms after boundary",
+		},
+		"maxT well before lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * lookback)),
+			queryMaxT:    util.TimeToMillis(now.Add(-lookback - 10*time.Second)),
+			expectedMinT: 0,
+			expectedMaxT: 0,
+			description:  "should skip query when maxT is well before boundary",
+		},
+		"maxT 1ms before lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * lookback)),
+			queryMaxT:    util.TimeToMillis(now.Add(-lookback - time.Millisecond)),
+			expectedMinT: 0,
+			expectedMaxT: 0,
+			description:  "should skip query when maxT is before boundary",
+		},
+		"maxT well after lookback boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * lookback)),
+			queryMaxT:    util.TimeToMillis(now.Add(-lookback + 10*time.Second)),
+			expectedMinT: util.TimeToMillis(now.Add(-lookback)),
+			expectedMaxT: util.TimeToMillis(now.Add(-lookback + 10*time.Second)),
+			description:  "should manipulate when maxT is well after boundary",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			distributor := &MockDistributor{}
+			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(lookback)
+			overrides := validation.NewOverrides(limits, nil)
+
+			queryable := newDistributorQueryable(distributor, false, true, nil, nil, 1, overrides)
+			querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
+			require.NoError(t, err)
+
+			seriesSet := querier.Select(ctx, true, nil)
+			require.NoError(t, seriesSet.Err())
+
+			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
+				assert.Len(t, distributor.Calls, 0, testData.description)
+			} else {
+				require.Len(t, distributor.Calls, 1, testData.description)
+				assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(5*time.Second.Milliseconds()), testData.description)
+				assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), testData.description)
+			}
+		})
 	}
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const retryMinBackoff = time.Millisecond
@@ -42,15 +43,15 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int, limits *validation.Overrides) QueryableWithFilter {
 	return distributorQueryable{
 		distributor:              distributor,
 		streamingMetdata:         streamingMetdata,
 		labelNamesWithMatchers:   labelNamesWithMatchers,
 		iteratorFn:               iteratorFn,
-		queryIngestersWithin:     queryIngestersWithin,
 		isPartialDataEnabled:     isPartialDataEnabled,
 		ingesterQueryMaxAttempts: ingesterQueryMaxAttempts,
+		limits:                   limits,
 	}
 }
 
@@ -59,9 +60,9 @@ type distributorQueryable struct {
 	streamingMetdata         bool
 	labelNamesWithMatchers   bool
 	iteratorFn               chunkIteratorFunc
-	queryIngestersWithin     time.Duration
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
+	limits                   *validation.Overrides
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -72,15 +73,15 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		streamingMetadata:        d.streamingMetdata,
 		labelNamesMatchers:       d.labelNamesWithMatchers,
 		chunkIterFn:              d.iteratorFn,
-		queryIngestersWithin:     d.queryIngestersWithin,
 		isPartialDataEnabled:     d.isPartialDataEnabled,
 		ingesterQueryMaxAttempts: d.ingesterQueryMaxAttempts,
+		limits:                   d.limits,
 	}, nil
 }
-
-func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bool {
+func (d distributorQueryable) UseQueryable(now time.Time, userID string, _, queryMaxT int64) bool {
 	// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-	return d.queryIngestersWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-d.queryIngestersWithin))
+	queryIngestersWithin := d.limits.QueryIngestersWithin(userID)
+	return queryIngestersWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-queryIngestersWithin))
 }
 
 type distributorQuerier struct {
@@ -89,9 +90,9 @@ type distributorQuerier struct {
 	streamingMetadata        bool
 	labelNamesMatchers       bool
 	chunkIterFn              chunkIteratorFunc
-	queryIngestersWithin     time.Duration
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
+	limits                   *validation.Overrides
 }
 
 // Select implements storage.Querier interface.
@@ -104,15 +105,20 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	if sp != nil {
 		minT, maxT = sp.Start, sp.End
 	}
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
 
+	queryIngestersWithin := q.limits.QueryIngestersWithin(userID)
 	// We should manipulate the query mint to query samples up until
 	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
 	// optimization is particularly important for the blocks storage where the blocks retention in the
 	// ingesters could be way higher than queryIngestersWithin.
-	if q.queryIngestersWithin > 0 {
+	if queryIngestersWithin > 0 {
 		now := time.Now()
 		origMinT := minT
-		minT = max(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+		minT = max(minT, util.TimeToMillis(now.Add(-queryIngestersWithin)))
 
 		if origMinT != minT {
 			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)

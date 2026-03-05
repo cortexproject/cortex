@@ -98,7 +98,6 @@ type parquetQueryableWithFallback struct {
 	services.Service
 
 	fallbackDisabled      bool
-	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
 	cache                 parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	blockStorageQueryable *BlocksStoreQueryable
@@ -280,7 +279,6 @@ func NewParquetQueryable(
 		blockStorageQueryable: blockStorageQueryable,
 		parquetQueryable:      parquetQueryable,
 		cache:                 cache,
-		queryStoreAfter:       config.QueryStoreAfter,
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
 		metrics:               newParquetQueryableFallbackMetrics(reg),
@@ -338,7 +336,6 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		minT:                  mint,
 		maxT:                  maxt,
 		parquetQuerier:        pq,
-		queryStoreAfter:       p.queryStoreAfter,
 		blocksStoreQuerier:    bsq,
 		finder:                p.finder,
 		metrics:               p.metrics,
@@ -357,10 +354,6 @@ type parquetQuerierWithFallback struct {
 
 	parquetQuerier     storage.Querier
 	blocksStoreQuerier storage.Querier
-
-	// If set, the querier manipulates the max time to not be greater than
-	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
@@ -503,7 +496,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		mint, maxt, limit = hints.Start, hints.End, hints.Limit
 	}
 
-	maxt = q.adjustMaxT(maxt)
+	maxt = q.adjustMaxT(ctx, maxt)
 	hints.End = maxt
 
 	if maxt < mint {
@@ -578,14 +571,19 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	return storage.NewMergeSeriesSet(seriesSets, limit, storage.ChainedSeriesMerge)
 }
 
-func (q *parquetQuerierWithFallback) adjustMaxT(maxt int64) int64 {
+func (q *parquetQuerierWithFallback) adjustMaxT(ctx context.Context, maxt int64) int64 {
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip
 	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return maxt
+	}
+	queryStoreAfter := q.limits.QueryStoreAfter(userID)
+	if queryStoreAfter > 0 {
 		now := time.Now()
-		maxt = min(maxt, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxt = min(maxt, util.TimeToMillis(now.Add(-queryStoreAfter)))
 	}
 	return maxt
 }
@@ -603,7 +601,7 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, err
 	}
 
-	maxT = q.adjustMaxT(maxT)
+	maxT = q.adjustMaxT(ctx, maxT)
 
 	if maxT < minT {
 		return nil, nil, nil

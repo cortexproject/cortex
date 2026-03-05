@@ -103,6 +103,7 @@ func ReuseWriteRequest(req *PreallocWriteRequest) {
 	req.Source = 0
 	req.Metadata = nil
 	req.Timeseries = nil
+	req.DiscardOutOfOrder = false
 	writeRequestPool.Put(req)
 }
 

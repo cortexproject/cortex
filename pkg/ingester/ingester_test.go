@@ -5381,6 +5381,67 @@ func Test_Ingester_UserStats(t *testing.T) {
 	assert.Equal(t, uint64(3), res.NumSeries)
 }
 
+func Test_Ingester_TSDBStatus(t *testing.T) {
+	series := []struct {
+		lbls      labels.Labels
+		value     float64
+		timestamp int64
+	}{
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "200"}}, 1, 100000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_1"}, {Name: "route", Value: "get_user"}, {Name: "status", Value: "500"}}, 1, 110000},
+		{labels.Labels{{Name: labels.MetricName, Value: "test_2"}}, 2, 200000},
+	}
+
+	// Create ingester
+	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() interface{} {
+		return i.lifecycler.GetState()
+	})
+
+	// Push series
+	ctx := user.InjectOrgID(context.Background(), "test")
+
+	for _, series := range series {
+		req, _ := mockWriteRequest(t, series.lbls, series.value, series.timestamp)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// Get TSDB status
+	res, err := i.TSDBStatus(ctx, &client.TSDBStatusRequest{Limit: 10})
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(3), res.NumSeries)
+	assert.True(t, res.MinTime > 0)
+	assert.True(t, res.MaxTime > 0)
+	assert.True(t, res.MaxTime >= res.MinTime)
+
+	// Should have top metrics by series count
+	require.NotEmpty(t, res.SeriesCountByMetricName)
+	// test_1 has 2 series, test_2 has 1
+	assert.Equal(t, "test_1", res.SeriesCountByMetricName[0].Name)
+	assert.Equal(t, uint64(2), res.SeriesCountByMetricName[0].Value)
+
+	// Label value counts should be present
+	require.NotEmpty(t, res.LabelValueCountByLabelName)
+
+	// Test default limit when 0
+	res2, err := i.TSDBStatus(ctx, &client.TSDBStatusRequest{Limit: 0})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), res2.NumSeries)
+
+	// Test with non-existent tenant
+	ctxOther := user.InjectOrgID(context.Background(), "nonexistent")
+	res3, err := i.TSDBStatus(ctxOther, &client.TSDBStatusRequest{Limit: 10})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), res3.NumSeries)
+}
+
 func Test_Ingester_AllUserStats(t *testing.T) {
 	series := []struct {
 		user      string

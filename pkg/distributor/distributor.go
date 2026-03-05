@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -1674,6 +1675,121 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 	totalStats.ActiveSeries /= uint64(factor)
 
 	return totalStats, nil
+}
+
+// TSDBStatusResult holds the result of a TSDB status query across ingesters.
+type TSDBStatusResult struct {
+	NumSeries                    uint64            `json:"numSeries"`
+	MinTime                      int64             `json:"minTime"`
+	MaxTime                      int64             `json:"maxTime"`
+	NumLabelPairs                int32             `json:"numLabelPairs"`
+	SeriesCountByMetricName      []TSDBStatResult  `json:"seriesCountByMetricName"`
+	LabelValueCountByLabelName   []TSDBStatResult  `json:"labelValueCountByLabelName"`
+	MemoryInBytesByLabelName     []TSDBStatResult  `json:"memoryInBytesByLabelName"`
+	SeriesCountByLabelValuePair  []TSDBStatResult  `json:"seriesCountByLabelValuePair"`
+}
+
+// TSDBStatResult is a single name/value cardinality stat.
+type TSDBStatResult struct {
+	Name  string `json:"name"`
+	Value uint64 `json:"value"`
+}
+
+// TSDBStatus returns TSDB cardinality statistics for the current tenant, aggregated
+// across all ingesters.
+func (d *Distributor) TSDBStatus(ctx context.Context, limit int32) (*TSDBStatusResult, error) {
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Require all ingesters to respond.
+	replicationSet.MaxErrors = 0
+
+	req := &ingester_client.TSDBStatusRequest{Limit: limit}
+	resps, err := d.ForReplicationSet(ctx, replicationSet, false, false, func(ctx context.Context, client ingester_client.IngesterClient) (interface{}, error) {
+		return client.TSDBStatus(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge responses from all ingesters.
+	seriesByMetric := map[string]uint64{}
+	labelValueCount := map[string]uint64{}
+	memoryByLabel := map[string]uint64{}
+	seriesByLabelPair := map[string]uint64{}
+
+	var totalSeries uint64
+	var numLabelPairs int32
+	minTime := int64(math.MaxInt64)
+	maxTime := int64(math.MinInt64)
+
+	for _, resp := range resps {
+		r := resp.(*ingester_client.TSDBStatusResponse)
+		totalSeries += r.NumSeries
+		if r.MinTime < minTime {
+			minTime = r.MinTime
+		}
+		if r.MaxTime > maxTime {
+			maxTime = r.MaxTime
+		}
+		if r.NumLabelPairs > numLabelPairs {
+			numLabelPairs = r.NumLabelPairs
+		}
+		for _, item := range r.SeriesCountByMetricName {
+			seriesByMetric[item.Name] += item.Value
+		}
+		for _, item := range r.LabelValueCountByLabelName {
+			if item.Value > labelValueCount[item.Name] {
+				labelValueCount[item.Name] = item.Value
+			}
+		}
+		for _, item := range r.MemoryInBytesByLabelName {
+			memoryByLabel[item.Name] += item.Value
+		}
+		for _, item := range r.SeriesCountByLabelValuePair {
+			seriesByLabelPair[item.Name] += item.Value
+		}
+	}
+
+	rf := uint64(d.ingestersRing.ReplicationFactor())
+
+	result := &TSDBStatusResult{
+		NumSeries:                    totalSeries / rf,
+		MinTime:                      minTime,
+		MaxTime:                      maxTime,
+		NumLabelPairs:                numLabelPairs,
+		SeriesCountByMetricName:      topNStats(seriesByMetric, int(limit), rf),
+		LabelValueCountByLabelName:   topNStats(labelValueCount, int(limit), 1), // don't divide unique value counts
+		MemoryInBytesByLabelName:     topNStats(memoryByLabel, int(limit), rf),
+		SeriesCountByLabelValuePair:  topNStats(seriesByLabelPair, int(limit), rf),
+	}
+
+	// If no ingesters responded with valid times, zero them out.
+	if minTime == math.MaxInt64 {
+		result.MinTime = 0
+	}
+	if maxTime == math.MinInt64 {
+		result.MaxTime = 0
+	}
+
+	return result, nil
+}
+
+// topNStats sorts a name→count map by count descending, divides by rf, and returns the top n items.
+func topNStats(m map[string]uint64, n int, rf uint64) []TSDBStatResult {
+	items := make([]TSDBStatResult, 0, len(m))
+	for name, value := range m {
+		items = append(items, TSDBStatResult{Name: name, Value: value / rf})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Value > items[j].Value
+	})
+	if len(items) > n {
+		items = items[:n]
+	}
+	return items
 }
 
 // AllUserStats returns statistics about all users.

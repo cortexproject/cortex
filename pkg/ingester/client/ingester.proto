@@ -26,6 +26,7 @@ service Ingester {
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
   rpc MetricsForLabelMatchersStream(MetricsForLabelMatchersRequest) returns (stream MetricsForLabelMatchersStreamResponse) {};
   rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
+  rpc TSDBStatus(TSDBStatusRequest) returns (TSDBStatusResponse) {};
 }
 
 message ReadRequest {
@@ -176,4 +177,24 @@ message TimeSeriesFile {
   string user_id = 2;
   string filename = 3;
   bytes data = 4;
+}
+
+message TSDBStatusRequest {
+  int32 limit = 1;
+}
+
+message TSDBStatusResponse {
+  uint64 num_series = 1;
+  int64 min_time = 2;
+  int64 max_time = 3;
+  int32 num_label_pairs = 4;
+  repeated TSDBStatItem series_count_by_metric_name = 5;
+  repeated TSDBStatItem label_value_count_by_label_name = 6;
+  repeated TSDBStatItem memory_in_bytes_by_label_name = 7;
+  repeated TSDBStatItem series_count_by_label_value_pair = 8;
+}
+
+message TSDBStatItem {
+  string name = 1;
+  uint64 value = 2;
 }

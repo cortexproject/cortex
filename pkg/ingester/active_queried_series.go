@@ -31,7 +31,6 @@ type ActiveQueriedSeries struct {
 	windows        []*hllWindow
 	currentWindow  int
 	sampleRate     float64
-	rng            *rand.Rand
 	logger         log.Logger
 	mu             sync.RWMutex
 
@@ -85,7 +84,6 @@ func NewActiveQueriedSeries(windowsToQuery []time.Duration, windowDuration time.
 		windows:        windows,
 		currentWindow:  numWindows - 1, // Start with the most recent window
 		sampleRate:     sampleRate,
-		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		logger:         logger,
 		cache:          make(map[time.Duration]*mergedCacheEntry),
 	}
@@ -93,11 +91,13 @@ func NewActiveQueriedSeries(windowsToQuery []time.Duration, windowDuration time.
 
 // SampleRequest returns whether this request should be sampled based on sampling.
 // This should be called before collecting hashes to avoid unnecessary work.
+// Uses the global rand source which is safe for concurrent use, avoiding the
+// data race that occurs when multiple goroutines access a shared *rand.Rand.
 func (a *ActiveQueriedSeries) SampleRequest() bool {
 	if a.sampleRate >= 1.0 {
 		return true // 100% sampling, always track
 	}
-	return a.rng.Float64() <= a.sampleRate
+	return rand.Float64() <= a.sampleRate
 }
 
 // UpdateSeriesBatch adds multiple series hashes to the current active window in a single batch.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/runutil"
@@ -133,4 +134,68 @@ func Test_AllUserStats_WhenIngesterRollingUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, userStats, 1)
 	require.Equal(t, uint64(2), userStats[0].QueriedIngesters)
+}
+
+func TestTSDBStatus(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := BlocksStorageFlags()
+	flags["-distributor.replication-factor"] = "1"
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	// Start Cortex in single binary mode.
+	cortex := e2ecortex.NewSingleBinary("cortex-1", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until the ingester ring is active.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
+	client, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "test-tenant")
+	require.NoError(t, err)
+
+	now := time.Now()
+
+	// Push multiple series to create interesting cardinality:
+	// - http_requests_total with 3 label combinations
+	// - process_cpu_seconds_total with 1 label combination
+	series1, _ := generateSeries("http_requests_total", now, prompb.Label{Name: "method", Value: "GET"}, prompb.Label{Name: "status", Value: "200"})
+	series2, _ := generateSeries("http_requests_total", now, prompb.Label{Name: "method", Value: "POST"}, prompb.Label{Name: "status", Value: "200"})
+	series3, _ := generateSeries("http_requests_total", now, prompb.Label{Name: "method", Value: "GET"}, prompb.Label{Name: "status", Value: "500"})
+	series4, _ := generateSeries("process_cpu_seconds_total", now, prompb.Label{Name: "instance", Value: "a"})
+
+	allSeries := append(series1, series2...)
+	allSeries = append(allSeries, series3...)
+	allSeries = append(allSeries, series4...)
+
+	res, err := client.Push(allSeries)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// Query TSDB status with default limit.
+	status, err := client.TSDBStatus(10)
+	require.NoError(t, err)
+
+	assert.Equal(t, uint64(4), status.NumSeries)
+	require.GreaterOrEqual(t, len(status.SeriesCountByMetricName), 2)
+	assert.Equal(t, "http_requests_total", status.SeriesCountByMetricName[0].Name)
+	assert.Equal(t, uint64(3), status.SeriesCountByMetricName[0].Value)
+	assert.Equal(t, "process_cpu_seconds_total", status.SeriesCountByMetricName[1].Name)
+	assert.Equal(t, uint64(1), status.SeriesCountByMetricName[1].Value)
+	assert.NotEmpty(t, status.LabelValueCountByLabelName)
+	assert.Greater(t, status.MinTime, int64(0))
+	assert.Greater(t, status.MaxTime, int64(0))
+
+	// Query TSDB status with limit=1 to verify truncation.
+	status, err = client.TSDBStatus(1)
+	require.NoError(t, err)
+	assert.Len(t, status.SeriesCountByMetricName, 1)
+	assert.Equal(t, "http_requests_total", status.SeriesCountByMetricName[0].Name)
 }

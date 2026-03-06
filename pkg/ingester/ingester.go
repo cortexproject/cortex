@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/util/compression"
 	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
@@ -2298,6 +2299,57 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		ActiveSeries:      userStat.ActiveSeries,
 		LoadedBlocks:      userStat.LoadedBlocks,
 	}, nil
+}
+
+// TSDBStatus returns TSDB cardinality statistics for the tenant's TSDB head.
+func (i *Ingester) TSDBStatus(ctx context.Context, req *client.TSDBStatusRequest) (*client.TSDBStatusResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
+		return &client.TSDBStatusResponse{}, nil
+	}
+
+	limit := int(req.Limit)
+	if limit <= 0 {
+		limit = 10
+	}
+
+	stats := db.Head().Stats(labels.MetricName, limit)
+
+	resp := &client.TSDBStatusResponse{
+		NumSeries: stats.NumSeries,
+		MinTime:   stats.MinTime,
+		MaxTime:   stats.MaxTime,
+	}
+
+	if stats.IndexPostingStats != nil {
+		resp.NumLabelPairs = int32(stats.IndexPostingStats.NumLabelPairs)
+		resp.SeriesCountByMetricName = statsToPB(stats.IndexPostingStats.CardinalityMetricsStats)
+		resp.LabelValueCountByLabelName = statsToPB(stats.IndexPostingStats.CardinalityLabelStats)
+		resp.MemoryInBytesByLabelName = statsToPB(stats.IndexPostingStats.LabelValueStats)
+		resp.SeriesCountByLabelValuePair = statsToPB(stats.IndexPostingStats.LabelValuePairsStats)
+	}
+
+	return resp, nil
+}
+
+func statsToPB(stats []index.Stat) []*client.TSDBStatItem {
+	items := make([]*client.TSDBStatItem, len(stats))
+	for i, s := range stats {
+		items[i] = &client.TSDBStatItem{
+			Name:  s.Name,
+			Value: s.Count,
+		}
+	}
+	return items
 }
 
 func (i *Ingester) userStats() []UserIDStats {

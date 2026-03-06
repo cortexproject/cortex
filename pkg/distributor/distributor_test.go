@@ -3700,6 +3700,7 @@ type mockIngester struct {
 	happy                 atomic.Bool
 	failResp              atomic.Error
 	stats                 client.UsersStatsResponse
+	tsdbStatus            client.TSDBStatusResponse
 	timeseries            map[uint32]*cortexpb.PreallocTimeseries
 	metadata              map[uint32]map[cortexpb.MetricMetadata]struct{}
 	queryDelay            time.Duration
@@ -4073,6 +4074,10 @@ func (i *mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsReq
 	return &i.stats, nil
 }
 
+func (i *mockIngester) TSDBStatus(ctx context.Context, in *client.TSDBStatusRequest, opts ...grpc.CallOption) (*client.TSDBStatusResponse, error) {
+	return &i.tsdbStatus, nil
+}
+
 func match(labels []cortexpb.LabelAdapter, matchers []*labels.Matcher) bool {
 outer:
 	for _, matcher := range matchers {
@@ -4311,6 +4316,75 @@ func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 	})
 
 	assert.NotEqual(t, val1, val2)
+}
+
+func TestDistributor_TSDBStatus(t *testing.T) {
+	// Set up 3 ingesters with RF=3 (each ingester has a replica of all data)
+	distributors, ingesters, _, _ := prepare(t, prepConfig{
+		numIngesters:    3,
+		happyIngesters:  3,
+		numDistributors: 1,
+		replicationFactor: 3,
+	})
+
+	// Set TSDB status on each mock ingester
+	for _, ing := range ingesters {
+		ing.tsdbStatus = client.TSDBStatusResponse{
+			NumSeries:    300,
+			MinTime:      1000,
+			MaxTime:      2000,
+			NumLabelPairs: 5,
+			SeriesCountByMetricName: []*client.TSDBStatItem{
+				{Name: "http_requests_total", Value: 150},
+				{Name: "process_cpu_seconds", Value: 90},
+				{Name: "up", Value: 60},
+			},
+			LabelValueCountByLabelName: []*client.TSDBStatItem{
+				{Name: "instance", Value: 50},
+				{Name: "job", Value: 10},
+			},
+			MemoryInBytesByLabelName: []*client.TSDBStatItem{
+				{Name: "instance", Value: 3000},
+				{Name: "job", Value: 600},
+			},
+			SeriesCountByLabelValuePair: []*client.TSDBStatItem{
+				{Name: "job=cortex", Value: 210},
+				{Name: "job=prometheus", Value: 90},
+			},
+		}
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	result, err := distributors[0].TSDBStatus(ctx, 10)
+	require.NoError(t, err)
+
+	// NumSeries should be summed across ingesters then divided by RF (3*300/3 = 300)
+	assert.Equal(t, uint64(300), result.NumSeries)
+
+	// MinTime should be min across ingesters
+	assert.Equal(t, int64(1000), result.MinTime)
+	// MaxTime should be max across ingesters
+	assert.Equal(t, int64(2000), result.MaxTime)
+
+	// SeriesCountByMetricName: summed and divided by RF (3*150/3 = 150)
+	require.Len(t, result.SeriesCountByMetricName, 3)
+	assert.Equal(t, "http_requests_total", result.SeriesCountByMetricName[0].Name)
+	assert.Equal(t, uint64(150), result.SeriesCountByMetricName[0].Value)
+
+	// LabelValueCountByLabelName: NOT divided by RF (takes max across ingesters)
+	require.Len(t, result.LabelValueCountByLabelName, 2)
+	assert.Equal(t, "instance", result.LabelValueCountByLabelName[0].Name)
+	assert.Equal(t, uint64(50), result.LabelValueCountByLabelName[0].Value)
+
+	// MemoryInBytesByLabelName: summed and divided by RF
+	require.Len(t, result.MemoryInBytesByLabelName, 2)
+	assert.Equal(t, "instance", result.MemoryInBytesByLabelName[0].Name)
+	assert.Equal(t, uint64(3000), result.MemoryInBytesByLabelName[0].Value)
+
+	// SeriesCountByLabelValuePair: summed and divided by RF
+	require.Len(t, result.SeriesCountByLabelValuePair, 2)
+	assert.Equal(t, "job=cortex", result.SeriesCountByLabelValuePair[0].Name)
+	assert.Equal(t, uint64(210), result.SeriesCountByLabelValuePair[0].Value)
 }
 
 func TestSortLabels(t *testing.T) {

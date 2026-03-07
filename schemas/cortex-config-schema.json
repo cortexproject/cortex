@@ -3909,7 +3909,7 @@
             },
             "add_metric_suffixes": {
               "default": true,
-              "description": "If true, suffixes will be added to the metrics.",
+              "description": "If true, suffixes will be added to the metrics for name normalization.",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.add-metric-suffixes"
             }

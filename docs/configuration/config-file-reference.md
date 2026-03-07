@@ -3338,7 +3338,7 @@ otlp:
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
 
-  # If true, suffixes will be added to the metrics.
+  # If true, suffixes will be added to the metrics for name normalization.
   # CLI flag: -distributor.otlp.add-metric-suffixes
   [add_metric_suffixes: <boolean> | default = true]
 ```

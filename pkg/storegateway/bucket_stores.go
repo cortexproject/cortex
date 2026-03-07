@@ -95,6 +95,13 @@ type ThanosBucketStores struct {
 	// Keeps number of inflight requests
 	inflightRequests *util.InflightRequestTracker
 
+	// Concurrent bytes tracker for limiting bytes being processed across all queries.
+	concurrentBytesTracker ConcurrentBytesTracker
+
+	// Holder for per-request bytes trackers. The BytesLimiterFactory (created
+	// once per user store) reads from this to find the current request's tracker.
+	requestBytesTrackerHolder *requestBytesTrackerHolder
+
 	// Metrics.
 	syncTimes         prometheus.Histogram
 	syncLastSuccess   prometheus.Gauge
@@ -133,20 +140,22 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 	}).Set(float64(cfg.BucketStore.MaxConcurrent))
 
 	u := &ThanosBucketStores{
-		logger:             logger,
-		cfg:                cfg,
-		limits:             limits,
-		bucket:             cachingBucket,
-		shardingStrategy:   shardingStrategy,
-		stores:             map[string]*store.BucketStore{},
-		storesErrors:       map[string]error{},
-		logLevel:           logLevel,
-		bucketStoreMetrics: NewBucketStoreMetrics(),
-		metaFetcherMetrics: NewMetadataFetcherMetrics(),
-		queryGate:          queryGate,
-		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		userTokenBuckets:   make(map[string]*util.TokenBucket),
-		inflightRequests:   util.NewInflightRequestTracker(),
+		logger:                    logger,
+		cfg:                       cfg,
+		limits:                    limits,
+		bucket:                    cachingBucket,
+		shardingStrategy:          shardingStrategy,
+		stores:                    map[string]*store.BucketStore{},
+		storesErrors:              map[string]error{},
+		logLevel:                  logLevel,
+		bucketStoreMetrics:        NewBucketStoreMetrics(),
+		metaFetcherMetrics:        NewMetadataFetcherMetrics(),
+		queryGate:                 queryGate,
+		partitioner:               newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		userTokenBuckets:          make(map[string]*util.TokenBucket),
+		inflightRequests:          util.NewInflightRequestTracker(),
+		concurrentBytesTracker:    NewConcurrentBytesTracker(uint64(cfg.BucketStore.MaxConcurrentBytes), reg),
+		requestBytesTrackerHolder: &requestBytesTrackerHolder{},
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:    "cortex_bucket_stores_blocks_sync_seconds",
 			Help:    "The total time it takes to perform a sync stores",
@@ -380,6 +389,13 @@ func (u *ThanosBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Stor
 		u.inflightRequests.Inc()
 		defer u.inflightRequests.Dec()
 	}
+
+	reqTracker := newRequestBytesTracker(u.concurrentBytesTracker)
+	u.requestBytesTrackerHolder.Set(reqTracker)
+	defer func() {
+		u.requestBytesTrackerHolder.Clear()
+		reqTracker.ReleaseAll()
+	}()
 
 	err = store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
@@ -697,7 +713,7 @@ func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore
 		u.syncDirForUser(userID),
 		newChunksLimiterFactory(u.limits, userID),
 		newSeriesLimiterFactory(u.limits, userID),
-		newBytesLimiterFactory(u.limits, userID, u.getUserTokenBucket(userID), u.instanceTokenBucket, u.cfg.BucketStore.TokenBucketBytesLimiter, u.getTokensToRetrieve),
+		newBytesLimiterFactory(u.limits, userID, u.getUserTokenBucket(userID), u.instanceTokenBucket, u.cfg.BucketStore.TokenBucketBytesLimiter, u.getTokensToRetrieve, u.requestBytesTrackerHolder),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
 		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers

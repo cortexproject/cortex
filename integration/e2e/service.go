@@ -71,7 +71,7 @@ func NewConcreteService(
 		retryBackoff: backoff.New(context.Background(), backoff.Config{
 			MinBackoff: 300 * time.Millisecond,
 			MaxBackoff: 600 * time.Millisecond,
-			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯
+			MaxRetries: 100, // Sometimes the CI is slow ¯\_(ツ)_/¯
 		}),
 	}
 }
@@ -476,7 +476,7 @@ func (p *TCPReadinessProbe) Ready(service *ConcreteService) (err error) {
 		return errors.New("service has stopped")
 	}
 
-	conn, err := net.DialTimeout("tcp", endpoint, time.Second)
+	conn, err := net.DialTimeout("tcp", endpoint, 5*time.Second)
 	if err != nil {
 		return err
 	}

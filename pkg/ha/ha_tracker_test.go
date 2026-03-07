@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -20,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -108,14 +110,23 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			}(),
 			expectedErr: nil,
 		},
-		"should failed with invalid kv store": {
+		"should pass with memberlist kv store": {
 			cfg: func() HATrackerConfig {
 				cfg := HATrackerConfig{}
 				flagext.DefaultValues(&cfg)
 				cfg.KVStore.Store = "memberlist"
 				return cfg
 			}(),
-			expectedErr: fmt.Errorf("invalid HATracker KV store type: %s", "memberlist"),
+			expectedErr: nil,
+		},
+		"should pass with multi kv store": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.KVStore.Store = "multi"
+				return cfg
+			}(),
+			expectedErr: nil,
 		},
 	}
 
@@ -944,4 +955,281 @@ func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracke
 		markedForDeletion := val.(*ReplicaDesc).DeletedAt > 0
 		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
 	}
+}
+
+func TestReplicaDesc_Merge(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name           string
+		current        *ReplicaDesc
+		other          *ReplicaDesc
+		expectChange   bool
+		expectedResult *ReplicaDesc
+	}{
+		{
+			name: "merge with more recent replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with older replica - no change",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with deleted replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+		},
+		{
+			name: "undelete with more recent replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(time.Minute)),
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(2 * time.Minute)),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(2 * time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with nil other",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other:        nil,
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge deleted with more recent deleted",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(time.Minute)),
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+		},
+		{
+			name: "same timestamp, different replica - choose lexicographically smaller",
+			current: &ReplicaDesc{
+				Replica:    "replica-b",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica-a",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica-a",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "same timestamp, same replica - no change",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var change memberlist.Mergeable
+			var err error
+
+			if tt.other != nil {
+				change, err = tt.current.Merge(tt.other, false)
+			} else {
+				change, err = tt.current.Merge(nil, false)
+			}
+
+			require.NoError(t, err)
+
+			if tt.expectChange {
+				require.NotNil(t, change, "expected a change to be returned")
+			} else {
+				require.Nil(t, change, "expected no change to be returned")
+			}
+
+			assert.Equal(t, tt.expectedResult.Replica, tt.current.Replica)
+			assert.Equal(t, tt.expectedResult.ReceivedAt, tt.current.ReceivedAt)
+			assert.Equal(t, tt.expectedResult.DeletedAt, tt.current.DeletedAt)
+		})
+	}
+}
+
+func TestReplicaDesc_Merge_Commutativity(t *testing.T) {
+	tests := []struct {
+		name  string
+		descA *ReplicaDesc
+		descB *ReplicaDesc
+	}{
+		{
+			name: "Same replica: New vs Older",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 200,
+				DeletedAt:  0,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  100,
+			},
+		},
+		{
+			name: "Same Timestamps - Lexicographical Tie-break",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 100,
+				DeletedAt:  0,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-B",
+				ReceivedAt: 100,
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "Concurrent Deletions with Different Timestamps",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  150,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  120,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A merges B
+			nodeA := proto.Clone(tt.descA).(*ReplicaDesc)
+			incomingB := proto.Clone(tt.descB).(*ReplicaDesc)
+			_, _ = nodeA.Merge(incomingB, false)
+
+			// B merges A
+			nodeB := proto.Clone(tt.descB).(*ReplicaDesc)
+			incomingA := proto.Clone(tt.descA).(*ReplicaDesc)
+			_, _ = nodeB.Merge(incomingA, false)
+
+			// Check if both nodes converged to the exact same state
+			isSame := (nodeA.Replica == nodeB.Replica) &&
+				(nodeA.ReceivedAt == nodeB.ReceivedAt) &&
+				(nodeA.DeletedAt == nodeB.DeletedAt)
+
+			if !isSame {
+				t.Errorf("Commutativity violation in '%s'!\n"+
+					"Result of A.Merge(B): Replica=%s, ReceivedAt=%d, DeletedAt=%d\n"+
+					"Result of B.Merge(A): Replica=%s, ReceivedAt=%d, DeletedAt=%d",
+					tt.name,
+					nodeA.Replica, nodeA.ReceivedAt, nodeA.DeletedAt,
+					nodeB.Replica, nodeB.ReceivedAt, nodeB.DeletedAt)
+			}
+		})
+	}
+}
+
+func TestReplicaDesc_MergeContent(t *testing.T) {
+	desc := &ReplicaDesc{
+		Replica:    "replica1",
+		ReceivedAt: timestamp.FromTime(time.Now()),
+		DeletedAt:  0,
+	}
+
+	content := desc.MergeContent()
+	require.Equal(t, []string{"replica1"}, content)
+
+	emptyDesc := &ReplicaDesc{}
+	emptyContent := emptyDesc.MergeContent()
+	require.Nil(t, emptyContent)
 }

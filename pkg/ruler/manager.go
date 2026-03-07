@@ -53,6 +53,9 @@ type DefaultMultiTenantManager struct {
 	// Per-user externalLabels.
 	userExternalLabels *userExternalLabels
 
+	// Per-user externalURL.
+	userExternalURL *userExternalURL
+
 	// rules backup
 	rulesBackupManager *rulesBackupManager
 
@@ -101,6 +104,7 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 		ruleEvalMetrics:           evalMetrics,
 		notifiers:                 map[string]*rulerNotifier{},
 		userExternalLabels:        newUserExternalLabels(cfg.ExternalLabels, limits),
+		userExternalURL:           newUserExternalURL(cfg.ExternalURL.String(), limits),
 		notifiersDiscoveryMetrics: notifiersDiscoveryMetrics,
 		mapper:                    newMapper(cfg.RulePath, logger),
 		userManagers:              map[string]RulesManager{},
@@ -166,6 +170,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.removeNotifier(userID)
 			r.mapper.cleanupUser(userID)
 			r.userExternalLabels.remove(userID)
+			r.userExternalURL.remove(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
@@ -210,6 +215,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 	externalLabels, externalLabelsUpdated := r.userExternalLabels.update(user)
+	externalURL, externalURLUpdated := r.userExternalURL.update(user)
 
 	existing := true
 	manager := r.getRulesManager(user, ctx)
@@ -222,13 +228,13 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		return
 	}
 
-	if !existing || rulesUpdated || externalLabelsUpdated {
+	if !existing || rulesUpdated || externalLabelsUpdated || externalURLUpdated {
 		level.Debug(r.logger).Log("msg", "updating rules", "user", user)
 		r.configUpdatesTotal.WithLabelValues(user).Inc()
-		if (rulesUpdated || externalLabelsUpdated) && existing {
+		if (rulesUpdated || externalLabelsUpdated || externalURLUpdated) && existing {
 			r.updateRuleCache(user, manager.RuleGroups())
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, r.cfg.ExternalURL.String(), r.ruleGroupIterationFunc)
+		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, externalURL, r.ruleGroupIterationFunc)
 		r.deleteRuleCache(user)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -443,6 +449,7 @@ func (r *DefaultMultiTenantManager) Stop() {
 	// cleanup user rules directories
 	r.mapper.cleanup()
 	r.userExternalLabels.cleanup()
+	r.userExternalURL.cleanup()
 }
 
 func (m *DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []error {

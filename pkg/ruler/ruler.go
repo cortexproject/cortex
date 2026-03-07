@@ -2,6 +2,7 @@ package ruler
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -26,7 +27,6 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql/parser"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -506,7 +506,7 @@ type sender interface {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, generatorURLFn func(expr string) string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -515,7 +515,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: generatorURLFn(expr),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
@@ -529,6 +529,34 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 			n.Send(res...)
 		}
 	}
+}
+
+// grafanaExploreLink builds a Grafana Explore URL for the given expression.
+func grafanaExploreLink(baseURL, expr, datasourceUID string, orgID int64) string {
+	panes := map[string]any{
+		"default": map[string]any{
+			"datasource": datasourceUID,
+			"queries": []map[string]any{
+				{
+					"refId":      "A",
+					"expr":       expr,
+					"datasource": map[string]string{"uid": datasourceUID, "type": "prometheus"},
+					"editorMode": "code",
+				},
+			},
+			"range": map[string]string{
+				"from": "now-1h",
+				"to":   "now",
+			},
+		},
+	}
+	panesJSON, _ := json.Marshal(panes)
+
+	return fmt.Sprintf("%s/explore?schemaVersion=1&panes=%s&orgId=%d",
+		strings.TrimRight(baseURL, "/"),
+		url.QueryEscape(string(panesJSON)),
+		orgID,
+	)
 }
 
 func ruleGroupDisabled(ruleGroup *rulespb.RuleGroupDesc, disabledRuleGroupsForUser validation.DisabledRuleGroups) bool {

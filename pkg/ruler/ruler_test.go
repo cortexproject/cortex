@@ -35,6 +35,7 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -89,14 +90,18 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
-	mtx                  sync.RWMutex
-	tenantShard          float64
-	maxRulesPerRuleGroup int
-	maxRuleGroups        int
-	disabledRuleGroups   validation.DisabledRuleGroups
-	maxQueryLength       time.Duration
-	queryOffset          time.Duration
-	externalLabels       labels.Labels
+	mtx                     sync.RWMutex
+	tenantShard             float64
+	maxRulesPerRuleGroup    int
+	maxRuleGroups           int
+	disabledRuleGroups      validation.DisabledRuleGroups
+	maxQueryLength          time.Duration
+	queryOffset             time.Duration
+	externalLabels          labels.Labels
+	externalURL             string
+	alertGeneratorURLFormat string
+	grafanaDatasourceUID    string
+	grafanaOrgID            int64
 }
 
 func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
@@ -145,6 +150,30 @@ func (r *ruleLimits) RulerExternalLabels(_ string) labels.Labels {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.externalLabels
+}
+
+func (r *ruleLimits) RulerExternalURL(_ string) string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.externalURL
+}
+
+func (r *ruleLimits) RulerAlertGeneratorURLFormat(_ string) string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.alertGeneratorURLFormat
+}
+
+func (r *ruleLimits) RulerGrafanaDatasourceUID(_ string) string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.grafanaDatasourceUID
+}
+
+func (r *ruleLimits) RulerGrafanaOrgID(_ string) int64 {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.grafanaOrgID
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -2684,10 +2713,13 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 
 func TestSendAlerts(t *testing.T) {
 	testCases := []struct {
-		in  []*promRules.Alert
-		exp []*notifier.Alert
+		name           string
+		in             []*promRules.Alert
+		exp            []*notifier.Alert
+		generatorURLFn func(expr string) string
 	}{
 		{
+			name: "prometheus format with valid until",
 			in: []*promRules.Alert{
 				{
 					Labels:      labels.FromStrings("l1", "v1"),
@@ -2706,8 +2738,12 @@ func TestSendAlerts(t *testing.T) {
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
 				},
 			},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
 		},
 		{
+			name: "prometheus format with resolved at",
 			in: []*promRules.Alert{
 				{
 					Labels:      labels.FromStrings("l1", "v1"),
@@ -2726,21 +2762,56 @@ func TestSendAlerts(t *testing.T) {
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
 				},
 			},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
 		},
 		{
-			in: []*promRules.Alert{},
+			name: "empty alerts",
+			in:   []*promRules.Alert{},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
+		},
+		{
+			name: "grafana explore format",
+			in: []*promRules.Alert{
+				{
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ValidUntil:  time.Unix(3, 0),
+				},
+			},
+			generatorURLFn: func(expr string) string {
+				return grafanaExploreLink("http://grafana.example.com", expr, "my-datasource", 1)
+			},
 		},
 	}
 
-	for i, tc := range testCases {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var received []*notifier.Alert
+			sf := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
 					t.Fatalf("sender called with 0 alert")
 				}
-				require.Equal(t, tc.exp, alerts)
+				received = alerts
+				if tc.exp != nil {
+					require.Equal(t, tc.exp, alerts)
+				}
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(sf, tc.generatorURLFn)(context.TODO(), "up", tc.in...)
+
+			// Additional checks for grafana explore format
+			if tc.name == "grafana explore format" {
+				require.Len(t, received, 1)
+				require.Contains(t, received[0].GeneratorURL, "/explore?schemaVersion=1&panes=")
+				require.Contains(t, received[0].GeneratorURL, "orgId=1")
+				require.Contains(t, received[0].GeneratorURL, "my-datasource")
+				require.Contains(t, received[0].GeneratorURL, "up")
+			}
 		})
 	}
 }

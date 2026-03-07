@@ -3912,6 +3912,12 @@
               "description": "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
+            },
+            "add_metric_suffixes": {
+              "default": true,
+              "description": "If true, suffixes will be added to the metrics for name normalization.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.otlp.add-metric-suffixes"
             }
           },
           "type": "object"

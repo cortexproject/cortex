@@ -184,7 +184,7 @@ func convertToPromTS(ctx context.Context, pmetrics pmetric.Metrics, cfg distribu
 	collector := newCollectingAppender()
 	promConverter := prometheusremotewrite.NewPrometheusConverter(collector)
 	settings := prometheusremotewrite.Settings{
-		AddMetricSuffixes:       true,
+		AddMetricSuffixes:       cfg.AddMetricSuffixes,
 		DisableTargetInfo:       cfg.DisableTargetInfo,
 		AllowDeltaTemporality:   cfg.AllowDeltaTemporality,
 		EnableTypeAndUnitLabels: overrides.EnableTypeAndUnitLabels(userID),

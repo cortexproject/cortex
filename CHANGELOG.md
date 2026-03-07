@@ -47,6 +47,7 @@
 * [ENHANCEMENT] Ruler/Ingester: Propagate append hints to discard out of order samples on Ingester #7226
 * [ENHANCEMENT] Make cortex_ingester_tsdb_sample_ooo_delta metric per-tenant #7278
 * [ENHANCEMENT] Distributor: Add dimension `nhcb` to keep track of nhcb samples in `cortex_distributor_received_samples_total` and `cortex_distributor_samples_in_total` metrics.
+* [ENHANCEMENT] Update Go module dependencies including etcd v3.6.8, OpenTelemetry v1.40.0, parquet-go v0.28.0, and other dependency bumps. #7305
 * [ENHANCEMENT] Distributor: Add `-distributor.accept-unknown-remote-write-content-type` flag. When enabled, requests with unknown or invalid Content-Type header are treated as remote write v1 instead of returning 415 Unsupported Media Type. Default is false. #7293
 * [ENHANCEMENT] Ingester: Added `cortex_ingester_ingested_histogram_buckets` metric to track number of histogram buckets ingested per user. #7297
 * [BUGFIX] Distributor: Add bounds checking for symbol references in Remote Write V2 requests to prevent panics when UnitRef or HelpRef exceed the symbols array length. #7290

@@ -573,6 +573,223 @@ func TestOTLPConvertToPromTS(t *testing.T) {
 	}
 }
 
+func TestOTLPConvertToPromTS_WithoutAddMetricSuffixes(t *testing.T) {
+	logger := log.NewNopLogger()
+	ctx := context.Background()
+	d := pmetric.NewMetrics()
+	resourceMetric := d.ResourceMetrics().AppendEmpty()
+	resourceMetric.Resource().Attributes().PutStr("service.name", "test-service") // converted to job, service_name
+	resourceMetric.Resource().Attributes().PutStr("attr1", "value")
+	resourceMetric.Resource().Attributes().PutStr("attr2", "value")
+	resourceMetric.Resource().Attributes().PutStr("attr3", "value")
+
+	scopeMetric := resourceMetric.ScopeMetrics().AppendEmpty()
+
+	//Generate One Counter
+	timestamp := time.Now()
+	counterMetric := scopeMetric.Metrics().AppendEmpty()
+	counterMetric.SetName("test-counter")
+	counterMetric.SetDescription("test-counter-description")
+	counterMetric.SetEmptySum()
+	counterMetric.Sum().SetAggregationTemporality(pmetric.AggregationTemporalityCumulative)
+	counterMetric.Sum().SetIsMonotonic(true)
+
+	counterDataPoint := counterMetric.Sum().DataPoints().AppendEmpty()
+	counterDataPoint.SetTimestamp(pcommon.NewTimestampFromTime(timestamp))
+	counterDataPoint.SetDoubleValue(10.0)
+
+	tests := []struct {
+		description               string
+		PromoteResourceAttributes []string
+		cfg                       distributor.OTLPConfig
+		expectedLabels            []prompb.Label
+	}{
+		{
+			description:               "target_info should be generated and an attribute that exist in promote resource attributes should be converted",
+			PromoteResourceAttributes: []string{"attr1"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    false,
+				AddMetricSuffixes:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "an attributes that exist in promote resource attributes should be converted",
+			PromoteResourceAttributes: []string{"attr1"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    true,
+				AddMetricSuffixes:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "not exist attribute is ignored",
+			PromoteResourceAttributes: []string{"dummy"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: false,
+				DisableTargetInfo:    true,
+				AddMetricSuffixes:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "should convert all attribute",
+			PromoteResourceAttributes: nil,
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: true,
+				DisableTargetInfo:    true,
+				AddMetricSuffixes:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "attr2",
+					Value: "value",
+				},
+				{
+					Name:  "attr3",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+				{
+					Name:  "service_name",
+					Value: "test-service",
+				},
+			},
+		},
+		{
+			description:               "should convert all attribute regardless of promote resource attributes",
+			PromoteResourceAttributes: []string{"attr1", "attr2"},
+			cfg: distributor.OTLPConfig{
+				ConvertAllAttributes: true,
+				DisableTargetInfo:    true,
+				AddMetricSuffixes:    false,
+			},
+			expectedLabels: []prompb.Label{
+				{
+					Name:  "__name__",
+					Value: "test_counter",
+				},
+				{
+					Name:  "attr1",
+					Value: "value",
+				},
+				{
+					Name:  "attr2",
+					Value: "value",
+				},
+				{
+					Name:  "attr3",
+					Value: "value",
+				},
+				{
+					Name:  "job",
+					Value: "test-service",
+				},
+				{
+					Name:  "service_name",
+					Value: "test-service",
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.description, func(t *testing.T) {
+			limits := validation.Limits{
+				PromoteResourceAttributes: test.PromoteResourceAttributes,
+			}
+			overrides := validation.NewOverrides(limits, nil)
+			tsList, metadata, err := convertToPromTS(ctx, d, test.cfg, overrides, "user-1", logger)
+			require.NoError(t, err)
+
+			// test metadata conversion (counter + optionally target_info)
+			expectedMetadataLen := 1
+			if !test.cfg.DisableTargetInfo {
+				expectedMetadataLen = 2 // test_counter + target_info
+			}
+			require.Equal(t, expectedMetadataLen, len(metadata))
+			var counterMetadata *prompb.MetricMetadata
+			for i := range metadata {
+				if metadata[i].MetricFamilyName == "test_counter" {
+					counterMetadata = &metadata[i]
+					break
+				}
+			}
+			require.NotNil(t, counterMetadata)
+			require.Equal(t, prompb.MetricMetadata_MetricType(1), counterMetadata.Type)
+			require.Equal(t, "test_counter", counterMetadata.MetricFamilyName)
+			require.Equal(t, "test-counter-description", counterMetadata.Help)
+
+			if test.cfg.DisableTargetInfo {
+				require.Equal(t, 1, len(tsList)) // test_counter
+			} else {
+				// target_info should exist
+				require.Equal(t, 2, len(tsList)) // test_counter + target_info
+			}
+
+			var counterTs prompb.TimeSeries
+			for _, ts := range tsList {
+				for _, label := range ts.Labels {
+					if label.Name == "__name__" && label.Value == "test_counter" {
+						// get counter ts
+						counterTs = ts
+					}
+				}
+			}
+
+			require.ElementsMatch(t, test.expectedLabels, counterTs.Labels)
+		})
+	}
+}
+
 // for testing
 type resetReader struct {
 	*bytes.Reader

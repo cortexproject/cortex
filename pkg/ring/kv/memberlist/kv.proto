@@ -19,4 +19,10 @@ message KeyValuePair {
 
     // ID of the codec used to write the value
     string codec = 3;
+
+    // Indicates whether the key is marked as logically deleted (Tombstone).
+    bool deleted = 4;
+
+    // Unix timestamp (in milliseconds) of the last update or deletion.
+    int64 updatedAt = 5;
 }

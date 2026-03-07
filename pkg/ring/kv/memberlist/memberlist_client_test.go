@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -1284,6 +1285,179 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDeleteIsPropagatedToOtherNodes demonstrates that the updated KV.Delete
+// correctly removes the key, generates a tombstone broadcast, and prevents
+// the key from reappearing when older gossip is received from peers.
+func TestDeleteIsPropagatedToOtherNodes(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	client, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	testKey := "test-key"
+	now := time.Now()
+
+	// Write a value via CAS (simulates node1 writing).
+	cas(t, client, testKey, func(in *data) (*data, bool, error) {
+		d := &data{Members: map[string]member{}}
+		d.Members["replica0"] = member{Timestamp: now.Unix(), State: ACTIVE}
+		return d, true, nil
+	})
+
+	// Drain any broadcast messages from the CAS above so our queue is empty.
+	mkv.GetBroadcasts(0, math.MaxInt32)
+
+	// Verify the key exists.
+	d := getData(t, client, testKey)
+	require.NotNil(t, d)
+	require.Contains(t, d.Members, "replica0")
+
+	// Delete the key.
+	err = client.Delete(context.Background(), testKey)
+	require.NoError(t, err)
+
+	// A broadcast should be generated for the delete.
+	broadcasts := mkv.GetBroadcasts(0, math.MaxInt32)
+	require.NotEmpty(t, broadcasts, "Delete should generate a broadcast to propagate the tombstone")
+
+	// Simulate another node (node2) gossiping back the old value it still has.
+	// This is what happens during push-pull sync or regular gossip.
+	mkv.NotifyMsg(marshalKeyValuePair(t, testKey, c, &data{
+		Members: map[string]member{
+			"replica0": {Timestamp: now.Unix(), State: ACTIVE}, // Same timestamp as the original creation
+		},
+	}))
+
+	// The key should remain deleted because the tombstone takes precedence.
+	d = getData(t, client, testKey)
+	require.Nil(t, d, "key should remain deleted after gossip from peer.")
+}
+
+func TestDeleteAndCAS(t *testing.T) {
+	withFixtures(t, func(t *testing.T, kv *Client) {
+		name := "test-node"
+
+		cas(t, kv, key, func(in *data) (*data, bool, error) {
+			d := getOrCreateData(in)
+			d.Members[name] = member{
+				Timestamp: time.Now().Unix(),
+				Tokens:    generateTokens(128),
+				State:     ACTIVE,
+			}
+			return d, true, nil
+		})
+
+		r := getData(t, kv, key)
+		require.NotNil(t, r)
+		require.Contains(t, r.Members, name)
+
+		// Delete the key
+		err := kv.Delete(context.Background(), key)
+		require.NoError(t, err)
+
+		val := get(t, kv, key)
+		require.Nil(t, val)
+
+		// verify deleted and updatedAt
+		kv.kv.storeMu.Lock()
+		desc, ok := kv.kv.store[key]
+		kv.kv.storeMu.Unlock()
+		require.True(t, ok)
+		require.True(t, desc.deleted)
+		require.NotZero(t, desc.updatedAt)
+
+		cas(t, kv, key, func(in *data) (*data, bool, error) {
+			d := getOrCreateData(in)
+			d.Members[name] = member{
+				Timestamp: time.Now().Unix(),
+				Tokens:    generateTokens(128),
+				State:     ACTIVE,
+			}
+			return d, true, nil
+		})
+
+		// verify resurrection
+		val = get(t, kv, key)
+		require.NotNil(t, val)
+
+		// after CAS, the deleted should be false
+		kv.kv.storeMu.Lock()
+		desc, ok = kv.kv.store[key]
+		kv.kv.storeMu.Unlock()
+		require.True(t, ok)
+		require.False(t, desc.deleted)
+	})
+}
+
+func TestSweepTombstones(t *testing.T) {
+	c := dataCodec{}
+
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+	}
+	cfg.Codecs = []codec.Codec{c}
+	cfg.TombstoneTimeout = 1 * time.Second
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) // nolint:errcheck
+
+	kv, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	key1 := "key-to-sweep"
+	key2 := "key-to-keep"
+
+	// Insert dummy data for both keys
+	dummyUpdate := func(in *data) (*data, bool, error) {
+		d := getOrCreateData(in)
+		d.Members["node"] = member{Timestamp: time.Now().Unix(), State: ACTIVE}
+		return d, true, nil
+	}
+	cas(t, kv, key1, dummyUpdate)
+	cas(t, kv, key2, dummyUpdate)
+
+	// Delete both keys manually
+	mkv.storeMu.Lock()
+	desc1 := mkv.store[key1]
+	desc2 := mkv.store[key2]
+
+	// key1 should be deleted
+	desc1.deleted = true
+	desc1.updatedAt = time.Now().Add(-2 * time.Second)
+	mkv.store[key1] = desc1
+
+	// key should not be deleted
+	desc2.deleted = true
+	desc2.updatedAt = time.Now()
+	mkv.store[key2] = desc2
+	mkv.storeMu.Unlock()
+
+	mkv.sweepTombstones()
+
+	mkv.storeMu.Lock()
+	_, ok1 := mkv.store[key1]
+	_, ok2 := mkv.store[key2]
+	mkv.storeMu.Unlock()
+
+	// verify the result of the sweep
+	require.False(t, ok1)
+	require.True(t, ok2)
+
+	// verify metric
+	require.Equal(t, float64(1), testutil.ToFloat64(mkv.sweptTombstones))
 }
 
 func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, key string, codec dataCodec) *data {

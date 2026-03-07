@@ -3756,7 +3756,7 @@
               "x-format": "duration"
             },
             "kvstore": {
-              "description": "Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes.",
+              "description": "Backend storage to use for the ring. Memberlist support in the HA tracker is experimental, as gossip propagation delays may impact HA performance.",
               "properties": {
                 "consul": {
                   "$ref": "#/definitions/consul_config"
@@ -5745,6 +5745,13 @@
           "description": "Override the expected name on the server certificate.",
           "type": "string",
           "x-cli-flag": "memberlist.tls-server-name"
+        },
+        "tombstone_timeout": {
+          "default": "5m0s",
+          "description": "How long to keep deleted keys (tombstones) in the KV store",
+          "type": "string",
+          "x-cli-flag": "memberlist.tombstone-timeout",
+          "x-format": "duration"
         }
       },
       "type": "object"

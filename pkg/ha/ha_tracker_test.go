@@ -3,11 +3,13 @@ package ha
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -19,7 +21,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -108,14 +112,23 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			}(),
 			expectedErr: nil,
 		},
-		"should failed with invalid kv store": {
+		"should pass with memberlist kv store": {
 			cfg: func() HATrackerConfig {
 				cfg := HATrackerConfig{}
 				flagext.DefaultValues(&cfg)
 				cfg.KVStore.Store = "memberlist"
 				return cfg
 			}(),
-			expectedErr: fmt.Errorf("invalid HATracker KV store type: %s", "memberlist"),
+			expectedErr: nil,
+		},
+		"should pass with multi kv store": {
+			cfg: func() HATrackerConfig {
+				cfg := HATrackerConfig{}
+				flagext.DefaultValues(&cfg)
+				cfg.KVStore.Store = "multi"
+				return cfg
+			}(),
+			expectedErr: nil,
 		},
 	}
 
@@ -125,6 +138,89 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			assert.Equal(t, testData.expectedErr, testData.cfg.Validate())
 		})
 	}
+}
+
+type dnsProviderMock struct {
+	resolved []string
+}
+
+func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string, flushOld bool) error {
+	p.resolved = addrs
+	return nil
+}
+
+func (p dnsProviderMock) Addresses() []string {
+	return p.resolved
+}
+
+// TestHATracker_CleanupDeletesArePropagated demonstrates that when the HA tracker's
+// background cleanup loop removes stale replicas, it correctly triggers a memberlist
+// KV.Delete which in turn generates a tombstone broadcast.
+func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+
+	var cfg memberlist.KVConfig
+	flagext.DefaultValues(&cfg)
+	replicaDescCodec := GetReplicaDescCodec()
+	cfg.Codecs = []codec.Codec{replicaDescCodec}
+	cfg.RetransmitMult = 1
+
+	mkv := memberlist.NewKV(cfg, logger, &dnsProviderMock{}, reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, mkv))
+	defer services.StopAndAwaitTerminated(ctx, mkv) //nolint:errcheck
+
+	client, err := memberlist.NewClient(mkv, replicaDescCodec)
+	require.NoError(t, err)
+
+	trackerCfg := HATrackerConfig{
+		EnableHATracker: false,
+		KVStore: kv.Config{
+			Store: "memberlist",
+		},
+	}
+	tracker, err := NewHATracker(trackerCfg, nil, HATrackerStatusConfig{}, reg, "", logger)
+	require.NoError(t, err)
+
+	// Inject our test memberlist client into the tracker
+	tracker.cfg.EnableHATracker = true
+	tracker.client = client
+
+	userID := "user1"
+	cluster := "cluster1"
+	replica := "replica0"
+	key := userID + "/" + cluster
+
+	// Inject initial HA data (simulates receiving a sample)
+	now := time.Now()
+	err = tracker.CheckReplica(ctx, userID, cluster, replica, now)
+	require.NoError(t, err)
+
+	// Drain the broadcast queue to clear out the CAS notification from CheckReplica
+	mkv.GetBroadcasts(0, math.MaxInt32)
+
+	// To call c.client.Delete(ctx, key) in cleanupOldReplicas
+	futureDeadline := now.Add(time.Hour)
+
+	// This will see (ReceivedAt < deadline) and CAS the entry to set DeletedAt = time.Now()
+	tracker.cleanupOldReplicas(ctx, futureDeadline)
+	require.Equal(t, float64(1), testutil.ToFloat64(tracker.replicasMarkedForDeletion))
+	require.Equal(t, float64(0), testutil.ToFloat64(tracker.deletedReplicas))
+
+	// This will see (DeletedAt > 0) and (DeletedAt < deadline), calling c.client.Delete(ctx, key)
+	tracker.cleanupOldReplicas(ctx, futureDeadline)
+	require.Equal(t, float64(1), testutil.ToFloat64(tracker.deletedReplicas))
+	require.Equal(t, float64(0), testutil.ToFloat64(tracker.markingForDeletionsFailed))
+
+	// Verify Local Deletion
+	val, err := client.Get(ctx, key)
+	require.NoError(t, err)
+	require.Nil(t, val, "HA Tracker cleanup should have deleted the key locally")
+
+	// Verify Broadcast Generation
+	broadcasts := mkv.GetBroadcasts(0, math.MaxInt32)
+	require.NotEmpty(t, broadcasts, "Cleanup Delete should generate a broadcast for tombstone propagation")
 }
 
 // Test that values are set in the HATracker after WatchPrefix has found it in the KVStore.
@@ -944,4 +1040,281 @@ func checkReplicaDeletionState(t *testing.T, duration time.Duration, c *HATracke
 		markedForDeletion := val.(*ReplicaDesc).DeletedAt > 0
 		require.Equal(t, expectedMarkedForDeletion, markedForDeletion, "KV entry marked for deletion")
 	}
+}
+
+func TestReplicaDesc_Merge(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name           string
+		current        *ReplicaDesc
+		other          *ReplicaDesc
+		expectChange   bool
+		expectedResult *ReplicaDesc
+	}{
+		{
+			name: "merge with more recent replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with older replica - no change",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica2",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with deleted replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(time.Minute)),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+		},
+		{
+			name: "undelete with more recent replica",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(time.Minute)),
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(2 * time.Minute)),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now.Add(2 * time.Minute)),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge with nil other",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other:        nil,
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "merge deleted with more recent deleted",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(time.Minute)),
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  timestamp.FromTime(now.Add(2 * time.Minute)),
+			},
+		},
+		{
+			name: "same timestamp, different replica - choose lexicographically smaller",
+			current: &ReplicaDesc{
+				Replica:    "replica-b",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica-a",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: true,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica-a",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "same timestamp, same replica - no change",
+			current: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			other: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+			expectChange: false,
+			expectedResult: &ReplicaDesc{
+				Replica:    "replica1",
+				ReceivedAt: timestamp.FromTime(now),
+				DeletedAt:  0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var change memberlist.Mergeable
+			var err error
+
+			if tt.other != nil {
+				change, err = tt.current.Merge(tt.other, false)
+			} else {
+				change, err = tt.current.Merge(nil, false)
+			}
+
+			require.NoError(t, err)
+
+			if tt.expectChange {
+				require.NotNil(t, change, "expected a change to be returned")
+			} else {
+				require.Nil(t, change, "expected no change to be returned")
+			}
+
+			assert.Equal(t, tt.expectedResult.Replica, tt.current.Replica)
+			assert.Equal(t, tt.expectedResult.ReceivedAt, tt.current.ReceivedAt)
+			assert.Equal(t, tt.expectedResult.DeletedAt, tt.current.DeletedAt)
+		})
+	}
+}
+
+func TestReplicaDesc_Merge_Commutativity(t *testing.T) {
+	tests := []struct {
+		name  string
+		descA *ReplicaDesc
+		descB *ReplicaDesc
+	}{
+		{
+			name: "Same replica: New vs Older",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 200,
+				DeletedAt:  0,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  100,
+			},
+		},
+		{
+			name: "Same Timestamps - Lexicographical Tie-break",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 100,
+				DeletedAt:  0,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-B",
+				ReceivedAt: 100,
+				DeletedAt:  0,
+			},
+		},
+		{
+			name: "Concurrent Deletions with Different Timestamps",
+			descA: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  150,
+			},
+			descB: &ReplicaDesc{
+				Replica:    "replica-A",
+				ReceivedAt: 50,
+				DeletedAt:  120,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// A merges B
+			nodeA := proto.Clone(tt.descA).(*ReplicaDesc)
+			incomingB := proto.Clone(tt.descB).(*ReplicaDesc)
+			_, _ = nodeA.Merge(incomingB, false)
+
+			// B merges A
+			nodeB := proto.Clone(tt.descB).(*ReplicaDesc)
+			incomingA := proto.Clone(tt.descA).(*ReplicaDesc)
+			_, _ = nodeB.Merge(incomingA, false)
+
+			// Check if both nodes converged to the exact same state
+			isSame := (nodeA.Replica == nodeB.Replica) &&
+				(nodeA.ReceivedAt == nodeB.ReceivedAt) &&
+				(nodeA.DeletedAt == nodeB.DeletedAt)
+
+			if !isSame {
+				t.Errorf("Commutativity violation in '%s'!\n"+
+					"Result of A.Merge(B): Replica=%s, ReceivedAt=%d, DeletedAt=%d\n"+
+					"Result of B.Merge(A): Replica=%s, ReceivedAt=%d, DeletedAt=%d",
+					tt.name,
+					nodeA.Replica, nodeA.ReceivedAt, nodeA.DeletedAt,
+					nodeB.Replica, nodeB.ReceivedAt, nodeB.DeletedAt)
+			}
+		})
+	}
+}
+
+func TestReplicaDesc_MergeContent(t *testing.T) {
+	desc := &ReplicaDesc{
+		Replica:    "replica1",
+		ReceivedAt: timestamp.FromTime(time.Now()),
+		DeletedAt:  0,
+	}
+
+	content := desc.MergeContent()
+	require.Equal(t, []string{"replica1"}, content)
+
+	emptyDesc := &ReplicaDesc{}
+	emptyContent := emptyDesc.MergeContent()
+	require.Nil(t, emptyContent)
 }

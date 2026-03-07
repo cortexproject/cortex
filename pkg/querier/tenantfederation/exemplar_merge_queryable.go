@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -29,8 +30,15 @@ import (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewExemplarQueryable(upstream storage.ExemplarQueryable, maxConcurrent int, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.ExemplarQueryable {
-	return NewMergeExemplarQueryable(defaultTenantLabel, maxConcurrent, tenantExemplarQuerierCallback(upstream), byPassWithSingleQuerier, reg)
+func NewExemplarQueryable(upstream storage.ExemplarQueryable, cfg Config, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.ExemplarQueryable {
+	return NewMergeExemplarQueryable(
+		defaultTenantLabel,
+		cfg.MaxConcurrent,
+		tenantExemplarQuerierCallback(upstream),
+		byPassWithSingleQuerier,
+		cfg.AllowPartialData,
+		reg,
+	)
 }
 
 func tenantExemplarQuerierCallback(exemplarQueryable storage.ExemplarQueryable) MergeExemplarQuerierCallback {
@@ -68,10 +76,11 @@ type MergeExemplarQuerierCallback func(ctx context.Context) (ids []string, queri
 // If the label `idLabelName` is already existing, its value is overwritten and
 // the previous value is exposed through a new label prefixed with "original_".
 // This behaviour is not implemented recursively.
-func NewMergeExemplarQueryable(idLabelName string, maxConcurrent int, callback MergeExemplarQuerierCallback, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.ExemplarQueryable {
+func NewMergeExemplarQueryable(idLabelName string, maxConcurrent int, callback MergeExemplarQuerierCallback, byPassWithSingleQuerier, allowPartialData bool, reg prometheus.Registerer) storage.ExemplarQueryable {
 	return &mergeExemplarQueryable{
 		idLabelName:             idLabelName,
 		byPassWithSingleQuerier: byPassWithSingleQuerier,
+		allowPartialData:        allowPartialData,
 		callback:                callback,
 		maxConcurrent:           maxConcurrent,
 
@@ -88,6 +97,7 @@ type mergeExemplarQueryable struct {
 	idLabelName             string
 	maxConcurrent           int
 	byPassWithSingleQuerier bool
+	allowPartialData        bool
 	callback                MergeExemplarQuerierCallback
 	tenantsPerExemplarQuery prometheus.Histogram
 }
@@ -113,6 +123,7 @@ func (m *mergeExemplarQueryable) ExemplarQuerier(ctx context.Context) (storage.E
 		tenantIds:               ids,
 		queriers:                queriers,
 		byPassWithSingleQuerier: m.byPassWithSingleQuerier,
+		allowPartialData:        m.allowPartialData,
 	}, nil
 }
 
@@ -129,6 +140,7 @@ type mergeExemplarQuerier struct {
 	tenantIds               []string
 	queriers                []storage.ExemplarQuerier
 	byPassWithSingleQuerier bool
+	allowPartialData        bool
 }
 
 type exemplarSelectJob struct {
@@ -170,6 +182,10 @@ func (m mergeExemplarQuerier) Select(start, end int64, matchers ...[]*labels.Mat
 
 		res, err := job.querier.Select(start, end, allUnrelatedMatchers...)
 		if err != nil {
+			if m.allowPartialData {
+				level.Warn(log).Log("msg", "error exemplars querying (partial data allowed)", "user", job.id, "err", err)
+				return nil
+			}
 			return errors.Wrapf(err, "error exemplars querying %s %s", rewriteLabelName(m.idLabelName), job.id)
 		}
 

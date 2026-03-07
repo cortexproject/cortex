@@ -310,6 +310,11 @@ tenant_federation:
   # CLI flag: -tenant-federation.user-sync-interval
   [user_sync_interval: <duration> | default = 5m]
 
+  # [Experimental] If enabled, query errors from individual tenants are treated
+  # as warnings, allowing partial results to be returned.
+  # CLI flag: -tenant-federation.allow-partial-data
+  [allow_partial_data: <boolean> | default = false]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 

@@ -3883,6 +3883,12 @@
         },
         "otlp": {
           "properties": {
+            "add_metric_suffixes": {
+              "default": true,
+              "description": "If true, suffixes will be added to the metrics for name normalization.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.otlp.add-metric-suffixes"
+            },
             "allow_delta_temporality": {
               "default": false,
               "description": "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.",
@@ -3906,12 +3912,6 @@
               "description": "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.",
               "type": "boolean",
               "x-cli-flag": "distributor.otlp.enable-type-and-unit-labels"
-            },
-            "add_metric_suffixes": {
-              "default": true,
-              "description": "If true, suffixes will be added to the metrics for name normalization.",
-              "type": "boolean",
-              "x-cli-flag": "distributor.otlp.add-metric-suffixes"
             }
           },
           "type": "object"

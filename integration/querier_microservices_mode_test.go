@@ -321,6 +321,13 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 				case "parquet":
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
+
+					// Wait until the compactor's blocks cleaner has completed at least
+					// one pass, which creates the bucket index. The parquet
+					// store-gateway discovers blocks on-demand through the bucket index
+					// rather than pre-loading them, so the bucket index must exist
+					// before querying.
+					require.NoError(t, compactor.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_compactor_block_cleanup_completed_total"}, e2e.WaitMissingMetrics))
 				}
 
 				// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).

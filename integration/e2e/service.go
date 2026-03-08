@@ -162,6 +162,12 @@ func (s *ConcreteService) Stop() error {
 
 	s.Wait()
 
+	// Ensure the container is fully removed before returning. Even though
+	// containers are started with --rm, Docker removes them asynchronously
+	// after the process exits. Without this explicit removal, restarting a
+	// container with the same name can fail with "name already in use".
+	_, _ = RunCommandAndGetOutput("docker", "rm", "--force", s.containerName())
+
 	s.usedNetworkName = ""
 
 	return nil
@@ -180,6 +186,12 @@ func (s *ConcreteService) Kill() error {
 	}
 
 	s.Wait()
+
+	// Ensure the container is fully removed before returning. Even though
+	// containers are started with --rm, Docker removes them asynchronously
+	// after the process exits. Without this explicit removal, restarting a
+	// container with the same name can fail with "name already in use".
+	_, _ = RunCommandAndGetOutput("docker", "rm", "--force", s.containerName())
 
 	s.usedNetworkName = ""
 

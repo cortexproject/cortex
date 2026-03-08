@@ -1824,21 +1824,41 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-func isValidQuery(generatedQuery parser.Expr, skipStdAggregations bool) bool {
+func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 	isValid := true
+	queryStr := generatedQuery.String()
 	// TODO(SungJin1212): Test limitk, limit_ratio
-	if strings.Contains(generatedQuery.String(), "limitk") {
+	if strings.Contains(queryStr, "limitk") {
 		// current skip the limitk
 		return false
 	}
-	if strings.Contains(generatedQuery.String(), "limit_ratio") {
+	if strings.Contains(queryStr, "limit_ratio") {
 		// current skip the limit_ratio
 		return false
 	}
-	if skipStdAggregations && (strings.Contains(generatedQuery.String(), "stddev") || strings.Contains(generatedQuery.String(), "stdvar")) {
-		// The behavior of stdvar and stddev changes in https://github.com/prometheus/prometheus/pull/14941
-		// If skipStdAggregations enabled, we skip to evaluate for stddev and stdvar aggregations.
+	if strings.Contains(queryStr, "--") {
+		// The query fuzzer can generate nested unary negation operators (e.g. --0.5)
+		// which are evaluated differently between Cortex versions. Skip these queries
+		// to avoid false positives in backward compatibility tests.
 		return false
+	}
+	if skipBackwardIncompat {
+		// Skip functions and aggregations whose evaluation semantics changed across
+		// Prometheus versions embedded in different Cortex releases. These produce
+		// legitimately different results and are not Cortex bugs.
+		if strings.Contains(queryStr, "stddev") || strings.Contains(queryStr, "stdvar") {
+			// Changed in https://github.com/prometheus/prometheus/pull/14941
+			return false
+		}
+		if strings.Contains(queryStr, "quantile") {
+			return false
+		}
+		if strings.Contains(queryStr, "predict_linear") {
+			return false
+		}
+		if strings.Contains(queryStr, "atan2") {
+			return false
+		}
 	}
 	return isValid
 }

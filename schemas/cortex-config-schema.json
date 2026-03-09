@@ -6608,7 +6608,7 @@
           "default": false,
           "description": "Enable the ruler api",
           "type": "boolean",
-          "x-cli-flag": "experimental.ruler.enable-api"
+          "x-cli-flag": "ruler.enable-api"
         },
         "enable_ha_evaluation": {
           "default": false,

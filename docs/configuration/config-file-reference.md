@@ -5605,7 +5605,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the ruler api
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 
 # EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API

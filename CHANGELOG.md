@@ -1,6 +1,9 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
+  * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.
+  * Ruler API is no longer marked as experimental.
 * [CHANGE] Alertmanager: Graduate Alertmanager API and sharding from experimental. #7315
   * Flag: Renamed `-experimental.alertmanager.enable-api` to `-alertmanager.enable-api`. The old flag is kept as deprecated.
   * Alertmanager sharding is no longer marked as experimental.

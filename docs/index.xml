@@ -3478,6 +3478,10 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.enable-type-and-unit-labels&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[enable_type_and_unit_labels&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># If true, suffixes will be added to the metrics for name normalization.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -distributor.otlp.add-metric-suffixes&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[add_metric_suffixes&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = true]&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="etcd_config">&lt;code>etcd_config&lt;/code>&lt;/h3>
 &lt;p>The &lt;code>etcd_config&lt;/code> configures the etcd client. The supported CLI flags &lt;code>&amp;lt;prefix&amp;gt;&lt;/code> used to reference this config block are:&lt;/p>
 &lt;ul>

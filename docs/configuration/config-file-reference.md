@@ -1325,6 +1325,11 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
   [max_inflight_requests: <int> | default = 0]
 
+  # Max number of bytes being processed concurrently across all queries. When
+  # the limit is reached, new requests are rejected with HTTP 503. 0 to disable.
+  # CLI flag: -blocks-storage.bucket-store.max-concurrent-bytes
+  [max_concurrent_bytes: <int> | default = 0]
+
   # Maximum number of concurrent tenants syncing blocks.
   # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
   [tenant_sync_concurrency: <int> | default = 10]

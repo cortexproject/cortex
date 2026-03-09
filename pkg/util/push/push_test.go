@@ -380,14 +380,14 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
 
 			for i := range v1Req.Timeseries {
-				if len(v1Req.Timeseries[i].TimeSeries.Samples) == 0 {
-					v1Req.Timeseries[i].TimeSeries.Samples = nil
+				if len(v1Req.Timeseries[i].Samples) == 0 {
+					v1Req.Timeseries[i].Samples = nil
 				}
-				if len(v1Req.Timeseries[i].TimeSeries.Exemplars) == 0 {
-					v1Req.Timeseries[i].TimeSeries.Exemplars = nil
+				if len(v1Req.Timeseries[i].Exemplars) == 0 {
+					v1Req.Timeseries[i].Exemplars = nil
 				}
-				if len(v1Req.Timeseries[i].TimeSeries.Histograms) == 0 {
-					v1Req.Timeseries[i].TimeSeries.Histograms = nil
+				if len(v1Req.Timeseries[i].Histograms) == 0 {
+					v1Req.Timeseries[i].Histograms = nil
 				}
 			}
 

@@ -106,15 +106,21 @@ func TestIngesterMetadataWithTenantFederation(t *testing.T) {
 	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 
-	// Wait until distributor has updated the ring.
-	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
-		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+	// Wait until distributor has updated the ring. Use WaitMissingMetrics because
+	// with tenant federation enabled, the metrics endpoint may take longer to expose
+	// ring metrics after startup.
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	// Wait until querier has updated the ring.
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
-		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	metadataMetricNum := 5
 	metadataPerMetrics := 2

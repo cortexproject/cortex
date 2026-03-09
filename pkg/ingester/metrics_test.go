@@ -157,6 +157,8 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_ingested_native_histograms_failures_total The total number of native histograms that errored on ingestion.
 			# TYPE cortex_ingester_ingested_native_histograms_failures_total counter
 			cortex_ingester_ingested_native_histograms_failures_total 0
+			# HELP cortex_ingester_ingested_histogram_buckets The number of ingested native histogram buckets per user.
+			# TYPE cortex_ingester_ingested_histogram_buckets histogram
 			# HELP cortex_ingester_ingestion_rate_samples_per_second Current ingestion rate in samples/sec that ingester is using to limit access.
 			# TYPE cortex_ingester_ingestion_rate_samples_per_second gauge
 			cortex_ingester_ingestion_rate_samples_per_second 0

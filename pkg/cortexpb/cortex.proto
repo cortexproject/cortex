@@ -24,6 +24,8 @@ message WriteRequest  {
 
   bool skip_label_name_validation = 1000; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
   MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false];
+  // When true, indicates that out-of-order samples should be discarded even if OOO is enabled.
+  bool discard_out_of_order = 1002;
 }
 
 // refer to https://github.com/prometheus/prometheus/blob/v3.5.0/prompb/io/prometheus/write/v2/types.proto

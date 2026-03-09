@@ -338,7 +338,7 @@ func (g blocksGroup) rangeEndTime() time.Time {
 
 func (g blocksGroup) String() string {
 	out := strings.Builder{}
-	out.WriteString(fmt.Sprintf("Group range start: %d, range end: %d, key %v, blocks: ", g.rangeStart, g.rangeEnd, g.key))
+	fmt.Fprintf(&out, "Group range start: %d, range end: %d, key %v, blocks: ", g.rangeStart, g.rangeEnd, g.key)
 
 	for i, b := range g.blocks {
 		if i > 0 {
@@ -347,7 +347,7 @@ func (g blocksGroup) String() string {
 
 		minT := time.Unix(0, b.MinTime*int64(time.Millisecond)).UTC()
 		maxT := time.Unix(0, b.MaxTime*int64(time.Millisecond)).UTC()
-		out.WriteString(fmt.Sprintf("%s (min time: %s, max time: %s)", b.ULID.String(), minT.String(), maxT.String()))
+		fmt.Fprintf(&out, "%s (min time: %s, max time: %s)", b.ULID.String(), minT.String(), maxT.String())
 	}
 
 	return out.String()

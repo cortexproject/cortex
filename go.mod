@@ -31,7 +31,7 @@ require (
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.18.2
-	github.com/lib/pq v1.10.9
+	github.com/lib/pq v1.11.2 // indirect
 	github.com/minio/minio-go/v7 v7.0.98
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/oklog/ulid v1.3.1

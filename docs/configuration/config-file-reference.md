@@ -282,7 +282,7 @@ parquet_converter:
 tenant_federation:
   # If enabled on all Cortex services, queries can be federated across multiple
   # tenants. The tenant IDs involved need to be specified separated by a `|`
-  # character in the `X-Scope-OrgID` header (experimental).
+  # character in the `X-Scope-OrgID` header.
   # CLI flag: -tenant-federation.enabled
   [enabled: <boolean> | default = false]
 
@@ -3213,6 +3213,12 @@ ha_tracker:
 # CLI flag: -distributor.remote-writev2-enabled
 [remote_writev2_enabled: <boolean> | default = false]
 
+# If true, treat requests with unknown or invalid Content-Type header as remote
+# write v1 (legacy behavior). If false, return 415 Unsupported Media Type for
+# non-standard content types.
+# CLI flag: -distributor.accept-unknown-remote-write-content-type
+[accept_unknown_remote_write_content_type: <boolean> | default = false]
+
 ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,
@@ -4654,7 +4660,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -frontend.memcached.service
 [service: <string> | default = "memcached"]
 
-# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+# Comma separated addresses list in DNS Service Discovery format:
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
 # CLI flag: -frontend.memcached.addresses
 [addresses: <string> | default = ""]

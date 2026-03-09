@@ -251,13 +251,14 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			return v1Req, err
 		}
 
+		ts := cortexpb.TimeseriesFromPool()
+		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
+		ts.Samples = append(ts.Samples, v2Ts.Samples...)
+		ts.Exemplars = exemplars
+		ts.Histograms = append(ts.Histograms, v2Ts.Histograms...)
+
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
-			TimeSeries: &cortexpb.TimeSeries{
-				Labels:     cortexpb.FromLabelsToLabelAdapters(lbs),
-				Samples:    v2Ts.Samples,
-				Exemplars:  exemplars,
-				Histograms: v2Ts.Histograms,
-			},
+			TimeSeries: ts,
 		})
 
 		if shouldConvertV2Metadata(v2Ts.Metadata) {

@@ -62,6 +62,7 @@
 * [BUGFIX] Distributor: Return remote write V2 stats headers properly when the request is HA deduplicated. #7240
 * [BUGFIX] Cache: Fix Redis Cluster EXECABORT error in MSet by using individual SET commands instead of transactions for cluster mode. #7262
 * [BUGFIX] Distributor: Fix an `index out of range` panic in PRW2.0 handler caused by dirty metadata when reusing requests from `sync.Pool`. #7299
+* [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
 
 
 ## 1.20.1 2025-12-03

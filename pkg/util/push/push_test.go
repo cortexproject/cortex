@@ -378,6 +378,19 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
 			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+
+			for i := range v1Req.Timeseries {
+				if len(v1Req.Timeseries[i].Samples) == 0 {
+					v1Req.Timeseries[i].Samples = nil
+				}
+				if len(v1Req.Timeseries[i].Exemplars) == 0 {
+					v1Req.Timeseries[i].Exemplars = nil
+				}
+				if len(v1Req.Timeseries[i].Histograms) == 0 {
+					v1Req.Timeseries[i].Histograms = nil
+				}
+			}
+
 			require.NoError(t, err)
 			require.Equal(t, test.expectedV1Req, v1Req)
 		})
@@ -1167,4 +1180,47 @@ func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
 
 	resp2 := sendRequest(&req2Proto)
 	require.Equal(t, http.StatusNoContent, resp2.Code)
+}
+
+func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
+	fh := tsdbutil.GenerateTestFloatHistogram(1)
+	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs: []uint32{1, 2},
+						Samples: []cortexpb.Sample{
+							{Value: 1.0, TimestampMs: 1000},
+						},
+						Exemplars: []cortexpb.ExemplarV2{
+							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
+						},
+						Histograms: []cortexpb.Histogram{
+							ph,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	v1Req, err := convertV2RequestToV1(v2Req, false)
+	require.NoError(t, err)
+	require.Len(t, v1Req.Timeseries, 1)
+
+	v1Ts := v1Req.Timeseries[0]
+	v2Ts := v2Req.Timeseries[0]
+
+	require.True(t, len(v1Ts.Samples) > 0 && len(v2Ts.Samples) > 0)
+	require.NotSame(t, &v1Ts.Samples[0], &v2Ts.Samples[0], "Samples array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Exemplars) > 0 && len(v2Ts.Exemplars) > 0)
+	require.NotSame(t, &v1Ts.Exemplars[0], &v2Ts.Exemplars[0], "Exemplars array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Histograms) > 0 && len(v2Ts.Histograms) > 0)
+	require.NotSame(t, &v1Ts.Histograms[0], &v2Ts.Histograms[0], "Histograms array must not share the same memory address")
 }

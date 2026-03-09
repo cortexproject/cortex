@@ -279,7 +279,7 @@
         },
         "enable_api": {
           "default": false,
-          "description": "Enable the experimental alertmanager config api.",
+          "description": "Deprecated: Use -alertmanager.enable-api instead.",
           "type": "boolean",
           "x-cli-flag": "experimental.alertmanager.enable-api"
         },

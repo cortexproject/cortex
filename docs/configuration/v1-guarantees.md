@@ -41,8 +41,6 @@ Currently experimental features are:
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Ruler API (to PUT rules).
 - Alertmanager:
-  - API (enabled via `-experimental.alertmanager.enable-api`)
-  - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - gRPC Store.
 - TLS configuration in gRPC and HTTP clients.

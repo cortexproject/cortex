@@ -1,6 +1,9 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Alertmanager: Graduate Alertmanager API and sharding from experimental. #7315
+  * Flag: Renamed `-experimental.alertmanager.enable-api` to `-alertmanager.enable-api`. The old flag is kept as deprecated.
+  * Alertmanager sharding is no longer marked as experimental.
 * [CHANGE] Blocks storage: Bucket index is now enabled by default. Disabling the bucket index (`-blocks-storage.bucket-store.bucket-index.enabled=false`) is not recommended for production. #7259
 * [CHANGE] Users Scanner: Rename user index update configuration. #7180
   * Flag: Renamed `-*.users-scanner.user-index.cleanup-interval` to `-*.users-scanner.user-index.update-interval`.

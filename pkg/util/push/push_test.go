@@ -378,6 +378,19 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
 			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+
+			for i := range v1Req.Timeseries {
+				if len(v1Req.Timeseries[i].TimeSeries.Samples) == 0 {
+					v1Req.Timeseries[i].TimeSeries.Samples = nil
+				}
+				if len(v1Req.Timeseries[i].TimeSeries.Exemplars) == 0 {
+					v1Req.Timeseries[i].TimeSeries.Exemplars = nil
+				}
+				if len(v1Req.Timeseries[i].TimeSeries.Histograms) == 0 {
+					v1Req.Timeseries[i].TimeSeries.Histograms = nil
+				}
+			}
+
 			require.NoError(t, err)
 			require.Equal(t, test.expectedV1Req, v1Req)
 		})

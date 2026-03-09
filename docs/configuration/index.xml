@@ -580,7 +580,7 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -alertmanager.cluster.push-pull-interval&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[push_pull_interval&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 1m]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Enable the experimental alertmanager config api.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Deprecated: Use -alertmanager.enable-api instead.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -experimental.alertmanager.enable-api&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[enable_api&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
@@ -7247,8 +7247,6 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Ruler API (to PUT rules).&lt;/li>
 &lt;li>Alertmanager:
 &lt;ul>
-&lt;li>API (enabled via &lt;code>-experimental.alertmanager.enable-api&lt;/code>)&lt;/li>
-&lt;li>Sharding of tenants across multiple instances (enabled via &lt;code>-alertmanager.sharding-enabled&lt;/code>)&lt;/li>
 &lt;li>Receiver integrations firewall (configured via &lt;code>-alertmanager.receivers-firewall.*&lt;/code>)&lt;/li>
 &lt;/ul>
 &lt;/li>

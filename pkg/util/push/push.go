@@ -225,6 +225,10 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
 		}
 
+		if int(v2Ts.Metadata.UnitRef) >= len(symbols) {
+			return v1Req, fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", v2Ts.Metadata.UnitRef, len(symbols))
+		}
+
 		unit := symbols[v2Ts.Metadata.UnitRef]
 		metricType := v2Ts.Metadata.Type
 		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")
@@ -247,13 +251,14 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			return v1Req, err
 		}
 
+		ts := cortexpb.TimeseriesFromPool()
+		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
+		ts.Samples = append(ts.Samples, v2Ts.Samples...)
+		ts.Exemplars = exemplars
+		ts.Histograms = append(ts.Histograms, v2Ts.Histograms...)
+
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
-			TimeSeries: &cortexpb.TimeSeries{
-				Labels:     cortexpb.FromLabelsToLabelAdapters(lbs),
-				Samples:    v2Ts.Samples,
-				Exemplars:  exemplars,
-				Histograms: v2Ts.Histograms,
-			},
+			TimeSeries: ts,
 		})
 
 		if shouldConvertV2Metadata(v2Ts.Metadata) {
@@ -261,7 +266,11 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			if err != nil {
 				return v1Req, err
 			}
-			v1Metadata = append(v1Metadata, convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata))
+			metadata, err := convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+			if err != nil {
+				return v1Req, err
+			}
+			v1Metadata = append(v1Metadata, metadata)
 		}
 	}
 
@@ -275,7 +284,7 @@ func shouldConvertV2Metadata(metadata cortexpb.MetadataV2) bool {
 	return !(metadata.HelpRef == 0 && metadata.UnitRef == 0 && metadata.Type == cortexpb.METRIC_TYPE_UNSPECIFIED) //nolint:staticcheck
 }
 
-func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.MetadataV2) *cortexpb.MetricMetadata {
+func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.MetadataV2) (*cortexpb.MetricMetadata, error) {
 	t := cortexpb.UNKNOWN
 
 	switch metadata.Type {
@@ -295,12 +304,19 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 		t = cortexpb.STATESET
 	}
 
+	if int(metadata.UnitRef) >= len(symbols) {
+		return nil, fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", metadata.UnitRef, len(symbols))
+	}
+	if int(metadata.HelpRef) >= len(symbols) {
+		return nil, fmt.Errorf("invalid HelpRef %d: exceeds symbols length %d", metadata.HelpRef, len(symbols))
+	}
+
 	return &cortexpb.MetricMetadata{
 		Type:             t,
 		MetricFamilyName: name,
 		Unit:             symbols[metadata.UnitRef],
 		Help:             symbols[metadata.HelpRef],
-	}
+	}, nil
 }
 
 func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) ([]cortexpb.Exemplar, error) {

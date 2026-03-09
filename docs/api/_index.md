@@ -796,7 +796,7 @@ POST /multitenant_alertmanager/delete_tenant_config
 ```
 
 This endpoint deletes configuration for a tenant identified by `X-Scope-OrgID` header.
-It is internal, available even if Alertmanager API is not enabled by using `-experimental.alertmanager.enable-api`.
+It is internal, available even if Alertmanager API is not enabled by using `-alertmanager.enable-api`.
 The endpoint returns a status code of `200` if the user's configuration has been deleted, or it didn't exist in the first place.
 
 _Requires [authentication](#authentication)._
@@ -811,7 +811,7 @@ Get the current Alertmanager configuration for the authenticated tenant, reading
 
 This endpoint doesn't accept any URL query parameter and returns `200` on success.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
+_This endpoint is disabled by default and can be enabled via the `-alertmanager.enable-api` CLI flag (or its respective YAML config option)._
 
 _Requires [authentication](#authentication)._
 
@@ -825,7 +825,7 @@ Stores or updates the Alertmanager configuration for the authenticated tenant. T
 
 This endpoint expects the Alertmanager **YAML** configuration in the request body and returns `201` on success.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
+_This endpoint is disabled by default and can be enabled via the `-alertmanager.enable-api` CLI flag (or its respective YAML config option)._
 
 _Requires [authentication](#authentication)._
 
@@ -863,7 +863,7 @@ Deletes the Alertmanager configuration for the authenticated tenant.
 
 This endpoint doesn't accept any URL query parameter and returns `200` on success.
 
-_This experimental endpoint is disabled by default and can be enabled via the `-experimental.alertmanager.enable-api` CLI flag (or its respective YAML config option)._
+_This endpoint is disabled by default and can be enabled via the `-alertmanager.enable-api` CLI flag (or its respective YAML config option)._
 
 _Requires [authentication](#authentication)._
 

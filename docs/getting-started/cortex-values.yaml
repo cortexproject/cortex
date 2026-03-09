@@ -147,7 +147,7 @@ config:
     # -- Disable alertmanager gossip cluster by setting empty listen_address to empty string
     cluster:
       listen_address: '0.0.0.0:9094'
-    # -- Enable the experimental alertmanager config api.
+    # -- Enable the alertmanager config api.
     enable_api: true
     external_url: '/api/prom/alertmanager'
   frontend:

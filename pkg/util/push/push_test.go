@@ -378,6 +378,19 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
 			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+
+			for i := range v1Req.Timeseries {
+				if len(v1Req.Timeseries[i].Samples) == 0 {
+					v1Req.Timeseries[i].Samples = nil
+				}
+				if len(v1Req.Timeseries[i].Exemplars) == 0 {
+					v1Req.Timeseries[i].Exemplars = nil
+				}
+				if len(v1Req.Timeseries[i].Histograms) == 0 {
+					v1Req.Timeseries[i].Histograms = nil
+				}
+			}
+
 			require.NoError(t, err)
 			require.Equal(t, test.expectedV1Req, v1Req)
 		})
@@ -448,6 +461,145 @@ func Test_convertV2RequestToV1(t *testing.T) {
 	assert.Equal(t, expectedHistograms, countHistograms)
 	assert.Equal(t, 4, len(v1Req.Timeseries))
 	assert.Equal(t, 1, len(v1Req.Metadata))
+}
+
+func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		v2Req         *cortexpb.PreallocWriteRequestV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef out of bounds",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 1983,
+									HelpRef: 0,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid UnitRef 1983: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef out of bounds in metadata conversion",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_GAUGE,
+									UnitRef: 0,
+									HelpRef: 9999,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid HelpRef 9999: exceeds symbols length 5",
+		},
+		{
+			name: "valid symbol refs should not error",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 3,
+									HelpRef: 4,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2RequestToV1(tt.v2Req, false)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
+
+func Test_convertV2ToV1Metadata_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		metadata      cortexpb.MetadataV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 100,
+				HelpRef: 0,
+			},
+			expectedError: "invalid UnitRef 100: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_GAUGE,
+				UnitRef: 0,
+				HelpRef: 200, // Out of bounds
+			},
+			expectedError: "invalid HelpRef 200: exceeds symbols length 5",
+		},
+		{
+			name: "valid refs",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 3,
+				HelpRef: 4,
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2ToV1Metadata("test_metric", symbols, tt.metadata)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
 }
 
 func TestHandler_remoteWrite(t *testing.T) {
@@ -1028,4 +1180,47 @@ func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
 
 	resp2 := sendRequest(&req2Proto)
 	require.Equal(t, http.StatusNoContent, resp2.Code)
+}
+
+func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
+	fh := tsdbutil.GenerateTestFloatHistogram(1)
+	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs: []uint32{1, 2},
+						Samples: []cortexpb.Sample{
+							{Value: 1.0, TimestampMs: 1000},
+						},
+						Exemplars: []cortexpb.ExemplarV2{
+							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
+						},
+						Histograms: []cortexpb.Histogram{
+							ph,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	v1Req, err := convertV2RequestToV1(v2Req, false)
+	require.NoError(t, err)
+	require.Len(t, v1Req.Timeseries, 1)
+
+	v1Ts := v1Req.Timeseries[0]
+	v2Ts := v2Req.Timeseries[0]
+
+	require.True(t, len(v1Ts.Samples) > 0 && len(v2Ts.Samples) > 0)
+	require.NotSame(t, &v1Ts.Samples[0], &v2Ts.Samples[0], "Samples array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Exemplars) > 0 && len(v2Ts.Exemplars) > 0)
+	require.NotSame(t, &v1Ts.Exemplars[0], &v2Ts.Exemplars[0], "Exemplars array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Histograms) > 0 && len(v2Ts.Histograms) > 0)
+	require.NotSame(t, &v1Ts.Histograms[0], &v2Ts.Histograms[0], "Histograms array must not share the same memory address")
 }

@@ -34,6 +34,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/ingester"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -63,6 +64,7 @@ const (
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
+	OverridesAPI             string = "overrides-api"
 	Server                   string = "server"
 	Distributor              string = "distributor"
 	DistributorService       string = "distributor-service"
@@ -213,6 +215,16 @@ func (t *Cortex) initOverridesExporter() (services.Service, error) {
 	// the overrides exporter has no state and reads overrides for runtime configuration each time it
 	// is collected so there is no need to return any service
 	return nil, nil
+}
+
+func (t *Cortex) initOverridesAPI() (services.Service, error) {
+	overridesAPI, err := overrides.New(t.Cfg.RuntimeConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create overrides API: %w", err)
+	}
+	t.OverridesAPI = overridesAPI
+	t.API.RegisterOverrides(overridesAPI)
+	return overridesAPI, nil
 }
 
 func (t *Cortex) initDistributorService() (serv services.Service, err error) {
@@ -777,6 +789,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Ring, t.initRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Overrides, t.initOverrides, modules.UserInvisibleModule)
 	mm.RegisterModule(OverridesExporter, t.initOverridesExporter)
+	mm.RegisterModule(OverridesAPI, t.initOverridesAPI)
 	mm.RegisterModule(Distributor, t.initDistributor)
 	mm.RegisterModule(DistributorService, t.initDistributorService, modules.UserInvisibleModule)
 	mm.RegisterModule(GrpcClientService, t.initGrpcClientServices, modules.UserInvisibleModule)
@@ -808,6 +821,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ring:                     {API, RuntimeConfig, MemberlistKV},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {RuntimeConfig},
+		OverridesAPI:             {API, Overrides},
 		Distributor:              {DistributorService, API, GrpcClientService},
 		DistributorService:       {Ring, Overrides},
 		Ingester:                 {IngesterService, Overrides, API},

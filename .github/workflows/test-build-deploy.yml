@@ -162,6 +162,7 @@ jobs:
           - integration_querier
           - integration_ruler
           - integration_query_fuzz
+          - integration_overrides
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.2.0

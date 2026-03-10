@@ -65,6 +65,9 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete Alertmanager configuration](#delete-alertmanager-configuration) | Alertmanager || `DELETE /api/v1/alerts` |
 | [Tenant delete request](#tenant-delete-request) | Purger || `POST /purger/delete_tenant` |
 | [Tenant delete status](#tenant-delete-status) | Purger || `GET /purger/delete_tenant_status` |
+| [Get user overrides](#get-user-overrides) | Overrides API || `GET /api/v1/user-overrides` |
+| [Set user overrides](#set-user-overrides) | Overrides API || `POST /api/v1/user-overrides` |
+| [Delete user overrides](#delete-user-overrides) | Overrides API || `DELETE /api/v1/user-overrides` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway || `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor || `GET /compactor/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) || `GET /api/prom/configs/rules` |
@@ -1004,5 +1007,37 @@ POST /api/prom/configs/restore
 ```
 
 Re-enable configs for the authenticated tenant, after being previously deactivated.
+
+_Requires [authentication](#authentication)._
+
+## Overrides API
+
+### Get user overrides
+
+```
+GET /api/v1/user-overrides
+```
+
+Returns the current overrides for the authenticated tenant. Returns a JSON object with the tenant's configured limit overrides.
+
+_Requires [authentication](#authentication)._
+
+### Set user overrides
+
+```
+POST /api/v1/user-overrides
+```
+
+Sets or updates specific overrides for the authenticated tenant. The request body should be a JSON object containing only the limits to update. Existing overrides are merged with the new values. Limits must be listed in `api_allowed_limits` in the runtime config and must not exceed `hard_overrides` values.
+
+_Requires [authentication](#authentication)._
+
+### Delete user overrides
+
+```
+DELETE /api/v1/user-overrides
+```
+
+Removes all overrides for the authenticated tenant, reverting to global default limits.
 
 _Requires [authentication](#authentication)._

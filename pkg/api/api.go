@@ -30,6 +30,7 @@ import (
 	frontendv2 "github.com/cortexproject/cortex/pkg/frontend/v2"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
+	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -483,4 +484,10 @@ func (a *API) RegisterServiceMapHandler(handler http.Handler) {
 func (a *API) RegisterMemberlistKV(handler http.Handler) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/memberlist", "Memberlist Status")
 	a.RegisterRoute("/memberlist", handler, false, "GET")
+}
+
+func (a *API) RegisterOverrides(o *overrides.API) {
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.GetOverrides), true, "GET")
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.SetOverrides), true, "POST")
+	a.RegisterRoute("/api/v1/user-overrides", http.HandlerFunc(o.DeleteOverrides), true, "DELETE")
 }

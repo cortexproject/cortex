@@ -29,6 +29,10 @@ type RuntimeConfigValues struct {
 	IngesterChunkStreaming *bool `yaml:"ingester_stream_chunks_when_using_blocks"`
 
 	IngesterLimits *ingester.InstanceLimits `yaml:"ingester_limits"`
+
+	HardTenantLimits map[string]*validation.Limits `yaml:"hard_overrides,omitempty"`
+
+	APIAllowedLimits []string `yaml:"api_allowed_limits,omitempty"`
 }
 
 // runtimeConfigTenantLimits provides per-tenant limit overrides based on a runtimeconfig.Manager

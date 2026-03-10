@@ -22,6 +22,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Install Tools
+        run: go install github.com/campoy/embedmd@v1.0.0
       - name: Check Generated Documentation
         run: make BUILD_IN_CONTAINER=false check-doc
       - name: Check White Noise

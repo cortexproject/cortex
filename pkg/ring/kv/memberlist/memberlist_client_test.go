@@ -1172,7 +1172,7 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 			"a": {Timestamp: now.Unix() - 5, State: ACTIVE},
 			"b": {Timestamp: now.Unix() + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3}},
 			"c": {Timestamp: now.Unix(), State: ACTIVE},
-		}}))
+		}}, false, 0))
 
 	// Check two things here:
 	// 1) state of value in KV store
@@ -1267,7 +1267,7 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 				require.Equal(t, tc.valueBeforeSend, d, "valueBeforeSend")
 			}
 
-			kv.NotifyMsg(marshalKeyValuePair(t, key, codec, tc.msgToSend))
+			kv.NotifyMsg(marshalKeyValuePair(t, key, codec, tc.msgToSend, false, 0))
 
 			bs := kv.GetBroadcasts(0, math.MaxInt32)
 			if tc.broadcastMessage == nil {
@@ -1336,11 +1336,230 @@ func TestDeleteIsPropagatedToOtherNodes(t *testing.T) {
 		Members: map[string]member{
 			"replica0": {Timestamp: now.Unix(), State: ACTIVE}, // Same timestamp as the original creation
 		},
-	}))
+	}, false, now.UnixMilli()))
 
 	// The key should remain deleted because the tombstone takes precedence.
 	d = getData(t, client, testKey)
 	require.Nil(t, d, "key should remain deleted after gossip from peer.")
+}
+
+// TestResurrectDeletedKeyWithNewerMetadata demonstrates that a tombstone
+// can be resurrected if a gossip message arrives with a newer UpdatedAt metadata timestamp.
+func TestResurrectDeletedKeyWithNewerMetadata(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	client, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	testKey := "resurrect-key"
+	now := time.Now()
+
+	// Create a key (ACTIVE state)
+	cas(t, client, testKey, func(in *data) (*data, bool, error) {
+		d := getOrCreateData(in)
+		d.Members["replica0"] = member{Timestamp: now.Unix(), State: ACTIVE}
+		return d, true, nil
+	})
+
+	// Delete the key (Create a Tombstone)
+	err = client.Delete(context.Background(), testKey)
+	require.NoError(t, err)
+
+	// Verify deletion
+	d := getData(t, client, testKey)
+	require.Nil(t, d, "The key should be successfully deleted.")
+
+	// Prepare a new state with a future timestamp
+	futureTime := now.Add(time.Minute)
+	futureData := &data{
+		Members: map[string]member{
+			"replica0": {Timestamp: futureTime.Unix(), State: ACTIVE},
+		},
+	}
+
+	// Send a gossip message with a newer metadata timestamp (UpdatedAt).
+	msg := marshalKeyValuePair(t, testKey, c, futureData, false, futureTime.UnixMilli())
+	mkv.NotifyMsg(msg)
+
+	// The key should be resurrected
+	resurrectedData := getData(t, client, testKey)
+	require.NotNil(t, resurrectedData, "The key should be resurrected after receiving a message with a newer UpdatedAt.")
+	require.Contains(t, resurrectedData.Members, "replica0")
+	require.Equal(t, ACTIVE, resurrectedData.Members["replica0"].State)
+	require.Equal(t, futureTime.Unix(), resurrectedData.Members["replica0"].Timestamp)
+}
+
+func TestDeleteIdempotencyAndList(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	client, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	err = client.Delete(ctx, "non-existent-key")
+	require.NoError(t, err)
+	require.Equal(t, 0, len(mkv.GetBroadcasts(0, math.MaxInt32)), "Deleting a non-existent key should not trigger a broadcast")
+
+	key1 := "prefix-key1"
+	key2 := "prefix-key2"
+	now := time.Now()
+
+	createFn := func(in *data) (*data, bool, error) {
+		d := &data{Members: map[string]member{"node1": {Timestamp: now.Unix(), State: ACTIVE}}}
+		return d, true, nil
+	}
+	cas(t, client, key1, createFn)
+	cas(t, client, key2, createFn)
+
+	// Drain broadcasts caused by the CAS operations
+	mkv.GetBroadcasts(0, math.MaxInt32)
+
+	keys, err := client.List(ctx, "prefix-")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{key1, key2}, keys, "Both keys should appear in the List before deletion")
+
+	// Delete key1
+	err = client.Delete(ctx, key1)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(mkv.GetBroadcasts(0, math.MaxInt32)), "A successful deletion should trigger exactly 1 broadcast")
+
+	keys, err = client.List(ctx, "prefix-")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{key2}, keys, "The deleted key1 should be excluded from the List")
+
+	err = client.Delete(ctx, key1)
+	require.NoError(t, err)
+	require.Equal(t, 0, len(mkv.GetBroadcasts(0, math.MaxInt32)), "Deleting an already tombstoned key should not trigger an additional broadcast")
+}
+
+func TestDeleteTriggersWatchKeyNotification(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.RetransmitMult = 1
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv) //nolint:errcheck
+
+	client, err := NewClient(mkv, c)
+	require.NoError(t, err)
+
+	testKey := "watch-delete-key"
+	now := time.Now()
+
+	// Channel to collect watched values
+	watchCh := make(chan any, 5)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start watching the key in a separate goroutine
+	go client.WatchKey(ctx, testKey, func(val any) bool {
+		watchCh <- val
+		return true // Keep watching
+	})
+
+	// Add a small sleep to give the WatchKey goroutine enough time to
+	// register its internal channel.
+	time.Sleep(100 * time.Millisecond)
+
+	// Create the key
+	cas(t, client, testKey, func(in *data) (*data, bool, error) {
+		d := &data{Members: map[string]member{"node1": {Timestamp: now.Unix(), State: ACTIVE}}}
+		return d, true, nil
+	})
+
+	// Expect a non-nil value from the watcher upon creation
+	var val any
+	select {
+	case val = <-watchCh:
+		require.NotNil(t, val, "Watcher should receive a non-nil value upon creation")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for watch notification on creation")
+	}
+
+	// Delete the key
+	err = client.Delete(context.Background(), testKey)
+	require.NoError(t, err)
+
+	// Expect a nil value from the watcher (Tombstone translates to nil for the client)
+	select {
+	case val = <-watchCh:
+		require.Nil(t, val, "Watcher should receive a nil value upon deletion")
+	case <-time.After(2 * time.Second):
+		t.Fatal("Timeout waiting for watch notification on deletion")
+	}
+}
+
+func TestDeletePropagatedViaLocalStateSync(t *testing.T) {
+	c := dataCodec{}
+
+	cfg := KVConfig{}
+	cfg.Codecs = append(cfg.Codecs, c)
+
+	// Set up Node 1
+	mkv1 := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv1))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv1) //nolint:errcheck
+
+	client1, err := NewClient(mkv1, c)
+	require.NoError(t, err)
+
+	testKey := "sync-tombstone-key"
+	now := time.Now()
+
+	// Create and then Delete the key on Node 1
+	cas(t, client1, testKey, func(in *data) (*data, bool, error) {
+		d := &data{Members: map[string]member{"node1": {Timestamp: now.Unix(), State: ACTIVE}}}
+		return d, true, nil
+	})
+	require.NoError(t, client1.Delete(context.Background(), testKey))
+
+	// Generate the full state dump from Node 1 (Simulating Push/Pull sync)
+	stateData := mkv1.LocalState(false)
+	require.NotEmpty(t, stateData, "LocalState should contain data (including tombstones)")
+
+	// Set up Node 2
+	mkv2 := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), mkv2))
+	defer services.StopAndAwaitTerminated(context.Background(), mkv2) //nolint:errcheck
+
+	client2, err := NewClient(mkv2, c)
+	require.NoError(t, err)
+
+	// Apply the state dump from Node 1 to Node 2
+	mkv2.MergeRemoteState(stateData, false)
+
+	// The value should be nil when accessed via the client
+	val := get(t, client2, testKey)
+	require.Nil(t, val, "Key should be unreadable (nil) on Node 2 after sync")
+
+	// Inspect Node 2's internal store to ensure it's recorded as a tombstone, not just missing
+	mkv2.storeMu.Lock()
+	desc, ok := mkv2.store[testKey]
+	mkv2.storeMu.Unlock()
+
+	require.True(t, ok, "Key must exist in Node 2's internal store")
+	require.True(t, desc.deleted, "Key must be explicitly marked as deleted (Tombstone) on Node 2")
+	require.NotZero(t, desc.updatedAt, "Tombstone must have a valid updatedAt timestamp on Node 2")
 }
 
 func TestDeleteAndCAS(t *testing.T) {
@@ -1472,11 +1691,17 @@ func decodeDataFromMarshalledKeyValuePair(t *testing.T, marshalledKVP []byte, ke
 	return d
 }
 
-func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value any) []byte {
+func marshalKeyValuePair(t *testing.T, key string, codec codec.Codec, value any, deleted bool, updatedAt int64) []byte {
 	data, err := codec.Encode(value)
 	require.NoError(t, err)
 
-	kvp := KeyValuePair{Key: key, Codec: codec.CodecID(), Value: data}
+	kvp := KeyValuePair{
+		Key:       key,
+		Codec:     codec.CodecID(),
+		Value:     data,
+		Deleted:   deleted,
+		UpdatedAt: updatedAt,
+	}
 	data, err = kvp.Marshal()
 	require.NoError(t, err)
 	return data

@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos web-build web-pre web-deploy doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -240,16 +240,6 @@ mod-check:
 
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
-
-web-pre:
-	cd website && git submodule update --init --recursive
-	./tools/website/web-pre.sh
-
-web-build: web-pre
-	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
-
-web-deploy:
-	./tools/website/web-deploy.sh
 
 modernize:
 	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.21.0 -fix ./...

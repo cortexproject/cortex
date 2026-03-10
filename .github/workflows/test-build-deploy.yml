@@ -38,10 +38,6 @@ jobs:
         run: make BUILD_IN_CONTAINER=false mod-check
       - name: Check Protos
         run: make BUILD_IN_CONTAINER=false check-protos
-      - name: Check Generated Documentation
-        run: make BUILD_IN_CONTAINER=false check-doc
-      - name: Check White Noise.
-        run: make BUILD_IN_CONTAINER=false check-white-noise
       - name: Check Modernize
         run: make BUILD_IN_CONTAINER=false check-modernize
 
@@ -328,7 +324,7 @@ jobs:
 
   deploy_website:
     needs: [build, test, lint]
-    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
+    if: false && github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-fe84258322

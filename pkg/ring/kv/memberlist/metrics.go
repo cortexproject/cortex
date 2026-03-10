@@ -131,6 +131,13 @@ func (m *KV) createAndRegisterMetrics() {
 		Help:      "Total number of tombstones which have been removed from KV store values",
 	}, []string{"key"})
 
+	m.sweptTombstones = promauto.With(m.registerer).NewCounter(prometheus.CounterOpts{
+		Namespace: m.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "kv_store_swept_tombstones_total",
+		Help:      "Total number of deleted keys (tombstones) removed from the local store.",
+	})
+
 	m.memberlistMembersCount = promauto.With(m.registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: m.cfg.MetricsNamespace,
 		Subsystem: subsystem,

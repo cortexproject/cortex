@@ -3103,9 +3103,8 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.enable-startup-sync
   [enable_startup_sync: <boolean> | default = false]
 
-  # Backend storage to use for the ring. Please be aware that memberlist is not
-  # supported by the HA tracker since gossip propagation is too slow for HA
-  # purposes.
+  # Backend storage to use for the ring. Memberlist support in the HA tracker is
+  # experimental, as gossip propagation delays may impact HA performance.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,
     # dynamodb, etcd, inmemory, memberlist, multi.
@@ -4573,6 +4572,10 @@ The `memberlist_config` configures the Gossip memberlist.
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
+
+# How long to keep deleted keys (tombstones) in the KV store
+# CLI flag: -memberlist.tombstone-timeout
+[tombstone_timeout: <duration> | default = 5m]
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout

@@ -3,6 +3,7 @@ package ha
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
+	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -136,6 +138,89 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			assert.Equal(t, testData.expectedErr, testData.cfg.Validate())
 		})
 	}
+}
+
+type dnsProviderMock struct {
+	resolved []string
+}
+
+func (p *dnsProviderMock) Resolve(ctx context.Context, addrs []string, flushOld bool) error {
+	p.resolved = addrs
+	return nil
+}
+
+func (p dnsProviderMock) Addresses() []string {
+	return p.resolved
+}
+
+// TestHATracker_CleanupDeletesArePropagated demonstrates that when the HA tracker's
+// background cleanup loop removes stale replicas, it correctly triggers a memberlist
+// KV.Delete which in turn generates a tombstone broadcast.
+func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+
+	var cfg memberlist.KVConfig
+	flagext.DefaultValues(&cfg)
+	replicaDescCodec := GetReplicaDescCodec()
+	cfg.Codecs = []codec.Codec{replicaDescCodec}
+	cfg.RetransmitMult = 1
+
+	mkv := memberlist.NewKV(cfg, logger, &dnsProviderMock{}, reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, mkv))
+	defer services.StopAndAwaitTerminated(ctx, mkv) //nolint:errcheck
+
+	client, err := memberlist.NewClient(mkv, replicaDescCodec)
+	require.NoError(t, err)
+
+	trackerCfg := HATrackerConfig{
+		EnableHATracker: false,
+		KVStore: kv.Config{
+			Store: "memberlist",
+		},
+	}
+	tracker, err := NewHATracker(trackerCfg, nil, HATrackerStatusConfig{}, reg, "", logger)
+	require.NoError(t, err)
+
+	// Inject our test memberlist client into the tracker
+	tracker.cfg.EnableHATracker = true
+	tracker.client = client
+
+	userID := "user1"
+	cluster := "cluster1"
+	replica := "replica0"
+	key := userID + "/" + cluster
+
+	// Inject initial HA data (simulates receiving a sample)
+	now := time.Now()
+	err = tracker.CheckReplica(ctx, userID, cluster, replica, now)
+	require.NoError(t, err)
+
+	// Drain the broadcast queue to clear out the CAS notification from CheckReplica
+	mkv.GetBroadcasts(0, math.MaxInt32)
+
+	// To call c.client.Delete(ctx, key) in cleanupOldReplicas
+	futureDeadline := now.Add(time.Hour)
+
+	// This will see (ReceivedAt < deadline) and CAS the entry to set DeletedAt = time.Now()
+	tracker.cleanupOldReplicas(ctx, futureDeadline)
+	require.Equal(t, float64(1), testutil.ToFloat64(tracker.replicasMarkedForDeletion))
+	require.Equal(t, float64(0), testutil.ToFloat64(tracker.deletedReplicas))
+
+	// This will see (DeletedAt > 0) and (DeletedAt < deadline), calling c.client.Delete(ctx, key)
+	tracker.cleanupOldReplicas(ctx, futureDeadline)
+	require.Equal(t, float64(1), testutil.ToFloat64(tracker.deletedReplicas))
+	require.Equal(t, float64(0), testutil.ToFloat64(tracker.markingForDeletionsFailed))
+
+	// Verify Local Deletion
+	val, err := client.Get(ctx, key)
+	require.NoError(t, err)
+	require.Nil(t, val, "HA Tracker cleanup should have deleted the key locally")
+
+	// Verify Broadcast Generation
+	broadcasts := mkv.GetBroadcasts(0, math.MaxInt32)
+	require.NotEmpty(t, broadcasts, "Cleanup Delete should generate a broadcast for tombstone propagation")
 }
 
 // Test that values are set in the HATracker after WatchPrefix has found it in the KVStore.

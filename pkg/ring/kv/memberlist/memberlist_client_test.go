@@ -1468,8 +1468,7 @@ func TestDeleteTriggersWatchKeyNotification(t *testing.T) {
 
 	// Channel to collect watched values
 	watchCh := make(chan any, 5)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Start watching the key in a separate goroutine
 	go client.WatchKey(ctx, testKey, func(val any) bool {

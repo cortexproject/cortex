@@ -46,6 +46,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Remote read](#remote-read) | Querier, Query-frontend || `POST <prometheus-http-prefix>/api/v1/read` |
 | [Build information](#build-information) | Querier, Query-frontend |v1.15.0| `GET <prometheus-http-prefix>/api/v1/status/buildinfo` |
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier || `GET /api/v1/user_stats` |
+| [Get tenant TSDB status](#get-tenant-tsdb-status) | Querier || `GET /api/v1/status/tsdb` |
 | [Ruler ring status](#ruler-ring-status) | Ruler || `GET /ruler/ring` |
 | [Ruler rules ](#ruler-rule-groups) | Ruler || `GET /ruler/rule_groups` |
 | [List rules](#list-rules) | Ruler || `GET <prometheus-http-prefix>/api/v1/rules` |
@@ -504,6 +505,67 @@ GET <legacy-http-prefix>/user_stats
 Returns realtime ingestion rate, for the authenticated tenant, in `JSON` format.
 
 _Requires [authentication](#authentication)._
+
+### Get tenant TSDB status
+
+```
+GET /api/v1/status/tsdb
+
+# Legacy
+GET <legacy-http-prefix>/api/v1/status/tsdb
+```
+
+Returns TSDB cardinality statistics for the authenticated tenant's in-memory (head) data, in `JSON` format. This is useful for understanding which metrics, labels, and label-value pairs contribute the most series and for debugging high-cardinality issues.
+
+The endpoint accepts an optional `limit` query parameter (default `10`) that controls how many entries are returned in each top-N list.
+
+_Requires [authentication](#authentication)._
+
+#### Example request
+
+```
+GET /api/v1/status/tsdb?limit=5
+```
+
+#### Example response
+
+```json
+{
+  "numSeries": 1234,
+  "minTime": 1709640000000,
+  "maxTime": 1709726400000,
+  "numLabelPairs": 42,
+  "seriesCountByMetricName": [
+    { "name": "http_requests_total", "value": 500 },
+    { "name": "process_cpu_seconds_total", "value": 200 }
+  ],
+  "labelValueCountByLabelName": [
+    { "name": "instance", "value": 150 },
+    { "name": "job", "value": 10 }
+  ],
+  "memoryInBytesByLabelName": [
+    { "name": "instance", "value": 32000 },
+    { "name": "job", "value": 4800 }
+  ],
+  "seriesCountByLabelValuePair": [
+    { "name": "job=cortex", "value": 800 },
+    { "name": "job=prometheus", "value": 300 }
+  ]
+}
+```
+
+#### Response fields
+
+| Field | Description |
+|-------|-------------|
+| `numSeries` | Total number of active series for the tenant. |
+| `minTime` | Minimum timestamp (ms) across all samples in the TSDB head. |
+| `maxTime` | Maximum timestamp (ms) across all samples in the TSDB head. |
+| `numLabelPairs` | Total number of distinct label name-value pairs. |
+| `seriesCountByMetricName` | Top metrics ranked by number of series (descending). |
+| `labelValueCountByLabelName` | Top label names ranked by number of unique values (descending). |
+| `memoryInBytesByLabelName` | Top label names ranked by estimated memory usage in bytes (descending). |
+| `seriesCountByLabelValuePair` | Top label name=value pairs ranked by number of series (descending). |
 
 ## Ruler
 

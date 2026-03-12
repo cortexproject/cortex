@@ -81,3 +81,8 @@ func (m *IngesterServerMock) MetricsMetadata(ctx context.Context, r *MetricsMeta
 	args := m.Called(ctx, r)
 	return args.Get(0).(*MetricsMetadataResponse), args.Error(1)
 }
+
+func (m *IngesterServerMock) TSDBStatus(ctx context.Context, r *TSDBStatusRequest) (*TSDBStatusResponse, error) {
+	args := m.Called(ctx, r)
+	return args.Get(0).(*TSDBStatusResponse), args.Error(1)
+}

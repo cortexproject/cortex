@@ -428,6 +428,7 @@ func (a *API) RegisterCompactor(c *compactor.Compactor) {
 type Distributor interface {
 	querier.Distributor
 	UserStatsHandler(w http.ResponseWriter, r *http.Request)
+	TSDBStatusHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // RegisterQueryable registers the default routes associated with the querier
@@ -438,8 +439,10 @@ func (a *API) RegisterQueryable(
 ) {
 	// these routes are always registered to the default server
 	a.RegisterRoute("/api/v1/user_stats", http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
+	a.RegisterRoute("/api/v1/status/tsdb", http.HandlerFunc(distributor.TSDBStatusHandler), true, "GET")
 
 	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/user_stats"), http.HandlerFunc(distributor.UserStatsHandler), true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/tsdb"), http.HandlerFunc(distributor.TSDBStatusHandler), true, "GET")
 }
 
 // RegisterQueryAPI registers the Prometheus API routes with the provided handler.

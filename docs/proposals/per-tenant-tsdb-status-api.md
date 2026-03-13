@@ -43,12 +43,11 @@ GET /api/v1/cardinality?limit=N&source=head|blocks&start=T&end=T
 - **Query Parameters**:
   - `limit` (optional, default 10) - controls the number of top items returned per category.
   - `source` (optional, default `head`) - selects the data source. `head` queries ingester TSDB heads, `blocks` queries compacted blocks in long-term storage via store gateways.
-  - `start` (optional, RFC3339 or Unix timestamp) - start of the time range to analyze.
-  - `end` (optional, RFC3339 or Unix timestamp) - end of the time range to analyze.
+  - `start` (RFC3339 or Unix timestamp) - start of the time range to analyze. Required for `source=blocks`, optional for `source=head`.
+  - `end` (RFC3339 or Unix timestamp) - end of the time range to analyze. Required for `source=blocks`, optional for `source=head`.
 - **Time Range Behavior**:
-  - **Blocks path**: Only blocks whose time range overlaps with `[start, end]` are analyzed. A block is included if its `minTime < end` and its `maxTime > start`.
-  - **Head path**: Head stats are included if the head's time range overlaps with `[start, end]`. The TSDB head does not support sub-range cardinality filtering, so when included, stats reflect the full head.
-  - When `start` and `end` are omitted, all available data is included.
+  - **Blocks path**: `start` and `end` are required. Only blocks whose time range overlaps with `[start, end]` are analyzed. A block is included if its `minTime < end` and its `maxTime > start`. The requested time range must not exceed the per-tenant `cardinality_max_query_range` limit (see [Per-Tenant Limits](#per-tenant-limits)).
+  - **Head path**: `start` and `end` are optional. When provided, head stats are included only if the head's time range overlaps with `[start, end]`. The TSDB head does not support sub-range cardinality filtering, so when included, stats reflect the full head. When omitted, head stats are always included.
 
 ### Architecture
 
@@ -203,7 +202,7 @@ Results are cached per block (see [Caching](#caching)).
 
 #### Block Selection
 
-When the `start` and `end` query parameters are provided, the store gateway filters blocks based on time range overlap: a block is included only if its `minTime < end` and its `maxTime > start`. This allows users to scope cardinality analysis to a specific time window, such as the last 24 hours or a particular incident period. When `start` and `end` are omitted, all blocks for the tenant are included.
+The store gateway filters blocks based on the required `start` and `end` parameters: a block is included only if its `minTime < end` and its `maxTime > start`. This scopes cardinality analysis to a specific time window, such as the last 24 hours or a particular incident period.
 
 #### Caching
 
@@ -236,6 +235,16 @@ The JSON response uses a flat structure. Both `source=head` and `source=blocks` 
 ### Multi-Tenancy
 
 Tenant isolation is enforced through the existing Cortex authentication middleware. The `X-Scope-OrgID` header identifies the tenant, and the ingester only returns statistics from that tenant's TSDB head. No cross-tenant data leakage is possible because each tenant has a separate TSDB instance in the ingester.
+
+### Per-Tenant Limits
+
+To prevent expensive cardinality queries from overloading store gateways, the following per-tenant runtime-configurable limit is introduced:
+
+| Limit | Flag | YAML | Default | Description |
+|---|---|---|---|---|
+| `cardinality_max_query_range` | `-querier.cardinality-max-query-range` | `cardinality_max_query_range` | `24h` | Maximum allowed time range (`end - start`) for `source=blocks` cardinality queries. |
+
+When a `source=blocks` request exceeds this limit, the endpoint returns HTTP 422 with an error message indicating the maximum allowed range. This gives operators control over the blast radius per tenant — high-value tenants can be granted wider windows while keeping a safe default for everyone else.
 
 ## Design Alternatives
 

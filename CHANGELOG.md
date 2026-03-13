@@ -18,6 +18,7 @@
   * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
   * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.
   * Config: Renamed `parquet_queryable_shard_cache_size` to `parquet_shard_cache_size` and `parquet_queryable_shard_cache_ttl` to `parquet_shard_cache_ttl`.
+* [FEATURE] Overrides: Add new Overrides API component and rename old overrides module to `overrides-configs`. #6975
 * [FEATURE] HATracker: Add experimental support for `memberlist` and `multi` as a KV store backend. #7284
 * [FEATURE] Distributor: Add `-distributor.otlp.add-metric-suffixes` flag. If true, suffixes will be added to the metrics for name normalization. #7286
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
@@ -27,6 +28,7 @@
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
 * [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to IncidentIO and Mattermost. #7092 #7267
 * [FEATURE] Tenant Federation: Add experimental support for partial responses using the `-tenant-federation.allow-partial-data` flag. When enabled, failures from individual tenants during a federated query are treated as warnings, allowing results from successful tenants to be returned. #7232
+* [FEATURE] Alertmanager: Add `-alertmanager.disable-replica-set-extension` flag to limit blast radius during config corruption incidents. #7153
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
@@ -60,6 +62,15 @@
 * [ENHANCEMENT] Distributor: Add dimension `nhcb` to keep track of nhcb samples in `cortex_distributor_received_samples_total` and `cortex_distributor_samples_in_total` metrics.
 * [ENHANCEMENT] Distributor: Add `-distributor.accept-unknown-remote-write-content-type` flag. When enabled, requests with unknown or invalid Content-Type header are treated as remote write v1 instead of returning 415 Unsupported Media Type. Default is false. #7293
 * [ENHANCEMENT] Ingester: Added `cortex_ingester_ingested_histogram_buckets` metric to track number of histogram buckets ingested per user. #7297
+* [ENHANCEMENT] Ring: Reuse timers in lifecycler and backoff loops to reduce allocations. #7270
+* [ENHANCEMENT] Ring/KV: Reuse timers in DynamoDB watch loops to avoid per-poll allocations. #7266
+* [ENHANCEMENT] Ring/KV: Reuse timers in memberlist client to reduce allocations. #7285
+* [ENHANCEMENT] PromQL: Add `holt_winters` backwards compatibility as alias for `double_exponential_smoothing`. #7223
+* [ENHANCEMENT] Query Frontend: Add logical plan fragmentation for distributed query execution. #7018
+* [ENHANCEMENT] Parquet: Support sharded parquet files in parquet converter and queryable. #7189
+* [ENHANCEMENT] Compactor: Add graceful period for compaction groups to prevent compacting recently written blocks. #7182
+* [ENHANCEMENT] Query Engine: Add projection pushdown optimizer for improved query performance. #7141
+* [ENHANCEMENT] Ruler: Allow ExternalPusher and ExternalQueryable to be specified separately. #7224
 * [BUGFIX] Distributor: Add bounds checking for symbol references in Remote Write V2 requests to prevent panics when UnitRef or HelpRef exceed the symbols array length. #7290
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
@@ -74,6 +85,8 @@
 * [BUGFIX] Cache: Fix Redis Cluster EXECABORT error in MSet by using individual SET commands instead of transactions for cluster mode. #7262
 * [BUGFIX] Distributor: Fix an `index out of range` panic in PRW2.0 handler caused by dirty metadata when reusing requests from `sync.Pool`. #7299
 * [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
+* [BUGFIX] Ingester: Fix panic due to concurrent access to rand in active queried series. #7329
+* [BUGFIX] Distributor: Fix request slice not being properly reused in push error paths. #7123
 
 
 ## 1.20.1 2025-12-03

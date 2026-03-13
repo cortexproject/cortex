@@ -1,8 +1,8 @@
 ---
-title: "Per-Tenant TSDB Status API"
-linkTitle: "Per-Tenant TSDB Status API"
+title: "Per-Tenant Cardinality API"
+linkTitle: "Per-Tenant Cardinality API"
 weight: 1
-slug: per-tenant-tsdb-status-api
+slug: per-tenant-cardinality-api
 ---
 
 - Author: [Charlie Le](https://github.com/CharlieTLe)
@@ -15,17 +15,16 @@ High-cardinality series is one of the most common operational challenges for Pro
 
 Currently, Cortex tenants lack visibility into which metrics, labels, and label-value pairs contribute the most series in ingesters. Without this information, debugging high-cardinality issues requires operators to inspect TSDB internals directly on ingester instances, which is impractical in a multi-tenant, distributed environment.
 
-Prometheus itself exposes a `/api/v1/status/tsdb` endpoint that provides cardinality statistics from the TSDB head. This proposal brings equivalent functionality to Cortex as a multi-tenant, distributed API.
+This proposal introduces a dedicated cardinality API for Cortex that works across both in-memory ingester data and long-term block storage.
 
 ## Goal
 
 Expose per-tenant cardinality statistics via a REST API endpoint on the Cortex query path. The endpoint should:
 
-1. Be compatible with the Prometheus `/api/v1/status/tsdb` response format.
-2. Support two data sources: in-memory TSDB head data from ingesters and compacted blocks from long-term object storage via store gateways.
-3. Aggregate statistics across all ingesters or store gateways that hold data for the requesting tenant.
-4. Correctly account for replication factor when summing series counts and memory usage.
-5. Respect multi-tenancy, ensuring tenants can only see their own data.
+1. Support two data sources: in-memory TSDB head data from ingesters and compacted blocks from long-term object storage via store gateways.
+2. Aggregate statistics across all ingesters or store gateways that hold data for the requesting tenant.
+3. Correctly account for replication factor when summing series counts.
+4. Respect multi-tenancy, ensuring tenants can only see their own data.
 
 ## Out of Scope
 
@@ -37,14 +36,19 @@ Expose per-tenant cardinality statistics via a REST API endpoint on the Cortex q
 ### Endpoint
 
 ```
-GET /api/v1/status/tsdb?limit=N&source=head|blocks
+GET /api/v1/cardinality?limit=N&source=head|blocks&start=T&end=T
 ```
 
 - **Authentication**: Requires `X-Scope-OrgID` header (standard Cortex tenant authentication).
 - **Query Parameters**:
   - `limit` (optional, default 10) - controls the number of top items returned per category.
   - `source` (optional, default `head`) - selects the data source. `head` queries ingester TSDB heads, `blocks` queries compacted blocks in long-term storage via store gateways.
-- **Legacy Path**: Also registered at `<legacy-prefix>/api/v1/status/tsdb`.
+  - `start` (optional, RFC3339 or Unix timestamp) - start of the time range to analyze.
+  - `end` (optional, RFC3339 or Unix timestamp) - end of the time range to analyze.
+- **Time Range Behavior**:
+  - **Blocks path**: Only blocks whose time range overlaps with `[start, end]` are analyzed. A block is included if its `minTime < end` and its `maxTime > start`.
+  - **Head path**: Head stats are included if the head's time range overlaps with `[start, end]`. The TSDB head does not support sub-range cardinality filtering, so when included, stats reflect the full head.
+  - When `start` and `end` are omitted, all available data is included.
 
 ### Architecture
 
@@ -91,13 +95,9 @@ message TSDBStatusRequest {
 
 message TSDBStatusResponse {
   uint64 num_series = 1;
-  int64 min_time = 2;
-  int64 max_time = 3;
-  int32 num_label_pairs = 4;
-  repeated TSDBStatItem series_count_by_metric_name = 5;
-  repeated TSDBStatItem label_value_count_by_label_name = 6;
-  repeated TSDBStatItem memory_in_bytes_by_label_name = 7;
-  repeated TSDBStatItem series_count_by_label_value_pair = 8;
+  repeated TSDBStatItem series_count_by_metric_name = 2;
+  repeated TSDBStatItem label_value_count_by_label_name = 3;
+  repeated TSDBStatItem series_count_by_label_value_pair = 4;
 }
 
 message TSDBStatItem {
@@ -119,11 +119,9 @@ message TSDBStatusRequest {
 
 message TSDBStatusResponse {
   uint64 num_series = 1;
-  int64 min_time = 2;
-  int64 max_time = 3;
-  repeated TSDBStatItem series_count_by_metric_name = 4;
-  repeated TSDBStatItem label_value_count_by_label_name = 5;
-  repeated TSDBStatItem series_count_by_label_value_pair = 6;
+  repeated TSDBStatItem series_count_by_metric_name = 2;
+  repeated TSDBStatItem label_value_count_by_label_name = 3;
+  repeated TSDBStatItem series_count_by_label_value_pair = 4;
 }
 
 message TSDBStatItem {
@@ -132,7 +130,7 @@ message TSDBStatItem {
 }
 ```
 
-The store gateway response omits `numLabelPairs` and `memoryInBytesByLabelName` because these fields are specific to the in-memory TSDB head (see [Response Format](#response-format) for details).
+Both the ingester and store gateway response messages share the same fields.
 
 ### Aggregation Logic
 
@@ -143,12 +141,8 @@ Because each series is replicated across multiple ingesters (controlled by the r
 | Field | Aggregation Strategy |
 |---|---|
 | `numSeries` | Sum across ingesters, divide by replication factor |
-| `minTime` | Minimum across all ingesters |
-| `maxTime` | Maximum across all ingesters |
-| `numLabelPairs` | Maximum across ingesters |
 | `seriesCountByMetricName` | Sum per metric, divide by RF, return top N |
 | `labelValueCountByLabelName` | Maximum per label (unique counts, not affected by replication) |
-| `memoryInBytesByLabelName` | Sum per label, divide by RF, return top N |
 | `seriesCountByLabelValuePair` | Sum per pair, divide by RF, return top N |
 
 The `topNStats` helper function handles the sort-and-truncate step: it divides values by the replication factor, sorts descending by value, and returns the top N items.
@@ -160,8 +154,6 @@ Store gateways use the store gateway ring for replication, so different store ga
 | Field | Aggregation Strategy |
 |---|---|
 | `numSeries` | Sum across store gateways, divide by store gateway replication factor |
-| `minTime` | Minimum across all store gateways |
-| `maxTime` | Maximum across all store gateways |
 | `seriesCountByMetricName` | Sum per metric, divide by SG RF, return top N |
 | `labelValueCountByLabelName` | Maximum per label |
 | `seriesCountByLabelValuePair` | Sum per pair, divide by SG RF, return top N |
@@ -211,7 +203,7 @@ Results are cached per block (see [Caching](#caching)).
 
 #### Block Selection
 
-By default, the store gateway computes cardinality across all blocks it holds for the tenant. This represents the full long-term storage cardinality view. A future enhancement could add `min_time` / `max_time` query parameters to restrict the analysis to a specific time range.
+When the `start` and `end` query parameters are provided, the store gateway filters blocks based on time range overlap: a block is included only if its `minTime < end` and its `maxTime > start`. This allows users to scope cardinality analysis to a specific time window, such as the last 24 hours or a particular incident period. When `start` and `end` are omitted, all blocks for the tenant are included.
 
 #### Caching
 
@@ -221,16 +213,11 @@ The cache is populated on first request and invalidated when blocks are removed 
 
 ### Response Format
 
-The JSON response uses a flat structure. The fields returned depend on the `source` parameter.
-
-#### Head Response (`source=head`)
+The JSON response uses a flat structure. Both `source=head` and `source=blocks` return the same fields:
 
 ```json
 {
   "numSeries": 1500,
-  "minTime": 1709740800000,
-  "maxTime": 1709748000000,
-  "numLabelPairs": 42,
   "seriesCountByMetricName": [
     {"name": "http_requests_total", "value": 500},
     {"name": "process_cpu_seconds_total", "value": 200}
@@ -239,69 +226,12 @@ The JSON response uses a flat structure. The fields returned depend on the `sour
     {"name": "instance", "value": 50},
     {"name": "job", "value": 10}
   ],
-  "memoryInBytesByLabelName": [
-    {"name": "instance", "value": 25600},
-    {"name": "job", "value": 5120}
-  ],
   "seriesCountByLabelValuePair": [
     {"name": "job=api-server", "value": 300},
     {"name": "instance=host1:9090", "value": 150}
   ]
 }
 ```
-
-#### Blocks Response (`source=blocks`)
-
-```json
-{
-  "numSeries": 125000,
-  "minTime": 1704067200000,
-  "maxTime": 1709740800000,
-  "seriesCountByMetricName": [
-    {"name": "http_requests_total", "value": 45000},
-    {"name": "process_cpu_seconds_total", "value": 18000}
-  ],
-  "labelValueCountByLabelName": [
-    {"name": "instance", "value": 2500},
-    {"name": "job", "value": 85}
-  ],
-  "seriesCountByLabelValuePair": [
-    {"name": "job=api-server", "value": 22000},
-    {"name": "instance=host1:9090", "value": 8500}
-  ]
-}
-```
-
-The blocks response omits two head-specific fields:
-
-| Field | Why omitted from blocks |
-|---|---|
-| `numLabelPairs` | This count comes from `MemPostings` which tracks label pairs in memory. Block indexes do not maintain an equivalent aggregate count. |
-| `memoryInBytesByLabelName` | This measures in-memory byte usage of label data in the ingester's TSDB head. It has no meaningful analogue in object storage — block indexes are memory-mapped and the on-disk size of label data depends on index encoding, not runtime memory. |
-
-### API Compatibility with Prometheus
-
-The response format intentionally diverges from the upstream Prometheus `/api/v1/status/tsdb` endpoint in two ways:
-
-1. **Flat structure vs nested `headStats`**: Prometheus wraps `numSeries`, `numLabelPairs`, `chunkCount`, `minTime`, and `maxTime` inside a `headStats` object. This proposal uses a flat structure at the top level instead, which is simpler for consumers but means existing Prometheus client libraries cannot parse the response directly.
-
-2. **`chunkCount` omitted**: Prometheus includes a `chunkCount` field (from `prometheus_tsdb_head_chunks`). In a distributed system with replication, chunk counts across ingesters cannot be meaningfully aggregated — chunks are an ingester-local storage detail, and summing/dividing by the replication factor does not produce a useful number.
-
-**Open question**: Should we adopt the `headStats` wrapper to maintain client compatibility with Prometheus tooling? The trade-off is compatibility vs simplicity — the flat format is easier to consume for Cortex-specific clients, but adopting the Prometheus format would allow reuse of existing client libraries.
-
-### Field Portability Between Sources
-
-Some fields are shared across both sources, while others are source-specific:
-
-| Field | `source=head` | `source=blocks` | Notes |
-|---|---|---|---|
-| `seriesCountByMetricName` | Yes | Yes | Core cardinality diagnostic |
-| `labelValueCountByLabelName` | Yes | Yes | Core cardinality diagnostic |
-| `seriesCountByLabelValuePair` | Yes | Yes | Core cardinality diagnostic |
-| `numSeries` | Yes | Yes | Approximate for blocks due to overlap |
-| `minTime` / `maxTime` | Yes | Yes | Head time range vs block time range |
-| `memoryInBytesByLabelName` | Yes | No | In-memory byte usage, head-specific |
-| `numLabelPairs` | Yes | No | `MemPostings`-specific count |
 
 ### Multi-Tenancy
 
@@ -381,5 +311,5 @@ The implementation spans the following key files:
 
 ### Shared
 
-- `docs/api/_index.md` - API documentation (updated with `source` parameter)
+- `docs/api/_index.md` - API documentation (updated with `source`, `start`, and `end` parameters)
 - `integration/api_endpoints_test.go` - Integration tests for both head and blocks paths

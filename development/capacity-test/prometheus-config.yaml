@@ -1,0 +1,99 @@
+# Prometheus configuration for capacity testing.
+# Scrapes distributor and ingester separately so we can isolate
+# ingester memory/CPU metrics from other components.
+# Uses 25 tenants to increase series count and reduce the impact
+# of fixed overhead on per-series estimates.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+  - job_name: "distributor"
+    static_configs:
+      - targets: ["distributor:8001"]
+  - job_name: "ingester"
+    static_configs:
+      - targets: ["ingester:8002"]
+  - job_name: "querier"
+    static_configs:
+      - targets: ["querier:8003"]
+
+remote_write:
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-01"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-02"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-03"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-04"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-05"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-06"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-07"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-08"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-09"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-10"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-11"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-12"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-13"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-14"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-15"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-16"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-17"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-18"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-19"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-20"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-21"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-22"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-23"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-24"
+  - url: http://distributor:8001/api/v1/push
+    headers:
+      X-Scope-OrgID: "tenant-25"

@@ -63,6 +63,8 @@ func TestHistogramToHistogramProtoRoundTrip(t *testing.T) {
 	assert.Equal(t, original.NegativeBuckets, result.NegativeBuckets)
 	assert.Equal(t, original.CustomValues, result.CustomValues)
 	assert.Equal(t, timestamp, proto.TimestampMs)
+	// Catch-all: ensure no fields are missed if new fields are added to histogram.Histogram.
+	assert.Equal(t, original, result)
 }
 
 func TestFloatHistogramToHistogramProtoRoundTrip(t *testing.T) {

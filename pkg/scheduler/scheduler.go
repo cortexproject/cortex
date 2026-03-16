@@ -72,6 +72,7 @@ type Scheduler struct {
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
+	pendingRequestsCurrent   prometheus.GaugeFunc
 
 	// Enables or disables distributed query execution functionality
 	distributedExecEnabled bool
@@ -154,6 +155,11 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Name: "cortex_query_scheduler_connected_frontend_clients",
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
+
+	s.pendingRequestsCurrent = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_pending_requests",
+		Help: "Number of requests currently tracked by the scheduler.",
+	}, s.getPendingRequestsMetric)
 
 	s.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
@@ -709,4 +715,11 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 	}
 
 	return float64(count)
+}
+
+func (s *Scheduler) getPendingRequestsMetric() float64 {
+	s.pendingRequestsMu.Lock()
+	defer s.pendingRequestsMu.Unlock()
+
+	return float64(len(s.pendingRequests))
 }

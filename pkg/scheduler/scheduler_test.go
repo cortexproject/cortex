@@ -880,3 +880,86 @@ func TestQueryFragmentRegistryNoLeak(t *testing.T) {
 	require.Empty(t, s.pendingRequests, "pendingRequests should be empty after all requests complete")
 	s.pendingRequestsMu.Unlock()
 }
+
+func TestSchedulerPendingRequestsMetric(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+
+	_, frontendClient, querierClient := setupScheduler(t, reg, false)
+	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
+
+	// Initial state validation: 0 tracked requests.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_pending_requests gauge
+		cortex_query_scheduler_pending_requests 0
+	`), "cortex_query_scheduler_pending_requests"))
+
+	// Enqueue the first request.
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     1,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
+	})
+
+	// Metric should increase to reflect 1 tracked request.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_pending_requests gauge
+		cortex_query_scheduler_pending_requests 1
+	`), "cortex_query_scheduler_pending_requests"))
+
+	// Enqueue the second request.
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     2,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello2"},
+	})
+
+	// Metric should increase to reflect 2 tracked requests.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_pending_requests gauge
+		cortex_query_scheduler_pending_requests 2
+	`), "cortex_query_scheduler_pending_requests"))
+
+	// Cancel the first request from the Query Frontend
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:    schedulerpb.CANCEL,
+		QueryID: 1,
+	})
+
+	// The canceled request is removed from the map immediately, so the metric should decrease to 1.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_pending_requests gauge
+		cortex_query_scheduler_pending_requests 1
+	`), "cortex_query_scheduler_pending_requests"))
+
+	// A Querier picks up the second request.
+	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
+	msg, err := querierLoop.Recv()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), msg.QueryID)
+
+	// Since the picked request currently executing in the Querier, the metric should be 1.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_pending_requests gauge
+		cortex_query_scheduler_pending_requests 1
+	`), "cortex_query_scheduler_pending_requests"))
+
+	// The Querier finishes processing the request and reports back.
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
+
+	// The background goroutine (forwardRequestToQuerier) removes the request.
+	test.Poll(t, 2*time.Second, true, func() any {
+		err := promtest.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_query_scheduler_pending_requests Number of requests currently tracked by the scheduler.
+			# TYPE cortex_query_scheduler_pending_requests gauge
+			cortex_query_scheduler_pending_requests 0
+		`), "cortex_query_scheduler_pending_requests")
+		return err == nil
+	})
+}

@@ -232,14 +232,14 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 }
 
 type mockLimits struct {
-	maxQueryLookback         time.Duration
-	maxQueryLength           time.Duration
-	maxCacheFreshness        time.Duration
-	maxQueryResponseSize     int64
-	queryVerticalShardSize   int
-	resultsCacheTTL          time.Duration
+	maxQueryLookback          time.Duration
+	maxQueryLength            time.Duration
+	maxCacheFreshness         time.Duration
+	maxQueryResponseSize      int64
+	queryVerticalShardSize    int
+	resultsCacheTTL           time.Duration
 	outOfOrderResultsCacheTTL time.Duration
-	outOfOrderWindow         time.Duration
+	outOfOrderWindow          time.Duration
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {

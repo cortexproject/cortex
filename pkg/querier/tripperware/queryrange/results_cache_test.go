@@ -1866,12 +1866,12 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 	twoHoursAgo := now.Add(-2 * time.Hour).UnixMilli()
 
 	tests := []struct {
-		name                string
-		extents             []tripperware.Extent
-		resultsCacheTTL     time.Duration
-		outOfOrderCacheTTL  time.Duration
-		outOfOrderWindow    time.Duration
-		expectedTTL         time.Duration
+		name               string
+		extents            []tripperware.Extent
+		resultsCacheTTL    time.Duration
+		outOfOrderCacheTTL time.Duration
+		outOfOrderWindow   time.Duration
+		expectedTTL        time.Duration
 	}{
 		{
 			name: "old data uses results_cache_ttl",
@@ -1919,9 +1919,9 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockCache := cache.NewMockCache()
 			limits := mockLimits{
-				resultsCacheTTL:          tc.resultsCacheTTL,
+				resultsCacheTTL:           tc.resultsCacheTTL,
 				outOfOrderResultsCacheTTL: tc.outOfOrderCacheTTL,
-				outOfOrderWindow:         tc.outOfOrderWindow,
+				outOfOrderWindow:          tc.outOfOrderWindow,
 			}
 
 			cfg := ResultsCacheConfig{
@@ -1958,9 +1958,9 @@ func TestResultsCacheWithPerTenantTTL(t *testing.T) {
 
 	// Configure per-tenant TTLs
 	limits := mockLimits{
-		resultsCacheTTL:          24 * time.Hour,
+		resultsCacheTTL:           24 * time.Hour,
 		outOfOrderResultsCacheTTL: 5 * time.Minute,
-		outOfOrderWindow:         1 * time.Hour,
+		outOfOrderWindow:          1 * time.Hour,
 	}
 
 	cfg := ResultsCacheConfig{
@@ -1991,8 +1991,8 @@ func TestResultsCacheWithPerTenantTTL(t *testing.T) {
 
 	// Test 1: Query old data (> 1 hour ago) - should use long TTL
 	now := time.Now()
-	oldStart := now.Add(-3 * time.Hour).UnixNano() / 1e6
-	oldEnd := now.Add(-2 * time.Hour).UnixNano() / 1e6
+	oldStart := now.Add(-3*time.Hour).UnixNano() / 1e6
+	oldEnd := now.Add(-2*time.Hour).UnixNano() / 1e6
 	oldReq := parsedRequest.WithStartEnd(oldStart, oldEnd)
 
 	_, err = rc.Do(ctx, oldReq)
@@ -2004,8 +2004,8 @@ func TestResultsCacheWithPerTenantTTL(t *testing.T) {
 	assert.Equal(t, 24*time.Hour, lastTTL, "old data should use long TTL")
 
 	// Test 2: Query recent data (overlaps with out-of-order window) - should use short TTL
-	recentStart := now.Add(-2 * time.Hour).UnixNano() / 1e6
-	recentEnd := now.Add(-30 * time.Minute).UnixNano() / 1e6 // 30 min ago, within 1h window
+	recentStart := now.Add(-2*time.Hour).UnixNano() / 1e6
+	recentEnd := now.Add(-30*time.Minute).UnixNano() / 1e6 // 30 min ago, within 1h window
 	recentReq := parsedRequest.WithStartEnd(recentStart, recentEnd)
 
 	_, err = rc.Do(ctx, recentReq)

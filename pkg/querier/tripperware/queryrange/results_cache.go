@@ -254,7 +254,7 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
-	ttl := s.getTTLForExtents(ctx, []tripperware.Extent{{Start: r.GetStart(), End: r.GetEnd()}})
+	ttl := s.getTTLForExtents(tenantIDs, []tripperware.Extent{{Start: r.GetStart(), End: r.GetEnd()}})
 	cached, ok := s.get(ctx, key, ttl)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
@@ -282,7 +282,7 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 			}
 			extents[i].Response = any
 		}
-		s.put(ctx, key, extents)
+		s.put(ctx, key, extents, tenantIDs)
 	}
 
 	if err == nil && !respWithStats {
@@ -761,12 +761,7 @@ func (s resultsCache) get(ctx context.Context, key string, ttl time.Duration) ([
 
 // getTTLForExtents calculates the appropriate TTL for given extents based on whether
 // they overlap with the out-of-order time window.
-func (s resultsCache) getTTLForExtents(ctx context.Context, extents []tripperware.Extent) time.Duration {
-	tenantIDs, err := users.TenantIDs(ctx)
-	if err != nil {
-		tenantIDs = nil
-	}
-
+func (s resultsCache) getTTLForExtents(tenantIDs []string, extents []tripperware.Extent) time.Duration {
 	var resultsCacheTTL, outOfOrderCacheTTL time.Duration
 	if len(tenantIDs) > 0 {
 		// Use smallest non-zero TTL to respect the most restrictive tenant's cache policy
@@ -806,8 +801,8 @@ func (s resultsCache) extentsOverlapOutOfOrderWindow(extents []tripperware.Exten
 
 	return false
 }
-func (s resultsCache) put(ctx context.Context, key string, extents []tripperware.Extent) {
-	ttl := s.getTTLForExtents(ctx, extents)
+func (s resultsCache) put(ctx context.Context, key string, extents []tripperware.Extent, tenantIDs []string) {
+	ttl := s.getTTLForExtents(tenantIDs, extents)
 	buf, err := proto.Marshal(&tripperware.CachedResponse{
 		Key:     key,
 		Extents: extents,

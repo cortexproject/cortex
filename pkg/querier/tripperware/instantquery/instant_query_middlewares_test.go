@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/thanos/pkg/querysharding"
@@ -275,6 +276,18 @@ func (m mockLimitsShard) QueryPriority(userID string) validation.QueryPriority {
 
 func (m mockLimitsShard) QueryRejection(userID string) validation.QueryRejection {
 	return m.queryRejection
+}
+
+func (mockLimitsShard) ResultsCacheTTL(userID string) time.Duration {
+	return 0
+}
+
+func (mockLimitsShard) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return 0
+}
+
+func (mockLimitsShard) OutOfOrderTimeWindow(userID string) model.Duration {
+	return 0
 }
 
 type singleHostRoundTripper struct {

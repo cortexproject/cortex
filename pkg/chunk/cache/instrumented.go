@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"time"
 
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -64,7 +65,7 @@ type instrumentedCache struct {
 	requestDuration                   *instr.HistogramCollector
 }
 
-func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
 	for j := range bufs {
 		i.storedValueSize.Observe(float64(len(bufs[j])))
 	}
@@ -73,12 +74,12 @@ func (i *instrumentedCache) Store(ctx context.Context, keys []string, bufs [][]b
 	_ = instr.CollectedRequest(ctx, method, i.requestDuration, instr.ErrorCode, func(ctx context.Context) error {
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys", len(keys)))
-		i.Cache.Store(ctx, keys, bufs)
+		i.Cache.Store(ctx, keys, bufs, ttl)
 		return nil
 	})
 }
 
-func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string) {
+func (i *instrumentedCache) Fetch(ctx context.Context, keys []string, ttl time.Duration) ([]string, [][]byte, []string) {
 	var (
 		found   []string
 		bufs    [][]byte
@@ -90,7 +91,7 @@ func (i *instrumentedCache) Fetch(ctx context.Context, keys []string) ([]string,
 		sp := ot.SpanFromContext(ctx)
 		sp.LogFields(otlog.Int("keys requested", len(keys)))
 
-		found, bufs, missing = i.Cache.Fetch(ctx, keys)
+		found, bufs, missing = i.Cache.Fetch(ctx, keys, ttl)
 		sp.LogFields(otlog.Int("keys found", len(found)), otlog.Int("keys missing", len(keys)-len(found)))
 		return nil
 	})

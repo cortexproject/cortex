@@ -42,7 +42,7 @@ func TestRedisClient(t *testing.T) {
 			miss := []string{"miss1", "miss2"}
 
 			// set values
-			err := tt.client.MSet(ctx, keys, bufs)
+			err := tt.client.MSet(ctx, keys, bufs, 0)
 			require.Nil(t, err)
 
 			// get keys
@@ -124,7 +124,7 @@ func TestRedisClusterCrossSlotMSet(t *testing.T) {
 	}
 
 	// This should not fail even with cross-slot keys in cluster mode
-	err = cluster.MSet(ctx, keys, values)
+	err = cluster.MSet(ctx, keys, values, 0)
 	require.Nil(t, err, "MSet should work with cross-slot keys in cluster mode")
 
 	// Verify all keys were set correctly
@@ -135,4 +135,58 @@ func TestRedisClusterCrossSlotMSet(t *testing.T) {
 	for i, value := range retrieved {
 		require.Equal(t, values[i], value, "Retrieved value should match set value for key %s", keys[i])
 	}
+}
+
+func TestRedisTTLFallback(t *testing.T) {
+	defaultExpiration := 100 * time.Second
+	client, err := mockRedisClientWithExpiration(defaultExpiration)
+	require.Nil(t, err)
+	defer client.Close()
+
+	ctx := context.Background()
+
+	// Test 1: TTL=0 should use configured expiration (100s)
+	err = client.MSet(ctx, []string{"key1"}, [][]byte{[]byte("value1")}, 0)
+	require.Nil(t, err, "MSet with TTL=0 should succeed and use default expiration")
+
+	// Verify key was set with correct value
+	values, err := client.MGet(ctx, []string{"key1"})
+	require.Nil(t, err)
+	require.Equal(t, []byte("value1"), values[0])
+
+	// Verify TTL is set to default expiration (100s, allow 2s delta for test execution time)
+	ttl, err := client.rdb.TTL(ctx, "key1").Result()
+	require.Nil(t, err)
+	require.InDelta(t, defaultExpiration.Seconds(), ttl.Seconds(), 10.0,
+		"TTL=0 should use configured default expiration")
+
+	// Test 2: Custom TTL should override configured expiration
+	customTTL := 20 * time.Second
+	err = client.MSet(ctx, []string{"key2"}, [][]byte{[]byte("value2")}, customTTL)
+	require.Nil(t, err, "MSet with custom TTL should succeed")
+
+	// Verify key was set with correct value
+	values, err = client.MGet(ctx, []string{"key2"})
+	require.Nil(t, err)
+	require.Equal(t, []byte("value2"), values[0])
+
+	// Verify TTL is set to custom value (20s, allow 2s delta for test execution time)
+	ttl, err = client.rdb.TTL(ctx, "key2").Result()
+	require.Nil(t, err)
+	require.InDelta(t, customTTL.Seconds(), ttl.Seconds(), 10.0,
+		"custom TTL should override default expiration")
+}
+
+func mockRedisClientWithExpiration(expiration time.Duration) (*RedisClient, error) {
+	redisServer, err := miniredis.Run()
+	if err != nil {
+		return nil, err
+	}
+	return &RedisClient{
+		expiration: expiration,
+		timeout:    100 * time.Millisecond,
+		rdb: redis.NewClient(&redis.Options{
+			Addr: redisServer.Addr(),
+		}),
+	}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -231,11 +232,14 @@ func TestLimitsMiddleware_MaxQueryLength(t *testing.T) {
 }
 
 type mockLimits struct {
-	maxQueryLookback       time.Duration
-	maxQueryLength         time.Duration
-	maxCacheFreshness      time.Duration
-	maxQueryResponseSize   int64
-	queryVerticalShardSize int
+	maxQueryLookback         time.Duration
+	maxQueryLength           time.Duration
+	maxCacheFreshness        time.Duration
+	maxQueryResponseSize     int64
+	queryVerticalShardSize   int
+	resultsCacheTTL          time.Duration
+	outOfOrderResultsCacheTTL time.Duration
+	outOfOrderWindow         time.Duration
 }
 
 func (m mockLimits) MaxQueryLookback(string) time.Duration {
@@ -268,6 +272,18 @@ func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
 
 func (m mockLimits) QueryRejection(userID string) validation.QueryRejection {
 	return validation.QueryRejection{}
+}
+
+func (m mockLimits) ResultsCacheTTL(userID string) time.Duration {
+	return m.resultsCacheTTL
+}
+
+func (m mockLimits) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return m.outOfOrderResultsCacheTTL
+}
+
+func (m mockLimits) OutOfOrderTimeWindow(userID string) model.Duration {
+	return model.Duration(m.outOfOrderWindow)
 }
 
 type mockHandler struct {

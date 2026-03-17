@@ -254,7 +254,8 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
-	cached, ok := s.get(ctx, key)
+	ttl := s.getTTLForExtents(ctx, []tripperware.Extent{{Start: r.GetStart(), End: r.GetEnd()}})
+	cached, ok := s.get(ctx, key, ttl)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
 	} else {
@@ -726,8 +727,8 @@ func (s resultsCache) filterRecentExtents(req tripperware.Request, maxCacheFresh
 	return extents, nil
 }
 
-func (s resultsCache) get(ctx context.Context, key string) ([]tripperware.Extent, bool) {
-	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
+func (s resultsCache) get(ctx context.Context, key string, ttl time.Duration) ([]tripperware.Extent, bool) {
+	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)}, ttl)
 	if len(found) != 1 {
 		return nil, false
 	}
@@ -758,7 +759,55 @@ func (s resultsCache) get(ctx context.Context, key string) ([]tripperware.Extent
 	return resp.Extents, true
 }
 
+// getTTLForExtents calculates the appropriate TTL for given extents based on whether
+// they overlap with the out-of-order time window.
+func (s resultsCache) getTTLForExtents(ctx context.Context, extents []tripperware.Extent) time.Duration {
+	tenantIDs, err := users.TenantIDs(ctx)
+	if err != nil {
+		tenantIDs = nil
+	}
+
+	var resultsCacheTTL, outOfOrderCacheTTL time.Duration
+	if len(tenantIDs) > 0 {
+		// Use smallest non-zero TTL to respect the most restrictive tenant's cache policy
+		resultsCacheTTL = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, s.limits.ResultsCacheTTL)
+		outOfOrderCacheTTL = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, s.limits.OutOfOrderResultsCacheTTL)
+	}
+
+	if s.extentsOverlapOutOfOrderWindow(extents, tenantIDs) {
+		return outOfOrderCacheTTL
+	}
+	return resultsCacheTTL
+}
+
+// extentsOverlapOutOfOrderWindow checks if any extent overlaps with the out-of-order time window.
+// Returns true if any extent's end time is within the out-of-order window.
+func (s resultsCache) extentsOverlapOutOfOrderWindow(extents []tripperware.Extent, tenantIDs []string) bool {
+	if len(tenantIDs) == 0 {
+		return false
+	}
+
+	outOfOrderWindow := validation.MaxDurationPerTenant(tenantIDs, func(userID string) time.Duration {
+		return time.Duration(s.limits.OutOfOrderTimeWindow(userID))
+	})
+
+	if outOfOrderWindow == 0 {
+		return false
+	}
+
+	nowMs := time.Now().UnixMilli()
+	outOfOrderCutoffMs := nowMs - int64(outOfOrderWindow/time.Millisecond)
+
+	for _, extent := range extents {
+		if extent.End >= outOfOrderCutoffMs {
+			return true
+		}
+	}
+
+	return false
+}
 func (s resultsCache) put(ctx context.Context, key string, extents []tripperware.Extent) {
+	ttl := s.getTTLForExtents(ctx, extents)
 	buf, err := proto.Marshal(&tripperware.CachedResponse{
 		Key:     key,
 		Extents: extents,
@@ -768,7 +817,7 @@ func (s resultsCache) put(ctx context.Context, key string, extents []tripperware
 		return
 	}
 
-	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
+	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf}, ttl)
 }
 
 func jaegerSpanID(ctx context.Context) string {

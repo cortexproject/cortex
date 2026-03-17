@@ -18,8 +18,8 @@ import (
 // Whatsmore, we found partially successful Fetches were often treated as failed
 // when they returned an error.
 type Cache interface {
-	Store(ctx context.Context, key []string, buf [][]byte)
-	Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string)
+	Store(ctx context.Context, key []string, buf [][]byte, ttl time.Duration)
+	Fetch(ctx context.Context, keys []string, ttl time.Duration) (found []string, bufs [][]byte, missing []string)
 	Stop()
 }
 

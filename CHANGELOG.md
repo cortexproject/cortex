@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #5039
 
 ## 1.21.0 in progress
 

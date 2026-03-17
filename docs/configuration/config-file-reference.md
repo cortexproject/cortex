@@ -4246,6 +4246,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
+# Per-tenant TTL for cached query results in the cache backend
+# (Memcached/Redis/FIFO). This is the standard TTL for results that do not
+# overlap with the out-of-order time window. 0 (default) means use the global
+# cache backend TTL configuration.
+# CLI flag: -frontend.results-cache-ttl
+[results_cache_ttl: <duration> | default = 0s]
+
+# Per-tenant TTL for cached query results that overlap with the out-of-order
+# time window. These results may still receive out-of-order samples, so they
+# typically use a shorter TTL. 0 (default) means use the global cache backend
+# TTL configuration.
+# CLI flag: -frontend.out-of-order-results-cache-ttl
+[out_of_order_results_cache_ttl: <duration> | default = 0s]
+
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
 # will handle requests for the tenant. If the value is < 1, it will be treated

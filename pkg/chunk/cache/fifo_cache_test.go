@@ -51,7 +51,7 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		c.Store(ctx, keys, values, 0)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(1))
@@ -93,7 +93,7 @@ func TestFifoCacheEviction(t *testing.T) {
 			keys = append(keys, key)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		c.Store(ctx, keys, values, 0)
 		require.Len(t, c.entries, cnt)
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAdded), float64(2))
@@ -139,7 +139,7 @@ func TestFifoCacheEviction(t *testing.T) {
 			copy(value, vstr)
 			values = append(values, value)
 		}
-		c.Store(ctx, keys, values)
+		c.Store(ctx, keys, values, 0)
 		require.Len(t, c.entries, cnt)
 
 		for i := cnt; i < cnt+evicted; i++ {
@@ -191,7 +191,8 @@ func TestFifoCacheExpiry(t *testing.T) {
 
 		c.Store(ctx,
 			[]string{key1, key2, key4, key3, key2, key1},
-			[][]byte{genBytes(16), []byte("dummy"), genBytes(20), data3, data2, data1})
+			[][]byte{genBytes(16), []byte("dummy"), genBytes(20), data3, data2, data1},
+			0)
 
 		value, ok := c.Get(ctx, key1)
 		require.True(t, ok)
@@ -237,6 +238,50 @@ func genBytes(n uint8) []byte {
 		arr[i] = byte(i)
 	}
 	return arr
+}
+
+func TestFifoCacheTTLFallback(t *testing.T) {
+	cfg := FifoCacheConfig{
+		MaxSizeItems: 10,
+		Validity:     100 * time.Millisecond, // Default TTL
+	}
+	c := NewFifoCache("test", cfg, nil, log.NewNopLogger())
+	ctx := context.Background()
+
+	// Test 1: TTL=0 should use configured Validity (100ms)
+	c.Store(ctx, []string{"key1"}, [][]byte{[]byte("value1")}, 0)
+
+	// Should exist immediately
+	value, ok := c.Get(ctx, "key1")
+	require.True(t, ok)
+	require.Equal(t, []byte("value1"), value)
+
+	// Should still exist at 50ms (half of 100ms)
+	time.Sleep(50 * time.Millisecond)
+	value, ok = c.Get(ctx, "key1")
+	require.True(t, ok)
+	require.Equal(t, []byte("value1"), value)
+
+	// Should expire after 100ms
+	time.Sleep(60 * time.Millisecond) // Total: 110ms
+	_, ok = c.Get(ctx, "key1")
+	require.False(t, ok, "entry should have expired after configured Validity")
+
+	// Test 2: Custom TTL should override configured Validity
+	customTTL := 20 * time.Millisecond
+	c.Store(ctx, []string{"key2"}, [][]byte{[]byte("value2")}, customTTL)
+
+	// Should exist immediately
+	value, ok = c.Get(ctx, "key2")
+	require.True(t, ok)
+	require.Equal(t, []byte("value2"), value)
+
+	// Should expire after custom TTL (20ms), not default (100ms)
+	time.Sleep(30 * time.Millisecond)
+	_, ok = c.Get(ctx, "key2")
+	require.False(t, ok, "entry should have expired after custom TTL")
+
+	c.Stop()
 }
 
 func TestBytesParsing(t *testing.T) {

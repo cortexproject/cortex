@@ -24,10 +24,10 @@ func TestTiered(t *testing.T) {
 	level1, level2 := cache.NewMockCache(), cache.NewMockCache()
 	cache := cache.NewTiered([]cache.Cache{level1, level2})
 
-	level1.Store(context.Background(), []string{"key1"}, [][]byte{[]byte("hello")})
-	level2.Store(context.Background(), []string{"key2"}, [][]byte{[]byte("world")})
+	level1.Store(context.Background(), []string{"key1"}, [][]byte{[]byte("hello")}, 0)
+	level2.Store(context.Background(), []string{"key2"}, [][]byte{[]byte("world")}, 0)
 
-	keys, bufs, missing := cache.Fetch(context.Background(), []string{"key1", "key2", "key3"})
+	keys, bufs, missing := cache.Fetch(context.Background(), []string{"key1", "key2", "key3"}, 0)
 	require.Equal(t, []string{"key1", "key2"}, keys)
 	require.Equal(t, [][]byte{[]byte("hello"), []byte("world")}, bufs)
 	require.Equal(t, []string{"key3"}, missing)

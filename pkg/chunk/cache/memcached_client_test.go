@@ -8,7 +8,8 @@ import (
 
 type mockMemcache struct {
 	sync.RWMutex
-	contents map[string][]byte
+	contents       map[string][]byte
+	lastExpiration int32
 }
 
 func newMockMemcache() *mockMemcache {
@@ -35,5 +36,12 @@ func (m *mockMemcache) Set(item *memcache.Item) error {
 	m.Lock()
 	defer m.Unlock()
 	m.contents[item.Key] = item.Value
+	m.lastExpiration = item.Expiration
 	return nil
+}
+
+func (m *mockMemcache) GetLastExpiration() int32 {
+	m.RLock()
+	defer m.RUnlock()
+	return m.lastExpiration
 }

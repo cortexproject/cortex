@@ -2,6 +2,8 @@
 
 ## master / unreleased
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #6489
+* [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #5039
+
 ## 1.21.0 in progress
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312

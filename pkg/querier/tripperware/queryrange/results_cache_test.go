@@ -1398,7 +1398,8 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 
 			// fill cache
 			key := splitter(day).GenerateCacheKey(ctx, "1", req)
-			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
+			tenantIDs, _ := users.TenantIDs(ctx)
+			rc.(*resultsCache).put(ctx, key, []tripperware.Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))}, tenantIDs)
 
 			resp, err := rc.Do(ctx, req)
 			require.NoError(t, err)
@@ -1427,29 +1428,30 @@ func Test_resultsCache_MissingData(t *testing.T) {
 	require.NoError(t, err)
 	rc := rm.Wrap(nil).(*resultsCache)
 	ctx := context.Background()
+	tenantIDs, _ := users.TenantIDs(ctx)
 
 	// fill up the cache
 	rc.put(ctx, "empty", []tripperware.Extent{{
 		Start:    100,
 		End:      200,
 		Response: nil,
-	}})
-	rc.put(ctx, "notempty", []tripperware.Extent{mkExtent(100, 120)})
+	}}, tenantIDs)
+	rc.put(ctx, "notempty", []tripperware.Extent{mkExtent(100, 120)}, tenantIDs)
 	rc.put(ctx, "mixed", []tripperware.Extent{mkExtent(100, 120), {
 		Start:    120,
 		End:      200,
 		Response: nil,
-	}})
+	}}, tenantIDs)
 
-	extents, hit := rc.get(ctx, "empty")
+	extents, hit := rc.get(ctx, "empty", 0)
 	require.Empty(t, extents)
 	require.False(t, hit)
 
-	extents, hit = rc.get(ctx, "notempty")
+	extents, hit = rc.get(ctx, "notempty", 0)
 	require.Equal(t, len(extents), 1)
 	require.True(t, hit)
 
-	extents, hit = rc.get(ctx, "mixed")
+	extents, hit = rc.get(ctx, "mixed", 0)
 	require.Equal(t, len(extents), 0)
 	require.False(t, hit)
 }
@@ -1583,7 +1585,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 	key := splitter(day).GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), parsedRequest)
 
 	cacheKey := cache.HashKey(key)
-	found, bufs, _ := c.Fetch(ctx, []string{cacheKey})
+	found, bufs, _ := c.Fetch(ctx, []string{cacheKey}, 0)
 	require.Equal(t, []string{cacheKey}, found)
 	require.Len(t, bufs, 1)
 
@@ -1761,4 +1763,259 @@ func TestPrometheusResponseExtractor_Extract_Histograms(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestExtentsOverlapOutOfOrderWindow(t *testing.T) {
+	now := time.Now()
+	nowMs := now.UnixMilli()
+	oneHourAgo := now.Add(-1 * time.Hour).UnixMilli()
+	twoHoursAgo := now.Add(-2 * time.Hour).UnixMilli()
+	thirtyMinutesAgo := now.Add(-30 * time.Minute).UnixMilli()
+
+	tests := []struct {
+		name             string
+		extents          []tripperware.Extent
+		outOfOrderWindow time.Duration
+		expectedOverlap  bool
+	}{
+		{
+			name: "extent ends before out-of-order window - no overlap",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: twoHoursAgo + 1000}, // 2 hours ago
+			},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  false,
+		},
+		{
+			name: "extent ends exactly at cutoff boundary - overlaps (boundary case)",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // ends exactly at 1h ago
+			},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  true, // >= check includes boundary
+		},
+		{
+			name: "extent ends within out-of-order window - overlaps",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: thirtyMinutesAgo}, // 30 min ago
+			},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  true,
+		},
+		{
+			name: "extent ends at now - overlaps",
+			extents: []tripperware.Extent{
+				{Start: oneHourAgo, End: nowMs},
+			},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  true,
+		},
+		{
+			name: "multiple extents, one overlaps - overlaps",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: twoHoursAgo + 1000}, // old, no overlap
+				{Start: twoHoursAgo, End: thirtyMinutesAgo},   // overlaps
+			},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  true,
+		},
+		{
+			name: "zero out-of-order window - no overlap",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: nowMs},
+			},
+			outOfOrderWindow: 0,
+			expectedOverlap:  false,
+		},
+		{
+			name:             "empty extents - no overlap",
+			extents:          []tripperware.Extent{},
+			outOfOrderWindow: 1 * time.Hour,
+			expectedOverlap:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			limits := mockLimits{outOfOrderWindow: tc.outOfOrderWindow}
+			cfg := ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					Cache: cache.NewMockCache(),
+				},
+			}
+			rm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				splitter(day),
+				limits,
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			rc := rm.Wrap(nil).(*resultsCache)
+
+			overlap := rc.extentsOverlapOutOfOrderWindow(tc.extents, []string{"tenant-a"})
+			assert.Equal(t, tc.expectedOverlap, overlap)
+		})
+	}
+}
+
+func TestResultsCachePutTTLSelection(t *testing.T) {
+	now := time.Now()
+	oneHourAgo := now.Add(-1 * time.Hour).UnixMilli()
+	twoHoursAgo := now.Add(-2 * time.Hour).UnixMilli()
+
+	tests := []struct {
+		name               string
+		extents            []tripperware.Extent
+		resultsCacheTTL    time.Duration
+		outOfOrderCacheTTL time.Duration
+		outOfOrderWindow   time.Duration
+		expectedTTL        time.Duration
+	}{
+		{
+			name: "old data uses results_cache_ttl",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: twoHoursAgo + 1000}, // 2 hours ago, no overlap
+			},
+			resultsCacheTTL:    24 * time.Hour,
+			outOfOrderCacheTTL: 5 * time.Minute,
+			outOfOrderWindow:   1 * time.Hour,
+			expectedTTL:        24 * time.Hour,
+		},
+		{
+			name: "recent data uses out_of_order_results_cache_ttl",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:    24 * time.Hour,
+			outOfOrderCacheTTL: 5 * time.Minute,
+			outOfOrderWindow:   1 * time.Hour,
+			expectedTTL:        5 * time.Minute,
+		},
+		{
+			name: "zero out-of-order window uses results_cache_ttl",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo},
+			},
+			resultsCacheTTL:    12 * time.Hour,
+			outOfOrderCacheTTL: 5 * time.Minute,
+			outOfOrderWindow:   0, // no out-of-order support
+			expectedTTL:        12 * time.Hour,
+		},
+		{
+			name: "zero TTLs use backend defaults",
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: twoHoursAgo + 1000},
+			},
+			resultsCacheTTL:    0,
+			outOfOrderCacheTTL: 0,
+			outOfOrderWindow:   0,
+			expectedTTL:        0, // backend default
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCache := cache.NewMockCache()
+			limits := mockLimits{
+				resultsCacheTTL:           tc.resultsCacheTTL,
+				outOfOrderResultsCacheTTL: tc.outOfOrderCacheTTL,
+				outOfOrderWindow:          tc.outOfOrderWindow,
+			}
+
+			cfg := ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					Cache: mockCache,
+				},
+			}
+			rm, _, err := NewResultsCacheMiddleware(
+				log.NewNopLogger(),
+				cfg,
+				splitter(day),
+				limits,
+				PrometheusCodec,
+				PrometheusResponseExtractor{},
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+			rc := rm.Wrap(nil).(*resultsCache)
+
+			ctx := user.InjectOrgID(context.Background(), "tenant-a")
+			tenantIDs, _ := users.TenantIDs(ctx)
+			rc.put(ctx, "test-key", tc.extents, tenantIDs)
+
+			assert.Equal(t, tc.expectedTTL, mockCache.(*cache.MockCache).GetLastTTL())
+		})
+	}
+}
+
+func TestResultsCacheWithPerTenantTTL(t *testing.T) {
+	t.Parallel()
+
+	// Create a mock cache that captures TTL
+	mockCache := cache.NewMockCache()
+
+	// Configure per-tenant TTLs
+	limits := mockLimits{
+		resultsCacheTTL:           24 * time.Hour,
+		outOfOrderResultsCacheTTL: 5 * time.Minute,
+		outOfOrderWindow:          1 * time.Hour,
+	}
+
+	cfg := ResultsCacheConfig{
+		CacheConfig: cache.Config{
+			Cache: mockCache,
+		},
+	}
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		splitter(day),
+		limits,
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
+
+	// Create a handler that returns a response
+	handlerCalls := 0
+	rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
+		handlerCalls++
+		return parsedResponse, nil
+	}))
+
+	ctx := user.InjectOrgID(context.Background(), "tenant-a")
+
+	// Test 1: Query old data (> 1 hour ago) - should use long TTL
+	now := time.Now()
+	oldStart := now.Add(-3*time.Hour).UnixNano() / 1e6
+	oldEnd := now.Add(-2*time.Hour).UnixNano() / 1e6
+	oldReq := parsedRequest.WithStartEnd(oldStart, oldEnd)
+
+	_, err = rc.Do(ctx, oldReq)
+	require.NoError(t, err)
+	require.Equal(t, 1, handlerCalls, "first request should call handler")
+
+	// Verify long TTL was used (24h)
+	lastTTL := mockCache.(*cache.MockCache).GetLastTTL()
+	assert.Equal(t, 24*time.Hour, lastTTL, "old data should use long TTL")
+
+	// Test 2: Query recent data (overlaps with out-of-order window) - should use short TTL
+	recentStart := now.Add(-2*time.Hour).UnixNano() / 1e6
+	recentEnd := now.Add(-30*time.Minute).UnixNano() / 1e6 // 30 min ago, within 1h window
+	recentReq := parsedRequest.WithStartEnd(recentStart, recentEnd)
+
+	_, err = rc.Do(ctx, recentReq)
+	require.NoError(t, err)
+	require.Equal(t, 2, handlerCalls, "second request should call handler")
+
+	// Verify short TTL was used (5m)
+	lastTTL = mockCache.(*cache.MockCache).GetLastTTL()
+	assert.Equal(t, 5*time.Minute, lastTTL, "recent data should use short out-of-order TTL")
 }

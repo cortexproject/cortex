@@ -515,6 +515,18 @@ func (m mockLimits) QueryRejection(userID string) validation.QueryRejection {
 	return m.queryRejection
 }
 
+func (mockLimits) ResultsCacheTTL(userID string) time.Duration {
+	return 0
+}
+
+func (mockLimits) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return 0
+}
+
+func (mockLimits) OutOfOrderTimeWindow(userID string) model.Duration {
+	return 0
+}
+
 type singleHostRoundTripper struct {
 	host string
 	next http.RoundTripper

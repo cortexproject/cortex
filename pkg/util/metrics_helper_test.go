@@ -1258,3 +1258,270 @@ func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string
 
 	require.Equal(t, expectedLabels, result)
 }
+
+// TestIsNative tests the native histogram detection function
+func TestIsNative(t *testing.T) {
+	// Native histogram has Schema set
+	schema := int32(0)
+	nativeHisto := &dto.Histogram{
+		Schema: &schema,
+	}
+	require.True(t, isNative(nativeHisto))
+
+	// Classic histogram has no Schema
+	classicHisto := &dto.Histogram{
+		SampleCount: proto.Uint64(10),
+		SampleSum:   proto.Float64(100.0),
+		Bucket: []*dto.Bucket{
+			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+		},
+	}
+	require.False(t, isNative(classicHisto))
+
+	// Empty histogram
+	require.False(t, isNative(&dto.Histogram{}))
+}
+
+// TestHistogramData_AddHistogram_Native tests adding native histograms
+func TestHistogramData_AddHistogram_Native(t *testing.T) {
+	hd := &HistogramData{}
+
+	// Create a native histogram
+	schema := int32(0)
+	zt := 0.001
+	histo := &dto.Histogram{
+		Schema:        &schema,
+		ZeroThreshold: &zt,
+		SampleCount:   proto.Uint64(10),
+		SampleSum:     proto.Float64(100.0),
+		ZeroCount:     proto.Uint64(2),
+		PositiveSpan: []*dto.BucketSpan{
+			{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+		},
+		PositiveDelta: []int64{5, 3}, // deltas: [5, 3] -> counts: [5, 8]
+		NegativeSpan: []*dto.BucketSpan{
+			{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+		},
+		NegativeDelta: []int64{2}, // deltas: [2] -> counts: [2]
+	}
+
+	hd.AddHistogram(histo)
+
+	require.True(t, hd.hasNative())
+	require.Equal(t, int32(0), hd.Schema)
+	require.Equal(t, 0.001, hd.ZeroThreshold)
+	require.Equal(t, uint64(10), hd.sampleCount)
+	require.Equal(t, 100.0, hd.sampleSum)
+	require.Equal(t, uint64(2), hd.ZeroCount)
+	require.Equal(t, int64(5), hd.PositiveBuckets[0])
+	require.Equal(t, int64(8), hd.PositiveBuckets[1])
+	require.Equal(t, int64(2), hd.NegativeBuckets[0])
+}
+
+// TestHistogramData_AddHistogram_Classic tests adding classic histograms
+func TestHistogramData_AddHistogram_Classic(t *testing.T) {
+	hd := &HistogramData{}
+
+	histo := &dto.Histogram{
+		SampleCount: proto.Uint64(10),
+		SampleSum:   proto.Float64(100.0),
+		Bucket: []*dto.Bucket{
+			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+			{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+			{UpperBound: proto.Float64(10.0), CumulativeCount: proto.Uint64(10)},
+		},
+	}
+
+	hd.AddHistogram(histo)
+
+	require.False(t, hd.hasNative())
+	require.Equal(t, uint64(10), hd.sampleCount)
+	require.Equal(t, 100.0, hd.sampleSum)
+	require.Equal(t, uint64(5), hd.buckets[1.0])
+	require.Equal(t, uint64(8), hd.buckets[5.0])
+	require.Equal(t, uint64(10), hd.buckets[10.0])
+}
+
+// TestHistogramData_AddHistogram_DualFormat tests adding dual-format histograms (both native and classic)
+func TestHistogramData_AddHistogram_DualFormat(t *testing.T) {
+	hd := &HistogramData{}
+
+	schema := int32(0)
+	zt := 0.001
+	histo := &dto.Histogram{
+		Schema:        &schema,
+		ZeroThreshold: &zt,
+		SampleCount:   proto.Uint64(10),
+		SampleSum:     proto.Float64(100.0),
+		ZeroCount:     proto.Uint64(2),
+		PositiveSpan: []*dto.BucketSpan{
+			{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+		},
+		PositiveDelta: []int64{5},
+		Bucket: []*dto.Bucket{
+			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+			{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+		},
+	}
+
+	hd.AddHistogram(histo)
+
+	// Both native and classic should be populated
+	require.True(t, hd.hasNative())
+	require.Equal(t, uint64(2), hd.ZeroCount)
+	require.Equal(t, int64(5), hd.PositiveBuckets[0])
+	require.Equal(t, uint64(5), hd.buckets[1.0])
+	require.Equal(t, uint64(8), hd.buckets[5.0])
+}
+
+// TestHistogramData_AddHistogram_Multiple tests merging multiple histograms
+func TestHistogramData_AddHistogram_Multiple(t *testing.T) {
+	hd := &HistogramData{}
+
+	schema := int32(0)
+	zt := 0.001
+
+	// First histogram
+	histo1 := &dto.Histogram{
+		Schema:        &schema,
+		ZeroThreshold: &zt,
+		SampleCount:   proto.Uint64(10),
+		SampleSum:     proto.Float64(100.0),
+		ZeroCount:     proto.Uint64(2),
+		PositiveSpan: []*dto.BucketSpan{
+			{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+		},
+		PositiveDelta: []int64{5, 3}, // counts: [5, 8]
+	}
+
+	// Second histogram
+	histo2 := &dto.Histogram{
+		Schema:        &schema,
+		ZeroThreshold: &zt,
+		SampleCount:   proto.Uint64(5),
+		SampleSum:     proto.Float64(50.0),
+		ZeroCount:     proto.Uint64(1),
+		PositiveSpan: []*dto.BucketSpan{
+			{Offset: proto.Int32(1), Length: proto.Uint32(1)}, // bucket 1
+		},
+		PositiveDelta: []int64{2}, // counts: [2] at bucket 1
+	}
+
+	hd.AddHistogram(histo1)
+	hd.AddHistogram(histo2)
+
+	require.Equal(t, uint64(15), hd.sampleCount) // 10 + 5
+	require.Equal(t, 150.0, hd.sampleSum)        // 100 + 50
+	require.Equal(t, uint64(3), hd.ZeroCount)    // 2 + 1
+	require.Equal(t, int64(5), hd.PositiveBuckets[0])
+	require.Equal(t, int64(10), hd.PositiveBuckets[1]) // 8 + 2
+}
+
+// TestMakeBucketsFromMap tests the conversion from bucket map to spans and deltas
+func TestMakeBucketsFromMap(t *testing.T) {
+	tests := []struct {
+		name           string
+		buckets        map[int]int64
+		expectedSpans  int
+		expectedDeltas []int64
+	}{
+		{
+			name:           "empty bucket map",
+			buckets:        map[int]int64{},
+			expectedSpans:  0,
+			expectedDeltas: nil,
+		},
+		{
+			name:           "single bucket",
+			buckets:        map[int]int64{0: 5},
+			expectedSpans:  1,
+			expectedDeltas: []int64{5},
+		},
+		{
+			name:           "contiguous buckets",
+			buckets:        map[int]int64{0: 5, 1: 8, 2: 3},
+			expectedSpans:  1,
+			expectedDeltas: []int64{5, 3, -5}, // deltas from previous count
+		},
+		{
+			name:           "buckets with small gap (filled)",
+			buckets:        map[int]int64{0: 5, 2: 3}, // gap of 1
+			expectedSpans:  1,
+			expectedDeltas: []int64{5, -5, 3}, // includes zero for gap
+		},
+		{
+			name:           "buckets with large gap (new span)",
+			buckets:        map[int]int64{0: 5, 5: 3}, // gap of 4
+			expectedSpans:  2,
+			expectedDeltas: []int64{5, -2}, // deltas carry across spans: bucket0=5, bucket5=3-5=-2
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spans, deltas := makeBucketsFromMap(tt.buckets)
+			require.Equal(t, tt.expectedSpans, len(spans))
+			if tt.expectedDeltas != nil {
+				require.Equal(t, tt.expectedDeltas, deltas)
+			}
+		})
+	}
+}
+
+// TestMergeHistogram tests the mergeHistogram function
+func TestMergeHistogram(t *testing.T) {
+	schema := int32(0)
+	zt := 0.001
+
+	// First metric with native histogram
+	m1 := &dto.Metric{
+		Histogram: &dto.Histogram{
+			Schema:        &schema,
+			ZeroThreshold: &zt,
+			SampleCount:   proto.Uint64(10),
+			SampleSum:     proto.Float64(100.0),
+			ZeroCount:     proto.Uint64(2),
+			PositiveSpan: []*dto.BucketSpan{
+				{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+			},
+			PositiveDelta: []int64{5},
+			Bucket: []*dto.Bucket{
+				{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+			},
+		},
+	}
+
+	// Second metric with native histogram
+	m2 := &dto.Metric{
+		Histogram: &dto.Histogram{
+			Schema:        &schema,
+			ZeroThreshold: &zt,
+			SampleCount:   proto.Uint64(5),
+			SampleSum:     proto.Float64(50.0),
+			ZeroCount:     proto.Uint64(1),
+			PositiveSpan: []*dto.BucketSpan{
+				{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+			},
+			PositiveDelta: []int64{3},
+			Bucket: []*dto.Bucket{
+				{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
+			},
+		},
+	}
+
+	mergeHistogram(m1, m2)
+
+	h := m1.Histogram
+	require.Equal(t, uint64(15), h.GetSampleCount()) // 10 + 5
+	require.Equal(t, 150.0, h.GetSampleSum())        // 100 + 50
+	require.Equal(t, uint64(3), h.GetZeroCount())    // 2 + 1
+
+	// Check classic buckets merged
+	require.Equal(t, 1, len(h.Bucket))
+	require.Equal(t, uint64(8), h.Bucket[0].GetCumulativeCount()) // 5 + 3
+
+	// Check native buckets merged (should be 5 + 3 = 8)
+	posCounts := deltasToCountsInt(h.GetPositiveDelta())
+	require.Equal(t, 1, len(posCounts))
+	require.Equal(t, int64(8), posCounts[0])
+}

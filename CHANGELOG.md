@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-
+* [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #6489
 ## 1.21.0 in progress
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312

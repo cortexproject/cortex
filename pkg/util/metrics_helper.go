@@ -1175,7 +1175,7 @@ func makeBucketsFromMap(buckets map[int]int64) ([]*dto.BucketSpan, []int64) {
 		} else {
 			// We have found a small gap (or no gap at all).
 			// Insert empty buckets as needed.
-			for j := int32(0); j < iDelta; j++ {
+			for range iDelta {
 				appendDelta(0)
 			}
 		}

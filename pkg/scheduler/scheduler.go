@@ -58,9 +58,9 @@ type Scheduler struct {
 	requestQueue *queue.RequestQueue
 	activeUsers  *users.ActiveUsersCleanupService
 
-	pendingRequestsMu sync.Mutex
+	trackedRequestsMu sync.Mutex
 
-	pendingRequests map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
+	trackedRequests map[requestKey]*schedulerRequest // Request is kept in this map even after being dispatched to querier. It can still be canceled at that time.
 
 	// Subservices manager.
 	subservices        *services.Manager
@@ -72,7 +72,7 @@ type Scheduler struct {
 	connectedQuerierClients  prometheus.GaugeFunc
 	connectedFrontendClients prometheus.GaugeFunc
 	queueDuration            prometheus.Histogram
-	pendingRequestsCurrent   prometheus.GaugeFunc
+	trackedRequestsLength    prometheus.GaugeFunc
 
 	// Enables or disables distributed query execution functionality
 	distributedExecEnabled bool
@@ -80,7 +80,7 @@ type Scheduler struct {
 	fragmentTable          *fragment_table.FragmentTable // Tracks fragment execution state and querier assignments
 
 	// Maps queries to their fragment IDs for efficient query cancellation.
-	// Using this map avoids the need to scan all pending requests to find
+	// Using this map avoids the need to scan all tracked requests to find
 	// fragments belonging to a specific query.
 	queryFragmentRegistry map[queryKey][]uint64
 }
@@ -121,7 +121,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		log:    log,
 		limits: limits,
 
-		pendingRequests:    map[requestKey]*schedulerRequest{},
+		trackedRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
 
 		fragmentTable:          fragment_table.NewFragmentTable(2 * time.Minute),
@@ -156,10 +156,10 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 		Help: "Number of query-frontend worker clients currently connected to the query-scheduler.",
 	}, s.getConnectedFrontendClientsMetric)
 
-	s.pendingRequestsCurrent = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_query_scheduler_pending_requests",
+	s.trackedRequestsLength = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "cortex_query_scheduler_tracked_requests",
 		Help: "Number of requests currently tracked by the scheduler.",
-	}, s.getPendingRequestsMetric)
+	}, s.getTrackedRequestsMetric)
 
 	s.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(s.cleanupMetricsForInactiveUser)
 
@@ -282,7 +282,7 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 			}
 
 		case schedulerpb.CANCEL:
-			s.cancelRequestAndRemoveFromPending(frontendAddress, msg.QueryID, 0, true)
+			s.cancelRequestAndRemoveFromTracked(frontendAddress, msg.QueryID, 0, true)
 			resp = &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 
 		default:
@@ -435,19 +435,19 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	return s.requestQueue.EnqueueRequest(userID, req, maxQueriers, func() {
 		shouldCancel = false
 
-		s.pendingRequestsMu.Lock()
-		defer s.pendingRequestsMu.Unlock()
+		s.trackedRequestsMu.Lock()
+		defer s.trackedRequestsMu.Unlock()
 
 		queryKey := queryKey{frontendAddr: frontendAddr, queryID: msg.QueryID}
 		s.queryFragmentRegistry[queryKey] = append(s.queryFragmentRegistry[queryKey], req.fragment.FragmentID)
-		s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: req.fragment.FragmentID}] = req
+		s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: req.fragment.FragmentID}] = req
 	})
 }
 
 // This method doesn't do removal from the queue.
-func (s *Scheduler) cancelRequestAndRemoveFromPending(frontendAddr string, queryID uint64, fragmentID uint64, cancelAll bool) {
-	s.pendingRequestsMu.Lock()
-	defer s.pendingRequestsMu.Unlock()
+func (s *Scheduler) cancelRequestAndRemoveFromTracked(frontendAddr string, queryID uint64, fragmentID uint64, cancelAll bool) {
+	s.trackedRequestsMu.Lock()
+	defer s.trackedRequestsMu.Unlock()
 
 	querykey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
 
@@ -455,19 +455,19 @@ func (s *Scheduler) cancelRequestAndRemoveFromPending(frontendAddr string, query
 		// cancel all requests under the queryID
 		for _, fragID := range s.queryFragmentRegistry[querykey] {
 			key := requestKey{queryKey: querykey, fragmentID: fragID}
-			if req := s.pendingRequests[key]; req != nil {
+			if req := s.trackedRequests[key]; req != nil {
 				req.ctxCancel()
 			}
-			delete(s.pendingRequests, key)
+			delete(s.trackedRequests, key)
 		}
 		delete(s.queryFragmentRegistry, querykey)
 	} else {
 		// cancel specific fragment of the query by its queryID and fragmentID
 		key := requestKey{queryKey: querykey, fragmentID: fragmentID}
-		if req := s.pendingRequests[key]; req != nil {
+		if req := s.trackedRequests[key]; req != nil {
 			req.ctxCancel()
 		}
-		delete(s.pendingRequests, key)
+		delete(s.trackedRequests, key)
 
 		// Clean up queryFragmentRegistry for this specific fragment
 		if fragmentIDs, ok := s.queryFragmentRegistry[querykey]; ok {
@@ -543,7 +543,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		*/
 
 		if r.ctx.Err() != nil {
-			s.cancelRequestAndRemoveFromPending(r.frontendAddress, r.queryID, r.fragment.FragmentID, false)
+			s.cancelRequestAndRemoveFromTracked(r.frontendAddress, r.queryID, r.fragment.FragmentID, false)
 
 			lastUserIndex = lastUserIndex.ReuseLastUser()
 			continue
@@ -566,7 +566,7 @@ func (s *Scheduler) NotifyQuerierShutdown(_ context.Context, req *schedulerpb.No
 
 func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuerier_QuerierLoopServer, req *schedulerRequest, QuerierAddress string) error {
 	// Make sure to cancel request at the end to cleanup resources.
-	defer s.cancelRequestAndRemoveFromPending(req.frontendAddress, req.queryID, req.fragment.FragmentID, false)
+	defer s.cancelRequestAndRemoveFromTracked(req.frontendAddress, req.queryID, req.fragment.FragmentID, false)
 
 	// Handle the stream sending & receiving on a goroutine so we can
 	// monitoring the contexts in a select and cancel things appropriately.
@@ -691,7 +691,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
-	// This will also stop the requests queue, which stop accepting new requests and errors out any pending requests.
+	// This will also stop the requests queue, which stop accepting new requests and errors out any tracked requests.
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }
 
@@ -717,9 +717,9 @@ func (s *Scheduler) getConnectedFrontendClientsMetric() float64 {
 	return float64(count)
 }
 
-func (s *Scheduler) getPendingRequestsMetric() float64 {
-	s.pendingRequestsMu.Lock()
-	defer s.pendingRequestsMu.Unlock()
+func (s *Scheduler) getTrackedRequestsMetric() float64 {
+	s.trackedRequestsMu.Lock()
+	defer s.trackedRequestsMu.Unlock()
 
-	return float64(len(s.pendingRequests))
+	return float64(len(s.trackedRequests))
 }

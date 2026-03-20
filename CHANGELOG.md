@@ -3,7 +3,7 @@
 ## master / unreleased
 * [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #5039
 
-* [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_pending_requests` metric to track the current number of requests held by the scheduler. #7355
+* [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
 
 ## 1.21.0 in progress
 

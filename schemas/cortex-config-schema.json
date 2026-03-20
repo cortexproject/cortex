@@ -5363,6 +5363,13 @@
           "type": "number",
           "x-cli-flag": "distributor.native-histogram-ingestion-rate-limit"
         },
+        "out_of_order_results_cache_ttl": {
+          "default": "0s",
+          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.",
+          "type": "string",
+          "x-cli-flag": "frontend.out-of-order-results-cache-ttl",
+          "x-format": "duration"
+        },
         "out_of_order_time_window": {
           "default": "0s",
           "description": "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.",
@@ -5485,6 +5492,13 @@
           "description": "Maximum accepted sample age before rejecting.",
           "type": "string",
           "x-cli-flag": "validation.reject-old-samples.max-age",
+          "x-format": "duration"
+        },
+        "results_cache_ttl": {
+          "default": "0s",
+          "description": "Per-tenant TTL for cached query results in the cache backend (Memcached/Redis/FIFO). This is the standard TTL for results that do not overlap with the out-of-order time window. 0 (default) means use the global cache backend TTL configuration.",
+          "type": "string",
+          "x-cli-flag": "frontend.results-cache-ttl",
           "x-format": "duration"
         },
         "ruler_evaluation_delay_duration": {

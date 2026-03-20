@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -27,6 +28,8 @@ var (
 	errInvalidRegex = errors.New("invalid regex present")
 
 	ErrTooManyTenants = "too many tenants, max: %d, actual: %d"
+
+	defaultRegexCacheSize = 1000
 )
 
 // RegexResolver resolves tenantIDs matched given regex.
@@ -38,12 +41,17 @@ type RegexResolver struct {
 	maxTenant        int
 	userScanner      users.Scanner
 	logger           log.Logger
-	sync.Mutex
+	sync.RWMutex
+
+	// matchedCache stores the results of regex matching
+	matchedCache *lru.Cache[string, []string]
 
 	// lastUpdateUserRun stores the timestamps of the latest update user loop run
 	lastUpdateUserRun prometheus.Gauge
 	// discoveredUsers stores the number of discovered user
 	discoveredUsers prometheus.Gauge
+	// matchedCacheSize stores the size of the matchedCache
+	matchedCacheSize prometheus.Gauge
 }
 
 func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
@@ -57,11 +65,20 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
+	var matchedCache *lru.Cache[string, []string]
+	if tenantFederationCfg.RegexCacheSize > 0 {
+		matchedCache, err = lru.New[string, []string](tenantFederationCfg.RegexCacheSize)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create regex cache")
+		}
+	}
+
 	r := &RegexResolver{
 		userSyncInterval: tenantFederationCfg.UserSyncInterval,
 		maxTenant:        tenantFederationCfg.MaxTenant,
 		userScanner:      userScanner,
 		logger:           logger,
+		matchedCache:     matchedCache,
 	}
 
 	r.lastUpdateUserRun = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -71,6 +88,10 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 	r.discoveredUsers = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_regex_resolver_discovered_users",
 		Help: "Number of discovered users.",
+	})
+	r.matchedCacheSize = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+		Name: "cortex_regex_resolver_matched_cache_size",
+		Help: "Number of entries stored in the matched cache.",
 	})
 
 	r.Service = services.NewBasicService(nil, r.running, nil)
@@ -99,6 +120,12 @@ func (r *RegexResolver) running(ctx context.Context) error {
 			r.knownUsers = append(active, deleting...)
 			// We keep it sort
 			sort.Strings(r.knownUsers)
+
+			// Reset the cache because the set of available users has changed.
+			if r.matchedCache != nil {
+				r.matchedCache.Purge()
+				r.matchedCacheSize.Set(0)
+			}
 			r.Unlock()
 			r.lastUpdateUserRun.SetToCurrentTime()
 			r.discoveredUsers.Set(float64(len(active) + len(deleting)))
@@ -126,16 +153,15 @@ func (r *RegexResolver) TenantIDs(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 
-	orgIDs, err := r.getRegexMatchedOrgIds(orgID)
-	if err != nil {
-		return nil, err
-	}
-
-	return users.ValidateOrgIDs(orgIDs)
+	return r.getRegexMatchedOrgIds(orgID)
 }
 
 func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
-	var matched []string
+	if r.matchedCache != nil {
+		if cachedMatched, ok := r.matchedCache.Get(orgID); ok {
+			return r.validateAndReturnMatched(orgID, cachedMatched)
+		}
+	}
 
 	// Use the Prometheus FastRegexMatcher
 	m, err := labels.NewFastRegexMatcher(orgID)
@@ -143,14 +169,30 @@ func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 		return nil, errInvalidRegex
 	}
 
-	r.Lock()
-	defer r.Unlock()
+	var matched []string
+
+	r.RLock()
 	for _, id := range r.knownUsers {
 		if m.MatchString(id) {
 			matched = append(matched, id)
 		}
 	}
+	r.RUnlock()
 
+	validatedMatched, err := users.ValidateOrgIDs(matched)
+	if err != nil {
+		return nil, err
+	}
+
+	if r.matchedCache != nil {
+		r.matchedCache.Add(orgID, validatedMatched)
+		r.matchedCacheSize.Set(float64(r.matchedCache.Len()))
+	}
+
+	return r.validateAndReturnMatched(orgID, validatedMatched)
+}
+
+func (r *RegexResolver) validateAndReturnMatched(orgID string, matched []string) ([]string, error) {
 	if len(matched) == 0 {
 		if err := users.ValidTenantID(orgID); err == nil {
 			// when querying for a newly created orgID, the query may not
@@ -165,6 +207,7 @@ func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 		return []string{"fake"}, nil
 	}
 
+	// Enforce the maximum number of tenants allowed in a federated query.
 	if r.maxTenant > 0 && len(matched) > r.maxTenant {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", fmt.Errorf(ErrTooManyTenants, r.maxTenant, len(matched)).Error())
 	}

@@ -3,6 +3,7 @@ package tenantfederation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -166,4 +167,261 @@ func Test_RegexValidator(t *testing.T) {
 			require.Equal(t, tc.expectedErr, err)
 		})
 	}
+}
+
+func Test_RegexResolver_Cache(t *testing.T) {
+	tests := []struct {
+		description     string
+		existingTenants []string
+		firstOrgID      string
+		secondOrgID     string
+		expectedFirst   []string
+		expectedSecond  []string
+	}{
+		{
+			description:     "cache hit with same regex",
+			existingTenants: []string{"user-1", "user-2", "user-3"},
+			firstOrgID:      "user-.+",
+			secondOrgID:     "user-.+",
+			expectedFirst:   []string{"user-1", "user-2", "user-3"},
+			expectedSecond:  []string{"user-1", "user-2", "user-3"},
+		},
+		{
+			description:     "cache miss with different regex",
+			existingTenants: []string{"user-1", "user-2", "admin-1"},
+			firstOrgID:      "user-.+",
+			secondOrgID:     "admin-.+",
+			expectedFirst:   []string{"user-1", "user-2"},
+			expectedSecond:  []string{"admin-1"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.description, func(t *testing.T) {
+			reg := prometheus.NewRegistry()
+			bucketClient := &bucket.ClientMock{}
+			bucketClient.MockIter("", tc.existingTenants, nil)
+			bucketClient.MockIter("__markers__", []string{}, nil)
+			for _, existingTenant := range tc.existingTenants {
+				bucketClient.MockExists(users.GetGlobalDeletionMarkPath(existingTenant), false, nil)
+				bucketClient.MockExists(users.GetLocalDeletionMarkPath(existingTenant), false, nil)
+			}
+
+			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+				return bucketClient, nil
+			}
+
+			usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+			tenantFederationConfig := Config{UserSyncInterval: time.Second, MaxTenant: 0, RegexCacheSize: 10}
+			regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+
+			// wait update knownUsers
+			test.Poll(t, time.Second*10, true, func() any {
+				return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(tc.existingTenants))
+			})
+
+			// First query - cache miss
+			ctx1 := user.InjectOrgID(context.Background(), tc.firstOrgID)
+			orgIDs1, err := regexResolver.TenantIDs(ctx1)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedFirst, orgIDs1)
+
+			// Verify cache was populated
+			regexResolver.RLock()
+			cached, exists := regexResolver.matchedCache.Get(tc.firstOrgID)
+			regexResolver.RUnlock()
+			require.True(t, exists, "cache should contain the first query result")
+			require.Equal(t, tc.expectedFirst, cached)
+
+			// Second query - should use cache
+			ctx2 := user.InjectOrgID(context.Background(), tc.secondOrgID)
+			orgIDs2, err := regexResolver.TenantIDs(ctx2)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedSecond, orgIDs2)
+
+			// Verify cache behavior
+			if tc.firstOrgID == tc.secondOrgID {
+				// Same query should hit cache
+				regexResolver.RLock()
+				cached2, exists2 := regexResolver.matchedCache.Get(tc.secondOrgID)
+				regexResolver.RUnlock()
+				require.True(t, exists2)
+				require.Equal(t, tc.expectedSecond, cached2)
+			}
+		})
+	}
+}
+
+func Test_RegexResolver_CacheInvalidation(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	initialTenants := []string{"user-1", "user-2"}
+	bucketClient := &bucket.ClientMock{}
+
+	// Initial mock setup
+	bucketClient.MockIter("", initialTenants, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
+	for _, tenant := range initialTenants {
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(tenant), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(tenant), false, nil)
+	}
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	tenantFederationConfig := Config{UserSyncInterval: time.Hour, MaxTenant: 0, RegexCacheSize: 10}
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// Avoid background ticker races by setting known users directly for this unit test.
+	regexResolver.Lock()
+	regexResolver.knownUsers = append([]string(nil), initialTenants...)
+	regexResolver.discoveredUsers.Set(float64(len(initialTenants)))
+	regexResolver.Unlock()
+
+	// First query - populate cache
+	ctx := user.InjectOrgID(context.Background(), "user-.+")
+	orgIDs, err := regexResolver.TenantIDs(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"user-1", "user-2"}, orgIDs)
+
+	// Verify cache is populated
+	regexResolver.RLock()
+	require.Equal(t, 1, regexResolver.matchedCache.Len())
+	require.Equal(t, float64(1), testutil.ToFloat64(regexResolver.matchedCacheSize))
+	regexResolver.RUnlock()
+
+	// Simulate user-sync invalidation by clearing cache under resolver lock.
+	regexResolver.Lock()
+	regexResolver.matchedCache.Purge()
+	regexResolver.matchedCacheSize.Set(0)
+	regexResolver.Unlock()
+
+	regexResolver.RLock()
+	require.Equal(t, 0, regexResolver.matchedCache.Len())
+	require.Equal(t, float64(0), testutil.ToFloat64(regexResolver.matchedCacheSize))
+	regexResolver.RUnlock()
+
+	// Query again - cache should be repopulated
+	orgIDs, err = regexResolver.TenantIDs(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"user-1", "user-2"}, orgIDs)
+}
+
+func Test_RegexResolver_UsesConfiguredCacheSize(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{}, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	tenantFederationConfig := Config{
+		UserSyncInterval: time.Hour,
+		MaxTenant:        0,
+		RegexCacheSize:   2,
+	}
+
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(t, err)
+
+	regexResolver.Lock()
+	regexResolver.knownUsers = []string{"user-1", "user-2", "user-3"}
+	regexResolver.Unlock()
+
+	for _, orgID := range []string{"user-1", "user-2", "user-3"} {
+		ctx := user.InjectOrgID(context.Background(), orgID)
+		_, err := regexResolver.TenantIDs(ctx)
+		require.NoError(t, err)
+	}
+
+	regexResolver.RLock()
+	require.Equal(t, 2, regexResolver.matchedCache.Len())
+	require.Equal(t, float64(2), testutil.ToFloat64(regexResolver.matchedCacheSize))
+	regexResolver.RUnlock()
+}
+
+func BenchmarkRegexResolver_TenantIDs(b *testing.B) {
+	numUsers := 1000
+	existingTenants := make([]string, numUsers)
+	for i := range numUsers {
+		existingTenants[i] = fmt.Sprintf("user-%d", i)
+	}
+
+	reg := prometheus.NewRegistry()
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", existingTenants, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
+	for _, tenant := range existingTenants {
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(tenant), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(tenant), false, nil)
+	}
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	tenantFederationConfig := Config{UserSyncInterval: time.Second, MaxTenant: 0, RegexCacheSize: 2000}
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(b, err)
+	err = services.StartAndAwaitRunning(context.Background(), regexResolver)
+	require.NoError(b, err)
+
+	// Wait for initial sync
+	test.Poll(b, time.Second*10, true, func() any {
+		return testutil.ToFloat64(regexResolver.discoveredUsers) == float64(numUsers)
+	})
+
+	b.Run("ColdCache with regex tenant", func(b *testing.B) {
+		for b.Loop() {
+			// Cache clean
+			regexResolver.Lock()
+			regexResolver.matchedCache.Purge()
+			regexResolver.matchedCacheSize.Set(0)
+			regexResolver.Unlock()
+
+			ctx := user.InjectOrgID(context.Background(), "user-.+")
+			_, _ = regexResolver.TenantIDs(ctx)
+		}
+	})
+
+	b.Run("WarmCache with regex tenant", func(b *testing.B) {
+		ctx := user.InjectOrgID(context.Background(), "user-.+")
+		_, _ = regexResolver.TenantIDs(ctx) // To warm up cache
+
+		b.ResetTimer()
+		for b.Loop() {
+			_, _ = regexResolver.TenantIDs(ctx)
+		}
+	})
+
+	b.Run("ColdCache with resolved tenant", func(b *testing.B) {
+		for b.Loop() {
+			// Cache clean
+			regexResolver.Lock()
+			regexResolver.matchedCache.Purge()
+			regexResolver.matchedCacheSize.Set(0)
+			regexResolver.Unlock()
+
+			ctx := user.InjectOrgID(context.Background(), "user-1")
+			_, _ = regexResolver.TenantIDs(ctx)
+		}
+	})
+
+	b.Run("WarmCache with resolved tenant", func(b *testing.B) {
+		ctx := user.InjectOrgID(context.Background(), "user-1")
+		_, _ = regexResolver.TenantIDs(ctx) // To warm up cache
+
+		b.ResetTimer()
+		for b.Loop() {
+			_, _ = regexResolver.TenantIDs(ctx)
+		}
+	})
 }

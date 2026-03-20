@@ -55,7 +55,6 @@ type RegexResolver struct {
 
 	matchedCacheHits   prometheus.Counter
 	matchedCacheMisses prometheus.Counter
-
 }
 
 func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
@@ -69,14 +68,6 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
-	var matchedCache *lru.Cache[string, []string]
-	if tenantFederationCfg.RegexCacheSize > 0 {
-		matchedCache, err = lru.New[string, []string](tenantFederationCfg.RegexCacheSize)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to create regex cache")
-		}
-	}
-
 	r := &RegexResolver{
 		userSyncInterval: tenantFederationCfg.UserSyncInterval,
 		maxTenant:        tenantFederationCfg.MaxTenant,
@@ -85,7 +76,7 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 	}
 
 	if tenantFederationCfg.RegexCacheSize > 0 {
-		matchedCache, err = lru.New[string, []string](tenantFederationCfg.RegexCacheSize)
+		matchedCache, err := lru.New[string, []string](tenantFederationCfg.RegexCacheSize)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create regex cache")
 		}

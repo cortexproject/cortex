@@ -222,11 +222,18 @@ func Test_RegexResolver_Cache(t *testing.T) {
 				return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 && testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(tc.existingTenants))
 			})
 
+			checkMetrics := func(expectedHits, expectedMisses float64) {
+				t.Helper()
+				require.Equal(t, expectedHits, testutil.ToFloat64(regexResolver.matchedCacheHits))
+				require.Equal(t, expectedMisses, testutil.ToFloat64(regexResolver.matchedCacheMisses))
+			}
+
 			// First query - cache miss
 			ctx1 := user.InjectOrgID(context.Background(), tc.firstOrgID)
 			orgIDs1, err := regexResolver.TenantIDs(ctx1)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedFirst, orgIDs1)
+			checkMetrics(0, 1)
 
 			// Verify cache was populated
 			regexResolver.RLock()
@@ -249,6 +256,10 @@ func Test_RegexResolver_Cache(t *testing.T) {
 				regexResolver.RUnlock()
 				require.True(t, exists2)
 				require.Equal(t, tc.expectedSecond, cached2)
+				checkMetrics(1, 1)
+			} else {
+				// Different query should miss cache
+				checkMetrics(0, 2)
 			}
 		})
 	}
@@ -309,6 +320,9 @@ func Test_RegexResolver_CacheInvalidation(t *testing.T) {
 	orgIDs, err = regexResolver.TenantIDs(ctx)
 	require.NoError(t, err)
 	require.Equal(t, []string{"user-1", "user-2"}, orgIDs)
+	require.Equal(t, 1, regexResolver.matchedCache.Len())
+	require.Equal(t, float64(1), testutil.ToFloat64(regexResolver.matchedCacheSize))
+
 }
 
 func Test_RegexResolver_UsesConfiguredCacheSize(t *testing.T) {
@@ -345,71 +359,6 @@ func Test_RegexResolver_UsesConfiguredCacheSize(t *testing.T) {
 	require.Equal(t, 2, regexResolver.matchedCache.Len())
 	require.Equal(t, float64(2), testutil.ToFloat64(regexResolver.matchedCacheSize))
 	regexResolver.RUnlock()
-}
-
-func Test_RegexResolver_CacheHitAndMissMetrics(t *testing.T) {
-	reg := prometheus.NewRegistry()
-	bucketClient := &bucket.ClientMock{}
-	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
-	bucketClient.MockIter("__markers__", []string{}, nil)
-
-	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
-		return bucketClient, nil
-	}
-
-	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
-	tenantFederationConfig := Config{
-		UserSyncInterval: time.Hour,
-		MaxTenant:        0,
-		RegexCacheSize:   10,
-	}
-
-	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
-	require.NoError(t, err)
-
-	regexResolver.Lock()
-	regexResolver.knownUsers = []string{"user-1", "user-2"}
-	regexResolver.Unlock()
-
-	checkMetrics := func(expectedHits, expectedMisses float64) {
-		t.Helper()
-		require.Equal(t, expectedHits, testutil.ToFloat64(regexResolver.matchedCacheHits))
-		require.Equal(t, expectedMisses, testutil.ToFloat64(regexResolver.matchedCacheMisses))
-	}
-
-	ctx1 := user.InjectOrgID(context.Background(), "user-.+")
-	_, err = regexResolver.TenantIDs(ctx1)
-	require.NoError(t, err)
-	checkMetrics(0, 1) // 0 Hits, 1 Miss
-
-	// Same lookup -> Hit
-	_, err = regexResolver.TenantIDs(ctx1)
-	require.NoError(t, err)
-	checkMetrics(1, 1) // 1 Hit, 1 Miss
-
-	// Same lookup again -> Hit
-	_, err = regexResolver.TenantIDs(ctx1)
-	require.NoError(t, err)
-	checkMetrics(2, 1) // 2 Hits, 1 Miss
-
-	// Different lookup -> Miss
-	ctx2 := user.InjectOrgID(context.Background(), "user-1")
-	_, err = regexResolver.TenantIDs(ctx2)
-	require.NoError(t, err)
-	checkMetrics(2, 2) // 2 Hits, 2 Misses
-
-	// Purge cache (simulate user sync)
-	regexResolver.Lock()
-	regexResolver.matchedCache.Purge()
-	regexResolver.Unlock()
-
-	// Look up previously cached items after purge -> Misses
-	_, err = regexResolver.TenantIDs(ctx1)
-	require.NoError(t, err)
-	_, err = regexResolver.TenantIDs(ctx2)
-	require.NoError(t, err)
-
-	checkMetrics(2, 4) // 2 Hits, 4 Misses
 }
 
 func BenchmarkRegexResolver_TenantIDs(b *testing.B) {

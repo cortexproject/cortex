@@ -52,6 +52,10 @@ type RegexResolver struct {
 	discoveredUsers prometheus.Gauge
 	// matchedCacheSize stores the size of the matchedCache
 	matchedCacheSize prometheus.Gauge
+
+	matchedCacheHits   prometheus.Counter
+	matchedCacheMisses prometheus.Counter
+
 }
 
 func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, reg prometheus.Registerer, bucketClientFactory func(ctx context.Context) (objstore.InstrumentedBucket, error), logger log.Logger) (*RegexResolver, error) {
@@ -78,7 +82,27 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 		maxTenant:        tenantFederationCfg.MaxTenant,
 		userScanner:      userScanner,
 		logger:           logger,
-		matchedCache:     matchedCache,
+	}
+
+	if tenantFederationCfg.RegexCacheSize > 0 {
+		matchedCache, err = lru.New[string, []string](tenantFederationCfg.RegexCacheSize)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create regex cache")
+		}
+		r.matchedCache = matchedCache
+
+		r.matchedCacheSize = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name: "cortex_regex_resolver_matched_cache_size",
+			Help: "Number of entries stored in the matched cache.",
+		})
+		r.matchedCacheHits = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_regex_resolver_matched_cache_hits_total",
+			Help: "Total number of successful cache lookups for the regex matched.",
+		})
+		r.matchedCacheMisses = promauto.With(reg).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_regex_resolver_matched_cache_misses_total",
+			Help: "Total number of cache misses for the regex matched.",
+		})
 	}
 
 	r.lastUpdateUserRun = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -88,10 +112,6 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 	r.discoveredUsers = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name: "cortex_regex_resolver_discovered_users",
 		Help: "Number of discovered users.",
-	})
-	r.matchedCacheSize = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-		Name: "cortex_regex_resolver_matched_cache_size",
-		Help: "Number of entries stored in the matched cache.",
 	})
 
 	r.Service = services.NewBasicService(nil, r.running, nil)
@@ -159,8 +179,10 @@ func (r *RegexResolver) TenantIDs(ctx context.Context) ([]string, error) {
 func (r *RegexResolver) getRegexMatchedOrgIds(orgID string) ([]string, error) {
 	if r.matchedCache != nil {
 		if cachedMatched, ok := r.matchedCache.Get(orgID); ok {
+			r.matchedCacheHits.Inc()
 			return r.validateAndReturnMatched(orgID, cachedMatched)
 		}
+		r.matchedCacheMisses.Inc()
 	}
 
 	// Use the Prometheus FastRegexMatcher

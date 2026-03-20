@@ -347,6 +347,71 @@ func Test_RegexResolver_UsesConfiguredCacheSize(t *testing.T) {
 	regexResolver.RUnlock()
 }
 
+func Test_RegexResolver_CacheHitAndMissMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", []string{"user-1", "user-2"}, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	tenantFederationConfig := Config{
+		UserSyncInterval: time.Hour,
+		MaxTenant:        0,
+		RegexCacheSize:   10,
+	}
+
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(t, err)
+
+	regexResolver.Lock()
+	regexResolver.knownUsers = []string{"user-1", "user-2"}
+	regexResolver.Unlock()
+
+	checkMetrics := func(expectedHits, expectedMisses float64) {
+		t.Helper()
+		require.Equal(t, expectedHits, testutil.ToFloat64(regexResolver.matchedCacheHits))
+		require.Equal(t, expectedMisses, testutil.ToFloat64(regexResolver.matchedCacheMisses))
+	}
+
+	ctx1 := user.InjectOrgID(context.Background(), "user-.+")
+	_, err = regexResolver.TenantIDs(ctx1)
+	require.NoError(t, err)
+	checkMetrics(0, 1) // 0 Hits, 1 Miss
+
+	// Same lookup -> Hit
+	_, err = regexResolver.TenantIDs(ctx1)
+	require.NoError(t, err)
+	checkMetrics(1, 1) // 1 Hit, 1 Miss
+
+	// Same lookup again -> Hit
+	_, err = regexResolver.TenantIDs(ctx1)
+	require.NoError(t, err)
+	checkMetrics(2, 1) // 2 Hits, 1 Miss
+
+	// Different lookup -> Miss
+	ctx2 := user.InjectOrgID(context.Background(), "user-1")
+	_, err = regexResolver.TenantIDs(ctx2)
+	require.NoError(t, err)
+	checkMetrics(2, 2) // 2 Hits, 2 Misses
+
+	// Purge cache (simulate user sync)
+	regexResolver.Lock()
+	regexResolver.matchedCache.Purge()
+	regexResolver.Unlock()
+
+	// Look up previously cached items after purge -> Misses
+	_, err = regexResolver.TenantIDs(ctx1)
+	require.NoError(t, err)
+	_, err = regexResolver.TenantIDs(ctx2)
+	require.NoError(t, err)
+
+	checkMetrics(2, 4) // 2 Hits, 4 Misses
+}
+
 func BenchmarkRegexResolver_TenantIDs(b *testing.B) {
 	numUsers := 1000
 	existingTenants := make([]string, numUsers)

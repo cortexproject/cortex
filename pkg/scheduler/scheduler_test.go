@@ -96,7 +96,7 @@ func TestSchedulerBasicEnqueue(t *testing.T) {
 		require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
 	}
 
-	verifyNoPendingRequestsLeft(t, scheduler)
+	verifyNoTrackedRequestsLeft(t, scheduler)
 }
 
 func TestSchedulerEnqueueWithCancel(t *testing.T) {
@@ -118,7 +118,7 @@ func TestSchedulerEnqueueWithCancel(t *testing.T) {
 	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
 
 	verifyQuerierDoesntReceiveRequest(t, querierLoop, 500*time.Millisecond)
-	verifyNoPendingRequestsLeft(t, scheduler)
+	verifyNoTrackedRequestsLeft(t, scheduler)
 }
 
 func initQuerierLoop(t *testing.T, querierClient schedulerpb.SchedulerForQuerierClient, querier string) schedulerpb.SchedulerForQuerier_QuerierLoopClient {
@@ -162,12 +162,12 @@ func TestSchedulerEnqueueByMultipleFrontendsWithCancel(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), msg.QueryID)
 	require.Equal(t, "frontend-2", msg.FrontendAddress)
-	// Must notify scheduler back about finished processing, or it will not send more requests (nor remove "current" request from pending ones).
+	// Must notify scheduler back about finished processing, or it will not send more requests (nor remove "current" request from tracked ones).
 	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
 
 	// But nothing else.
 	verifyQuerierDoesntReceiveRequest(t, querierLoop, 500*time.Millisecond)
-	verifyNoPendingRequestsLeft(t, scheduler)
+	verifyNoTrackedRequestsLeft(t, scheduler)
 }
 
 func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
@@ -197,7 +197,7 @@ func TestSchedulerEnqueueWithFrontendDisconnect(t *testing.T) {
 	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
 
 	verifyQuerierDoesntReceiveRequest(t, querierLoop, 500*time.Millisecond)
-	verifyNoPendingRequestsLeft(t, scheduler)
+	verifyNoTrackedRequestsLeft(t, scheduler)
 }
 
 func TestCancelRequestInProgress(t *testing.T) {
@@ -230,7 +230,7 @@ func TestCancelRequestInProgress(t *testing.T) {
 	err = querierLoop.Send(&schedulerpb.QuerierToScheduler{})
 	require.Error(t, err)
 
-	verifyNoPendingRequestsLeft(t, scheduler)
+	verifyNoTrackedRequestsLeft(t, scheduler)
 }
 
 func TestTracingContext(t *testing.T) {
@@ -255,11 +255,11 @@ func TestTracingContext(t *testing.T) {
 
 	frontendToScheduler(t, frontendLoop, req)
 
-	scheduler.pendingRequestsMu.Lock()
-	defer scheduler.pendingRequestsMu.Unlock()
-	require.Equal(t, 1, len(scheduler.pendingRequests))
+	scheduler.trackedRequestsMu.Lock()
+	defer scheduler.trackedRequestsMu.Unlock()
+	require.Equal(t, 1, len(scheduler.trackedRequests))
 
-	for _, r := range scheduler.pendingRequests {
+	for _, r := range scheduler.trackedRequests {
 		require.NotNil(t, r.parentSpanContext)
 	}
 }
@@ -670,11 +670,11 @@ func verifyQuerierDoesntReceiveRequest(t *testing.T, querierLoop schedulerpb.Sch
 	}
 }
 
-func verifyNoPendingRequestsLeft(t *testing.T, scheduler *Scheduler) {
+func verifyNoTrackedRequestsLeft(t *testing.T, scheduler *Scheduler) {
 	test.Poll(t, 1*time.Second, 0, func() any {
-		scheduler.pendingRequestsMu.Lock()
-		defer scheduler.pendingRequestsMu.Unlock()
-		return len(scheduler.pendingRequests)
+		scheduler.trackedRequestsMu.Lock()
+		defer scheduler.trackedRequestsMu.Unlock()
+		return len(scheduler.trackedRequests)
 	})
 }
 
@@ -722,27 +722,27 @@ func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
 		ctxCancel:       cancel,
 	}
 
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
 	s.queryFragmentRegistry[queryKey] = []uint64{fragmentID}
-	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
-	s.pendingRequestsMu.Unlock()
+	s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
+	s.trackedRequestsMu.Unlock()
 
 	// Verify both entries exist
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	require.Len(t, s.queryFragmentRegistry[queryKey], 1)
-	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID})
-	s.pendingRequestsMu.Unlock()
+	require.Contains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID})
+	s.trackedRequestsMu.Unlock()
 
 	// Simulate request completion (cancelAll=false)
-	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID, false)
+	s.cancelRequestAndRemoveFromTracked(frontendAddr, queryID, fragmentID, false)
 
-	// Verify cleanup: both pendingRequests AND queryFragmentRegistry should be cleaned up
-	s.pendingRequestsMu.Lock()
+	// Verify cleanup: both trackedRequests AND queryFragmentRegistry should be cleaned up
+	s.trackedRequestsMu.Lock()
 	_, registryExists := s.queryFragmentRegistry[queryKey]
 	require.False(t, registryExists, "queryFragmentRegistry should be cleaned up when last fragment completes")
-	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID}, "pendingRequests should be cleaned up")
-	s.pendingRequestsMu.Unlock()
+	require.NotContains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID}, "trackedRequests should be cleaned up")
+	s.trackedRequestsMu.Unlock()
 }
 
 // TestQueryFragmentRegistryCleanupMultipleFragments verifies that queryFragmentRegistry
@@ -789,52 +789,52 @@ func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
 		ctxCancel:       cancel3,
 	}
 
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
 	s.queryFragmentRegistry[queryKey] = []uint64{fragmentID1, fragmentID2, fragmentID3}
-	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID1}] = req1
-	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID2}] = req2
-	s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID3}] = req3
-	s.pendingRequestsMu.Unlock()
+	s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID1}] = req1
+	s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID2}] = req2
+	s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID3}] = req3
+	s.trackedRequestsMu.Unlock()
 
 	// Verify all three fragments exist
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	require.Len(t, s.queryFragmentRegistry[queryKey], 3)
-	require.Len(t, s.pendingRequests, 3)
-	s.pendingRequestsMu.Unlock()
+	require.Len(t, s.trackedRequests, 3)
+	s.trackedRequestsMu.Unlock()
 
 	// Fragment 1 completes
-	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID1, false)
+	s.cancelRequestAndRemoveFromTracked(frontendAddr, queryID, fragmentID1, false)
 
 	// Verify fragment 1 removed, but fragments 2 and 3 remain
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	require.Len(t, s.queryFragmentRegistry[queryKey], 2, "should have 2 fragments remaining")
 	require.ElementsMatch(t, []uint64{fragmentID2, fragmentID3}, s.queryFragmentRegistry[queryKey])
-	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID1})
-	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
-	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
-	s.pendingRequestsMu.Unlock()
+	require.NotContains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID1})
+	require.Contains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
+	require.Contains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
+	s.trackedRequestsMu.Unlock()
 
 	// Fragment 2 completes
-	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID2, false)
+	s.cancelRequestAndRemoveFromTracked(frontendAddr, queryID, fragmentID2, false)
 
 	// Verify fragment 2 removed, only fragment 3 remains
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	require.Len(t, s.queryFragmentRegistry[queryKey], 1, "should have 1 fragment remaining")
 	require.Equal(t, []uint64{fragmentID3}, s.queryFragmentRegistry[queryKey])
-	require.NotContains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
-	require.Contains(t, s.pendingRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
-	s.pendingRequestsMu.Unlock()
+	require.NotContains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID2})
+	require.Contains(t, s.trackedRequests, requestKey{queryKey: queryKey, fragmentID: fragmentID3})
+	s.trackedRequestsMu.Unlock()
 
 	// Fragment 3 completes (last fragment)
-	s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID3, false)
+	s.cancelRequestAndRemoveFromTracked(frontendAddr, queryID, fragmentID3, false)
 
 	// Verify all cleaned up
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	_, registryExists := s.queryFragmentRegistry[queryKey]
 	require.False(t, registryExists, "queryFragmentRegistry should be deleted when last fragment completes")
-	require.Empty(t, s.pendingRequests, "all pendingRequests should be cleaned up")
-	s.pendingRequestsMu.Unlock()
+	require.Empty(t, s.trackedRequests, "all trackedRequests should be cleaned up")
+	s.trackedRequestsMu.Unlock()
 }
 
 // TestQueryFragmentRegistryNoLeak verifies that repeated request completions
@@ -861,22 +861,105 @@ func TestQueryFragmentRegistryNoLeak(t *testing.T) {
 			ctxCancel:       cancel,
 		}
 
-		// Add to registry and pending requests
-		s.pendingRequestsMu.Lock()
+		// Add to registry and tracked requests
+		s.trackedRequestsMu.Lock()
 		queryKey := queryKey{frontendAddr: frontendAddr, queryID: queryID}
 		s.queryFragmentRegistry[queryKey] = []uint64{fragmentID}
-		s.pendingRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
-		s.pendingRequestsMu.Unlock()
+		s.trackedRequests[requestKey{queryKey: queryKey, fragmentID: fragmentID}] = req
+		s.trackedRequestsMu.Unlock()
 
 		// Complete the request
-		s.cancelRequestAndRemoveFromPending(frontendAddr, queryID, fragmentID, false)
+		s.cancelRequestAndRemoveFromTracked(frontendAddr, queryID, fragmentID, false)
 
 		cancel()
 	}
 
 	// Verify no leak: registry should be empty
-	s.pendingRequestsMu.Lock()
+	s.trackedRequestsMu.Lock()
 	require.Empty(t, s.queryFragmentRegistry, "queryFragmentRegistry should be empty after all requests complete")
-	require.Empty(t, s.pendingRequests, "pendingRequests should be empty after all requests complete")
-	s.pendingRequestsMu.Unlock()
+	require.Empty(t, s.trackedRequests, "trackedRequests should be empty after all requests complete")
+	s.trackedRequestsMu.Unlock()
+}
+
+func TestSchedulerTrackedRequestsMetric(t *testing.T) {
+	reg := prometheus.NewPedanticRegistry()
+
+	_, frontendClient, querierClient := setupScheduler(t, reg, false)
+	frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
+
+	// Initial state validation: 0 tracked requests.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_tracked_requests gauge
+		cortex_query_scheduler_tracked_requests 0
+	`), "cortex_query_scheduler_tracked_requests"))
+
+	// Enqueue the first request.
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     1,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
+	})
+
+	// Metric should increase to reflect 1 tracked request.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_tracked_requests gauge
+		cortex_query_scheduler_tracked_requests 1
+	`), "cortex_query_scheduler_tracked_requests"))
+
+	// Enqueue the second request.
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:        schedulerpb.ENQUEUE,
+		QueryID:     2,
+		UserID:      "test",
+		HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello2"},
+	})
+
+	// Metric should increase to reflect 2 tracked requests.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_tracked_requests gauge
+		cortex_query_scheduler_tracked_requests 2
+	`), "cortex_query_scheduler_tracked_requests"))
+
+	// Cancel the first request from the Query Frontend
+	frontendToScheduler(t, frontendLoop, &schedulerpb.FrontendToScheduler{
+		Type:    schedulerpb.CANCEL,
+		QueryID: 1,
+	})
+
+	// The canceled request is removed from the map immediately, so the metric should decrease to 1.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_tracked_requests gauge
+		cortex_query_scheduler_tracked_requests 1
+	`), "cortex_query_scheduler_tracked_requests"))
+
+	// A Querier picks up the second request.
+	querierLoop := initQuerierLoop(t, querierClient, "querier-1")
+	msg, err := querierLoop.Recv()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), msg.QueryID)
+
+	// Since the picked request currently executing in the Querier, the metric should be 1.
+	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
+		# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+		# TYPE cortex_query_scheduler_tracked_requests gauge
+		cortex_query_scheduler_tracked_requests 1
+	`), "cortex_query_scheduler_tracked_requests"))
+
+	// The Querier finishes processing the request and reports back.
+	require.NoError(t, querierLoop.Send(&schedulerpb.QuerierToScheduler{}))
+
+	// The background goroutine (forwardRequestToQuerier) removes the request.
+	test.Poll(t, 2*time.Second, true, func() any {
+		err := promtest.GatherAndCompare(reg, strings.NewReader(`
+			# HELP cortex_query_scheduler_tracked_requests Number of requests currently tracked by the scheduler.
+			# TYPE cortex_query_scheduler_tracked_requests gauge
+			cortex_query_scheduler_tracked_requests 0
+		`), "cortex_query_scheduler_tracked_requests")
+		return err == nil
+	})
 }

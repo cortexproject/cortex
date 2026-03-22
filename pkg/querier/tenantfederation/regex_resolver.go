@@ -120,8 +120,7 @@ func (r *RegexResolver) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// active and deleting users are considered
-			// The store-gateway can query for deleting users.
+			// Active and deleting users are considered
 			active, deleting, _, err := r.userScanner.ScanUsers(ctx)
 			if err != nil {
 				level.Error(r.logger).Log("msg", "failed to discover users from bucket", "err", err)

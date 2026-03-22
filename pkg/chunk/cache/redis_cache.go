@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -24,7 +25,6 @@ type RedisCache struct {
 
 // NewRedisCache creates a new RedisCache
 func NewRedisCache(name string, redisClient *RedisClient, reg prometheus.Registerer, logger log.Logger) *RedisCache {
-	util_log.WarnExperimentalUse("Redis cache")
 	cache := &RedisCache{
 		name:   name,
 		redis:  redisClient,
@@ -56,7 +56,7 @@ func redisStatusCode(err error) string {
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *RedisCache) Fetch(ctx context.Context, keys []string, ttl time.Duration) (found []string, bufs [][]byte, missed []string) {
 	const method = "RedisCache.MGet"
 	var items [][]byte
 	// Run a tracked request, using c.requestDuration to monitor requests.
@@ -94,8 +94,8 @@ func (c *RedisCache) Fetch(ctx context.Context, keys []string) (found []string, 
 }
 
 // Store stores the key in the cache.
-func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
-	err := c.redis.MSet(ctx, keys, bufs)
+func (c *RedisCache) Store(ctx context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
+	err := c.redis.MSet(ctx, keys, bufs, ttl)
 	if err != nil {
 		level.Error(util_log.WithContext(ctx, c.logger)).Log("msg", "failed to put to redis", "name", c.name, "err", err)
 	}

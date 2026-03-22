@@ -129,7 +129,7 @@ func Benchmark_Handler(b *testing.B) {
 	testSeriesNums := []int{10, 100, 500, 1000}
 	for _, seriesNum := range testSeriesNums {
 		b.Run(fmt.Sprintf("PRW1 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
+			handler := Handler(true, false, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW1HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -143,7 +143,7 @@ func Benchmark_Handler(b *testing.B) {
 			}
 		})
 		b.Run(fmt.Sprintf("PRW2 with %d series", seriesNum), func(b *testing.B) {
-			handler := Handler(true, 1000000, overrides, nil, mockHandler, nil)
+			handler := Handler(true, false, 1000000, overrides, nil, mockHandler, nil)
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
@@ -378,6 +378,19 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
 			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+
+			for i := range v1Req.Timeseries {
+				if len(v1Req.Timeseries[i].Samples) == 0 {
+					v1Req.Timeseries[i].Samples = nil
+				}
+				if len(v1Req.Timeseries[i].Exemplars) == 0 {
+					v1Req.Timeseries[i].Exemplars = nil
+				}
+				if len(v1Req.Timeseries[i].Histograms) == 0 {
+					v1Req.Timeseries[i].Histograms = nil
+				}
+			}
+
 			require.NoError(t, err)
 			require.Equal(t, test.expectedV1Req, v1Req)
 		})
@@ -450,6 +463,145 @@ func Test_convertV2RequestToV1(t *testing.T) {
 	assert.Equal(t, 1, len(v1Req.Metadata))
 }
 
+func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		v2Req         *cortexpb.PreallocWriteRequestV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef out of bounds",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 1983,
+									HelpRef: 0,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid UnitRef 1983: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef out of bounds in metadata conversion",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_GAUGE,
+									UnitRef: 0,
+									HelpRef: 9999,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "invalid HelpRef 9999: exceeds symbols length 5",
+		},
+		{
+			name: "valid symbol refs should not error",
+			v2Req: &cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols: symbols,
+					Timeseries: []cortexpb.PreallocTimeseriesV2{
+						{
+							TimeSeriesV2: &cortexpb.TimeSeriesV2{
+								LabelsRefs: []uint32{1, 2, 3, 4},
+								Metadata: cortexpb.MetadataV2{
+									Type:    cortexpb.METRIC_TYPE_COUNTER,
+									UnitRef: 3,
+									HelpRef: 4,
+								},
+								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+							},
+						},
+					},
+				},
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2RequestToV1(tt.v2Req, false)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
+
+func Test_convertV2ToV1Metadata_InvalidSymbolRefs(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "unit", "help"}
+
+	tests := []struct {
+		name          string
+		metadata      cortexpb.MetadataV2
+		expectedError string
+	}{
+		{
+			name: "invalid UnitRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 100,
+				HelpRef: 0,
+			},
+			expectedError: "invalid UnitRef 100: exceeds symbols length 5",
+		},
+		{
+			name: "invalid HelpRef",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_GAUGE,
+				UnitRef: 0,
+				HelpRef: 200, // Out of bounds
+			},
+			expectedError: "invalid HelpRef 200: exceeds symbols length 5",
+		},
+		{
+			name: "valid refs",
+			metadata: cortexpb.MetadataV2{
+				Type:    cortexpb.METRIC_TYPE_COUNTER,
+				UnitRef: 3,
+				HelpRef: 4,
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := convertV2ToV1Metadata("test_metric", symbols, tt.metadata)
+			if tt.expectedError == "" {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
+
 func TestHandler_remoteWrite(t *testing.T) {
 	var limits validation.Limits
 	flagext.DefaultValues(&limits)
@@ -514,7 +666,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "user-1")
-			handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
+			handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			body, isV2 := test.createBody()
 			req := createRequest(t, body, isV2)
@@ -549,7 +701,7 @@ func TestHandler_remoteWrite(t *testing.T) {
 
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "user-1")
-		handler := Handler(true, 100000, overrides, nil, pushFunc, nil)
+		handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
 		req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
 		req = req.WithContext(ctx)
 		resp := httptest.NewRecorder()
@@ -572,11 +724,12 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
 
 	tests := []struct {
-		description         string
-		reqHeaders          map[string]string
-		expectedCode        int
-		isV2                bool
-		remoteWrite2Enabled bool
+		description                         string
+		reqHeaders                          map[string]string
+		expectedCode                        int
+		isV2                                bool
+		remoteWrite2Enabled                 bool
+		acceptUnknownRemoteWriteContentType bool
 	}{
 		{
 			description: "[RW 2.0] correct content-type",
@@ -688,11 +841,33 @@ func TestHandler_ContentTypeAndEncoding(t *testing.T) {
 			isV2:                false,
 			remoteWrite2Enabled: true,
 		},
+		{
+			description: "unknown content-type with acceptUnknownRemoteWriteContentType, treated as RW v1",
+			reqHeaders: map[string]string{
+				"Content-Type":     "yolo",
+				"Content-Encoding": "snappy",
+			},
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
+			acceptUnknownRemoteWriteContentType: true,
+		},
+		{
+			description: "invalid proto param with acceptUnknownRemoteWriteContentType, treated as RW v1",
+			reqHeaders: map[string]string{
+				"Content-Type":     "application/x-protobuf;proto=yolo",
+				"Content-Encoding": "snappy",
+			},
+			expectedCode:                        http.StatusOK,
+			isV2:                                false,
+			remoteWrite2Enabled:                 true,
+			acceptUnknownRemoteWriteContentType: true,
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			handler := Handler(test.remoteWrite2Enabled, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
+			handler := Handler(test.remoteWrite2Enabled, test.acceptUnknownRemoteWriteContentType, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 			if test.isV2 {
 				ctx := context.Background()
@@ -719,7 +894,7 @@ func TestHandler_cortexWriteRequest(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	sourceIPs, _ := middleware.NewSourceIPs("SomeField", "(.*)")
-	handler := Handler(true, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
+	handler := Handler(true, false, 100000, overrides, sourceIPs, verifyWriteRequestHandler(t, cortexpb.API), nil)
 
 	t.Run("remote write v1", func(t *testing.T) {
 		req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
@@ -749,7 +924,7 @@ func TestHandler_ignoresSkipLabelNameValidationIfSet(t *testing.T) {
 		createRequest(t, createCortexWriteRequestProtobuf(t, true, cortexpb.RULE), false),
 	} {
 		resp := httptest.NewRecorder()
-		handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
+		handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.RULE), nil)
 		handler.ServeHTTP(resp, req)
 		assert.Equal(t, 200, resp.Code)
 	}
@@ -765,7 +940,7 @@ func TestHandler_MetricCollection(t *testing.T) {
 		Help: "test help",
 	}, []string{"type"})
 
-	handler := Handler(true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+	handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
 
 	t.Run("counts v1 requests", func(t *testing.T) {
 		req := createRequest(t, createPrometheusRemoteWriteProtobuf(t), false)
@@ -788,6 +963,20 @@ func TestHandler_MetricCollection(t *testing.T) {
 		assert.Equal(t, http.StatusNoContent, resp.Code)
 
 		val := testutil.ToFloat64(counter.WithLabelValues("prw2"))
+		assert.Equal(t, 1.0, val)
+	})
+
+	t.Run("counts unknown or invalid content-type as unknown when acceptUnknownRemoteWriteContentType is true", func(t *testing.T) {
+		handlerWithUnknown := Handler(true, true, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), counter)
+		req := createRequestWithHeaders(t, map[string]string{
+			"Content-Type":     "yolo",
+			"Content-Encoding": "snappy",
+		}, createCortexWriteRequestProtobuf(t, false, cortexpb.API))
+		resp := httptest.NewRecorder()
+		handlerWithUnknown.ServeHTTP(resp, req)
+		assert.Equal(t, http.StatusOK, resp.Code)
+
+		val := testutil.ToFloat64(counter.WithLabelValues("unknown"))
 		assert.Equal(t, 1.0, val)
 	})
 }
@@ -923,4 +1112,115 @@ func createCortexWriteRequestProtobuf(t *testing.T, skipLabelNameValidation bool
 	inoutBytes, err := input.Marshal()
 	require.NoError(t, err)
 	return inoutBytes
+}
+
+// TestHandler_RemoteWriteV2_MetadataPoolReset verifies that reusing a WriteRequestV2
+// from the sync.Pool does not carry over omitted Metadata fields (UnitRef and HelpRef),
+// which would otherwise cause an index-out-of-range panic
+func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	mockPush := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		return &cortexpb.WriteResponse{}, nil
+	}
+
+	handler := Handler(true, false, 1000000, overrides, nil, mockPush, nil)
+	ctx := user.InjectOrgID(context.Background(), "user-1")
+
+	sendRequest := func(reqProto *writev2.Request) *httptest.ResponseRecorder {
+		reqBytes, err := reqProto.Marshal()
+		require.NoError(t, err)
+
+		req := createRequest(t, reqBytes, true).WithContext(ctx)
+		resp := httptest.NewRecorder()
+
+		// Should not panic
+		require.NotPanics(t, func() {
+			handler.ServeHTTP(resp, req)
+		})
+
+		return resp
+	}
+
+	symbols := make([]string, 100)
+	symbols[0], symbols[1], symbols[2] = "", "__name__", "test_metric"
+	for i := 3; i < 100; i++ {
+		symbols[i] = fmt.Sprintf("sym-%d", i)
+	}
+
+	req1Proto := writev2.Request{
+		Symbols: symbols,
+		Timeseries: []writev2.TimeSeries{
+			{
+				LabelsRefs: []uint32{1, 2},
+				Samples:    []writev2.Sample{{Value: 1, Timestamp: 1000}},
+				Metadata: writev2.Metadata{
+					Type:    writev2.Metadata_METRIC_TYPE_COUNTER,
+					UnitRef: 99,
+					HelpRef: 98,
+				},
+			},
+		},
+	}
+
+	resp1 := sendRequest(&req1Proto)
+	require.Equal(t, http.StatusNoContent, resp1.Code)
+
+	req2Proto := writev2.Request{
+		Symbols: []string{"", "__name__", "foo", "bar"},
+		Timeseries: []writev2.TimeSeries{
+			{
+				LabelsRefs: []uint32{1, 2},
+				Samples:    []writev2.Sample{{Value: 2, Timestamp: 2000}},
+			},
+		},
+	}
+
+	resp2 := sendRequest(&req2Proto)
+	require.Equal(t, http.StatusNoContent, resp2.Code)
+}
+
+func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
+	fh := tsdbutil.GenerateTestFloatHistogram(1)
+	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs: []uint32{1, 2},
+						Samples: []cortexpb.Sample{
+							{Value: 1.0, TimestampMs: 1000},
+						},
+						Exemplars: []cortexpb.ExemplarV2{
+							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
+						},
+						Histograms: []cortexpb.Histogram{
+							ph,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	v1Req, err := convertV2RequestToV1(v2Req, false)
+	require.NoError(t, err)
+	require.Len(t, v1Req.Timeseries, 1)
+
+	v1Ts := v1Req.Timeseries[0]
+	v2Ts := v2Req.Timeseries[0]
+
+	require.True(t, len(v1Ts.Samples) > 0 && len(v2Ts.Samples) > 0)
+	require.NotSame(t, &v1Ts.Samples[0], &v2Ts.Samples[0], "Samples array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Exemplars) > 0 && len(v2Ts.Exemplars) > 0)
+	require.NotSame(t, &v1Ts.Exemplars[0], &v2Ts.Exemplars[0], "Exemplars array must not share the same memory address")
+
+	require.True(t, len(v1Ts.Histograms) > 0 && len(v2Ts.Histograms) > 0)
+	require.NotSame(t, &v1Ts.Histograms[0], &v2Ts.Histograms[0], "Histograms array must not share the same memory address")
 }

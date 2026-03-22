@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 )
 
 const (
@@ -89,12 +88,11 @@ type cacheEntry struct {
 	updated time.Time
 	key     string
 	value   []byte
+	ttl     time.Duration
 }
 
 // NewFifoCache returns a new initialised FifoCache of size.
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger) *FifoCache {
-	util_log.WarnExperimentalUse("In-memory (FIFO) cache")
-
 	if cfg.DeprecatedSize > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
@@ -181,7 +179,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 }
 
 // Fetch implements Cache.
-func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (c *FifoCache) Fetch(ctx context.Context, keys []string, ttl time.Duration) (found []string, bufs [][]byte, missing []string) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.Get(ctx, key)
@@ -197,14 +195,19 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) {
+func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) {
+	// If TTL is 0, fall back to configured validity
+	if ttl == 0 {
+		ttl = c.validity
+	}
+
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	for i := range keys {
-		c.put(keys[i], values[i])
+		c.put(keys[i], values[i], ttl)
 	}
 }
 
@@ -223,7 +226,7 @@ func (c *FifoCache) Stop() {
 	c.memoryBytes.Set(float64(0))
 }
 
-func (c *FifoCache) put(key string, value []byte) {
+func (c *FifoCache) put(key string, value []byte, ttl time.Duration) {
 	// See if we already have the item in the cache.
 	element, ok := c.entries[key]
 	if ok {
@@ -238,6 +241,7 @@ func (c *FifoCache) put(key string, value []byte) {
 		updated: time.Now(),
 		key:     key,
 		value:   value,
+		ttl:     ttl,
 	}
 	entrySz := sizeOf(entry)
 
@@ -284,7 +288,8 @@ func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
 	element, ok := c.entries[key]
 	if ok {
 		entry := element.Value.(*cacheEntry)
-		if c.validity == 0 || time.Since(entry.updated) < c.validity {
+		// Use per-entry TTL (which may have been defaulted from c.validity)
+		if entry.ttl == 0 || time.Since(entry.updated) < entry.ttl {
 			return entry.value, true
 		}
 

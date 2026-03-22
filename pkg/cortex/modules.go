@@ -37,6 +37,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/flusher"
 	"github.com/cortexproject/cortex/pkg/frontend"
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
+	"github.com/cortexproject/cortex/pkg/ha"
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
@@ -303,18 +304,19 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// federation.
 		byPassForSingleQuerier := true
 
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer))
-		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation.MaxConcurrent, prometheus.DefaultRegisterer)
-		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation.MaxConcurrent, byPassForSingleQuerier, prometheus.DefaultRegisterer)
+		reg := prometheus.DefaultRegisterer
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg))
+		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation, reg)
+		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg)
 
 		if t.Cfg.TenantFederation.RegexMatcherEnabled {
 			util_log.WarnExperimentalUse("tenant-federation.regex-matcher-enabled")
 
 			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
-				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, prometheus.DefaultRegisterer)
+				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, reg)
 			}
 
-			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, prometheus.DefaultRegisterer, bucketClientFactory, util_log.Logger)
+			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, reg, bucketClientFactory, util_log.Logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 			}
@@ -821,6 +823,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 	t.Cfg.MemberlistKV.MetricsRegisterer = reg
 	t.Cfg.MemberlistKV.Codecs = []codec.Codec{
 		ring.GetCodec(),
+		ha.GetReplicaDescCodec(),
 	}
 	dnsProviderReg := prometheus.WrapRegistererWithPrefix(
 		"cortex_",
@@ -835,6 +838,7 @@ func (t *Cortex) initMemberlistKV() (services.Service, error) {
 
 	// Update the config.
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Distributor.HATrackerConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.StoreGateway.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Compactor.ShardingRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV

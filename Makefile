@@ -112,7 +112,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-8b48921f71
+LATEST_BUILD_IMAGE_TAG ?= master-fe84258322
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos web-build web-pre web-deploy doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -241,16 +241,6 @@ mod-check:
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
-web-pre:
-	cd website && git submodule update --init --recursive
-	./tools/website/web-pre.sh
-
-web-build: web-pre
-	cd website && HUGO_ENV=production hugo --config config.toml  --minify -v
-
-web-deploy:
-	./tools/website/web-deploy.sh
-
 modernize:
 	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.21.0 -fix ./...
 
@@ -303,7 +293,7 @@ clean-doc:
 		./docs/guides/encryption-at-rest.md
 
 check-doc: doc
-	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md ./schemas/cortex-config-schema.json
 
 clean-white-noise:
 	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \

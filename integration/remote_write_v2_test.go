@@ -5,6 +5,7 @@ package integration
 import (
 	"math/rand"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -533,6 +534,150 @@ func Test_WriteStatWithReplication(t *testing.T) {
 	writeStats, err := c.PushV2(symbols, []writev2.TimeSeries{series})
 	require.NoError(t, err)
 	testPushHeader(t, writeStats, 20, 0, 0)
+}
+
+// This test verifies PRW1 and PRW2 memory pools do not interfere with each other.
+func TestIngest_PRW2_MemoryIndependence(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+
+	// Start Cortex
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	cPRW1, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-prw1")
+	require.NoError(t, err)
+
+	cPRW2, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-prw2")
+	require.NoError(t, err)
+	var wg sync.WaitGroup
+
+	scrapeInterval := 5 * time.Second
+	end := time.Now()
+	start := end.Add(-time.Hour * 2)
+
+	expectedPushesPerProtocol := int(end.Sub(start) / scrapeInterval)
+
+	// We will concurrently push two distinct metrics using two different protocols.
+	// test_metric_prw1 is pushed via PRW1 with Value: 1.0
+	// test_metric_prw2 is pushed via PRW2 with Value: 999.0
+	// If the memory pool overlaps due to shallow copy during V2->V1 conversion,
+	// test_metric_prw1 will occasionally read 999.0.
+	wg.Add(2)
+
+	// Goroutine 1: Send PRW1 Requests
+	go func() {
+		defer wg.Done()
+		// Iterate from start to end by scrapeInterval
+		for t := start; t.Before(end); t = t.Add(scrapeInterval) {
+			ts := t.UnixMilli()
+
+			seriesV1 := []prompb.TimeSeries{
+				{
+					Labels: []prompb.Label{
+						{Name: "__name__", Value: "test_metric_prw1"},
+					},
+					Samples: []prompb.Sample{
+						{Value: 1.0, Timestamp: ts},
+					},
+				},
+			}
+			_, _ = cPRW1.Push(seriesV1)
+		}
+	}()
+
+	// Goroutine 2: Send PRW2 Requests
+	go func() {
+		defer wg.Done()
+		// Iterate from start to end by scrapeInterval
+		for t := start; t.Before(end); t = t.Add(scrapeInterval) {
+			ts := t.UnixMilli()
+
+			symbols := []string{"", "__name__", "test_metric_prw2"}
+			seriesV2 := []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Samples:    []writev2.Sample{{Value: 999.0, Timestamp: ts}},
+				},
+			}
+			_, _ = cPRW2.PushV2(symbols, seriesV2)
+		}
+	}()
+
+	// Wait for all concurrent pushes to finish
+	wg.Wait()
+
+	// Check PRW1 requests
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(expectedPushesPerProtocol)), []string{"cortex_distributor_push_requests_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "prw1"))))
+	// Check PRW2 requests
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(float64(expectedPushesPerProtocol)), []string{"cortex_distributor_push_requests_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "prw2"))))
+
+	resultV1, err := cPRW1.QueryRange(`test_metric_prw1`, start, end, scrapeInterval)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, resultV1.Type())
+
+	matrixV1, ok := resultV1.(model.Matrix)
+	require.True(t, ok)
+	require.NotEmpty(t, matrixV1)
+
+	// Validate no data pollution occurred.
+	for _, series := range matrixV1 {
+		for _, sample := range series.Values {
+			assert.Equal(t, 1.0, float64(sample.Value), "Memory pool overlapped: PRW1 metric has been corrupted!")
+		}
+	}
+
+	resultV2, err := cPRW2.QueryRange(`test_metric_prw2`, start, end, scrapeInterval)
+	require.NoError(t, err)
+	matrixV2, ok := resultV2.(model.Matrix)
+	require.True(t, ok)
+	require.NotEmpty(t, matrixV2)
+
+	// Validate no data pollution occurred.
+	for _, series := range matrixV2 {
+		for _, sample := range series.Values {
+			assert.Equal(t, 999.0, float64(sample.Value), "Memory pool overlapped: PRW2 metric has been corrupted!")
+		}
+	}
 }
 
 func testPushHeader(t *testing.T, stats remoteapi.WriteResponseStats, expectedSamples, expectedHistogram, expectedExemplars int) {

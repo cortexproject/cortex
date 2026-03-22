@@ -282,7 +282,7 @@ parquet_converter:
 tenant_federation:
   # If enabled on all Cortex services, queries can be federated across multiple
   # tenants. The tenant IDs involved need to be specified separated by a `|`
-  # character in the `X-Scope-OrgID` header (experimental).
+  # character in the `X-Scope-OrgID` header.
   # CLI flag: -tenant-federation.enabled
   [enabled: <boolean> | default = false]
 
@@ -309,6 +309,11 @@ tenant_federation:
   # `-blocks-storage.users-scanner.strategy`.
   # CLI flag: -tenant-federation.user-sync-interval
   [user_sync_interval: <duration> | default = 5m]
+
+  # [Experimental] If enabled, query errors from individual tenants are treated
+  # as warnings, allowing partial results to be returned.
+  # CLI flag: -tenant-federation.allow-partial-data
+  [allow_partial_data: <boolean> | default = false]
 
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
@@ -610,7 +615,7 @@ cluster:
   # CLI flag: -alertmanager.cluster.push-pull-interval
   [push_pull_interval: <duration> | default = 1m]
 
-# Enable the experimental alertmanager config api.
+# Deprecated: Use -alertmanager.enable-api instead.
 # CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]
 
@@ -3108,9 +3113,8 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.enable-startup-sync
   [enable_startup_sync: <boolean> | default = false]
 
-  # Backend storage to use for the ring. Please be aware that memberlist is not
-  # supported by the HA tracker since gossip propagation is too slow for HA
-  # purposes.
+  # Backend storage to use for the ring. Memberlist support in the HA tracker is
+  # experimental, as gossip propagation delays may impact HA performance.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,
     # dynamodb, etcd, inmemory, memberlist, multi.
@@ -3217,6 +3221,12 @@ ha_tracker:
 # request.
 # CLI flag: -distributor.remote-writev2-enabled
 [remote_writev2_enabled: <boolean> | default = false]
+
+# If true, treat requests with unknown or invalid Content-Type header as remote
+# write v1 (legacy behavior). If false, return 415 Unsupported Media Type for
+# non-standard content types.
+# CLI flag: -distributor.accept-unknown-remote-write-content-type
+[accept_unknown_remote_write_content_type: <boolean> | default = false]
 
 ring:
   kvstore:
@@ -3342,6 +3352,10 @@ otlp:
   # Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
+
+  # If true, suffixes will be added to the metrics for name normalization.
+  # CLI flag: -distributor.otlp.add-metric-suffixes
+  [add_metric_suffixes: <boolean> | default = true]
 ```
 
 ### `etcd_config`
@@ -4237,6 +4251,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
+# Per-tenant TTL for cached query results in the cache backend
+# (Memcached/Redis/FIFO). This is the standard TTL for results that do not
+# overlap with the out-of-order time window. 0 (default) means use the global
+# cache backend TTL configuration.
+# CLI flag: -frontend.results-cache-ttl
+[results_cache_ttl: <duration> | default = 0s]
+
+# Per-tenant TTL for cached query results that overlap with the out-of-order
+# time window. These results may still receive out-of-order samples, so they
+# typically use a shorter TTL. 0 (default) means use the global cache backend
+# TTL configuration.
+# CLI flag: -frontend.out-of-order-results-cache-ttl
+[out_of_order_results_cache_ttl: <duration> | default = 0s]
+
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
 # will handle requests for the tenant. If the value is < 1, it will be treated
@@ -4569,6 +4597,10 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
 
+# How long to keep deleted keys (tombstones) in the KV store
+# CLI flag: -memberlist.tombstone-timeout
+[tombstone_timeout: <duration> | default = 5m]
+
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
 [leave_timeout: <duration> | default = 5s]
@@ -4655,7 +4687,7 @@ The `memcached_client_config` configures the client used to connect to Memcached
 # CLI flag: -frontend.memcached.service
 [service: <string> | default = "memcached"]
 
-# EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format:
+# Comma separated addresses list in DNS Service Discovery format:
 # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
 # CLI flag: -frontend.memcached.addresses
 [addresses: <string> | default = ""]
@@ -5600,7 +5632,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the ruler api
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 
 # EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API

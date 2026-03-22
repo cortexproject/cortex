@@ -3,22 +3,26 @@ package cache
 import (
 	"context"
 	"sync"
+	"time"
 )
 
-type mockCache struct {
+// MockCache is a simple in-memory cache for testing that also captures the last TTL used.
+type MockCache struct {
 	sync.Mutex
-	cache map[string][]byte
+	cache   map[string][]byte
+	lastTTL time.Duration
 }
 
-func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) {
+func (m *MockCache) Store(_ context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
 	m.Lock()
 	defer m.Unlock()
+	m.lastTTL = ttl
 	for i := range keys {
 		m.cache[keys[i]] = bufs[i]
 	}
 }
 
-func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string) {
+func (m *MockCache) Fetch(ctx context.Context, keys []string, ttl time.Duration) (found []string, bufs [][]byte, missing []string) {
 	m.Lock()
 	defer m.Unlock()
 	for _, key := range keys {
@@ -33,12 +37,19 @@ func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, b
 	return
 }
 
-func (m *mockCache) Stop() {
+func (m *MockCache) Stop() {
+}
+
+// GetLastTTL returns the TTL from the last Store call (useful for testing TTL behavior).
+func (m *MockCache) GetLastTTL() time.Duration {
+	m.Lock()
+	defer m.Unlock()
+	return m.lastTTL
 }
 
 // NewMockCache makes a new MockCache.
 func NewMockCache() Cache {
-	return &mockCache{
+	return &MockCache{
 		cache: map[string][]byte{},
 	}
 }

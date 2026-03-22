@@ -279,7 +279,7 @@
         },
         "enable_api": {
           "default": false,
-          "description": "Enable the experimental alertmanager config api.",
+          "description": "Deprecated: Use -alertmanager.enable-api instead.",
           "type": "boolean",
           "x-cli-flag": "experimental.alertmanager.enable-api"
         },
@@ -3707,6 +3707,12 @@
     "distributor_config": {
       "description": "The distributor_config configures the Cortex distributor.",
       "properties": {
+        "accept_unknown_remote_write_content_type": {
+          "default": false,
+          "description": "If true, treat requests with unknown or invalid Content-Type header as remote write v1 (legacy behavior). If false, return 415 Unsupported Media Type for non-standard content types.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.accept-unknown-remote-write-content-type"
+        },
         "extend_writes": {
           "default": true,
           "description": "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.",
@@ -3756,7 +3762,7 @@
               "x-format": "duration"
             },
             "kvstore": {
-              "description": "Backend storage to use for the ring. Please be aware that memberlist is not supported by the HA tracker since gossip propagation is too slow for HA purposes.",
+              "description": "Backend storage to use for the ring. Memberlist support in the HA tracker is experimental, as gossip propagation delays may impact HA performance.",
               "properties": {
                 "consul": {
                   "$ref": "#/definitions/consul_config"
@@ -3889,6 +3895,12 @@
         },
         "otlp": {
           "properties": {
+            "add_metric_suffixes": {
+              "default": true,
+              "description": "If true, suffixes will be added to the metrics for name normalization.",
+              "type": "boolean",
+              "x-cli-flag": "distributor.otlp.add-metric-suffixes"
+            },
             "allow_delta_temporality": {
               "default": false,
               "description": "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.",
@@ -5357,6 +5369,13 @@
           "type": "number",
           "x-cli-flag": "distributor.native-histogram-ingestion-rate-limit"
         },
+        "out_of_order_results_cache_ttl": {
+          "default": "0s",
+          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.",
+          "type": "string",
+          "x-cli-flag": "frontend.out-of-order-results-cache-ttl",
+          "x-format": "duration"
+        },
         "out_of_order_time_window": {
           "default": "0s",
           "description": "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.",
@@ -5479,6 +5498,13 @@
           "description": "Maximum accepted sample age before rejecting.",
           "type": "string",
           "x-cli-flag": "validation.reject-old-samples.max-age",
+          "x-format": "duration"
+        },
+        "results_cache_ttl": {
+          "default": "0s",
+          "description": "Per-tenant TTL for cached query results in the cache backend (Memcached/Redis/FIFO). This is the standard TTL for results that do not overlap with the out-of-order time window. 0 (default) means use the global cache backend TTL configuration.",
+          "type": "string",
+          "x-cli-flag": "frontend.results-cache-ttl",
           "x-format": "duration"
         },
         "ruler_evaluation_delay_duration": {
@@ -5745,6 +5771,13 @@
           "description": "Override the expected name on the server certificate.",
           "type": "string",
           "x-cli-flag": "memberlist.tls-server-name"
+        },
+        "tombstone_timeout": {
+          "default": "5m0s",
+          "description": "How long to keep deleted keys (tombstones) in the KV store",
+          "type": "string",
+          "x-cli-flag": "memberlist.tombstone-timeout",
+          "x-format": "duration"
         }
       },
       "type": "object"
@@ -5753,7 +5786,7 @@
       "description": "The memcached_client_config configures the client used to connect to Memcached.",
       "properties": {
         "addresses": {
-          "description": "EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery",
+          "description": "Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery",
           "type": "string",
           "x-cli-flag": "frontend.memcached.addresses"
         },
@@ -6602,7 +6635,7 @@
           "default": false,
           "description": "Enable the ruler api",
           "type": "boolean",
-          "x-cli-flag": "experimental.ruler.enable-api"
+          "x-cli-flag": "ruler.enable-api"
         },
         "enable_ha_evaluation": {
           "default": false,
@@ -9060,9 +9093,15 @@
     },
     "tenant_federation": {
       "properties": {
+        "allow_partial_data": {
+          "default": false,
+          "description": "[Experimental] If enabled, query errors from individual tenants are treated as warnings, allowing partial results to be returned.",
+          "type": "boolean",
+          "x-cli-flag": "tenant-federation.allow-partial-data"
+        },
         "enabled": {
           "default": false,
-          "description": "If enabled on all Cortex services, queries can be federated across multiple tenants. The tenant IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` header (experimental).",
+          "description": "If enabled on all Cortex services, queries can be federated across multiple tenants. The tenant IDs involved need to be specified separated by a `|` character in the `X-Scope-OrgID` header.",
           "type": "boolean",
           "x-cli-flag": "tenant-federation.enabled"
         },

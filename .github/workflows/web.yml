@@ -1,0 +1,101 @@
+name: website
+permissions: read-all
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yml'
+  pull_request:
+    paths-ignore:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Install Tools
+        run: go install github.com/campoy/embedmd@v1.0.0
+      - name: Check Generated Documentation
+        run: make BUILD_IN_CONTAINER=false check-doc
+      - name: Check White Noise
+        run: make BUILD_IN_CONTAINER=false check-white-noise
+
+  build:
+    needs: [lint]
+    runs-on: ubuntu-24.04
+    env:
+      HUGO_VERSION: "0.101.0"
+      NODE_VERSION: "18"
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          submodules: recursive
+      - name: Setup Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install Hugo
+        run: |
+          curl -sLJO "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_Linux-64bit.tar.gz"
+          mkdir -p "${HOME}/.local/hugo"
+          tar -C "${HOME}/.local/hugo" -xf "hugo_extended_${HUGO_VERSION}_Linux-64bit.tar.gz"
+          rm "hugo_extended_${HUGO_VERSION}_Linux-64bit.tar.gz"
+          echo "${HOME}/.local/hugo" >> "${GITHUB_PATH}"
+      - name: Install Node.js dependencies
+        working-directory: website
+        run: npm ci
+      - name: Build Website
+        run: |
+          ./tools/website/web-pre.sh
+          cd website && HUGO_ENV=production hugo --config config.toml --minify -v
+      - name: Upload Website Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: website public standalone
+          path: website/public/
+
+  deploy:
+    needs: [build]
+    if: github.ref == 'refs/heads/master' && github.repository == 'cortexproject/cortex'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ssh-key: ${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}
+      - name: Download Website Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: website public standalone
+          path: website/public
+      - name: Setup SSH Keys
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.WEBSITE_DEPLOY_SSH_PRIVATE_KEY }}"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        shell: bash
+      - name: Deploy Website
+        run: ./tools/website/web-deploy.sh
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"

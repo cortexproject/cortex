@@ -1,6 +1,19 @@
 # Changelog
 
 ## master / unreleased
+
+* [FEATURE] StoreGateway: Add optional limit `blocks-storage.bucket-store.max-concurrent-bytes` on series bytes per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
+* [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #7357
+* [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
+
+## 1.21.0 in progress
+
+* [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
+  * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.
+  * Ruler API is no longer marked as experimental.
+* [CHANGE] Alertmanager: Graduate Alertmanager API and sharding from experimental. #7315
+  * Flag: Renamed `-experimental.alertmanager.enable-api` to `-alertmanager.enable-api`. The old flag is kept as deprecated.
+  * Alertmanager sharding is no longer marked as experimental.
 * [CHANGE] Blocks storage: Bucket index is now enabled by default. Disabling the bucket index (`-blocks-storage.bucket-store.bucket-index.enabled=false`) is not recommended for production. #7259
 * [CHANGE] Users Scanner: Rename user index update configuration. #7180
   * Flag: Renamed `-*.users-scanner.user-index.cleanup-interval` to `-*.users-scanner.user-index.update-interval`.
@@ -9,13 +22,15 @@
   * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
   * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.
   * Config: Renamed `parquet_queryable_shard_cache_size` to `parquet_shard_cache_size` and `parquet_queryable_shard_cache_ttl` to `parquet_shard_cache_ttl`.
+* [FEATURE] HATracker: Add experimental support for `memberlist` and `multi` as a KV store backend. #7284
+* [FEATURE] Distributor: Add `-distributor.otlp.add-metric-suffixes` flag. If true, suffixes will be added to the metrics for name normalization. #7286
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
 * [FEATURE] StoreGateway: Add a parquet shard cache to parquet mode. #7166
 * [FEATURE] Distributor: Add a per-tenant flag `-distributor.enable-type-and-unit-labels` that enables adding `__unit__` and `__type__` labels for remote write v2 and OTLP requests. This is a breaking change; the `-distributor.otlp.enable-type-and-unit-labels` flag is now deprecated, operates as a no-op, and has been consolidated into this new flag. #7077
 * [FEATURE] Querier: Add experimental projection pushdown support in Parquet Queryable. #7152
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
-* [FEATURE] StoreGateway: Add optional limit `blocks-storage.bucket-store.max-concurrent-bytes` on series bytes per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
-* [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to mattermost. #7267
+* [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to IncidentIO and Mattermost. #7092 #7267
+* [FEATURE] Tenant Federation: Add experimental support for partial responses using the `-tenant-federation.allow-partial-data` flag. When enabled, failures from individual tenants during a federated query are treated as warnings, allowing results from successful tenants to be returned. #7232
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
@@ -25,7 +40,6 @@
 * [ENHANCEMENT] Distributor: Skip attaching `__unit__` and `__type__` labels when `-distributor.enable-type-and-unit-labels` is enabled, as these are appended from metadata. #7145
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_ingester_push_timeouts_total` metric to track the number of push requests to ingesters that were canceled due to timeout. #7155 #7229
 * [ENHANCEMENT] StoreGateway: Add tracings to parquet mode. #7125
-* [ENHANCEMENT] Alertmanager: Upgrade alertmanger to 0.29.0 and add a new incidentIO integration. #7092
 * [ENHANCEMENT] Querier: Add a `-querier.parquet-queryable-shard-cache-ttl` flag to add TTL to parquet shard cache. #7098
 * [ENHANCEMENT] Ingester: Add `enable_matcher_optimization` config to apply low selectivity matchers lazily. #7063
 * [ENHANCEMENT] Distributor: Add a label references validation for remote write v2 request. #7074
@@ -36,7 +50,7 @@
 * [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7130 #7209 #7257
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
-* [ENHANCEMENT] Upgrade to go 1.25. #7164
+* [ENHANCEMENT] Upgrade to go 1.25.8 #7164 #7340
 * [ENHANCEMENT] Upgraded container base images to `alpine:3.23`. #7163
 * [ENHANCEMENT] Ingester: Instrument Ingester CPU profile with userID for read APIs. #7184
 * [ENHANCEMENT] Ingester: Add fetch timeout for Ingester expanded postings cache. #7185
@@ -45,8 +59,12 @@
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
 * [ENHANCEMENT] Distributor: Validate metric name before removing empty labels. #7253
+* [ENHANCEMENT] Ruler/Ingester: Propagate append hints to discard out of order samples on Ingester #7226
 * [ENHANCEMENT] Make cortex_ingester_tsdb_sample_ooo_delta metric per-tenant #7278
 * [ENHANCEMENT] Distributor: Add dimension `nhcb` to keep track of nhcb samples in `cortex_distributor_received_samples_total` and `cortex_distributor_samples_in_total` metrics.
+* [ENHANCEMENT] Distributor: Add `-distributor.accept-unknown-remote-write-content-type` flag. When enabled, requests with unknown or invalid Content-Type header are treated as remote write v1 instead of returning 415 Unsupported Media Type. Default is false. #7293
+* [ENHANCEMENT] Ingester: Added `cortex_ingester_ingested_histogram_buckets` metric to track number of histogram buckets ingested per user. #7297
+* [BUGFIX] Distributor: Add bounds checking for symbol references in Remote Write V2 requests to prevent panics when UnitRef or HelpRef exceed the symbols array length. #7290
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
 * [BUGFIX] Ruler: Add XFunctions validation support. #7111
@@ -58,6 +76,8 @@
 * [BUGFIX] Query Scheduler: If max_outstanding_requests_per_tenant value is updated to lesser value than the current number of requests in the queue, the excess requests (newest ones) will be dropped to prevent deadlocks. #7188
 * [BUGFIX] Distributor: Return remote write V2 stats headers properly when the request is HA deduplicated. #7240
 * [BUGFIX] Cache: Fix Redis Cluster EXECABORT error in MSet by using individual SET commands instead of transactions for cluster mode. #7262
+* [BUGFIX] Distributor: Fix an `index out of range` panic in PRW2.0 handler caused by dirty metadata when reusing requests from `sync.Pool`. #7299
+* [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
 
 
 ## 1.20.1 2025-12-03

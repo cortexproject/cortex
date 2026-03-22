@@ -153,12 +153,13 @@ type Config struct {
 	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy         string `yaml:"sharding_strategy"`
-	ShardByAllLabels         bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites             bool   `yaml:"extend_writes"`
-	SignWriteRequestsEnabled bool   `yaml:"sign_write_requests"`
-	UseStreamPush            bool   `yaml:"use_stream_push"`
-	RemoteWriteV2Enabled     bool   `yaml:"remote_writev2_enabled"`
+	ShardingStrategy                    string `yaml:"sharding_strategy"`
+	ShardByAllLabels                    bool   `yaml:"shard_by_all_labels"`
+	ExtendWrites                        bool   `yaml:"extend_writes"`
+	SignWriteRequestsEnabled            bool   `yaml:"sign_write_requests"`
+	UseStreamPush                       bool   `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled                bool   `yaml:"remote_writev2_enabled"`
+	AcceptUnknownRemoteWriteContentType bool   `yaml:"accept_unknown_remote_write_content_type"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -204,6 +205,7 @@ type OTLPConfig struct {
 	DisableTargetInfo       bool `yaml:"disable_target_info"`
 	AllowDeltaTemporality   bool `yaml:"allow_delta_temporality"`
 	EnableTypeAndUnitLabels bool `yaml:"enable_type_and_unit_labels"`
+	AddMetricSuffixes       bool `yaml:"add_metric_suffixes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -224,6 +226,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 	f.IntVar(&cfg.NumPushWorkers, "distributor.num-push-workers", 0, "EXPERIMENTAL: Number of go routines to handle push calls from distributors to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.")
 	f.BoolVar(&cfg.RemoteWriteV2Enabled, "distributor.remote-writev2-enabled", false, "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.")
+	f.BoolVar(&cfg.AcceptUnknownRemoteWriteContentType, "distributor.accept-unknown-remote-write-content-type", false, "If true, treat requests with unknown or invalid Content-Type header as remote write v1 (legacy behavior). If false, return 415 Unsupported Media Type for non-standard content types.")
 
 	f.Float64Var(&cfg.InstanceLimits.MaxIngestionRate, "distributor.instance-limits.max-ingestion-rate", 0, "Max ingestion rate (samples/sec) that this distributor will accept. This limit is per-distributor, not per-tenant. Additional push requests will be rejected. Current ingestion rate is computed as exponentially weighted moving average, updated every second. 0 = unlimited.")
 	f.IntVar(&cfg.InstanceLimits.MaxInflightPushRequests, "distributor.instance-limits.max-inflight-push-requests", 0, "Max inflight push requests that this distributor can handle. This limit is per-distributor, not per-tenant. Additional requests will be rejected. 0 = unlimited.")
@@ -233,6 +236,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
 	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
+	f.BoolVar(&cfg.OTLPConfig.AddMetricSuffixes, "distributor.otlp.add-metric-suffixes", true, "If true, suffixes will be added to the metrics for name normalization.")
 }
 
 // Validate config and returns error on failure
@@ -478,10 +482,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
-	if d.cfg.InstanceLimits != (InstanceLimits{}) {
-		util_log.WarnExperimentalUse("distributor instance limits")
-	}
-
 	// Only report success if all sub-services start properly
 	return services.StartManagerAndAwaitHealthy(ctx, d.subservices)
 }
@@ -986,7 +986,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 			}
 		}
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source, req.DiscardOutOfOrder)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
 		req.Free()
@@ -1254,7 +1254,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum, discardOutOfOrder bool) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1272,9 +1272,10 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
-			Timeseries: timeseries,
-			Metadata:   metadata,
-			Source:     source,
+			Timeseries:        timeseries,
+			Metadata:          metadata,
+			Source:            source,
+			DiscardOutOfOrder: discardOutOfOrder,
 		}
 		_, err = c.PushStreamConnection(ctx, req)
 	} else {
@@ -1282,6 +1283,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		req.Timeseries = timeseries
 		req.Metadata = metadata
 		req.Source = source
+		req.DiscardOutOfOrder = discardOutOfOrder
 
 		_, err = c.PushPreAlloc(ctx, req)
 

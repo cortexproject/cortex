@@ -96,6 +96,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="max_total_label_value_length_for_unoptimized_regex",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_burst_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_rate",user="tenant-a"} 1.7976931348623157e+308
+		cortex_overrides{limit_name="out_of_order_results_cache_ttl",user="tenant-a"} 0
 		cortex_overrides{limit_name="out_of_order_time_window",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_enabled",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_tenant_shard_size",user="tenant-a"} 0
@@ -106,6 +107,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="query_vertical_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples_max_age",user="tenant-a"} 1.2096e+06
+		cortex_overrides{limit_name="results_cache_ttl",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_evaluation_delay_duration",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rule_groups_per_tenant",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rules_per_rule_group",user="tenant-a"} 0

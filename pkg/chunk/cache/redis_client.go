@@ -88,7 +88,12 @@ func (c *RedisClient) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) error {
+func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte, ttl time.Duration) error {
+	// If TTL is 0, fall back to configured expiration
+	if ttl == 0 {
+		ttl = c.expiration
+	}
+
 	var cancel context.CancelFunc
 	if c.timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, c.timeout)
@@ -107,7 +112,7 @@ func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 	if isCluster {
 		// For cluster mode, use individual SET commands to avoid cross-slot transaction errors
 		for i := range keys {
-			err := c.rdb.Set(ctx, keys[i], values[i], c.expiration).Err()
+			err := c.rdb.Set(ctx, keys[i], values[i], ttl).Err()
 			if err != nil {
 				return err
 			}
@@ -118,7 +123,7 @@ func (c *RedisClient) MSet(ctx context.Context, keys []string, values [][]byte) 
 	// For single/sentinel mode, use transaction pipeline for atomicity
 	pipe := c.rdb.TxPipeline()
 	for i := range keys {
-		pipe.Set(ctx, keys[i], values[i], c.expiration)
+		pipe.Set(ctx, keys[i], values[i], ttl)
 	}
 	_, err := pipe.Exec(ctx)
 	return err

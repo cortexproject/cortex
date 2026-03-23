@@ -9111,6 +9111,12 @@
           "type": "number",
           "x-cli-flag": "tenant-federation.max-tenant"
         },
+        "regex_cache_size": {
+          "default": 1000,
+          "description": "[Experimental] Cache size of regex match results used by regex resolver. Each cache entry includes both regex patterns (e.g. `user-.+`) and resolved tenant IDs (e.g. `user-1`). Set to 0 or less to disable caching.",
+          "type": "number",
+          "x-cli-flag": "tenant-federation.regex-cache-size"
+        },
         "regex_matcher_enabled": {
           "default": false,
           "description": "[Experimental] If enabled, the `X-Scope-OrgID` header value can accept a regex and the matched tenantIDs are automatically involved. The regex matching rule follows the Prometheus, see the detail: https://prometheus.io/docs/prometheus/latest/querying/basics/#regular-expressions. The user discovery is based on scanning block storage, so new users can get queries after uploading a block (generally 2h).",

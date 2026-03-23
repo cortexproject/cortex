@@ -172,6 +172,7 @@ type resultsCache struct {
 	cache    cache.Cache
 	limits   tripperware.Limits
 	splitter CacheSplitter
+	now      func() time.Time
 
 	extractor                  Extractor
 	minCacheExtent             int64 // discard any cache extent smaller than this
@@ -215,6 +216,7 @@ func NewResultsCacheMiddleware(
 			extractor:                  extractor,
 			minCacheExtent:             (5 * time.Minute).Milliseconds(),
 			splitter:                   splitter,
+			now:                        time.Now,
 			shouldCache:                shouldCache,
 			cacheQueryableSamplesStats: cfg.CacheQueryableSamplesStats,
 		}
@@ -790,7 +792,7 @@ func (s resultsCache) extentsOverlapOutOfOrderWindow(extents []tripperware.Exten
 		return false
 	}
 
-	nowMs := time.Now().UnixMilli()
+	nowMs := s.now().UnixMilli()
 	outOfOrderCutoffMs := nowMs - int64(outOfOrderWindow/time.Millisecond)
 
 	for _, extent := range extents {

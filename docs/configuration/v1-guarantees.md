@@ -55,6 +55,7 @@ Currently experimental features are:
 - Blocks storage user index
 - Querier: tenant federation
   - `-tenant-federation.regex-matcher-enabled`
+  - `-tenant-federation.regex-cache-size`
   - `-tenant-federation.user-sync-interval`
   - `-tenant-federation.allow-partial-data`
 - The thanosconvert tool for converting Thanos block metadata to Cortex

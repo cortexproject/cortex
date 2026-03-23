@@ -285,7 +285,7 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 		"-frontend.memcached.addresses":            "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-tenant-federation.enabled":               "true",
 		"-tenant-federation.regex-matcher-enabled": "true",
-		"-tenant-federation.user-sync-interval":    "1s",
+		"-tenant-federation.user-sync-interval":    "5s",
 
 		// to upload block quickly
 		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
@@ -394,6 +394,19 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 	require.NoError(t, err)
 
 	assert.Equal(t, mergeResults(tenantIDs, expectedVectors), result.(model.Vector))
+
+	// Verify regex resolver cache entries.
+	querierSum, err := querier.SumMetrics([]string{"cortex_regex_resolver_matched_cache_size"}, e2e.SkipMissingMetrics)
+	require.NoError(t, err)
+
+	totalCacheSize := querierSum[0]
+	if cfg.shuffleShardingEnabled {
+		querier2Sum, err := querier2.SumMetrics([]string{"cortex_regex_resolver_matched_cache_size"}, e2e.SkipMissingMetrics)
+		require.NoError(t, err)
+		totalCacheSize += querier2Sum[0]
+	}
+
+	require.Equal(t, float64(numUsers+1), totalCacheSize)
 
 	// ensure a push to multiple tenants is failing
 	series, _ := generateSeries("series_1", now)

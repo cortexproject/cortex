@@ -253,9 +253,21 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 
 		ts := cortexpb.TimeseriesFromPool()
 		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
-		ts.Samples = append(ts.Samples, v2Ts.Samples...)
+		for _, sample := range v2Ts.Samples {
+			// Backward compatibility: use created_timestamp as a fallback (before the Prometheus v3.8.0 model)
+			if sample.StartTimestampMs == 0 {
+				sample.StartTimestampMs = v2Ts.CreatedTimestamp
+			}
+			ts.Samples = append(ts.Samples, sample)
+		}
 		ts.Exemplars = exemplars
-		ts.Histograms = append(ts.Histograms, v2Ts.Histograms...)
+		for _, histogram := range v2Ts.Histograms {
+			// Backward compatibility: use series-level created_timestamp as a fallback (before the Prometheus v3.8.0 model)
+			if histogram.StartTimestampMs == 0 {
+				histogram.StartTimestampMs = v2Ts.CreatedTimestamp
+			}
+			ts.Histograms = append(ts.Histograms, histogram)
+		}
 
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: ts,

@@ -3,14 +3,19 @@
 package integration
 
 import (
+	"bytes"
+	"fmt"
 	"math/rand"
+	"net/http"
 	"path"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/golang/snappy"
 	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	writev2 "github.com/prometheus/prometheus/prompb/io/prometheus/write/v2"
@@ -21,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 )
 
@@ -393,6 +399,254 @@ func TestIngest(t *testing.T) {
 	}
 }
 
+func TestIngest_StartTimestamp(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
+			// Ingester.
+			"-ring.store":      "consul",
+			"-consul.hostname": consul.NetworkHTTPEndpoint(),
+			// Distributor.
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	sampleTs := time.Now().Truncate(time.Second)
+	startTs := sampleTs.Add(-2 * time.Second)
+	step := sampleTs.Sub(startTs)
+
+	sampleSymbols := []string{"", "__name__", "test_start_timestamp_sample"}
+	sampleSeries := []writev2.TimeSeries{
+		{
+			LabelsRefs: []uint32{1, 2},
+			Samples: []writev2.Sample{{
+				Value:          42,
+				Timestamp:      e2e.TimeToMilliseconds(sampleTs),
+				StartTimestamp: e2e.TimeToMilliseconds(startTs),
+			}},
+		},
+	}
+
+	writeStats, err := c.PushV2(sampleSymbols, sampleSeries)
+	require.NoError(t, err)
+	testPushHeader(t, writeStats, 1, 0, 0)
+
+	sampleResult, err := c.QueryRange("test_start_timestamp_sample", startTs, sampleTs, step)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, sampleResult.Type())
+
+	sampleMatrix := sampleResult.(model.Matrix)
+	require.Len(t, sampleMatrix, 1)
+	require.Len(t, sampleMatrix[0].Values, 2)
+	require.Empty(t, sampleMatrix[0].Histograms)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(startTs)), sampleMatrix[0].Values[0].Timestamp)
+	assert.Equal(t, model.SampleValue(0), sampleMatrix[0].Values[0].Value)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(sampleTs)), sampleMatrix[0].Values[1].Timestamp)
+	assert.Equal(t, model.SampleValue(42), sampleMatrix[0].Values[1].Value)
+
+	histogramCases := []struct {
+		metricName string
+		isFloat    bool
+		isCustom   bool
+		idx        uint32
+	}{
+		{metricName: "test_start_timestamp_histogram", isFloat: false, isCustom: false, idx: rand.Uint32()},
+		{metricName: "test_start_timestamp_histogram_float", isFloat: true, isCustom: false, idx: rand.Uint32()},
+		{metricName: "test_start_timestamp_histogram_custom", isFloat: false, isCustom: true, idx: rand.Uint32()},
+		{metricName: "test_start_timestamp_histogram_float_custom", isFloat: true, isCustom: true, idx: rand.Uint32()},
+	}
+
+	for _, tc := range histogramCases {
+		symbols, series := e2e.GenerateHistogramSeriesV2(tc.metricName, sampleTs, tc.idx, tc.isCustom, tc.isFloat)
+		series[0].Histograms[0].StartTimestamp = e2e.TimeToMilliseconds(startTs)
+
+		writeStats, err = c.PushV2(symbols, series)
+		require.NoError(t, err)
+		testPushHeader(t, writeStats, 0, 1, 0)
+
+		result, err := c.QueryRange(tc.metricName, startTs, sampleTs, step)
+		require.NoError(t, err)
+		require.Equal(t, model.ValMatrix, result.Type())
+
+		matrix := result.(model.Matrix)
+		require.Len(t, matrix, 1)
+		require.Empty(t, matrix[0].Values)
+		require.Len(t, matrix[0].Histograms, 2)
+		require.NotNil(t, matrix[0].Histograms[0].Histogram)
+		require.NotNil(t, matrix[0].Histograms[1].Histogram)
+		assert.Equal(t, model.Time(e2e.TimeToMilliseconds(startTs)), matrix[0].Histograms[0].Timestamp)
+		assert.Equal(t, model.FloatString(0), matrix[0].Histograms[0].Histogram.Count)
+		assert.Equal(t, model.FloatString(0), matrix[0].Histograms[0].Histogram.Sum)
+
+		var expectedCount, expectedSum model.FloatString
+		if tc.isFloat {
+			var expected *histogram.FloatHistogram
+			if tc.isCustom {
+				expected = tsdbutil.GenerateTestCustomBucketsFloatHistogram(int64(tc.idx))
+			} else {
+				expected = tsdbutil.GenerateTestFloatHistogram(int64(tc.idx))
+			}
+			expectedCount = model.FloatString(expected.Count)
+			expectedSum = model.FloatString(expected.Sum)
+		} else {
+			var expected *histogram.Histogram
+			if tc.isCustom {
+				expected = tsdbutil.GenerateTestCustomBucketsHistogram(int64(tc.idx))
+			} else {
+				expected = tsdbutil.GenerateTestHistogram(int64(tc.idx))
+			}
+			expectedCount = model.FloatString(expected.Count)
+			expectedSum = model.FloatString(expected.Sum)
+		}
+
+		assert.Equal(t, model.Time(e2e.TimeToMilliseconds(sampleTs)), matrix[0].Histograms[1].Timestamp)
+		assert.Equal(t, expectedCount, matrix[0].Histograms[1].Histogram.Count)
+		assert.Equal(t, expectedSum, matrix[0].Histograms[1].Histogram.Sum)
+	}
+}
+
+func TestIngest_CreatedTimestampFallback(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                    blocksStorageEngine,
+			"-blocks-storage.backend":                          "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":    "4m",
+			"-blocks-storage.bucket-store.sync-interval":       "15m",
+			"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.tsdb.block-ranges-period":         blockRangePeriod.String(),
+			"-blocks-storage.tsdb.ship-interval":               "1s",
+			"-blocks-storage.tsdb.retention-period":            ((blockRangePeriod * 2) - 1).String(),
+			"-blocks-storage.tsdb.enable-native-histograms":    "true",
+			"-ring.store":                         "consul",
+			"-consul.hostname":                    consul.NetworkHTTPEndpoint(),
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
+			"-store-gateway.sharding-enabled":     "false",
+			"-alertmanager.web.external-url":      "http://localhost/alertmanager",
+		},
+	)
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+	path := path.Join(s.SharedDir(), "cortex-1")
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	sampleTs := time.Now().Truncate(time.Second)
+	startTs := sampleTs.Add(-2 * time.Second)
+	step := sampleTs.Sub(startTs)
+
+	// Send a PRW2 request encoded with Cortex proto carrying only created_timestamp.
+	sampleReq := &cortexpb.WriteRequestV2{
+		Symbols: []string{"", "__name__", "test_created_timestamp_sample"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs:       []uint32{1, 2},
+					CreatedTimestamp: e2e.TimeToMilliseconds(startTs),
+					Samples:          []cortexpb.Sample{{Value: 7, TimestampMs: e2e.TimeToMilliseconds(sampleTs)}},
+				},
+			},
+		},
+	}
+	pushCortexV2Request(t, cortex.HTTPEndpoint(), "user-1", sampleReq)
+
+	sampleResult, err := c.QueryRange("test_created_timestamp_sample", startTs, sampleTs, step)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, sampleResult.Type())
+
+	sampleMatrix := sampleResult.(model.Matrix)
+	require.Len(t, sampleMatrix, 1)
+	require.Len(t, sampleMatrix[0].Values, 2)
+	require.Empty(t, sampleMatrix[0].Histograms)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(startTs)), sampleMatrix[0].Values[0].Timestamp)
+	assert.Equal(t, model.SampleValue(0), sampleMatrix[0].Values[0].Value)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(sampleTs)), sampleMatrix[0].Values[1].Timestamp)
+	assert.Equal(t, model.SampleValue(7), sampleMatrix[0].Values[1].Value)
+
+	h := cortexpb.HistogramToHistogramProto(e2e.TimeToMilliseconds(sampleTs), tsdbutil.GenerateTestHistogram(3))
+	histReq := &cortexpb.WriteRequestV2{
+		Symbols: []string{"", "__name__", "test_created_timestamp_histogram"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs:       []uint32{1, 2},
+					CreatedTimestamp: e2e.TimeToMilliseconds(startTs),
+					Histograms:       []cortexpb.Histogram{h},
+				},
+			},
+		},
+	}
+	pushCortexV2Request(t, cortex.HTTPEndpoint(), "user-1", histReq)
+
+	histResult, err := c.QueryRange("test_created_timestamp_histogram", startTs, sampleTs, step)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, histResult.Type())
+
+	histMatrix := histResult.(model.Matrix)
+	require.Len(t, histMatrix, 1)
+	require.Empty(t, histMatrix[0].Values)
+	require.Len(t, histMatrix[0].Histograms, 2)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(startTs)), histMatrix[0].Histograms[0].Timestamp)
+	assert.Equal(t, model.FloatString(0), histMatrix[0].Histograms[0].Histogram.Count)
+	assert.Equal(t, model.FloatString(0), histMatrix[0].Histograms[0].Histogram.Sum)
+
+	expectedHist := tsdbutil.GenerateTestHistogram(3)
+	assert.Equal(t, model.Time(e2e.TimeToMilliseconds(sampleTs)), histMatrix[0].Histograms[1].Timestamp)
+	assert.Equal(t, model.FloatString(expectedHist.Count), histMatrix[0].Histograms[1].Histogram.Count)
+	assert.Equal(t, model.FloatString(expectedHist.Sum), histMatrix[0].Histograms[1].Histogram.Sum)
+}
+
 func TestExemplar(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -684,4 +938,27 @@ func testPushHeader(t *testing.T, stats remoteapi.WriteResponseStats, expectedSa
 	require.Equal(t, expectedSamples, stats.Samples)
 	require.Equal(t, expectedHistogram, stats.Histograms)
 	require.Equal(t, expectedExemplars, stats.Exemplars)
+}
+
+func pushCortexV2Request(t *testing.T, distributorAddr, orgID string, req *cortexpb.WriteRequestV2) {
+	t.Helper()
+
+	data, err := req.Marshal()
+	require.NoError(t, err)
+
+	compressed := snappy.Encode(nil, data)
+	httpReq, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/prom/push", distributorAddr), bytes.NewReader(compressed))
+	require.NoError(t, err)
+
+	httpReq.Header.Add("Content-Encoding", "snappy")
+	httpReq.Header.Set("Content-Type", "application/x-protobuf;proto=io.prometheus.write.v2.Request")
+	httpReq.Header.Set("X-Prometheus-Remote-Write-Version", "2.0.0")
+	httpReq.Header.Set("X-Scope-OrgID", orgID)
+
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+	res, err := httpClient.Do(httpReq)
+	require.NoError(t, err)
+	defer res.Body.Close() //nolint:errcheck
+
+	require.Equal(t, http.StatusNoContent, res.StatusCode)
 }

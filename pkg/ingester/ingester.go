@@ -1460,6 +1460,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		for _, s := range ts.Samples {
 			var err error
 
+			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
+				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
+				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to append start timestamp for sample", "user", userID, "series", copiedLabels.String(), "timestamp", s.TimestampMs, "start_timestamp", s.StartTimestampMs, "err", err)
+				}
+			}
+
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
@@ -1504,6 +1511,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
 				} else {
 					h = cortexpb.HistogramProtoToHistogram(hp)
+				}
+
+				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
+					// TODO(SungJin1212): Change to AppendHistogramSTZeroSample after update the Prometheus v3.9.0+
+					if _, err = app.AppendHistogramCTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+						level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to append start timestamp for histogram", "user", userID, "series", copiedLabels.String(), "timestamp", hp.TimestampMs, "start_timestamp", hp.StartTimestampMs, "err", err)
+					}
 				}
 
 				if ref != 0 {

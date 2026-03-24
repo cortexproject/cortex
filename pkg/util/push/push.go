@@ -253,6 +253,7 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 
 		ts := cortexpb.TimeseriesFromPool()
 		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
+		ts.Samples = make([]cortexpb.Sample, 0, len(v2Ts.Samples))
 		for _, sample := range v2Ts.Samples {
 			if enableStartTimestamp {
 				// Use created_timestamp as a fallback for start_timestamp_ms when not set.
@@ -265,6 +266,7 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			ts.Samples = append(ts.Samples, sample)
 		}
 		ts.Exemplars = exemplars
+		ts.Histograms = make([]cortexpb.Histogram, 0, len(v2Ts.Histograms))
 		for _, histogram := range v2Ts.Histograms {
 			if enableStartTimestamp {
 				// Use created_timestamp as a fallback for start_timestamp_ms when not set.

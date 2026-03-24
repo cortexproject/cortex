@@ -103,6 +103,11 @@ type Config struct {
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 
 	HonorProjectionHints bool `yaml:"honor_projection_hints"`
+
+	// Timeout classification flags for converting 5XX to 4XX on expensive queries.
+	TimeoutClassificationEnabled       bool          `yaml:"timeout_classification_enabled"`
+	TimeoutClassificationDeadline      time.Duration `yaml:"timeout_classification_deadline"`
+	TimeoutClassificationEvalThreshold time.Duration `yaml:"timeout_classification_eval_threshold"`
 }
 
 var (
@@ -114,6 +119,11 @@ var (
 	errInvalidSeriesBatchSize                         = errors.New("store gateway series batch size should be greater or equal than 0")
 	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
 	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
+
+	errTimeoutClassificationDeadlineNotPositive          = errors.New("timeout_classification_deadline must be positive when timeout classification is enabled")
+	errTimeoutClassificationEvalThresholdNotPositive     = errors.New("timeout_classification_eval_threshold must be positive when timeout classification is enabled")
+	errTimeoutClassificationEvalThresholdExceedsDeadline = errors.New("timeout_classification_eval_threshold must be less than or equal to timeout_classification_deadline")
+	errTimeoutClassificationDeadlineExceedsTimeout       = errors.New("timeout_classification_deadline must be less than the querier timeout")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -158,6 +168,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
+	f.BoolVar(&cfg.TimeoutClassificationEnabled, "querier.timeout-classification-enabled", false, "If true, classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing.")
+	f.DurationVar(&cfg.TimeoutClassificationDeadline, "querier.timeout-classification-deadline", 59*time.Second, "The total time before the querier proactively cancels a query for timeout classification.")
+	f.DurationVar(&cfg.TimeoutClassificationEvalThreshold, "querier.timeout-classification-eval-threshold", 40*time.Second, "Eval time threshold above which a timeout is classified as user error (4XX).")
 }
 
 // Validate the config
@@ -194,6 +207,21 @@ func (cfg *Config) Validate() error {
 	if cfg.EnableParquetQueryable {
 		if !slices.Contains(validBlockStoreTypes, blockStoreType(cfg.ParquetQueryableDefaultBlockStore)) {
 			return errInvalidParquetQueryableDefaultBlockStore
+		}
+	}
+
+	if cfg.TimeoutClassificationEnabled {
+		if cfg.TimeoutClassificationDeadline <= 0 {
+			return errTimeoutClassificationDeadlineNotPositive
+		}
+		if cfg.TimeoutClassificationEvalThreshold <= 0 {
+			return errTimeoutClassificationEvalThresholdNotPositive
+		}
+		if cfg.TimeoutClassificationEvalThreshold > cfg.TimeoutClassificationDeadline {
+			return errTimeoutClassificationEvalThresholdExceedsDeadline
+		}
+		if cfg.TimeoutClassificationDeadline >= cfg.Timeout {
+			return errTimeoutClassificationDeadlineExceedsTimeout
 		}
 	}
 

@@ -23,6 +23,19 @@ type QueryStats struct {
 	DataSelectMinTime   int64
 	SplitInterval       time.Duration
 	m                   sync.Mutex
+
+	// Phase tracking fields for timeout classification.
+	// Stored as UnixNano int64 for atomic operations.
+	queryStart     int64 // nanosecond timestamp when query began
+	queueJoinTime  int64 // nanosecond timestamp when request entered scheduler queue
+	queueLeaveTime int64 // nanosecond timestamp when request left scheduler queue
+
+	// Max timing breakdown across sub-queries (nanoseconds).
+	// These use max() semantics during Merge rather than sum.
+	maxFetchTime     int64 // max storage fetch time across sub-queries
+	maxEvalTime      int64 // max PromQL evaluation time across sub-queries
+	maxQueueWaitTime int64 // max scheduler queue wait time across sub-queries
+	maxTotalTime     int64 // max total sub-query time across sub-queries
 }
 
 // ContextWithEmptyStats returns a context with empty stats.
@@ -306,6 +319,180 @@ func (s *QueryStats) LoadSplitInterval() time.Duration {
 	return s.SplitInterval
 }
 
+// SetQueryStart records when the query began execution.
+func (s *QueryStats) SetQueryStart(t time.Time) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.queryStart, t.UnixNano())
+}
+
+// LoadQueryStart returns the query start time.
+func (s *QueryStats) LoadQueryStart() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+
+	ns := atomic.LoadInt64(&s.queryStart)
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+// SetQueueJoinTime records when the request entered the scheduler queue.
+func (s *QueryStats) SetQueueJoinTime(t time.Time) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.queueJoinTime, t.UnixNano())
+}
+
+// LoadQueueJoinTime returns the queue join time.
+func (s *QueryStats) LoadQueueJoinTime() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+
+	ns := atomic.LoadInt64(&s.queueJoinTime)
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+// SetQueueLeaveTime records when the request left the scheduler queue.
+func (s *QueryStats) SetQueueLeaveTime(t time.Time) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.queueLeaveTime, t.UnixNano())
+}
+
+// LoadQueueLeaveTime returns the queue leave time.
+func (s *QueryStats) LoadQueueLeaveTime() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+
+	ns := atomic.LoadInt64(&s.queueLeaveTime)
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
+// updateMaxDuration atomically updates a max duration field if the new value is larger.
+func updateMaxDuration(addr *int64, val time.Duration) {
+	new := int64(val)
+	for {
+		old := atomic.LoadInt64(addr)
+		if new <= old {
+			return
+		}
+		if atomic.CompareAndSwapInt64(addr, old, new) {
+			return
+		}
+	}
+}
+
+// UpdateMaxFetchTime updates the max fetch time if the provided value is larger.
+func (s *QueryStats) UpdateMaxFetchTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	updateMaxDuration(&s.maxFetchTime, t)
+}
+
+// LoadMaxFetchTime returns the max fetch time across sub-queries.
+func (s *QueryStats) LoadMaxFetchTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return time.Duration(atomic.LoadInt64(&s.maxFetchTime))
+}
+
+// UpdateMaxEvalTime updates the max eval time if the provided value is larger.
+func (s *QueryStats) UpdateMaxEvalTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	updateMaxDuration(&s.maxEvalTime, t)
+}
+
+// LoadMaxEvalTime returns the max eval time across sub-queries.
+func (s *QueryStats) LoadMaxEvalTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return time.Duration(atomic.LoadInt64(&s.maxEvalTime))
+}
+
+// UpdateMaxQueueWaitTime updates the max queue wait time if the provided value is larger.
+func (s *QueryStats) UpdateMaxQueueWaitTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	updateMaxDuration(&s.maxQueueWaitTime, t)
+}
+
+// LoadMaxQueueWaitTime returns the max queue wait time across sub-queries.
+func (s *QueryStats) LoadMaxQueueWaitTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return time.Duration(atomic.LoadInt64(&s.maxQueueWaitTime))
+}
+
+// UpdateMaxTotalTime updates the max total time if the provided value is larger.
+func (s *QueryStats) UpdateMaxTotalTime(t time.Duration) {
+	if s == nil {
+		return
+	}
+	updateMaxDuration(&s.maxTotalTime, t)
+}
+
+// LoadMaxTotalTime returns the max total sub-query time across sub-queries.
+func (s *QueryStats) LoadMaxTotalTime() time.Duration {
+	if s == nil {
+		return 0
+	}
+	return time.Duration(atomic.LoadInt64(&s.maxTotalTime))
+}
+
+// ComputeAndStoreTimingBreakdown computes the timing breakdown from phase tracking
+// fields and stores them as max values. This should be called after a sub-query
+// completes, before stats are sent back to the frontend.
+func (s *QueryStats) ComputeAndStoreTimingBreakdown() {
+	if s == nil {
+		return
+	}
+
+	queryStart := s.LoadQueryStart()
+	if queryStart.IsZero() {
+		return
+	}
+
+	fetchTime := s.LoadQueryStorageWallTime()
+	totalTime := time.Since(queryStart)
+	evalTime := totalTime - fetchTime
+
+	var queueWaitTime time.Duration
+	queueJoin := s.LoadQueueJoinTime()
+	queueLeave := s.LoadQueueLeaveTime()
+	if !queueJoin.IsZero() && !queueLeave.IsZero() {
+		queueWaitTime = queueLeave.Sub(queueJoin)
+	}
+
+	s.UpdateMaxFetchTime(fetchTime)
+	s.UpdateMaxEvalTime(evalTime)
+	s.UpdateMaxQueueWaitTime(queueWaitTime)
+	s.UpdateMaxTotalTime(totalTime)
+}
+
 func (s *QueryStats) AddStoreGatewayTouchedPostings(count uint64) {
 	if s == nil {
 		return
@@ -396,6 +583,10 @@ func (s *QueryStats) Merge(other *QueryStats) {
 	s.AddScannedSamples(other.LoadScannedSamples())
 	s.SetPeakSamples(max(s.LoadPeakSamples(), other.LoadPeakSamples()))
 	s.AddExtraFields(other.LoadExtraFields()...)
+	s.UpdateMaxFetchTime(other.LoadMaxFetchTime())
+	s.UpdateMaxEvalTime(other.LoadMaxEvalTime())
+	s.UpdateMaxQueueWaitTime(other.LoadMaxQueueWaitTime())
+	s.UpdateMaxTotalTime(other.LoadMaxTotalTime())
 }
 
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {

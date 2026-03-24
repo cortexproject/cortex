@@ -193,6 +193,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		level.Info(logger).Log("msg", "finished request", "status_code", response.Code, "response_size", len(response.GetBody()))
 	}
 
+	// Compute timing breakdown before sending stats back to the frontend.
+	stats.ComputeAndStoreTimingBreakdown()
+
 	if err = ctx.Err(); err != nil {
 		return
 	}

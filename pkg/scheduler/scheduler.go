@@ -424,6 +424,11 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.enqueueTime = now
 	req.ctxCancel = cancel
 
+	// Record queue join time for timeout classification phase tracking.
+	if qStats := stats.FromContext(ctx); qStats != nil {
+		qStats.SetQueueJoinTime(now)
+	}
+
 	// aggregate the max queriers limit in the case of a multi tenant query
 	tenantIDs, err := users.TenantIDsFromOrgID(userID)
 	if err != nil {
@@ -526,6 +531,11 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		lastUserIndex = idx
 
 		r := req.(*schedulerRequest)
+
+		// Record queue leave time for timeout classification phase tracking.
+		if qStats := stats.FromContext(r.ctx); qStats != nil {
+			qStats.SetQueueLeaveTime(time.Now())
+		}
 
 		s.queueDuration.Observe(time.Since(r.enqueueTime).Seconds())
 		r.queueSpan.Finish()

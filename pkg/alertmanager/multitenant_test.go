@@ -2534,9 +2534,6 @@ require.NoError(t, err)
 require.True(t, owned)
 }
 
-
-
-
 func TestMultitenantAlertmanager_loadAndSyncConfigs_deletesUserFromStore(t *testing.T) {
 	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)

@@ -154,6 +154,7 @@ type Limits struct {
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 	EnableTypeAndUnitLabels           bool                `yaml:"enable_type_and_unit_labels" json:"enable_type_and_unit_labels"`
+	EnableStartTimestamp              bool                `yaml:"enable_start_timestamp" json:"enable_start_timestamp"`
 
 	// Ingester enforced limits.
 	// Series
@@ -274,6 +275,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
+	f.BoolVar(&l.EnableStartTimestamp, "distributor.enable-start-timestamp", false, "EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2 samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is not set.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -1135,6 +1137,10 @@ func (o *Overrides) AlertmanagerMaxSilenceSizeBytes(userID string) int {
 
 func (o *Overrides) EnableTypeAndUnitLabels(userID string) bool {
 	return o.GetOverridesForUser(userID).EnableTypeAndUnitLabels
+}
+
+func (o *Overrides) EnableStartTimestamp(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableStartTimestamp
 }
 
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {

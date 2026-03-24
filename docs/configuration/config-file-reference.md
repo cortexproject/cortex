@@ -4111,6 +4111,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.enable-type-and-unit-labels
 [enable_type_and_unit_labels: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2
+# samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is
+# not set.
+# CLI flag: -distributor.enable-start-timestamp
+[enable_start_timestamp: <boolean> | default = false]
+
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]

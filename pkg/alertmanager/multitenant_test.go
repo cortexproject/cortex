@@ -2502,9 +2502,6 @@ func (m *mockAlertManagerLimits) AlertmanagerMaxSilenceSizeBytes(_ string) int {
 	return m.maxSilencesSizeBytes
 }
 
-
-
-
 func TestMultitenantAlertmanager_isUserOwned(t *testing.T) {
 	ctx := context.Background()
 	_ = ctx
@@ -2521,17 +2518,17 @@ func TestMultitenantAlertmanager_isUserOwned(t *testing.T) {
 	require.NoError(t, err)
 
 	// We don't start the AM, so the ring is empty.
-// When sharding is enabled, isUserOwned will call am.ring.Get, which should fail because the ring is empty.
-owned, err := am.isUserOwned("user-1")
-require.Error(t, err)
-require.Equal(t, ring.ErrEmptyRing, err)
-require.False(t, owned)
+	// When sharding is enabled, isUserOwned will call am.ring.Get, which should fail because the ring is empty.
+	owned, err := am.isUserOwned("user-1")
+	require.Error(t, err)
+	require.Equal(t, ring.ErrEmptyRing, err)
+	require.False(t, owned)
 
-// If sharding is disabled, it should return true, nil
-am.cfg.ShardingEnabled = false
-owned, err = am.isUserOwned("user-1")
-require.NoError(t, err)
-require.True(t, owned)
+	// If sharding is disabled, it should return true, nil
+	am.cfg.ShardingEnabled = false
+	owned, err = am.isUserOwned("user-1")
+	require.NoError(t, err)
+	require.True(t, owned)
 }
 
 func TestMultitenantAlertmanager_loadAndSyncConfigs_deletesUserFromStore(t *testing.T) {
@@ -2549,34 +2546,34 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs_deletesUserFromStore(t *test
 	require.NoError(t, err)
 
 	// We don't start the AM. We just manually insert state, then call loadAndSyncConfigs.
-user1 := "user-1"
+	user1 := "user-1"
 
-// 1. Create a FullState (remote state) for user1 in the store.
-fullState := alertspb.FullStateDesc{
-State: &clusterpb.FullState{},
-}
-err = alertStore.SetFullState(ctx, user1, fullState)
-require.NoError(t, err)
+	// 1. Create a FullState (remote state) for user1 in the store.
+	fullState := alertspb.FullStateDesc{
+		State: &clusterpb.FullState{},
+	}
+	err = alertStore.SetFullState(ctx, user1, fullState)
+	require.NoError(t, err)
 
-// Since we did NOT SetAlertConfig for user1, the store.ListAllUsers will return empty.
-allUsers, err := alertStore.ListAllUsers(ctx)
-require.NoError(t, err)
-require.Empty(t, allUsers)
+	// Since we did NOT SetAlertConfig for user1, the store.ListAllUsers will return empty.
+	allUsers, err := alertStore.ListAllUsers(ctx)
+	require.NoError(t, err)
+	require.Empty(t, allUsers)
 
-// Verify user1's FullState is written to the store.
+	// Verify user1's FullState is written to the store.
 	_, err = alertStore.GetFullState(ctx, user1)
 	require.NoError(t, err)
 
-	// 2. Call loadAndSyncConfigs. It should fetch all users (which is empty), 
+	// 2. Call loadAndSyncConfigs. It should fetch all users (which is empty),
 	// and since sharding is enabled, it should clean up unused remote state for any users not in the list.
 	// user1 has state but no config, so its state should be pruned.
 	err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
 	require.NoError(t, err)
 
 	// 3. Verify user1's FullState is deleted from the store.
-_, err = alertStore.GetFullState(ctx, user1)
-require.Error(t, err)
-require.Contains(t, err.Error(), "alertmanager storage object not found")
+	_, err = alertStore.GetFullState(ctx, user1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "alertmanager storage object not found")
 }
 
 func TestMultitenantAlertmanager_loadAndSyncConfigs_DoesNotDeleteUserFromStoreWhenRingUnreachable(t *testing.T) {
@@ -2604,10 +2601,10 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs_DoesNotDeleteUserFromStoreWh
 
 	// Since we DO SetAlertConfig for user1, the store.ListAllUsers will return the user.
 	err = alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-User:      user1,
-RawConfig: simpleConfigOne,
-Templates: []*alertspb.TemplateDesc{},
-})
+		User:      user1,
+		RawConfig: simpleConfigOne,
+		Templates: []*alertspb.TemplateDesc{},
+	})
 	require.NoError(t, err)
 
 	allUsers, err := alertStore.ListAllUsers(ctx)
@@ -2615,17 +2612,17 @@ Templates: []*alertspb.TemplateDesc{},
 	require.Len(t, allUsers, 1)
 
 	// Verify user1's FullState is written to the store.
-_, err = alertStore.GetFullState(ctx, user1)
-require.NoError(t, err)
+	_, err = alertStore.GetFullState(ctx, user1)
+	require.NoError(t, err)
 
-// 2. Call loadAndSyncConfigs. It should fetch all users.
-// Since sharding is enabled but ring is empty (unreachable), isUserOwned will fail.
-// loadAndSyncConfigs will return early with an error before pruning any states!
-err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
-require.Error(t, err)
-require.Contains(t, err.Error(), ring.ErrEmptyRing.Error())
+	// 2. Call loadAndSyncConfigs. It should fetch all users.
+	// Since sharding is enabled but ring is empty (unreachable), isUserOwned will fail.
+	// loadAndSyncConfigs will return early with an error before pruning any states!
+	err = am.loadAndSyncConfigs(ctx, reasonPeriodic)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), ring.ErrEmptyRing.Error())
 
-// 3. Verify user1's FullState is STILL in the store.
+	// 3. Verify user1's FullState is STILL in the store.
 	_, err = alertStore.GetFullState(ctx, user1)
 	require.NoError(t, err)
 }

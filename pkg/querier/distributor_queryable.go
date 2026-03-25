@@ -166,6 +166,16 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 		return storage.ErrSeriesSet(err)
 	}
 
+	// Guard against nil results. This can happen when queryWithRetry's
+	// backoff loop exits without executing (e.g., context cancelled before
+	// the first attempt), returning (nil, nil). See #7364.
+	if results == nil {
+		if err != nil {
+			return storage.ErrSeriesSet(err)
+		}
+		return storage.EmptySeriesSet()
+	}
+
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
 	for _, result := range results.Chunkseries {
 		// Sometimes the ingester can send series that have no data.

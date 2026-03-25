@@ -1855,6 +1855,7 @@ func TestExtentsOverlapOutOfOrderWindow(t *testing.T) {
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
+			rc.now = func() time.Time { return now }
 
 			overlap := rc.extentsOverlapOutOfOrderWindow(tc.extents, []string{"tenant-a"})
 			assert.Equal(t, tc.expectedOverlap, overlap)
@@ -1943,6 +1944,7 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
+			rc.now = func() time.Time { return now }
 
 			ctx := user.InjectOrgID(context.Background(), "tenant-a")
 			tenantIDs, _ := users.TenantIDs(ctx)

@@ -310,6 +310,12 @@ tenant_federation:
   # CLI flag: -tenant-federation.user-sync-interval
   [user_sync_interval: <duration> | default = 5m]
 
+  # [Experimental] Cache size of regex match results used by regex resolver.
+  # Each cache entry includes both regex patterns (e.g. `user-.+`) and resolved
+  # tenant IDs (e.g. `user-1`). Set to 0 or less to disable caching.
+  # CLI flag: -tenant-federation.regex-cache-size
+  [regex_cache_size: <int> | default = 1000]
+
   # [Experimental] If enabled, query errors from individual tenants are treated
   # as warnings, allowing partial results to be returned.
   # CLI flag: -tenant-federation.allow-partial-data

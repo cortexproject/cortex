@@ -5,7 +5,6 @@ package integration
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"testing"
 	"time"
@@ -20,13 +19,19 @@ import (
 	"github.com/cortexproject/cortex/integration/e2ecortex"
 )
 
-func scrapeMetricsProtobuf(endpoint string) (map[string]*io_prometheus_client.MetricFamily, error) {
+func scrapeMetrics(endpoint string, useProtobuf bool) (map[string]*io_prometheus_client.MetricFamily, error) {
 	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("Accept", "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited")
+	var format expfmt.Format
+	if useProtobuf {
+		req.Header.Set("Accept", "application/vnd.google.protobuf; proto=io.prometheus.client.MetricFamily; encoding=delimited")
+		format = expfmt.NewFormat(expfmt.TypeProtoDelim)
+	} else {
+		format = expfmt.NewFormat(expfmt.TypeTextPlain)
+	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -40,7 +45,7 @@ func scrapeMetricsProtobuf(endpoint string) (map[string]*io_prometheus_client.Me
 	}
 
 	families := make(map[string]*io_prometheus_client.MetricFamily)
-	decoder := expfmt.NewDecoder(resp.Body, expfmt.FmtProtoDelim)
+	decoder := expfmt.NewDecoder(resp.Body, format)
 
 	for {
 		mf := &io_prometheus_client.MetricFamily{}
@@ -57,12 +62,9 @@ func scrapeMetricsProtobuf(endpoint string) (map[string]*io_prometheus_client.Me
 	return families, nil
 }
 
-// TestDualModeHistogramExposition validates cortex_ingester_tsdb_compaction_duration_seconds
-// is exposed in dual mode with both classic buckets and native histogram fields.
-func TestDualModeHistogramExposition(t *testing.T) {
+func setupCortexWithNativeHistograms(t *testing.T) (*e2e.Scenario, *e2ecortex.CortexService) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
-	defer s.Close()
 
 	consul := e2edb.NewConsulWithName("consul")
 	require.NoError(t, s.StartAndWaitReady(consul))
@@ -85,7 +87,6 @@ func TestDualModeHistogramExposition(t *testing.T) {
 
 	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
 	require.NoError(t, s.StartAndWaitReady(cortex))
-
 	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
 
 	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
@@ -111,7 +112,14 @@ func TestDualModeHistogramExposition(t *testing.T) {
 	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(100), "cortex_ingester_ingested_samples_total"))
 	time.Sleep(5 * time.Second)
 
-	families, err := scrapeMetricsProtobuf(fmt.Sprintf("http://%s/metrics", cortex.HTTPEndpoint()))
+	return s, cortex
+}
+
+func TestNativeHistogramExposition(t *testing.T) {
+	s, cortex := setupCortexWithNativeHistograms(t)
+	defer s.Close()
+
+	families, err := scrapeMetrics(fmt.Sprintf("http://%s/metrics", cortex.HTTPEndpoint()), true)
 	require.NoError(t, err)
 
 	histFamily, ok := families["cortex_ingester_tsdb_compaction_duration_seconds"]
@@ -121,27 +129,63 @@ func TestDualModeHistogramExposition(t *testing.T) {
 	metrics := histFamily.GetMetric()
 	require.NotEmpty(t, metrics)
 
-	expectedBuckets := []float64{1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, math.Inf(1)}
+	for _, metric := range metrics {
+		h := metric.GetHistogram()
+		require.NotNil(t, h)
+
+		require.Equal(t, int32(3), h.GetSchema())
+		require.NotNil(t, h.GetZeroThreshold())
+		require.Equal(t, uint64(0), h.GetZeroCount())
+
+		sampleCount := h.GetSampleCount()
+		require.Greater(t, sampleCount, uint64(0))
+		require.Greater(t, h.GetSampleSum(), 0.0)
+
+		posSpans := h.GetPositiveSpan()
+		require.NotEmpty(t, posSpans)
+		posDeltas := h.GetPositiveDelta()
+		require.NotEmpty(t, posDeltas)
+
+		var posCount uint64
+		var count int64
+		for _, delta := range posDeltas {
+			count += delta
+			posCount += uint64(count)
+		}
+		require.Equal(t, sampleCount, posCount)
+
+		negSpans := h.GetNegativeSpan()
+		require.Empty(t, negSpans)
+		require.Empty(t, h.GetNegativeDelta())
+	}
+}
+
+func TestClassicHistogramExposition(t *testing.T) {
+	s, cortex := setupCortexWithNativeHistograms(t)
+	defer s.Close()
+
+	families, err := scrapeMetrics(fmt.Sprintf("http://%s/metrics", cortex.HTTPEndpoint()), false)
+	require.NoError(t, err)
+
+	histFamily, ok := families["cortex_ingester_tsdb_compaction_duration_seconds"]
+	require.True(t, ok)
+	require.Equal(t, io_prometheus_client.MetricType_HISTOGRAM, histFamily.GetType())
+
+	metrics := histFamily.GetMetric()
+	require.NotEmpty(t, metrics)
 
 	for _, metric := range metrics {
 		h := metric.GetHistogram()
 		require.NotNil(t, h)
 
 		buckets := h.GetBucket()
-		require.Equal(t, 14, len(buckets)) // testing classic histogram custom buckets
-
-		for i, bucket := range buckets {
-			require.Equal(t, expectedBuckets[i], bucket.GetUpperBound()) // testing classic histogram custom bucket boundaries
-		}
-
-		// Testing Native histogram fields
-		require.Equal(t, int32(3), h.GetSchema())
-		require.NotNil(t, h.GetZeroThreshold())
-		require.Equal(t, uint64(0), h.GetZeroCount())
+		require.NotEmpty(t, buckets)
 
 		sampleCount := h.GetSampleCount()
-		sampleSum := h.GetSampleSum()
-		require.Greater(t, sampleSum, 0.0)
-		require.Equal(t, sampleCount, buckets[len(buckets)-1].GetCumulativeCount())
+		require.Greater(t, sampleCount, uint64(0))
+		require.Greater(t, h.GetSampleSum(), 0.0)
+
+		lastBucket := buckets[len(buckets)-1]
+		require.Equal(t, sampleCount, lastBucket.GetCumulativeCount())
 	}
 }

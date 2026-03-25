@@ -36,6 +36,7 @@ type ingesterMetrics struct {
 	ingestedMetadata         prometheus.Counter
 	ingestedSamplesFail      prometheus.Counter
 	ingestedHistogramsFail   prometheus.Counter
+	startTimestampFail       *prometheus.CounterVec
 	ingestedExemplarsFail    prometheus.Counter
 	ingestedMetadataFail     prometheus.Counter
 	ingestedHistogramBuckets *prometheus.HistogramVec
@@ -123,6 +124,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_ingested_native_histograms_failures_total",
 			Help: "The total number of native histograms that errored on ingestion.",
 		}),
+		startTimestampFail: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ingester_start_timestamp_append_failures_total",
+			Help: "Total number of failed appends for samples and histograms with a start timestamp.",
+		}, []string{"type"}),
 		ingestedExemplarsFail: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "cortex_ingester_ingested_exemplars_failures_total",
 			Help: "The total number of exemplars that errored on ingestion.",
@@ -354,6 +359,9 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help: memSeriesRemovedTotalHelp,
 		}, []string{"user"})
 	}
+
+	m.startTimestampFail.WithLabelValues(sampleMetricTypeFloat)
+	m.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram)
 
 	return m
 }

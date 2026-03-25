@@ -3388,7 +3388,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
-			cfg.limits.ShuffleShardingIngestersLookbackPeriod = time.Hour
+			cfg.limits.ShuffleShardingIngestersLookbackPeriod = model.Duration(time.Hour)
 
 			cfg.limits.IngestionTenantShardSize = cfg.shuffleShardSize
 		}

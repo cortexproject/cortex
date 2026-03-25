@@ -417,9 +417,11 @@ func TestDistributorQuerier_Select_CancelledContext_NoRetry(t *testing.T) {
 	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, context.Canceled)
 
 	ingesterQueryMaxAttempts := 1
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+	limits := DefaultLimitsConfig()
+	overrides := validation.NewOverrides(limits, nil)
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts)
+	}, ingesterQueryMaxAttempts, overrides)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -449,9 +451,11 @@ func TestDistributorQuerier_Select_CancelledContext(t *testing.T) {
 	// because the context is already cancelled.
 
 	ingesterQueryMaxAttempts := 2
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+	limits := DefaultLimitsConfig()
+	overrides := validation.NewOverrides(limits, nil)
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts)
+	}, ingesterQueryMaxAttempts, overrides)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 

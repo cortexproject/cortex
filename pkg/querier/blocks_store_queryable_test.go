@@ -50,23 +50,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
-type mockTenantLimits struct {
-	limits map[string]*validation.Limits
-}
-
-func newMockTenantLimits(limits map[string]*validation.Limits) *mockTenantLimits {
-	return &mockTenantLimits{
-		limits: limits,
-	}
-}
-
-func (l *mockTenantLimits) ByUserID(userID string) *validation.Limits {
-	return l.limits[userID]
-}
-
-func (l *mockTenantLimits) AllByUserID() map[string]*validation.Limits {
-	return l.limits
-}
 func TestBlocksStoreQuerier_Select(t *testing.T) {
 	t.Parallel()
 
@@ -2448,7 +2431,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
 				logger:      log.NewNopLogger(),
 				metrics:     newBlocksStoreQueryableMetrics(nil),
-				limits:      &blocksStoreLimitsMock{},
+				limits:      &blocksStoreLimitsMock{queryStoreAfter: testData.queryStoreAfter},
 			}
 
 			sp := &storage.SelectHints{

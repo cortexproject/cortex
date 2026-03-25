@@ -101,14 +101,12 @@ type Config struct {
 }
 
 var (
-	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
-	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
-	errEmptyTimeRange                                 = errors.New("empty time range")
-	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
-	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
-	errInvalidSeriesBatchSize                         = errors.New("store gateway series batch size should be greater or equal than 0")
-	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
-	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
+	errEmptyTimeRange                           = errors.New("empty time range")
+	errUnsupportedResponseCompression           = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
+	errInvalidConsistencyCheckAttempts          = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
+	errInvalidSeriesBatchSize                   = errors.New("store gateway series batch size should be greater or equal than 0")
+	errInvalidIngesterQueryMaxAttempts          = errors.New("ingester query max attempts should be greater or equal than 1")
+	errInvalidParquetQueryableDefaultBlockStore = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
 )
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.

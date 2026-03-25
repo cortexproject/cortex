@@ -5,6 +5,7 @@
 * [ENHANCEMENT] Tenant Federation: Add a local cache to regex resolver. #7363
 * [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
 * [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372
+* [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
 
 ## 1.21.0 in progress
 

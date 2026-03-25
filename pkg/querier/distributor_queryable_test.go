@@ -387,6 +387,70 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 	}
 }
 
+// TestDistributorQuerier_Select_CancelledContext_NoRetry verifies that with
+// ingesterQueryMaxAttempts=1, a cancelled context does not panic because the
+// direct code path (no retry loop) is used.
+func TestDistributorQuerier_Select_CancelledContext_NoRetry(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	d := &MockDistributor{}
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, context.Canceled)
+
+	ingesterQueryMaxAttempts := 1
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+		return true
+	}, ingesterQueryMaxAttempts)
+	querier, err := queryable.Querier(mint, maxt)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+		_ = seriesSet.Err()
+	})
+}
+
+// TestDistributorQuerier_Select_CancelledContext reproduces the panic described
+// in https://github.com/cortexproject/cortex/issues/7364.
+//
+// When ingesterQueryMaxAttempts > 1 and the context is cancelled before the
+// retry loop starts (e.g. query timeout or another querier goroutine failing),
+// backoff.Ongoing() returns false immediately. The result variable stays nil,
+// queryWithRetry returns (nil, nil), and streamingSelect dereferences the nil
+// result at line 169 → panic.
+func TestDistributorQuerier_Select_CancelledContext(t *testing.T) {
+	t.Parallel()
+
+	// Create a context that is already cancelled.
+	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	d := &MockDistributor{}
+	// No mock expectations needed — QueryStream should never be called
+	// because the context is already cancelled.
+
+	ingesterQueryMaxAttempts := 2
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+		return true
+	}, ingesterQueryMaxAttempts)
+	querier, err := queryable.Querier(mint, maxt)
+	require.NoError(t, err)
+
+	// This should NOT panic. Before the fix, the cancelled context causes
+	// queryWithRetry to return (nil, nil), and streamingSelect dereferences
+	// the nil result: panic: runtime error: invalid memory address or nil
+	// pointer dereference [signal SIGSEGV ... addr=0x8]
+	require.NotPanics(t, func() {
+		seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+		// With a cancelled context, we expect either an error or an empty result.
+		_ = seriesSet.Err()
+	})
+}
+
 func TestDistributorQuerier_LabelNames(t *testing.T) {
 	t.Parallel()
 

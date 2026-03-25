@@ -609,10 +609,11 @@ func (d *HistogramData) AddHistogramData(histo HistogramData) {
 	}
 }
 
-// nativeHistogramMetric is basically the same as constNativeHistogram struct in prometheus histogram.go
-// we need to create this new struct because the existing method NewConstNativeHistogram method in prometheus
-// does not populate classic histogram fields. without this the NH compatible metrics are only exposed in NH format
-// and classic histogram buckets are not exposed.
+// nativeHistogramMetric enables dual-format histogram exposition (both native and classic simultaneously).
+// Similar to prometheus/client_golang's constNativeHistogram (see
+// https://github.com/prometheus/client_golang/blob/v1.23.2/prometheus/histogram.go#L1865-L1869)
+// but populates both native histogram fields (spans/deltas) and classic bucket fields,
+// allowing scrapers to choose which format to use via content negotiation.
 type nativeHistogramMetric struct {
 	desc *prometheus.Desc
 	dto.Histogram
@@ -661,7 +662,8 @@ func (d *HistogramData) Metric(desc *prometheus.Desc, labelValues ...string) pro
 
 		// Sentinel span for native histograms with no observations.
 		// This is required to distinguish an empty native histogram from a classic histogram.
-		// This matches the prometheus behavior (histogram.go:1958)
+		// Matches prometheus/client_golang behavior:
+		// https://github.com/prometheus/client_golang/blob/v1.23.2/prometheus/histogram.go#L1958-L1962
 		if zt == 0 && zc == 0 && len(posSpans) == 0 && len(negSpans) == 0 {
 			posSpans = []*dto.BucketSpan{{
 				Offset: proto.Int32(0),
@@ -1080,7 +1082,10 @@ func mergeHistogram(mf1, mf2 *dto.Metric) {
 	// Merge native histogram data if present.
 	// We'll process both native AND classic data below and expose in both formats
 	if isNative(h1) || isNative(h2) {
-		// Use schema/threshold from whichever side has native data (they should match).
+		// Use schema/threshold from whichever side has native data.
+		// Assumption: when both have native data, they share the same schema/zero_threshold.
+		// This holds for SendSumOfHistograms use case which aggregates metrics from the same
+		// prometheus client library histogram across multiple instances.
 		if !isNative(h1) {
 			schema := h2.GetSchema()
 			h1.Schema = &schema
@@ -1128,11 +1133,13 @@ func mergeHistogram(mf1, mf2 *dto.Metric) {
 	}
 }
 
-// bucketMapToSpansDeltas converts a bucket index->count map back into the
+// makeBucketsFromMap converts a bucket index->count map back into the
 // spans+deltas encoding used by the native histogram proto representation.
 //
-// This implementation is the same as makeBucketsFromMap from prometheus
-// (histogram.go:2006) to include the gap-filling optimization
+// Implementation adapted from prometheus/client_golang's makeBucketsFromMap
+// (https://github.com/prometheus/client_golang/blob/v1.23.2/prometheus/histogram.go#L2006-L2056)
+// with the gap-filling optimization: gaps of 1-2 empty buckets are filled with zeros
+// rather than creating new spans, resulting in more efficient encoding.
 func makeBucketsFromMap(buckets map[int]int64) ([]*dto.BucketSpan, []int64) {
 	if len(buckets) == 0 {
 		return nil, nil

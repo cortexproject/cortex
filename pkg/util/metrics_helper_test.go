@@ -1283,138 +1283,140 @@ func TestIsNative(t *testing.T) {
 }
 
 // TestHistogramData_AddHistogram_Native tests adding native histograms
-func TestHistogramData_AddHistogram_Native(t *testing.T) {
-	hd := &HistogramData{}
-
-	// Create a native histogram
-	schema := int32(0)
-	zt := 0.001
-	histo := &dto.Histogram{
-		Schema:        &schema,
-		ZeroThreshold: &zt,
-		SampleCount:   proto.Uint64(10),
-		SampleSum:     proto.Float64(100.0),
-		ZeroCount:     proto.Uint64(2),
-		PositiveSpan: []*dto.BucketSpan{
-			{Offset: proto.Int32(0), Length: proto.Uint32(2)},
-		},
-		PositiveDelta: []int64{5, 3}, // deltas: [5, 3] -> counts: [5, 8]
-		NegativeSpan: []*dto.BucketSpan{
-			{Offset: proto.Int32(0), Length: proto.Uint32(1)},
-		},
-		NegativeDelta: []int64{2}, // deltas: [2] -> counts: [2]
-	}
-
-	hd.AddHistogram(histo)
-
-	require.True(t, hd.hasNative())
-	require.Equal(t, int32(0), hd.Schema)
-	require.Equal(t, 0.001, hd.ZeroThreshold)
-	require.Equal(t, uint64(10), hd.sampleCount)
-	require.Equal(t, 100.0, hd.sampleSum)
-	require.Equal(t, uint64(2), hd.ZeroCount)
-	require.Equal(t, int64(5), hd.PositiveBuckets[0])
-	require.Equal(t, int64(8), hd.PositiveBuckets[1])
-	require.Equal(t, int64(2), hd.NegativeBuckets[0])
-}
-
-// TestHistogramData_AddHistogram_Classic tests adding classic histograms
-func TestHistogramData_AddHistogram_Classic(t *testing.T) {
-	hd := &HistogramData{}
-
-	histo := &dto.Histogram{
-		SampleCount: proto.Uint64(10),
-		SampleSum:   proto.Float64(100.0),
-		Bucket: []*dto.Bucket{
-			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
-			{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
-			{UpperBound: proto.Float64(10.0), CumulativeCount: proto.Uint64(10)},
-		},
-	}
-
-	hd.AddHistogram(histo)
-
-	require.False(t, hd.hasNative())
-	require.Equal(t, uint64(10), hd.sampleCount)
-	require.Equal(t, 100.0, hd.sampleSum)
-	require.Equal(t, uint64(5), hd.buckets[1.0])
-	require.Equal(t, uint64(8), hd.buckets[5.0])
-	require.Equal(t, uint64(10), hd.buckets[10.0])
-}
-
-// TestHistogramData_AddHistogram_DualFormat tests adding dual-format histograms (both native and classic)
-func TestHistogramData_AddHistogram_DualFormat(t *testing.T) {
-	hd := &HistogramData{}
-
-	schema := int32(0)
-	zt := 0.001
-	histo := &dto.Histogram{
-		Schema:        &schema,
-		ZeroThreshold: &zt,
-		SampleCount:   proto.Uint64(10),
-		SampleSum:     proto.Float64(100.0),
-		ZeroCount:     proto.Uint64(2),
-		PositiveSpan: []*dto.BucketSpan{
-			{Offset: proto.Int32(0), Length: proto.Uint32(1)},
-		},
-		PositiveDelta: []int64{5},
-		Bucket: []*dto.Bucket{
-			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
-			{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
-		},
-	}
-
-	hd.AddHistogram(histo)
-
-	// Both native and classic should be populated
-	require.True(t, hd.hasNative())
-	require.Equal(t, uint64(2), hd.ZeroCount)
-	require.Equal(t, int64(5), hd.PositiveBuckets[0])
-	require.Equal(t, uint64(5), hd.buckets[1.0])
-	require.Equal(t, uint64(8), hd.buckets[5.0])
-}
-
-// TestHistogramData_AddHistogram_Multiple tests merging multiple histograms
-func TestHistogramData_AddHistogram_Multiple(t *testing.T) {
-	hd := &HistogramData{}
-
+func TestHistogramData_AddHistogram(t *testing.T) {
 	schema := int32(0)
 	zt := 0.001
 
-	// First histogram
-	histo1 := &dto.Histogram{
-		Schema:        &schema,
-		ZeroThreshold: &zt,
-		SampleCount:   proto.Uint64(10),
-		SampleSum:     proto.Float64(100.0),
-		ZeroCount:     proto.Uint64(2),
-		PositiveSpan: []*dto.BucketSpan{
-			{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+	tests := []struct {
+		name       string
+		histograms []*dto.Histogram
+		validate   func(t *testing.T, hd *HistogramData)
+	}{
+		{
+			name: "native histogram",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     proto.Float64(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+					},
+					PositiveDelta: []int64{5, 3},
+					NegativeSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					NegativeDelta: []int64{2},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.True(t, hd.hasNative())
+				require.Equal(t, int32(0), hd.Schema)
+				require.Equal(t, 0.001, hd.ZeroThreshold)
+				require.Equal(t, uint64(10), hd.sampleCount)
+				require.Equal(t, 100.0, hd.sampleSum)
+				require.Equal(t, uint64(2), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, int64(8), hd.PositiveBuckets[1])
+				require.Equal(t, int64(2), hd.NegativeBuckets[0])
+			},
 		},
-		PositiveDelta: []int64{5, 3}, // counts: [5, 8]
+		{
+			name: "classic histogram",
+			histograms: []*dto.Histogram{
+				{
+					SampleCount: proto.Uint64(10),
+					SampleSum:   proto.Float64(100.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+						{UpperBound: proto.Float64(10.0), CumulativeCount: proto.Uint64(10)},
+					},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.False(t, hd.hasNative())
+				require.Equal(t, uint64(10), hd.sampleCount)
+				require.Equal(t, 100.0, hd.sampleSum)
+				require.Equal(t, uint64(5), hd.buckets[1.0])
+				require.Equal(t, uint64(8), hd.buckets[5.0])
+				require.Equal(t, uint64(10), hd.buckets[10.0])
+			},
+		},
+		{
+			name: "dual format histogram",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     proto.Float64(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+					},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.True(t, hd.hasNative())
+				require.Equal(t, uint64(2), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, uint64(5), hd.buckets[1.0])
+				require.Equal(t, uint64(8), hd.buckets[5.0])
+			},
+		},
+		{
+			name: "multiple histograms",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     proto.Float64(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+					},
+					PositiveDelta: []int64{5, 3},
+				},
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(5),
+					SampleSum:     proto.Float64(50.0),
+					ZeroCount:     proto.Uint64(1),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(1), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{2},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.Equal(t, uint64(15), hd.sampleCount)
+				require.Equal(t, 150.0, hd.sampleSum)
+				require.Equal(t, uint64(3), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, int64(10), hd.PositiveBuckets[1])
+			},
+		},
 	}
 
-	// Second histogram
-	histo2 := &dto.Histogram{
-		Schema:        &schema,
-		ZeroThreshold: &zt,
-		SampleCount:   proto.Uint64(5),
-		SampleSum:     proto.Float64(50.0),
-		ZeroCount:     proto.Uint64(1),
-		PositiveSpan: []*dto.BucketSpan{
-			{Offset: proto.Int32(1), Length: proto.Uint32(1)}, // bucket 1
-		},
-		PositiveDelta: []int64{2}, // counts: [2] at bucket 1
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hd := &HistogramData{}
+			for _, h := range tt.histograms {
+				hd.AddHistogram(h)
+			}
+			tt.validate(t, hd)
+		})
 	}
-
-	hd.AddHistogram(histo1)
-	hd.AddHistogram(histo2)
-
-	require.Equal(t, uint64(15), hd.sampleCount) // 10 + 5
-	require.Equal(t, 150.0, hd.sampleSum)        // 100 + 50
-	require.Equal(t, uint64(3), hd.ZeroCount)    // 2 + 1
-	require.Equal(t, int64(5), hd.PositiveBuckets[0])
-	require.Equal(t, int64(10), hd.PositiveBuckets[1]) // 8 + 2
 }
 
 // TestMakeBucketsFromMap tests the conversion from bucket map to spans and deltas
@@ -1468,60 +1470,143 @@ func TestMakeBucketsFromMap(t *testing.T) {
 	}
 }
 
-// TestMergeHistogram tests the mergeHistogram function
+// TestMergeHistogram tests the mergeHistogram function with various histogram format combinations
 func TestMergeHistogram(t *testing.T) {
 	schema := int32(0)
 	zt := 0.001
 
-	// First metric with native histogram
-	m1 := &dto.Metric{
-		Histogram: &dto.Histogram{
-			Schema:        &schema,
-			ZeroThreshold: &zt,
-			SampleCount:   proto.Uint64(10),
-			SampleSum:     proto.Float64(100.0),
-			ZeroCount:     proto.Uint64(2),
-			PositiveSpan: []*dto.BucketSpan{
-				{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+	tests := []struct {
+		name     string
+		m1       *dto.Metric
+		m2       *dto.Metric
+		validate func(t *testing.T, h *dto.Histogram)
+	}{
+		{
+			name: "dual-mode + dual-mode",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     proto.Float64(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+					},
+				},
 			},
-			PositiveDelta: []int64{5},
-			Bucket: []*dto.Bucket{
-				{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(5),
+					SampleSum:     proto.Float64(50.0),
+					ZeroCount:     proto.Uint64(1),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{3},
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Equal(t, uint64(3), h.GetZeroCount())
+				require.Equal(t, 1, len(h.Bucket))
+				require.Equal(t, uint64(8), h.Bucket[0].GetCumulativeCount())
+				posCounts := deltasToCountsInt(h.GetPositiveDelta())
+				require.Equal(t, 1, len(posCounts))
+				require.Equal(t, int64(8), posCounts[0])
+			},
+		},
+		{
+			name: "native + classic",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     proto.Float64(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+				},
+			},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(5),
+					SampleSum:   proto.Float64(50.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(5)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Equal(t, int32(0), h.GetSchema())
+				require.Equal(t, uint64(2), h.GetZeroCount())
+				posCounts := deltasToCountsInt(h.GetPositiveDelta())
+				require.Equal(t, int64(5), posCounts[0])
+				require.Equal(t, 2, len(h.Bucket))
+				require.Equal(t, 1.0, h.Bucket[0].GetUpperBound())
+				require.Equal(t, uint64(3), h.Bucket[0].GetCumulativeCount())
+				require.Equal(t, 5.0, h.Bucket[1].GetUpperBound())
+				require.Equal(t, uint64(5), h.Bucket[1].GetCumulativeCount())
+			},
+		},
+		{
+			name: "classic + classic",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(10),
+					SampleSum:   proto.Float64(100.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+					},
+				},
+			},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(5),
+					SampleSum:   proto.Float64(50.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(4)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Nil(t, h.Schema)
+				require.Equal(t, uint64(0), h.GetZeroCount())
+				require.Equal(t, 2, len(h.Bucket))
+				bucketCounts := make(map[float64]uint64)
+				for _, b := range h.Bucket {
+					bucketCounts[b.GetUpperBound()] = b.GetCumulativeCount()
+				}
+				require.Equal(t, uint64(8), bucketCounts[1.0])
+				require.Equal(t, uint64(12), bucketCounts[5.0])
 			},
 		},
 	}
 
-	// Second metric with native histogram
-	m2 := &dto.Metric{
-		Histogram: &dto.Histogram{
-			Schema:        &schema,
-			ZeroThreshold: &zt,
-			SampleCount:   proto.Uint64(5),
-			SampleSum:     proto.Float64(50.0),
-			ZeroCount:     proto.Uint64(1),
-			PositiveSpan: []*dto.BucketSpan{
-				{Offset: proto.Int32(0), Length: proto.Uint32(1)},
-			},
-			PositiveDelta: []int64{3},
-			Bucket: []*dto.Bucket{
-				{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
-			},
-		},
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mergeHistogram(tt.m1, tt.m2)
+			tt.validate(t, tt.m1.Histogram)
+		})
 	}
-
-	mergeHistogram(m1, m2)
-
-	h := m1.Histogram
-	require.Equal(t, uint64(15), h.GetSampleCount()) // 10 + 5
-	require.Equal(t, 150.0, h.GetSampleSum())        // 100 + 50
-	require.Equal(t, uint64(3), h.GetZeroCount())    // 2 + 1
-
-	// Check classic buckets merged
-	require.Equal(t, 1, len(h.Bucket))
-	require.Equal(t, uint64(8), h.Bucket[0].GetCumulativeCount()) // 5 + 3
-
-	// Check native buckets merged (should be 5 + 3 = 8)
-	posCounts := deltasToCountsInt(h.GetPositiveDelta())
-	require.Equal(t, 1, len(posCounts))
-	require.Equal(t, int64(8), posCounts[0])
 }

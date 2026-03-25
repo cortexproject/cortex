@@ -166,16 +166,6 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 		return storage.ErrSeriesSet(err)
 	}
 
-	// Guard against nil results. This can happen when queryWithRetry's
-	// backoff loop exits without executing (e.g., context cancelled before
-	// the first attempt), returning (nil, nil). See #7364.
-	if results == nil {
-		if err != nil {
-			return storage.ErrSeriesSet(err)
-		}
-		return storage.EmptySeriesSet()
-	}
-
 	serieses := make([]storage.Series, 0, len(results.Chunkseries))
 	for _, result := range results.Chunkseries {
 		// Sometimes the ingester can send series that have no data.
@@ -234,6 +224,13 @@ func (q *distributorQuerier) queryWithRetry(ctx context.Context, queryFunc func(
 		}
 
 		retries.Wait()
+	}
+
+	// If the loop never executed (e.g. context cancelled before the first
+	// attempt), result and err are both nil. Return the context error so
+	// callers don't receive a nil result with no error.
+	if err == nil {
+		err = ctx.Err()
 	}
 
 	return result, err
@@ -299,7 +296,7 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 }
 
 func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc func() ([]string, error)) ([]string, error) {
-	if q.ingesterQueryMaxAttempts == 1 {
+	if q.ingesterQueryMaxAttempts <= 1 {
 		return labelsFunc()
 	}
 
@@ -320,6 +317,13 @@ func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc fun
 		}
 
 		retries.Wait()
+	}
+
+	// If the loop never executed (e.g. context cancelled before the first
+	// attempt), result and err are both nil. Return the context error so
+	// callers don't receive a nil result with no error.
+	if err == nil {
+		err = ctx.Err()
 	}
 
 	return result, err

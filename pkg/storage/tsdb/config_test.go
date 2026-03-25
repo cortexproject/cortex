@@ -145,6 +145,24 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errUnSupportedWALCompressionType,
 		},
+		"should fail on negative max concurrent bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentBytes = -1
+			},
+			expectedErr: ErrInvalidMaxConcurrentBytes,
+		},
+		"should pass on zero max concurrent bytes (disabled)": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentBytes = 0
+			},
+			expectedErr: nil,
+		},
+		"should pass on positive max concurrent bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentBytes = 1024 * 1024 * 1024 // 1GB
+			},
+			expectedErr: nil,
+		},
 	}
 
 	for testName, testData := range tests {

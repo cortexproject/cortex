@@ -12,6 +12,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 )
 
 type Retry struct {
@@ -77,9 +78,15 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 }
 
 func isBodyRetryable(body string) bool {
-	// If pool exhausted, retry at query frontend might make things worse.
-	// Rely on retries at querier level only.
-	return !strings.Contains(body, pool.ErrPoolExhausted.Error())
+	// If pool exhausted or concurrent bytes limit exceeded, retry at query frontend
+	// might make things worse. Rely on retries at querier level only.
+	if strings.Contains(body, pool.ErrPoolExhausted.Error()) {
+		return false
+	}
+	if strings.Contains(body, storegateway.ErrMaxConcurrentBytesLimitExceeded.Error()) {
+		return false
+	}
+	return true
 }
 
 func yoloString(b []byte) string {

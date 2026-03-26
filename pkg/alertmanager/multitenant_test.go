@@ -2573,7 +2573,7 @@ func TestMultitenantAlertmanager_loadAndSyncConfigs_deletesUserFromStore(t *test
 	// 3. Verify user1's FullState is deleted from the store.
 	_, err = alertStore.GetFullState(ctx, user1)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "alertmanager storage object not found")
+	require.Equal(t, alertspb.ErrNotFound, err)
 }
 
 func TestMultitenantAlertmanager_loadAndSyncConfigs_DoesNotDeleteUserFromStoreWhenRingUnreachable(t *testing.T) {

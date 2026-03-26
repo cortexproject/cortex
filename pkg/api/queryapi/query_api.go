@@ -383,6 +383,11 @@ func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryS
 			"query timed out: query spent too long in evaluation - consider simplifying your query")}, warnings, closer}
 	}
 
+	if cfg.Enabled {
+		return &apiFuncResult{nil, &apiError{errorTimeout, httpgrpc.Errorf(http.StatusGatewayTimeout,
+			ErrUpstreamRequestTimeout)}, warnings, closer}
+	}
+
 	return nil
 }
 

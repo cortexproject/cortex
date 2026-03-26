@@ -1129,6 +1129,9 @@ func mergeHistogram(mf1, mf2 *dto.Metric) {
 			ccValue := cumulativeCount
 			newBucket = append(newBucket, &dto.Bucket{UpperBound: &ubValue, CumulativeCount: &ccValue})
 		}
+		sort.Slice(newBucket, func(i, j int) bool {
+			return newBucket[i].GetUpperBound() < newBucket[j].GetUpperBound()
+		})
 		h1.Bucket = newBucket
 	}
 }

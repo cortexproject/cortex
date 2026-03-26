@@ -1336,6 +1336,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		failedHistogramsCount                  = 0
 		succeededExemplarsCount                = 0
 		failedExemplarsCount                   = 0
+		startTimestampSampleAppendFailCount    = 0
+		startTimestampHistogramAppendFailCount = 0
 		startAppend                            = time.Now()
 		sampleOutOfBoundsCount                 = 0
 		sampleOutOfOrderCount                  = 0
@@ -1463,7 +1465,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
 				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
 				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
-					level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to append start timestamp for sample", "user", userID, "series", copiedLabels.String(), "timestamp", s.TimestampMs, "start_timestamp", s.StartTimestampMs, "err", err)
+					startTimestampSampleAppendFailCount++
 					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
 				}
 			}
@@ -1517,8 +1519,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
 					// TODO(SungJin1212): Change to AppendHistogramSTZeroSample after update the Prometheus v3.9.0+
 					if _, err = app.AppendHistogramCTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+						startTimestampHistogramAppendFailCount++
 						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
-						level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to append start timestamp for histogram", "user", userID, "series", copiedLabels.String(), "timestamp", hp.TimestampMs, "start_timestamp", hp.StartTimestampMs, "err", err)
 					}
 				}
 
@@ -1602,6 +1604,15 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// At this point all samples have been added to the appender, so we can track the time it took.
 	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
+
+	if startTimestampSampleAppendFailCount > 0 || startTimestampHistogramAppendFailCount > 0 {
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log(
+			"msg", "failed to append start timestamp in push",
+			"user", userID,
+			"sample_failures", startTimestampSampleAppendFailCount,
+			"histogram_failures", startTimestampHistogramAppendFailCount,
+		)
+	}
 
 	startCommit := time.Now()
 	if err := app.Commit(); err != nil {

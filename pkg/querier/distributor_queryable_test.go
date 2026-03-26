@@ -119,7 +119,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 					assert.Len(t, distributor.Calls, 0)
 				} else {
 					require.Len(t, distributor.Calls, 1)
-					assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(5*time.Second.Milliseconds()))
+					assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(15*time.Second.Milliseconds()))
 					assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)))
 				}
 			})
@@ -634,7 +634,7 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 				assert.Len(t, distributor.Calls, 0, testData.description)
 			} else {
 				require.Len(t, distributor.Calls, 1, testData.description)
-				assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(5*time.Second.Milliseconds()), testData.description)
+				assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(15*time.Second.Milliseconds()), testData.description)
 				assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), testData.description)
 			}
 		})

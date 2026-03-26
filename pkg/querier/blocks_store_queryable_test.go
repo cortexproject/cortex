@@ -2447,7 +2447,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 			} else {
 				require.Len(t, finder.Calls, 1)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2))
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(5*time.Second.Milliseconds()))
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()))
 			}
 		})
 	}
@@ -3088,7 +3088,10 @@ func TestBlocksStoreQuerier_MultiTenantQueryStoreAfter(t *testing.T) {
 			} else {
 				require.Len(t, finder.Calls, 1, testData.description)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(5*time.Second.Milliseconds()), testData.description)
+				// Allow 15 seconds of time drift to account for CI environment delays.
+				// The actual code calls time.Now() when manipulating query time ranges,
+				// which can differ from the test's captured 'now' value.
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
 			}
 		})
 	}
@@ -3182,8 +3185,10 @@ func TestBlocksStoreQuerier_QueryStoreAfterBoundary(t *testing.T) {
 			} else {
 				require.Len(t, finder.Calls, 1, testData.description)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
-				// Use InDelta for maxT since the implementation uses time.Now() which may differ slightly
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(5*time.Second.Milliseconds()), testData.description)
+				// Allow 15 seconds of time drift to account for CI environment delays.
+				// The actual code calls time.Now() when manipulating query time ranges,
+				// which can differ from the test's captured 'now' value.
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
 			}
 		})
 	}

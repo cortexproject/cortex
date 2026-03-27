@@ -2503,7 +2503,6 @@ func (m *mockAlertManagerLimits) AlertmanagerMaxSilenceSizeBytes(_ string) int {
 }
 
 func TestMultitenantAlertmanager_isUserOwned(t *testing.T) {
-	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true
 

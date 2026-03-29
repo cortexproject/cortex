@@ -391,6 +391,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.QuerierEngine,
 		t.MetadataQuerier,
 		t.Distributor,
+		t.BlocksStoreQueryable,
 		t.OverridesConfig,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
@@ -450,6 +451,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	if q, err := initBlockStoreQueryable(t.Cfg, t.OverridesConfig, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
+		t.BlocksStoreQueryable = q
 		queriable = q
 		if t.Cfg.Querier.EnableParquetQueryable {
 			pq, err := querier.NewParquetQueryable(t.Cfg.Querier, t.Cfg.BlocksStorage, t.OverridesConfig, q, util_log.Logger, prometheus.DefaultRegisterer)

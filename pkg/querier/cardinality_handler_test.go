@@ -30,7 +30,7 @@ func TestCardinalityHandler_ParameterValidation(t *testing.T) {
 		NumSeries: 100,
 	}, nil).Maybe()
 
-	handler := CardinalityHandler(dist, overrides, prometheus.NewRegistry())
+	handler := CardinalityHandler(dist, nil, overrides, prometheus.NewRegistry())
 
 	tests := []struct {
 		name          string
@@ -138,7 +138,7 @@ func TestCardinalityHandler_DisabledTenant(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 
 	dist := &MockDistributor{}
-	handler := CardinalityHandler(dist, overrides, prometheus.NewRegistry())
+	handler := CardinalityHandler(dist, nil, overrides, prometheus.NewRegistry())
 
 	req := httptest.NewRequest("GET", "/api/v1/cardinality", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "test-tenant"))
@@ -172,7 +172,7 @@ func TestCardinalityHandler_SuccessfulResponse(t *testing.T) {
 		},
 	}, nil)
 
-	handler := CardinalityHandler(dist, overrides, prometheus.NewRegistry())
+	handler := CardinalityHandler(dist, nil, overrides, prometheus.NewRegistry())
 
 	req := httptest.NewRequest("GET", "/api/v1/cardinality", nil)
 	req = req.WithContext(user.InjectOrgID(req.Context(), "test-tenant"))

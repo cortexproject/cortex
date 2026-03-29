@@ -110,10 +110,16 @@ func (l *cardinalityConcurrencyLimiter) release(tenantID string) {
 	}
 }
 
+// BlocksCardinalityQuerier is the interface for querying cardinality from blocks storage.
+type BlocksCardinalityQuerier interface {
+	BlocksCardinality(ctx context.Context, userID string, minT, maxT int64, limit int32) (*client.CardinalityResponse, bool, error)
+}
+
 // CardinalityHandler returns an HTTP handler for cardinality statistics.
 // The Distributor interface (which includes the Cardinality method) is used
-// for the head path. The limits parameter provides per-tenant configuration.
-func CardinalityHandler(d Distributor, limits *validation.Overrides, reg prometheus.Registerer) http.Handler {
+// for the head path. The BlocksCardinalityQuerier is used for the blocks path.
+// The limits parameter provides per-tenant configuration.
+func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, limits *validation.Overrides, reg prometheus.Registerer) http.Handler {
 	metrics := newCardinalityMetrics(reg)
 	limiter := newCardinalityConcurrencyLimiter(limits)
 
@@ -194,8 +200,62 @@ func CardinalityHandler(d Distributor, limits *validation.Overrides, reg prometh
 				return
 			}
 
-			// TODO: Implement blocks path in Phase 2
-			writeCardinalityError(w, http.StatusNotImplemented, "bad_data", "source=blocks is not yet implemented")
+			if blocksQuerier == nil {
+				writeCardinalityError(w, http.StatusNotImplemented, "bad_data", "source=blocks is not available")
+				return
+			}
+
+			// Check concurrency limit.
+			if !limiter.tryAcquire(tenantID) {
+				statusCode := http.StatusTooManyRequests
+				metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
+				writeCardinalityError(w, statusCode, "bad_data", "too many concurrent cardinality requests for this tenant")
+				return
+			}
+			defer limiter.release(tenantID)
+
+			metrics.inflightRequests.WithLabelValues(source).Inc()
+			defer metrics.inflightRequests.WithLabelValues(source).Dec()
+
+			// Apply per-tenant query timeout.
+			ctx := r.Context()
+			timeout := limits.CardinalityQueryTimeout(tenantID)
+			if timeout > 0 {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, timeout)
+				defer cancel()
+			}
+
+			// Convert to milliseconds for the blocks query.
+			minT := startTs.UnixMilli()
+			maxT := endTs.UnixMilli()
+
+			result, approximated, err := blocksQuerier.BlocksCardinality(ctx, tenantID, minT, maxT, limit)
+
+			statusCode := http.StatusOK
+			if err != nil {
+				statusCode = http.StatusInternalServerError
+				duration := time.Since(startTime).Seconds()
+				metrics.requestDuration.WithLabelValues(source, strconv.Itoa(statusCode)).Observe(duration)
+				metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
+				writeCardinalityError(w, statusCode, "bad_data", err.Error())
+				return
+			}
+
+			duration := time.Since(startTime).Seconds()
+			metrics.requestDuration.WithLabelValues(source, strconv.Itoa(statusCode)).Observe(duration)
+			metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
+
+			util.WriteJSONResponse(w, cardinalityResponse{
+				Status: statusSuccess,
+				Data: cardinalityData{
+					NumSeries:                   result.NumSeries,
+					Approximated:                approximated,
+					SeriesCountByMetricName:     convertStatItems(result.SeriesCountByMetricName),
+					LabelValueCountByLabelName:  convertStatItems(result.LabelValueCountByLabelName),
+					SeriesCountByLabelValuePair: convertStatItems(result.SeriesCountByLabelValuePair),
+				},
+			})
 			return
 		}
 

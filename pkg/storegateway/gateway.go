@@ -436,8 +436,7 @@ func (g *StoreGateway) Cardinality(ctx context.Context, req *storegatewaypb.Card
 	if err := g.checkResourceUtilization(); err != nil {
 		return nil, err
 	}
-	// TODO: Implement blocks path cardinality computation in Phase 2.
-	return &storegatewaypb.CardinalityResponse{}, nil
+	return g.stores.Cardinality(ctx, req)
 }
 
 func (g *StoreGateway) checkResourceUtilization() error {

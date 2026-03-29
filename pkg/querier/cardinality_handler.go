@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +21,12 @@ import (
 const (
 	cardinalityDefaultLimit = 10
 	cardinalityMaxLimit     = 512
+
+	cardinalitySourceHead   = "head"
+	cardinalitySourceBlocks = "blocks"
+
+	cardinalityErrorTypeBadData  = "bad_data"
+	cardinalityErrorTypeInternal = "internal"
 )
 
 type cardinalityResponse struct {
@@ -129,23 +134,23 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 		// Extract tenant ID.
 		tenantID, err := user.ExtractOrgID(r.Context())
 		if err != nil {
-			writeCardinalityError(w, http.StatusBadRequest, "bad_data", err.Error())
+			writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, err.Error())
 			return
 		}
 
 		// Check if cardinality API is enabled for this tenant.
 		if !limits.CardinalityAPIEnabled(tenantID) {
-			writeCardinalityError(w, http.StatusForbidden, "bad_data", "cardinality API is not enabled for this tenant")
+			writeCardinalityError(w, http.StatusForbidden, cardinalityErrorTypeBadData, "cardinality API is not enabled for this tenant")
 			return
 		}
 
 		// Parse source parameter.
 		source := r.FormValue("source")
 		if source == "" {
-			source = "head"
+			source = cardinalitySourceHead
 		}
-		if source != "head" && source != "blocks" {
-			writeCardinalityError(w, http.StatusBadRequest, "bad_data", `invalid source: must be "head" or "blocks"`)
+		if source != cardinalitySourceHead && source != cardinalitySourceBlocks {
+			writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, `invalid source: must be "head" or "blocks"`)
 			return
 		}
 
@@ -154,116 +159,67 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 		if s := r.FormValue("limit"); s != "" {
 			v, err := strconv.Atoi(s)
 			if err != nil || v < 1 || v > cardinalityMaxLimit {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", fmt.Sprintf("invalid limit: must be an integer between 1 and %d", cardinalityMaxLimit))
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, fmt.Sprintf("invalid limit: must be an integer between 1 and %d", cardinalityMaxLimit))
 				return
 			}
 			limit = int32(v)
 		}
 
-		// Validate source-specific parameters.
-		if source == "head" {
+		// Validate source-specific parameters and parse time range for blocks.
+		var minT, maxT int64
+		if source == cardinalitySourceHead {
 			if r.FormValue("start") != "" || r.FormValue("end") != "" {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", "start and end parameters are not supported for source=head")
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, "start and end parameters are not supported for source=head")
 				return
 			}
 		}
 
-		if source == "blocks" {
+		if source == cardinalitySourceBlocks {
 			startParam := r.FormValue("start")
 			endParam := r.FormValue("end")
 			if startParam == "" || endParam == "" {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", "start and end are required for source=blocks")
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, "start and end are required for source=blocks")
 				return
 			}
 
-			startTs, err := parseTimestamp(startParam)
+			minT, err = util.ParseTime(startParam)
 			if err != nil {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", "invalid start/end: must be RFC3339 or Unix timestamp")
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, "invalid start/end: must be RFC3339 or Unix timestamp")
 				return
 			}
 
-			endTs, err := parseTimestamp(endParam)
+			maxT, err = util.ParseTime(endParam)
 			if err != nil {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", "invalid start/end: must be RFC3339 or Unix timestamp")
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, "invalid start/end: must be RFC3339 or Unix timestamp")
 				return
 			}
+
+			startTs := util.TimeFromMillis(minT)
+			endTs := util.TimeFromMillis(maxT)
 
 			if !startTs.Before(endTs) {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data", "invalid time range: start must be before end")
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, "invalid time range: start must be before end")
 				return
 			}
 
 			maxRange := limits.CardinalityMaxQueryRange(tenantID)
 			if maxRange > 0 && endTs.Sub(startTs) > maxRange {
-				writeCardinalityError(w, http.StatusBadRequest, "bad_data",
+				writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData,
 					fmt.Sprintf("the query time range exceeds the limit (query length: %s, limit: %s)", endTs.Sub(startTs), maxRange))
 				return
 			}
 
 			if blocksQuerier == nil {
-				writeCardinalityError(w, http.StatusNotImplemented, "bad_data", "source=blocks is not available")
+				writeCardinalityError(w, http.StatusNotImplemented, cardinalityErrorTypeBadData, "source=blocks is not available")
 				return
 			}
-
-			// Check concurrency limit.
-			if !limiter.tryAcquire(tenantID) {
-				statusCode := http.StatusTooManyRequests
-				metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
-				writeCardinalityError(w, statusCode, "bad_data", "too many concurrent cardinality requests for this tenant")
-				return
-			}
-			defer limiter.release(tenantID)
-
-			metrics.inflightRequests.WithLabelValues(source).Inc()
-			defer metrics.inflightRequests.WithLabelValues(source).Dec()
-
-			// Apply per-tenant query timeout.
-			ctx := r.Context()
-			timeout := limits.CardinalityQueryTimeout(tenantID)
-			if timeout > 0 {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, timeout)
-				defer cancel()
-			}
-
-			// Convert to milliseconds for the blocks query.
-			minT := startTs.UnixMilli()
-			maxT := endTs.UnixMilli()
-
-			result, approximated, err := blocksQuerier.BlocksCardinality(ctx, tenantID, minT, maxT, limit)
-
-			statusCode := http.StatusOK
-			if err != nil {
-				statusCode = http.StatusInternalServerError
-				duration := time.Since(startTime).Seconds()
-				metrics.requestDuration.WithLabelValues(source, strconv.Itoa(statusCode)).Observe(duration)
-				metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
-				writeCardinalityError(w, statusCode, "bad_data", err.Error())
-				return
-			}
-
-			duration := time.Since(startTime).Seconds()
-			metrics.requestDuration.WithLabelValues(source, strconv.Itoa(statusCode)).Observe(duration)
-			metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
-
-			util.WriteJSONResponse(w, cardinalityResponse{
-				Status: statusSuccess,
-				Data: cardinalityData{
-					NumSeries:                   result.NumSeries,
-					Approximated:                approximated,
-					SeriesCountByMetricName:     convertStatItems(result.SeriesCountByMetricName),
-					LabelValueCountByLabelName:  convertStatItems(result.LabelValueCountByLabelName),
-					SeriesCountByLabelValuePair: convertStatItems(result.SeriesCountByLabelValuePair),
-				},
-			})
-			return
 		}
 
 		// Check concurrency limit.
 		if !limiter.tryAcquire(tenantID) {
 			statusCode := http.StatusTooManyRequests
 			metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
-			writeCardinalityError(w, statusCode, "bad_data", "too many concurrent cardinality requests for this tenant")
+			writeCardinalityError(w, statusCode, cardinalityErrorTypeBadData, "too many concurrent cardinality requests for this tenant")
 			return
 		}
 		defer limiter.release(tenantID)
@@ -272,16 +228,25 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 		defer metrics.inflightRequests.WithLabelValues(source).Dec()
 
 		// Apply per-tenant query timeout.
+		ctx := r.Context()
 		timeout := limits.CardinalityQueryTimeout(tenantID)
 		if timeout > 0 {
-			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
-			r = r.WithContext(ctx)
 		}
 
-		// Execute the cardinality query via the distributor (head path).
-		req := &client.CardinalityRequest{Limit: limit}
-		result, err := d.Cardinality(r.Context(), req)
+		// Execute the cardinality query.
+		var result *client.CardinalityResponse
+		var approximated bool
+
+		switch source {
+		case cardinalitySourceHead:
+			req := &client.CardinalityRequest{Limit: limit}
+			result, err = d.Cardinality(ctx, req)
+		case cardinalitySourceBlocks:
+			result, approximated, err = blocksQuerier.BlocksCardinality(ctx, tenantID, minT, maxT, limit)
+		}
 
 		statusCode := http.StatusOK
 		if err != nil {
@@ -289,7 +254,7 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 			duration := time.Since(startTime).Seconds()
 			metrics.requestDuration.WithLabelValues(source, strconv.Itoa(statusCode)).Observe(duration)
 			metrics.requestsTotal.WithLabelValues(source, strconv.Itoa(statusCode)).Inc()
-			writeCardinalityError(w, statusCode, "bad_data", err.Error())
+			writeCardinalityError(w, statusCode, cardinalityErrorTypeInternal, err.Error())
 			return
 		}
 
@@ -301,7 +266,7 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 			Status: statusSuccess,
 			Data: cardinalityData{
 				NumSeries:                   result.NumSeries,
-				Approximated:                false, // Head path is never approximated when all ingesters respond.
+				Approximated:                approximated,
 				SeriesCountByMetricName:     convertStatItems(result.SeriesCountByMetricName),
 				LabelValueCountByLabelName:  convertStatItems(result.LabelValueCountByLabelName),
 				SeriesCountByLabelValuePair: convertStatItems(result.SeriesCountByLabelValuePair),
@@ -331,39 +296,4 @@ func writeCardinalityError(w http.ResponseWriter, statusCode int, errorType, mes
 		ErrorType: errorType,
 		Error:     message,
 	})
-}
-
-// parseTimestamp parses a time value from either RFC3339 or Unix timestamp format.
-func parseTimestamp(s string) (time.Time, error) {
-	// Try RFC3339 first.
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t, nil
-	}
-	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-		return t, nil
-	}
-
-	// Try Unix timestamp (seconds, possibly with decimal).
-	if strings.Contains(s, ".") {
-		parts := strings.SplitN(s, ".", 2)
-		sec, err := strconv.ParseInt(parts[0], 10, 64)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("cannot parse %q as timestamp", s)
-		}
-		fracStr := parts[1]
-		for len(fracStr) < 9 {
-			fracStr += "0"
-		}
-		nsec, err := strconv.ParseInt(fracStr[:9], 10, 64)
-		if err != nil {
-			return time.Time{}, fmt.Errorf("cannot parse %q as timestamp", s)
-		}
-		return time.Unix(sec, nsec), nil
-	}
-
-	sec, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot parse %q as timestamp", s)
-	}
-	return time.Unix(sec, 0), nil
 }

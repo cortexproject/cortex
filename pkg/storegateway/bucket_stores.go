@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -464,8 +465,8 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 	}
 
 	err := u.getStoreError(userID)
-	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	if err != nil {
+		userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
 			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
 		}
@@ -488,14 +489,11 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 		requestedBlocks = append(requestedBlocks, id)
 	}
 
-	// Use the BucketStore's LabelNames to get all label names for these blocks.
+	// Build block hints once, reused for all LabelNames/LabelValues requests.
 	blockRegex := buildBlockIDRegex(requestedBlocks)
-	labelNamesReq := &storepb.LabelNamesRequest{
-		Start: req.MinTime,
-		End:   req.MaxTime,
-	}
+	var labelValuesHints *types.Any
 	if blockRegex != "" {
-		hints := &hintspb.LabelNamesRequestHints{
+		hints := &hintspb.LabelValuesRequestHints{
 			BlockMatchers: []storepb.LabelMatcher{
 				{
 					Type:  storepb.LabelMatcher_RE,
@@ -504,7 +502,28 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 				},
 			},
 		}
-		anyHints, err := types.MarshalAny(hints)
+		labelValuesHints, err = types.MarshalAny(hints)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal block hints")
+		}
+	}
+
+	// Use the BucketStore's LabelNames to get all label names for these blocks.
+	labelNamesReq := &storepb.LabelNamesRequest{
+		Start: req.MinTime,
+		End:   req.MaxTime,
+	}
+	if blockRegex != "" {
+		labelNamesHints := &hintspb.LabelNamesRequestHints{
+			BlockMatchers: []storepb.LabelMatcher{
+				{
+					Type:  storepb.LabelMatcher_RE,
+					Name:  block.BlockIDLabel,
+					Value: blockRegex,
+				},
+			},
+		}
+		anyHints, err := types.MarshalAny(labelNamesHints)
 		if err != nil {
 			return nil, errors.Wrap(err, "marshal label names hints")
 		}
@@ -524,22 +543,7 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 			Label: name,
 			Start: req.MinTime,
 			End:   req.MaxTime,
-		}
-		if blockRegex != "" {
-			hints := &hintspb.LabelValuesRequestHints{
-				BlockMatchers: []storepb.LabelMatcher{
-					{
-						Type:  storepb.LabelMatcher_RE,
-						Name:  block.BlockIDLabel,
-						Value: blockRegex,
-					},
-				},
-			}
-			anyHints, err := types.MarshalAny(hints)
-			if err != nil {
-				return nil, errors.Wrap(err, "marshal label values hints")
-			}
-			labelValuesReq.Hints = anyHints
+			Hints: labelValuesHints,
 		}
 
 		labelValuesResp, err := userStore.LabelValues(spanCtx, labelValuesReq)
@@ -550,7 +554,7 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 
 		labelValueCounts[name] = uint64(len(labelValuesResp.Values))
 
-		if name == "__name__" {
+		if name == labels.MetricName { //nolint:staticcheck // MetricName is widely used in this codebase.
 			metricNames = labelValuesResp.Values
 		}
 	}

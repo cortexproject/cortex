@@ -2,7 +2,6 @@ package querier
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -210,27 +209,4 @@ func TestCardinalityHandler_ConcurrencyLimit(t *testing.T) {
 	limiter.release("test-tenant")
 	assert.True(t, limiter.tryAcquire("test-tenant"))
 	limiter.release("test-tenant")
-}
-
-func TestParseTimestamp(t *testing.T) {
-	tests := []struct {
-		input     string
-		expectErr bool
-	}{
-		{"2024-01-01T00:00:00Z", false},
-		{"1704067200", false},
-		{"1704067200.123", false},
-		{"invalid", true},
-	}
-
-	for _, tc := range tests {
-		t.Run(fmt.Sprintf("input=%s", tc.input), func(t *testing.T) {
-			_, err := parseTimestamp(tc.input)
-			if tc.expectErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
 }

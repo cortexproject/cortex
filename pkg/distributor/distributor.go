@@ -1760,28 +1760,23 @@ func maxStatItems(resps []any, extract func(*ingester_client.CardinalityResponse
 
 // topNStats divides values by the replication factor, sorts descending, and returns the top N items.
 func topNStats(items map[string]uint64, replicationFactor, limit int) []*cortexpb.CardinalityStatItem {
-	result := make([]*cortexpb.CardinalityStatItem, 0, len(items))
-	for name, value := range items {
-		result = append(result, &cortexpb.CardinalityStatItem{
-			Name:  name,
-			Value: value / uint64(replicationFactor),
-		})
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Value > result[j].Value
+	return sortAndTruncateCardinalityItems(items, limit, func(v uint64) uint64 {
+		return v / uint64(replicationFactor)
 	})
-
-	if limit > 0 && len(result) > limit {
-		result = result[:limit]
-	}
-	return result
 }
 
 // topNStatsByMax sorts descending by value and returns the top N items (no RF division).
 func topNStatsByMax(items map[string]uint64, limit int) []*cortexpb.CardinalityStatItem {
+	return sortAndTruncateCardinalityItems(items, limit, nil)
+}
+
+// sortAndTruncateCardinalityItems converts a map to sorted stat items, optionally transforming values.
+func sortAndTruncateCardinalityItems(items map[string]uint64, limit int, transform func(uint64) uint64) []*cortexpb.CardinalityStatItem {
 	result := make([]*cortexpb.CardinalityStatItem, 0, len(items))
 	for name, value := range items {
+		if transform != nil {
+			value = transform(value)
+		}
 		result = append(result, &cortexpb.CardinalityStatItem{
 			Name:  name,
 			Value: value,

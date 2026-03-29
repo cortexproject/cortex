@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"runtime"
 	"runtime/debug"
 
@@ -293,6 +294,12 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
+	// Register the cardinality endpoint directly on the external API server.
+	// This endpoint bypasses the query-frontend and is served directly by the querier.
+	cardinalityHandler := querier.CardinalityHandler(t.Distributor, t.BlocksStoreQueryable, t.OverridesConfig, prometheus.DefaultRegisterer)
+	t.API.RegisterRoute(path.Join(t.Cfg.API.PrometheusHTTPPrefix, "/api/v1/cardinality"), cardinalityHandler, true, "GET")
+	t.API.RegisterRoute(path.Join(t.Cfg.API.LegacyHTTPPrefix, "/api/v1/cardinality"), cardinalityHandler, true, "GET")
+
 	return nil, nil
 }
 
@@ -390,9 +397,6 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.ExemplarQueryable,
 		t.QuerierEngine,
 		t.MetadataQuerier,
-		t.Distributor,
-		t.BlocksStoreQueryable,
-		t.OverridesConfig,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)

@@ -33,7 +33,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/request_tracker"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const (
@@ -167,9 +166,6 @@ func NewQuerierHandler(
 	exemplarQueryable storage.ExemplarQueryable,
 	engine engine.QueryEngine,
 	metadataQuerier querier.MetadataQuerier,
-	cardinalityQuerier querier.Distributor,
-	blocksCardinalityQuerier querier.BlocksCardinalityQuerier,
-	limits *validation.Overrides,
 	reg prometheus.Registerer,
 	logger log.Logger,
 ) http.Handler {
@@ -322,8 +318,6 @@ func NewQuerierHandler(
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(metadataQuerier))
 	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
-	cardinalityHandler := querier.CardinalityHandler(cardinalityQuerier, blocksCardinalityQuerier, limits, reg)
-	router.Path(path.Join(prefix, "/api/v1/cardinality")).Methods("GET").Handler(cardinalityHandler)
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(instantQueryHandler)
 	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(rangedQueryHandler)
@@ -339,7 +333,6 @@ func NewQuerierHandler(
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(metadataQuerier))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(path.Join(legacyPrefix, "/api/v1/cardinality")).Methods("GET").Handler(cardinalityHandler)
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(instantQueryHandler)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(rangedQueryHandler)

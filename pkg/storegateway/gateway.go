@@ -431,6 +431,15 @@ func (g *StoreGateway) LabelValues(ctx context.Context, req *storepb.LabelValues
 	return g.stores.LabelValues(ctx, req)
 }
 
+// Cardinality returns cardinality statistics for a tenant's blocks.
+func (g *StoreGateway) Cardinality(ctx context.Context, req *storegatewaypb.CardinalityRequest) (*storegatewaypb.CardinalityResponse, error) {
+	if err := g.checkResourceUtilization(); err != nil {
+		return nil, err
+	}
+	// TODO: Implement blocks path cardinality computation in Phase 2.
+	return &storegatewaypb.CardinalityResponse{}, nil
+}
+
 func (g *StoreGateway) checkResourceUtilization() error {
 	if g.resourceBasedLimiter == nil {
 		return nil

@@ -34,6 +34,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
+	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/util/compression"
 	"github.com/prometheus/prometheus/util/zeropool"
 	"github.com/thanos-io/objstore"
@@ -2298,6 +2299,54 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 		ActiveSeries:      userStat.ActiveSeries,
 		LoadedBlocks:      userStat.LoadedBlocks,
 	}, nil
+}
+
+// Cardinality returns per-tenant cardinality statistics from the TSDB head.
+func (i *Ingester) Cardinality(ctx context.Context, req *client.CardinalityRequest) (*client.CardinalityResponse, error) {
+	if err := i.checkRunning(); err != nil {
+		return nil, err
+	}
+
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := i.getTSDB(userID)
+	if err != nil || db == nil {
+		return &client.CardinalityResponse{}, nil
+	}
+
+	stats := db.Head().Stats(labels.MetricName, int(req.Limit))
+
+	return statsToPB(stats), nil
+}
+
+// statsToPB converts TSDB head stats to the protobuf CardinalityResponse format.
+func statsToPB(stats *tsdb.Stats) *client.CardinalityResponse {
+	resp := &client.CardinalityResponse{
+		NumSeries: stats.NumSeries,
+	}
+
+	if stats.IndexPostingStats != nil {
+		resp.SeriesCountByMetricName = indexStatsToPB(stats.IndexPostingStats.CardinalityMetricsStats)
+		resp.LabelValueCountByLabelName = indexStatsToPB(stats.IndexPostingStats.CardinalityLabelStats)
+		resp.SeriesCountByLabelValuePair = indexStatsToPB(stats.IndexPostingStats.LabelValuePairsStats)
+	}
+
+	return resp
+}
+
+// indexStatsToPB converts Prometheus index stats to protobuf CardinalityStatItem slice.
+func indexStatsToPB(stats []index.Stat) []*cortexpb.CardinalityStatItem {
+	items := make([]*cortexpb.CardinalityStatItem, len(stats))
+	for i, s := range stats {
+		items[i] = &cortexpb.CardinalityStatItem{
+			Name:  s.Name,
+			Value: s.Count,
+		}
+	}
+	return items
 }
 
 func (i *Ingester) userStats() []UserIDStats {

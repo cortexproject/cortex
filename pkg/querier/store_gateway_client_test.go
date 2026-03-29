@@ -81,3 +81,7 @@ func (m *mockStoreGatewayServer) LabelNames(context.Context, *storepb.LabelNames
 func (m *mockStoreGatewayServer) LabelValues(context.Context, *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	return nil, nil
 }
+
+func (m *mockStoreGatewayServer) Cardinality(context.Context, *storegatewaypb.CardinalityRequest) (*storegatewaypb.CardinalityResponse, error) {
+	return &storegatewaypb.CardinalityResponse{}, nil
+}

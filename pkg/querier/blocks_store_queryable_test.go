@@ -2690,6 +2690,10 @@ func (m *storeGatewayClientMock) LabelValues(_ context.Context, r *storepb.Label
 	return m.mockedLabelValuesResponse, m.mockedLabelValuesErr
 }
 
+func (m *storeGatewayClientMock) Cardinality(_ context.Context, _ *storegatewaypb.CardinalityRequest, _ ...grpc.CallOption) (*storegatewaypb.CardinalityResponse, error) {
+	return &storegatewaypb.CardinalityResponse{}, nil
+}
+
 func (m *storeGatewayClientMock) RemoteAddress() string {
 	return m.remoteAddr
 }

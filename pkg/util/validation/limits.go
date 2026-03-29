@@ -197,6 +197,12 @@ type Limits struct {
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
+	// Cardinality API limits.
+	CardinalityAPIEnabled            bool           `yaml:"cardinality_api_enabled" json:"cardinality_api_enabled"`
+	CardinalityMaxQueryRange         model.Duration `yaml:"cardinality_max_query_range" json:"cardinality_max_query_range"`
+	CardinalityMaxConcurrentRequests int            `yaml:"cardinality_max_concurrent_requests" json:"cardinality_max_concurrent_requests"`
+	CardinalityQueryTimeout          model.Duration `yaml:"cardinality_query_timeout" json:"cardinality_query_timeout"`
+
 	// Parquet Queryable enforced limits.
 	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
 	ParquetMaxFetchedChunkBytes int `yaml:"parquet_max_fetched_chunk_bytes" json:"parquet_max_fetched_chunk_bytes"`
@@ -328,6 +334,14 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&l.QueryRejection.Enabled, "frontend.query-rejection.enabled", false, "Whether query rejection is enabled.")
 
 	f.IntVar(&l.MaxOutstandingPerTenant, "frontend.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per request queue (either query frontend or query scheduler); requests beyond this error with HTTP 429.")
+
+	// Cardinality API limits.
+	f.BoolVar(&l.CardinalityAPIEnabled, "querier.cardinality-api-enabled", false, "[Experimental] Enables the per-tenant cardinality API endpoint. When disabled, the endpoint returns HTTP 403.")
+	_ = l.CardinalityMaxQueryRange.Set("24h")
+	f.Var(&l.CardinalityMaxQueryRange, "querier.cardinality-max-query-range", "[Experimental] Maximum allowed time range (end - start) for source=blocks cardinality queries.")
+	f.IntVar(&l.CardinalityMaxConcurrentRequests, "querier.cardinality-max-concurrent-requests", 2, "[Experimental] Maximum number of concurrent cardinality requests per tenant. Excess requests are rejected with HTTP 429.")
+	_ = l.CardinalityQueryTimeout.Set("60s")
+	f.Var(&l.CardinalityQueryTimeout, "querier.cardinality-query-timeout", "[Experimental] Per-request timeout for cardinality computation. On timeout, partial results are returned.")
 
 	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 	f.Float64Var(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when the shuffle-sharding strategy is used by ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size will be a percentage of the total rulers.")
@@ -1177,6 +1191,26 @@ func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
 // This is only used in Ingester.
 func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
 	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
+}
+
+// CardinalityAPIEnabled returns whether the cardinality API is enabled for the tenant.
+func (o *Overrides) CardinalityAPIEnabled(userID string) bool {
+	return o.GetOverridesForUser(userID).CardinalityAPIEnabled
+}
+
+// CardinalityMaxQueryRange returns the maximum allowed time range for source=blocks cardinality queries.
+func (o *Overrides) CardinalityMaxQueryRange(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).CardinalityMaxQueryRange)
+}
+
+// CardinalityMaxConcurrentRequests returns the maximum number of concurrent cardinality requests per tenant.
+func (o *Overrides) CardinalityMaxConcurrentRequests(userID string) int {
+	return o.GetOverridesForUser(userID).CardinalityMaxConcurrentRequests
+}
+
+// CardinalityQueryTimeout returns the per-request timeout for cardinality computation.
+func (o *Overrides) CardinalityQueryTimeout(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).CardinalityQueryTimeout)
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

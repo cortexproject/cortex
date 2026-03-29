@@ -390,6 +390,8 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 		t.ExemplarQueryable,
 		t.QuerierEngine,
 		t.MetadataQuerier,
+		t.Distributor,
+		t.OverridesConfig,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)

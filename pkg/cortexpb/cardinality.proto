@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package cortexpb;
+
+option go_package = "cortexpb";
+
+import "gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+message CardinalityStatItem {
+  string name = 1;
+  uint64 value = 2;
+}

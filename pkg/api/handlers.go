@@ -322,7 +322,8 @@ func NewQuerierHandler(
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(prefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(metadataQuerier))
 	router.Path(path.Join(prefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(path.Join(prefix, "/api/v1/cardinality")).Methods("GET").Handler(querier.CardinalityHandler(cardinalityQuerier, blocksCardinalityQuerier, limits, reg))
+	cardinalityHandler := querier.CardinalityHandler(cardinalityQuerier, blocksCardinalityQuerier, limits, reg)
+	router.Path(path.Join(prefix, "/api/v1/cardinality")).Methods("GET").Handler(cardinalityHandler)
 	router.Path(path.Join(prefix, "/api/v1/read")).Methods("POST").Handler(promRouter)
 	router.Path(path.Join(prefix, "/api/v1/query")).Methods("GET", "POST").Handler(instantQueryHandler)
 	router.Path(path.Join(prefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(rangedQueryHandler)
@@ -338,7 +339,7 @@ func NewQuerierHandler(
 	// https://github.com/prometheus/prometheus/pull/7125/files
 	router.Path(path.Join(legacyPrefix, "/api/v1/metadata")).Handler(querier.MetadataHandler(metadataQuerier))
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Handler(querier.RemoteReadHandler(queryable, logger))
-	router.Path(path.Join(legacyPrefix, "/api/v1/cardinality")).Methods("GET").Handler(querier.CardinalityHandler(cardinalityQuerier, blocksCardinalityQuerier, limits, reg))
+	router.Path(path.Join(legacyPrefix, "/api/v1/cardinality")).Methods("GET").Handler(cardinalityHandler)
 	router.Path(path.Join(legacyPrefix, "/api/v1/read")).Methods("POST").Handler(legacyPromRouter)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query")).Methods("GET", "POST").Handler(instantQueryHandler)
 	router.Path(path.Join(legacyPrefix, "/api/v1/query_range")).Methods("GET", "POST").Handler(rangedQueryHandler)

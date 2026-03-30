@@ -4,7 +4,6 @@ package integration
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 	"time"
 
@@ -144,20 +143,27 @@ func TestCardinalityAPI(t *testing.T) {
 			e2e.WaitMissingMetrics,
 		))
 
-		// Query the blocks path with a wide time range.
+		// Query the blocks path with retries. The querier's block finder and
+		// store gateway may need additional sync cycles before returning data.
 		start := now.Add(-1 * time.Hour)
 		end := now.Add(1 * time.Hour)
-		resp, body, err := c.CardinalityRaw("blocks", 10, start, end)
-		require.NoError(t, err)
-		require.Equal(t, 200, resp.StatusCode, "body: %s", string(body))
+		deadline := time.Now().Add(30 * time.Second)
 
 		var result cardinalityAPIResponse
-		require.NoError(t, json.Unmarshal(body, &result))
+		for time.Now().Before(deadline) {
+			resp, body, err := c.CardinalityRaw("blocks", 10, start, end)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode, "body: %s", string(body))
+			require.NoError(t, json.Unmarshal(body, &result))
+
+			if len(result.Data.LabelValueCountByLabelName) > 0 {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
 
 		assert.Equal(t, "success", result.Status)
-		// Blocks path should have data from shipped blocks.
-		assert.NotEmpty(t, result.Data.LabelValueCountByLabelName,
-			fmt.Sprintf("labelValueCountByLabelName should not be empty, full response: %s", string(body)))
+		assert.NotEmpty(t, result.Data.LabelValueCountByLabelName, "labelValueCountByLabelName should not be empty after retries")
 	})
 
 	// --- Test 5: Blocks path requires start/end ---

@@ -166,9 +166,7 @@ type RulesLimits interface {
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 	RulerExternalLabels(userID string) labels.Labels
 	RulerExternalURL(userID string) string
-	RulerAlertGeneratorURLFormat(userID string) string
-	RulerGrafanaDatasourceUID(userID string) string
-	RulerGrafanaOrgID(userID string) int64
+	RulerAlertGeneratorURLTemplate(userID string) string
 }
 
 type QueryExecutor func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
@@ -383,15 +381,16 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 				if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
 					externalURL = tenantURL
 				}
-				if overrides.RulerAlertGeneratorURLFormat(userID) == "grafana-explore" {
-					datasourceUID := overrides.RulerGrafanaDatasourceUID(userID)
-					orgID := overrides.RulerGrafanaOrgID(userID)
-					if orgID == 0 {
-						orgID = 1
-					}
-					return grafanaExploreLink(externalURL, expr, datasourceUID, orgID)
+				tmplStr := overrides.RulerAlertGeneratorURLTemplate(userID)
+				if tmplStr == "" {
+					return externalURL + strutil.TableLinkForExpression(expr)
 				}
-				return externalURL + strutil.TableLinkForExpression(expr)
+				result, err := executeGeneratorURLTemplate(tmplStr, externalURL, expr)
+				if err != nil {
+					level.Warn(logger).Log("msg", "failed to execute generator URL template, falling back to prometheus format", "err", err)
+					return externalURL + strutil.TableLinkForExpression(expr)
+				}
+				return result
 			}),
 			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,

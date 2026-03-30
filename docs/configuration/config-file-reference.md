@@ -4959,6 +4959,20 @@ thanos_engine:
 # types (parquet and non-parquet) and not querying ingesters.
 # CLI flag: -querier.honor-projection-hints
 [honor_projection_hints: <boolean> | default = false]
+
+# If true, classify query timeouts as 4XX (user error) or 5XX (system error)
+# based on phase timing.
+# CLI flag: -querier.timeout-classification-enabled
+[timeout_classification_enabled: <boolean> | default = false]
+
+# The total time before the querier proactively cancels a query for timeout
+# classification.
+# CLI flag: -querier.timeout-classification-deadline
+[timeout_classification_deadline: <duration> | default = 59s]
+
+# Eval time threshold above which a timeout is classified as user error (4XX).
+# CLI flag: -querier.timeout-classification-eval-threshold
+[timeout_classification_eval_threshold: <duration> | default = 40s]
 ```
 
 ### `query_frontend_config`

@@ -5475,8 +5475,8 @@
           "x-cli-flag": "validation.reject-old-samples.max-age",
           "x-format": "duration"
         },
-        "ruler_alert_generator_url_format": {
-          "description": "Format for alert generator URLs. Supported values: prometheus (default), grafana-explore.",
+        "ruler_alert_generator_url_template": {
+          "description": "Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. If empty, uses default Prometheus /graph format.",
           "type": "string"
         },
         "ruler_evaluation_delay_duration": {
@@ -5495,15 +5495,6 @@
         "ruler_external_url": {
           "description": "Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications.",
           "type": "string"
-        },
-        "ruler_grafana_datasource_uid": {
-          "description": "Grafana datasource UID for alert generator URLs when format is grafana-explore.",
-          "type": "string"
-        },
-        "ruler_grafana_org_id": {
-          "default": 1,
-          "description": "Grafana organization ID for alert generator URLs when format is grafana-explore.",
-          "type": "number"
         },
         "ruler_max_rule_groups_per_tenant": {
           "default": 0,

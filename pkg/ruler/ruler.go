@@ -1,8 +1,8 @@
 package ruler
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/go-kit/log"
@@ -531,32 +532,26 @@ func SendAlerts(n sender, generatorURLFn func(expr string) string) promRules.Not
 	}
 }
 
-// grafanaExploreLink builds a Grafana Explore URL for the given expression.
-func grafanaExploreLink(baseURL, expr, datasourceUID string, orgID int64) string {
-	panes := map[string]any{
-		"default": map[string]any{
-			"datasource": datasourceUID,
-			"queries": []map[string]any{
-				{
-					"refId":      "A",
-					"expr":       expr,
-					"datasource": map[string]string{"uid": datasourceUID, "type": "prometheus"},
-					"editorMode": "code",
-				},
-			},
-			"range": map[string]string{
-				"from": "now-1h",
-				"to":   "now",
-			},
-		},
-	}
-	panesJSON, _ := json.Marshal(panes)
+// generatorURLTemplateData holds the variables available in generator URL templates.
+type generatorURLTemplateData struct {
+	ExternalURL string
+	Expression  string
+}
 
-	return fmt.Sprintf("%s/explore?schemaVersion=1&panes=%s&orgId=%d",
-		strings.TrimRight(baseURL, "/"),
-		url.QueryEscape(string(panesJSON)),
-		orgID,
-	)
+// executeGeneratorURLTemplate executes a Go text/template to produce a generator URL.
+func executeGeneratorURLTemplate(tmplStr, externalURL, expr string) (string, error) {
+	tmpl, err := template.New("generator_url").Parse(tmplStr)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, generatorURLTemplateData{
+		ExternalURL: externalURL,
+		Expression:  expr,
+	}); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
 }
 
 func ruleGroupDisabled(ruleGroup *rulespb.RuleGroupDesc, disabledRuleGroupsForUser validation.DisabledRuleGroups) bool {

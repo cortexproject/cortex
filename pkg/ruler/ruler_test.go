@@ -90,18 +90,16 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
-	mtx                     sync.RWMutex
-	tenantShard             float64
-	maxRulesPerRuleGroup    int
-	maxRuleGroups           int
-	disabledRuleGroups      validation.DisabledRuleGroups
-	maxQueryLength          time.Duration
-	queryOffset             time.Duration
-	externalLabels          labels.Labels
-	externalURL             string
-	alertGeneratorURLFormat string
-	grafanaDatasourceUID    string
-	grafanaOrgID            int64
+	mtx                       sync.RWMutex
+	tenantShard               float64
+	maxRulesPerRuleGroup      int
+	maxRuleGroups             int
+	disabledRuleGroups        validation.DisabledRuleGroups
+	maxQueryLength            time.Duration
+	queryOffset               time.Duration
+	externalLabels            labels.Labels
+	externalURL               string
+	alertGeneratorURLTemplate string
 }
 
 func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
@@ -158,22 +156,10 @@ func (r *ruleLimits) RulerExternalURL(_ string) string {
 	return r.externalURL
 }
 
-func (r *ruleLimits) RulerAlertGeneratorURLFormat(_ string) string {
+func (r *ruleLimits) RulerAlertGeneratorURLTemplate(_ string) string {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
-	return r.alertGeneratorURLFormat
-}
-
-func (r *ruleLimits) RulerGrafanaDatasourceUID(_ string) string {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-	return r.grafanaDatasourceUID
-}
-
-func (r *ruleLimits) RulerGrafanaOrgID(_ string) int64 {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-	return r.grafanaOrgID
+	return r.alertGeneratorURLTemplate
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -2774,7 +2760,7 @@ func TestSendAlerts(t *testing.T) {
 			},
 		},
 		{
-			name: "grafana explore format",
+			name: "custom template format",
 			in: []*promRules.Alert{
 				{
 					Labels:      labels.FromStrings("l1", "v1"),
@@ -2784,33 +2770,84 @@ func TestSendAlerts(t *testing.T) {
 					ValidUntil:  time.Unix(3, 0),
 				},
 			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(3, 0),
+					GeneratorURL: "http://grafana.example.com/explore?expr=up",
+				},
+			},
 			generatorURLFn: func(expr string) string {
-				return grafanaExploreLink("http://grafana.example.com", expr, "my-datasource", 1)
+				result, _ := executeGeneratorURLTemplate(
+					"{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}",
+					"http://grafana.example.com", expr)
+				return result
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			var received []*notifier.Alert
 			sf := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
 					t.Fatalf("sender called with 0 alert")
 				}
-				received = alerts
 				if tc.exp != nil {
 					require.Equal(t, tc.exp, alerts)
 				}
 			})
 			SendAlerts(sf, tc.generatorURLFn)(context.TODO(), "up", tc.in...)
+		})
+	}
+}
 
-			// Additional checks for grafana explore format
-			if tc.name == "grafana explore format" {
-				require.Len(t, received, 1)
-				require.Contains(t, received[0].GeneratorURL, "/explore?schemaVersion=1&panes=")
-				require.Contains(t, received[0].GeneratorURL, "orgId=1")
-				require.Contains(t, received[0].GeneratorURL, "my-datasource")
-				require.Contains(t, received[0].GeneratorURL, "up")
+func TestExecuteGeneratorURLTemplate(t *testing.T) {
+	testCases := []struct {
+		name        string
+		tmplStr     string
+		externalURL string
+		expr        string
+		expected    string
+		expectErr   bool
+	}{
+		{
+			name:        "basic template with expression",
+			tmplStr:     "{{ .ExternalURL }}/graph?expr={{ .Expression }}",
+			externalURL: "http://prometheus:9090",
+			expr:        "up",
+			expected:    "http://prometheus:9090/graph?expr=up",
+		},
+		{
+			name:        "template with urlquery",
+			tmplStr:     "{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}",
+			externalURL: "http://grafana.example.com",
+			expr:        "rate(http_requests_total[5m])",
+			expected:    "http://grafana.example.com/explore?expr=rate%28http_requests_total%5B5m%5D%29",
+		},
+		{
+			name:      "invalid template returns error",
+			tmplStr:   "{{ .Invalid",
+			expectErr: true,
+		},
+		{
+			name:        "template with multiple variables",
+			tmplStr:     "{{ .ExternalURL }}/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D%7D",
+			externalURL: "http://grafana:3000",
+			expr:        "up",
+			expected:    "http://grafana:3000/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22up%22%7D%5D%7D",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := executeGeneratorURLTemplate(tc.tmplStr, tc.externalURL, tc.expr)
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, result)
 			}
 		})
 	}

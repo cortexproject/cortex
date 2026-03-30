@@ -8539,7 +8539,485 @@ D-&amp;gt;&amp;gt;C: Combined response
 &lt;li>&lt;strong>Ring-aware components&lt;/strong> (like shuffle sharding) must operate correctly across both ring types&lt;/li>
 &lt;li>&lt;strong>Metadata operations&lt;/strong> (like label queries) must aggregate results from both rings&lt;/li>
 &lt;/ul>
-&lt;p>All existing Cortex functionality must continue to work seamlessly during the migration period, requiring components to transparently handle the dual-ring architecture.&lt;/p></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
+&lt;p>All existing Cortex functionality must continue to work seamlessly during the migration period, requiring components to transparently handle the dual-ring architecture.&lt;/p></description></item><item><title>Docs: Per-Tenant Cardinality API</title><link>/docs/proposals/per-tenant-cardinality-api/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/per-tenant-cardinality-api/</guid><description>
+&lt;ul>
+&lt;li>Author: &lt;a href="https://github.com/CharlieTLe">Charlie Le&lt;/a>&lt;/li>
+&lt;li>Date: March 2026&lt;/li>
+&lt;li>Status: Draft&lt;/li>
+&lt;/ul>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>High-cardinality series is one of the most common operational challenges for Prometheus-based systems. When a tenant has too many active series, it can lead to increased resource usage in ingesters, slower queries, and ultimately hitting per-tenant series limits.&lt;/p>
+&lt;p>Currently, Cortex tenants lack visibility into which metrics, labels, and label-value pairs contribute the most series in ingesters. Without this information, debugging high-cardinality issues requires operators to inspect TSDB internals directly on ingester instances, which is impractical in a multi-tenant, distributed environment.&lt;/p>
+&lt;p>This proposal introduces a dedicated cardinality API for Cortex that works across both in-memory ingester data and long-term block storage.&lt;/p>
+&lt;h2 id="goal">Goal&lt;/h2>
+&lt;p>Expose per-tenant cardinality statistics via a REST API endpoint on the Cortex query path. The endpoint should:&lt;/p>
+&lt;ol>
+&lt;li>Support two data sources: in-memory TSDB head data from ingesters and compacted blocks from long-term object storage via store gateways.&lt;/li>
+&lt;li>Aggregate statistics across all ingesters or store gateways that hold data for the requesting tenant.&lt;/li>
+&lt;li>Correctly account for replication factor when summing series counts from ingesters.&lt;/li>
+&lt;li>Respect multi-tenancy, ensuring tenants can only see their own data.&lt;/li>
+&lt;/ol>
+&lt;h2 id="out-of-scope">Out of Scope&lt;/h2>
+&lt;ul>
+&lt;li>&lt;strong>Automated cardinality limiting&lt;/strong>: This is a read-only diagnostic endpoint; it does not enforce or suggest limits.&lt;/li>
+&lt;li>&lt;strong>Cardinality reduction actions&lt;/strong>: The endpoint reports statistics but does not provide mechanisms to drop or relabel series.&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposed-design">Proposed Design&lt;/h2>
+&lt;h3 id="endpoint">Endpoint&lt;/h3>
+&lt;pre tabindex="0">&lt;code>GET &amp;lt;prometheus-http-prefix&amp;gt;/api/v1/cardinality?limit=N&amp;amp;source=head|blocks&amp;amp;start=T&amp;amp;end=T
+&lt;/code>&lt;/pre>&lt;p>The endpoint is also registered at &lt;code>&amp;lt;legacy-http-prefix&amp;gt;/api/v1/cardinality&lt;/code>, following the pattern used by other querier endpoints.&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Authentication&lt;/strong>: Requires &lt;code>X-Scope-OrgID&lt;/code> header (standard Cortex tenant authentication).&lt;/li>
+&lt;li>&lt;strong>Query Parameters&lt;/strong>:
+&lt;ul>
+&lt;li>&lt;code>limit&lt;/code> (optional, default 10, max 512) - controls the number of top items returned per category. Values outside the &lt;code>[1, 512]&lt;/code> range are rejected with HTTP 400.&lt;/li>
+&lt;li>&lt;code>source&lt;/code> (optional, default &lt;code>head&lt;/code>) - selects the data source. &lt;code>head&lt;/code> queries ingester TSDB heads, &lt;code>blocks&lt;/code> queries compacted blocks in long-term storage via store gateways. Invalid values are rejected with HTTP 400.&lt;/li>
+&lt;li>&lt;code>start&lt;/code> (RFC3339 or Unix timestamp) - start of the time range to analyze. Required for &lt;code>source=blocks&lt;/code>, not accepted for &lt;code>source=head&lt;/code>.&lt;/li>
+&lt;li>&lt;code>end&lt;/code> (RFC3339 or Unix timestamp) - end of the time range to analyze. Required for &lt;code>source=blocks&lt;/code>, not accepted for &lt;code>source=head&lt;/code>.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>&lt;strong>Time Range Behavior&lt;/strong> (&lt;code>source=blocks&lt;/code> only):
+&lt;ul>
+&lt;li>&lt;code>start&lt;/code> and &lt;code>end&lt;/code> are required. Only blocks whose time range overlaps with &lt;code>[start, end]&lt;/code> are analyzed. A block is included if its &lt;code>minTime &amp;lt; end&lt;/code> and its &lt;code>maxTime &amp;gt; start&lt;/code>.&lt;/li>
+&lt;li>The requested time range (&lt;code>end - start&lt;/code>) must not exceed the per-tenant &lt;code>cardinality_max_query_range&lt;/code> limit (see &lt;a href="#per-tenant-limits">Per-Tenant Limits&lt;/a>).&lt;/li>
+&lt;li>&lt;code>start&lt;/code> must be before &lt;code>end&lt;/code>; inverted ranges are rejected with HTTP 400.&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;/ul>
+&lt;p>The head path does not accept &lt;code>start&lt;/code>/&lt;code>end&lt;/code> because the TSDB head cannot filter cardinality statistics by sub-range — it always returns stats for the full head. Rather than accept parameters that cannot be honored, the endpoint rejects them with HTTP 400.&lt;/p>
+&lt;h3 id="error-responses">Error Responses&lt;/h3>
+&lt;p>All error responses use the standard Prometheus API envelope:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{&lt;span style="color:#f92672">&amp;#34;status&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;error&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;errorType&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;bad_data&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;error&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;description of the problem&amp;#34;&lt;/span>}
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Condition&lt;/th>
+&lt;th>HTTP Status&lt;/th>
+&lt;th>Error Message&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Invalid &lt;code>limit&lt;/code> (&amp;lt; 1, &amp;gt; 512, or non-integer)&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>invalid limit: must be an integer between 1 and 512&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Invalid &lt;code>source&lt;/code> (not &lt;code>head&lt;/code> or &lt;code>blocks&lt;/code>)&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>invalid source: must be &amp;quot;head&amp;quot; or &amp;quot;blocks&amp;quot;&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>start&lt;/code>/&lt;code>end&lt;/code> provided with &lt;code>source=head&lt;/code>&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>start and end parameters are not supported for source=head&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>start&lt;/code> or &lt;code>end&lt;/code> missing with &lt;code>source=blocks&lt;/code>&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>start and end are required for source=blocks&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Malformed &lt;code>start&lt;/code> or &lt;code>end&lt;/code>&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>invalid start/end: must be RFC3339 or Unix timestamp&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>start &amp;gt;= end&lt;/code>&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>invalid time range: start must be before end&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Time range exceeds &lt;code>cardinality_max_query_range&lt;/code>&lt;/td>
+&lt;td>400&lt;/td>
+&lt;td>&lt;code>the query time range exceeds the limit (query length: %s, limit: %s)&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="architecture">Architecture&lt;/h3>
+&lt;p>The HTTP handler parses the &lt;code>source&lt;/code> parameter and delegates to the appropriate backend. The endpoint is registered via &lt;code>NewQuerierHandler&lt;/code> in &lt;code>pkg/api/handlers.go&lt;/code> and does &lt;strong>not&lt;/strong> go through the Query Frontend — it is served directly by the Querier. The Query Frontend&amp;rsquo;s splitting, caching, and retry logic is designed for PromQL queries and does not apply to cardinality statistics. The Querier&amp;rsquo;s own per-tenant concurrency limit provides sufficient request control (see &lt;a href="#per-tenant-limits">Per-Tenant Limits&lt;/a>).&lt;/p>
+&lt;h4 id="head-path-sourcehead">Head Path (&lt;code>source=head&lt;/code>)&lt;/h4>
+&lt;p>The request flows through the Querier&amp;rsquo;s HTTP handler, which delegates to the in-process Distributor for ingester fan-out:&lt;/p>
+&lt;pre tabindex="0">&lt;code>Client → HTTP Handler (Querier) → In-process Distributor → gRPC Fan-out (Ingesters) → Aggregation (Distributor) → JSON Response
+&lt;/code>&lt;/pre>&lt;ol>
+&lt;li>&lt;strong>HTTP Handler&lt;/strong> (&lt;code>CardinalityHandler&lt;/code> in &lt;code>pkg/querier/cardinality_handler.go&lt;/code>): Registered via &lt;code>NewQuerierHandler&lt;/code> in &lt;code>pkg/api/handlers.go&lt;/code>. Parses the &lt;code>limit&lt;/code> query parameter and calls the distributor&amp;rsquo;s &lt;code>Cardinality&lt;/code> method.&lt;/li>
+&lt;li>&lt;strong>Distributor Fan-out&lt;/strong> (&lt;code>Cardinality&lt;/code> in &lt;code>pkg/distributor/distributor.go&lt;/code>): The Querier process holds an in-process Distributor instance (initialized via the &lt;code>DistributorService&lt;/code> module). This instance uses &lt;code>GetIngestersForMetadata&lt;/code> to discover all ingesters for the tenant, then sends a &lt;code>CardinalityRequest&lt;/code> gRPC call to each ingester in the replication set with &lt;code>MaxErrors = 0&lt;/code> — all ingesters must respond for the RF-based aggregation to be accurate. If any ingester in the tenant&amp;rsquo;s replication set is unavailable, the request fails.&lt;/li>
+&lt;li>&lt;strong>Ingester&lt;/strong> (&lt;code>Cardinality&lt;/code> in &lt;code>pkg/ingester/ingester.go&lt;/code>): Retrieves the tenant&amp;rsquo;s TSDB head and calls &lt;code>db.Head().Stats(labels.MetricName, limit)&lt;/code> to get cardinality statistics from the Prometheus TSDB library.&lt;/li>
+&lt;li>&lt;strong>Aggregation&lt;/strong>: The distributor merges responses from all ingesters and returns the combined result.&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Rolling upgrade compatibility&lt;/strong>: During rolling deployments, some ingesters may not yet support the &lt;code>Cardinality&lt;/code> RPC. The distributor treats &lt;code>Unimplemented&lt;/code> gRPC errors from old ingesters the same as any other error — since &lt;code>MaxErrors = 0&lt;/code>, the request fails with an HTTP 500 indicating that not all ingesters support the cardinality API. This is acceptable during the upgrade window.&lt;/p>
+&lt;h4 id="blocks-path-sourceblocks">Blocks Path (&lt;code>source=blocks&lt;/code>)&lt;/h4>
+&lt;p>The request flows through the Querier&amp;rsquo;s HTTP handler, which fans out to store gateways using the same &lt;code>BlocksFinder&lt;/code> + &lt;code>GetClientsFor&lt;/code> pattern used by &lt;code>LabelNames&lt;/code>, &lt;code>LabelValues&lt;/code>, and &lt;code>Series&lt;/code>:&lt;/p>
+&lt;pre tabindex="0">&lt;code>Client → HTTP Handler (Querier) → BlocksFinder (discover blocks) → GetClientsFor (route blocks to SGs) → gRPC Fan-out → Aggregation (Querier) → JSON Response
+&lt;/code>&lt;/pre>&lt;ol>
+&lt;li>&lt;strong>HTTP Handler&lt;/strong> (&lt;code>CardinalityHandler&lt;/code> in &lt;code>pkg/querier/cardinality_handler.go&lt;/code>): Parses &lt;code>limit&lt;/code>, &lt;code>start&lt;/code>, &lt;code>end&lt;/code>, and &lt;code>source=blocks&lt;/code>, then calls the blocks store&amp;rsquo;s &lt;code>Cardinality&lt;/code> method.&lt;/li>
+&lt;li>&lt;strong>Block Discovery&lt;/strong>: The Querier uses &lt;code>BlocksFinder.GetBlocks()&lt;/code> to discover all blocks for the tenant within the &lt;code>[start, end]&lt;/code> time range, then calls &lt;code>GetClientsFor()&lt;/code> to route each block to exactly one store gateway instance. Each block is sent to a single store gateway — there is no broadcast to all replicas.&lt;/li>
+&lt;li>&lt;strong>Store Gateway&lt;/strong> (&lt;code>Cardinality&lt;/code> in &lt;code>pkg/storegateway/gateway.go&lt;/code>): Receives a request with specific block IDs. Locates the tenant&amp;rsquo;s &lt;code>BucketStore&lt;/code>, iterates over the specified blocks, and computes cardinality statistics from block indexes (see &lt;a href="#block-index-cardinality-computation">Block Index Cardinality Computation&lt;/a>).&lt;/li>
+&lt;li>&lt;strong>Consistency Check&lt;/strong>: After receiving responses, the querier runs &lt;code>BlocksConsistencyChecker.Check()&lt;/code> to detect missing blocks. If blocks are missing (e.g., a store gateway hasn&amp;rsquo;t loaded a recently uploaded block), the querier retries those blocks on different store gateway replicas, up to 3 attempts. If blocks remain missing after all retries, the response includes partial results.&lt;/li>
+&lt;li>&lt;strong>Aggregation&lt;/strong>: The querier merges responses from all store gateways and returns the combined result.&lt;/li>
+&lt;/ol>
+&lt;p>&lt;strong>Rolling upgrade compatibility&lt;/strong>: During rolling deployments, store gateways that do not yet support the &lt;code>Cardinality&lt;/code> RPC return &lt;code>Unimplemented&lt;/code> errors. The querier retries affected blocks on other replicas. If no replica supports the RPC, those blocks are treated as missing and the response is partial.&lt;/p>
+&lt;h3 id="grpc-definition">gRPC Definition&lt;/h3>
+&lt;p>Shared protobuf messages are defined in &lt;code>pkg/cortexpb/cardinality.proto&lt;/code> and imported by both the ingester and store gateway protos:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">// pkg/cortexpb/cardinality.proto
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">CardinalityStatItem&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">string&lt;/span> name &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">uint64&lt;/span> value &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="ingester-service">Ingester Service&lt;/h4>
+&lt;p>A new &lt;code>Cardinality&lt;/code> RPC is added to the Ingester service in &lt;code>pkg/ingester/client/ingester.proto&lt;/code>:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">rpc&lt;/span> Cardinality(CardinalityRequest) &lt;span style="color:#66d9ef">returns&lt;/span> (CardinalityResponse) {};&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">CardinalityRequest&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int32&lt;/span> limit &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">CardinalityResponse&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">uint64&lt;/span> num_series &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem series_count_by_metric_name &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem label_value_count_by_label_name &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem series_count_by_label_value_pair &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">4&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h4 id="store-gateway-service">Store Gateway Service&lt;/h4>
+&lt;p>A new &lt;code>Cardinality&lt;/code> RPC is added to the StoreGateway service in &lt;code>pkg/storegateway/storegatewaypb/gateway.proto&lt;/code>:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-protobuf" data-lang="protobuf">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">rpc&lt;/span> Cardinality(CardinalityRequest) &lt;span style="color:#66d9ef">returns&lt;/span> (CardinalityResponse) {};&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">CardinalityRequest&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int32&lt;/span> limit &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> min_time &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">int64&lt;/span> max_time &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> &lt;span style="color:#66d9ef">bytes&lt;/span> block_ids &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">4&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>&lt;span style="color:#66d9ef">message&lt;/span> &lt;span style="color:#a6e22e">CardinalityResponse&lt;/span> {&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">uint64&lt;/span> num_series &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">1&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem series_count_by_metric_name &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">2&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem label_value_count_by_label_name &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">3&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span> &lt;span style="color:#66d9ef">repeated&lt;/span> cortexpb.CardinalityStatItem series_count_by_label_value_pair &lt;span style="color:#f92672">=&lt;/span> &lt;span style="color:#ae81ff">4&lt;/span>;&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#960050;background-color:#1e0010">&lt;/span>}&lt;span style="color:#960050;background-color:#1e0010">
+&lt;/span>&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The store gateway &lt;code>CardinalityRequest&lt;/code> includes &lt;code>min_time&lt;/code>, &lt;code>max_time&lt;/code>, and &lt;code>block_ids&lt;/code> so the store gateway can filter blocks server-side. This matches the pattern used by other store gateway RPCs (&lt;code>SeriesRequest&lt;/code>, &lt;code>LabelNamesRequest&lt;/code>) where the querier routes specific blocks to specific store gateways.&lt;/p>
+&lt;h3 id="aggregation-logic">Aggregation Logic&lt;/h3>
+&lt;h4 id="head-path-aggregation">Head Path Aggregation&lt;/h4>
+&lt;p>Because each series is replicated across multiple ingesters (controlled by the replication factor), the aggregation logic divides by the RF when merging responses. All ingesters must respond (&lt;code>MaxErrors = 0&lt;/code>) for the RF division to be accurate.&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Aggregation Strategy&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>numSeries&lt;/code>&lt;/td>
+&lt;td>Sum across ingesters, divide by replication factor&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByMetricName&lt;/code>&lt;/td>
+&lt;td>Sum per metric, divide by RF, return top N&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>labelValueCountByLabelName&lt;/code>&lt;/td>
+&lt;td>Maximum per label (unique counts, not affected by replication)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByLabelValuePair&lt;/code>&lt;/td>
+&lt;td>Sum per pair, divide by RF, return top N&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>The &lt;code>topNStats&lt;/code> helper function handles the sort-and-truncate step: it divides values by the replication factor, sorts descending by value, and returns the top N items.&lt;/p>
+&lt;p>&lt;strong>Note on approximation&lt;/strong>: The RF division is a best-effort approximation, matching the approach used by &lt;code>UserStats&lt;/code>. It can undercount when ingesters are in non-ACTIVE states during ring changes, or when shuffle sharding with a lookback period causes uneven distribution. This is acceptable for a diagnostic endpoint — the goal is to identify the largest cardinality contributors, not to produce exact totals.&lt;/p>
+&lt;h4 id="blocks-path-aggregation">Blocks Path Aggregation&lt;/h4>
+&lt;p>The blocks path uses &lt;code>GetClientsFor&lt;/code> to route each block to exactly one store gateway instance. Since there is no broadcast to all replicas, &lt;strong>no RF division is applied&lt;/strong> — each block&amp;rsquo;s statistics are returned exactly once.&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Aggregation Strategy&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>numSeries&lt;/code>&lt;/td>
+&lt;td>Sum across store gateways (no RF division)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByMetricName&lt;/code>&lt;/td>
+&lt;td>Sum per metric, return top N&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>labelValueCountByLabelName&lt;/code>&lt;/td>
+&lt;td>Maximum per label&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByLabelValuePair&lt;/code>&lt;/td>
+&lt;td>Sum per pair, return top N&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Note on block overlap&lt;/strong>: Before compaction completes, a tenant may have multiple blocks covering the same time range. Series that appear in overlapping blocks are counted once per block they appear in, so the &lt;code>numSeries&lt;/code> total may overcount compared to the true unique series count. In practice, with RF ingesters each uploading 2-hour blocks, a 24-hour query range before compaction could have up to &lt;code>RF * 12&lt;/code> overlapping source blocks, making &lt;code>numSeries&lt;/code> up to &lt;code>RF&lt;/code>x the true value. The response includes an &lt;code>approximated&lt;/code> field set to &lt;code>true&lt;/code> when overlapping blocks are detected, so consumers know the results may be inflated. The top-N rankings remain useful regardless of overlap — the relative ordering of cardinality contributors is preserved.&lt;/p>
+&lt;h3 id="block-index-cardinality-computation">Block Index Cardinality Computation&lt;/h3>
+&lt;p>The store gateway computes cardinality statistics from the block indexes already loaded for the tenant&amp;rsquo;s &lt;code>BucketStore&lt;/code>. Each block has an &lt;code>indexheader.Reader&lt;/code> (memory-mapped binary index header) that provides cheap access to label metadata, and optionally a full &lt;code>index.Reader&lt;/code> for posting list expansion.&lt;/p>
+&lt;p>The three cardinality dimensions have different cost profiles:&lt;/p>
+&lt;h4 id="1-label-value-count-by-label-name-cheap">1. Label Value Count by Label Name (Cheap)&lt;/h4>
+&lt;p>This is computed entirely from the index header, with no object storage I/O:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a6e22e">labelNames&lt;/span>, &lt;span style="color:#a6e22e">_&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#a6e22e">indexHeaderReader&lt;/span>.&lt;span style="color:#a6e22e">LabelNames&lt;/span>()
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> &lt;span style="color:#a6e22e">_&lt;/span>, &lt;span style="color:#a6e22e">name&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#66d9ef">range&lt;/span> &lt;span style="color:#a6e22e">labelNames&lt;/span> {
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#a6e22e">values&lt;/span>, &lt;span style="color:#a6e22e">_&lt;/span> &lt;span style="color:#f92672">:=&lt;/span> &lt;span style="color:#a6e22e">indexHeaderReader&lt;/span>.&lt;span style="color:#a6e22e">LabelValues&lt;/span>(&lt;span style="color:#a6e22e">name&lt;/span>)
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e">// len(values) = number of distinct values for this label
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e">&lt;/span>}
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The index header stores label name → label value → posting offset mappings in memory. Calling &lt;code>LabelValues()&lt;/code> returns the distinct values directly. Across multiple blocks, the values are merged (set union) to produce the total distinct count per label.&lt;/p>
+&lt;h4 id="2-series-count-by-metric-name-moderate">2. Series Count by Metric Name (Moderate)&lt;/h4>
+&lt;p>To count the number of series per &lt;code>__name__&lt;/code> value, we must determine the size of each posting list. Two approaches:&lt;/p>
+&lt;p>&lt;strong>Option A — Posting list expansion&lt;/strong>: For each metric name, call &lt;code>ExpandedPostings(ctx, &amp;quot;__name__&amp;quot;, metricName)&lt;/code> on the full block index to get the posting list (series IDs). The list length equals the series count. This requires fetching posting list data from object storage.&lt;/p>
+&lt;p>&lt;strong>Option B — Posting offset estimation&lt;/strong>: The index header stores the byte offset of each posting list in the index file. The byte length between consecutive posting offsets provides an estimate of the posting list size. Since posting lists are varint-encoded series IDs, the relationship between byte size and series count is approximately proportional. This avoids object storage I/O entirely but produces estimates rather than exact counts.&lt;/p>
+&lt;p>&lt;strong>Recommendation&lt;/strong>: Use Option A (posting list expansion) for the &lt;code>__name__&lt;/code> label only. The number of distinct metric names is typically bounded (hundreds to low thousands), making the cost manageable. Results should be cached per block since compacted blocks are immutable (see &lt;a href="#caching">Caching&lt;/a>).&lt;/p>
+&lt;h4 id="3-series-count-by-label-value-pair-expensive">3. Series Count by Label-Value Pair (Expensive)&lt;/h4>
+&lt;p>This requires expanding posting lists for every label=value combination, which is an order of magnitude more expensive than metric-name-only expansion. For a tenant with 100 label names and 1,000 values each, this means 100,000 posting list lookups.&lt;/p>
+&lt;p>&lt;strong>Recommendation&lt;/strong>: This field is computed on-demand using Option A (posting list expansion). To bound the cost:&lt;/p>
+&lt;ul>
+&lt;li>Only expand posting lists for the top N label names by value count (already known from step 1).&lt;/li>
+&lt;li>Within each label name, only expand posting lists for a bounded number of values.&lt;/li>
+&lt;li>Apply the per-tenant &lt;code>cardinality_query_timeout&lt;/code> (default 60s) so that very high-cardinality tenants get partial results rather than unbounded computation. When a timeout occurs, the response includes whatever results were computed before the deadline, with the &lt;code>approximated&lt;/code> field set to &lt;code>true&lt;/code>.&lt;/li>
+&lt;/ul>
+&lt;p>Results are cached per block (see &lt;a href="#caching">Caching&lt;/a>).&lt;/p>
+&lt;h4 id="block-selection">Block Selection&lt;/h4>
+&lt;p>The store gateway filters blocks based on the required &lt;code>start&lt;/code> and &lt;code>end&lt;/code> parameters: a block is included only if its &lt;code>minTime &amp;lt; end&lt;/code> and its &lt;code>maxTime &amp;gt; start&lt;/code>. This scopes cardinality analysis to a specific time window, such as the last 24 hours or a particular incident period.&lt;/p>
+&lt;h4 id="caching">Caching&lt;/h4>
+&lt;p>Compacted blocks are immutable — once a block is written to object storage, its contents never change. This means cardinality statistics computed from a block&amp;rsquo;s index can be cached indefinitely (until the block is deleted by the compactor).&lt;/p>
+&lt;p>Each store gateway maintains a per-block cardinality cache. The cache stores the full (unlimited) result per block ULID, keyed by &lt;code>(block ULID)&lt;/code>. The &lt;code>limit&lt;/code> (top-N truncation) is applied at response time from the cached full result. This maximizes cache hit rates — a &lt;code>limit=10&lt;/code> request followed by a &lt;code>limit=20&lt;/code> request reuses the same cache entry.&lt;/p>
+&lt;p>The cache is populated on first request and invalidated when blocks are removed during compaction syncs. A safety TTL of 24 hours is applied as defense-in-depth for entries that survive block deletion.&lt;/p>
+&lt;p>&lt;strong>Cache hit/miss metrics&lt;/strong>: The cache exposes &lt;code>cortex_cardinality_cache_hits_total&lt;/code> and &lt;code>cortex_cardinality_cache_misses_total&lt;/code> counters per store gateway (see &lt;a href="#observability">Observability&lt;/a>).&lt;/p>
+&lt;h3 id="response-format">Response Format&lt;/h3>
+&lt;p>The JSON response uses the standard Prometheus API envelope. Both &lt;code>source=head&lt;/code> and &lt;code>source=blocks&lt;/code> return the same data fields:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-json" data-lang="json">&lt;span style="display:flex;">&lt;span>{
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;status&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;success&amp;#34;&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;data&amp;#34;&lt;/span>: {
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;numSeries&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">1500&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;approximated&amp;#34;&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;seriesCountByMetricName&amp;#34;&lt;/span>: [
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;http_requests_total&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">500&lt;/span>},
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;process_cpu_seconds_total&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">200&lt;/span>}
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> ],
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;labelValueCountByLabelName&amp;#34;&lt;/span>: [
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;instance&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">50&lt;/span>},
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;job&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">10&lt;/span>}
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> ],
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">&amp;#34;seriesCountByLabelValuePair&amp;#34;&lt;/span>: [
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;job=api-server&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">300&lt;/span>},
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> {&lt;span style="color:#f92672">&amp;#34;name&amp;#34;&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;instance=host1:9090&amp;#34;&lt;/span>, &lt;span style="color:#f92672">&amp;#34;value&amp;#34;&lt;/span>: &lt;span style="color:#ae81ff">150&lt;/span>}
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> ]
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> }
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>}
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>numSeries&lt;/code>&lt;/td>
+&lt;td>Total number of series (approximate — see notes on RF division and block overlap).&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>approximated&lt;/code>&lt;/td>
+&lt;td>&lt;code>true&lt;/code> when results may be inflated due to overlapping blocks, partial timeout, or missing blocks after consistency check retries. &lt;code>false&lt;/code> when results are exact.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByMetricName&lt;/code>&lt;/td>
+&lt;td>Top N metrics by series count.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>labelValueCountByLabelName&lt;/code>&lt;/td>
+&lt;td>Top N label names by number of distinct values.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>seriesCountByLabelValuePair&lt;/code>&lt;/td>
+&lt;td>Top N label=value pairs by series count.&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="multi-tenancy">Multi-Tenancy&lt;/h3>
+&lt;p>Tenant isolation is enforced through the existing Cortex authentication middleware. The &lt;code>X-Scope-OrgID&lt;/code> header identifies the tenant, and the ingester only returns statistics from that tenant&amp;rsquo;s TSDB head. No cross-tenant data leakage is possible because each tenant has a separate TSDB instance in the ingester.&lt;/p>
+&lt;h3 id="per-tenant-limits">Per-Tenant Limits&lt;/h3>
+&lt;p>To prevent expensive cardinality queries from overloading the system, the following per-tenant runtime-configurable limits are introduced:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Limit&lt;/th>
+&lt;th>Flag&lt;/th>
+&lt;th>YAML&lt;/th>
+&lt;th>Default&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>cardinality_api_enabled&lt;/code>&lt;/td>
+&lt;td>&lt;code>-querier.cardinality-api-enabled&lt;/code>&lt;/td>
+&lt;td>&lt;code>cardinality_api_enabled&lt;/code>&lt;/td>
+&lt;td>&lt;code>false&lt;/code>&lt;/td>
+&lt;td>Enables the cardinality API for this tenant. When disabled, the endpoint returns HTTP 403.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cardinality_max_query_range&lt;/code>&lt;/td>
+&lt;td>&lt;code>-querier.cardinality-max-query-range&lt;/code>&lt;/td>
+&lt;td>&lt;code>cardinality_max_query_range&lt;/code>&lt;/td>
+&lt;td>&lt;code>24h&lt;/code>&lt;/td>
+&lt;td>Maximum allowed time range (&lt;code>end - start&lt;/code>) for &lt;code>source=blocks&lt;/code> cardinality queries.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cardinality_max_concurrent_requests&lt;/code>&lt;/td>
+&lt;td>&lt;code>-querier.cardinality-max-concurrent-requests&lt;/code>&lt;/td>
+&lt;td>&lt;code>cardinality_max_concurrent_requests&lt;/code>&lt;/td>
+&lt;td>&lt;code>2&lt;/code>&lt;/td>
+&lt;td>Maximum number of concurrent cardinality requests per tenant. Excess requests are rejected with HTTP 429.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cardinality_query_timeout&lt;/code>&lt;/td>
+&lt;td>&lt;code>-querier.cardinality-query-timeout&lt;/code>&lt;/td>
+&lt;td>&lt;code>cardinality_query_timeout&lt;/code>&lt;/td>
+&lt;td>&lt;code>60s&lt;/code>&lt;/td>
+&lt;td>Per-request timeout for cardinality computation. On timeout, partial results are returned with &lt;code>approximated: true&lt;/code>.&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>When a &lt;code>source=blocks&lt;/code> request exceeds the &lt;code>cardinality_max_query_range&lt;/code> limit, the endpoint returns HTTP 400 with an error message following the pattern used by &lt;code>max_query_length&lt;/code> violations: &lt;code>&amp;quot;the query time range exceeds the limit (query length: %s, limit: %s)&amp;quot;&lt;/code>.&lt;/p>
+&lt;h3 id="observability">Observability&lt;/h3>
+&lt;p>The cardinality endpoint exposes the following metrics:&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Metric&lt;/th>
+&lt;th>Type&lt;/th>
+&lt;th>Labels&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_request_duration_seconds&lt;/code>&lt;/td>
+&lt;td>Histogram&lt;/td>
+&lt;td>&lt;code>source&lt;/code>, &lt;code>status_code&lt;/code>&lt;/td>
+&lt;td>End-to-end request duration.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_requests_total&lt;/code>&lt;/td>
+&lt;td>Counter&lt;/td>
+&lt;td>&lt;code>source&lt;/code>, &lt;code>status_code&lt;/code>&lt;/td>
+&lt;td>Total requests by source and result.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_inflight_requests&lt;/code>&lt;/td>
+&lt;td>Gauge&lt;/td>
+&lt;td>&lt;code>source&lt;/code>&lt;/td>
+&lt;td>Current number of in-flight cardinality requests.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_cache_hits_total&lt;/code>&lt;/td>
+&lt;td>Counter&lt;/td>
+&lt;td>—&lt;/td>
+&lt;td>Per-block cardinality cache hits (store gateway).&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_cache_misses_total&lt;/code>&lt;/td>
+&lt;td>Counter&lt;/td>
+&lt;td>—&lt;/td>
+&lt;td>Per-block cardinality cache misses (store gateway).&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>cortex_cardinality_blocks_queried_total&lt;/code>&lt;/td>
+&lt;td>Counter&lt;/td>
+&lt;td>—&lt;/td>
+&lt;td>Number of blocks analyzed per request (store gateway).&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>These metrics are registered with &lt;code>promauto.With(reg)&lt;/code> following Cortex conventions — no global registerer is used.&lt;/p>
+&lt;h2 id="rollout-plan">Rollout Plan&lt;/h2>
+&lt;p>The cardinality API is introduced as an &lt;strong>experimental&lt;/strong> feature behind the &lt;code>cardinality_api_enabled&lt;/code> per-tenant flag (default &lt;code>false&lt;/code>).&lt;/p>
+&lt;p>&lt;strong>Phase 1 — Head path&lt;/strong>: Implement the &lt;code>source=head&lt;/code> path (ingester fan-out, RF-based aggregation). This is lower risk since it only queries in-memory TSDB heads with bounded data. Enable for a small set of tenants for validation.&lt;/p>
+&lt;p>&lt;strong>Phase 2 — Blocks path&lt;/strong>: Implement the &lt;code>source=blocks&lt;/code> path (store gateway fan-out, block index analysis, caching). This is higher risk due to potential object storage I/O and larger data volumes. Enable selectively behind the same flag.&lt;/p>
+&lt;p>&lt;strong>Phase 3 — GA&lt;/strong>: After validation, change &lt;code>cardinality_api_enabled&lt;/code> default to &lt;code>true&lt;/code> and graduate from experimental status.&lt;/p>
+&lt;h2 id="design-alternatives">Design Alternatives&lt;/h2>
+&lt;h3 id="distributor-vs-querier-routing-head-path">Distributor vs Querier Routing (Head Path)&lt;/h3>
+&lt;p>This design routes the endpoint through the &lt;strong>Querier&lt;/strong>, which handles the HTTP request and delegates to the in-process Distributor for ingester fan-out and aggregation. An alternative is to route through the &lt;strong>Distributor&lt;/strong> directly.&lt;/p>
+&lt;p>&lt;strong>Current approach (Querier):&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Provides logical separation — this is a read-only diagnostic endpoint and belongs on the read path alongside other query APIs.&lt;/li>
+&lt;li>Follows the pattern used by the &lt;code>/api/v1/metadata&lt;/code> endpoint, which is registered via &lt;code>NewQuerierHandler&lt;/code> and delegates to the Distributor&amp;rsquo;s &lt;code>MetricsMetadata&lt;/code> method.&lt;/li>
+&lt;li>Requires adding &lt;code>Cardinality&lt;/code> to the Querier&amp;rsquo;s Distributor interface (&lt;code>pkg/querier/distributor_queryable.go&lt;/code>) and a handler in the Querier package.&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Alternative (Distributor):&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Follows the pattern used by the &lt;code>UserStats&lt;/code> endpoint, which is registered directly on the Distributor.&lt;/li>
+&lt;li>Slightly simpler — no need to thread the method through the Querier&amp;rsquo;s Distributor interface.&lt;/li>
+&lt;/ul>
+&lt;p>Note that both approaches have the same number of network hops. Even in microservices mode, the Querier process initializes an in-process Distributor instance via the &lt;code>DistributorService&lt;/code> module (a &lt;code>UserInvisibleModule&lt;/code> dependency of &lt;code>Queryable&lt;/code>). This in-process Distributor holds its own ingester client pool and connects directly to ingesters via gRPC. The choice between Querier and Distributor routing only affects which process serves the HTTP request, not the number of network hops.&lt;/p>
+&lt;h3 id="posting-list-expansion-vs-offset-estimation-blocks-path">Posting List Expansion vs Offset Estimation (Blocks Path)&lt;/h3>
+&lt;p>For computing series counts from block indexes, two strategies were considered:&lt;/p>
+&lt;p>&lt;strong>Posting list expansion (chosen):&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Fetches and decodes the posting list for each label value from the full block index.&lt;/li>
+&lt;li>Produces exact series counts.&lt;/li>
+&lt;li>Requires object storage I/O on first access (cached thereafter).&lt;/li>
+&lt;li>Cost is proportional to the number of distinct metric names (typically manageable).&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Posting offset estimation:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Uses byte offsets between consecutive entries in the posting offset table (available in the index header) to estimate posting list sizes.&lt;/li>
+&lt;li>No object storage I/O required — uses only the memory-mapped index header.&lt;/li>
+&lt;li>Produces approximate counts since varint encoding means byte size is not directly proportional to series count.&lt;/li>
+&lt;li>Would require calibration or a conversion factor that varies by data characteristics.&lt;/li>
+&lt;/ul>
+&lt;p>Posting list expansion was chosen because exact counts are more useful for cardinality debugging, and the per-block caching strategy (blocks are immutable) amortizes the object storage I/O cost over repeated requests.&lt;/p>
+&lt;h3 id="compactor-based-precomputation-blocks-path">Compactor-Based Precomputation (Blocks Path)&lt;/h3>
+&lt;p>An alternative to on-demand computation is precomputing cardinality statistics during compaction and storing them in block &lt;code>meta.json&lt;/code>:&lt;/p>
+&lt;p>&lt;strong>Pros:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Zero read-time cost — statistics are available immediately from block metadata.&lt;/li>
+&lt;li>The compactor already reads the full block index during compaction and validation (&lt;code>GatherIndexHealthStats&lt;/code>).&lt;/li>
+&lt;/ul>
+&lt;p>&lt;strong>Cons:&lt;/strong>&lt;/p>
+&lt;ul>
+&lt;li>Statistics are only available after compaction runs. Freshly uploaded blocks from ingesters would have no cardinality data until the next compaction cycle.&lt;/li>
+&lt;li>Increases &lt;code>meta.json&lt;/code> size. With hundreds of metric names and label-value pairs, the cardinality data could be significant.&lt;/li>
+&lt;li>The &lt;code>limit&lt;/code> parameter cannot be applied at precomputation time — either store all data or pick a fixed limit.&lt;/li>
+&lt;li>Adds complexity to the compaction pipeline for a diagnostic feature.&lt;/li>
+&lt;/ul>
+&lt;p>The on-demand approach was chosen because it works for all blocks immediately (not just compacted ones) and allows flexible &lt;code>limit&lt;/code> parameters per request.&lt;/p>
+&lt;h2 id="implementation">Implementation&lt;/h2>
+&lt;p>The implementation spans the following key files:&lt;/p>
+&lt;h3 id="head-path-ingester">Head Path (Ingester)&lt;/h3>
+&lt;ul>
+&lt;li>&lt;code>pkg/api/handlers.go&lt;/code> - Route registration in &lt;code>NewQuerierHandler&lt;/code> (both prometheus and legacy prefixes)&lt;/li>
+&lt;li>&lt;code>pkg/querier/cardinality_handler.go&lt;/code> - HTTP handler (&lt;code>CardinalityHandler&lt;/code>)&lt;/li>
+&lt;li>&lt;code>pkg/querier/cardinality_handler_test.go&lt;/code> - Handler unit tests&lt;/li>
+&lt;li>&lt;code>pkg/querier/distributor_queryable.go&lt;/code> - &lt;code>Cardinality&lt;/code> added to the Distributor interface&lt;/li>
+&lt;li>&lt;code>pkg/distributor/distributor.go&lt;/code> - Fan-out to ingesters and aggregation logic (&lt;code>Cardinality&lt;/code>, &lt;code>topNStats&lt;/code>)&lt;/li>
+&lt;li>&lt;code>pkg/distributor/distributor_test.go&lt;/code> - Aggregation unit tests&lt;/li>
+&lt;li>&lt;code>pkg/ingester/ingester.go&lt;/code> - Per-tenant TSDB head stats retrieval (&lt;code>Cardinality&lt;/code>, &lt;code>statsToPB&lt;/code>)&lt;/li>
+&lt;li>&lt;code>pkg/ingester/client/ingester.proto&lt;/code> - gRPC message definitions (&lt;code>CardinalityRequest&lt;/code>, &lt;code>CardinalityResponse&lt;/code>)&lt;/li>
+&lt;/ul>
+&lt;h3 id="blocks-path-store-gateway">Blocks Path (Store Gateway)&lt;/h3>
+&lt;ul>
+&lt;li>&lt;code>pkg/querier/cardinality_handler.go&lt;/code> - HTTP handler routes &lt;code>source=blocks&lt;/code> to store gateway path&lt;/li>
+&lt;li>&lt;code>pkg/querier/blocks_store_queryable.go&lt;/code> - &lt;code>Cardinality&lt;/code> added to the store gateway query interface&lt;/li>
+&lt;li>&lt;code>pkg/storegateway/storegatewaypb/gateway.proto&lt;/code> - gRPC message definitions for store gateway &lt;code>Cardinality&lt;/code> RPC&lt;/li>
+&lt;li>&lt;code>pkg/storegateway/gateway.go&lt;/code> - Store gateway &lt;code>Cardinality&lt;/code> handler, delegates to &lt;code>ThanosBucketStores&lt;/code>&lt;/li>
+&lt;li>&lt;code>pkg/storegateway/bucket_stores.go&lt;/code> - Per-tenant block iteration and cardinality computation from index headers and block indexes&lt;/li>
+&lt;/ul>
+&lt;h3 id="shared">Shared&lt;/h3>
+&lt;ul>
+&lt;li>&lt;code>pkg/cortexpb/cardinality.proto&lt;/code> - Shared &lt;code>CardinalityStatItem&lt;/code> message definition&lt;/li>
+&lt;li>&lt;code>pkg/util/validation/limits.go&lt;/code> - Per-tenant limit definitions (&lt;code>cardinality_api_enabled&lt;/code>, &lt;code>cardinality_max_query_range&lt;/code>, &lt;code>cardinality_max_concurrent_requests&lt;/code>, &lt;code>cardinality_query_timeout&lt;/code>)&lt;/li>
+&lt;li>&lt;code>pkg/util/validation/exporter.go&lt;/code> - Overrides exporter for new limits&lt;/li>
+&lt;li>&lt;code>docs/api/_index.md&lt;/code> - API documentation (updated with &lt;code>source&lt;/code>, &lt;code>start&lt;/code>, and &lt;code>end&lt;/code> parameters)&lt;/li>
+&lt;li>&lt;code>integration/api_endpoints_test.go&lt;/code> - Integration tests for both head and blocks paths&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Retention of Tenant Data from Blocks Storage</title><link>/docs/proposals/tenant-retention/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/tenant-retention/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/Allenzhli">Allenzhli&lt;/a>&lt;/li>
 &lt;li>Date: January 2021&lt;/li>
@@ -16417,27 +16895,4 @@ and will start receiving samples after it enters the ACTIVE state.&lt;/p></descr
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">connect_timeout&lt;/span>: &lt;span style="color:#ae81ff">1s&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">hosts&lt;/span>: [{ &lt;span style="color:#f92672">socket_address&lt;/span>: { &lt;span style="color:#f92672">address: cortex-secondary, port_value&lt;/span>: &lt;span style="color:#ae81ff">80&lt;/span> }}]
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">dns_refresh_rate&lt;/span>: &lt;span style="color:#ae81ff">5s&lt;/span>
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: Binary index-header</title><link>/docs/blocks-storage/binary-index-header/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/binary-index-header/</guid><description>
-&lt;p>In order to query series inside blocks from object storage, the &lt;a href="/docs/blocks-storage/store-gateway/">store-gateway&lt;/a> has to know certain initial info from each block index. In order to achieve so, the store-gateway builds an index-header for each block and stores it on local disk; such index-header is built by downloading specific pieces of original block&amp;rsquo;s index and storing them on local disk. Index header is then used by store-gateway at query time.&lt;/p>
-&lt;p>Store-gateways build the index-header with specific sections of the block&amp;rsquo;s index downloaded using &lt;strong>GET byte range requests&lt;/strong>. Since downloading specific sections of the original block&amp;rsquo;s index is a computationally easy operation, the index-header is never uploaded back to the object storage and multiple store-gateway instances (or the same instance after a rolling update without a persistent disk) will re-build the index-header from original block&amp;rsquo;s index each time, if not already existing on local disk.&lt;/p>
-&lt;h2 id="format-version-1">Format (version 1)&lt;/h2>
-&lt;p>The index-header is a subset of the block index and contains:&lt;/p>
-&lt;ul>
-&lt;li>&lt;a href="https://github.com/prometheus/prometheus/blob/master/tsdb/docs/format/index.md#symbol-table">Symbol Table&lt;/a>, used to unintern string values&lt;/li>
-&lt;li>&lt;a href="https://github.com/prometheus/prometheus/blob/master/tsdb/docs/format/index.md#postings-offset-table">Posting Offset Table&lt;/a>, used to lookup postings&lt;/li>
-&lt;/ul>
-&lt;p>The following describes the format of the index-header file found in each block store-gateway local directory. It is terminated by a table of contents which serves as an entry point into the index.&lt;/p>
-&lt;pre tabindex="0">&lt;code>┌─────────────────────────────┬───────────────────────────────┐
-│ magic(0xBAAAD792) &amp;lt;4b&amp;gt; │ version(1) &amp;lt;1 byte&amp;gt; │
-├─────────────────────────────┬───────────────────────────────┤
-│ index version(2) &amp;lt;1 byte&amp;gt; │ index PostingOffsetTable &amp;lt;8b&amp;gt; │
-├─────────────────────────────┴───────────────────────────────┤
-│ ┌─────────────────────────────────────────────────────────┐ │
-│ │ Symbol Table (exact copy from original index) │ │
-│ ├─────────────────────────────────────────────────────────┤ │
-│ │ Posting Offset Table (exact copy from index) │ │
-│ ├─────────────────────────────────────────────────────────┤ │
-│ │ TOC │ │
-│ └─────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-&lt;/code>&lt;/pre></description></item></channel></rss>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item></channel></rss>

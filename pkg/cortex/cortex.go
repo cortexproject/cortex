@@ -351,8 +351,8 @@ type Cortex struct {
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
-	StoreQueryables        []querier.QueryableWithFilter
-	BlocksStoreQueryable   *querier.BlocksStoreQueryable
+	StoreQueryables      []querier.QueryableWithFilter
+	BlocksStoreQueryable *querier.BlocksStoreQueryable
 }
 
 // New makes a new Cortex.

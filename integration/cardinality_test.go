@@ -58,10 +58,10 @@ func TestCardinalityAPI(t *testing.T) {
 		"-querier.cardinality-api-enabled":                  "true",
 		"-alertmanager.web.external-url":                    "http://localhost/alertmanager",
 		// Use inmemory ring to avoid needing Consul.
-		"-ring.store":                          "inmemory",
-		"-compactor.ring.store":                "inmemory",
-		"-store-gateway.sharding-ring.store":   "inmemory",
-		"-store-gateway.sharding-enabled":      "true",
+		"-ring.store":                                     "inmemory",
+		"-compactor.ring.store":                           "inmemory",
+		"-store-gateway.sharding-ring.store":              "inmemory",
+		"-store-gateway.sharding-enabled":                 "true",
 		"-store-gateway.sharding-ring.replication-factor": "1",
 	})
 

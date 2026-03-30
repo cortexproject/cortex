@@ -10,11 +10,11 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -132,7 +132,7 @@ func CardinalityHandler(d Distributor, blocksQuerier BlocksCardinalityQuerier, l
 		startTime := time.Now()
 
 		// Extract tenant ID.
-		tenantID, err := user.ExtractOrgID(r.Context())
+		tenantID, err := users.TenantID(r.Context())
 		if err != nil {
 			writeCardinalityError(w, http.StatusBadRequest, cardinalityErrorTypeBadData, err.Error())
 			return

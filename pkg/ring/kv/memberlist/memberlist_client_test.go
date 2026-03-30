@@ -657,7 +657,6 @@ func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen
 	stop := make(chan struct{})
 
 	var clientWg sync.WaitGroup
-	clientWg.Add(members)
 
 	clientErrCh := make(chan error, members)
 	getClientErr := func() error {
@@ -685,6 +684,7 @@ func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen
 		require.NoError(t, err)
 		clients = append(clients, kv)
 
+		clientWg.Add(1)
 		go func(kv *Client, nodeName string, portToConnect int) {
 			defer clientWg.Done()
 
@@ -700,10 +700,6 @@ func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen
 	t.Log("Waiting before start")
 	time.Sleep(2 * time.Second)
 	close(start)
-
-	if err := getClientErr(); err != nil {
-		return err
-	}
 
 	t.Log("Observing ring ...")
 

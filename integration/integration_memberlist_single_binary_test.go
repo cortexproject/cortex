@@ -74,7 +74,7 @@ func TestSingleBinaryWithMemberlistClusterLabelIsolation(t *testing.T) {
 	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
 }
 
-func TestSingleBinaryWithMemberlistClusterLabelMigrationPhases(t *testing.T) {
+func TestSingleBinaryWithMemberlistClusterLabelRollingMigration(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -86,37 +86,39 @@ func TestSingleBinaryWithMemberlistClusterLabelMigrationPhases(t *testing.T) {
 
 	const clusterLabel = "migration-cluster"
 
-	phase1Cortex1 := newSingleBinary("migration-cortex-1", "", "", map[string]string{
-		"-memberlist.cluster-label-verification-disabled": "true",
-	})
-	phase1Cortex2 := newSingleBinary("migration-cortex-2", "", networkName+"-migration-cortex-1:8000", map[string]string{
-		"-memberlist.cluster-label":                       clusterLabel,
-		"-memberlist.cluster-label-verification-disabled": "true",
-	})
-	phase1Cortex3 := newSingleBinary("migration-cortex-3", "", networkName+"-migration-cortex-1:8000", map[string]string{
-		"-memberlist.cluster-label":                       clusterLabel,
-		"-memberlist.cluster-label-verification-disabled": "true",
-	})
+	configs := []struct {
+		name string
+		join string
+	}{
+		{name: "migration-cortex-1", join: networkName + "-migration-cortex-2:8000"},
+		{name: "migration-cortex-2", join: networkName + "-migration-cortex-1:8000"},
+		{name: "migration-cortex-3", join: networkName + "-migration-cortex-1:8000"},
+	}
 
-	require.NoError(t, s.StartAndWaitReady(phase1Cortex1))
-	require.NoError(t, s.StartAndWaitReady(phase1Cortex2, phase1Cortex3))
-	requireMemberlistClusterState(t, 3, 3*512, phase1Cortex1, phase1Cortex2, phase1Cortex3)
+	cortexServices := make([]*e2ecortex.CortexService, 0, len(configs))
+	for _, cfg := range configs {
+		cortexServices = append(cortexServices, newMigrationSingleBinary(cfg.name, cfg.join, "", true))
+	}
 
-	require.NoError(t, s.Stop(phase1Cortex1, phase1Cortex2, phase1Cortex3))
+	require.NoError(t, s.StartAndWaitReady(cortexServices[0]))
+	require.NoError(t, s.StartAndWaitReady(cortexServices[1], cortexServices[2]))
+	requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
 
-	phase2Cortex1 := newSingleBinary("migration-cortex-1", "", "", map[string]string{
-		"-memberlist.cluster-label": clusterLabel,
-	})
-	phase2Cortex2 := newSingleBinary("migration-cortex-2", "", networkName+"-migration-cortex-1:8000", map[string]string{
-		"-memberlist.cluster-label": clusterLabel,
-	})
-	phase2Cortex3 := newSingleBinary("migration-cortex-3", "", networkName+"-migration-cortex-1:8000", map[string]string{
-		"-memberlist.cluster-label": clusterLabel,
-	})
+	for i, cfg := range configs {
+		replacement := newMigrationSingleBinary(cfg.name, cfg.join, clusterLabel, true)
+		require.NoError(t, s.Stop(cortexServices[i]))
+		require.NoError(t, s.StartAndWaitReady(replacement))
+		cortexServices[i] = replacement
+		requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
+	}
 
-	require.NoError(t, s.StartAndWaitReady(phase2Cortex1))
-	require.NoError(t, s.StartAndWaitReady(phase2Cortex2, phase2Cortex3))
-	requireMemberlistClusterState(t, 3, 3*512, phase2Cortex1, phase2Cortex2, phase2Cortex3)
+	for i, cfg := range configs {
+		replacement := newMigrationSingleBinary(cfg.name, cfg.join, clusterLabel, false)
+		require.NoError(t, s.Stop(cortexServices[i]))
+		require.NoError(t, s.StartAndWaitReady(replacement))
+		cortexServices[i] = replacement
+		requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
+	}
 }
 
 func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string) {
@@ -240,6 +242,19 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 
 	serv.SetBackoff(backOff)
 	return serv
+}
+
+func newMigrationSingleBinary(name string, join string, clusterLabel string, verificationDisabled bool) *e2ecortex.CortexService {
+	flags := map[string]string{
+		"-memberlist.abort-if-join-fails":                 "false",
+		"-memberlist.cluster-label-verification-disabled": fmt.Sprintf("%t", verificationDisabled),
+	}
+
+	if clusterLabel != "" {
+		flags["-memberlist.cluster-label"] = clusterLabel
+	}
+
+	return newSingleBinary(name, "", join, flags)
 }
 
 func requireMemberlistClusterState(t *testing.T, expectedMembers, expectedTokens int, services ...*e2ecortex.CortexService) {

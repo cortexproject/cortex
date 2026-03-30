@@ -119,7 +119,8 @@ func (cfg *MultitenantAlertmanagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.AutoWebhookRoot, "alertmanager.configs.auto-webhook-root", "", "Root of URL to generate if config is "+autoWebhookURL)
 	f.DurationVar(&cfg.PollInterval, "alertmanager.configs.poll-interval", 15*time.Second, "How frequently to poll Cortex configs")
 
-	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Enable the experimental alertmanager config api.")
+	f.BoolVar(&cfg.EnableAPI, "experimental.alertmanager.enable-api", false, "Deprecated: Use -alertmanager.enable-api instead.")
+	f.BoolVar(&cfg.EnableAPI, "alertmanager.enable-api", false, "Enable the alertmanager config api.")
 	f.IntVar(&cfg.APIConcurrency, "alertmanager.api-concurrency", 0, "Maximum number of concurrent GET API requests before returning an error.")
 	f.DurationVar(&cfg.GCInterval, "alertmanager.alerts-gc-interval", 30*time.Minute, "Alertmanager alerts Garbage collection interval.")
 	f.BoolVar(&cfg.ShardingEnabled, "alertmanager.sharding-enabled", false, "Shard tenants across multiple alertmanager instances.")
@@ -352,8 +353,6 @@ func NewMultitenantAlertmanager(cfg *MultitenantAlertmanagerConfig, store alerts
 
 	var ringStore kv.Client
 	if cfg.ShardingEnabled {
-		util_log.WarnExperimentalUse("Alertmanager sharding")
-
 		ringStore, err = kv.NewClient(
 			cfg.ShardingRing.KVStore,
 			ring.GetCodec(),
@@ -715,7 +714,10 @@ func (am *MultitenantAlertmanager) userIndexUpdateLoop(ctx context.Context) {
 			level.Error(am.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
 			return
 		case <-ticker.C:
-			owned := am.isUserOwned(userID)
+			owned, err := am.isUserOwned(userID)
+			if err != nil {
+				continue
+			}
 			if !owned {
 				continue
 			}
@@ -805,7 +807,11 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 
 	// Filter out users not owned by this shard.
 	for _, userID := range allUserIDs {
-		if am.isUserOwned(userID) {
+		owned, err := am.isUserOwned(userID)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to check if user %s is owned", userID)
+		}
+		if owned {
 			ownedUserIDs = append(ownedUserIDs, userID)
 		}
 	}
@@ -822,24 +828,24 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 	return allUserIDs, configs, nil
 }
 
-func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
+func (am *MultitenantAlertmanager) isUserOwned(userID string) (bool, error) {
 	if !am.allowedTenants.IsAllowed(userID) {
-		return false
+		return false, nil
 	}
 
 	// If sharding is disabled, any alertmanager instance owns all users.
 	if !am.cfg.ShardingEnabled {
-		return true
+		return true, nil
 	}
 
 	alertmanagers, err := am.ring.Get(users.ShardByUser(userID), getSyncRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
 		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
-		return false
+		return false, err
 	}
 
-	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr())
+	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr()), nil
 }
 
 func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alertspb.AlertConfigDesc) {

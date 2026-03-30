@@ -430,6 +430,99 @@ func TestDistributor_Push(t *testing.T) {
 	}
 }
 
+func TestDistributor_Push_DiscardOutOfOrder(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), "userDiscardOOO")
+
+	tests := []struct {
+		name               string
+		discardOutOfOrder  bool
+		expectedDiscardOOO bool
+		useStreamPush      bool
+	}{
+		{
+			name:               "DiscardOutOfOrder=true with regular push",
+			discardOutOfOrder:  true,
+			expectedDiscardOOO: true,
+			useStreamPush:      false,
+		},
+		{
+			name:               "DiscardOutOfOrder=false with regular push",
+			discardOutOfOrder:  false,
+			expectedDiscardOOO: false,
+			useStreamPush:      false,
+		},
+		{
+			name:               "DiscardOutOfOrder=true with stream push",
+			discardOutOfOrder:  true,
+			expectedDiscardOOO: true,
+			useStreamPush:      true,
+		},
+		{
+			name:               "DiscardOutOfOrder=false with stream push",
+			discardOutOfOrder:  false,
+			expectedDiscardOOO: false,
+			useStreamPush:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+
+			ds, ingesters, _, _ := prepare(t, prepConfig{
+				numIngesters:     3,
+				happyIngesters:   3,
+				numDistributors:  1,
+				shardByAllLabels: true,
+				limits:           limits,
+				useStreamPush:    tc.useStreamPush,
+			})
+
+			request := makeWriteRequest(123456789000, 5, 0, 0)
+			request.DiscardOutOfOrder = tc.discardOutOfOrder
+
+			_, err := ds[0].Push(ctx, request)
+			require.NoError(t, err)
+
+			// Poll to ensure all ingesters have received the push before verifying.
+			test.Poll(t, time.Second, nil, func() any {
+				for _, ing := range ingesters {
+					ing.Lock()
+					pushCalls := ing.calls["Push"]
+					lastDiscardOOO := ing.lastDiscardOutOfOrder
+					ing.Unlock()
+
+					// Wait for all ingesters to receive the push call
+					if pushCalls == 0 {
+						return fmt.Errorf("ingester has not received push yet")
+					}
+
+					// Wait for the DiscardOutOfOrder flag to match expected value
+					if lastDiscardOOO != tc.expectedDiscardOOO {
+						return fmt.Errorf("ingester has DiscardOutOfOrder=%v, expected %v", lastDiscardOOO, tc.expectedDiscardOOO)
+					}
+				}
+				return nil
+			})
+
+			// Final assertion: verify all ingesters received the correct DiscardOutOfOrder flag
+			for _, ing := range ingesters {
+				ing.Lock()
+				lastDiscardOOO := ing.lastDiscardOutOfOrder
+				ing.Unlock()
+
+				assert.Equal(t, tc.expectedDiscardOOO, lastDiscardOOO,
+					"ingester should have received DiscardOutOfOrder=%v", tc.expectedDiscardOOO)
+			}
+		})
+	}
+}
+
 func TestDistributor_MetricsCleanup(t *testing.T) {
 	t.Parallel()
 	dists, _, regs, r := prepare(t, prepConfig{
@@ -3604,14 +3697,15 @@ type mockIngester struct {
 	sync.Mutex
 	client.IngesterClient
 	grpc_health_v1.HealthClient
-	happy      atomic.Bool
-	failResp   atomic.Error
-	stats      client.UsersStatsResponse
-	timeseries map[uint32]*cortexpb.PreallocTimeseries
-	metadata   map[uint32]map[cortexpb.MetricMetadata]struct{}
-	queryDelay time.Duration
-	calls      map[string]int
-	lblsValues []string
+	happy                 atomic.Bool
+	failResp              atomic.Error
+	stats                 client.UsersStatsResponse
+	timeseries            map[uint32]*cortexpb.PreallocTimeseries
+	metadata              map[uint32]map[cortexpb.MetricMetadata]struct{}
+	queryDelay            time.Duration
+	calls                 map[string]int
+	lblsValues            []string
+	lastDiscardOutOfOrder bool
 }
 
 func newMockIngester(id int, ps *prepState, cfg prepConfig) *mockIngester {
@@ -3681,6 +3775,9 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 	defer i.Unlock()
 
 	i.trackCall("Push")
+
+	// Store the DiscardOutOfOrder flag for test assertions
+	i.lastDiscardOutOfOrder = req.DiscardOutOfOrder
 
 	if !i.happy.Load() {
 		return nil, i.failResp.Load()

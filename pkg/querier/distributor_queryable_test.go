@@ -387,6 +387,92 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 	}
 }
 
+// TestDistributorQuerier_Select_CancelledContext_NoRetry verifies that with
+// ingesterQueryMaxAttempts=1, a cancelled context does not panic because the
+// direct code path (no retry loop) is used.
+func TestDistributorQuerier_Select_CancelledContext_NoRetry(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	d := &MockDistributor{}
+	d.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, context.Canceled)
+
+	ingesterQueryMaxAttempts := 1
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+		return true
+	}, ingesterQueryMaxAttempts)
+	querier, err := queryable.Querier(mint, maxt)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+		_ = seriesSet.Err()
+	})
+}
+
+// TestDistributorQuerier_Select_CancelledContext reproduces the panic described
+// in https://github.com/cortexproject/cortex/issues/7364.
+//
+// When ingesterQueryMaxAttempts > 1 and the context is cancelled before the
+// retry loop starts (e.g. query timeout or another querier goroutine failing),
+// backoff.Ongoing() returns false immediately. queryWithRetry now propagates
+// ctx.Err() so callers always see a non-nil error.
+func TestDistributorQuerier_Select_CancelledContext(t *testing.T) {
+	t.Parallel()
+
+	// Create a context that is already cancelled.
+	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	d := &MockDistributor{}
+	// No mock expectations needed — QueryStream should never be called
+	// because the context is already cancelled.
+
+	ingesterQueryMaxAttempts := 2
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+		return true
+	}, ingesterQueryMaxAttempts)
+	querier, err := queryable.Querier(mint, maxt)
+	require.NoError(t, err)
+
+	seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt})
+	require.ErrorIs(t, seriesSet.Err(), context.Canceled)
+}
+
+// TestDistributorQuerier_Labels_CancelledContext verifies that labelsWithRetry
+// propagates ctx.Err() when the context is cancelled before the retry loop
+// executes.
+func TestDistributorQuerier_Labels_CancelledContext(t *testing.T) {
+	t.Parallel()
+
+	ctx := user.InjectOrgID(context.Background(), "0")
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+
+	d := &MockDistributor{}
+
+	ingesterQueryMaxAttempts := 2
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+		return true
+	}, ingesterQueryMaxAttempts)
+	querier, err := queryable.Querier(mint, maxt)
+	require.NoError(t, err)
+
+	t.Run("LabelNames", func(t *testing.T) {
+		_, _, err := querier.LabelNames(ctx, nil)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+
+	t.Run("LabelValues", func(t *testing.T) {
+		_, _, err := querier.LabelValues(ctx, "foo", nil)
+		require.ErrorIs(t, err, context.Canceled)
+	})
+}
+
 func TestDistributorQuerier_LabelNames(t *testing.T) {
 	t.Parallel()
 

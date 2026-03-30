@@ -132,7 +132,7 @@ func memcacheStatusCode(err error) string {
 }
 
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
-func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string) {
+func (c *Memcached) Fetch(ctx context.Context, keys []string, ttl time.Duration) (found []string, bufs [][]byte, missed []string) {
 	if c.cfg.BatchSize == 0 {
 		found, bufs, missed = c.fetch(ctx, keys)
 		return
@@ -233,13 +233,19 @@ loopResults:
 }
 
 // Store stores the key in the cache.
-func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (c *Memcached) Store(ctx context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
+	// If TTL is 0, fall back to configured expiration
+	if ttl == 0 {
+		ttl = c.cfg.Expiration
+	}
+	expiration := int32(ttl.Seconds())
+
 	for i := range keys {
 		err := instr.CollectedRequest(ctx, "Memcache.Put", c.requestDuration, memcacheStatusCode, func(_ context.Context) error {
 			item := memcache.Item{
 				Key:        keys[i],
 				Value:      bufs[i],
-				Expiration: int32(c.cfg.Expiration.Seconds()),
+				Expiration: expiration,
 			}
 			return c.memcache.Set(&item)
 		})

@@ -310,6 +310,17 @@ tenant_federation:
   # CLI flag: -tenant-federation.user-sync-interval
   [user_sync_interval: <duration> | default = 5m]
 
+  # [Experimental] Cache size of regex match results used by regex resolver.
+  # Each cache entry includes both regex patterns (e.g. `user-.+`) and resolved
+  # tenant IDs (e.g. `user-1`). Set to 0 or less to disable caching.
+  # CLI flag: -tenant-federation.regex-cache-size
+  [regex_cache_size: <int> | default = 1000]
+
+  # [Experimental] If enabled, query errors from individual tenants are treated
+  # as warnings, allowing partial results to be returned.
+  # CLI flag: -tenant-federation.allow-partial-data
+  [allow_partial_data: <boolean> | default = false]
+
 # The ruler_config configures the Cortex ruler.
 [ruler: <ruler_config>]
 
@@ -610,7 +621,7 @@ cluster:
   # CLI flag: -alertmanager.cluster.push-pull-interval
   [push_pull_interval: <duration> | default = 1m]
 
-# Enable the experimental alertmanager config api.
+# Deprecated: Use -alertmanager.enable-api instead.
 # CLI flag: -experimental.alertmanager.enable-api
 [enable_api: <boolean> | default = false]
 
@@ -3103,9 +3114,8 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.enable-startup-sync
   [enable_startup_sync: <boolean> | default = false]
 
-  # Backend storage to use for the ring. Please be aware that memberlist is not
-  # supported by the HA tracker since gossip propagation is too slow for HA
-  # purposes.
+  # Backend storage to use for the ring. Memberlist support in the HA tracker is
+  # experimental, as gossip propagation delays may impact HA performance.
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul,
     # dynamodb, etcd, inmemory, memberlist, multi.
@@ -3343,6 +3353,10 @@ otlp:
   # Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.
   # CLI flag: -distributor.otlp.enable-type-and-unit-labels
   [enable_type_and_unit_labels: <boolean> | default = false]
+
+  # If true, suffixes will be added to the metrics for name normalization.
+  # CLI flag: -distributor.otlp.add-metric-suffixes
+  [add_metric_suffixes: <boolean> | default = true]
 ```
 
 ### `etcd_config`
@@ -4238,6 +4252,20 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness: <duration> | default = 1m]
 
+# Per-tenant TTL for cached query results in the cache backend
+# (Memcached/Redis/FIFO). This is the standard TTL for results that do not
+# overlap with the out-of-order time window. 0 (default) means use the global
+# cache backend TTL configuration.
+# CLI flag: -frontend.results-cache-ttl
+[results_cache_ttl: <duration> | default = 0s]
+
+# Per-tenant TTL for cached query results that overlap with the out-of-order
+# time window. These results may still receive out-of-order samples, so they
+# typically use a shorter TTL. 0 (default) means use the global cache backend
+# TTL configuration.
+# CLI flag: -frontend.out-of-order-results-cache-ttl
+[out_of_order_results_cache_ttl: <duration> | default = 0s]
+
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
 # will handle requests for the tenant. If the value is < 1, it will be treated
@@ -4580,6 +4608,10 @@ The `memberlist_config` configures the Gossip memberlist.
 # How long to keep LEFT ingesters in the ring.
 # CLI flag: -memberlist.left-ingesters-timeout
 [left_ingesters_timeout: <duration> | default = 5m]
+
+# How long to keep deleted keys (tombstones) in the KV store
+# CLI flag: -memberlist.tombstone-timeout
+[tombstone_timeout: <duration> | default = 5m]
 
 # Timeout for leaving memberlist cluster.
 # CLI flag: -memberlist.leave-timeout
@@ -5612,7 +5644,7 @@ ring:
 [flush_period: <duration> | default = 1m]
 
 # Enable the ruler api
-# CLI flag: -experimental.ruler.enable-api
+# CLI flag: -ruler.enable-api
 [enable_api: <boolean> | default = false]
 
 # EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API

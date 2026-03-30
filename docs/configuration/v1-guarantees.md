@@ -39,10 +39,7 @@ Currently experimental features are:
   - Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address`).
   - When `-ruler.frontend-address` is specified, the response format can be specified (via `-ruler.query-response-format`).
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
-- Ruler API (to PUT rules).
 - Alertmanager:
-  - API (enabled via `-experimental.alertmanager.enable-api`)
-  - Sharding of tenants across multiple instances (enabled via `-alertmanager.sharding-enabled`)
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
 - gRPC Store.
 - TLS configuration in gRPC and HTTP clients.
@@ -58,7 +55,9 @@ Currently experimental features are:
 - Blocks storage user index
 - Querier: tenant federation
   - `-tenant-federation.regex-matcher-enabled`
+  - `-tenant-federation.regex-cache-size`
   - `-tenant-federation.user-sync-interval`
+  - `-tenant-federation.allow-partial-data`
 - The thanosconvert tool for converting Thanos block metadata to Cortex
 - Alertmanager limits
   - notification rate (`-alertmanager.notification-rate-limit` and `-alertmanager.notification-rate-limit-per-integration`)

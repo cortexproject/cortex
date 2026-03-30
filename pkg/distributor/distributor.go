@@ -205,6 +205,7 @@ type OTLPConfig struct {
 	DisableTargetInfo       bool `yaml:"disable_target_info"`
 	AllowDeltaTemporality   bool `yaml:"allow_delta_temporality"`
 	EnableTypeAndUnitLabels bool `yaml:"enable_type_and_unit_labels"`
+	AddMetricSuffixes       bool `yaml:"add_metric_suffixes"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -235,6 +236,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.DisableTargetInfo, "distributor.otlp.disable-target-info", false, "If true, a target_info metric is not ingested. (refer to: https://github.com/prometheus/OpenMetrics/blob/main/specification/OpenMetrics.md#supporting-target-metadata-in-both-push-based-and-pull-based-systems)")
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
 	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
+	f.BoolVar(&cfg.OTLPConfig.AddMetricSuffixes, "distributor.otlp.add-metric-suffixes", true, "If true, suffixes will be added to the metrics for name normalization.")
 }
 
 // Validate config and returns error on failure
@@ -984,7 +986,7 @@ func (d *Distributor) doBatch(ctx context.Context, req *cortexpb.WriteRequest, s
 			}
 		}
 
-		return d.send(localCtx, ingester, timeseries, metadata, req.Source)
+		return d.send(localCtx, ingester, timeseries, metadata, req.Source, req.DiscardOutOfOrder)
 	}, func() {
 		cortexpb.ReuseSlice(req.Timeseries)
 		req.Free()
@@ -1252,7 +1254,7 @@ func sortLabelsIfNeeded(labels []cortexpb.LabelAdapter) {
 	})
 }
 
-func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum) error {
+func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, timeseries []cortexpb.PreallocTimeseries, metadata []*cortexpb.MetricMetadata, source cortexpb.SourceEnum, discardOutOfOrder bool) error {
 	h, err := d.ingesterPool.GetClientFor(ingester.Addr)
 	if err != nil {
 		return err
@@ -1270,9 +1272,10 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 
 	if d.cfg.UseStreamPush {
 		req := &cortexpb.WriteRequest{
-			Timeseries: timeseries,
-			Metadata:   metadata,
-			Source:     source,
+			Timeseries:        timeseries,
+			Metadata:          metadata,
+			Source:            source,
+			DiscardOutOfOrder: discardOutOfOrder,
 		}
 		_, err = c.PushStreamConnection(ctx, req)
 	} else {
@@ -1280,6 +1283,7 @@ func (d *Distributor) send(ctx context.Context, ingester ring.InstanceDesc, time
 		req.Timeseries = timeseries
 		req.Metadata = metadata
 		req.Source = source
+		req.DiscardOutOfOrder = discardOutOfOrder
 
 		_, err = c.PushPreAlloc(ctx, req)
 

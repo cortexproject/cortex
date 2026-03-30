@@ -192,6 +192,8 @@ type Limits struct {
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
+	ResultsCacheTTL              model.Duration `yaml:"results_cache_ttl" json:"results_cache_ttl"`
+	OutOfOrderResultsCacheTTL    model.Duration `yaml:"out_of_order_results_cache_ttl" json:"out_of_order_results_cache_ttl"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
@@ -319,6 +321,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Int64Var(&l.MaxQueryResponseSize, "frontend.max-query-response-size", 0, "The maximum total uncompressed query response size. If the query was sharded the limit is applied to the total response size of all shards. This limit is enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+	// ResultsCacheTTL and OutOfOrderResultsCacheTTL default to 0 (use global cache config expiration)
+	f.Var(&l.ResultsCacheTTL, "frontend.results-cache-ttl", "Per-tenant TTL for cached query results in the cache backend (Memcached/Redis/FIFO). This is the standard TTL for results that do not overlap with the out-of-order time window. 0 (default) means use the global cache backend TTL configuration.")
+	f.Var(&l.OutOfOrderResultsCacheTTL, "frontend.out-of-order-results-cache-ttl", "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 	f.BoolVar(&l.QueryPriority.Enabled, "frontend.query-priority.enabled", false, "Whether queries are assigned with priorities.")
@@ -832,6 +837,18 @@ func (o *Overrides) MaxQueryResponseSize(userID string) int64 {
 // to prevent caching of very recent results.
 func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxCacheFreshness)
+}
+
+// ResultsCacheTTL returns the standard TTL for cached query results.
+// Returns 0 if not configured, meaning use global backend TTL.
+func (o *Overrides) ResultsCacheTTL(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).ResultsCacheTTL)
+}
+
+// OutOfOrderResultsCacheTTL returns the TTL for cached results that may contain out-of-order samples.
+// Returns 0 if not configured, meaning use global backend TTL.
+func (o *Overrides) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).OutOfOrderResultsCacheTTL)
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.

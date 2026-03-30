@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"sync"
+	"time"
 
 	opentracing "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -38,6 +39,7 @@ type backgroundCache struct {
 type backgroundWrite struct {
 	keys []string
 	bufs [][]byte
+	ttl  time.Duration
 }
 
 // NewBackground returns a new Cache that does stores on background goroutines.
@@ -81,13 +83,14 @@ func (c *backgroundCache) Stop() {
 const keysPerBatch = 100
 
 // Store writes keys for the cache in the background.
-func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
 	for len(keys) > 0 {
 		num := min(keysPerBatch, len(keys))
 
 		bgWrite := backgroundWrite{
 			keys: keys[:num],
 			bufs: bufs[:num],
+			ttl:  ttl,
 		}
 		select {
 		case c.bgWrites <- bgWrite:
@@ -115,7 +118,7 @@ func (c *backgroundCache) writeBackLoop() {
 				return
 			}
 			c.queueLength.Sub(float64(len(bgWrite.keys)))
-			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs)
+			c.Cache.Store(context.Background(), bgWrite.keys, bgWrite.bufs, bgWrite.ttl)
 
 		case <-c.quit:
 			return

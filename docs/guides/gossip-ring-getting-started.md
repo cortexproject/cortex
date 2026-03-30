@@ -50,6 +50,7 @@ memberlist:
   # defaults to hostname
   node_name: "Ingester 1"
   bind_port: 7946
+  cluster_label: "gossip-demo"
   join_members:
     - localhost:7947
   abort_if_cluster_join_fails: false
@@ -127,9 +128,10 @@ We don't need to change or add `memberlist.join_members` list. This new instance
 will discover other peers through it. When using Kubernetes, the suggested setup is to have a headless service pointing to all pods
 that want to be part of the gossip cluster, and then point `join_members` to this headless service.
 
+In production, set `memberlist.cluster_label` to the same value on every Cortex process that should share the same gossip cluster. This helps avoid accidentally merging rings with other Cortex, Mimir, or Loki deployments that can reach the same seed addresses.
+
 We also don't need to change `/tmp/cortex/storage` directory in the `blocks_storage.filesystem.dir` field. This is the directory where all ingesters will
 "upload" finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use the local filesystem in this example.
 
 After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring
 and will start receiving samples after it enters the ACTIVE state.
-

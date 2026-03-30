@@ -5606,6 +5606,17 @@
           "type": "number",
           "x-cli-flag": "memberlist.bind-port"
         },
+        "cluster_label": {
+          "description": "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.",
+          "type": "string",
+          "x-cli-flag": "memberlist.cluster-label"
+        },
+        "cluster_label_verification_disabled": {
+          "default": false,
+          "description": "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.",
+          "type": "boolean",
+          "x-cli-flag": "memberlist.cluster-label-verification-disabled"
+        },
         "compression_enabled": {
           "default": true,
           "description": "Enable message compression. This can be used to reduce bandwidth usage at the cost of slightly more CPU utilization.",

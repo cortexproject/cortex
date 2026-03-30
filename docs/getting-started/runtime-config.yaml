@@ -1,0 +1,25 @@
+# Runtime configuration with per-tenant overrides.
+# This file is hot-reloaded by Cortex without requiring a restart.
+#
+# The examples below demonstrate per-tenant alert generator URL templates.
+# Each tenant can have a different URL format for alert "Source" links.
+
+overrides:
+  # Tenant using Grafana Explore for alert generator URLs.
+  # Clicking "Source" on an alert in Alertmanager opens Grafana Explore
+  # with the PromQL expression pre-filled.
+  tenant-a:
+    ruler_external_url: "http://localhost:3000"
+    ruler_alert_generator_url_template: >-
+      {{ .ExternalURL }}/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22cortex%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1
+
+  # Tenant using Perses for alert generator URLs.
+  # Clicking "Source" on an alert opens Perses explore view with
+  # the PromQL expression pre-filled and the TenantB datasource selected.
+  tenant-b:
+    ruler_external_url: http://localhost:8080
+    ruler_alert_generator_url_template: >-
+      {{ .ExternalURL }}/explore?explorer=Prometheus-PrometheusExplorer&data=%7B%22tab%22%3A%22graph%22%2C%22queries%22%3A%5B%7B%22kind%22%3A%22TimeSeriesQuery%22%2C%22spec%22%3A%7B%22plugin%22%3A%7B%22kind%22%3A%22PrometheusTimeSeriesQuery%22%2C%22spec%22%3A%7B%22datasource%22%3A%7B%22kind%22%3A%22PrometheusDatasource%22%2C%22name%22%3A%22tenantb%22%7D%2C%22query%22%3A%22{{ urlquery .Expression }}%22%7D%7D%7D%7D%5D%7D
+
+  # Tenants without overrides use the global ruler.external.url
+  # and the default Prometheus /graph format.

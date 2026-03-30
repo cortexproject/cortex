@@ -1,0 +1,14 @@
+kind: GlobalDatasource
+metadata:
+  name: TenantA
+spec:
+  default: false
+  plugin:
+    kind: PrometheusDatasource
+    spec:
+      proxy:
+        kind: HTTPProxy
+        spec:
+          url: http://cortex:9009/api/prom
+          headers:
+            X-Scope-OrgID: tenant-a

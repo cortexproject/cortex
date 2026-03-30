@@ -214,6 +214,133 @@ docker run --network cortex-docs-getting-started_default \
 
 Configure Alertmanager notification policies in Grafana: [Alerting → Notification policies](http://localhost:3000/alerting/notifications?search=&alertmanager=Cortex%20Alertmanager)
 
+## Step 7: Per-Tenant Alert Generator URLs (Optional)
+
+Cortex supports customizing the "Source" link on alerts per-tenant using Go `text/template` strings. This lets each tenant's alerts link back to their preferred metrics explorer — Grafana Explore, Perses, or any other tool.
+
+The getting-started example includes a `runtime-config.yaml` with two tenant configurations:
+- **tenant-a**: Alert source links point to **Grafana Explore**
+- **tenant-b**: Alert source links point to **Perses**
+
+### How It Works
+
+The `ruler_alert_generator_url_template` field accepts a Go template with two variables:
+- `{{ .ExternalURL }}` — the resolved external URL for this tenant (set via `ruler_external_url`)
+- `{{ .Expression }}` — the PromQL expression that triggered the alert
+
+Built-in Go template functions like `urlquery` are available for URL encoding.
+
+Example for Grafana Explore:
+```yaml
+ruler_external_url: "http://localhost:3000"
+ruler_alert_generator_url_template: >-
+  {{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}
+```
+
+### Try It Out
+
+1. **Load alertmanager configs** for tenant-a and tenant-b:
+
+```sh
+# Upload alertmanager config for tenant-a
+curl -X POST http://localhost:9009/api/v1/alerts \
+  -H "X-Scope-OrgID: tenant-a" \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+  route:
+    receiver: default-receiver
+    group_wait: 5s
+    group_interval: 10s
+EOF
+
+# Upload alertmanager config for tenant-b
+curl -X POST http://localhost:9009/api/v1/alerts \
+  -H "X-Scope-OrgID: tenant-b" \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+  route:
+    receiver: default-receiver
+    group_wait: 5s
+    group_interval: 10s
+EOF
+```
+
+2. **Load demo alert rules** that fire immediately:
+
+```sh
+# Alert rules for tenant-a
+curl -X POST http://localhost:9009/api/v1/rules/demo \
+  -H "X-Scope-OrgID: tenant-a" \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+name: demo_alerts
+interval: 10s
+rules:
+  - alert: HighMemoryUsage
+    expr: vector(85) > 80
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Memory usage is above 80%"
+  - alert: HighErrorRate
+    expr: vector(5.2) > 5
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Error rate exceeds 5%"
+EOF
+
+# Alert rules for tenant-b
+curl -X POST http://localhost:9009/api/v1/rules/demo \
+  -H "X-Scope-OrgID: tenant-b" \
+  -H "Content-Type: application/yaml" \
+  --data-binary @- <<'EOF'
+name: demo_alerts
+interval: 10s
+rules:
+  - alert: DiskSpaceLow
+    expr: vector(92) > 90
+    for: 0m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Disk space usage above 90%"
+  - alert: HighLatency
+    expr: vector(3.5) > 2
+    for: 0m
+    labels:
+      severity: warning
+    annotations:
+      summary: "P99 latency exceeds 2s"
+EOF
+```
+
+3. **Wait ~30 seconds** for the ruler to evaluate rules and send alerts to the alertmanager.
+
+4. **View alerts in Grafana** at [Alerting → Alert groups](http://localhost:3000/alerting/groups?groupBy=alertname):
+   - Select the **Tenant A Alertmanager** datasource — click "See source" to open Grafana Explore
+   - Select the **Tenant B Alertmanager** datasource — click "See source" to open Perses
+
+5. **Verify generator URLs** via the API:
+
+```sh
+# Tenant A: Grafana Explore URLs
+curl -s "http://localhost:9009/alertmanager/api/v2/alerts" \
+  -H "X-Scope-OrgID: tenant-a" | jq '.[].generatorURL'
+
+# Tenant B: Perses URLs
+curl -s "http://localhost:9009/alertmanager/api/v2/alerts" \
+  -H "X-Scope-OrgID: tenant-b" | jq '.[].generatorURL'
+```
+
 ## Explore and Experiment
 
 Now that everything is running, try these experiments to learn how Cortex works:
@@ -306,6 +433,7 @@ This setup uses several configuration files. Here's what each does:
 |----------------------------------|---------------------------------------------------------------|
 | `docker-compose.yaml`            | Defines all services (Cortex, Prometheus, Grafana, SeaweedFS) |
 | `cortex-config.yaml`             | Cortex configuration (storage, limits, components)            |
+| `runtime-config.yaml`            | Per-tenant runtime overrides (alert generator URL templates)  |
 | `prometheus-config.yaml`         | Prometheus configuration with remote_write to Cortex          |
 | `grafana-datasource-docker.yaml` | Grafana datasource pointing to Cortex                         |
 | `rules.yaml`                     | Example recording rules                                       |

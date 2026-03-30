@@ -17,6 +17,7 @@ services:
       - -config.file=/config/cortex-config.yaml
     volumes:
       - ./cortex-config.yaml:/config/cortex-config.yaml:ro
+      - ./runtime-config.yaml:/config/runtime-config.yaml:ro
     ports:
       - "9009:9009"
     healthcheck:
@@ -47,6 +48,8 @@ services:
     volumes:
       - ./perses/config.yaml:/etc/perses/config/config.yaml:ro
       - ./perses/datasource.yaml:/etc/perses/resources/datasource.yaml:ro
+      - ./perses/datasource-tenant-a.yaml:/etc/perses/resources/datasource-tenant-a.yaml:ro
+      - ./perses/datasource-tenant-b.yaml:/etc/perses/resources/datasource-tenant-b.yaml:ro
       - ./perses/project.yaml:/etc/perses/resources/project.yaml:ro
       - ./perses/dashboards/cortex-writes.yaml:/etc/perses/resources/cortex-writes.yaml:ro
   prometheus:

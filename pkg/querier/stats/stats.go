@@ -29,13 +29,6 @@ type QueryStats struct {
 	queryStart     int64 // nanosecond timestamp when query began
 	queueJoinTime  int64 // nanosecond timestamp when request entered scheduler queue
 	queueLeaveTime int64 // nanosecond timestamp when request left scheduler queue
-
-	// Max timing breakdown across sub-queries (nanoseconds).
-	// These use max() semantics during Merge rather than sum.
-	maxFetchTime     int64 // max storage fetch time across sub-queries
-	maxEvalTime      int64 // max PromQL evaluation time across sub-queries
-	maxQueueWaitTime int64 // max scheduler queue wait time across sub-queries
-	maxTotalTime     int64 // max total sub-query time across sub-queries
 }
 
 // ContextWithEmptyStats returns a context with empty stats.
@@ -404,63 +397,56 @@ func (s *QueryStats) UpdateMaxFetchTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	updateMaxDuration(&s.maxFetchTime, t)
+	updateMaxDuration((*int64)(&s.MaxFetchTime), t)
 }
 
-// LoadMaxFetchTime returns the max fetch time across sub-queries.
 func (s *QueryStats) LoadMaxFetchTime() time.Duration {
 	if s == nil {
 		return 0
 	}
-	return time.Duration(atomic.LoadInt64(&s.maxFetchTime))
+	return time.Duration(atomic.LoadInt64((*int64)(&s.MaxFetchTime)))
 }
 
-// UpdateMaxEvalTime updates the max eval time if the provided value is larger.
 func (s *QueryStats) UpdateMaxEvalTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	updateMaxDuration(&s.maxEvalTime, t)
+	updateMaxDuration((*int64)(&s.MaxEvalTime), t)
 }
 
-// LoadMaxEvalTime returns the max eval time across sub-queries.
 func (s *QueryStats) LoadMaxEvalTime() time.Duration {
 	if s == nil {
 		return 0
 	}
-	return time.Duration(atomic.LoadInt64(&s.maxEvalTime))
+	return time.Duration(atomic.LoadInt64((*int64)(&s.MaxEvalTime)))
 }
 
-// UpdateMaxQueueWaitTime updates the max queue wait time if the provided value is larger.
 func (s *QueryStats) UpdateMaxQueueWaitTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	updateMaxDuration(&s.maxQueueWaitTime, t)
+	updateMaxDuration((*int64)(&s.MaxQueueWaitTime), t)
 }
 
-// LoadMaxQueueWaitTime returns the max queue wait time across sub-queries.
 func (s *QueryStats) LoadMaxQueueWaitTime() time.Duration {
 	if s == nil {
 		return 0
 	}
-	return time.Duration(atomic.LoadInt64(&s.maxQueueWaitTime))
+	return time.Duration(atomic.LoadInt64((*int64)(&s.MaxQueueWaitTime)))
 }
 
-// UpdateMaxTotalTime updates the max total time if the provided value is larger.
 func (s *QueryStats) UpdateMaxTotalTime(t time.Duration) {
 	if s == nil {
 		return
 	}
-	updateMaxDuration(&s.maxTotalTime, t)
+	updateMaxDuration((*int64)(&s.MaxTotalTime), t)
 }
 
-// LoadMaxTotalTime returns the max total sub-query time across sub-queries.
 func (s *QueryStats) LoadMaxTotalTime() time.Duration {
 	if s == nil {
 		return 0
 	}
-	return time.Duration(atomic.LoadInt64(&s.maxTotalTime))
+	return time.Duration(atomic.LoadInt64((*int64)(&s.MaxTotalTime)))
 }
 
 // ComputeAndStoreTimingBreakdown computes the timing breakdown from phase tracking

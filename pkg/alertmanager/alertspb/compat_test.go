@@ -58,9 +58,9 @@ func TestToProto(t *testing.T) {
 
 func TestParseTemplates(t *testing.T) {
 	tests := []struct {
-		name      string
-		cfg       AlertConfigDesc
-		expected  map[string]string
+		name     string
+		cfg      AlertConfigDesc
+		expected map[string]string
 	}{
 		{
 			name:     "no templates",

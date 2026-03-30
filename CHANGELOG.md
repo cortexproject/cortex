@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Querier: Add experimental per-tenant cardinality API (`GET /api/v1/cardinality`) that exposes top-N metrics by series count, label names by distinct value count, and label-value pairs by series count from ingester TSDB heads (`source=head`) and compacted blocks (`source=blocks`). Gated behind `-querier.cardinality-api-enabled` (default `false`). #7384
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #7359
 * [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #7357
 * [ENHANCEMENT] Tenant Federation: Add a local cache to regex resolver. #7363

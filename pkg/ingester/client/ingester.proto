@@ -7,6 +7,7 @@ option go_package = "client";
 
 import "gogoproto/gogo.proto";
 import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cardinality.proto";
 
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
@@ -26,6 +27,7 @@ service Ingester {
   rpc MetricsForLabelMatchers(MetricsForLabelMatchersRequest) returns (MetricsForLabelMatchersResponse) {};
   rpc MetricsForLabelMatchersStream(MetricsForLabelMatchersRequest) returns (stream MetricsForLabelMatchersStreamResponse) {};
   rpc MetricsMetadata(MetricsMetadataRequest) returns (MetricsMetadataResponse) {};
+  rpc Cardinality(CardinalityRequest) returns (CardinalityResponse) {};
 }
 
 message ReadRequest {
@@ -176,4 +178,15 @@ message TimeSeriesFile {
   string user_id = 2;
   string filename = 3;
   bytes data = 4;
+}
+
+message CardinalityRequest {
+  int32 limit = 1;
+}
+
+message CardinalityResponse {
+  uint64 num_series = 1;
+  repeated cortexpb.CardinalityStatItem series_count_by_metric_name = 2;
+  repeated cortexpb.CardinalityStatItem label_value_count_by_label_name = 3;
+  repeated cortexpb.CardinalityStatItem series_count_by_label_value_pair = 4;
 }

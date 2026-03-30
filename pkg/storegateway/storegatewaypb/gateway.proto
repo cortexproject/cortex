@@ -2,8 +2,13 @@ syntax = "proto3";
 package gatewaypb;
 
 import "github.com/thanos-io/thanos/pkg/store/storepb/rpc.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cardinality.proto";
+import "gogoproto/gogo.proto";
 
 option go_package = "storegatewaypb";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
 
 service StoreGateway {
     // Series streams each Series for given label matchers and time range.
@@ -20,4 +25,22 @@ service StoreGateway {
 
     // LabelValues returns all label values for given label name.
     rpc LabelValues(thanos.LabelValuesRequest) returns (thanos.LabelValuesResponse);
+
+    // Cardinality returns cardinality statistics for a tenant's blocks.
+    rpc Cardinality(CardinalityRequest) returns (CardinalityResponse);
+}
+
+message CardinalityRequest {
+  int32 limit = 1;
+  int64 min_time = 2;
+  int64 max_time = 3;
+  repeated bytes block_ids = 4;
+}
+
+message CardinalityResponse {
+  uint64 num_series = 1;
+  repeated cortexpb.CardinalityStatItem series_count_by_metric_name = 2;
+  repeated cortexpb.CardinalityStatItem label_value_count_by_label_name = 3;
+  repeated cortexpb.CardinalityStatItem series_count_by_label_value_pair = 4;
+  repeated bytes queried_blocks = 5;
 }

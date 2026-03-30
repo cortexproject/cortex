@@ -4,14 +4,21 @@
 package storegatewaypb
 
 import (
+	bytes "bytes"
 	context "context"
 	fmt "fmt"
+	cortexpb "github.com/cortexproject/cortex/pkg/cortexpb"
+	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	storepb "github.com/thanos-io/thanos/pkg/store/storepb"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
+	io "io"
 	math "math"
+	math_bits "math/bits"
+	reflect "reflect"
+	strings "strings"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -25,27 +32,328 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
+type CardinalityRequest struct {
+	Limit    int32    `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	MinTime  int64    `protobuf:"varint,2,opt,name=min_time,json=minTime,proto3" json:"min_time,omitempty"`
+	MaxTime  int64    `protobuf:"varint,3,opt,name=max_time,json=maxTime,proto3" json:"max_time,omitempty"`
+	BlockIds [][]byte `protobuf:"bytes,4,rep,name=block_ids,json=blockIds,proto3" json:"block_ids,omitempty"`
+}
+
+func (m *CardinalityRequest) Reset()      { *m = CardinalityRequest{} }
+func (*CardinalityRequest) ProtoMessage() {}
+func (*CardinalityRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f1a937782ebbded5, []int{0}
+}
+func (m *CardinalityRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CardinalityRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CardinalityRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CardinalityRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CardinalityRequest.Merge(m, src)
+}
+func (m *CardinalityRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *CardinalityRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_CardinalityRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CardinalityRequest proto.InternalMessageInfo
+
+func (m *CardinalityRequest) GetLimit() int32 {
+	if m != nil {
+		return m.Limit
+	}
+	return 0
+}
+
+func (m *CardinalityRequest) GetMinTime() int64 {
+	if m != nil {
+		return m.MinTime
+	}
+	return 0
+}
+
+func (m *CardinalityRequest) GetMaxTime() int64 {
+	if m != nil {
+		return m.MaxTime
+	}
+	return 0
+}
+
+func (m *CardinalityRequest) GetBlockIds() [][]byte {
+	if m != nil {
+		return m.BlockIds
+	}
+	return nil
+}
+
+type CardinalityResponse struct {
+	NumSeries                   uint64                          `protobuf:"varint,1,opt,name=num_series,json=numSeries,proto3" json:"num_series,omitempty"`
+	SeriesCountByMetricName     []*cortexpb.CardinalityStatItem `protobuf:"bytes,2,rep,name=series_count_by_metric_name,json=seriesCountByMetricName,proto3" json:"series_count_by_metric_name,omitempty"`
+	LabelValueCountByLabelName  []*cortexpb.CardinalityStatItem `protobuf:"bytes,3,rep,name=label_value_count_by_label_name,json=labelValueCountByLabelName,proto3" json:"label_value_count_by_label_name,omitempty"`
+	SeriesCountByLabelValuePair []*cortexpb.CardinalityStatItem `protobuf:"bytes,4,rep,name=series_count_by_label_value_pair,json=seriesCountByLabelValuePair,proto3" json:"series_count_by_label_value_pair,omitempty"`
+	QueriedBlocks               [][]byte                        `protobuf:"bytes,5,rep,name=queried_blocks,json=queriedBlocks,proto3" json:"queried_blocks,omitempty"`
+}
+
+func (m *CardinalityResponse) Reset()      { *m = CardinalityResponse{} }
+func (*CardinalityResponse) ProtoMessage() {}
+func (*CardinalityResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_f1a937782ebbded5, []int{1}
+}
+func (m *CardinalityResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *CardinalityResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_CardinalityResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *CardinalityResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CardinalityResponse.Merge(m, src)
+}
+func (m *CardinalityResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *CardinalityResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_CardinalityResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_CardinalityResponse proto.InternalMessageInfo
+
+func (m *CardinalityResponse) GetNumSeries() uint64 {
+	if m != nil {
+		return m.NumSeries
+	}
+	return 0
+}
+
+func (m *CardinalityResponse) GetSeriesCountByMetricName() []*cortexpb.CardinalityStatItem {
+	if m != nil {
+		return m.SeriesCountByMetricName
+	}
+	return nil
+}
+
+func (m *CardinalityResponse) GetLabelValueCountByLabelName() []*cortexpb.CardinalityStatItem {
+	if m != nil {
+		return m.LabelValueCountByLabelName
+	}
+	return nil
+}
+
+func (m *CardinalityResponse) GetSeriesCountByLabelValuePair() []*cortexpb.CardinalityStatItem {
+	if m != nil {
+		return m.SeriesCountByLabelValuePair
+	}
+	return nil
+}
+
+func (m *CardinalityResponse) GetQueriedBlocks() [][]byte {
+	if m != nil {
+		return m.QueriedBlocks
+	}
+	return nil
+}
+
+func init() {
+	proto.RegisterType((*CardinalityRequest)(nil), "gatewaypb.CardinalityRequest")
+	proto.RegisterType((*CardinalityResponse)(nil), "gatewaypb.CardinalityResponse")
+}
+
 func init() { proto.RegisterFile("gateway.proto", fileDescriptor_f1a937782ebbded5) }
 
 var fileDescriptor_f1a937782ebbded5 = []byte{
-	// 257 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4d, 0x4f, 0x2c, 0x49,
-	0x2d, 0x4f, 0xac, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x84, 0x72, 0x0b, 0x92, 0xa4,
-	0xcc, 0xd3, 0x33, 0x4b, 0x32, 0x4a, 0x93, 0xf4, 0x92, 0xf3, 0x73, 0xf5, 0x4b, 0x32, 0x12, 0xf3,
-	0xf2, 0x8b, 0x75, 0x33, 0xf3, 0xa1, 0x2c, 0xfd, 0x82, 0xec, 0x74, 0xfd, 0xe2, 0x92, 0xfc, 0xa2,
-	0x54, 0x08, 0x59, 0x90, 0xa4, 0x5f, 0x54, 0x90, 0x0c, 0x31, 0xc3, 0xe8, 0x1a, 0x23, 0x17, 0x4f,
-	0x30, 0x48, 0xd4, 0x1d, 0x62, 0x96, 0x90, 0x25, 0x17, 0x5b, 0x70, 0x6a, 0x51, 0x66, 0x6a, 0xb1,
-	0x90, 0xa8, 0x1e, 0x44, 0xbf, 0x1e, 0x84, 0x1f, 0x94, 0x5a, 0x58, 0x9a, 0x5a, 0x5c, 0x22, 0x25,
-	0x86, 0x2e, 0x5c, 0x5c, 0x90, 0x9f, 0x57, 0x9c, 0x6a, 0xc0, 0x28, 0xe4, 0xcc, 0xc5, 0xe5, 0x93,
-	0x98, 0x94, 0x9a, 0xe3, 0x97, 0x98, 0x9b, 0x5a, 0x2c, 0x24, 0x09, 0x53, 0x87, 0x10, 0x83, 0x19,
-	0x21, 0x85, 0x4d, 0x0a, 0x62, 0x8c, 0x90, 0x1b, 0x17, 0x37, 0x58, 0x34, 0x2c, 0x31, 0xa7, 0x34,
-	0xb5, 0x58, 0x08, 0x55, 0x29, 0x44, 0x10, 0x66, 0x8c, 0x34, 0x56, 0x39, 0x88, 0x39, 0x4e, 0x2e,
-	0x17, 0x1e, 0xca, 0x31, 0xdc, 0x78, 0x28, 0xc7, 0xf0, 0xe1, 0xa1, 0x1c, 0x63, 0xc3, 0x23, 0x39,
-	0xc6, 0x15, 0x8f, 0xe4, 0x18, 0x4f, 0x3c, 0x92, 0x63, 0xbc, 0xf0, 0x48, 0x8e, 0xf1, 0xc1, 0x23,
-	0x39, 0xc6, 0x17, 0x8f, 0xe4, 0x18, 0x3e, 0x3c, 0x92, 0x63, 0x9c, 0xf0, 0x58, 0x8e, 0xe1, 0xc2,
-	0x63, 0x39, 0x86, 0x1b, 0x8f, 0xe5, 0x18, 0xa2, 0xf8, 0xc0, 0x21, 0x04, 0x0f, 0xd7, 0x24, 0x36,
-	0x70, 0x28, 0x19, 0x03, 0x02, 0x00, 0x00, 0xff, 0xff, 0x1b, 0xec, 0xe6, 0x0a, 0x7a, 0x01, 0x00,
-	0x00,
+	// 558 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x53, 0x4f, 0x6f, 0xd3, 0x30,
+	0x14, 0x4f, 0x96, 0x6d, 0x6c, 0xde, 0x9f, 0x83, 0x19, 0xd0, 0xa5, 0xaa, 0xa9, 0x26, 0x21, 0xf5,
+	0x42, 0x82, 0xc6, 0x01, 0x71, 0xe1, 0xd0, 0x22, 0xd0, 0xa4, 0x82, 0x50, 0x8a, 0x38, 0xc0, 0x21,
+	0x72, 0x52, 0xab, 0x33, 0x8b, 0xe3, 0x2c, 0x76, 0xa0, 0x3d, 0x20, 0x21, 0x3e, 0x01, 0x1f, 0x82,
+	0x03, 0x1f, 0x85, 0x63, 0x8f, 0x3b, 0xd2, 0xf4, 0xc2, 0x71, 0x1f, 0x01, 0xc5, 0x76, 0xff, 0x8d,
+	0x21, 0xb8, 0x44, 0x7e, 0xbf, 0x9f, 0xdf, 0xef, 0xe7, 0xf7, 0xf2, 0x1e, 0xd8, 0x1b, 0x60, 0x49,
+	0x3e, 0xe2, 0x91, 0x97, 0xe5, 0x5c, 0x72, 0xb8, 0x6d, 0xc2, 0x2c, 0x72, 0x1f, 0x0d, 0xa8, 0x3c,
+	0x2d, 0x22, 0x2f, 0xe6, 0xcc, 0x97, 0xa7, 0x38, 0xe5, 0xe2, 0x3e, 0xe5, 0xe6, 0xe4, 0x67, 0x67,
+	0x03, 0x5f, 0x48, 0x9e, 0x13, 0xfd, 0xcd, 0x22, 0x3f, 0xcf, 0x62, 0xad, 0xe1, 0x3e, 0x59, 0x4a,
+	0x8c, 0x79, 0x2e, 0xc9, 0x30, 0xcb, 0xf9, 0x7b, 0x12, 0x4b, 0x13, 0xa9, 0x64, 0x43, 0x44, 0x7e,
+	0x8c, 0xf3, 0x3e, 0x4d, 0x71, 0x42, 0xa5, 0x79, 0x83, 0x7b, 0x30, 0xe0, 0x03, 0xae, 0x8e, 0x7e,
+	0x75, 0xd2, 0xe8, 0xd1, 0x27, 0x00, 0x3b, 0x8b, 0xab, 0x01, 0x39, 0x2f, 0x88, 0x90, 0xf0, 0x00,
+	0x6c, 0x24, 0x94, 0x51, 0x59, 0xb3, 0x9b, 0x76, 0x6b, 0x23, 0xd0, 0x01, 0x3c, 0x04, 0x5b, 0x8c,
+	0xa6, 0xa1, 0xa4, 0x8c, 0xd4, 0xd6, 0x9a, 0x76, 0xcb, 0x09, 0x6e, 0x30, 0x9a, 0xbe, 0xa6, 0x8c,
+	0x28, 0x0a, 0x0f, 0x35, 0xe5, 0x18, 0x0a, 0x0f, 0x15, 0x55, 0x07, 0xdb, 0x51, 0xc2, 0xe3, 0xb3,
+	0x90, 0xf6, 0x45, 0x6d, 0xbd, 0xe9, 0xb4, 0x76, 0x83, 0x2d, 0x05, 0x9c, 0xf4, 0xc5, 0xd1, 0x17,
+	0x07, 0xdc, 0x5c, 0xf1, 0x17, 0x19, 0x4f, 0x05, 0x81, 0x0d, 0x00, 0xd2, 0x82, 0x85, 0x82, 0xe4,
+	0x94, 0x08, 0xf5, 0x8a, 0xf5, 0x60, 0x3b, 0x2d, 0x58, 0x4f, 0x01, 0xf0, 0x1d, 0xa8, 0x6b, 0x2a,
+	0x8c, 0x79, 0x91, 0xca, 0x30, 0x1a, 0x85, 0x8c, 0xc8, 0x9c, 0xc6, 0x61, 0x8a, 0xd5, 0xe3, 0x9c,
+	0xd6, 0xce, 0x71, 0xc3, 0x9b, 0x75, 0xc3, 0x5b, 0xb2, 0xe8, 0x49, 0x2c, 0x4f, 0x24, 0x61, 0xc1,
+	0x1d, 0xad, 0xd0, 0xa9, 0x04, 0xda, 0xa3, 0x17, 0x2a, 0xfd, 0x25, 0x66, 0x04, 0x46, 0xe0, 0x6e,
+	0x82, 0x23, 0x92, 0x84, 0x1f, 0x70, 0x52, 0x90, 0x85, 0x83, 0x06, 0x95, 0x81, 0xf3, 0x3f, 0x06,
+	0xae, 0x4a, 0x78, 0x53, 0x89, 0x18, 0x93, 0x6e, 0x05, 0x28, 0x8f, 0x3e, 0x68, 0x5e, 0x2d, 0x60,
+	0xd9, 0x33, 0xc3, 0x34, 0x57, 0xbd, 0xfa, 0xa7, 0x49, 0x7d, 0xa5, 0x8a, 0xee, 0xdc, 0xf1, 0x15,
+	0xa6, 0x39, 0xbc, 0x07, 0xf6, 0xcf, 0x8b, 0x8a, 0xef, 0x87, 0xaa, 0xe3, 0xa2, 0xb6, 0xa1, 0xfa,
+	0xbf, 0x67, 0xd0, 0xb6, 0x02, 0x8f, 0xbf, 0xad, 0x81, 0xdd, 0x5e, 0x35, 0x6f, 0xcf, 0xf5, 0x94,
+	0xc2, 0xc7, 0x60, 0xd3, 0x34, 0xfa, 0x96, 0xa7, 0x27, 0xd3, 0xd3, 0xb1, 0x99, 0x0f, 0xf7, 0xf6,
+	0x55, 0x58, 0xff, 0xb6, 0x07, 0x36, 0xec, 0x00, 0x30, 0xaf, 0x52, 0xc0, 0xc3, 0xd9, 0xbd, 0x05,
+	0x36, 0x93, 0x70, 0xaf, 0xa3, 0xcc, 0xdf, 0x7f, 0x06, 0x76, 0x16, 0x95, 0x08, 0xb8, 0x7a, 0x55,
+	0x83, 0x33, 0x99, 0xfa, 0xb5, 0x9c, 0xd1, 0xe9, 0x82, 0x9d, 0xa5, 0x9e, 0xc1, 0x86, 0x37, 0x5f,
+	0x43, 0xef, 0xcf, 0xa1, 0x77, 0xd1, 0xdf, 0x68, 0xad, 0xd6, 0x7e, 0x3a, 0x9e, 0x20, 0xeb, 0x62,
+	0x82, 0xac, 0xcb, 0x09, 0xb2, 0x3f, 0x97, 0xc8, 0xfe, 0x5e, 0x22, 0xfb, 0x47, 0x89, 0xec, 0x71,
+	0x89, 0xec, 0x9f, 0x25, 0xb2, 0x7f, 0x95, 0xc8, 0xba, 0x2c, 0x91, 0xfd, 0x75, 0x8a, 0xac, 0xf1,
+	0x14, 0x59, 0x17, 0x53, 0x64, 0xbd, 0xdd, 0x57, 0x9b, 0x3c, 0x57, 0x8e, 0x36, 0xd5, 0xde, 0x3d,
+	0xfc, 0x1d, 0x00, 0x00, 0xff, 0xff, 0x0c, 0xdf, 0x5b, 0xd3, 0x22, 0x04, 0x00, 0x00,
+}
+
+func (this *CardinalityRequest) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CardinalityRequest)
+	if !ok {
+		that2, ok := that.(CardinalityRequest)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Limit != that1.Limit {
+		return false
+	}
+	if this.MinTime != that1.MinTime {
+		return false
+	}
+	if this.MaxTime != that1.MaxTime {
+		return false
+	}
+	if len(this.BlockIds) != len(that1.BlockIds) {
+		return false
+	}
+	for i := range this.BlockIds {
+		if !bytes.Equal(this.BlockIds[i], that1.BlockIds[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CardinalityResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*CardinalityResponse)
+	if !ok {
+		that2, ok := that.(CardinalityResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.NumSeries != that1.NumSeries {
+		return false
+	}
+	if len(this.SeriesCountByMetricName) != len(that1.SeriesCountByMetricName) {
+		return false
+	}
+	for i := range this.SeriesCountByMetricName {
+		if !this.SeriesCountByMetricName[i].Equal(that1.SeriesCountByMetricName[i]) {
+			return false
+		}
+	}
+	if len(this.LabelValueCountByLabelName) != len(that1.LabelValueCountByLabelName) {
+		return false
+	}
+	for i := range this.LabelValueCountByLabelName {
+		if !this.LabelValueCountByLabelName[i].Equal(that1.LabelValueCountByLabelName[i]) {
+			return false
+		}
+	}
+	if len(this.SeriesCountByLabelValuePair) != len(that1.SeriesCountByLabelValuePair) {
+		return false
+	}
+	for i := range this.SeriesCountByLabelValuePair {
+		if !this.SeriesCountByLabelValuePair[i].Equal(that1.SeriesCountByLabelValuePair[i]) {
+			return false
+		}
+	}
+	if len(this.QueriedBlocks) != len(that1.QueriedBlocks) {
+		return false
+	}
+	for i := range this.QueriedBlocks {
+		if !bytes.Equal(this.QueriedBlocks[i], that1.QueriedBlocks[i]) {
+			return false
+		}
+	}
+	return true
+}
+func (this *CardinalityRequest) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&storegatewaypb.CardinalityRequest{")
+	s = append(s, "Limit: "+fmt.Sprintf("%#v", this.Limit)+",\n")
+	s = append(s, "MinTime: "+fmt.Sprintf("%#v", this.MinTime)+",\n")
+	s = append(s, "MaxTime: "+fmt.Sprintf("%#v", this.MaxTime)+",\n")
+	s = append(s, "BlockIds: "+fmt.Sprintf("%#v", this.BlockIds)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CardinalityResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 9)
+	s = append(s, "&storegatewaypb.CardinalityResponse{")
+	s = append(s, "NumSeries: "+fmt.Sprintf("%#v", this.NumSeries)+",\n")
+	if this.SeriesCountByMetricName != nil {
+		s = append(s, "SeriesCountByMetricName: "+fmt.Sprintf("%#v", this.SeriesCountByMetricName)+",\n")
+	}
+	if this.LabelValueCountByLabelName != nil {
+		s = append(s, "LabelValueCountByLabelName: "+fmt.Sprintf("%#v", this.LabelValueCountByLabelName)+",\n")
+	}
+	if this.SeriesCountByLabelValuePair != nil {
+		s = append(s, "SeriesCountByLabelValuePair: "+fmt.Sprintf("%#v", this.SeriesCountByLabelValuePair)+",\n")
+	}
+	s = append(s, "QueriedBlocks: "+fmt.Sprintf("%#v", this.QueriedBlocks)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func valueToGoStringGateway(v interface{}, typ string) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -72,6 +380,8 @@ type StoreGatewayClient interface {
 	LabelNames(ctx context.Context, in *storepb.LabelNamesRequest, opts ...grpc.CallOption) (*storepb.LabelNamesResponse, error)
 	// LabelValues returns all label values for given label name.
 	LabelValues(ctx context.Context, in *storepb.LabelValuesRequest, opts ...grpc.CallOption) (*storepb.LabelValuesResponse, error)
+	// Cardinality returns cardinality statistics for a tenant's blocks.
+	Cardinality(ctx context.Context, in *CardinalityRequest, opts ...grpc.CallOption) (*CardinalityResponse, error)
 }
 
 type storeGatewayClient struct {
@@ -132,6 +442,15 @@ func (c *storeGatewayClient) LabelValues(ctx context.Context, in *storepb.LabelV
 	return out, nil
 }
 
+func (c *storeGatewayClient) Cardinality(ctx context.Context, in *CardinalityRequest, opts ...grpc.CallOption) (*CardinalityResponse, error) {
+	out := new(CardinalityResponse)
+	err := c.cc.Invoke(ctx, "/gatewaypb.StoreGateway/Cardinality", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StoreGatewayServer is the server API for StoreGateway service.
 type StoreGatewayServer interface {
 	// Series streams each Series for given label matchers and time range.
@@ -146,6 +465,8 @@ type StoreGatewayServer interface {
 	LabelNames(context.Context, *storepb.LabelNamesRequest) (*storepb.LabelNamesResponse, error)
 	// LabelValues returns all label values for given label name.
 	LabelValues(context.Context, *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error)
+	// Cardinality returns cardinality statistics for a tenant's blocks.
+	Cardinality(context.Context, *CardinalityRequest) (*CardinalityResponse, error)
 }
 
 // UnimplementedStoreGatewayServer can be embedded to have forward compatible implementations.
@@ -160,6 +481,9 @@ func (*UnimplementedStoreGatewayServer) LabelNames(ctx context.Context, req *sto
 }
 func (*UnimplementedStoreGatewayServer) LabelValues(ctx context.Context, req *storepb.LabelValuesRequest) (*storepb.LabelValuesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method LabelValues not implemented")
+}
+func (*UnimplementedStoreGatewayServer) Cardinality(ctx context.Context, req *CardinalityRequest) (*CardinalityResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Cardinality not implemented")
 }
 
 func RegisterStoreGatewayServer(s *grpc.Server, srv StoreGatewayServer) {
@@ -223,6 +547,24 @@ func _StoreGateway_LabelValues_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StoreGateway_Cardinality_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CardinalityRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StoreGatewayServer).Cardinality(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/gatewaypb.StoreGateway/Cardinality",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StoreGatewayServer).Cardinality(ctx, req.(*CardinalityRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _StoreGateway_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "gatewaypb.StoreGateway",
 	HandlerType: (*StoreGatewayServer)(nil),
@@ -235,6 +577,10 @@ var _StoreGateway_serviceDesc = grpc.ServiceDesc{
 			MethodName: "LabelValues",
 			Handler:    _StoreGateway_LabelValues_Handler,
 		},
+		{
+			MethodName: "Cardinality",
+			Handler:    _StoreGateway_Cardinality_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -245,3 +591,715 @@ var _StoreGateway_serviceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "gateway.proto",
 }
+
+func (m *CardinalityRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CardinalityRequest) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CardinalityRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.BlockIds) > 0 {
+		for iNdEx := len(m.BlockIds) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.BlockIds[iNdEx])
+			copy(dAtA[i:], m.BlockIds[iNdEx])
+			i = encodeVarintGateway(dAtA, i, uint64(len(m.BlockIds[iNdEx])))
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if m.MaxTime != 0 {
+		i = encodeVarintGateway(dAtA, i, uint64(m.MaxTime))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.MinTime != 0 {
+		i = encodeVarintGateway(dAtA, i, uint64(m.MinTime))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Limit != 0 {
+		i = encodeVarintGateway(dAtA, i, uint64(m.Limit))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *CardinalityResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *CardinalityResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *CardinalityResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.QueriedBlocks) > 0 {
+		for iNdEx := len(m.QueriedBlocks) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.QueriedBlocks[iNdEx])
+			copy(dAtA[i:], m.QueriedBlocks[iNdEx])
+			i = encodeVarintGateway(dAtA, i, uint64(len(m.QueriedBlocks[iNdEx])))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.SeriesCountByLabelValuePair) > 0 {
+		for iNdEx := len(m.SeriesCountByLabelValuePair) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.SeriesCountByLabelValuePair[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGateway(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.LabelValueCountByLabelName) > 0 {
+		for iNdEx := len(m.LabelValueCountByLabelName) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.LabelValueCountByLabelName[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGateway(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.SeriesCountByMetricName) > 0 {
+		for iNdEx := len(m.SeriesCountByMetricName) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.SeriesCountByMetricName[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGateway(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if m.NumSeries != 0 {
+		i = encodeVarintGateway(dAtA, i, uint64(m.NumSeries))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func encodeVarintGateway(dAtA []byte, offset int, v uint64) int {
+	offset -= sovGateway(v)
+	base := offset
+	for v >= 1<<7 {
+		dAtA[offset] = uint8(v&0x7f | 0x80)
+		v >>= 7
+		offset++
+	}
+	dAtA[offset] = uint8(v)
+	return base
+}
+func (m *CardinalityRequest) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Limit != 0 {
+		n += 1 + sovGateway(uint64(m.Limit))
+	}
+	if m.MinTime != 0 {
+		n += 1 + sovGateway(uint64(m.MinTime))
+	}
+	if m.MaxTime != 0 {
+		n += 1 + sovGateway(uint64(m.MaxTime))
+	}
+	if len(m.BlockIds) > 0 {
+		for _, b := range m.BlockIds {
+			l = len(b)
+			n += 1 + l + sovGateway(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *CardinalityResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.NumSeries != 0 {
+		n += 1 + sovGateway(uint64(m.NumSeries))
+	}
+	if len(m.SeriesCountByMetricName) > 0 {
+		for _, e := range m.SeriesCountByMetricName {
+			l = e.Size()
+			n += 1 + l + sovGateway(uint64(l))
+		}
+	}
+	if len(m.LabelValueCountByLabelName) > 0 {
+		for _, e := range m.LabelValueCountByLabelName {
+			l = e.Size()
+			n += 1 + l + sovGateway(uint64(l))
+		}
+	}
+	if len(m.SeriesCountByLabelValuePair) > 0 {
+		for _, e := range m.SeriesCountByLabelValuePair {
+			l = e.Size()
+			n += 1 + l + sovGateway(uint64(l))
+		}
+	}
+	if len(m.QueriedBlocks) > 0 {
+		for _, b := range m.QueriedBlocks {
+			l = len(b)
+			n += 1 + l + sovGateway(uint64(l))
+		}
+	}
+	return n
+}
+
+func sovGateway(x uint64) (n int) {
+	return (math_bits.Len64(x|1) + 6) / 7
+}
+func sozGateway(x uint64) (n int) {
+	return sovGateway(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *CardinalityRequest) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CardinalityRequest{`,
+		`Limit:` + fmt.Sprintf("%v", this.Limit) + `,`,
+		`MinTime:` + fmt.Sprintf("%v", this.MinTime) + `,`,
+		`MaxTime:` + fmt.Sprintf("%v", this.MaxTime) + `,`,
+		`BlockIds:` + fmt.Sprintf("%v", this.BlockIds) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CardinalityResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForSeriesCountByMetricName := "[]*CardinalityStatItem{"
+	for _, f := range this.SeriesCountByMetricName {
+		repeatedStringForSeriesCountByMetricName += strings.Replace(fmt.Sprintf("%v", f), "CardinalityStatItem", "cortexpb.CardinalityStatItem", 1) + ","
+	}
+	repeatedStringForSeriesCountByMetricName += "}"
+	repeatedStringForLabelValueCountByLabelName := "[]*CardinalityStatItem{"
+	for _, f := range this.LabelValueCountByLabelName {
+		repeatedStringForLabelValueCountByLabelName += strings.Replace(fmt.Sprintf("%v", f), "CardinalityStatItem", "cortexpb.CardinalityStatItem", 1) + ","
+	}
+	repeatedStringForLabelValueCountByLabelName += "}"
+	repeatedStringForSeriesCountByLabelValuePair := "[]*CardinalityStatItem{"
+	for _, f := range this.SeriesCountByLabelValuePair {
+		repeatedStringForSeriesCountByLabelValuePair += strings.Replace(fmt.Sprintf("%v", f), "CardinalityStatItem", "cortexpb.CardinalityStatItem", 1) + ","
+	}
+	repeatedStringForSeriesCountByLabelValuePair += "}"
+	s := strings.Join([]string{`&CardinalityResponse{`,
+		`NumSeries:` + fmt.Sprintf("%v", this.NumSeries) + `,`,
+		`SeriesCountByMetricName:` + repeatedStringForSeriesCountByMetricName + `,`,
+		`LabelValueCountByLabelName:` + repeatedStringForLabelValueCountByLabelName + `,`,
+		`SeriesCountByLabelValuePair:` + repeatedStringForSeriesCountByLabelValuePair + `,`,
+		`QueriedBlocks:` + fmt.Sprintf("%v", this.QueriedBlocks) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringGateway(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
+}
+func (m *CardinalityRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CardinalityRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CardinalityRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Limit", wireType)
+			}
+			m.Limit = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Limit |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinTime", wireType)
+			}
+			m.MinTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxTime", wireType)
+			}
+			m.MaxTime = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxTime |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockIds", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGateway
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.BlockIds = append(m.BlockIds, make([]byte, postIndex-iNdEx))
+			copy(m.BlockIds[len(m.BlockIds)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *CardinalityResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGateway
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: CardinalityResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: CardinalityResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NumSeries", wireType)
+			}
+			m.NumSeries = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.NumSeries |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SeriesCountByMetricName", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SeriesCountByMetricName = append(m.SeriesCountByMetricName, &cortexpb.CardinalityStatItem{})
+			if err := m.SeriesCountByMetricName[len(m.SeriesCountByMetricName)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LabelValueCountByLabelName", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LabelValueCountByLabelName = append(m.LabelValueCountByLabelName, &cortexpb.CardinalityStatItem{})
+			if err := m.LabelValueCountByLabelName[len(m.LabelValueCountByLabelName)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SeriesCountByLabelValuePair", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGateway
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.SeriesCountByLabelValuePair = append(m.SeriesCountByLabelValuePair, &cortexpb.CardinalityStatItem{})
+			if err := m.SeriesCountByLabelValuePair[len(m.SeriesCountByLabelValuePair)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field QueriedBlocks", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGateway
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.QueriedBlocks = append(m.QueriedBlocks, make([]byte, postIndex-iNdEx))
+			copy(m.QueriedBlocks[len(m.QueriedBlocks)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGateway(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGateway
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func skipGateway(dAtA []byte) (n int, err error) {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return 0, ErrIntOverflowGateway
+			}
+			if iNdEx >= l {
+				return 0, io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		wireType := int(wire & 0x7)
+		switch wireType {
+		case 0:
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return 0, ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return 0, io.ErrUnexpectedEOF
+				}
+				iNdEx++
+				if dAtA[iNdEx-1] < 0x80 {
+					break
+				}
+			}
+			return iNdEx, nil
+		case 1:
+			iNdEx += 8
+			return iNdEx, nil
+		case 2:
+			var length int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return 0, ErrIntOverflowGateway
+				}
+				if iNdEx >= l {
+					return 0, io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				length |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if length < 0 {
+				return 0, ErrInvalidLengthGateway
+			}
+			iNdEx += length
+			if iNdEx < 0 {
+				return 0, ErrInvalidLengthGateway
+			}
+			return iNdEx, nil
+		case 3:
+			for {
+				var innerWire uint64
+				var start int = iNdEx
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return 0, ErrIntOverflowGateway
+					}
+					if iNdEx >= l {
+						return 0, io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					innerWire |= (uint64(b) & 0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				innerWireType := int(innerWire & 0x7)
+				if innerWireType == 4 {
+					break
+				}
+				next, err := skipGateway(dAtA[start:])
+				if err != nil {
+					return 0, err
+				}
+				iNdEx = start + next
+				if iNdEx < 0 {
+					return 0, ErrInvalidLengthGateway
+				}
+			}
+			return iNdEx, nil
+		case 4:
+			return iNdEx, nil
+		case 5:
+			iNdEx += 4
+			return iNdEx, nil
+		default:
+			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
+		}
+	}
+	panic("unreachable")
+}
+
+var (
+	ErrInvalidLengthGateway = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowGateway   = fmt.Errorf("proto: integer overflow")
+)

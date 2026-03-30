@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"runtime"
 	"runtime/debug"
 
@@ -293,6 +294,12 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
+	// Register the cardinality endpoint directly on the external API server.
+	// This endpoint bypasses the query-frontend and is served directly by the querier.
+	cardinalityHandler := querier.CardinalityHandler(t.Distributor, t.BlocksStoreQueryable, t.OverridesConfig, prometheus.DefaultRegisterer)
+	t.API.RegisterRoute(path.Join(t.Cfg.API.PrometheusHTTPPrefix, "/api/v1/cardinality"), cardinalityHandler, true, "GET")
+	t.API.RegisterRoute(path.Join(t.Cfg.API.LegacyHTTPPrefix, "/api/v1/cardinality"), cardinalityHandler, true, "GET")
+
 	return nil, nil
 }
 
@@ -448,6 +455,7 @@ func (t *Cortex) initStoreQueryables() (services.Service, error) {
 	if q, err := initBlockStoreQueryable(t.Cfg, t.OverridesConfig, prometheus.DefaultRegisterer); err != nil {
 		return nil, fmt.Errorf("failed to initialize querier: %v", err)
 	} else {
+		t.BlocksStoreQueryable = q
 		queriable = q
 		if t.Cfg.Querier.EnableParquetQueryable {
 			pq, err := querier.NewParquetQueryable(t.Cfg.Querier, t.Cfg.BlocksStorage, t.OverridesConfig, q, util_log.Logger, prometheus.DefaultRegisterer)

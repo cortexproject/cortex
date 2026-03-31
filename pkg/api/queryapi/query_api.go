@@ -355,10 +355,16 @@ func applyTimeoutClassification(ctx context.Context, queryStats *stats.QueryStat
 // and returns an apiFuncResult if the timeout should be converted to a 4XX user error.
 // Returns nil if no conversion applies and the caller should use the default error path.
 func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryStats, cfg stats.PhaseTrackerConfig, warnings annotations.Annotations, closer func()) *apiFuncResult {
+	// Record query end time so that ComputeAndStoreTimingBreakdown (called
+	// later in scheduler_processor.runRequest) reuses the same timestamp,
+	// producing identical numbers in querier and query-frontend logs.
+	queryStats.SetQueryEnd(time.Now())
+
 	decision := stats.DecideTimeoutResponse(queryStats, cfg)
 
 	fetchTime := queryStats.LoadQueryStorageWallTime()
-	totalTime := time.Since(queryStats.LoadQueryStart())
+	queryEnd := queryStats.LoadQueryEnd()
+	totalTime := queryEnd.Sub(queryStats.LoadQueryStart())
 	evalTime := totalTime - fetchTime
 	var queueWaitTime time.Duration
 	queueJoin := queryStats.LoadQueueJoinTime()
@@ -370,6 +376,7 @@ func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryS
 		"msg", "query timed out with classification",
 		"request_id", requestmeta.RequestIdFromContext(ctx),
 		"query_start", queryStats.LoadQueryStart(),
+		"query_end", queryEnd,
 		"queue_wait_time", queueWaitTime,
 		"fetch_time", fetchTime,
 		"eval_time", evalTime,

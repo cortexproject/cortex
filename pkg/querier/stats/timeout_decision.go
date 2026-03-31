@@ -37,7 +37,14 @@ func DecideTimeoutResponse(stats *QueryStats, cfg PhaseTrackerConfig) TimeoutDec
 		return Default5XX
 	}
 
-	evalTime := time.Since(queryStart) - stats.LoadQueryStorageWallTime()
+	queryEnd := stats.LoadQueryEnd()
+	var totalTime time.Duration
+	if !queryEnd.IsZero() {
+		totalTime = queryEnd.Sub(queryStart)
+	} else {
+		totalTime = time.Since(queryStart)
+	}
+	evalTime := totalTime - stats.LoadQueryStorageWallTime()
 
 	if evalTime > cfg.EvalTimeThreshold {
 		return UserError4XX

@@ -34,6 +34,7 @@ type QueryStats struct {
 	// Phase tracking fields for timeout classification.
 	// Stored as UnixNano int64 for atomic operations.
 	queryStart     int64 // nanosecond timestamp when query began
+	queryEnd       int64 // nanosecond timestamp when query finished
 	queueJoinTime  int64 // nanosecond timestamp when request entered scheduler queue
 	queueLeaveTime int64 // nanosecond timestamp when request left scheduler queue
 }
@@ -341,6 +342,28 @@ func (s *QueryStats) LoadQueryStart() time.Time {
 	return time.Unix(0, ns)
 }
 
+// SetQueryEnd records when the query finished execution.
+func (s *QueryStats) SetQueryEnd(t time.Time) {
+	if s == nil {
+		return
+	}
+
+	atomic.StoreInt64(&s.queryEnd, t.UnixNano())
+}
+
+// LoadQueryEnd returns the query end time.
+func (s *QueryStats) LoadQueryEnd() time.Time {
+	if s == nil {
+		return time.Time{}
+	}
+
+	ns := atomic.LoadInt64(&s.queryEnd)
+	if ns == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, ns)
+}
+
 // SetQueueJoinTime records when the request entered the scheduler queue.
 func (s *QueryStats) SetQueueJoinTime(t time.Time) {
 	if s == nil {
@@ -469,8 +492,14 @@ func (s *QueryStats) ComputeAndStoreTimingBreakdown() {
 		return
 	}
 
+	queryEnd := s.LoadQueryEnd()
+	if queryEnd.IsZero() {
+		queryEnd = time.Now()
+		s.SetQueryEnd(queryEnd)
+	}
+
 	fetchTime := s.LoadQueryStorageWallTime()
-	totalTime := time.Since(queryStart)
+	totalTime := queryEnd.Sub(queryStart)
 	evalTime := totalTime - fetchTime
 
 	var queueWaitTime time.Duration

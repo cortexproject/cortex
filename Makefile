@@ -248,7 +248,11 @@ WEAVER := PATH="$(WEAVER_BIN_DIR):$(PATH)" weaver
 install-weaver:
 	@if ! PATH="$(WEAVER_BIN_DIR):$(PATH)" command -v weaver >/dev/null 2>&1; then \
 		echo "Installing weaver v$(WEAVER_VERSION)..."; \
-		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-installer.sh" | sh -s -- --no-modify-path --quiet; \
+		mkdir -p $(WEAVER_BIN_DIR) && \
+		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-x86_64-unknown-linux-gnu.tar.xz" -o /tmp/weaver.tar.xz && \
+		python3 -c "import lzma,tarfile,sys; t=tarfile.open(fileobj=lzma.open('/tmp/weaver.tar.xz')); m=next(x for x in t if x.name.endswith('/weaver')); m.name='weaver'; t.extract(m,'$(WEAVER_BIN_DIR)',filter='data' if sys.version_info>=(3,12) else None); t.close()" && \
+		chmod +x $(WEAVER_BIN_DIR)/weaver && \
+		rm -f /tmp/weaver.tar.xz; \
 	fi
 
 telemetry-check: install-weaver

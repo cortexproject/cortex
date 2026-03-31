@@ -1,7 +1,7 @@
 FROM golang:1.25.8-trixie
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
-RUN apt-get update && apt-get install -y curl file gettext jq unzip protobuf-compiler libprotobuf-dev && \
+RUN apt-get update && apt-get install -y curl file gettext jq unzip xz-utils protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 ENV SHFMT_VERSION=3.2.4

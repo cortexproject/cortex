@@ -176,6 +176,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+		querier_stats.ExtractQueueTimeHeader(request, stats)
 	}
 
 	response, err := sp.handler.Handle(ctx, request)

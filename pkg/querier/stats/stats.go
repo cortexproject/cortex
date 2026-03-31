@@ -3,11 +3,18 @@ package stats
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 	"time"
 
 	"github.com/weaveworks/common/httpgrpc"
+)
+
+const (
+	// QueueTimeHeader is the HTTP header used to propagate the queue enqueue
+	// timestamp (UnixNano) from the scheduler to the querier.
+	QueueTimeHeader = "X-Cortex-Queue-Enqueue-Time-Ns"
 )
 
 type contextKey int
@@ -578,4 +585,41 @@ func (s *QueryStats) Merge(other *QueryStats) {
 func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
 	// Do no track statistics for requests failed because of a server error.
 	return r.Code < 500
+}
+
+// InjectQueueTimeHeader adds the enqueue timestamp as an HTTP header on the
+// request so it can be propagated from the scheduler to the querier.
+func InjectQueueTimeHeader(req *httpgrpc.HTTPRequest, enqueueTime time.Time) {
+	if req == nil || enqueueTime.IsZero() {
+		return
+	}
+	req.Headers = append(req.Headers, &httpgrpc.Header{
+		Key:    QueueTimeHeader,
+		Values: []string{strconv.FormatInt(enqueueTime.UnixNano(), 10)},
+	})
+}
+
+// ExtractQueueTimeHeader reads the enqueue timestamp from the HTTP header,
+// computes the queue wait duration using the current wall-clock as the dequeue
+// time, and sets both join and leave times on the given QueryStats. The header
+// is removed from the request after extraction.
+func ExtractQueueTimeHeader(req *httpgrpc.HTTPRequest, s *QueryStats) {
+	if req == nil || s == nil {
+		return
+	}
+	remaining := make([]*httpgrpc.Header, 0, len(req.Headers))
+	for _, h := range req.Headers {
+		if h.Key == QueueTimeHeader {
+			if len(h.Values) > 0 {
+				if ns, err := strconv.ParseInt(h.Values[0], 10, 64); err == nil {
+					enqueueTime := time.Unix(0, ns)
+					s.SetQueueJoinTime(enqueueTime)
+					s.SetQueueLeaveTime(time.Now())
+				}
+			}
+		} else {
+			remaining = append(remaining, h)
+		}
+	}
+	req.Headers = remaining
 }

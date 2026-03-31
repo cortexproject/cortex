@@ -5077,6 +5077,12 @@
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
         },
+        "enable_start_timestamp": {
+          "default": false,
+          "description": "EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2 samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is not set.",
+          "type": "boolean",
+          "x-cli-flag": "distributor.enable-start-timestamp"
+        },
         "enable_type_and_unit_labels": {
           "default": false,
           "description": "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.",

@@ -75,7 +75,7 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 
 func createPRW1HTTPRequest(seriesNum int) (*http.Request, error) {
 	series := makeV2ReqWithSeries(seriesNum)
-	v1Req, err := convertV2RequestToV1(series, false)
+	v1Req, err := convertV2RequestToV1(series, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 
 			b.ReportAllocs()
 			for b.Loop() {
-				_, err := convertV2RequestToV1(series, false)
+				_, err := convertV2RequestToV1(series, false, false)
 				require.NoError(b, err)
 			}
 		})
@@ -377,7 +377,7 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels, false)
 
 			for i := range v1Req.Timeseries {
 				if len(v1Req.Timeseries[i].Samples) == 0 {
@@ -441,7 +441,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 
 	v2Req.Symbols = symbols
 	v2Req.Timeseries = timeseries
-	v1Req, err := convertV2RequestToV1(&v2Req, false)
+	v1Req, err := convertV2RequestToV1(&v2Req, false, false)
 	assert.NoError(t, err)
 	expectedSamples := 3
 	expectedExemplars := 2
@@ -541,7 +541,7 @@ func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := convertV2RequestToV1(tt.v2Req, false)
+			_, err := convertV2RequestToV1(tt.v2Req, false, false)
 			if tt.expectedError == "" {
 				assert.NoError(t, err)
 			} else {
@@ -1208,7 +1208,7 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 		},
 	}
 
-	v1Req, err := convertV2RequestToV1(v2Req, false)
+	v1Req, err := convertV2RequestToV1(v2Req, false, false)
 	require.NoError(t, err)
 	require.Len(t, v1Req.Timeseries, 1)
 
@@ -1223,4 +1223,119 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 
 	require.True(t, len(v1Ts.Histograms) > 0 && len(v2Ts.Histograms) > 0)
 	require.NotSame(t, &v1Ts.Histograms[0], &v2Ts.Histograms[0], "Histograms array must not share the same memory address")
+}
+
+func Test_convertV2RequestToV1_PreservesStartTimestamp(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs: []uint32{1, 2},
+						Samples: []cortexpb.Sample{
+							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+						},
+						Histograms: []cortexpb.Histogram{
+							{TimestampMs: 2000, StartTimestampMs: 200},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true preserves ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(100), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(200), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false clears ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+}
+
+func Test_convertV2RequestToV1_UsesCreatedTimestampAsFallback(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs:       []uint32{1, 2},
+						CreatedTimestamp: 777,
+						Samples:          []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
+						Histograms:       []cortexpb.Histogram{{TimestampMs: 2000}},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true uses CT as fallback for ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(777), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(777), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false ignores CT", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+}
+
+func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs:       []uint32{1, 2},
+						CreatedTimestamp: 777,
+						Samples: []cortexpb.Sample{
+							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+						},
+						Histograms: []cortexpb.Histogram{
+							{TimestampMs: 2000, StartTimestampMs: 200},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true: explicit ST takes precedence over CT", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(100), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(200), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false: ST and CT are both ignored", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
 }

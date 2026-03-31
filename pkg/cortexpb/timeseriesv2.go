@@ -120,6 +120,8 @@ func ReuseTimeseriesV2(ts *TimeSeriesV2) {
 	ts.Metadata.Type = 0
 	ts.Metadata.UnitRef = 0
 	ts.Metadata.HelpRef = 0
+	// Clear CT
+	ts.CreatedTimestamp = 0
 
 	// clear exemplar label refs
 	for i := range ts.Exemplars {

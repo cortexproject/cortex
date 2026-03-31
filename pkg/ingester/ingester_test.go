@@ -2127,6 +2127,160 @@ func TestIngester_Push(t *testing.T) {
 	}
 }
 
+func TestIngester_Push_StartTimestamp(t *testing.T) {
+	tests := []struct {
+		name       string
+		metricName string
+		req        *cortexpb.WriteRequest
+		assertFn   func(t *testing.T, ts cortexpb.TimeSeries)
+	}{
+		{
+			name:       "sample start timestamp appends zero sample",
+			metricName: "test_start_timestamp_sample",
+			req: cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_sample")},
+				[]cortexpb.Sample{{Value: 42, TimestampMs: 200, StartTimestampMs: 100}},
+				nil,
+				nil,
+				cortexpb.API,
+			),
+			assertFn: func(t *testing.T, ts cortexpb.TimeSeries) {
+				require.Len(t, ts.Samples, 2)
+				assert.Equal(t, int64(100), ts.Samples[0].TimestampMs)
+				assert.Equal(t, float64(0), ts.Samples[0].Value)
+				assert.Equal(t, int64(200), ts.Samples[1].TimestampMs)
+				assert.Equal(t, float64(42), ts.Samples[1].Value)
+			},
+		},
+		{
+			name:       "histogram start timestamp appends zero histogram",
+			metricName: "test_start_timestamp_histogram",
+			req: func() *cortexpb.WriteRequest {
+				h := cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1))
+				h.StartTimestampMs = 100
+				return cortexpb.ToWriteRequest(
+					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_histogram")},
+					nil,
+					nil,
+					[]cortexpb.Histogram{h},
+					cortexpb.API,
+				)
+			}(),
+			assertFn: func(t *testing.T, ts cortexpb.TimeSeries) {
+				require.Len(t, ts.Histograms, 2)
+				assert.Equal(t, int64(100), ts.Histograms[0].TimestampMs)
+				assert.Equal(t, int64(200), ts.Histograms[1].TimestampMs)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+
+			ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return ing.lifecycler.GetState()
+			})
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = ing.Push(ctx, tc.req)
+			require.NoError(t, err)
+
+			s := &mockQueryStreamServer{ctx: ctx}
+			err = ing.QueryStream(&client.QueryRequest{
+				StartTimestampMs: math.MinInt64,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: tc.metricName}},
+			}, s)
+			require.NoError(t, err)
+
+			set, err := seriesSetFromResponseStream(s)
+			require.NoError(t, err)
+
+			resp, err := client.SeriesSetToQueryResponse(set)
+			require.NoError(t, err)
+			require.Len(t, resp.Timeseries, 1)
+
+			ts := resp.Timeseries[0]
+			tc.assertFn(t, ts)
+		})
+	}
+}
+
+func TestIngester_Push_StartTimestampAppendFailureMetrics(t *testing.T) {
+	tests := []struct {
+		name           string
+		req            *cortexpb.WriteRequest
+		expectedType   string
+		unexpectedType string
+	}{
+		{
+			name: "sample start timestamp append failure increments float metric",
+			req: cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_failure_sample")},
+				[]cortexpb.Sample{{Value: 42, TimestampMs: 200, StartTimestampMs: math.MinInt64}},
+				nil,
+				nil,
+				cortexpb.API,
+			),
+			expectedType:   sampleMetricTypeFloat,
+			unexpectedType: sampleMetricTypeHistogram,
+		},
+		{
+			name: "histogram start timestamp append failure increments histogram metric",
+			req: func() *cortexpb.WriteRequest {
+				h := cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1))
+				h.StartTimestampMs = math.MinInt64
+				return cortexpb.ToWriteRequest(
+					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_failure_histogram")},
+					nil,
+					nil,
+					[]cortexpb.Histogram{h},
+					cortexpb.API,
+				)
+			}(),
+			expectedType:   sampleMetricTypeHistogram,
+			unexpectedType: sampleMetricTypeFloat,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+
+			registry := prometheus.NewRegistry()
+			ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return ing.lifecycler.GetState()
+			})
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = ing.Push(ctx, tc.req)
+			require.NoError(t, err)
+
+			require.Equal(t, float64(1), testutil.ToFloat64(ing.metrics.startTimestampFail.WithLabelValues(tc.expectedType)))
+			require.Equal(t, float64(0), testutil.ToFloat64(ing.metrics.startTimestampFail.WithLabelValues(tc.unexpectedType)))
+		})
+	}
+}
+
 // Referred from https://github.com/prometheus/prometheus/blob/v3.9.1/model/histogram/histogram_test.go#L1384.
 func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}

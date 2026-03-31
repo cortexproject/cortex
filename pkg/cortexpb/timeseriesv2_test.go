@@ -42,6 +42,8 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 		ts.Samples = []Sample{{Value: 1, TimestampMs: 2}}
 		ts.Exemplars = []ExemplarV2{{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 2}}
 		ts.Histograms = []Histogram{{}}
+		ts.CreatedTimestamp = 12345
+		ts.Metadata = MetadataV2{Type: 1, HelpRef: 2, UnitRef: 3}
 		ReuseTimeseriesV2(ts)
 
 		reused := TimeseriesV2FromPool()
@@ -49,6 +51,10 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 		assert.Len(t, reused.Samples, 0)
 		assert.Len(t, reused.Exemplars, 0)
 		assert.Len(t, reused.Histograms, 0)
+		assert.Zero(t, reused.CreatedTimestamp)
+		assert.Zero(t, reused.Metadata.Type)
+		assert.Zero(t, reused.Metadata.HelpRef)
+		assert.Zero(t, reused.Metadata.UnitRef)
 	})
 }
 

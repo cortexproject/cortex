@@ -112,7 +112,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
+			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -208,7 +208,7 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool) (cortexpb.PreallocWriteRequest, error) {
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (cortexpb.PreallocWriteRequest, error) {
 	var v1Req cortexpb.PreallocWriteRequest
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
@@ -253,9 +253,31 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 
 		ts := cortexpb.TimeseriesFromPool()
 		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
-		ts.Samples = append(ts.Samples, v2Ts.Samples...)
+		ts.Samples = make([]cortexpb.Sample, 0, len(v2Ts.Samples))
+		for _, sample := range v2Ts.Samples {
+			if enableStartTimestamp {
+				// Use created_timestamp as a fallback for start_timestamp_ms when not set.
+				if sample.StartTimestampMs == 0 {
+					sample.StartTimestampMs = v2Ts.CreatedTimestamp
+				}
+			} else {
+				sample.StartTimestampMs = 0
+			}
+			ts.Samples = append(ts.Samples, sample)
+		}
 		ts.Exemplars = exemplars
-		ts.Histograms = append(ts.Histograms, v2Ts.Histograms...)
+		ts.Histograms = make([]cortexpb.Histogram, 0, len(v2Ts.Histograms))
+		for _, histogram := range v2Ts.Histograms {
+			if enableStartTimestamp {
+				// Use created_timestamp as a fallback for start_timestamp_ms when not set.
+				if histogram.StartTimestampMs == 0 {
+					histogram.StartTimestampMs = v2Ts.CreatedTimestamp
+				}
+			} else {
+				histogram.StartTimestampMs = 0
+			}
+			ts.Histograms = append(ts.Histograms, histogram)
+		}
 
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: ts,

@@ -28,14 +28,16 @@ RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	rm -rf /go/pkg /go/src /root/.cache
 
 # Install OpenTelemetry Weaver for telemetry schema validation and code generation.
-ENV WEAVER_VERSION=0.16.2
+# Note: Only available for x86_64 Linux. arm64 builds will skip Weaver installation.
+ENV WEAVER_VERSION=0.22.1
 RUN GOARCH=$(go env GOARCH) && \
-	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-x86_64-unknown-linux-gnu.tar.gz" && \
-	if [ "$GOARCH" = "arm64" ]; then \
-	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-aarch64-unknown-linux-gnu.tar.gz"; \
-	fi && \
-	curl -fsSL "${URL}" | tar xz -C /usr/bin weaver && \
-	chmod +x /usr/bin/weaver
+	if [ "$GOARCH" = "amd64" ]; then \
+	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-x86_64-unknown-linux-gnu.tar.xz" && \
+	curl -fsSL "${URL}" | xz -d | tar x -C /usr/bin weaver && \
+	chmod +x /usr/bin/weaver; \
+	else \
+	echo "Weaver not available for $GOARCH, skipping installation"; \
+	fi
 
 COPY build.sh /
 ENV GOCACHE=/go/cache

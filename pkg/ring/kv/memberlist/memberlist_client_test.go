@@ -600,6 +600,11 @@ func TestBuildMemberlistConfigClusterLabelOptions(t *testing.T) {
 			clusterLabel:                     "cluster-a",
 			clusterLabelVerificationDisabled: true,
 		},
+		{
+			name:         "configured label with verification enabled",
+			clusterLabel: "cluster-a",
+			clusterLabelVerificationDisabled: false,
+		},
 	}
 
 	for _, tc := range tests {
@@ -782,15 +787,17 @@ func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen
 		return getClientErr()
 	}
 
-	for timeout := time.After(10 * time.Second); ; {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(10 * time.Second)
+	for {
 		select {
 		case <-timeout:
 			return check()
-		default:
+		case <-ticker.C:
 			if err := check(); err == nil {
 				return nil
 			}
-			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }

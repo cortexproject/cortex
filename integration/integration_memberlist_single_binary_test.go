@@ -72,6 +72,12 @@ func TestSingleBinaryWithMemberlistClusterLabelIsolation(t *testing.T) {
 
 	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
 	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
+
+	// Verify cross-cluster isolation: clusterB1 must NOT see clusterA members.
+	// Wait a short observation window to ensure member counts remain stable.
+	time.Sleep(5 * time.Second)
+	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
+	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
 }
 
 func TestSingleBinaryWithMemberlistClusterLabelRollingMigration(t *testing.T) {

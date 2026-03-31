@@ -419,6 +419,11 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	}
 	if m.cfg.RandomizeNodeName {
 		mlCfg.Name = mlCfg.Name + "-" + generateRandomSuffix(m.logger)
+		level.Info(m.logger).Log("msg", "Using memberlist cluster node name", "name", mlCfg.Name)
+	}
+
+	if mlCfg.Label != "" {
+		level.Info(m.logger).Log("msg", "Using memberlist cluster label", "cluster_label", mlCfg.Label, "skip_inbound_label_check", mlCfg.SkipInboundLabelCheck)
 	}
 
 	mlCfg.LogOutput = newMemberlistLoggerAdapter(m.logger, false)
@@ -433,8 +438,6 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	// the timeout compared to defaults.
 	mlCfg.ProbeInterval = 5 * time.Second // Probe a random node every this interval. This setting is also the total timeout for the direct + indirect probes.
 	mlCfg.ProbeTimeout = 2 * time.Second  // Timeout for the direct probe.
-
-	level.Info(m.logger).Log("msg", "Using memberlist cluster label and node name", "cluster_label", mlCfg.Label, "node", mlCfg.Name)
 
 	return mlCfg, nil
 }

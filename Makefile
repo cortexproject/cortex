@@ -240,21 +240,23 @@ mod-check:
 
 # Telemetry schema validation and code generation (requires weaver CLI).
 WEAVER_VERSION ?= 0.22.1
+WEAVER_BIN_DIR ?= $(HOME)/.cargo/bin
+WEAVER := PATH="$(WEAVER_BIN_DIR):$(PATH)" weaver
 
 # Install weaver if not already available.
 .PHONY: install-weaver
 install-weaver:
-	@if ! command -v weaver >/dev/null 2>&1; then \
+	@if ! PATH="$(WEAVER_BIN_DIR):$(PATH)" command -v weaver >/dev/null 2>&1; then \
 		echo "Installing weaver v$(WEAVER_VERSION)..."; \
-		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-installer.sh" | sh -s -- --yes --install-dir /usr/bin; \
+		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-installer.sh" | sh -s -- --no-modify-path --quiet; \
 	fi
 
 telemetry-check: install-weaver
-	weaver registry check -r telemetry/registry
+	$(WEAVER) registry check -r telemetry/registry
 
 telemetry-generate: install-weaver
-	weaver registry generate -r telemetry/registry -t telemetry/templates go pkg/distributor/
-	weaver registry generate -r telemetry/registry -t telemetry/templates markdown docs/telemetry/
+	$(WEAVER) registry generate -r telemetry/registry -t telemetry/templates go pkg/distributor/
+	$(WEAVER) registry generate -r telemetry/registry -t telemetry/templates markdown docs/telemetry/
 
 check-telemetry: telemetry-generate
 	@git diff --exit-code -- pkg/distributor/telemetry_gen.go docs/telemetry/ || \

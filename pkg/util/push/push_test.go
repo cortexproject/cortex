@@ -1339,3 +1339,26 @@ func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.
 		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
 	})
 }
+
+func TestHandler_remoteWriteV2_UnauthorizedWithoutTenantID(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	pushCalled := false
+	pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		pushCalled = true
+		return &cortexpb.WriteResponse{}, nil
+	}
+
+	handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+
+	req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assert.Contains(t, resp.Body.String(), user.ErrNoOrgID.Error())
+	assert.False(t, pushCalled, "push function must not be called when tenant ID is missing")
+}

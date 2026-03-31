@@ -4211,6 +4211,12 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.enable-type-and-unit-labels&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[enable_type_and_unit_labels&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># not set.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.enable-start-timestamp&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[enable_start_timestamp&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The maximum number of active series per user, per ingester. 0 to disable.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -ingester.max-series-per-user&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[max_series_per_user&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 5000000]&lt;/span>

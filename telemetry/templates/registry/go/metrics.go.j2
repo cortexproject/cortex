@@ -28,11 +28,12 @@ type DistributorGaugeFuncs struct {
 {%- endfor %}
 }
 
-{# Macro to render a label list like: []string{"user", "type"} #}
-{%- macro label_list(attributes) -%}
+{# Macro to render a label list like: []string{"user", "type"} using params.labels for ordering #}
+{%- macro label_list(metric_name) -%}
+{%- set lbls = params.labels[metric_name] -%}
 []string{{ "{" }}
-{%- for attr in attributes -%}
-"{{ attr.name }}"{% if not loop.last %}, {% endif %}
+{%- for l in lbls -%}
+"{{ l }}"{% if not loop.last %}, {% endif %}
 {%- endfor -%}
 {{ "}" }}
 {%- endmacro -%}
@@ -67,7 +68,7 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 
 	// {{ metric.brief }}
 {%- if metric.instrument == "counter" %}
-{%- if metric.attributes %}
+{%- if metric.metric_name in params.labels %}
 	d.{{ field }} = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 {%- if ns %}
 		Namespace: "{{ ns.namespace }}",
@@ -76,7 +77,7 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 		Name: "{{ metric.metric_name }}",
 {%- endif %}
 		Help: "{{ metric.brief }}",
-	}, {{ label_list(metric.attributes) }})
+	}, {{ label_list(metric.metric_name) }})
 {%- else %}
 	d.{{ field }} = promauto.With(reg).NewCounter(prometheus.CounterOpts{
 {%- if ns %}
@@ -89,7 +90,7 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 	})
 {%- endif %}
 {%- elif metric.instrument == "gauge" %}
-{%- if metric.attributes %}
+{%- if metric.metric_name in params.labels %}
 	d.{{ field }} = promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 {%- if ns %}
 		Namespace: "{{ ns.namespace }}",
@@ -98,7 +99,7 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 		Name: "{{ metric.metric_name }}",
 {%- endif %}
 		Help: "{{ metric.brief }}",
-	}, {{ label_list(metric.attributes) }})
+	}, {{ label_list(metric.metric_name) }})
 {%- else %}
 	d.{{ field }} = promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 {%- if ns %}
@@ -111,7 +112,7 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 	})
 {%- endif %}
 {%- elif metric.instrument == "histogram" %}
-{%- if metric.attributes %}
+{%- if metric.metric_name in params.labels %}
 {%- if is_wrapped %}
 	d.{{ field }} = instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
 {%- else %}
@@ -128,9 +129,9 @@ func registerDistributorMetrics(d *Distributor, reg prometheus.Registerer, gf Di
 		Buckets: {{ bucket_list(buckets) }},
 {%- endif %}
 {%- if is_wrapped %}
-	}, {{ label_list(metric.attributes) }}))
+	}, {{ label_list(metric.metric_name) }}))
 {%- else %}
-	}, {{ label_list(metric.attributes) }})
+	}, {{ label_list(metric.metric_name) }})
 {%- endif %}
 {%- else %}
 	d.{{ field }} = promauto.With(reg).NewHistogram(prometheus.HistogramOpts{

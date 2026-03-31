@@ -58,6 +58,25 @@ params:
   histogram_collector_wrap:
     - cortex_distributor_query_duration_seconds
 
+  # Explicit label ordering for Go code generation (must match WithLabelValues call sites).
+  # Weaver may sort attributes alphabetically; this preserves the original Go label order.
+  labels:
+    cortex_distributor_received_samples_total: ["user", "type"]
+    cortex_distributor_received_samples_per_labelset_total: ["user", "type", "labelset"]
+    cortex_distributor_received_exemplars_total: ["user"]
+    cortex_distributor_received_metadata_total: ["user"]
+    cortex_distributor_samples_in_total: ["user", "type"]
+    cortex_distributor_exemplars_in_total: ["user"]
+    cortex_distributor_metadata_in_total: ["user"]
+    cortex_distributor_non_ha_samples_received_total: ["user"]
+    cortex_distributor_deduped_samples_total: ["user", "cluster"]
+    cortex_distributor_query_duration_seconds: ["method", "status_code"]
+    cortex_distributor_ingester_appends_total: ["ingester", "type"]
+    cortex_distributor_ingester_append_failures_total: ["ingester", "type", "status"]
+    cortex_distributor_ingester_queries_total: ["ingester"]
+    cortex_distributor_ingester_query_failures_total: ["ingester"]
+    cortex_distributor_latest_seen_sample_timestamp_seconds: ["user"]
+
 templates:
   - pattern: metrics.go.j2
     filter: semconv_grouped_metrics

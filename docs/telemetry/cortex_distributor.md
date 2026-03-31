@@ -11,11 +11,11 @@ This document is auto-generated from the telemetry schema defined in
 
 | Name | Type | Unit | Description | Labels |
 |------|------|------|-------------|--------|
-| `cortex_distributor_deduped_samples_total` | counter | {sample} | The total number of deduplicated samples. | `user`, `cluster` |
+| `cortex_distributor_deduped_samples_total` | counter | {sample} | The total number of deduplicated samples. | `cluster`, `user` |
 | `cortex_distributor_exemplars_in_total` | counter | {exemplar} | The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars. | `user` |
 | `cortex_distributor_inflight_client_requests` | gauge | {request} | Current number of inflight client requests in distributor. | - |
 | `cortex_distributor_inflight_push_requests` | gauge | {request} | Current number of inflight push requests in distributor. | - |
-| `cortex_distributor_ingester_append_failures_total` | counter | {append} | The total number of failed batch appends sent to ingesters. | `ingester`, `type`, `status` |
+| `cortex_distributor_ingester_append_failures_total` | counter | {append} | The total number of failed batch appends sent to ingesters. | `ingester`, `status`, `type` |
 | `cortex_distributor_ingester_appends_total` | counter | {append} | The total number of batch appends sent to ingesters. | `ingester`, `type` |
 | `cortex_distributor_ingester_partial_data_queries_total` | counter | {query} | The total number of queries sent to ingesters that may have returned partial data. | - |
 | `cortex_distributor_ingester_push_timeouts_total` | counter | {timeout} | The total number of push requests to ingesters that were canceled due to timeout. | - |
@@ -29,8 +29,8 @@ This document is auto-generated from the telemetry schema defined in
 | `cortex_distributor_query_duration_seconds` | histogram | s | Time spent executing expression and exemplar queries. | `method`, `status_code` |
 | `cortex_distributor_received_exemplars_total` | counter | {exemplar} | The total number of received exemplars, excluding rejected and deduped exemplars. | `user` |
 | `cortex_distributor_received_metadata_total` | counter | {metadata} | The total number of received metadata, excluding rejected. | `user` |
-| `cortex_distributor_received_samples_per_labelset_total` | counter | {sample} | The total number of received samples per label set, excluding rejected and deduped samples. | `user`, `type`, `labelset` |
-| `cortex_distributor_received_samples_total` | counter | {sample} | The total number of received samples, excluding rejected and deduped samples. | `user`, `type` |
+| `cortex_distributor_received_samples_per_labelset_total` | counter | {sample} | The total number of received samples per label set, excluding rejected and deduped samples. | `labelset`, `type`, `user` |
+| `cortex_distributor_received_samples_total` | counter | {sample} | The total number of received samples, excluding rejected and deduped samples. | `type`, `user` |
 | `cortex_distributor_replication_factor` | gauge | {factor} | The configured replication factor. | - |
-| `cortex_distributor_samples_in_total` | counter | {sample} | The total number of samples that have come in to the distributor, including rejected or deduped samples. | `user`, `type` |
+| `cortex_distributor_samples_in_total` | counter | {sample} | The total number of samples that have come in to the distributor, including rejected or deduped samples. | `type`, `user` |
 | `cortex_labels_per_sample` | histogram | {label} | Number of labels per sample. | - |

@@ -246,11 +246,7 @@ WEAVER_VERSION ?= 0.22.1
 install-weaver:
 	@if ! command -v weaver >/dev/null 2>&1; then \
 		echo "Installing weaver v$(WEAVER_VERSION)..."; \
-		GOARCH=$$(go env GOARCH) && \
-		if [ "$$GOARCH" = "amd64" ]; then ARCH=x86_64; else echo "Weaver not available for $$GOARCH"; exit 1; fi && \
-		URL="https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-$${ARCH}-unknown-linux-gnu.tar.xz" && \
-		curl -fsSL "$$URL" | xz -d | tar x --strip-components=1 -C /usr/bin weaver-$${ARCH}-unknown-linux-gnu/weaver && \
-		chmod +x /usr/bin/weaver; \
+		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-installer.sh" | sh -s -- --yes --install-dir /usr/bin; \
 	fi
 
 telemetry-check: install-weaver

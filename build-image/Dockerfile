@@ -27,6 +27,16 @@ RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/campoy/embedmd@v1.0.0 &&\
 	rm -rf /go/pkg /go/src /root/.cache
 
+# Install OpenTelemetry Weaver for telemetry schema validation and code generation.
+ENV WEAVER_VERSION=0.16.2
+RUN GOARCH=$(go env GOARCH) && \
+	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-x86_64-unknown-linux-gnu.tar.gz" && \
+	if [ "$GOARCH" = "arm64" ]; then \
+	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-aarch64-unknown-linux-gnu.tar.gz"; \
+	fi && \
+	curl -fsSL "${URL}" | tar xz -C /usr/bin weaver && \
+	chmod +x /usr/bin/weaver
+
 COPY build.sh /
 ENV GOCACHE=/go/cache
 ENTRYPOINT ["/build.sh"]

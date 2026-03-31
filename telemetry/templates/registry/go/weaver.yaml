@@ -1,0 +1,65 @@
+comment_format: "//"
+
+params:
+  pkg: distributor
+
+  field_map:
+    cortex_distributor_query_duration_seconds: queryDuration
+    cortex_distributor_received_samples_total: receivedSamples
+    cortex_distributor_received_samples_per_labelset_total: receivedSamplesPerLabelSet
+    cortex_distributor_received_exemplars_total: receivedExemplars
+    cortex_distributor_received_metadata_total: receivedMetadata
+    cortex_distributor_samples_in_total: incomingSamples
+    cortex_distributor_exemplars_in_total: incomingExemplars
+    cortex_distributor_metadata_in_total: incomingMetadata
+    cortex_distributor_non_ha_samples_received_total: nonHASamples
+    cortex_distributor_deduped_samples_total: dedupedSamples
+    cortex_labels_per_sample: labelsHistogram
+    cortex_distributor_ingester_appends_total: ingesterAppends
+    cortex_distributor_ingester_append_failures_total: ingesterAppendFailures
+    cortex_distributor_ingester_queries_total: ingesterQueries
+    cortex_distributor_ingester_query_failures_total: ingesterQueryFailures
+    cortex_distributor_ingester_partial_data_queries_total: ingesterPartialDataQueries
+    cortex_distributor_replication_factor: replicationFactor
+    cortex_distributor_latest_seen_sample_timestamp_seconds: latestSeenSampleTimestampPerUser
+    cortex_distributor_ingester_push_timeouts_total: distributorIngesterPushTimeout
+
+  namespace_split:
+    cortex_distributor_query_duration_seconds: {namespace: cortex, name: distributor_query_duration_seconds}
+    cortex_distributor_received_samples_total: {namespace: cortex, name: distributor_received_samples_total}
+    cortex_distributor_received_samples_per_labelset_total: {namespace: cortex, name: distributor_received_samples_per_labelset_total}
+    cortex_distributor_received_exemplars_total: {namespace: cortex, name: distributor_received_exemplars_total}
+    cortex_distributor_received_metadata_total: {namespace: cortex, name: distributor_received_metadata_total}
+    cortex_distributor_samples_in_total: {namespace: cortex, name: distributor_samples_in_total}
+    cortex_distributor_exemplars_in_total: {namespace: cortex, name: distributor_exemplars_in_total}
+    cortex_distributor_metadata_in_total: {namespace: cortex, name: distributor_metadata_in_total}
+    cortex_distributor_non_ha_samples_received_total: {namespace: cortex, name: distributor_non_ha_samples_received_total}
+    cortex_distributor_deduped_samples_total: {namespace: cortex, name: distributor_deduped_samples_total}
+    cortex_labels_per_sample: {namespace: cortex, name: labels_per_sample}
+    cortex_distributor_ingester_appends_total: {namespace: cortex, name: distributor_ingester_appends_total}
+    cortex_distributor_ingester_append_failures_total: {namespace: cortex, name: distributor_ingester_append_failures_total}
+    cortex_distributor_ingester_queries_total: {namespace: cortex, name: distributor_ingester_queries_total}
+    cortex_distributor_ingester_query_failures_total: {namespace: cortex, name: distributor_ingester_query_failures_total}
+    cortex_distributor_ingester_partial_data_queries_total: {namespace: cortex, name: distributor_ingester_partial_data_queries_total}
+    cortex_distributor_replication_factor: {namespace: cortex, name: distributor_replication_factor}
+
+  histogram_buckets:
+    cortex_labels_per_sample: [5, 10, 15, 20, 25]
+    cortex_distributor_query_duration_seconds: [.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30]
+
+  gauge_funcs:
+    - cortex_distributor_inflight_push_requests
+    - cortex_distributor_inflight_client_requests
+    - cortex_distributor_ingestion_rate_samples_per_second
+
+  excluded:
+    - cortex_distributor_instance_limits
+
+  histogram_collector_wrap:
+    - cortex_distributor_query_duration_seconds
+
+templates:
+  - pattern: metrics.go.j2
+    filter: semconv_grouped_metrics
+    application_mode: each
+    file_name: telemetry_gen.go

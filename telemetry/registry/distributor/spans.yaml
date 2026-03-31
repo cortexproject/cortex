@@ -1,0 +1,153 @@
+groups:
+  - id: span.cortex.distributor.push
+    type: span
+    span_kind: server
+    stability: stable
+    brief: "Handles incoming remote write push requests."
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: recommended
+        examples: ["tenant-1"]
+
+  - id: span.cortex.distributor.do_batch
+    type: span
+    span_kind: internal
+    stability: stable
+    brief: "Sends batched samples to ingesters via the ring."
+    attributes: []
+
+  - id: span.cortex.distributor.prepare_series_keys
+    type: span
+    span_kind: internal
+    stability: stable
+    brief: "Computes ingester ring tokens for series distribution."
+    attributes: []
+
+  - id: span.cortex.distributor.query_exemplars
+    type: span
+    span_kind: client
+    stability: stable
+    brief: "Queries exemplars from ingesters."
+    attributes:
+      - id: series
+        type: int
+        stability: stable
+        brief: "Number of series in the response."
+        requirement_level: recommended
+        examples: [42]
+
+  - id: span.cortex.distributor.query_stream
+    type: span
+    span_kind: client
+    stability: stable
+    brief: "Queries time series from ingesters via streaming."
+    attributes:
+      - id: chunk_series
+        type: int
+        stability: stable
+        brief: "Number of chunk series in the response."
+        requirement_level: recommended
+        examples: [100]
+
+  - id: span.cortex.distributor.merge_ingester_streams
+    type: span
+    span_kind: internal
+    stability: stable
+    brief: "Merges streaming query responses from multiple ingesters."
+    attributes:
+      - id: fetched_series
+        type: int
+        stability: stable
+        brief: "Number of series fetched."
+        requirement_level: recommended
+        examples: [100]
+      - id: fetched_chunks
+        type: int
+        stability: stable
+        brief: "Number of chunks fetched."
+        requirement_level: recommended
+        examples: [1000]
+      - id: fetched_data_bytes
+        type: int
+        stability: stable
+        brief: "Total response data bytes."
+        requirement_level: recommended
+        examples: [1048576]
+      - id: fetched_chunks_bytes
+        type: int
+        stability: stable
+        brief: "Chunk-specific data bytes."
+        requirement_level: recommended
+        examples: [524288]
+
+  - id: span.cortex.distributor.label_values
+    type: span
+    span_kind: client
+    stability: stable
+    brief: "Queries label values from ingesters."
+    attributes:
+      - id: name
+        type: string
+        stability: stable
+        brief: "Label name being queried."
+        requirement_level: recommended
+        examples: ["__name__"]
+      - id: start
+        type: int
+        stability: stable
+        brief: "Query start time as Unix timestamp."
+        requirement_level: recommended
+        examples: [1700000000]
+      - id: end
+        type: int
+        stability: stable
+        brief: "Query end time as Unix timestamp."
+        requirement_level: recommended
+        examples: [1700003600]
+      - id: result_length
+        type: int
+        stability: stable
+        brief: "Number of values returned."
+        requirement_level: recommended
+        examples: [50]
+
+  - id: span.cortex.distributor.label_names
+    type: span
+    span_kind: client
+    stability: stable
+    brief: "Queries label names from ingesters."
+    attributes:
+      - id: start
+        type: int
+        stability: stable
+        brief: "Query start time as Unix timestamp."
+        requirement_level: recommended
+        examples: [1700000000]
+      - id: end
+        type: int
+        stability: stable
+        brief: "Query end time as Unix timestamp."
+        requirement_level: recommended
+        examples: [1700003600]
+      - id: result_length
+        type: int
+        stability: stable
+        brief: "Number of names returned."
+        requirement_level: recommended
+        examples: [20]
+
+  - id: span.cortex.distributor.response_merge
+    type: span
+    span_kind: internal
+    stability: stable
+    brief: "Merges query responses from multiple ingesters."
+    attributes:
+      - id: result_length
+        type: int
+        stability: stable
+        brief: "Number of items in the merged result."
+        requirement_level: recommended
+        examples: [50]

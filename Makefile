@@ -2,7 +2,7 @@
 # WARNING: do not commit to a repository!
 -include Makefile.local
 
-.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image
+.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image telemetry-check telemetry-generate check-telemetry
 .DEFAULT_GOAL := all
 
 # Version number
@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize telemetry-check telemetry-generate check-telemetry: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -237,6 +237,18 @@ mod-check:
 	GO111MODULE=on go mod tidy
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
+
+# Telemetry schema validation and code generation (requires weaver CLI).
+telemetry-check:
+	weaver registry check -r telemetry/registry
+
+telemetry-generate:
+	weaver registry generate -r telemetry/registry -t telemetry/templates go pkg/distributor/
+	weaver registry generate -r telemetry/registry -t telemetry/templates markdown docs/telemetry/
+
+check-telemetry: telemetry-generate
+	@git diff --exit-code -- pkg/distributor/telemetry_gen.go docs/telemetry/ || \
+		(echo "Generated telemetry code is out of date. Run 'make telemetry-generate' and commit the results." && false)
 
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)

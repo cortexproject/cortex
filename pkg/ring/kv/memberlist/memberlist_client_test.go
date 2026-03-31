@@ -601,8 +601,8 @@ func TestBuildMemberlistConfigClusterLabelOptions(t *testing.T) {
 			clusterLabelVerificationDisabled: true,
 		},
 		{
-			name:         "configured label with verification enabled",
-			clusterLabel: "cluster-a",
+			name:                             "configured label with verification enabled",
+			clusterLabel:                     "cluster-a",
 			clusterLabelVerificationDisabled: false,
 		},
 	}

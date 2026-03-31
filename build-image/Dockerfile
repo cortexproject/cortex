@@ -33,7 +33,7 @@ ENV WEAVER_VERSION=0.22.1
 RUN GOARCH=$(go env GOARCH) && \
 	if [ "$GOARCH" = "amd64" ]; then \
 	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-x86_64-unknown-linux-gnu.tar.xz" && \
-	curl -fsSL "${URL}" | xz -d | tar x -C /usr/bin weaver && \
+	curl -fsSL "${URL}" | xz -d | tar x --strip-components=1 -C /usr/bin weaver-x86_64-unknown-linux-gnu/weaver && \
 	chmod +x /usr/bin/weaver; \
 	else \
 	echo "Weaver not available for $GOARCH, skipping installation"; \

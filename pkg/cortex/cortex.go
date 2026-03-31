@@ -70,7 +70,8 @@ import (
 )
 
 var (
-	errInvalidHTTPPrefix = errors.New("HTTP prefix should be empty or start with /")
+	errInvalidHTTPPrefix                       = errors.New("HTTP prefix should be empty or start with /")
+	errTimeoutClassificationRequiresQueryStats = errors.New("timeout classification requires query stats to be enabled (frontend.query-stats-enabled)")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -227,6 +228,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Querier.Validate(); err != nil {
 		return errors.Wrap(err, "invalid querier config")
+	}
+	if c.Querier.TimeoutClassificationEnabled && !c.Frontend.Handler.QueryStatsEnabled {
+		return errTimeoutClassificationRequiresQueryStats
 	}
 	if err := c.IngesterClient.Validate(log); err != nil {
 		return errors.Wrap(err, "invalid ingester_client config")

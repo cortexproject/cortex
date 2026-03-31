@@ -239,10 +239,24 @@ mod-check:
 	@git diff --exit-code -- go.sum go.mod vendor/
 
 # Telemetry schema validation and code generation (requires weaver CLI).
-telemetry-check:
+WEAVER_VERSION ?= 0.22.1
+
+# Install weaver if not already available.
+.PHONY: install-weaver
+install-weaver:
+	@if ! command -v weaver >/dev/null 2>&1; then \
+		echo "Installing weaver v$(WEAVER_VERSION)..."; \
+		GOARCH=$$(go env GOARCH) && \
+		if [ "$$GOARCH" = "amd64" ]; then ARCH=x86_64; else echo "Weaver not available for $$GOARCH"; exit 1; fi && \
+		URL="https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-$${ARCH}-unknown-linux-gnu.tar.xz" && \
+		curl -fsSL "$$URL" | xz -d | tar x --strip-components=1 -C /usr/bin weaver-$${ARCH}-unknown-linux-gnu/weaver && \
+		chmod +x /usr/bin/weaver; \
+	fi
+
+telemetry-check: install-weaver
 	weaver registry check -r telemetry/registry
 
-telemetry-generate:
+telemetry-generate: install-weaver
 	weaver registry generate -r telemetry/registry -t telemetry/templates go pkg/distributor/
 	weaver registry generate -r telemetry/registry -t telemetry/templates markdown docs/telemetry/
 

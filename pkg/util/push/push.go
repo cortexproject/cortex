@@ -90,6 +90,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 		handlePRW2 := func() {
 			userID, err := users.TenantID(ctx)
 			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 

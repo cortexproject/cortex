@@ -1463,7 +1463,7 @@ func prepareForPartitioning(t *testing.T, compactorCfg Config, bucketClient objs
 
 	blocksCompactorFactory := func(ctx context.Context, cfg Config, logger log.Logger, reg prometheus.Registerer) (compact.Compactor, PlannerFactory, error) {
 		return tsdbCompactor,
-			func(ctx context.Context, bkt objstore.InstrumentedBucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ string, _ prometheus.Counter, _ prometheus.Counter, _ *compactorMetrics) compact.Planner {
+			func(ctx context.Context, bkt objstore.InstrumentedBucket, _ log.Logger, _ Config, noCompactMarkFilter *compact.GatherNoCompactionMarkFilter, ringLifecycle *ring.Lifecycler, _ string, _ prometheus.Counter, _ prometheus.Counter, _ *compactorMetrics, _ *block.IgnoreDeletionMarkFilter) compact.Planner {
 				tsdbPlanner.noCompactMarkFilters = append(tsdbPlanner.noCompactMarkFilters, noCompactMarkFilter)
 				return tsdbPlanner
 			},
@@ -1972,6 +1972,7 @@ func (s *raceConditionTestSetup) createPlanner() *PartitionCompactionPlanner {
 		10*time.Minute,
 		time.Minute,
 		metrics,
+		nil,
 	)
 }
 

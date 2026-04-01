@@ -3,7 +3,6 @@ FROM alpine:3.23
 RUN apk add --no-cache \
         ruby \
         ruby-dev \
-        ruby-etc \
         gcc \
         git \
         libc-dev \

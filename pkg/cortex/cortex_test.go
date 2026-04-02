@@ -239,6 +239,40 @@ func TestConfigValidation(t *testing.T) {
 			},
 			expectedError: fmt.Errorf("unsupported name validation scheme: unset"),
 		},
+		{
+			name: "should fail when timeout classification is enabled but query stats is disabled",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Querier.TimeoutClassificationEnabled = true
+				configuration.Querier.TimeoutClassificationDeadline = 59 * time.Second
+				configuration.Querier.TimeoutClassificationEvalThreshold = 40 * time.Second
+				configuration.Frontend.Handler.QueryStatsEnabled = false
+				return configuration
+			},
+			expectedError: errTimeoutClassificationRequiresQueryStats,
+		},
+		{
+			name: "should pass when timeout classification is enabled and query stats is enabled",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Querier.TimeoutClassificationEnabled = true
+				configuration.Querier.TimeoutClassificationDeadline = 59 * time.Second
+				configuration.Querier.TimeoutClassificationEvalThreshold = 40 * time.Second
+				configuration.Frontend.Handler.QueryStatsEnabled = true
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
+			name: "should pass when timeout classification is disabled and query stats is disabled",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Querier.TimeoutClassificationEnabled = false
+				configuration.Frontend.Handler.QueryStatsEnabled = false
+				return configuration
+			},
+			expectedError: nil,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.getTestConfig().Validate(nil)

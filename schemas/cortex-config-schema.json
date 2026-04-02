@@ -6162,6 +6162,26 @@
           "type": "string",
           "x-cli-flag": "querier.timeout",
           "x-format": "duration"
+        },
+        "timeout_classification_deadline": {
+          "default": "59s",
+          "description": "The total time before the querier proactively cancels a query for timeout classification.",
+          "type": "string",
+          "x-cli-flag": "querier.timeout-classification-deadline",
+          "x-format": "duration"
+        },
+        "timeout_classification_enabled": {
+          "default": false,
+          "description": "If true, classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing.",
+          "type": "boolean",
+          "x-cli-flag": "querier.timeout-classification-enabled"
+        },
+        "timeout_classification_eval_threshold": {
+          "default": "40s",
+          "description": "Eval time threshold above which a timeout is classified as user error (4XX).",
+          "type": "string",
+          "x-cli-flag": "querier.timeout-classification-eval-threshold",
+          "x-format": "duration"
         }
       },
       "type": "object"

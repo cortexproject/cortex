@@ -536,6 +536,19 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
 	}
 
+	if maxFetch := stats.LoadMaxFetchTime(); maxFetch > 0 {
+		logMessage = append(logMessage, "max_fetch_time", maxFetch)
+	}
+	if maxEval := stats.LoadMaxEvalTime(); maxEval > 0 {
+		logMessage = append(logMessage, "max_eval_time", maxEval)
+	}
+	if maxQueue := stats.LoadMaxQueueWaitTime(); maxQueue > 0 {
+		logMessage = append(logMessage, "max_queue_wait_time", maxQueue)
+	}
+	if maxTotal := stats.LoadMaxTotalTime(); maxTotal > 0 {
+		logMessage = append(logMessage, "max_total_time", maxTotal)
+	}
+
 	if splitInterval > 0 {
 		logMessage = append(logMessage, "split_interval", splitInterval.String())
 	}

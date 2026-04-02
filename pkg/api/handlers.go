@@ -286,7 +286,11 @@ func NewQuerierHandler(
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	api.Register(legacyPromRouter)
 
-	queryAPI := queryapi.NewQueryAPI(engine, translateSampleAndChunkQueryable, statsRenderer, logger, codecs, corsOrigin)
+	queryAPI := queryapi.NewQueryAPI(engine, translateSampleAndChunkQueryable, statsRenderer, logger, codecs, corsOrigin, stats.PhaseTrackerConfig{
+		TotalTimeout:      querierCfg.TimeoutClassificationDeadline,
+		EvalTimeThreshold: querierCfg.TimeoutClassificationEvalThreshold,
+		Enabled:           querierCfg.TimeoutClassificationEnabled,
+	})
 
 	requestTracker := request_tracker.NewRequestTracker(querierCfg.ActiveQueryTrackerDir, "apis.active", querierCfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
 	var apiHandler http.Handler

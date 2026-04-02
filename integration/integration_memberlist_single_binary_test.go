@@ -73,8 +73,10 @@ func TestSingleBinaryWithMemberlistClusterLabelIsolation(t *testing.T) {
 	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
 	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
 
-	// Verify cross-cluster isolation: clusterB1 must NOT see clusterA members.
-	// Wait a short observation window to ensure member counts remain stable.
+	// Verify cross-cluster isolation: sleep for an observation window to confirm
+	// member counts remain stable and no cross-cluster leakage occurs over time.
+	// A fixed sleep is intentional here — we are asserting that nothing changes,
+	// which cannot be verified with polling.
 	time.Sleep(5 * time.Second)
 	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
 	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)

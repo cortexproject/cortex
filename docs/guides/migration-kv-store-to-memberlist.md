@@ -57,7 +57,18 @@ ingester:
 >
 > **Note:** Make sure to apply this multi KV store configuration to all other components that interact with the ring (e.g. distributors, store-gateways), not just the ingesters.
 >
-> **Note:** If multiple Cortex, Mimir, or Loki clusters could reach the same gossip seed addresses, configure a shared `memberlist.cluster_label` for your Cortex cluster. For a fresh Memberlist rollout, you can deploy the shared label with `memberlist.cluster_label_verification_disabled: true` and switch verification back to `false` once every memberlist-enabled Cortex process is using the same label. If you are adding labels to an existing unlabeled Memberlist cluster, first roll out `memberlist.cluster_label_verification_disabled: true` everywhere while leaving `memberlist.cluster_label` empty, then roll out the shared label, and finally switch verification back to `false`. This isolates Memberlist traffic only; it does not isolate Consul or Etcd prefixes.
+> **Note:** If multiple Cortex, Mimir, or Loki clusters could reach the same gossip seed addresses, configure a shared `memberlist.cluster_label` for your Cortex cluster.
+>
+> **For a fresh Memberlist rollout:**
+> 1. Deploy with `memberlist.cluster_label` set and `memberlist.cluster_label_verification_disabled: true`.
+> 2. Once every memberlist-enabled process is running with the same label, set `memberlist.cluster_label_verification_disabled: false`.
+>
+> **For an existing unlabeled Memberlist cluster:**
+> 1. Roll out `memberlist.cluster_label_verification_disabled: true` everywhere (leave `memberlist.cluster_label` empty).
+> 2. Roll out the shared `memberlist.cluster_label` value to all processes.
+> 3. Set `memberlist.cluster_label_verification_disabled: false`.
+>
+> This isolates Memberlist traffic only; it does not isolate Consul or Etcd prefixes.
 
 Once deployed, Cortex will begin mirroring primary (Consul) data to Memberlist.
 

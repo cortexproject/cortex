@@ -414,6 +414,10 @@ func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
 	mlCfg.Label = m.cfg.ClusterLabel
 	mlCfg.SkipInboundLabelCheck = m.cfg.ClusterLabelVerificationDisabled
 
+	if mlCfg.Label == "" && mlCfg.SkipInboundLabelCheck {
+		level.Warn(m.logger).Log("msg", "cluster label verification is disabled but no cluster label is configured; this weakens isolation without benefit")
+	}
+
 	if m.cfg.NodeName != "" {
 		mlCfg.Name = m.cfg.NodeName
 	}

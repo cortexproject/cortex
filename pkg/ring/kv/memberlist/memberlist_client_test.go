@@ -710,7 +710,7 @@ func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen
 
 	startTime := time.Now()
 	firstKV := clients[0]
-	ctx, cancel := context.WithTimeout(context.Background(), casInterval*3)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	joinedMembers := 0

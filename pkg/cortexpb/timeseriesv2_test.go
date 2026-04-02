@@ -52,6 +52,38 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 	})
 }
 
+func TestReuseWriteRequestV2(t *testing.T) {
+	req := PreallocWriteRequestV2FromPool()
+
+	// Populate req with some data.
+	req.Source = RULE
+	req.Symbols = append(req.Symbols, "", "__name__", "test")
+
+	tsSlice := PreallocTimeseriesV2SliceFromPool()
+	tsSlice = append(tsSlice, PreallocTimeseriesV2{TimeSeriesV2: TimeseriesV2FromPool()})
+	req.Timeseries = tsSlice
+
+	// Capture backing array before reuse
+	symbolsBackingArray := req.Symbols[:cap(req.Symbols)]
+	require.Equal(t, "__name__", symbolsBackingArray[1])
+	require.Equal(t, "test", symbolsBackingArray[2])
+
+	// Put the request back into the pool
+	ReuseWriteRequestV2(req)
+
+	// Verify clearing directly on the backing array
+	for i, s := range symbolsBackingArray[:3] {
+		assert.Equalf(t, "", s, "symbol at index %d not cleared", i)
+	}
+
+	// Source is reset to default
+	assert.Equal(t, API, req.Source)
+	// The symbol length is properly reset to 0.
+	assert.Len(t, req.Symbols, 0)
+	// Timeseries slice is nil
+	assert.Nil(t, req.Timeseries)
+}
+
 func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 	ts := PreallocTimeseriesV2SliceFromPool()
 

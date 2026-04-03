@@ -21,6 +21,13 @@ a piece of work is finished it should:
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
 * If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
+## Use of AI Tools
+
+Cortex permits the use of generative AI tools to assist with contributions. Contributors remain
+fully responsible for all submitted content. If AI generated the bulk of a contribution, please
+disclose this in the PR description. See the full [Generative AI Contribution Policy](/GENAI_POLICY.md)
+for details.
+
 ## Formatting
 
 Cortex projects uses `goimports` tool (`go get golang.org/x/tools/cmd/goimports` to install) to format the Go files, and sort imports. We use goimports with `-local github.com/cortexproject/cortex` parameter, to put Cortex internal imports into a separate group. We try to keep imports sorted into three groups: imports from standard library, imports of 3rd party packages and internal Cortex imports. Goimports will fix the order, but will keep existing newlines between imports in the groups. We try to avoid extra newlines like that.

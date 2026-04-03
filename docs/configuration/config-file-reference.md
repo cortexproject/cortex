@@ -4292,6 +4292,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
 
+# Maximum lookback duration for querying data from ingesters. Queries for data
+# older than this will only query the long-term storage. This is a per-tenant
+# limit that can be overridden in the runtime configuration. Should be less than
+# or equal to close-idle-tsdb-timeout.
+# CLI flag: -limits.query-ingesters-within
+[query_ingesters_within: <duration> | default = 0s]
+
+# Minimum age of data before querying the long-term storage. Queries for data
+# younger than this will only query ingesters. This is a per-tenant limit that
+# can be overridden in the runtime configuration.
+# CLI flag: -limits.query-store-after
+[query_store_after: <duration> | default = 0s]
+
+# Lookback period for shuffle sharding of ingesters. This is a per-tenant limit
+# that can be overridden in the runtime configuration. Should be greater than or
+# equal to query-ingesters-within.
+# CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
+[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
+
 # The maximum number of rows that can be fetched when querying parquet storage.
 # Each row maps to a series in a parquet file. This limit applies before
 # materializing chunks. 0 to disable.
@@ -4761,11 +4780,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]
 
-# Maximum lookback beyond which queries are not sent to ingester. 0 means all
-# queries are sent to ingester.
-# CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 0s]
-
 # Enable returning samples stats per steps in query response.
 # CLI flag: -querier.per-step-stats-enabled
 [per_step_stats_enabled: <boolean> | default = false]
@@ -4774,14 +4788,6 @@ The `querier_config` configures the Cortex querier.
 # Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)
 # CLI flag: -querier.response-compression
 [response_compression: <string> | default = "gzip"]
-
-# The time after which a metric should be queried from storage and not just
-# ingesters. 0 means all queries are sent to store. When running the blocks
-# storage, if this option is enabled, the time range of the query sent to the
-# store will be manipulated to ensure the query end is not more recent than 'now
-# - query-store-after'.
-# CLI flag: -querier.query-store-after
-[query_store_after: <duration> | default = 0s]
 
 # Maximum duration into the future you can query. 0 to disable.
 # CLI flag: -querier.max-query-into-future
@@ -4890,16 +4896,6 @@ store_gateway_client:
 # retryable errors (ex. partial data returned).
 # CLI flag: -querier.ingester-query-max-attempts
 [ingester_query_max_attempts: <int> | default = 1]
-
-# When distributor's sharding strategy is shuffle-sharding and this setting is >
-# 0, queriers fetch in-memory series from the minimum set of required ingesters,
-# selecting only ingesters which may have received series since 'now - lookback
-# period'. The lookback period should be greater or equal than the configured
-# 'query store after' and 'query ingesters within'. If this setting is 0,
-# queriers always query all ingesters (ingesters shuffle sharding on read path
-# is disabled).
-# CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
-[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
 thanos_engine:
   # Experimental. Use Thanos promql engine

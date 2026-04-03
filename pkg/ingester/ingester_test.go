@@ -3866,13 +3866,17 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	for testName, testData := range tests {
 
 		t.Run(testName, func(t *testing.T) {
+			limits := defaultLimitsTestConfig()
+			limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
+			tenantLimits := newMockTenantLimits(map[string]*validation.Limits{"test": &limits})
+			i.limits = validation.NewOverrides(limits, tenantLimits)
+
 			req := &client.MetricsForLabelMatchersRequest{
 				StartTimestampMs: testData.from,
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
 				Limit:            testData.limit,
 			}
-			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
@@ -6481,12 +6485,15 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled = true
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled = true
-	cfg.QueryIngestersWithin = 24 * time.Hour
+
+	limits := defaultLimitsTestConfig()
+	limits.QueryIngestersWithin = model.Duration(24 * time.Hour)
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	r := prometheus.NewRegistry()
-	ing, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", r)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck

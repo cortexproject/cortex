@@ -147,6 +147,9 @@ func Benchmark_Handler(b *testing.B) {
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
+			ctx := user.InjectOrgID(req.Context(), "user")
+			req = req.WithContext(ctx)
+
 			b.ReportAllocs()
 
 			for b.Loop() {

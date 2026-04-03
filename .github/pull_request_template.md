@@ -13,3 +13,4 @@ Fixes #<issue number>
 - [ ] Tests updated
 - [ ] Documentation added
 - [ ] `CHANGELOG.md` updated - the order of entries should be `[CHANGE]`, `[FEATURE]`, `[ENHANCEMENT]`, `[BUGFIX]`
+- [ ] If AI-assisted: significant AI usage disclosed (see [GenAI Policy](GENAI_POLICY.md))

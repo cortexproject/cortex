@@ -476,9 +476,11 @@ func TestDistributorQuerier_Labels_CancelledContext(t *testing.T) {
 	d := &MockDistributor{}
 
 	ingesterQueryMaxAttempts := 2
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, 0, func(string) bool {
+	limits := DefaultLimitsConfig()
+	overrides := validation.NewOverrides(limits, nil)
+	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts)
+	}, ingesterQueryMaxAttempts, overrides)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 

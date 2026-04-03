@@ -185,7 +185,7 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 			return nil, err
 		}
 		var deletedBlocks []string
-		for deletedBlock, _ := range p.ignoreDeletionMarkFilter.DeletionMarkBlocks() {
+		for deletedBlock := range p.ignoreDeletionMarkFilter.DeletionMarkBlocks() {
 			deletedBlocks = append(deletedBlocks, deletedBlock.String())
 		}
 		if len(deletedBlocks) > 0 {

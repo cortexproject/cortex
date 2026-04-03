@@ -361,7 +361,7 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 	for _, e := range v2Exemplars {
 		lbs, err := e.ToLabels(b, symbols)
 		if err != nil {
-			return nil, err
+			return v1Exemplars, err
 		}
 		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
 			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),

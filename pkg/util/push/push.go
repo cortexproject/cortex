@@ -209,10 +209,20 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (cortexpb.PreallocWriteRequest, error) {
-	var v1Req cortexpb.PreallocWriteRequest
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (v1Req cortexpb.PreallocWriteRequest, err error) {
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
+
+	// Release any pulled TimeSeries back to the pool to prevent memory leaks in case of an error.
+	defer func() {
+		if err != nil {
+			for _, pts := range v1Timeseries {
+				if pts.TimeSeries != nil {
+					cortexpb.ReuseTimeseries(pts.TimeSeries)
+				}
+			}
+		}
+	}()
 
 	b := labels.NewScratchBuilder(0)
 	symbols := req.Symbols
@@ -264,6 +274,8 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 
 		ts.Exemplars, err = convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars, ts.Exemplars[:0])
 		if err != nil {
+			// Current ts is not appended to the v1Timeseries, so we should call reuse here.
+			cortexpb.ReuseTimeseries(ts)
 			return v1Req, err
 		}
 
@@ -285,11 +297,14 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 		})
 
 		if shouldConvertV2Metadata(v2Ts.Metadata) {
-			metricName, err := extract.MetricNameFromLabels(lbs)
+			var metricName string
+			metricName, err = extract.MetricNameFromLabels(lbs)
 			if err != nil {
 				return v1Req, err
 			}
-			metadata, err := convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+
+			var metadata *cortexpb.MetricMetadata
+			metadata, err = convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
 			if err != nil {
 				return v1Req, err
 			}

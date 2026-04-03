@@ -2,7 +2,7 @@
 # WARNING: do not commit to a repository!
 -include Makefile.local
 
-.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image
+.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image telemetry-check telemetry-generate check-telemetry
 .DEFAULT_GOAL := all
 
 # Version number
@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize telemetry-check telemetry-generate check-telemetry: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -237,6 +237,34 @@ mod-check:
 	GO111MODULE=on go mod tidy
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
+
+# Telemetry schema validation and code generation (requires weaver CLI).
+WEAVER_VERSION ?= 0.22.1
+WEAVER_BIN_DIR ?= $(HOME)/.cargo/bin
+WEAVER := PATH="$(WEAVER_BIN_DIR):$(PATH)" weaver
+
+# Install weaver if not already available.
+.PHONY: install-weaver
+install-weaver:
+	@if ! PATH="$(WEAVER_BIN_DIR):$(PATH)" command -v weaver >/dev/null 2>&1; then \
+		echo "Installing weaver v$(WEAVER_VERSION)..."; \
+		mkdir -p $(WEAVER_BIN_DIR) && \
+		curl -fsSL "https://github.com/open-telemetry/weaver/releases/download/v$(WEAVER_VERSION)/weaver-x86_64-unknown-linux-gnu.tar.xz" -o /tmp/weaver.tar.xz && \
+		python3 -c "import lzma,tarfile,sys; t=tarfile.open(fileobj=lzma.open('/tmp/weaver.tar.xz')); m=next(x for x in t if x.name.endswith('/weaver')); m.name='weaver'; t.extract(m,'$(WEAVER_BIN_DIR)',filter='data' if sys.version_info>=(3,12) else None); t.close()" && \
+		chmod +x $(WEAVER_BIN_DIR)/weaver && \
+		rm -f /tmp/weaver.tar.xz; \
+	fi
+
+telemetry-check: install-weaver
+	$(WEAVER) registry check -r telemetry/registry
+
+telemetry-generate: install-weaver
+	$(WEAVER) registry generate -r telemetry/registry -t telemetry/templates go pkg/distributor/
+	$(WEAVER) registry generate -r telemetry/registry -t telemetry/templates markdown docs/telemetry/
+
+check-telemetry: telemetry-generate
+	@git diff --exit-code -- pkg/distributor/telemetry_gen.go docs/telemetry/ || \
+		(echo "Generated telemetry code is out of date. Run 'make telemetry-generate' and commit the results." && false)
 
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)

@@ -1,0 +1,5 @@
+templates:
+  - pattern: metrics.md.j2
+    filter: semconv_grouped_metrics
+    application_mode: each
+    file_name: "{{ ctx.root_namespace }}_distributor.md"

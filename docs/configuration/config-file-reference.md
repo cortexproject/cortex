@@ -4369,6 +4369,17 @@ query_rejection:
 # external labels for alerting rules
 [ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
 
+# Per-tenant external URL for the ruler. If set, it overrides the global
+# -ruler.external.url for this tenant's alert notifications.
+[ruler_external_url: <string> | default = ""]
+
+# Go text/template for alert generator URLs. Available variables: .ExternalURL
+# (resolved external URL) and .Expression (PromQL expression). Built-in
+# functions like urlquery are available. If empty, uses default Prometheus
+# /graph format. Example for a custom explore link:
+# "{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}"
+[ruler_alert_generator_url_template: <string> | default = ""]
+
 # Enable to allow rules to be evaluated with data from a single zone, if other
 # zones are not available.
 [rules_partial_data: <boolean> | default = false]

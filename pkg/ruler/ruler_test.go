@@ -35,6 +35,7 @@ import (
 	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -89,14 +90,16 @@ func defaultRulerConfig(t testing.TB) Config {
 }
 
 type ruleLimits struct {
-	mtx                  sync.RWMutex
-	tenantShard          float64
-	maxRulesPerRuleGroup int
-	maxRuleGroups        int
-	disabledRuleGroups   validation.DisabledRuleGroups
-	maxQueryLength       time.Duration
-	queryOffset          time.Duration
-	externalLabels       labels.Labels
+	mtx                       sync.RWMutex
+	tenantShard               float64
+	maxRulesPerRuleGroup      int
+	maxRuleGroups             int
+	disabledRuleGroups        validation.DisabledRuleGroups
+	maxQueryLength            time.Duration
+	queryOffset               time.Duration
+	externalLabels            labels.Labels
+	externalURL               string
+	alertGeneratorURLTemplate string
 }
 
 func (r *ruleLimits) setRulerExternalLabels(lset labels.Labels) {
@@ -145,6 +148,18 @@ func (r *ruleLimits) RulerExternalLabels(_ string) labels.Labels {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 	return r.externalLabels
+}
+
+func (r *ruleLimits) RulerExternalURL(_ string) string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.externalURL
+}
+
+func (r *ruleLimits) RulerAlertGeneratorURLTemplate(_ string) string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return r.alertGeneratorURLTemplate
 }
 
 func newEmptyQueryable() storage.Queryable {
@@ -2684,10 +2699,13 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 
 func TestSendAlerts(t *testing.T) {
 	testCases := []struct {
-		in  []*promRules.Alert
-		exp []*notifier.Alert
+		name           string
+		in             []*promRules.Alert
+		exp            []*notifier.Alert
+		generatorURLFn func(expr string) string
 	}{
 		{
+			name: "prometheus format with valid until",
 			in: []*promRules.Alert{
 				{
 					Labels:      labels.FromStrings("l1", "v1"),
@@ -2706,8 +2724,12 @@ func TestSendAlerts(t *testing.T) {
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
 				},
 			},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
 		},
 		{
+			name: "prometheus format with resolved at",
 			in: []*promRules.Alert{
 				{
 					Labels:      labels.FromStrings("l1", "v1"),
@@ -2726,21 +2748,107 @@ func TestSendAlerts(t *testing.T) {
 					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
 				},
 			},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
 		},
 		{
-			in: []*promRules.Alert{},
+			name: "empty alerts",
+			in:   []*promRules.Alert{},
+			generatorURLFn: func(expr string) string {
+				return "http://localhost:9090" + strutil.TableLinkForExpression(expr)
+			},
+		},
+		{
+			name: "custom template format",
+			in: []*promRules.Alert{
+				{
+					Labels:      labels.FromStrings("l1", "v1"),
+					Annotations: labels.FromStrings("a2", "v2"),
+					ActiveAt:    time.Unix(1, 0),
+					FiredAt:     time.Unix(2, 0),
+					ValidUntil:  time.Unix(3, 0),
+				},
+			},
+			exp: []*notifier.Alert{
+				{
+					Labels:       labels.FromStrings("l1", "v1"),
+					Annotations:  labels.FromStrings("a2", "v2"),
+					StartsAt:     time.Unix(2, 0),
+					EndsAt:       time.Unix(3, 0),
+					GeneratorURL: "http://grafana.example.com/explore?expr=up",
+				},
+			},
+			generatorURLFn: func(expr string) string {
+				result, _ := executeGeneratorURLTemplate(
+					"{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}",
+					"http://grafana.example.com", expr)
+				return result
+			},
 		},
 	}
 
-	for i, tc := range testCases {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			senderFunc := senderFunc(func(alerts ...*notifier.Alert) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			sf := senderFunc(func(alerts ...*notifier.Alert) {
 				if len(tc.in) == 0 {
 					t.Fatalf("sender called with 0 alert")
 				}
-				require.Equal(t, tc.exp, alerts)
+				if tc.exp != nil {
+					require.Equal(t, tc.exp, alerts)
+				}
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(sf, tc.generatorURLFn)(context.TODO(), "up", tc.in...)
+		})
+	}
+}
+
+func TestExecuteGeneratorURLTemplate(t *testing.T) {
+	testCases := []struct {
+		name        string
+		tmplStr     string
+		externalURL string
+		expr        string
+		expected    string
+		expectErr   bool
+	}{
+		{
+			name:        "basic template with expression",
+			tmplStr:     "{{ .ExternalURL }}/graph?expr={{ .Expression }}",
+			externalURL: "http://prometheus:9090",
+			expr:        "up",
+			expected:    "http://prometheus:9090/graph?expr=up",
+		},
+		{
+			name:        "template with urlquery",
+			tmplStr:     "{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}",
+			externalURL: "http://grafana.example.com",
+			expr:        "rate(http_requests_total[5m])",
+			expected:    "http://grafana.example.com/explore?expr=rate%28http_requests_total%5B5m%5D%29",
+		},
+		{
+			name:      "invalid template returns error",
+			tmplStr:   "{{ .Invalid",
+			expectErr: true,
+		},
+		{
+			name:        "template with multiple variables",
+			tmplStr:     "{{ .ExternalURL }}/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D%7D",
+			externalURL: "http://grafana:3000",
+			expr:        "up",
+			expected:    "http://grafana:3000/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22up%22%7D%5D%7D",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result, err := executeGeneratorURLTemplate(tc.tmplStr, tc.externalURL, tc.expr)
+			if tc.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expected, result)
+			}
 		})
 	}
 }

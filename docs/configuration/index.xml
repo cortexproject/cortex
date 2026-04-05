@@ -4465,6 +4465,20 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.advertise-port&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[advertise_port&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 7946]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The cluster label is an optional string to include in outbound packets and&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># gossip streams. Other members in the memberlist cluster will discard any&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># message whose label doesn&amp;#39;t match the configured one, unless the&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># &amp;#39;cluster-label-verification-disabled&amp;#39; configuration option is set to true.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.cluster-label&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[cluster_label&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># When true, memberlist doesn&amp;#39;t verify that inbound packets and gossip streams&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># have the cluster label matching the configured one. This verification should&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># be disabled while rolling out the change to the configured cluster label in a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># live memberlist cluster.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.cluster-label-verification-disabled&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[cluster_label_verification_disabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Other cluster members to join. Can be specified multiple times. It can be an&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># IP, hostname or an entry specified in the DNS Service Discovery format.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.join&lt;/span>

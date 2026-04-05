@@ -4665,6 +4665,20 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.advertise-port&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[advertise_port&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 7946]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># The cluster label is an optional string to include in outbound packets and&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># gossip streams. Other members in the memberlist cluster will discard any&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># message whose label doesn&amp;#39;t match the configured one, unless the&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># &amp;#39;cluster-label-verification-disabled&amp;#39; configuration option is set to true.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.cluster-label&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[cluster_label&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># When true, memberlist doesn&amp;#39;t verify that inbound packets and gossip streams&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># have the cluster label matching the configured one. This verification should&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># be disabled while rolling out the change to the configured cluster label in a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># live memberlist cluster.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.cluster-label-verification-disabled&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[cluster_label_verification_disabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Other cluster members to join. Can be specified multiple times. It can be an&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># IP, hostname or an entry specified in the DNS Service Discovery format.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -memberlist.join&lt;/span>
@@ -16703,6 +16717,7 @@ distribute incoming samples between the two instances.&lt;/p>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># defaults to hostname&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">node_name&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;Ingester 1&amp;#34;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">bind_port&lt;/span>: &lt;span style="color:#ae81ff">7946&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">cluster_label&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;gossip-demo&amp;#34;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">join_members&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#ae81ff">localhost:7947&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">abort_if_cluster_join_fails&lt;/span>: &lt;span style="color:#66d9ef">false&lt;/span>
@@ -16769,6 +16784,7 @@ is the annotated diff:&lt;/p>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>We don&amp;rsquo;t need to change or add &lt;code>memberlist.join_members&lt;/code> list. This new instance will simply join to the second one (listening on port 7947), and
 will discover other peers through it. When using Kubernetes, the suggested setup is to have a headless service pointing to all pods
 that want to be part of the gossip cluster, and then point &lt;code>join_members&lt;/code> to this headless service.&lt;/p>
+&lt;p>In production, set &lt;code>memberlist.cluster_label&lt;/code> to the same value on every Cortex process that should share the same gossip cluster. This helps avoid accidentally merging rings with other Cortex, Mimir, or Loki deployments that can reach the same seed addresses.&lt;/p>
 &lt;p>We also don&amp;rsquo;t need to change &lt;code>/tmp/cortex/storage&lt;/code> directory in the &lt;code>blocks_storage.filesystem.dir&lt;/code> field. This is the directory where all ingesters will
 &amp;ldquo;upload&amp;rdquo; finished blocks. This can also be an S3 or GCP storage, but for simplicity, we use the local filesystem in this example.&lt;/p>
 &lt;p>After these changes, we can start another Cortex instance using the modified configuration file. This instance will join the ring

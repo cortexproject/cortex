@@ -5,7 +5,7 @@ import (
 )
 
 var (
-	expectedSymbols = 20
+	expectedSymbols = 2048
 
 	slicePoolV2 = sync.Pool{
 		New: func() any {

@@ -49,7 +49,7 @@ Maintainers may:
 | Document | Purpose |
 |----------|---------|
 | [Contributing Guide](CONTRIBUTING.md) | General contribution workflow and requirements |
-| [Code of Conduct](https://github.com/cortexproject/cortex/blob/master/CODE_OF_CONDUCT.md) | Community behaviour standards |
+| [Code of Conduct](code-of-conduct.md) | Community behaviour standards |
 | [Governance](GOVERNANCE.md) | Project governance and decision-making |
 | [AGENTS.md](AGENTS.md) | Technical guidance **to** AI coding agents working in this repo |
 

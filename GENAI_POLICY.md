@@ -42,7 +42,7 @@ Maintainers may:
 
 - **Request disclosure** of AI tool usage for any contribution.
 - **Close or request revision** of PRs or issues that appear to contain unreviewed AI-generated content.
-- **Escalate persistent low-effort submissions** through the project's normal [Code of Conduct](https://github.com/cortexproject/cortex/blob/master/CODE_OF_CONDUCT.md) enforcement process.
+- **Escalate persistent low-effort submissions** through the project's normal [Code of Conduct](code-of-conduct.md) enforcement process.
 
 ## Relationship to Other Policies
 

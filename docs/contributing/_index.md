@@ -25,7 +25,7 @@ a piece of work is finished it should:
 
 Cortex permits the use of generative AI tools to assist with contributions. Contributors remain
 fully responsible for all submitted content. If AI generated the bulk of a contribution, please
-disclose this in the PR description. See the full [Generative AI Contribution Policy](../../GENAI_POLICY.md)
+disclose this in the PR description. See the full `GENAI_POLICY.md`
 for details.
 
 ## Formatting

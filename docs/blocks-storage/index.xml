@@ -80,11 +80,6 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.max-samples&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[max_samples&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 50000000]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum lookback beyond which queries are not sent to ingester. 0 means all&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># queries are sent to ingester.&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.query-ingesters-within&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[query_ingesters_within&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 0s]&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Enable returning samples stats per steps in query response.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.per-step-stats-enabled&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[per_step_stats_enabled&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
@@ -93,14 +88,6 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Supported compression &amp;#39;gzip&amp;#39;, &amp;#39;snappy&amp;#39;, &amp;#39;zstd&amp;#39; and &amp;#39;&amp;#39; (disable compression)&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.response-compression&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[response_compression&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;gzip&amp;#34;]&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># The time after which a metric should be queried from storage and not just&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># ingesters. 0 means all queries are sent to store. When running the blocks&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># storage, if this option is enabled, the time range of the query sent to the&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># store will be manipulated to ensure the query end is not more recent than&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># &amp;#39;now - query-store-after&amp;#39;.&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.query-store-after&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[query_store_after&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 0s]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Maximum duration into the future you can query. 0 to disable.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.max-query-into-future&lt;/span>
@@ -209,16 +196,6 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># retryable errors (ex. partial data returned).&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.ingester-query-max-attempts&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[ingester_query_max_attempts&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 1]&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># When distributor&amp;#39;s sharding strategy is shuffle-sharding and this setting is&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># &amp;gt; 0, queriers fetch in-memory series from the minimum set of required&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># ingesters, selecting only ingesters which may have received series since&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># &amp;#39;now - lookback period&amp;#39;. The lookback period should be greater or equal than&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># the configured &amp;#39;query store after&amp;#39; and &amp;#39;query ingesters within&amp;#39;. If this&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># setting is 0, queriers always query all ingesters (ingesters shuffle&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># sharding on read path is disabled).&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -querier.shuffle-sharding-ingesters-lookback-period&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[shuffle_sharding_ingesters_lookback_period&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 0s]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">thanos_engine&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Experimental. Use Thanos promql engine&lt;/span>

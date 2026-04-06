@@ -104,7 +104,9 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="parquet_max_fetched_chunk_bytes",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_data_bytes",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_row_count",user="tenant-a"} 0
+		cortex_overrides{limit_name="query_ingesters_within",user="tenant-a"} 0
 		cortex_overrides{limit_name="query_partial_data",user="tenant-a"} 0
+		cortex_overrides{limit_name="query_store_after",user="tenant-a"} 0
 		cortex_overrides{limit_name="query_vertical_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples_max_age",user="tenant-a"} 1.2096e+06
@@ -115,6 +117,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="ruler_query_offset",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="rules_partial_data",user="tenant-a"} 0
+		cortex_overrides{limit_name="shuffle_sharding_ingesters_lookback_period",user="tenant-a"} 0
 		cortex_overrides{limit_name="store_gateway_tenant_shard_size",user="tenant-a"} 0
 	`), "cortex_overrides"))
 }

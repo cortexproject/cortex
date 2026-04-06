@@ -77,6 +77,10 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 		req.data = nil
 	}
 	req.Source = 0
+
+	for i := range req.Symbols {
+		req.Symbols[i] = ""
+	}
 	req.Symbols = req.Symbols[:0]
 	if req.Timeseries != nil {
 		ReuseSliceV2(req.Timeseries)

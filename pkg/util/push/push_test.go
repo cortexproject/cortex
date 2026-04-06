@@ -147,6 +147,9 @@ func Benchmark_Handler(b *testing.B) {
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
+			ctx := user.InjectOrgID(req.Context(), "user")
+			req = req.WithContext(ctx)
+
 			b.ReportAllocs()
 
 			for b.Loop() {
@@ -1338,4 +1341,27 @@ func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.
 		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
 		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
 	})
+}
+
+func TestHandler_remoteWriteV2_UnauthorizedWithoutTenantID(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	pushCalled := false
+	pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		pushCalled = true
+		return &cortexpb.WriteResponse{}, nil
+	}
+
+	handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+
+	req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assert.Contains(t, resp.Body.String(), user.ErrNoOrgID.Error())
+	assert.False(t, pushCalled, "push function must not be called when tenant ID is missing")
 }

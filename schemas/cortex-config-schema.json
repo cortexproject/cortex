@@ -5430,6 +5430,13 @@
           "type": "array",
           "x-cli-flag": "distributor.promote-resource-attributes"
         },
+        "query_ingesters_within": {
+          "default": "0s",
+          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.",
+          "type": "string",
+          "x-cli-flag": "limits.query-ingesters-within",
+          "x-format": "duration"
+        },
         "query_partial_data": {
           "default": false,
           "description": "Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.",
@@ -5480,6 +5487,13 @@
             }
           },
           "type": "object"
+        },
+        "query_store_after": {
+          "default": "0s",
+          "description": "Minimum age of data before querying the long-term storage. Queries for data younger than this will only query ingesters. This is a per-tenant limit that can be overridden in the runtime configuration.",
+          "type": "string",
+          "x-cli-flag": "limits.query-store-after",
+          "x-format": "duration"
         },
         "query_vertical_shard_size": {
           "default": 0,
@@ -5562,6 +5576,13 @@
           "description": "S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used.",
           "type": "string"
         },
+        "shuffle_sharding_ingesters_lookback_period": {
+          "default": "0s",
+          "description": "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.",
+          "type": "string",
+          "x-cli-flag": "limits.shuffle-sharding-ingesters-lookback-period",
+          "x-format": "duration"
+        },
         "store_gateway_tenant_shard_size": {
           "default": 0,
           "description": "The default tenant's shard size when the shuffle-sharding strategy is used. Must be set when the store-gateway sharding is enabled with the shuffle-sharding strategy. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant. If the value is \u003c 1 the shard size will be a percentage of the total store-gateways.",
@@ -5605,6 +5626,17 @@
           "description": "Port to listen on for gossip messages.",
           "type": "number",
           "x-cli-flag": "memberlist.bind-port"
+        },
+        "cluster_label": {
+          "description": "The cluster label is an optional string to include in outbound packets and gossip streams. Other members in the memberlist cluster will discard any message whose label doesn't match the configured one, unless the 'cluster-label-verification-disabled' configuration option is set to true.",
+          "type": "string",
+          "x-cli-flag": "memberlist.cluster-label"
+        },
+        "cluster_label_verification_disabled": {
+          "default": false,
+          "description": "When true, memberlist doesn't verify that inbound packets and gossip streams have the cluster label matching the configured one. This verification should be disabled while rolling out the change to the configured cluster label in a live memberlist cluster.",
+          "type": "boolean",
+          "x-cli-flag": "memberlist.cluster-label-verification-disabled"
         },
         "compression_enabled": {
           "default": true,
@@ -6002,32 +6034,11 @@
           "type": "boolean",
           "x-cli-flag": "querier.per-step-stats-enabled"
         },
-        "query_ingesters_within": {
-          "default": "0s",
-          "description": "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.",
-          "type": "string",
-          "x-cli-flag": "querier.query-ingesters-within",
-          "x-format": "duration"
-        },
-        "query_store_after": {
-          "default": "0s",
-          "description": "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.",
-          "type": "string",
-          "x-cli-flag": "querier.query-store-after",
-          "x-format": "duration"
-        },
         "response_compression": {
           "default": "gzip",
           "description": "Use compression for metrics query API or instant and range query APIs. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)",
           "type": "string",
           "x-cli-flag": "querier.response-compression"
-        },
-        "shuffle_sharding_ingesters_lookback_period": {
-          "default": "0s",
-          "description": "When distributor's sharding strategy is shuffle-sharding and this setting is \u003e 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).",
-          "type": "string",
-          "x-cli-flag": "querier.shuffle-sharding-ingesters-lookback-period",
-          "x-format": "duration"
         },
         "store_gateway_addresses": {
           "description": "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).",

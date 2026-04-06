@@ -143,9 +143,6 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
-	// Injected at runtime and read from querier config.
-	QueryIngestersWithin time.Duration `yaml:"-"`
-
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
@@ -1953,7 +1950,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2069,7 +2066,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2201,7 +2198,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return cleanup, err
 	}

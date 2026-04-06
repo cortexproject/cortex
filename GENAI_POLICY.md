@@ -57,6 +57,6 @@ Maintainers may:
 
 ## References
 
-- [OpenTelemetry GenAI Contribution Policy](https://github.com/open-telemetry/community/blob/main/docs/how-to-contribute.md#use-of-genai-tools)
-- [Linux Foundation AI Guidelines](https://www.linuxfoundation.org/blog/linux-foundation-releases-generative-ai-policy-for-open-source-projects)
+- [OpenTelemetry GenAI Contribution Policy](https://github.com/open-telemetry/community/blob/main/policies/genai.md)
+- [Linux Foundation AI Guidelines](https://www.linuxfoundation.org/legal/generative-ai)
 - [Developer Certificate of Origin](https://developercertificate.org/)

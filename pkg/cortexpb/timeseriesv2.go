@@ -2,10 +2,19 @@ package cortexpb
 
 import (
 	"sync"
+
+	"go.uber.org/atomic"
 )
 
+var dynamicSymbolsCapacity atomic.Int64
+
+func init() {
+	dynamicSymbolsCapacity.Store(int64(initialSymbolsCapacity))
+}
+
 var (
-	expectedSymbols = 20
+	initialSymbolsCapacity = 128
+	maxSymbolsCapacity     = int64(8192)
 
 	slicePoolV2 = sync.Pool{
 		New: func() any {
@@ -29,7 +38,7 @@ var (
 		New: func() any {
 			return &PreallocWriteRequestV2{
 				WriteRequestV2: WriteRequestV2{
-					Symbols: make([]string, 0, expectedSymbols),
+					Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
 				},
 			}
 		},
@@ -77,6 +86,30 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 		req.data = nil
 	}
 	req.Source = 0
+
+	// If the underlying array has grown beyond our acceptable maximum capacity,
+	// we discard this object instead of putting it back into the pool to let GC
+	// reclaim it.
+	symbolsCap := int64(cap(req.Symbols))
+	if symbolsCap > maxSymbolsCapacity {
+		if req.Timeseries != nil {
+			ReuseSliceV2(req.Timeseries)
+			req.Timeseries = nil
+		}
+		return
+	}
+
+	// Update the dynamic symbol capacity.
+	for {
+		current := dynamicSymbolsCapacity.Load()
+		if symbolsCap <= current {
+			// break when other goroutines have already updated the capacity to a larger value
+			break
+		}
+		if dynamicSymbolsCapacity.CompareAndSwap(current, symbolsCap) {
+			break
+		}
+	}
 
 	for i := range req.Symbols {
 		req.Symbols[i] = ""

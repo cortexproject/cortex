@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-* [CHANGE] Distributor: Increase the default capacity of `expectedSymbols` from 20 to 2048 in the PRW2 path to reduce slice reallocations. #7397
+* [CHANGE] Distributor: Increase the default capacity of `expectedSymbols` from 20 to 2048 in the PRW2 path to reduce slice reallocations. #7398
 * [FEATURE] Distributor: Add experimental `-distributor.enable-start-timestamp` flag for Prometheus Remote Write 2.0. When enabled, `StartTimestamp (ST)` is ingested. #7371
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #7359

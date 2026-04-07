@@ -1048,8 +1048,10 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		block.NewConsistencyDelayMetaFilter(ulogger, c.compactorCfg.ConsistencyDelay, reg),
 	}
 
-	// Add ignoreDeletionMarkFilter only when not using bucket index discovery.
-	if blockDiscoveryStrategy != cortex_tsdb.BucketIndexDiscovery {
+	// Add ignoreDeletionMarkFilter only when not using bucket index discovery or using default compaction strategy.
+	// CompactionStrategyDefault would mark parent blocks for deletion after compaction is finished. ShuffleShardingGrouper
+	// should ignore blocks marked for deletion during grouping stage directly.
+	if blockDiscoveryStrategy != cortex_tsdb.BucketIndexDiscovery || c.compactorCfg.CompactionStrategy == util.CompactionStrategyDefault {
 		filterList = append(filterList, ignoreDeletionMarkFilter)
 	}
 

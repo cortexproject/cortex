@@ -182,6 +182,8 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		}
 		err = p.ignoreDeletionMarkFilter.Filter(p.ctx, resultMetasMap, p.compactorMetrics.metaFetcherSynced, p.compactorMetrics.metaFetcherModified)
 		if err != nil {
+			visitMarkerManager.MarkWithStatus(p.ctx, Failed)
+			level.Warn(p.logger).Log("msg", "unable to filter blocks by deletion marker", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err)
 			return nil, err
 		}
 		var deletedBlocks []string

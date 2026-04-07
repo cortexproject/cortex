@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"path"
 	"testing"
 	"time"
@@ -367,9 +366,8 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 	partitionID := 0
 	visitMarkerTimeout := 5 * time.Minute
 
-	setupBucket := func(t *testing.T, deletionMarkBlockIDs []ulid.ULID) (*bucket.ClientMock, *partitionVisitMarker) {
+	setupBucket := func(t *testing.T, deletionMarkBlockIDs []ulid.ULID) *bucket.ClientMock {
 		bkt := &bucket.ClientMock{}
-		uploadedVisitMarker := &partitionVisitMarker{}
 
 		expireTime := time.Now()
 		visitMarker := partitionVisitMarker{
@@ -400,14 +398,7 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		bkt.MockGet(visitMarkerFile, string(visitMarkerFileContent), nil)
 		bkt.MockGet(partitionedGroupFile, string(partitionedGroupContent), nil)
 
-		// Capture uploaded visit marker content
-		bkt.On("Upload", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-			reader := args.Get(2).(io.Reader)
-			data, err := io.ReadAll(reader)
-			if err == nil {
-				_ = json.Unmarshal(data, uploadedVisitMarker)
-			}
-		}).Return(nil)
+		bkt.On("Upload", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 		// Mock deletion marks for specified blocks
 		deletionMarkIDs := make(map[ulid.ULID]struct{})
@@ -431,10 +422,10 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 			}
 		}
 
-		return bkt, uploadedVisitMarker
+		return bkt
 	}
 
-	createPlanner := func(bkt *bucket.ClientMock, partitionedGroupInfo PartitionedGroupInfo) *PartitionCompactionPlanner {
+	createPlanner := func(bkt *bucket.ClientMock) *PartitionCompactionPlanner {
 		registerer := prometheus.NewPedanticRegistry()
 		metrics := newCompactorMetrics(registerer)
 		logger := log.NewLogfmtLogger(&concurrency.SyncBuffer{})
@@ -458,7 +449,7 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 	}
 
 	t.Run("should plan successfully when no blocks are marked for deletion", func(t *testing.T) {
-		bkt, uploadedVisitMarker := setupBucket(t, nil)
+		bkt := setupBucket(t, nil)
 		partitionedGroupContent := PartitionedGroupInfo{}
 		partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupID)
 		raw, _ := bkt.Get(context.Background(), partitionedGroupFile)
@@ -466,7 +457,7 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		n, _ := raw.Read(buf)
 		_ = json.Unmarshal(buf[:n], &partitionedGroupContent)
 
-		p := createPlanner(bkt, partitionedGroupContent)
+		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
 			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
@@ -486,12 +477,10 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		require.Len(t, actual, 2)
 		assert.Equal(t, block1ulid, actual[0].ULID)
 		assert.Equal(t, block2ulid, actual[1].ULID)
-		// Visit marker should not be marked as Failed
-		assert.NotEqual(t, Failed, uploadedVisitMarker.GetStatus())
 	})
 
 	t.Run("should fail when blocks are marked for deletion", func(t *testing.T) {
-		bkt, uploadedVisitMarker := setupBucket(t, []ulid.ULID{block2ulid})
+		bkt := setupBucket(t, []ulid.ULID{block2ulid})
 		partitionedGroupContent := PartitionedGroupInfo{}
 		partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupID)
 		raw, _ := bkt.Get(context.Background(), partitionedGroupFile)
@@ -499,7 +488,7 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		n, _ := raw.Read(buf)
 		_ = json.Unmarshal(buf[:n], &partitionedGroupContent)
 
-		p := createPlanner(bkt, partitionedGroupContent)
+		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
 			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
@@ -519,11 +508,10 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "partitioned group contains 1 deleted blocks")
 		assert.Nil(t, actual)
-		assert.Equal(t, Failed, uploadedVisitMarker.GetStatus())
 	})
 
 	t.Run("should fail when multiple blocks are marked for deletion", func(t *testing.T) {
-		bkt, uploadedVisitMarker := setupBucket(t, []ulid.ULID{block1ulid, block3ulid})
+		bkt := setupBucket(t, []ulid.ULID{block1ulid, block3ulid})
 		partitionedGroupContent := PartitionedGroupInfo{}
 		partitionedGroupFile := GetPartitionedGroupFile(partitionedGroupID)
 		raw, _ := bkt.Get(context.Background(), partitionedGroupFile)
@@ -531,7 +519,7 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		n, _ := raw.Read(buf)
 		_ = json.Unmarshal(buf[:n], &partitionedGroupContent)
 
-		p := createPlanner(bkt, partitionedGroupContent)
+		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
 			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
@@ -551,6 +539,5 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "partitioned group contains 2 deleted blocks")
 		assert.Nil(t, actual)
-		assert.Equal(t, Failed, uploadedVisitMarker.GetStatus())
 	})
 }

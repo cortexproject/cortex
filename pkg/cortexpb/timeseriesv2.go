@@ -106,7 +106,7 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 		newAvg := max((current*9+symbolsCap*1)/10, int64(initialSymbolsCapacity))
 
 		if current == newAvg {
-			// noting to change
+			// nothing to change
 			break
 		}
 

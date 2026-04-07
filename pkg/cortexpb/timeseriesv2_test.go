@@ -100,8 +100,9 @@ func TestReuseWriteRequestV2(t *testing.T) {
 
 		ReuseWriteRequestV2(req)
 
-		// Verify that the dynamic capacity has scaled up
-		assert.Equal(t, int64(newCap), dynamicSymbolsCapacity.Load())
+		// Verify that the dynamic capacity has been updated
+		expectedCap := max((currentCap*9+int64(newCap))/10, int64(initialSymbolsCapacity))
+		assert.Equal(t, expectedCap, dynamicSymbolsCapacity.Load())
 	})
 	t.Run("outlier capacity does not update dynamic capacity and is discarded", func(t *testing.T) {
 		currentCap := dynamicSymbolsCapacity.Load()

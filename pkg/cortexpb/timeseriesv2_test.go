@@ -59,35 +59,63 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 }
 
 func TestReuseWriteRequestV2(t *testing.T) {
-	req := PreallocWriteRequestV2FromPool()
+	t.Run("resets fields to default and cleans backing array", func(t *testing.T) {
+		req := PreallocWriteRequestV2FromPool()
 
-	// Populate req with some data.
-	req.Source = RULE
-	req.Symbols = append(req.Symbols, "", "__name__", "test")
+		// Populate req with some data.
+		req.Source = RULE
+		req.Symbols = append(req.Symbols, "", "__name__", "test")
 
-	tsSlice := PreallocTimeseriesV2SliceFromPool()
-	tsSlice = append(tsSlice, PreallocTimeseriesV2{TimeSeriesV2: TimeseriesV2FromPool()})
-	req.Timeseries = tsSlice
+		tsSlice := PreallocTimeseriesV2SliceFromPool()
+		tsSlice = append(tsSlice, PreallocTimeseriesV2{TimeSeriesV2: TimeseriesV2FromPool()})
+		req.Timeseries = tsSlice
 
-	// Capture backing array before reuse
-	symbolsBackingArray := req.Symbols[:cap(req.Symbols)]
-	require.Equal(t, "__name__", symbolsBackingArray[1])
-	require.Equal(t, "test", symbolsBackingArray[2])
+		// Capture backing array before reuse
+		symbolsBackingArray := req.Symbols[:cap(req.Symbols)]
+		require.Equal(t, "__name__", symbolsBackingArray[1])
+		require.Equal(t, "test", symbolsBackingArray[2])
 
-	// Put the request back into the pool
-	ReuseWriteRequestV2(req)
+		// Put the request back into the pool
+		ReuseWriteRequestV2(req)
 
-	// Verify clearing directly on the backing array
-	for i, s := range symbolsBackingArray[:3] {
-		assert.Equalf(t, "", s, "symbol at index %d not cleared", i)
-	}
+		// Verify clearing directly on the backing array
+		for i, s := range symbolsBackingArray[:3] {
+			assert.Equalf(t, "", s, "symbol at index %d not cleared", i)
+		}
 
-	// Source is reset to default
-	assert.Equal(t, API, req.Source)
-	// The symbol length is properly reset to 0.
-	assert.Len(t, req.Symbols, 0)
-	// Timeseries slice is nil
-	assert.Nil(t, req.Timeseries)
+		// Source is reset to default
+		assert.Equal(t, API, req.Source)
+		// The symbol length is properly reset to 0.
+		assert.Len(t, req.Symbols, 0)
+		// Timeseries slice is nil
+		assert.Nil(t, req.Timeseries)
+	})
+	t.Run("updates dynamic capacity", func(t *testing.T) {
+		currentCap := dynamicSymbolsCapacity.Load()
+		newCap := int(currentCap) + 100 // Increase capacity
+
+		req := PreallocWriteRequestV2FromPool()
+		req.Symbols = make([]string, newCap)
+		req.Timeseries = PreallocTimeseriesV2SliceFromPool()
+
+		ReuseWriteRequestV2(req)
+
+		// Verify that the dynamic capacity has scaled up
+		assert.Equal(t, int64(newCap), dynamicSymbolsCapacity.Load())
+	})
+	t.Run("outlier capacity does not update dynamic capacity and is discarded", func(t *testing.T) {
+		currentCap := dynamicSymbolsCapacity.Load()
+		outlierCap := int(maxSymbolsCapacity) + 100 // Exceeds the max limit
+
+		req := PreallocWriteRequestV2FromPool()
+		req.Symbols = make([]string, outlierCap)
+		req.Timeseries = PreallocTimeseriesV2SliceFromPool()
+
+		ReuseWriteRequestV2(req)
+
+		// Verify dynamic capacity didn't increase due to out-of-bound outlier
+		assert.Equal(t, currentCap, dynamicSymbolsCapacity.Load())
+	})
 }
 
 func BenchmarkMarshallWriteRequestV2(b *testing.B) {

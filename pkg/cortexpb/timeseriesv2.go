@@ -102,11 +102,15 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 	// Update the dynamic symbol capacity.
 	for {
 		current := dynamicSymbolsCapacity.Load()
-		if symbolsCap <= current {
-			// break when other goroutines have already updated the capacity to a larger value
+		// We use an EMA to update the capacity.
+		newAvg := max((current*9+symbolsCap*1)/10, int64(initialSymbolsCapacity))
+
+		if current == newAvg {
+			// nothing to change
 			break
 		}
-		if dynamicSymbolsCapacity.CompareAndSwap(current, symbolsCap) {
+
+		if dynamicSymbolsCapacity.CompareAndSwap(current, newAvg) {
 			break
 		}
 	}

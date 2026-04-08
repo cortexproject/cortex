@@ -214,8 +214,8 @@ func (c *BlocksCleaner) loop(ctx context.Context) error {
 	t := time.NewTicker(c.cfg.CleanupInterval)
 	defer t.Stop()
 
-	usersChan := make(chan *cleanerJob)
-	deleteChan := make(chan *cleanerJob)
+	usersChan := make(chan *cleanerJob, 1)
+	deleteChan := make(chan *cleanerJob, 1)
 	defer close(usersChan)
 	defer close(deleteChan)
 

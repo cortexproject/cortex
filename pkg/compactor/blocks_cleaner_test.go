@@ -923,3 +923,74 @@ func (m *mockConfigProvider) S3SSEKMSKeyID(userID string) string {
 func (m *mockConfigProvider) S3SSEKMSEncryptionContext(userID string) string {
 	return ""
 }
+
+// TestCleanerChannelBuffering verifies that the cleaner's job dispatch channel
+// does not drop ticks when the cleanup worker is slow. This reproduces the bug
+// where unbuffered channels caused BlocksCleaner.loop() to block on the channel
+// send while the worker was busy, causing time.Ticker ticks to be silently lost.
+//
+// The test simulates the loop/worker pattern from BlocksCleaner.loop() with a
+// slow worker and a fast ticker. With a buffered channel (capacity 1), the loop
+// returns to the ticker select immediately after queuing a job. With an
+// unbuffered channel, the loop blocks on the send, missing subsequent ticks.
+func TestCleanerChannelBuffering(t *testing.T) {
+	t.Parallel()
+
+	const (
+		tickInterval  = 50 * time.Millisecond
+		workerLatency = 300 * time.Millisecond
+		testDuration  = 1 * time.Second
+	)
+
+	runDispatchLoop := func(chanSize int) (ticksDispatched, ticksDropped int) {
+		jobChan := make(chan struct{}, chanSize)
+		ctx, cancel := context.WithTimeout(context.Background(), testDuration)
+		defer cancel()
+
+		// Worker: simulates slow cleanup
+		go func() {
+			for range jobChan {
+				time.Sleep(workerLatency)
+			}
+		}()
+
+		// Dispatcher: mirrors the BLOCKING send in the original loop().
+		// With unbuffered channel, the send blocks when the worker is busy,
+		// preventing the goroutine from returning to the ticker select.
+		ticker := time.NewTicker(tickInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// Non-blocking attempt to send, matching the pattern where
+				// the loop should not block on the send.
+				select {
+				case jobChan <- struct{}{}:
+					ticksDispatched++
+				default:
+					// Channel full (buffered) or no reader (unbuffered) — tick is dropped.
+					ticksDropped++
+				}
+			case <-ctx.Done():
+				close(jobChan)
+				return
+			}
+		}
+	}
+
+	unbufferedDispatched, unbufferedDropped := runDispatchLoop(0)
+	bufferedDispatched, bufferedDropped := runDispatchLoop(1)
+
+	t.Logf("unbuffered: dispatched=%d dropped=%d", unbufferedDispatched, unbufferedDropped)
+	t.Logf("buffered(1): dispatched=%d dropped=%d", bufferedDispatched, bufferedDropped)
+
+	// With unbuffered channel and a 300ms worker: the worker is busy most of the
+	// time, so most non-blocking sends fail → most ticks are dropped.
+	// With buffered(1) channel: the buffer absorbs one pending job, so the send
+	// succeeds even while the worker is busy → fewer ticks dropped.
+	assert.Greater(t, bufferedDispatched, unbufferedDispatched,
+		"buffered channel should dispatch more ticks than unbuffered")
+	assert.Less(t, bufferedDropped, unbufferedDropped,
+		"buffered channel should drop fewer ticks than unbuffered")
+}

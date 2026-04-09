@@ -5,12 +5,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
-	"github.com/cortexproject/cortex/pkg/ha"
 )
 
+// operationAbortedError is a local stub that mimics ha.ReplicasNotMatchError,
+// implementing IsOperationAborted() to avoid an import cycle.
+type operationAbortedError struct{}
+
+func (e operationAbortedError) Error() string            { return "operation aborted" }
+func (e operationAbortedError) IsOperationAborted() bool { return true }
+
 func TestGetCasErrorCode(t *testing.T) {
-	replicasNotMatch := ha.ReplicasNotMatchError{} // IsOperationAborted() = true
+	abortedErr := operationAbortedError{}
 
 	tests := map[string]struct {
 		err      error
@@ -20,17 +25,17 @@ func TestGetCasErrorCode(t *testing.T) {
 			err:      nil,
 			expected: "200",
 		},
-		"ReplicasNotMatchError (direct)": {
-			err:      replicasNotMatch,
+		"operation aborted error (direct)": {
+			err:      abortedErr,
 			expected: "200",
 		},
-		"ReplicasNotMatchError (single-wrapped by memberlist)": {
-			err:      fmt.Errorf("fn returned error: %w", replicasNotMatch),
+		"operation aborted error (single-wrapped by memberlist)": {
+			err:      fmt.Errorf("fn returned error: %w", abortedErr),
 			expected: "200",
 		},
-		"ReplicasNotMatchError (double-wrapped by memberlist)": {
+		"operation aborted error (double-wrapped by memberlist)": {
 			err: fmt.Errorf("failed to CAS-update key X: %w",
-				fmt.Errorf("fn returned error: %w", replicasNotMatch)),
+				fmt.Errorf("fn returned error: %w", abortedErr)),
 			expected: "200",
 		},
 		"generic error": {

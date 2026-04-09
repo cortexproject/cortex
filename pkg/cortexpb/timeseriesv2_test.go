@@ -240,7 +240,7 @@ func BenchmarkWriteRequestV2Pool_CompareFixedSymbolCapaWithDynamic(b *testing.B)
 			})
 
 			b.Run("fixed_capacity", func(b *testing.B) {
-				pool := sync.Pool{
+				fixedPool := sync.Pool{
 					New: func() any {
 						return &PreallocWriteRequestV2{
 							WriteRequestV2: WriteRequestV2{
@@ -254,22 +254,74 @@ func BenchmarkWriteRequestV2Pool_CompareFixedSymbolCapaWithDynamic(b *testing.B)
 				var idx int
 				for b.Loop() {
 					if idx > 0 && idx%gcInterval == 0 {
-						runtime.GC() // Periodically run GC to simulate real-world conditions where the pool may be emptied.
+						runtime.GC()
 					}
-					req := pool.Get().(*PreallocWriteRequestV2)
+					req := fixedPool.Get().(*PreallocWriteRequestV2)
 					req.Symbols = append(req.Symbols, variants[idx%numVariants]...)
 					idx++
 
-					if int64(cap(req.Symbols)) > maxSymbolsCapacity {
-						// Discard this request instead of putting it back into the pool to let GC reclaim it like the dynamic way.
+					// Same cleanup as ReuseWriteRequestV2, minus the EMA update.
+					req.Source = 0
+					symbolsCap := int64(cap(req.Symbols))
+					if symbolsCap > maxSymbolsCapacity {
+						if req.Timeseries != nil {
+							ReuseSliceV2(req.Timeseries)
+							req.Timeseries = nil
+						}
 						continue
 					}
-
 					for i := range req.Symbols {
 						req.Symbols[i] = ""
 					}
 					req.Symbols = req.Symbols[:0]
-					pool.Put(req)
+					if req.Timeseries != nil {
+						ReuseSliceV2(req.Timeseries)
+						req.Timeseries = nil
+					}
+					fixedPool.Put(req)
+				}
+			})
+
+			b.Run("fixed_capacity_2048", func(b *testing.B) {
+				fixedPool2048 := sync.Pool{
+					New: func() any {
+						return &PreallocWriteRequestV2{
+							WriteRequestV2: WriteRequestV2{
+								Symbols: make([]string, 0, 2048),
+							},
+						}
+					},
+				}
+
+				b.ReportAllocs()
+				var idx int
+				for b.Loop() {
+					if idx > 0 && idx%gcInterval == 0 {
+						runtime.GC()
+					}
+					req := fixedPool2048.Get().(*PreallocWriteRequestV2)
+					req.Symbols = append(req.Symbols, variants[idx%numVariants]...)
+					idx++
+
+					// Same cleanup as ReuseWriteRequestV2, minus the EMA update.
+					req.Source = 0
+					symbolsCap := int64(cap(req.Symbols))
+					if symbolsCap > maxSymbolsCapacity {
+						if req.Timeseries != nil {
+							ReuseSliceV2(req.Timeseries)
+							req.Timeseries = nil
+						}
+						continue
+					}
+					for i := range req.Symbols {
+						req.Symbols[i] = ""
+					}
+					req.Symbols = req.Symbols[:0]
+					if req.Timeseries != nil {
+						ReuseSliceV2(req.Timeseries)
+						req.Timeseries = nil
+					}
+					fixedPool2048.Put(req)
 				}
 			})
 		})

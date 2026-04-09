@@ -62,7 +62,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 			level.Info(a.logger).Log("msg", "Overrides not found", "user", userID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 		case errors.Is(err, ErrAccessDenied):
-			http.Error(w, err.Error(), http.StatusForbidden)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		case errors.Is(err, ErrInvalidOverrides):
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		default:

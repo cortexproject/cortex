@@ -19,8 +19,7 @@ import (
 
 const (
 	// Error messages
-	ErrInvalidJSON  = "invalid JSON"
-	ErrUserNotFound = "user not found"
+	ErrInvalidJSON = "invalid JSON"
 
 	// Runtime config errors
 	ErrRuntimeConfig = "runtime config read error"
@@ -58,12 +57,17 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	// Read overrides from bucket storage
 	overrides, err := a.getOverridesFromBucket(r.Context(), userID)
 	if err != nil {
-		if err.Error() == ErrUserNotFound {
-			level.Info(a.logger).Log("msg", "User not found", "user", userID)
-			http.Error(w, "user not found", http.StatusBadRequest)
-		} else {
+		switch {
+		case errors.Is(err, ErrNotFound):
+			level.Info(a.logger).Log("msg", "Overrides not found", "user", userID)
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, ErrAccessDenied):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		case errors.Is(err, ErrInvalidOverrides):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
 			level.Error(a.logger).Log("msg", "failed to get overrides from bucket", "userID", userID, "err", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
@@ -74,7 +78,7 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(overrides); err != nil {
 		level.Error(a.logger).Log("msg", "failed to encode overrides response", "err", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -97,28 +101,28 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 	allowedLimits, err := a.getAllowedLimitsFromBucket(r.Context())
 	if err != nil {
 		level.Error(a.logger).Log("msg", "failed to get allowed limits from bucket", "userID", userID, "err", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Validate that only allowed limits are being changed
 	if err := ValidateOverrides(overrides, allowedLimits); err != nil {
 		level.Error(a.logger).Log("msg", "invalid overrides validation", "userID", userID, "err", err)
-		http.Error(w, "Invalid overrides", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("%s: %s", ErrInvalidOverrides.Error(), err.Error()), http.StatusBadRequest)
 		return
 	}
 
 	// Validate that values don't exceed hard limits from runtime config
 	if err := a.validateHardLimits(overrides, userID); err != nil {
 		level.Error(a.logger).Log("msg", "hard limits validation failed", "userID", userID, "err", err)
-		http.Error(w, "Invalid overrides", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("%s: %s", ErrInvalidOverrides.Error(), err.Error()), http.StatusBadRequest)
 		return
 	}
 
 	// Write overrides to bucket storage
 	if err := a.setOverridesToBucket(r.Context(), userID, overrides); err != nil {
 		level.Error(a.logger).Log("msg", "failed to set overrides to bucket", "userID", userID, "err", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -135,7 +139,7 @@ func (a *API) DeleteOverrides(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.deleteOverridesFromBucket(r.Context(), userID); err != nil {
 		level.Error(a.logger).Log("msg", "failed to delete overrides from bucket", "userID", userID, "err", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -176,7 +180,7 @@ func (a *API) getOverridesFromBucket(ctx context.Context, userID string) (map[st
 			return result, nil
 		}
 		// User does not exist in config - return error
-		return nil, errors.New(ErrUserNotFound)
+		return nil, ErrNotFound
 	}
 
 	// No tenant limits configured - return empty map (no overrides)

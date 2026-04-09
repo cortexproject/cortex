@@ -96,10 +96,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 
 			req := cortexpb.PreallocWriteRequestV2FromPool()
 			// v1 request is put back into the pool by the Distributor.
-			defer func() {
-				cortexpb.ReuseWriteRequestV2(req)
-				req.Free()
-			}()
+			defer cortexpb.ReuseWriteRequestV2(req)
 
 			err = util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, req, util.RawSnappy)
 			if err != nil {

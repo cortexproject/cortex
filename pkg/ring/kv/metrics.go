@@ -2,6 +2,7 @@ package kv
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
@@ -33,7 +34,8 @@ func getCasErrorCode(err error) string {
 
 	// If the error has been returned to abort the CAS operation, then we shouldn't
 	// consider it an error when tracking metrics.
-	if casErr, ok := err.(interface{ IsOperationAborted() bool }); ok && casErr.IsOperationAborted() {
+	var casAborted interface{ IsOperationAborted() bool }
+	if errors.As(err, &casAborted) && casAborted.IsOperationAborted() {
 		return "200"
 	}
 

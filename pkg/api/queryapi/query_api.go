@@ -355,9 +355,10 @@ func applyTimeoutClassification(ctx context.Context, queryStats *stats.QueryStat
 // and returns an apiFuncResult if the timeout should be converted to a 4XX user error.
 // Returns nil if no conversion applies and the caller should use the default error path.
 func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryStats, cfg stats.PhaseTrackerConfig, warnings annotations.Annotations, closer func()) *apiFuncResult {
-	// Record query end time so that ComputeAndStoreTimingBreakdown (called
-	// later in scheduler_processor.runRequest) reuses the same timestamp,
-	// producing identical numbers in querier and query-frontend logs.
+	if !stats.IsEnabled(ctx) {
+		return nil
+	}
+
 	queryStats.SetQueryEnd(time.Now())
 
 	decision := stats.DecideTimeoutResponse(queryStats, cfg)
@@ -373,14 +374,26 @@ func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryS
 		queueWaitTime = queueLeave.Sub(queueJoin)
 	}
 	level.Warn(q.logger).Log(
-		"msg", "query timed out with classification",
+		"msg", "query shard timed out with classification",
 		"request_id", requestmeta.RequestIdFromContext(ctx),
 		"query_start", queryStats.LoadQueryStart(),
 		"query_end", queryEnd,
 		"queue_wait_time", queueWaitTime,
-		"fetch_time", fetchTime,
+		"query_storage_wall_time", fetchTime,
 		"eval_time", evalTime,
 		"total_time", totalTime,
+		"wall_time", queryStats.LoadWallTime(),
+		"response_series", queryStats.LoadResponseSeries(),
+		"fetched_series_count", queryStats.LoadFetchedSeries(),
+		"fetched_chunk_bytes", queryStats.LoadFetchedChunkBytes(),
+		"fetched_data_bytes", queryStats.LoadFetchedDataBytes(),
+		"fetched_samples_count", queryStats.LoadFetchedSamples(),
+		"fetched_chunks_count", queryStats.LoadFetchedChunks(),
+		"split_queries", queryStats.LoadSplitQueries(),
+		"store_gateway_touched_postings_count", queryStats.LoadStoreGatewayTouchedPostings(),
+		"store_gateway_touched_posting_bytes", queryStats.LoadStoreGatewayTouchedPostingBytes(),
+		"scanned_samples", queryStats.LoadScannedSamples(),
+		"peak_samples", queryStats.LoadPeakSamples(),
 		"decision", decision,
 		"conversion_enabled", cfg.Enabled,
 	)

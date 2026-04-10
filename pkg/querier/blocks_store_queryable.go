@@ -105,6 +105,7 @@ type BlocksStoreLimits interface {
 
 	MaxChunksPerQueryFromStore(userID string) int
 	StoreGatewayTenantShardSize(userID string) float64
+	QueryStoreAfter(userID string) time.Duration
 }
 
 type blocksStoreQueryableMetrics struct {
@@ -134,13 +135,12 @@ func newBlocksStoreQueryableMetrics(reg prometheus.Registerer) *blocksStoreQuery
 type BlocksStoreQueryable struct {
 	services.Service
 
-	stores          BlocksStoreSet
-	finder          BlocksFinder
-	consistency     *BlocksConsistencyChecker
-	logger          log.Logger
-	queryStoreAfter time.Duration
-	metrics         *blocksStoreQueryableMetrics
-	limits          BlocksStoreLimits
+	stores      BlocksStoreSet
+	finder      BlocksFinder
+	consistency *BlocksConsistencyChecker
+	logger      log.Logger
+	metrics     *blocksStoreQueryableMetrics
+	limits      BlocksStoreLimits
 
 	storeGatewayQueryStatsEnabled           bool
 	storeGatewayConsistencyCheckMaxAttempts int
@@ -169,7 +169,6 @@ func NewBlocksStoreQueryable(
 		stores:                                  stores,
 		finder:                                  finder,
 		consistency:                             consistency,
-		queryStoreAfter:                         config.QueryStoreAfter,
 		logger:                                  logger,
 		subservices:                             manager,
 		subservicesWatcher:                      services.NewFailureWatcher(),
@@ -306,7 +305,6 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 		limits:                                  q.limits,
 		consistency:                             q.consistency,
 		logger:                                  q.logger,
-		queryStoreAfter:                         q.queryStoreAfter,
 		storeGatewayQueryStatsEnabled:           q.storeGatewayQueryStatsEnabled,
 		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
 		storeGatewaySeriesBatchSize:             q.storeGatewaySeriesBatchSize,
@@ -321,10 +319,6 @@ type blocksStoreQuerier struct {
 	consistency *BlocksConsistencyChecker
 	limits      BlocksStoreLimits
 	logger      log.Logger
-
-	// If set, the querier manipulates the max time to not be greater than
-	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
 
 	// If enabled, query stats of store gateway requests will be logged
 	// using `info` level.
@@ -493,14 +487,15 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 
 func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logger log.Logger, minT, maxT int64, matchers []*labels.Matcher,
 	userID string, queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error)) error {
+	queryStoreAfter := q.limits.QueryStoreAfter(userID)
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip
 	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
+	if queryStoreAfter > 0 {
 		now := time.Now()
 		origMaxT := maxT
-		maxT = min(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxT = min(maxT, util.TimeToMillis(now.Add(-queryStoreAfter)))
 
 		if origMaxT != maxT {
 			level.Debug(logger).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)

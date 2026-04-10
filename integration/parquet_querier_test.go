@@ -225,7 +225,7 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 			"-querier.honor-projection-hints":   "true", // Honor projection hints
 			// Set query-ingesters-within to 2h so queries older than 2h don't hit ingesters
 			// Since test queries are 24-48h old, they won't query ingesters and projection will be enabled
-			"-querier.query-ingesters-within": "2h",
+			"-limits.query-ingesters-within": "2h",
 			// Enable cache for parquet labels and chunks
 			"-blocks-storage.bucket-store.parquet-labels-cache.backend":             "inmemory,memcached",
 			"-blocks-storage.bucket-store.parquet-labels-cache.memcached.addresses": "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),

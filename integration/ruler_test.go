@@ -1274,8 +1274,8 @@ func TestRulerMetricsWhenIngesterFails(t *testing.T) {
 
 			// Very low limit so that ruler hits it.
 			"-querier.max-fetched-chunks-per-query": "15",
-			"-querier.query-store-after":            (1 * time.Second).String(),
-			"-querier.query-ingesters-within":       (2 * time.Second).String(),
+			"-limits.query-store-after":             (1 * time.Second).String(),
+			"-limits.query-ingesters-within":        (2 * time.Second).String(),
 		},
 	)
 
@@ -1378,8 +1378,8 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 
 			// Very low limit so that ruler hits it.
 			"-querier.max-fetched-chunks-per-query": "15",
-			"-querier.query-store-after":            (1 * time.Second).String(),
-			"-querier.query-ingesters-within":       (2 * time.Second).String(),
+			"-limits.query-store-after":             (1 * time.Second).String(),
+			"-limits.query-ingesters-within":        (2 * time.Second).String(),
 		},
 	)
 

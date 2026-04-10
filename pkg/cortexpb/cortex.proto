@@ -151,6 +151,7 @@ message LabelPair {
 message Sample {
   double value       = 1;
   int64 timestamp_ms = 2;
+  int64 start_timestamp_ms = 3;
 }
 
 message MetricMetadata {
@@ -265,6 +266,8 @@ message Histogram {
   // The last element is not only the upper inclusive bound of the last regular
   // bucket, but implicitly the lower exclusive bound of the +Inf bucket.
   repeated double custom_values = 16;
+
+  int64 start_timestamp_ms = 17;
 }
 
 // A BucketSpan defines a number of consecutive buckets with their

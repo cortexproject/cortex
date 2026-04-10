@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -489,11 +490,18 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 		requestedBlocks = append(requestedBlocks, id)
 	}
 
-	// Build block hints once, reused for all LabelNames/LabelValues requests.
+	// Build block hints once, reused for the Series request.
 	blockRegex := buildBlockIDRegex(requestedBlocks)
-	var labelValuesHints *types.Any
+
+	// Use Series with SkipChunks=true to compute all cardinality statistics in a
+	// single pass: per-metric series counts, per-label-value-pair series counts,
+	// label value cardinality per label name, and total series count.
+	countingSrv := newCardinalityCountingServer(spanCtx)
+
+	// Build series request hints to filter by requested blocks.
+	var seriesHints *types.Any
 	if blockRegex != "" {
-		hints := &hintspb.LabelValuesRequestHints{
+		hints := &hintspb.SeriesRequestHints{
 			BlockMatchers: []storepb.LabelMatcher{
 				{
 					Type:  storepb.LabelMatcher_RE,
@@ -502,84 +510,60 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 				},
 			},
 		}
-		labelValuesHints, err = types.MarshalAny(hints)
+		seriesHints, err = types.MarshalAny(hints)
 		if err != nil {
-			return nil, errors.Wrap(err, "marshal block hints")
+			return nil, errors.Wrap(err, "marshal series hints")
 		}
 	}
 
-	// Use the BucketStore's LabelNames to get all label names for these blocks.
-	labelNamesReq := &storepb.LabelNamesRequest{
-		Start: req.MinTime,
-		End:   req.MaxTime,
-	}
-	if blockRegex != "" {
-		labelNamesHints := &hintspb.LabelNamesRequestHints{
-			BlockMatchers: []storepb.LabelMatcher{
-				{
-					Type:  storepb.LabelMatcher_RE,
-					Name:  block.BlockIDLabel,
-					Value: blockRegex,
-				},
+	seriesReq := &storepb.SeriesRequest{
+		MinTime: req.MinTime,
+		MaxTime: req.MaxTime,
+		Matchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_NEQ,
+				Name:  labels.MetricName,
+				Value: "",
 			},
-		}
-		anyHints, err := types.MarshalAny(labelNamesHints)
-		if err != nil {
-			return nil, errors.Wrap(err, "marshal label names hints")
-		}
-		labelNamesReq.Hints = anyHints
+		},
+		SkipChunks: true,
+		Hints:      seriesHints,
 	}
 
-	labelNamesResp, err := userStore.LabelNames(spanCtx, labelNamesReq)
-	if err != nil {
-		return nil, errors.Wrap(err, "fetch label names for cardinality")
+	if seriesErr := userStore.Series(seriesReq, countingSrv); seriesErr != nil {
+		level.Warn(spanLog).Log("msg", "failed to fetch series for cardinality counting", "err", seriesErr)
 	}
 
-	// For each label name, get the distinct values to compute labelValueCountByLabelName.
-	labelValueCounts := make(map[string]uint64, len(labelNamesResp.Names))
-	metricNames := []string{}
-	for _, name := range labelNamesResp.Names {
-		labelValuesReq := &storepb.LabelValuesRequest{
-			Label: name,
-			Start: req.MinTime,
-			End:   req.MaxTime,
-			Hints: labelValuesHints,
-		}
-
-		labelValuesResp, err := userStore.LabelValues(spanCtx, labelValuesReq)
-		if err != nil {
-			level.Warn(spanLog).Log("msg", "failed to fetch label values for cardinality", "label", name, "err", err)
-			continue
-		}
-
-		labelValueCounts[name] = uint64(len(labelValuesResp.Values))
-
-		if name == labels.MetricName { //nolint:staticcheck // MetricName is widely used in this codebase.
-			metricNames = labelValuesResp.Values
-		}
+	// Build the response from the counting server's aggregated data.
+	resp := &storegatewaypb.CardinalityResponse{
+		NumSeries: countingSrv.numSeries,
 	}
 
-	// Build the response.
-	resp := &storegatewaypb.CardinalityResponse{}
+	// seriesCountByMetricName from the counting server.
+	for name, count := range countingSrv.seriesByMetric {
+		resp.SeriesCountByMetricName = append(resp.SeriesCountByMetricName, &cortexpb.CardinalityStatItem{
+			Name:  name,
+			Value: count,
+		})
+	}
+	resp.SeriesCountByMetricName = sortAndTruncateStatItems(resp.SeriesCountByMetricName, int(req.Limit))
 
-	// labelValueCountByLabelName
-	for name, count := range labelValueCounts {
+	// labelValueCountByLabelName from the counting server.
+	for name, count := range countingSrv.distinctLabelValueCounts() {
 		resp.LabelValueCountByLabelName = append(resp.LabelValueCountByLabelName, &cortexpb.CardinalityStatItem{
 			Name:  name,
 			Value: count,
 		})
 	}
 
-	// seriesCountByMetricName: We don't have exact per-metric series counts from
-	// LabelValues alone. Use the number of distinct metric names as a placeholder.
-	// For exact counts, we would need to expand posting lists per metric name.
-	// For now, report the number of metric names found.
-	for _, name := range metricNames {
-		resp.SeriesCountByMetricName = append(resp.SeriesCountByMetricName, &cortexpb.CardinalityStatItem{
-			Name:  name,
-			Value: 1, // Placeholder: exact series counts require posting list expansion.
+	// seriesCountByLabelValuePair from the counting server.
+	for pair, count := range countingSrv.seriesByLabelPair {
+		resp.SeriesCountByLabelValuePair = append(resp.SeriesCountByLabelValuePair, &cortexpb.CardinalityStatItem{
+			Name:  pair,
+			Value: count,
 		})
 	}
+	resp.SeriesCountByLabelValuePair = sortAndTruncateStatItems(resp.SeriesCountByLabelValuePair, int(req.Limit))
 
 	// Set queried blocks in response.
 	for _, id := range requestedBlocks {
@@ -588,11 +572,80 @@ func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewayp
 	}
 
 	level.Debug(spanLog).Log("msg", "computed cardinality", "user", userID,
-		"label_names", len(labelNamesResp.Names),
-		"metric_names", len(metricNames),
+		"num_series", countingSrv.numSeries,
+		"num_metrics", len(countingSrv.seriesByMetric),
 		"queried_blocks", len(requestedBlocks))
 
 	return resp, nil
+}
+
+// cardinalityCountingServer is a lightweight in-memory gRPC server that counts
+// series by metric name, label-value pair, and distinct values per label name,
+// without retaining series data.
+type cardinalityCountingServer struct {
+	storepb.Store_SeriesServer
+	ctx context.Context
+
+	numSeries         uint64
+	seriesByMetric    map[string]uint64
+	seriesByLabelPair map[string]uint64
+	labelValueCounts  map[string]map[string]struct{} // label name -> set of distinct values
+}
+
+func newCardinalityCountingServer(ctx context.Context) *cardinalityCountingServer {
+	return &cardinalityCountingServer{
+		ctx:               ctx,
+		seriesByMetric:    make(map[string]uint64),
+		seriesByLabelPair: make(map[string]uint64),
+		labelValueCounts:  make(map[string]map[string]struct{}),
+	}
+}
+
+func (s *cardinalityCountingServer) Send(r *storepb.SeriesResponse) error {
+	series := r.GetSeries()
+	if series == nil {
+		return nil
+	}
+	s.numSeries++
+	for _, lbl := range series.Labels {
+		if lbl.Name == labels.MetricName {
+			s.seriesByMetric[lbl.Value]++
+		}
+		s.seriesByLabelPair[lbl.Name+"="+lbl.Value]++
+
+		// Track distinct values per label name.
+		vals, ok := s.labelValueCounts[lbl.Name]
+		if !ok {
+			vals = make(map[string]struct{})
+			s.labelValueCounts[lbl.Name] = vals
+		}
+		vals[lbl.Value] = struct{}{}
+	}
+	return nil
+}
+
+func (s *cardinalityCountingServer) Context() context.Context {
+	return s.ctx
+}
+
+// distinctLabelValueCounts returns the number of distinct values per label name.
+func (s *cardinalityCountingServer) distinctLabelValueCounts() map[string]uint64 {
+	result := make(map[string]uint64, len(s.labelValueCounts))
+	for name, vals := range s.labelValueCounts {
+		result[name] = uint64(len(vals))
+	}
+	return result
+}
+
+// sortAndTruncateStatItems sorts items by value descending and truncates to limit.
+func sortAndTruncateStatItems(items []*cortexpb.CardinalityStatItem, limit int) []*cortexpb.CardinalityStatItem {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Value > items[j].Value
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
 }
 
 // buildBlockIDRegex creates a regex pattern matching the given block ULIDs.

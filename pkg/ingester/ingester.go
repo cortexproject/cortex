@@ -2325,7 +2325,8 @@ func (i *Ingester) UserStats(ctx context.Context, req *client.UserStatsRequest) 
 	}, nil
 }
 
-// Cardinality returns per-tenant cardinality statistics from the TSDB head.
+// Cardinality returns per-tenant cardinality statistics from the TSDB head
+// and any local compacted blocks that have not yet been synced by store-gateways.
 func (i *Ingester) Cardinality(ctx context.Context, req *client.CardinalityRequest) (*client.CardinalityResponse, error) {
 	if err := i.checkRunning(); err != nil {
 		return nil, err
@@ -2341,9 +2342,18 @@ func (i *Ingester) Cardinality(ctx context.Context, req *client.CardinalityReque
 		return &client.CardinalityResponse{}, nil
 	}
 
-	stats := db.Head().Stats(labels.MetricName, int(req.Limit))
+	// Get head stats.
+	headStats := db.Head().Stats(labels.MetricName, int(req.Limit))
+	result := statsToPB(headStats)
 
-	return statsToPB(stats), nil
+	// Aggregate stats from local compacted blocks.
+	blocks := db.Blocks()
+	if len(blocks) > 0 {
+		blockStats := computeBlocksCardinality(ctx, blocks, int(req.Limit))
+		result = mergeCardinalityResponses(result, blockStats, int(req.Limit))
+	}
+
+	return result, nil
 }
 
 // statsToPB converts TSDB head stats to the protobuf CardinalityResponse format.
@@ -2369,6 +2379,169 @@ func indexStatsToPB(stats []index.Stat) []*cortexpb.CardinalityStatItem {
 			Name:  s.Name,
 			Value: s.Count,
 		}
+	}
+	return items
+}
+
+// computeBlocksCardinality computes cardinality statistics from local TSDB blocks
+// by iterating each block's index reader.
+func computeBlocksCardinality(ctx context.Context, blocks []*tsdb.Block, limit int) *client.CardinalityResponse {
+	seriesByMetric := make(map[string]uint64)
+	labelValueCounts := make(map[string]uint64)
+	seriesByPair := make(map[string]uint64)
+	var totalSeries uint64
+
+	for _, blk := range blocks {
+		if ctx.Err() != nil {
+			break
+		}
+
+		// Use block metadata for total series count (avoids iterating all postings).
+		totalSeries += blk.Meta().Stats.NumSeries
+
+		if err := processBlockCardinality(ctx, blk, seriesByMetric, labelValueCounts, seriesByPair); err != nil {
+			continue
+		}
+	}
+
+	resp := &client.CardinalityResponse{
+		NumSeries: totalSeries,
+	}
+
+	for name, count := range seriesByMetric {
+		resp.SeriesCountByMetricName = append(resp.SeriesCountByMetricName, &cortexpb.CardinalityStatItem{
+			Name: name, Value: count,
+		})
+	}
+	resp.SeriesCountByMetricName = sortAndTruncateCardinalityItems(resp.SeriesCountByMetricName, limit)
+
+	for name, count := range labelValueCounts {
+		resp.LabelValueCountByLabelName = append(resp.LabelValueCountByLabelName, &cortexpb.CardinalityStatItem{
+			Name: name, Value: count,
+		})
+	}
+	resp.LabelValueCountByLabelName = sortAndTruncateCardinalityItems(resp.LabelValueCountByLabelName, limit)
+
+	for pair, count := range seriesByPair {
+		resp.SeriesCountByLabelValuePair = append(resp.SeriesCountByLabelValuePair, &cortexpb.CardinalityStatItem{
+			Name: pair, Value: count,
+		})
+	}
+	resp.SeriesCountByLabelValuePair = sortAndTruncateCardinalityItems(resp.SeriesCountByLabelValuePair, limit)
+
+	return resp
+}
+
+// processBlockCardinality extracts cardinality stats from a single block using a
+// closure to ensure the index reader is properly closed via defer.
+func processBlockCardinality(ctx context.Context, blk *tsdb.Block, seriesByMetric, labelValueCounts map[string]uint64, seriesByPair map[string]uint64) error {
+	ir, err := blk.Index()
+	if err != nil {
+		return err
+	}
+	defer ir.Close()
+
+	// Iterate all label names and their values in a single pass.
+	// For __name__, also populate seriesByMetric.
+	labelNames, err := ir.LabelNames(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, name := range labelNames {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		vals, err := ir.LabelValues(ctx, name, nil)
+		if err != nil {
+			continue
+		}
+		if uint64(len(vals)) > labelValueCounts[name] {
+			labelValueCounts[name] = uint64(len(vals))
+		}
+
+		for _, val := range vals {
+			count, err := countPostings(ctx, ir, name, val)
+			if err != nil {
+				continue
+			}
+			seriesByPair[name+"="+val] += count
+			if name == labels.MetricName {
+				seriesByMetric[val] += count
+			}
+		}
+	}
+
+	return nil
+}
+
+// countPostings returns the number of postings for a label name-value pair.
+func countPostings(ctx context.Context, ir tsdb.IndexReader, name, value string) (uint64, error) {
+	p, err := ir.Postings(ctx, name, value)
+	if err != nil {
+		return 0, err
+	}
+	var count uint64
+	for p.Next() {
+		count++
+	}
+	if err := p.Err(); err != nil {
+		return count, err
+	}
+	return count, nil
+}
+
+// mergeCardinalityResponses merges two CardinalityResponse objects.
+func mergeCardinalityResponses(a, b *client.CardinalityResponse, limit int) *client.CardinalityResponse {
+	result := &client.CardinalityResponse{
+		NumSeries: a.NumSeries + b.NumSeries,
+	}
+
+	// SeriesCountByMetricName: sum per metric.
+	result.SeriesCountByMetricName = mergeStatItems(a.SeriesCountByMetricName, b.SeriesCountByMetricName, func(x, y uint64) uint64 { return x + y })
+	result.SeriesCountByMetricName = sortAndTruncateCardinalityItems(result.SeriesCountByMetricName, limit)
+
+	// LabelValueCountByLabelName: max per label.
+	result.LabelValueCountByLabelName = mergeStatItems(a.LabelValueCountByLabelName, b.LabelValueCountByLabelName, func(x, y uint64) uint64 { return max(x, y) })
+	result.LabelValueCountByLabelName = sortAndTruncateCardinalityItems(result.LabelValueCountByLabelName, limit)
+
+	// SeriesCountByLabelValuePair: sum per pair.
+	result.SeriesCountByLabelValuePair = mergeStatItems(a.SeriesCountByLabelValuePair, b.SeriesCountByLabelValuePair, func(x, y uint64) uint64 { return x + y })
+	result.SeriesCountByLabelValuePair = sortAndTruncateCardinalityItems(result.SeriesCountByLabelValuePair, limit)
+
+	return result
+}
+
+// mergeStatItems merges two stat item slices using the given combiner function.
+func mergeStatItems(a, b []*cortexpb.CardinalityStatItem, combine func(uint64, uint64) uint64) []*cortexpb.CardinalityStatItem {
+	m := make(map[string]uint64, len(a))
+	for _, item := range a {
+		m[item.Name] = combine(m[item.Name], item.Value)
+	}
+	for _, item := range b {
+		m[item.Name] = combine(m[item.Name], item.Value)
+	}
+	result := make([]*cortexpb.CardinalityStatItem, 0, len(m))
+	for name, value := range m {
+		result = append(result, &cortexpb.CardinalityStatItem{Name: name, Value: value})
+	}
+	return result
+}
+
+// sortAndTruncateCardinalityItems sorts items by value descending and truncates to limit.
+func sortAndTruncateCardinalityItems(items []*cortexpb.CardinalityStatItem, limit int) []*cortexpb.CardinalityStatItem {
+	slices.SortFunc(items, func(a, b *cortexpb.CardinalityStatItem) int {
+		if a.Value > b.Value {
+			return -1
+		}
+		if a.Value < b.Value {
+			return 1
+		}
+		return 0
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
 	}
 	return items
 }

@@ -31,6 +31,7 @@ import (
 )
 
 func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestQuerierWithBlocksStorageRunningInSingleBinaryMode.md")
 	tests := map[string]struct {
 		bucketStorageType     string
 		blocksShardingEnabled bool

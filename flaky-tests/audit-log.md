@@ -8,3 +8,5 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | 2026-04-12T19:47:00Z | PASS | No flaky tests detected | [ci run 24314518781](https://github.com/cortexproject/cortex/actions/runs/24314518781) |
 | 2026-04-12T20:23:09Z | FLAKY | TestQueueConcurrency (pkg/scheduler/queue) — timed out after 30m on arm64 | [ci run 24314927948](https://github.com/cortexproject/cortex/actions/runs/24314927948) |
 | 2026-04-12T20:32:32Z | FLAKY | TestDistributorQuerier_QueryIngestersWithinBoundary/maxT_well_after_lookback_boundary (pkg/querier) — occurrence #2 | [ci run 24315645679](https://github.com/cortexproject/cortex/actions/runs/24315645679) |
+| 2026-04-12T20:49:56Z | FLAKY | TestQuerierWithBlocksStorageRunningInSingleBinaryMode (integration/querier, arm64) — Docker container vanished; TestQueueConcurrency timeout (arm64) — already skipped | [ci run 24316060467](https://github.com/cortexproject/cortex/actions/runs/24316060467) |
+| 2026-04-12T21:22:00Z | PASS | No flaky tests detected (with skips applied) | [ci run 24316099145](https://github.com/cortexproject/cortex/actions/runs/24316099145) |

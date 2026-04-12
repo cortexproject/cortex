@@ -838,12 +838,12 @@ func TestBucketStores_Cardinality(t *testing.T) {
 
 	app := db.Appender(context.Background())
 	// metric_a: 3 series
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err = app.Append(0, labels.FromStrings(labels.MetricName, "metric_a", "instance", fmt.Sprintf("inst_%d", i)), 10, float64(i))
 		require.NoError(t, err)
 	}
 	// metric_b: 5 series
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_, err = app.Append(0, labels.FromStrings(labels.MetricName, "metric_b", "instance", fmt.Sprintf("inst_%d", i)), 10, float64(i))
 		require.NoError(t, err)
 	}

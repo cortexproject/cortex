@@ -97,6 +97,53 @@ jobs:
       - name: Run Tests
         run: make BUILD_IN_CONTAINER=false test-no-race
 
+  test-stress:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    container:
+      image: quay.io/cortexproject/build-image:master-fe84258322
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Detect Changed Packages
+        id: detect
+        run: |
+          CHANGED_GO_FILES=$(git diff --name-only origin/$GITHUB_BASE_REF...HEAD -- '*.go' | grep -v '^vendor/' | grep -v '^integration/' || true)
+          if [ -z "$CHANGED_GO_FILES" ]; then
+            echo "No non-vendor, non-integration Go files changed."
+            echo "packages=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Extract unique directories from changed Go files
+          CHANGED_DIRS=$(echo "$CHANGED_GO_FILES" | xargs -I{} dirname {} | sort -u)
+          # Keep only directories that contain test files
+          PACKAGES=""
+          for dir in $CHANGED_DIRS; do
+            if ls "$dir"/*_test.go 1>/dev/null 2>&1; then
+              PACKAGES="$PACKAGES ./$dir"
+            fi
+          done
+          PACKAGES=$(echo "$PACKAGES" | xargs)
+          echo "Detected testable packages: $PACKAGES"
+          echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
+      - name: Run Stress Tests
+        if: steps.detect.outputs.packages != ''
+        run: make BUILD_IN_CONTAINER=false test-stress
+        env:
+          STRESS_TEST_PACKAGES: ${{ steps.detect.outputs.packages }}
+
   security:
     name: CodeQL
     runs-on: ubuntu-24.04

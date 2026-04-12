@@ -5,3 +5,4 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | Timestamp | Result | Details | CI Job |
 |-----------|--------|---------|--------|
 | 2026-04-12T19:09:52Z | FLAKY | TestDistributorQuerier_QueryIngestersWithinBoundary/maxT_well_after_lookback_boundary (pkg/querier) | [ci run 24314068155](https://github.com/cortexproject/cortex/actions/runs/24314068155) |
+| 2026-04-12T19:47:00Z | PASS | No flaky tests detected | [ci run 24314518781](https://github.com/cortexproject/cortex/actions/runs/24314518781) |

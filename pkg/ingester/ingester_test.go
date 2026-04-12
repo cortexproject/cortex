@@ -8218,18 +8218,18 @@ func TestMergeCardinalityResponses(t *testing.T) {
 	for _, item := range result.SeriesCountByMetricName {
 		metricCounts[item.Name] = item.Value
 	}
-	assert.Equal(t, uint64(7), metricCounts["metric_a"])  // 5+2
-	assert.Equal(t, uint64(3), metricCounts["metric_b"])  // 3+0
-	assert.Equal(t, uint64(4), metricCounts["metric_c"])  // 0+4
+	assert.Equal(t, uint64(7), metricCounts["metric_a"]) // 5+2
+	assert.Equal(t, uint64(3), metricCounts["metric_b"]) // 3+0
+	assert.Equal(t, uint64(4), metricCounts["metric_c"]) // 0+4
 
 	// LabelValueCountByLabelName: max per label.
 	labelCounts := make(map[string]uint64)
 	for _, item := range result.LabelValueCountByLabelName {
 		labelCounts[item.Name] = item.Value
 	}
-	assert.Equal(t, uint64(3), labelCounts["__name__"])  // max(2,3)
-	assert.Equal(t, uint64(3), labelCounts["instance"])  // max(3,0)
-	assert.Equal(t, uint64(5), labelCounts["pod"])       // max(0,5)
+	assert.Equal(t, uint64(3), labelCounts["__name__"]) // max(2,3)
+	assert.Equal(t, uint64(3), labelCounts["instance"]) // max(3,0)
+	assert.Equal(t, uint64(5), labelCounts["pod"])      // max(0,5)
 
 	// SeriesCountByLabelValuePair: sum per pair.
 	pairCounts := make(map[string]uint64)

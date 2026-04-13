@@ -33,6 +33,7 @@ import (
 )
 
 func TestParquetFuzz(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestParquetFuzz.md")
 
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)

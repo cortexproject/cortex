@@ -453,6 +453,11 @@ type tsdbMetrics struct {
 	checkpointCreationFail  *prometheus.Desc
 	checkpointCreationTotal *prometheus.Desc
 
+	// WAL record part metrics
+	tsdbWALRecordPartWritesTotal *prometheus.Desc
+	tsdbWALRecordPartBytesTotal  *prometheus.Desc
+	tsdbWALRecordBytesSaved      *prometheus.Desc
+
 	// These two metrics replace metrics in ingesterMetrics, as we count them differently
 	memSeriesCreatedTotal *prometheus.Desc
 	memSeriesRemovedTotal *prometheus.Desc
@@ -532,6 +537,7 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_wal_writes_failed_total",
 			"Total number of TSDB WAL writes that failed.",
 			nil, nil),
+
 		tsdbHeadTruncateFail: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_truncations_failed_total",
 			"Total number of TSDB head truncations that failed.",
@@ -620,6 +626,18 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 			"cortex_ingester_tsdb_checkpoint_creations_total",
 			"Total number of TSDB checkpoint creations attempted.",
 			nil, nil),
+		tsdbWALRecordPartWritesTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_record_part_writes_total",
+			"Total number of WAL record parts written before flushing.",
+			nil, nil),
+		tsdbWALRecordPartBytesTotal: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_record_parts_bytes_written_total",
+			"Total number of WAL record part bytes written before flushing, including CRC and compression headers.",
+			nil, nil),
+		tsdbWALRecordBytesSaved: prometheus.NewDesc(
+			"cortex_ingester_tsdb_wal_record_bytes_saved_total",
+			"Total number of bytes saved by the optional WAL record compression.",
+			[]string{"compression"}, nil),
 		tsdbSamplesAppended: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_samples_appended_total",
 			"Total number of appended samples.",
@@ -728,6 +746,10 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.checkpointCreationFail
 	out <- sm.checkpointCreationTotal
 
+	out <- sm.tsdbWALRecordPartWritesTotal
+	out <- sm.tsdbWALRecordPartBytesTotal
+	out <- sm.tsdbWALRecordBytesSaved
+
 	out <- sm.tsdbExemplarsTotal
 	out <- sm.tsdbExemplarsInStorage
 	out <- sm.tsdbExemplarSeriesInStorage
@@ -788,6 +810,9 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.checkpointDeleteTotal, "prometheus_tsdb_checkpoint_deletions_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationFail, "prometheus_tsdb_checkpoint_creations_failed_total")
 	data.SendSumOfCounters(out, sm.checkpointCreationTotal, "prometheus_tsdb_checkpoint_creations_total")
+	data.SendSumOfCounters(out, sm.tsdbWALRecordPartWritesTotal, "prometheus_tsdb_wal_record_part_writes_total")
+	data.SendSumOfCounters(out, sm.tsdbWALRecordPartBytesTotal, "prometheus_tsdb_wal_record_parts_bytes_written_total")
+	data.SendSumOfCountersWithLabels(out, sm.tsdbWALRecordBytesSaved, "prometheus_tsdb_wal_record_bytes_saved_total", "compression")
 	data.SendSumOfCounters(out, sm.tsdbExemplarsTotal, "prometheus_tsdb_exemplar_exemplars_appended_total")
 	data.SendSumOfGauges(out, sm.tsdbExemplarsInStorage, "prometheus_tsdb_exemplar_exemplars_in_storage")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbExemplarSeriesInStorage, "prometheus_tsdb_exemplar_series_with_exemplars_in_storage")

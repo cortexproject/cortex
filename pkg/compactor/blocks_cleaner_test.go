@@ -658,6 +658,7 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 }
 
 func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod.md")
 	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
 

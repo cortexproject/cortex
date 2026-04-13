@@ -96,7 +96,7 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 				limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
 				overrides := validation.NewOverrides(limits, nil)
 
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, nil, 1, overrides)
+				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, nil, 1, overrides, nil)
 				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 				require.NoError(t, err)
 
@@ -136,7 +136,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	limits.QueryIngestersWithin = model.Duration(1 * time.Hour)
 	overrides := validation.NewOverrides(limits, nil)
 
-	dq := newDistributorQueryable(d, false, true, nil, nil, 1, overrides)
+	dq := newDistributorQueryable(d, false, true, nil, nil, 1, overrides, nil)
 
 	now := time.Now()
 
@@ -192,7 +192,7 @@ func TestIngesterStreaming(t *testing.T) {
 
 			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 				return partialDataEnabled
-			}, 1, overrides)
+			}, 1, overrides, nil)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -363,7 +363,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 
 			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 				return true
-			}, ingesterQueryMaxAttempts, overrides)
+			}, ingesterQueryMaxAttempts, overrides, nil)
 			querier, err := queryable.Querier(mint, maxt)
 			require.NoError(t, err)
 
@@ -421,7 +421,7 @@ func TestDistributorQuerier_Select_CancelledContext_NoRetry(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts, overrides)
+	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -455,7 +455,7 @@ func TestDistributorQuerier_Select_CancelledContext(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts, overrides)
+	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -480,7 +480,7 @@ func TestDistributorQuerier_Labels_CancelledContext(t *testing.T) {
 	overrides := validation.NewOverrides(limits, nil)
 	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
-	}, ingesterQueryMaxAttempts, overrides)
+	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
 	require.NoError(t, err)
 
@@ -537,7 +537,7 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 
 					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, func(string) bool {
 						return partialDataEnabled
-					}, 1, overrides)
+					}, 1, overrides, nil)
 					querier, err := queryable.Querier(mint, maxt)
 					require.NoError(t, err)
 
@@ -626,7 +626,7 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 			limits.QueryIngestersWithin = model.Duration(lookback)
 			overrides := validation.NewOverrides(limits, nil)
 
-			queryable := newDistributorQueryable(distributor, false, true, nil, nil, 1, overrides)
+			queryable := newDistributorQueryable(distributor, false, true, nil, nil, 1, overrides, func() time.Time { return now })
 			querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 			require.NoError(t, err)
 
@@ -637,7 +637,7 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 				assert.Len(t, distributor.Calls, 0, testData.description)
 			} else {
 				require.Len(t, distributor.Calls, 1, testData.description)
-				assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(15*time.Second.Milliseconds()), testData.description)
+				assert.Equal(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), testData.description)
 				assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)), testData.description)
 			}
 		})

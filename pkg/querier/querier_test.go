@@ -301,7 +301,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		limits := DefaultLimitsConfig()
 		testOverrides := validation.NewOverrides(limits, nil)
 
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides)
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -450,7 +450,7 @@ func TestLimits(t *testing.T) {
 		limits := DefaultLimitsConfig()
 		testOverrides := validation.NewOverrides(limits, nil)
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides)
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -1824,11 +1824,11 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			var distributorQueryable QueryableWithFilter
 			if testData.queryIngesters {
 				// Ingesters will be queried
-				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides)
+				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 			} else {
 				// Ingesters will not be queried (time range is too old)
 				distributorQueryable = UseBeforeTimestampQueryable(
-					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides),
+					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil),
 					start.Add(-1*time.Hour),
 				)
 			}

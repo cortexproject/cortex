@@ -43,7 +43,10 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int, limits *validation.Overrides) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int, limits *validation.Overrides, nowFn func() time.Time) QueryableWithFilter {
+	if nowFn == nil {
+		nowFn = time.Now
+	}
 	return distributorQueryable{
 		distributor:              distributor,
 		streamingMetdata:         streamingMetdata,
@@ -52,6 +55,7 @@ func newDistributorQueryable(distributor Distributor, streamingMetdata bool, lab
 		isPartialDataEnabled:     isPartialDataEnabled,
 		ingesterQueryMaxAttempts: ingesterQueryMaxAttempts,
 		limits:                   limits,
+		nowFn:                    nowFn,
 	}
 }
 
@@ -63,6 +67,7 @@ type distributorQueryable struct {
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
 	limits                   *validation.Overrides
+	nowFn                    func() time.Time
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -76,6 +81,7 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		isPartialDataEnabled:     d.isPartialDataEnabled,
 		ingesterQueryMaxAttempts: d.ingesterQueryMaxAttempts,
 		limits:                   d.limits,
+		nowFn:                    d.nowFn,
 	}, nil
 }
 func (d distributorQueryable) UseQueryable(now time.Time, userID string, _, queryMaxT int64) bool {
@@ -93,6 +99,7 @@ type distributorQuerier struct {
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
 	limits                   *validation.Overrides
+	nowFn                    func() time.Time
 }
 
 // Select implements storage.Querier interface.
@@ -116,7 +123,7 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	// optimization is particularly important for the blocks storage where the blocks retention in the
 	// ingesters could be way higher than queryIngestersWithin.
 	if queryIngestersWithin > 0 {
-		now := time.Now()
+		now := q.nowFn()
 		origMinT := minT
 		minT = max(minT, util.TimeToMillis(now.Add(-queryIngestersWithin)))
 

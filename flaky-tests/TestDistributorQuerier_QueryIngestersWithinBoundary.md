@@ -1,6 +1,6 @@
 # Flaky Test: TestDistributorQuerier_QueryIngestersWithinBoundary
 
-**Status**: Skipped
+**Status**: Fixed
 **Occurrences**: 2
 **Root Cause**: Timing-sensitive test. `now` is captured at test setup (line 561) via `time.Now()`, but the code under test in `newDistributorQueryable` also calls `time.Now()` internally to compute the lookback boundary. Under the race detector (slower execution), enough wall-clock time elapses between setup and execution that the internal boundary shifts. The "maxT well after lookback boundary" subtest uses only a 10-second margin (`now.Add(-lookback + 10*time.Second)`), which is not enough buffer when the race detector slows execution. The result is that `queryMaxT` falls before the internally-computed boundary, the query is skipped, and `distributor.Calls` is empty instead of having 1 call.
 

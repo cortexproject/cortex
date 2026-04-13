@@ -556,7 +556,6 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 	}
 }
 func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
-	t.Skip("Flaky test auto-skipped. See flaky-tests/TestDistributorQuerier_QueryIngestersWithinBoundary.md")
 	t.Parallel()
 
 	now := time.Now()

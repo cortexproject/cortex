@@ -6171,7 +6171,7 @@
           "x-cli-flag": "querier.timeout-classification-enabled"
         },
         "timeout_classification_eval_threshold": {
-          "default": "40s",
+          "default": "1m30s",
           "description": "Eval time threshold above which a timeout is classified as user error (4XX).",
           "type": "string",
           "x-cli-flag": "querier.timeout-classification-eval-threshold",

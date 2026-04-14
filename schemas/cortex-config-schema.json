@@ -6158,8 +6158,8 @@
           "x-format": "duration"
         },
         "timeout_classification_deadline": {
-          "default": "59s",
-          "description": "The total time before the querier proactively cancels a query for timeout classification.",
+          "default": "1m59s",
+          "description": "The total time before the querier proactively cancels a query for timeout classification. Set this a few seconds less than the querier timeout.",
           "type": "string",
           "x-cli-flag": "querier.timeout-classification-deadline",
           "x-format": "duration"

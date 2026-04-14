@@ -244,8 +244,8 @@ func TestConfigValidation(t *testing.T) {
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
 				configuration.Querier.TimeoutClassificationEnabled = true
-				configuration.Querier.TimeoutClassificationDeadline = 59 * time.Second
-				configuration.Querier.TimeoutClassificationEvalThreshold = 40 * time.Second
+				configuration.Querier.TimeoutClassificationDeadline = time.Minute + 59*time.Second
+				configuration.Querier.TimeoutClassificationEvalThreshold = time.Minute + 30*time.Second
 				configuration.Frontend.Handler.QueryStatsEnabled = false
 				return configuration
 			},
@@ -256,8 +256,8 @@ func TestConfigValidation(t *testing.T) {
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
 				configuration.Querier.TimeoutClassificationEnabled = true
-				configuration.Querier.TimeoutClassificationDeadline = 59 * time.Second
-				configuration.Querier.TimeoutClassificationEvalThreshold = 40 * time.Second
+				configuration.Querier.TimeoutClassificationDeadline = time.Minute + 59*time.Second
+				configuration.Querier.TimeoutClassificationEvalThreshold = time.Minute + 30*time.Second
 				configuration.Frontend.Handler.QueryStatsEnabled = true
 				return configuration
 			},

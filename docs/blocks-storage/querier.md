@@ -329,13 +329,13 @@ querier:
   [timeout_classification_enabled: <boolean> | default = false]
 
   # The total time before the querier proactively cancels a query for timeout
-  # classification.
+  # classification. Set this a few seconds less than the querier timeout.
   # CLI flag: -querier.timeout-classification-deadline
-  [timeout_classification_deadline: <duration> | default = 59s]
+  [timeout_classification_deadline: <duration> | default = 1m59s]
 
   # Eval time threshold above which a timeout is classified as user error (4XX).
   # CLI flag: -querier.timeout-classification-eval-threshold
-  [timeout_classification_eval_threshold: <duration> | default = 40s]
+  [timeout_classification_eval_threshold: <duration> | default = 1m30s]
 ```
 
 ### `blocks_storage_config`

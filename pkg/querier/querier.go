@@ -106,12 +106,12 @@ type Config struct {
 }
 
 var (
-	errEmptyTimeRange                                 = errors.New("empty time range")
-	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
-	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
-	errInvalidSeriesBatchSize                         = errors.New("store gateway series batch size should be greater or equal than 0")
-	errInvalidIngesterQueryMaxAttempts                = errors.New("ingester query max attempts should be greater or equal than 1")
-	errInvalidParquetQueryableDefaultBlockStore       = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
+	errEmptyTimeRange                           = errors.New("empty time range")
+	errUnsupportedResponseCompression           = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
+	errInvalidConsistencyCheckAttempts          = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
+	errInvalidSeriesBatchSize                   = errors.New("store gateway series batch size should be greater or equal than 0")
+	errInvalidIngesterQueryMaxAttempts          = errors.New("ingester query max attempts should be greater or equal than 1")
+	errInvalidParquetQueryableDefaultBlockStore = errors.New("unsupported parquet queryable default block store. Supported options are tsdb and parquet")
 
 	errTimeoutClassificationDeadlineNotPositive          = errors.New("timeout_classification_deadline must be positive when timeout classification is enabled")
 	errTimeoutClassificationEvalThresholdNotPositive     = errors.New("timeout_classification_eval_threshold must be positive when timeout classification is enabled")

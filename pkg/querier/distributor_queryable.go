@@ -23,6 +23,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const retryMinBackoff = time.Millisecond
@@ -42,15 +43,19 @@ type Distributor interface {
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
 }
 
-func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, queryIngestersWithin time.Duration, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int) QueryableWithFilter {
+func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int, limits *validation.Overrides, nowFn func() time.Time) QueryableWithFilter {
+	if nowFn == nil {
+		nowFn = time.Now
+	}
 	return distributorQueryable{
 		distributor:              distributor,
 		streamingMetdata:         streamingMetdata,
 		labelNamesWithMatchers:   labelNamesWithMatchers,
 		iteratorFn:               iteratorFn,
-		queryIngestersWithin:     queryIngestersWithin,
 		isPartialDataEnabled:     isPartialDataEnabled,
 		ingesterQueryMaxAttempts: ingesterQueryMaxAttempts,
+		limits:                   limits,
+		nowFn:                    nowFn,
 	}
 }
 
@@ -59,9 +64,10 @@ type distributorQueryable struct {
 	streamingMetdata         bool
 	labelNamesWithMatchers   bool
 	iteratorFn               chunkIteratorFunc
-	queryIngestersWithin     time.Duration
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
+	limits                   *validation.Overrides
+	nowFn                    func() time.Time
 }
 
 func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error) {
@@ -72,15 +78,16 @@ func (d distributorQueryable) Querier(mint, maxt int64) (storage.Querier, error)
 		streamingMetadata:        d.streamingMetdata,
 		labelNamesMatchers:       d.labelNamesWithMatchers,
 		chunkIterFn:              d.iteratorFn,
-		queryIngestersWithin:     d.queryIngestersWithin,
 		isPartialDataEnabled:     d.isPartialDataEnabled,
 		ingesterQueryMaxAttempts: d.ingesterQueryMaxAttempts,
+		limits:                   d.limits,
+		nowFn:                    d.nowFn,
 	}, nil
 }
-
-func (d distributorQueryable) UseQueryable(now time.Time, _, queryMaxT int64) bool {
+func (d distributorQueryable) UseQueryable(now time.Time, userID string, _, queryMaxT int64) bool {
 	// Include ingester only if maxt is within QueryIngestersWithin w.r.t. current time.
-	return d.queryIngestersWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-d.queryIngestersWithin))
+	queryIngestersWithin := d.limits.QueryIngestersWithin(userID)
+	return queryIngestersWithin == 0 || queryMaxT >= util.TimeToMillis(now.Add(-queryIngestersWithin))
 }
 
 type distributorQuerier struct {
@@ -89,9 +96,10 @@ type distributorQuerier struct {
 	streamingMetadata        bool
 	labelNamesMatchers       bool
 	chunkIterFn              chunkIteratorFunc
-	queryIngestersWithin     time.Duration
 	isPartialDataEnabled     partialdata.IsCfgEnabledFunc
 	ingesterQueryMaxAttempts int
+	limits                   *validation.Overrides
+	nowFn                    func() time.Time
 }
 
 // Select implements storage.Querier interface.
@@ -104,15 +112,20 @@ func (q *distributorQuerier) Select(ctx context.Context, sortSeries bool, sp *st
 	if sp != nil {
 		minT, maxT = sp.Start, sp.End
 	}
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return storage.ErrSeriesSet(err)
+	}
 
+	queryIngestersWithin := q.limits.QueryIngestersWithin(userID)
 	// We should manipulate the query mint to query samples up until
 	// now - queryIngestersWithin, because older time ranges are covered by the storage. This
 	// optimization is particularly important for the blocks storage where the blocks retention in the
 	// ingesters could be way higher than queryIngestersWithin.
-	if q.queryIngestersWithin > 0 {
-		now := time.Now()
+	if queryIngestersWithin > 0 {
+		now := q.nowFn()
 		origMinT := minT
-		minT = max(minT, util.TimeToMillis(now.Add(-q.queryIngestersWithin)))
+		minT = max(minT, util.TimeToMillis(now.Add(-queryIngestersWithin)))
 
 		if origMinT != minT {
 			level.Debug(log).Log("msg", "the min time of the query to ingesters has been manipulated", "original", origMinT, "updated", minT)
@@ -226,6 +239,13 @@ func (q *distributorQuerier) queryWithRetry(ctx context.Context, queryFunc func(
 		retries.Wait()
 	}
 
+	// If the loop never executed (e.g. context cancelled before the first
+	// attempt), result and err are both nil. Return the context error so
+	// callers don't receive a nil result with no error.
+	if err == nil {
+		err = ctx.Err()
+	}
+
 	return result, err
 }
 
@@ -289,7 +309,7 @@ func (q *distributorQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 }
 
 func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc func() ([]string, error)) ([]string, error) {
-	if q.ingesterQueryMaxAttempts == 1 {
+	if q.ingesterQueryMaxAttempts <= 1 {
 		return labelsFunc()
 	}
 
@@ -310,6 +330,13 @@ func (q *distributorQuerier) labelsWithRetry(ctx context.Context, labelsFunc fun
 		}
 
 		retries.Wait()
+	}
+
+	// If the loop never executed (e.g. context cancelled before the first
+	// attempt), result and err are both nil. Return the context error so
+	// callers don't receive a nil result with no error.
+	if err == nil {
+		err = ctx.Err()
 	}
 
 	return result, err

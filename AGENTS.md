@@ -114,3 +114,7 @@ Import order: stdlib, third-party packages, internal Cortex packages (separated 
 - Sign commits with DCO: `git commit -s -m "message"`
 - Run `make doc` if config/flags changed
 - Include CHANGELOG entry for user-facing changes
+
+## Related Policies
+
+This file (`AGENTS.md`) provides technical guidance **to** AI coding agents working in this repository (build commands, architecture, conventions). For the policy governing **human use** of AI tools when preparing contributions, see [GENAI_POLICY.md](GENAI_POLICY.md).

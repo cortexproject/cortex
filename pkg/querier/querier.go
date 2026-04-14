@@ -45,14 +45,11 @@ type Config struct {
 	IngesterMetadataStreaming      bool          `yaml:"ingester_metadata_streaming"`
 	IngesterLabelNamesWithMatchers bool          `yaml:"ingester_label_names_with_matchers"`
 	MaxSamples                     int           `yaml:"max_samples"`
-	QueryIngestersWithin           time.Duration `yaml:"query_ingesters_within"`
 	EnablePerStepStats             bool          `yaml:"per_step_stats_enabled"`
 
 	// Use compression for metrics query API or instant and range query APIs.
 	ResponseCompression string `yaml:"response_compression"`
 
-	// QueryStoreAfter the time after which queries should also be sent to the store and not just ingesters.
-	QueryStoreAfter    time.Duration `yaml:"query_store_after"`
 	MaxQueryIntoFuture time.Duration `yaml:"max_query_into_future"`
 
 	// The default evaluation interval for the promql engine.
@@ -86,8 +83,6 @@ type Config struct {
 	// The maximum number of times we attempt fetching data from Ingesters.
 	IngesterQueryMaxAttempts int `yaml:"ingester_query_max_attempts"`
 
-	ShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period"`
-
 	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 
 	// Ignore max query length check at Querier.
@@ -111,8 +106,6 @@ type Config struct {
 }
 
 var (
-	errBadLookbackConfigs                             = errors.New("bad settings, query_store_after >= query_ingesters_within which can result in queries not being sent")
-	errShuffleShardingLookbackLessThanQueryStoreAfter = errors.New("the shuffle-sharding lookback period should be greater or equal than the configured 'query store after'")
 	errEmptyTimeRange                                 = errors.New("empty time range")
 	errUnsupportedResponseCompression                 = errors.New("unsupported response compression. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
 	errInvalidConsistencyCheckAttempts                = errors.New("store gateway consistency check max attempts should be greater or equal than 1")
@@ -145,12 +138,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", true, "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.")
 	f.BoolVar(&cfg.IngesterLabelNamesWithMatchers, "querier.ingester-label-names-with-matchers", false, "Use LabelNames ingester RPCs with match params.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
-	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 0, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
 	f.StringVar(&cfg.ResponseCompression, "querier.response-compression", "gzip", "Use compression for metrics query API or instant and range query APIs. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)")
 	f.DurationVar(&cfg.MaxQueryIntoFuture, "querier.max-query-into-future", 10*time.Minute, "Maximum duration into the future you can query. 0 to disable.")
 	f.DurationVar(&cfg.DefaultEvaluationInterval, "querier.default-evaluation-interval", time.Minute, "The default evaluation interval or step size for subqueries.")
-	f.DurationVar(&cfg.QueryStoreAfter, "querier.query-store-after", 0, "The time after which a metric should be queried from storage and not just ingesters. 0 means all queries are sent to store. When running the blocks storage, if this option is enabled, the time range of the query sent to the store will be manipulated to ensure the query end is not more recent than 'now - query-store-after'.")
 	f.StringVar(&cfg.ActiveQueryTrackerDir, "querier.active-query-tracker-dir", "./active-query-tracker", "Active query tracker monitors active queries, and writes them to the file in given directory. If Cortex discovers any queries in this log during startup, it will log them to the log file. Setting to empty value disables active query tracker, which also disables -querier.max-concurrent option.")
 	f.StringVar(&cfg.StoreGatewayAddresses, "querier.store-gateway-addresses", "", "Comma separated list of store-gateway addresses in DNS Service Discovery format. This option should be set when using the blocks storage and the store-gateway sharding is disabled (when enabled, the store-gateway instances form a ring and addresses are picked from the ring).")
 	f.BoolVar(&cfg.StoreGatewayQueryStatsEnabled, "querier.store-gateway-query-stats-enabled", true, "If enabled, store gateway query stats will be logged using `info` log level.")
@@ -158,7 +149,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.StoreGatewaySeriesBatchSize, "querier.store-gateway-series-batch-size", 1, "[Experimental] The maximum number of series to be batched in a single gRPC response message from Store Gateways. A value of 0 or 1 disables batching.")
 	f.IntVar(&cfg.IngesterQueryMaxAttempts, "querier.ingester-query-max-attempts", 1, "The maximum number of times we attempt fetching data from ingesters for retryable errors (ex. partial data returned).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
-	f.DurationVar(&cfg.ShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "When distributor's sharding strategy is shuffle-sharding and this setting is > 0, queriers fetch in-memory series from the minimum set of required ingesters, selecting only ingesters which may have received series since 'now - lookback period'. The lookback period should be greater or equal than the configured 'query store after' and 'query ingesters within'. If this setting is 0, queriers always query all ingesters (ingesters shuffle sharding on read path is disabled).")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")
@@ -175,21 +165,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the config
 func (cfg *Config) Validate() error {
-	// Ensure the config won't create a situation where no queriers are returned.
-	if cfg.QueryIngestersWithin != 0 && cfg.QueryStoreAfter != 0 {
-		if cfg.QueryStoreAfter >= cfg.QueryIngestersWithin {
-			return errBadLookbackConfigs
-		}
-	}
 
 	if cfg.ResponseCompression != "" && cfg.ResponseCompression != "gzip" && cfg.ResponseCompression != "snappy" && cfg.ResponseCompression != "zstd" {
 		return errUnsupportedResponseCompression
-	}
-
-	if cfg.ShuffleShardingIngestersLookbackPeriod > 0 {
-		if cfg.ShuffleShardingIngestersLookbackPeriod < cfg.QueryStoreAfter {
-			return errShuffleShardingLookbackLessThanQueryStoreAfter
-		}
 	}
 
 	if cfg.StoreGatewayConsistencyCheckMaxAttempts < 1 {
@@ -248,13 +226,13 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, cfg.QueryIngestersWithin, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {
 		ns[ix] = storeQueryable{
 			QueryableWithFilter: s,
-			QueryStoreAfter:     cfg.QueryStoreAfter,
+			limits:              limits,
 		}
 	}
 	queryable := NewQueryable(distributorQueryable, ns, cfg, limits)
@@ -324,7 +302,7 @@ type QueryableWithFilter interface {
 
 	// UseQueryable returns true if this queryable should be used to satisfy the query for given time range.
 	// Query min and max time are in milliseconds since epoch.
-	UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool
+	UseQueryable(now time.Time, userID string, queryMinT, queryMaxT int64) bool
 }
 
 type limiterHolder struct {
@@ -390,12 +368,12 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_st
 	metadataQuerier := dqr
 
 	queriers := make([]storage.Querier, 0)
-	if q.distributor.UseQueryable(q.now, mint, maxt) {
+	if q.distributor.UseQueryable(q.now, userID, mint, maxt) {
 		queriers = append(queriers, dqr)
 	}
 
 	for _, s := range q.stores {
-		if !s.UseQueryable(q.now, mint, maxt) {
+		if !s.UseQueryable(q.now, userID, mint, maxt) {
 			continue
 		}
 
@@ -479,7 +457,7 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 	// Reset projection hints if querying ingesters or projection is not included.
 	// Projection can only be applied when not querying mixed sources (ingester + store).
 	if q.honorProjectionHints {
-		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, mint, maxt) {
+		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, userID, mint, maxt) {
 			sp.ProjectionLabels = nil
 			sp.ProjectionInclude = false
 		}
@@ -653,22 +631,27 @@ func (querier) Close() error {
 
 type storeQueryable struct {
 	QueryableWithFilter
-	QueryStoreAfter time.Duration
+	limits *validation.Overrides
 }
 
-func (s storeQueryable) UseQueryable(now time.Time, queryMinT, queryMaxT int64) bool {
+func (s storeQueryable) UseQueryable(now time.Time, userID string, queryMinT, queryMaxT int64) bool {
+	var queryStoreAfter time.Duration
+	if s.limits != nil {
+		queryStoreAfter = s.limits.QueryStoreAfter(userID)
+	}
+
 	// Include this store only if mint is within QueryStoreAfter w.r.t current time.
-	if s.QueryStoreAfter != 0 && queryMinT > util.TimeToMillis(now.Add(-s.QueryStoreAfter)) {
+	if queryStoreAfter != 0 && queryMinT > util.TimeToMillis(now.Add(-queryStoreAfter)) {
 		return false
 	}
-	return s.QueryableWithFilter.UseQueryable(now, queryMinT, queryMaxT)
+	return s.QueryableWithFilter.UseQueryable(now, userID, queryMinT, queryMaxT)
 }
 
 type alwaysTrueFilterQueryable struct {
 	storage.Queryable
 }
 
-func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _, _ int64) bool {
+func (alwaysTrueFilterQueryable) UseQueryable(_ time.Time, _ string, _, _ int64) bool {
 	return true
 }
 
@@ -682,7 +665,7 @@ type useBeforeTimestampQueryable struct {
 	ts int64 // Timestamp in milliseconds
 }
 
-func (u useBeforeTimestampQueryable) UseQueryable(_ time.Time, queryMinT, _ int64) bool {
+func (u useBeforeTimestampQueryable) UseQueryable(_ time.Time, _ string, queryMinT, _ int64) bool {
 	if u.ts == 0 {
 		return true
 	}

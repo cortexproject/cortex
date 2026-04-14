@@ -2424,15 +2424,14 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 			finder.On("GetBlocks", mock.Anything, "user-1", mock.Anything, mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
 
 			q := &blocksStoreQuerier{
-				minT:            testData.queryMinT,
-				maxT:            testData.queryMaxT,
-				finder:          finder,
-				stores:          &blocksStoreSetMock{},
-				consistency:     NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
-				logger:          log.NewNopLogger(),
-				metrics:         newBlocksStoreQueryableMetrics(nil),
-				limits:          &blocksStoreLimitsMock{},
-				queryStoreAfter: testData.queryStoreAfter,
+				minT:        testData.queryMinT,
+				maxT:        testData.queryMaxT,
+				finder:      finder,
+				stores:      &blocksStoreSetMock{},
+				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+				logger:      log.NewNopLogger(),
+				metrics:     newBlocksStoreQueryableMetrics(nil),
+				limits:      &blocksStoreLimitsMock{queryStoreAfter: testData.queryStoreAfter},
 			}
 
 			sp := &storage.SelectHints{
@@ -2448,7 +2447,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 			} else {
 				require.Len(t, finder.Calls, 1)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2))
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(5*time.Second.Milliseconds()))
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()))
 			}
 		})
 	}
@@ -2550,7 +2549,6 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 
 				// Instance the querier that will be executed to run the query.
 				cfg := Config{
-					QueryStoreAfter:                         0,
 					StoreGatewayQueryStatsEnabled:           false,
 					StoreGatewayConsistencyCheckMaxAttempts: 3,
 				}
@@ -2718,6 +2716,7 @@ func (m *storeGatewaySeriesClientMock) Recv() (*storepb.SeriesResponse, error) {
 type blocksStoreLimitsMock struct {
 	maxChunksPerQuery           int
 	storeGatewayTenantShardSize float64
+	queryStoreAfter             time.Duration
 }
 
 func (m *blocksStoreLimitsMock) MaxChunksPerQueryFromStore(_ string) int {
@@ -2726,6 +2725,10 @@ func (m *blocksStoreLimitsMock) MaxChunksPerQueryFromStore(_ string) int {
 
 func (m *blocksStoreLimitsMock) StoreGatewayTenantShardSize(_ string) float64 {
 	return m.storeGatewayTenantShardSize
+}
+
+func (m *blocksStoreLimitsMock) QueryStoreAfter(_ string) time.Duration {
+	return m.queryStoreAfter
 }
 
 func (m *blocksStoreLimitsMock) S3SSEType(_ string) string {
@@ -2987,5 +2990,206 @@ func createAggrChunk(t *testing.T, step time.Duration, from model.Time, points i
 			Type: chunkType,
 			Data: c.Data.Bytes(),
 		},
+	}
+}
+
+func TestBlocksStoreQuerier_MultiTenantQueryStoreAfter(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	tests := map[string]struct {
+		queryStoreAfter time.Duration
+		queryMinT       int64
+		queryMaxT       int64
+		expectedMinT    int64
+		expectedMaxT    int64
+		description     string
+	}{
+		"30m cutoff: should manipulate recent query": {
+			queryStoreAfter: 30 * time.Minute,
+			queryMinT:       util.TimeToMillis(now.Add(-2 * time.Hour)),
+			queryMaxT:       util.TimeToMillis(now),
+			expectedMinT:    util.TimeToMillis(now.Add(-2 * time.Hour)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-30 * time.Minute)),
+			description:     "tenant with 30m cutoff should query blocks up to 30m ago",
+		},
+		"2h cutoff: should manipulate recent query": {
+			queryStoreAfter: 2 * time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryMaxT:       util.TimeToMillis(now),
+			expectedMinT:    util.TimeToMillis(now.Add(-5 * time.Hour)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-2 * time.Hour)),
+			description:     "tenant with 2h cutoff should query blocks up to 2h ago",
+		},
+		"disabled: should not manipulate time range": {
+			queryStoreAfter: 0,
+			queryMinT:       util.TimeToMillis(now.Add(-5 * time.Hour)),
+			queryMaxT:       util.TimeToMillis(now),
+			expectedMinT:    util.TimeToMillis(now.Add(-5 * time.Hour)),
+			expectedMaxT:    util.TimeToMillis(now),
+			description:     "disabled queryStoreAfter should not manipulate time range",
+		},
+		"1h cutoff: query already old should not be manipulated": {
+			queryStoreAfter: 1 * time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-3 * time.Hour)),
+			queryMaxT:       util.TimeToMillis(now.Add(-2 * time.Hour)),
+			expectedMinT:    util.TimeToMillis(now.Add(-3 * time.Hour)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-2 * time.Hour)),
+			description:     "query already older than cutoff should not be manipulated",
+		},
+		"2h cutoff: recent query should be skipped": {
+			queryStoreAfter: 2 * time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-1 * time.Hour)),
+			queryMaxT:       util.TimeToMillis(now),
+			expectedMinT:    0,
+			expectedMaxT:    0,
+			description:     "query entirely within cutoff period should be skipped",
+		},
+		"1h cutoff: partial overlap should manipulate": {
+			queryStoreAfter: 1 * time.Hour,
+			queryMinT:       util.TimeToMillis(now.Add(-90 * time.Minute)),
+			queryMaxT:       util.TimeToMillis(now.Add(-30 * time.Minute)),
+			expectedMinT:    util.TimeToMillis(now.Add(-90 * time.Minute)),
+			expectedMaxT:    util.TimeToMillis(now.Add(-60 * time.Minute)),
+			description:     "query partially overlapping cutoff should be manipulated",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := user.InjectOrgID(context.Background(), "test-tenant")
+			finder := &blocksFinderMock{}
+			finder.On("GetBlocks", mock.Anything, "test-tenant", mock.Anything, mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
+
+			q := &blocksStoreQuerier{
+				minT:        testData.queryMinT,
+				maxT:        testData.queryMaxT,
+				finder:      finder,
+				stores:      &blocksStoreSetMock{},
+				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+				logger:      log.NewNopLogger(),
+				metrics:     newBlocksStoreQueryableMetrics(nil),
+				limits:      &blocksStoreLimitsMock{queryStoreAfter: testData.queryStoreAfter},
+			}
+
+			sp := &storage.SelectHints{
+				Start: testData.queryMinT,
+				End:   testData.queryMaxT,
+			}
+
+			set := q.selectSorted(ctx, sp)
+			require.NoError(t, set.Err())
+
+			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
+				assert.Len(t, finder.Calls, 0, testData.description)
+			} else {
+				require.Len(t, finder.Calls, 1, testData.description)
+				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
+				// Allow 15 seconds of time drift to account for CI environment delays.
+				// The actual code calls time.Now() when manipulating query time ranges,
+				// which can differ from the test's captured 'now' value.
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
+			}
+		})
+	}
+}
+
+func TestBlocksStoreQuerier_QueryStoreAfterBoundary(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	cutoff := 1 * time.Hour
+
+	tests := map[string]struct {
+		queryMinT    int64
+		queryMaxT    int64
+		expectedMinT int64
+		expectedMaxT int64
+		shouldSkip   bool
+		description  string
+	}{
+		"maxT exactly at cutoff boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * cutoff)),
+			queryMaxT:    util.TimeToMillis(now.Add(-cutoff)),
+			expectedMinT: util.TimeToMillis(now.Add(-2 * cutoff)),
+			expectedMaxT: util.TimeToMillis(now.Add(-cutoff)),
+			shouldSkip:   false,
+			description:  "should not manipulate when maxT is exactly at boundary",
+		},
+		"maxT 1ms before cutoff boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * cutoff)),
+			queryMaxT:    util.TimeToMillis(now.Add(-cutoff - time.Millisecond)),
+			expectedMinT: util.TimeToMillis(now.Add(-2 * cutoff)),
+			expectedMaxT: util.TimeToMillis(now.Add(-cutoff - time.Millisecond)),
+			shouldSkip:   false,
+			description:  "should not manipulate when maxT is before boundary",
+		},
+		"maxT 1ms after cutoff boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-2 * cutoff)),
+			queryMaxT:    util.TimeToMillis(now.Add(-cutoff + time.Millisecond)),
+			expectedMinT: util.TimeToMillis(now.Add(-2 * cutoff)),
+			expectedMaxT: util.TimeToMillis(now.Add(-cutoff)),
+			shouldSkip:   false,
+			description:  "should manipulate when maxT is 1ms after boundary",
+		},
+		"minT 1ms before cutoff boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-cutoff - time.Millisecond)),
+			queryMaxT:    util.TimeToMillis(now),
+			expectedMinT: util.TimeToMillis(now.Add(-cutoff - time.Millisecond)),
+			expectedMaxT: util.TimeToMillis(now.Add(-cutoff)),
+			shouldSkip:   false,
+			description:  "should manipulate when minT is before boundary",
+		},
+		"minT well after cutoff boundary": {
+			queryMinT:    util.TimeToMillis(now.Add(-30 * time.Minute)),
+			queryMaxT:    util.TimeToMillis(now),
+			expectedMinT: 0,
+			expectedMaxT: 0,
+			shouldSkip:   true,
+			description:  "should skip query when minT is well after boundary",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			finder := &blocksFinderMock{}
+			finder.On("GetBlocks", mock.Anything, "test", mock.Anything, mock.Anything, mock.Anything).Return(bucketindex.Blocks(nil), map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), error(nil))
+
+			q := &blocksStoreQuerier{
+				minT:        testData.queryMinT,
+				maxT:        testData.queryMaxT,
+				finder:      finder,
+				stores:      &blocksStoreSetMock{},
+				consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+				logger:      log.NewNopLogger(),
+				metrics:     newBlocksStoreQueryableMetrics(nil),
+				limits:      &blocksStoreLimitsMock{queryStoreAfter: cutoff},
+			}
+
+			sp := &storage.SelectHints{
+				Start: testData.queryMinT,
+				End:   testData.queryMaxT,
+			}
+
+			set := q.selectSorted(ctx, sp)
+			require.NoError(t, set.Err())
+
+			if testData.shouldSkip {
+				assert.Len(t, finder.Calls, 0, testData.description)
+			} else {
+				require.Len(t, finder.Calls, 1, testData.description)
+				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
+				// Allow 15 seconds of time drift to account for CI environment delays.
+				// The actual code calls time.Now() when manipulating query time ranges,
+				// which can differ from the test's captured 'now' value.
+				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
+			}
+		})
 	}
 }

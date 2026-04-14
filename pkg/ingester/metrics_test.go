@@ -151,6 +151,10 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 			# TYPE cortex_ingester_ingested_samples_total counter
 			cortex_ingester_ingested_samples_total 0
+			# HELP cortex_ingester_start_timestamp_append_failures_total Total number of failed appends for samples and histograms with a start timestamp.
+			# TYPE cortex_ingester_start_timestamp_append_failures_total counter
+			cortex_ingester_start_timestamp_append_failures_total{type="float"} 0
+			cortex_ingester_start_timestamp_append_failures_total{type="histogram"} 0
 			# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
 			# TYPE cortex_ingester_ingested_native_histograms_total counter
 			cortex_ingester_ingested_native_histograms_total 0

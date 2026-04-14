@@ -284,7 +284,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
-		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":     "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-frontend.query-stats-enabled":      "true", // Always enable query stats to capture regressions
 	})
@@ -882,7 +882,7 @@ func TestQueryFrontendStatsFromResultsCacheShouldBeSame(t *testing.T) {
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":                  "true",
 		"-querier.split-queries-by-interval":      "24h",
-		"-querier.query-ingesters-within":         "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":          "12h", // Required by the test on query /series out of ingesters time range
 		"-querier.per-step-stats-enabled":         strconv.FormatBool(true),
 		"-frontend.memcached.addresses":           "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-frontend.query-stats-enabled":           strconv.FormatBool(true),

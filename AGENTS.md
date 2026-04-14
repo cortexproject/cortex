@@ -115,6 +115,21 @@ Import order: stdlib, third-party packages, internal Cortex packages (separated 
 - Run `make doc` if config/flags changed
 - Include CHANGELOG entry for user-facing changes
 
+## Investigating CI Build Failures
+
+When asked to investigate a CI build failure:
+
+1. **Fetch job details** using `gh api repos/cortexproject/cortex/actions/runs/<run-id>/jobs` to identify failed jobs and steps. Note: `gh run view --log` only works after the entire run completes, not just individual jobs.
+2. **Get annotations** using `gh api repos/cortexproject/cortex/check-runs/<job-id>/annotations` to surface error messages when full logs are unavailable.
+3. **Fetch full logs** once the run completes using `gh run view <run-id> --job <job-id> --log`.
+4. **Determine root cause** — distinguish between infrastructure failures (e.g., Docker Hub rate limits, runner issues) and code-related failures (e.g., test regressions). Use `git log` and `gh pr diff` to check if the failure relates to the PR's changes.
+5. **For flaky/infrastructure issues**, use `git log` and `git log -p` to trace when the failing code was introduced and which PR added it.
+6. **File GitHub issues** with the user's permission, including:
+   - The full error output in a `<details>` block (since job links can expire)
+   - Root cause analysis
+   - Which PR introduced the issue (but do not assign or tag individuals without the user's approval)
+   - Proposed solutions
+
 ## Related Policies
 
 This file (`AGENTS.md`) provides technical guidance **to** AI coding agents working in this repository (build commands, architecture, conventions). For the policy governing **human use** of AI tools when preparing contributions, see [GENAI_POLICY.md](GENAI_POLICY.md).

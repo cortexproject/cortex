@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 const (
@@ -28,6 +28,7 @@ const (
 	ExportedServices   string = "exported-services"
 	SamenessGroup      string = "sameness-group"
 	RateLimitIPConfig  string = "control-plane-request-limit"
+	RateLimit          string = "rate-limit"
 
 	ProxyConfigGlobal     string = "global"
 	MeshConfigMesh        string = "mesh"
@@ -381,6 +382,7 @@ type ServiceConfigEntry struct {
 	Meta                      map[string]string       `json:",omitempty"`
 	CreateIndex               uint64
 	ModifyIndex               uint64
+	MaxRequestHeadersKB       *uint32 `json:",omitempty"`
 }
 
 func (s *ServiceConfigEntry) GetKind() string            { return s.Kind }
@@ -456,6 +458,8 @@ func makeConfigEntry(kind, name string) (ConfigEntry, error) {
 		return &HTTPRouteConfigEntry{Kind: kind, Name: name}, nil
 	case RateLimitIPConfig:
 		return &RateLimitIPConfigEntry{Kind: kind, Name: name}, nil
+	case RateLimit:
+		return &GlobalRateLimitConfigEntry{Kind: kind, Name: name}, nil
 	case JWTProvider:
 		return &JWTProviderConfigEntry{Kind: kind, Name: name}, nil
 	default:

@@ -1925,4 +1925,72 @@ node_cpu_seconds_total{instance=&amp;#34;10.0.0.2&amp;#34;,mode=&amp;#34;user&am
 &lt;p>&lt;em>See &lt;a href="#tenant">Tenant&lt;/a>.&lt;/em>&lt;/p>
 &lt;h3 id="wal">WAL&lt;/h3>
 &lt;p>The Write-Ahead Log (WAL) is an append-only log stored on disk used by ingesters to recover their in-memory state after the process gets restarted, either after a clear shutdown or an abrupt termination.&lt;/p>
-&lt;p>For more information, please refer to &lt;a href="/docs/blocks-storage/#the-write-path">Ingesters with WAL&lt;/a>.&lt;/p></description></item></channel></rss>
+&lt;p>For more information, please refer to &lt;a href="/docs/blocks-storage/#the-write-path">Ingesters with WAL&lt;/a>.&lt;/p></description></item><item><title>Docs:</title><link>/docs/guides/timeout-classification/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/timeout-classification/</guid><description>
+&lt;h1 id="timeout-classification">Timeout Classification&lt;/h1>
+&lt;p>Timeout classification lets Cortex distinguish between query timeouts caused by expensive user queries (4XX) and those caused by system issues (5XX). When enabled, queries that spend most of their time in PromQL evaluation are returned as &lt;code>422 Unprocessable Entity&lt;/code> instead of &lt;code>503 Service Unavailable&lt;/code>, giving callers a clear signal to simplify the query rather than retry.&lt;/p>
+&lt;h2 id="how-it-works">How It Works&lt;/h2>
+&lt;p>When a query (instant/ranged, other apis are unchanged) arrives at the querier, the feature:&lt;/p>
+&lt;ol>
+&lt;li>Subtracts any time the query spent waiting in the scheduler queue from the configured deadline.&lt;/li>
+&lt;li>Sets a proactive context timeout using the remaining budget, so the querier cancels the query slightly before the PromQL engine&amp;rsquo;s own timeout fires.&lt;/li>
+&lt;li>On timeout, inspects phase timings (storage fetch time vs. total time) to compute eval time.&lt;/li>
+&lt;li>If eval time exceeds the configured threshold, the timeout is classified as a user error (4XX). Otherwise it remains a system error (5XX).&lt;/li>
+&lt;/ol>
+&lt;p>This means expensive queries that burn their budget in PromQL evaluation get a &lt;code>422&lt;/code>, while other queries remain a &lt;code>5XX&lt;/code>.&lt;/p>
+&lt;ul>
+&lt;li>Note that due to different query shards not returning at the same time, the first returned timed out shard gets to decide whether the query will be converted to 4XX.&lt;/li>
+&lt;/ul>
+&lt;h2 id="configuration">Configuration&lt;/h2>
+&lt;p>Enable the feature and set the three related flags:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">querier&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">timeout_classification_enabled&lt;/span>: &lt;span style="color:#66d9ef">true&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">timeout_classification_deadline&lt;/span>: &lt;span style="color:#ae81ff">1m59s&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">timeout_classification_eval_threshold&lt;/span>: &lt;span style="color:#ae81ff">1m30s&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Flag&lt;/th>
+&lt;th>Default&lt;/th>
+&lt;th>Description&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>timeout_classification_enabled&lt;/code>&lt;/td>
+&lt;td>&lt;code>false&lt;/code>&lt;/td>
+&lt;td>Enable 5XX-to-4XX conversion based on phase timing.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>timeout_classification_deadline&lt;/code>&lt;/td>
+&lt;td>&lt;code>1m59s&lt;/code>&lt;/td>
+&lt;td>Proactive cancellation deadline. Set this a few seconds less than the querier timeout.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>timeout_classification_eval_threshold&lt;/code>&lt;/td>
+&lt;td>&lt;code>1m30s&lt;/code>&lt;/td>
+&lt;td>Eval time above which a timeout is classified as user error (4XX). Must be ≤ the deadline.&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="constraints">Constraints&lt;/h3>
+&lt;ul>
+&lt;li>&lt;code>timeout_classification_deadline&lt;/code> must be positive and strictly less than &lt;code>querier.timeout&lt;/code>.&lt;/li>
+&lt;li>&lt;code>timeout_classification_eval_threshold&lt;/code> must be positive and ≤ &lt;code>timeout_classification_deadline&lt;/code>.&lt;/li>
+&lt;li>Query stats must be enabled (&lt;code>query_stats_enabled: true&lt;/code> on the frontend handler) for classification to work.&lt;/li>
+&lt;/ul>
+&lt;h2 id="tuning">Tuning&lt;/h2>
+&lt;ul>
+&lt;li>The deadline should be close to but below the querier timeout so the proactive cancellation fires first. A gap of 1–2 seconds is typical.&lt;/li>
+&lt;li>The eval threshold controls sensitivity. A lower threshold classifies more timeouts as user errors; a higher threshold is more conservative. Start with the default and adjust based on your workload.&lt;/li>
+&lt;li>Monitor the &lt;code>decision&lt;/code> field in the timeout classification log line (&lt;code>query shard timed out with classification&lt;/code>) to see how queries are being classified before enabling the conversion.&lt;/li>
+&lt;/ul>
+&lt;h2 id="observability">Observability&lt;/h2>
+&lt;p>When a query times out and query stats is active, the querier emits a warning-level log line containing:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>queue_wait_time&lt;/code> — time spent in the scheduler queue&lt;/li>
+&lt;li>&lt;code>query_storage_wall_time&lt;/code> — time spent fetching data from storage&lt;/li>
+&lt;li>&lt;code>eval_time&lt;/code> — computed as &lt;code>total_time - query_storage_wall_time&lt;/code>&lt;/li>
+&lt;li>&lt;code>decision&lt;/code> — &lt;code>0&lt;/code> for 5XX (system), &lt;code>1&lt;/code> for 4XX (user)&lt;/li>
+&lt;li>&lt;code>conversion_enabled&lt;/code> — whether the status code conversion is active&lt;/li>
+&lt;/ul>
+&lt;p>These fields are logged regardless of whether conversion is enabled, so you can observe classification behavior in dry-run mode by setting &lt;code>timeout_classification_enabled: false&lt;/code> and reviewing the logs.&lt;/p></description></item></channel></rss>

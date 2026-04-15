@@ -176,6 +176,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+		querier_stats.ExtractQueueTimeHeader(request, stats)
 	}
 
 	response, err := sp.handler.Handle(ctx, request)
@@ -192,6 +193,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	if statsEnabled {
 		level.Info(logger).Log("msg", "finished request", "status_code", response.Code, "response_size", len(response.GetBody()))
 	}
+
+	// Compute timing breakdown before sending stats back to the frontend.
+	stats.ComputeAndStoreTimingBreakdown()
 
 	if err = ctx.Err(); err != nil {
 		return

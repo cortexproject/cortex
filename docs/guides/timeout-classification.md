@@ -4,7 +4,7 @@ Timeout classification lets Cortex distinguish between query timeouts caused by 
 
 ## How It Works
 
-When a query arrives at the querier, the feature:
+When a query (instant/ranged, other apis are unchanged) arrives at the querier, the feature:
 
 1. Subtracts any time the query spent waiting in the scheduler queue from the configured deadline.
 2. Sets a proactive context timeout using the remaining budget, so the querier cancels the query slightly before the PromQL engine's own timeout fires.

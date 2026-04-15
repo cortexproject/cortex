@@ -126,6 +126,146 @@ func TestRegexResolver_NewlyCreatedTenant(t *testing.T) {
 	require.Equal(t, expectedVector, result.(model.Vector))
 }
 
+// Test that when the regex resolver is enabled, and 0 or 1 tenants are matched.
+// See issue 7413, https://github.com/cortexproject/cortex/issues/7413
+func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-querier.cache-results":                   "true",
+		"-querier.split-queries-by-interval":       "24h",
+		"-limits.query-ingesters-within":           "12h", // Required by the test on query /series out of ingesters time range
+		"-frontend.memcached.addresses":            "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "5s",
+
+		// to upload block quickly
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+
+		// store gateway
+		"-blocks-storage.bucket-store.sync-interval": blockRangePeriod.String(),
+		"-querier.max-fetched-series-per-query":      "1",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Start ingester and distributor.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, distributor))
+
+	// Wait until distributor have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Start the query-frontend.
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	// Start the querier and store-gateway
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	// Start queriers.
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait until the querier and store-gateway have updated ring
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
+
+	clientForMatchOneTenant, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	var series []prompb.TimeSeries
+	now := time.Now()
+	series, expectedResult := generateSeries("series_1", now)
+	// To ship series_1 block
+	series2, _ := generateSeries("series_2", now.Add(blockRangePeriod*2))
+	metadata := []prompb.MetricMetadata{
+		{
+			MetricFamilyName: "series_1",
+			Help:             "help",
+			Unit:             "total",
+		},
+	}
+
+	res, err := clientForMatchOneTenant.Push(series, metadata...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = clientForMatchOneTenant.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// wait to upload blocks
+	require.NoError(t, ingester.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_ingester_shipper_uploads_total"}, e2e.WaitMissingMetrics))
+
+	// wait to update knownUsers
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}), e2e.WaitMissingMetrics)
+
+	clientForMatchOneTenant, err = e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-.+")
+	require.NoError(t, err)
+
+	// query
+	result, err := clientForMatchOneTenant.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	require.Equal(t, expectedResult, result.(model.Vector))
+
+	// label names
+	start := now.Add(-time.Minute * 5)
+	end := now
+	labelNames, err := clientForMatchOneTenant.LabelNames(start, end, "series_1")
+	require.NoError(t, err)
+	require.Len(t, labelNames, 1)
+
+	// label value
+	labelValues, err := clientForMatchOneTenant.LabelValues("__name__", start, end, []string{"series_1"})
+	require.NoError(t, err)
+	require.Len(t, labelValues, 1)
+
+	// metadata
+	metadataResult, err := clientForMatchOneTenant.Metadata("series_1", "")
+	require.NoError(t, err)
+	require.Len(t, metadataResult, 1)
+
+	clientForMatchZeroTenant, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-11111.+")
+	require.NoError(t, err)
+
+	// query
+	result, err = clientForMatchZeroTenant.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+
+	// label names
+	labelNames, err = clientForMatchZeroTenant.LabelNames(start, end, "series_1")
+	require.NoError(t, err)
+	require.Len(t, labelNames, 0)
+
+	// label value
+	labelValues, err = clientForMatchZeroTenant.LabelValues("__name__", start, end, []string{"series_1"})
+	require.NoError(t, err)
+	require.Len(t, labelValues, 0)
+
+	// metadata
+	metadataResult, err = clientForMatchZeroTenant.Metadata("series_1", "")
+	require.NoError(t, err)
+	require.Len(t, metadataResult, 0)
+}
+
 func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTenantFederationConfig) {
 	const numUsers = 10
 	const blockRangePeriod = 5 * time.Second

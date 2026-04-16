@@ -16,3 +16,4 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | 2026-04-16T17:27:44Z | INFRA | integration_overrides Docker install failed — Docker Hub rate limit (toomanyrequests). All tests passed. | [ci run 24524134384](https://github.com/cortexproject/cortex/actions/runs/24524134384) |
 | 2026-04-16T17:50:32Z | INFRA | requires_docker Docker install failed — Docker Hub rate limit (toomanyrequests). All tests passed. | [ci run 24525138727](https://github.com/cortexproject/cortex/actions/runs/24525138727) |
 | 2026-04-16T18:18:08Z | FLAKY | TestQuerierWithBlocksStorageLimits (integration/querier, arm64) — expected 422 got 500 | [ci run 24526116820](https://github.com/cortexproject/cortex/actions/runs/24526116820) |
+| 2026-04-16T18:52:00Z | PASS | All jobs passed, no flaky tests detected | [ci run 24527178425](https://github.com/cortexproject/cortex/actions/runs/24527178425) |

@@ -22,3 +22,4 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | 2026-04-16T20:00:00Z | PASS | All jobs passed (4th consecutive clean run) | [ci run 24530173026](https://github.com/cortexproject/cortex/actions/runs/24530173026) |
 | 2026-04-16T20:58:00Z | PASS | All jobs passed (5th consecutive clean run) | [ci run 24532713349](https://github.com/cortexproject/cortex/actions/runs/24532713349) |
 | 2026-04-16T21:22:00Z | PASS | All jobs passed (6th consecutive clean run) | [ci run 24533695679](https://github.com/cortexproject/cortex/actions/runs/24533695679) |
+| 2026-04-16T21:27:42Z | FLAKY | TestMinimizeSpreadTokenGenerator (pkg/ring) — floating point precision boundary (0.01097 > 0.01 threshold) | [ci run 24534699120](https://github.com/cortexproject/cortex/actions/runs/24534699120) |

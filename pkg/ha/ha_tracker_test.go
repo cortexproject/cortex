@@ -227,9 +227,7 @@ func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
 // With memberlist, WatchPrefix delivers a nil value when a key is deleted
 // (memberlist KV.get() returns nil for deleted/tombstone keys).
 func TestWatchPrefixNilPanicWithMemberlist(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+	ctx := t.Context()
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 

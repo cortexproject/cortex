@@ -223,6 +223,68 @@ func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
 	require.NotEmpty(t, broadcasts, "Cleanup Delete should generate a broadcast for tombstone propagation")
 }
 
+// TestWatchPrefixNilPanicWithMemberlist reproduces the panic at ha_tracker.go:437:
+// With memberlist, WatchPrefix delivers a nil value when a key is deleted
+// (memberlist KV.get() returns nil for deleted/tombstone keys).
+func TestWatchPrefixNilPanicWithMemberlist(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
+
+	var kvCfg memberlist.KVConfig
+	flagext.DefaultValues(&kvCfg)
+	replicaDescCodec := GetReplicaDescCodec()
+	kvCfg.Codecs = []codec.Codec{replicaDescCodec}
+
+	mkv := memberlist.NewKV(kvCfg, logger, &dnsProviderMock{}, reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, mkv))
+	defer services.StopAndAwaitTerminated(ctx, mkv) //nolint:errcheck
+
+	client, err := memberlist.NewClient(mkv, replicaDescCodec)
+	require.NoError(t, err)
+
+	trackerCfg := HATrackerConfig{
+		EnableHATracker:        false, // to inject our client before starting the tracker
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		FailoverTimeout:        2 * time.Second,
+		KVStore:                kv.Config{Store: "memberlist"},
+	}
+
+	tracker, err := NewHATracker(trackerCfg, nil, HATrackerStatusConfig{}, reg, "test", logger)
+	require.NoError(t, err)
+	tracker.cfg.EnableHATracker = true
+	tracker.client = client
+
+	// Start the tracker — this starts the WatchPrefix loop in loop().
+	require.NoError(t, services.StartAndAwaitRunning(ctx, tracker))
+	defer services.StopAndAwaitTerminated(ctx, tracker) //nolint:errcheck
+
+	userID := "user1"
+	cluster := "cluster1"
+	replica := "replica0"
+	key := userID + "/" + cluster
+
+	now := time.Now()
+	require.NoError(t, tracker.CheckReplica(ctx, userID, cluster, replica, now))
+
+	test.Poll(t, 3*time.Second, nil, func() any {
+		tracker.electedLock.RLock()
+		defer tracker.electedLock.RUnlock()
+		if _, ok := tracker.elected[key]; !ok {
+			return fmt.Errorf("waiting for key to appear in elected cache")
+		}
+		return nil
+	})
+
+	require.NoError(t, client.Delete(ctx, key))
+
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, services.Running, tracker.State(), "HATracker should still be running after receiving nil value from memberlist WatchPrefix")
+}
+
 // Test that values are set in the HATracker after WatchPrefix has found it in the KVStore.
 func TestWatchPrefixAssignment(t *testing.T) {
 	t.Parallel()

@@ -238,6 +238,10 @@ type APIGatewayConfigEntry struct {
 	// service. This should match the name provided in the service definition.
 	Name string
 
+	// TLS holds default TLS configuration for API gateway listeners. Listener
+	// TLS settings may override these defaults.
+	TLS GatewayTLSConfig
+
 	Meta map[string]string `json:",omitempty"`
 
 	// Listeners is the set of listener configuration to which an API Gateway
@@ -291,6 +295,10 @@ type APIGatewayListener struct {
 	Override *APIGatewayPolicy `json:",omitempty"`
 	// Default is the policy that is the default for the listener and route, routes can override this behavior
 	Default *APIGatewayPolicy `json:",omitempty"`
+
+	// MaxRequestHeadersKB configures the maximum size in kilobytes for request headers
+	// sent from downstream clients to upstream services. If not set, uses Envoy's default.
+	MaxRequestHeadersKB *uint32 `json:",omitempty"`
 }
 
 // APIGatewayTLSConfiguration specifies the configuration of a listener’s
@@ -299,6 +307,8 @@ type APIGatewayTLSConfiguration struct {
 	// Certificates is a set of references to certificates
 	// that a gateway listener uses for TLS termination.
 	Certificates []ResourceReference
+	// SDS allows configuring TLS certificate from an SDS service.
+	SDS *GatewayTLSSDSConfig `json:",omitempty"`
 	// MaxVersion is the maximum TLS version that the listener
 	// should support.
 	MaxVersion string `json:",omitempty" alias:"tls_max_version"`

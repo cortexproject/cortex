@@ -26,7 +26,7 @@ type IDGenerator struct {
 var _ sdktrace.IDGenerator = &IDGenerator{}
 
 // NewSpanID returns a non-zero span ID from a randomly-chosen sequence.
-func (gen *IDGenerator) NewSpanID(ctx context.Context, traceID trace.TraceID) trace.SpanID {
+func (gen *IDGenerator) NewSpanID(context.Context, trace.TraceID) trace.SpanID {
 	gen.Lock()
 	defer gen.Unlock()
 	sid := trace.SpanID{}
@@ -39,7 +39,7 @@ func (gen *IDGenerator) NewSpanID(ctx context.Context, traceID trace.TraceID) tr
 //   - https://docs.aws.amazon.com/xray/latest/devguide/xray-api-sendingdata.html#xray-api-traceids
 //
 // span ID is from a randomly-chosen sequence.
-func (gen *IDGenerator) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
+func (gen *IDGenerator) NewIDs(context.Context) (trace.TraceID, trace.SpanID) {
 	gen.Lock()
 	defer gen.Unlock()
 

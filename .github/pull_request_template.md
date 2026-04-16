@@ -13,3 +13,4 @@ Fixes #<issue number>
 - [ ] Tests updated
 - [ ] Documentation added
 - [ ] `CHANGELOG.md` updated - the order of entries should be `[CHANGE]`, `[FEATURE]`, `[ENHANCEMENT]`, `[BUGFIX]`
+- [ ] `docs/configuration/v1-guarantees.md` updated if this PR introduces experimental flags

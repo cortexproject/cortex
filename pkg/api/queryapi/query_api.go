@@ -21,18 +21,21 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier"
+	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 )
 
 type QueryAPI struct {
-	queryable     storage.SampleAndChunkQueryable
-	queryEngine   engine.QueryEngine
-	now           func() time.Time
-	statsRenderer v1.StatsRenderer
-	logger        log.Logger
-	codecs        []v1.Codec
-	CORSOrigin    *regexp.Regexp
+	queryable             storage.SampleAndChunkQueryable
+	queryEngine           engine.QueryEngine
+	now                   func() time.Time
+	statsRenderer         v1.StatsRenderer
+	logger                log.Logger
+	codecs                []v1.Codec
+	CORSOrigin            *regexp.Regexp
+	timeoutClassification stats.PhaseTrackerConfig
 }
 
 func NewQueryAPI(
@@ -42,15 +45,17 @@ func NewQueryAPI(
 	logger log.Logger,
 	codecs []v1.Codec,
 	CORSOrigin *regexp.Regexp,
+	timeoutClassification stats.PhaseTrackerConfig,
 ) *QueryAPI {
 	return &QueryAPI{
-		queryEngine:   qe,
-		queryable:     q,
-		statsRenderer: statsRenderer,
-		logger:        logger,
-		codecs:        codecs,
-		CORSOrigin:    CORSOrigin,
-		now:           time.Now,
+		queryEngine:           qe,
+		queryable:             q,
+		statsRenderer:         statsRenderer,
+		logger:                logger,
+		codecs:                codecs,
+		CORSOrigin:            CORSOrigin,
+		now:                   time.Now,
+		timeoutClassification: timeoutClassification,
 	}
 }
 
@@ -84,6 +89,11 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 	}
 
 	ctx := r.Context()
+
+	// Always record query start time for phase tracking, regardless of feature flag.
+	queryStats := stats.FromContext(ctx)
+	queryStats.SetQueryStart(time.Now())
+
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
 		timeout, err := util.ParseDurationMs(to)
@@ -93,6 +103,15 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 
 		ctx, cancel = context.WithTimeout(ctx, convertMsToDuration(timeout))
 		defer cancel()
+	}
+
+	cfg := q.timeoutClassification
+	ctx, cancel, earlyResult := applyTimeoutClassification(ctx, queryStats, cfg)
+	if cancel != nil {
+		defer cancel()
+	}
+	if earlyResult != nil {
+		return *earlyResult
 	}
 
 	opts, err := extractQueryOpts(r)
@@ -138,6 +157,13 @@ func (q *QueryAPI) RangeQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
+		// If the context was cancelled/timed out, apply timeout classification.
+		if ctx.Err() != nil {
+			if classified := q.classifyTimeout(ctx, queryStats, cfg, res.Warnings, qry.Close); classified != nil {
+				return *classified
+			}
+		}
+
 		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
 
@@ -159,6 +185,11 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 	}
 
 	ctx := r.Context()
+
+	// Always record query start time for phase tracking, regardless of feature flag.
+	queryStats := stats.FromContext(ctx)
+	queryStats.SetQueryStart(time.Now())
+
 	if to := r.FormValue("timeout"); to != "" {
 		var cancel context.CancelFunc
 		timeout, err := util.ParseDurationMs(to)
@@ -168,6 +199,15 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 
 		ctx, cancel = context.WithDeadline(ctx, q.now().Add(convertMsToDuration(timeout)))
 		defer cancel()
+	}
+
+	cfg := q.timeoutClassification
+	ctx, cancel, earlyResult := applyTimeoutClassification(ctx, queryStats, cfg)
+	if cancel != nil {
+		defer cancel()
+	}
+	if earlyResult != nil {
+		return *earlyResult
 	}
 
 	opts, err := extractQueryOpts(r)
@@ -211,6 +251,13 @@ func (q *QueryAPI) InstantQueryHandler(r *http.Request) (result apiFuncResult) {
 
 	res := qry.Exec(ctx)
 	if res.Err != nil {
+		// If the context was cancelled/timed out, apply timeout classification.
+		if ctx.Err() != nil {
+			if classified := q.classifyTimeout(ctx, queryStats, cfg, res.Warnings, qry.Close); classified != nil {
+				return *classified
+			}
+		}
+
 		return apiFuncResult{nil, returnAPIError(res.Err), res.Warnings, qry.Close}
 	}
 
@@ -279,6 +326,89 @@ func (q *QueryAPI) respond(w http.ResponseWriter, req *http.Request, data any, w
 	if n, err := w.Write(b); err != nil {
 		level.Error(q.logger).Log("error writing response", "url", req.URL, "bytesWritten", n, "err", err)
 	}
+}
+
+// applyTimeoutClassification creates a proactive context timeout that fires before
+// the PromQL engine's own timeout, adjusted for queue wait time. Returns the
+// (possibly wrapped) context, an optional cancel func, and an optional early-exit
+// result when the entire timeout budget was already consumed in the queue.
+func applyTimeoutClassification(ctx context.Context, queryStats *stats.QueryStats, cfg stats.PhaseTrackerConfig) (context.Context, context.CancelFunc, *apiFuncResult) {
+	if !cfg.Enabled {
+		return ctx, nil, nil
+	}
+	var queueWaitTime time.Duration
+	queueJoin := queryStats.LoadQueueJoinTime()
+	queueLeave := queryStats.LoadQueueLeaveTime()
+	if !queueJoin.IsZero() && !queueLeave.IsZero() {
+		queueWaitTime = queueLeave.Sub(queueJoin)
+	}
+	effectiveTimeout := cfg.TotalTimeout - queueWaitTime
+	if effectiveTimeout <= 0 {
+		return ctx, nil, &apiFuncResult{nil, &apiError{errorTimeout, httpgrpc.Errorf(http.StatusServiceUnavailable,
+			"query timed out: query spent too long in scheduler queue")}, nil, nil}
+	}
+	ctx, cancel := context.WithTimeout(ctx, effectiveTimeout)
+	return ctx, cancel, nil
+}
+
+// classifyTimeout inspects phase timings after a context cancellation/timeout
+// and returns an apiFuncResult if the timeout should be converted to a 4XX user error.
+// Returns nil if no conversion applies and the caller should use the default error path.
+func (q *QueryAPI) classifyTimeout(ctx context.Context, queryStats *stats.QueryStats, cfg stats.PhaseTrackerConfig, warnings annotations.Annotations, closer func()) *apiFuncResult {
+	if !stats.IsEnabled(ctx) {
+		return nil
+	}
+
+	queryStats.SetQueryEnd(time.Now())
+
+	decision := stats.DecideTimeoutResponse(queryStats, cfg)
+
+	fetchTime := queryStats.LoadQueryStorageWallTime()
+	queryEnd := queryStats.LoadQueryEnd()
+	totalTime := queryEnd.Sub(queryStats.LoadQueryStart())
+	evalTime := totalTime - fetchTime
+	var queueWaitTime time.Duration
+	queueJoin := queryStats.LoadQueueJoinTime()
+	queueLeave := queryStats.LoadQueueLeaveTime()
+	if !queueJoin.IsZero() && !queueLeave.IsZero() {
+		queueWaitTime = queueLeave.Sub(queueJoin)
+	}
+	level.Warn(q.logger).Log(
+		"msg", "query shard timed out with classification",
+		"request_id", requestmeta.RequestIdFromContext(ctx),
+		"query_start", queryStats.LoadQueryStart(),
+		"query_end", queryEnd,
+		"queue_wait_time", queueWaitTime,
+		"query_storage_wall_time", fetchTime,
+		"eval_time", evalTime,
+		"total_time", totalTime,
+		"wall_time", queryStats.LoadWallTime(),
+		"response_series", queryStats.LoadResponseSeries(),
+		"fetched_series_count", queryStats.LoadFetchedSeries(),
+		"fetched_chunk_bytes", queryStats.LoadFetchedChunkBytes(),
+		"fetched_data_bytes", queryStats.LoadFetchedDataBytes(),
+		"fetched_samples_count", queryStats.LoadFetchedSamples(),
+		"fetched_chunks_count", queryStats.LoadFetchedChunks(),
+		"split_queries", queryStats.LoadSplitQueries(),
+		"store_gateway_touched_postings_count", queryStats.LoadStoreGatewayTouchedPostings(),
+		"store_gateway_touched_posting_bytes", queryStats.LoadStoreGatewayTouchedPostingBytes(),
+		"scanned_samples", queryStats.LoadScannedSamples(),
+		"peak_samples", queryStats.LoadPeakSamples(),
+		"decision", decision,
+		"conversion_enabled", cfg.Enabled,
+	)
+
+	if cfg.Enabled && decision == stats.UserError4XX {
+		return &apiFuncResult{nil, &apiError{errorExec, httpgrpc.Errorf(http.StatusUnprocessableEntity,
+			"query timed out: query spent too long in evaluation - consider simplifying your query")}, warnings, closer}
+	}
+
+	if cfg.Enabled {
+		return &apiFuncResult{nil, &apiError{errorTimeout, httpgrpc.Errorf(http.StatusGatewayTimeout,
+			"%s", ErrUpstreamRequestTimeout)}, warnings, closer}
+	}
+
+	return nil
 }
 
 func (q *QueryAPI) negotiateCodec(req *http.Request, resp *v1.Response) (v1.Codec, error) {

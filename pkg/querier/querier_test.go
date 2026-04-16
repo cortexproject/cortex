@@ -1680,6 +1680,71 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: nil,
 		},
+		"should pass with valid timeout classification config": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail with zero timeout classification deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationDeadlineNotPositive,
+		},
+		"should fail with negative timeout classification eval threshold": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdNotPositive,
+		},
+		"should fail when eval threshold exceeds deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 30 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdExceedsDeadline,
+		},
+		"should pass when eval threshold equals deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 45 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail when deadline equals engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 2 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should fail when deadline exceeds engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 3 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should pass with timeout classification disabled even with invalid values": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = false
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
+		},
 	}
 
 	for testName, testData := range tests {

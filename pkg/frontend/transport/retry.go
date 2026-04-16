@@ -11,6 +11,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 )
 
@@ -79,7 +80,15 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 func isBodyRetryable(body string) bool {
 	// If pool exhausted, retry at query frontend might make things worse.
 	// Rely on retries at querier level only.
-	return !strings.Contains(body, pool.ErrPoolExhausted.Error())
+	if strings.Contains(body, pool.ErrPoolExhausted.Error()) {
+		return false
+	}
+
+	// If request timed out upstream, there isnt enough time to retry.
+	if strings.Contains(body, queryapi.ErrUpstreamRequestTimeout) {
+		return false
+	}
+	return true
 }
 
 func yoloString(b []byte) string {

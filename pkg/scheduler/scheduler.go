@@ -527,6 +527,10 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 
 		r := req.(*schedulerRequest)
 
+		// Propagate the enqueue timestamp to the querier via an HTTP header.
+		// The querier will use its own wall-clock as the dequeue time.
+		stats.InjectQueueTimeHeader(r.request, r.enqueueTime)
+
 		s.queueDuration.Observe(time.Since(r.enqueueTime).Seconds())
 		r.queueSpan.Finish()
 

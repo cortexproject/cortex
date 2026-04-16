@@ -51,7 +51,7 @@ multiple destinations such as [AWS X-Ray](https://aws-otel.github.io/docs/gettin
 [Google Cloud](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter),
 [Dash0](https://www.dash0.com/hub/integrations/int_opentelemetry-collector/overview),
 [DataDog](https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/),
-[Middleware](https://docs.middleware.io/open-telemetry/otel-getting-started) and
+[Middleware](https://docs.middleware.io/open-telemetry/otel-collector) and
 [others](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter). OpenTelemetry Collector
 provides a [helm chart](https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces)
 to set up the environment.

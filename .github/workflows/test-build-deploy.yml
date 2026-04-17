@@ -203,7 +203,7 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_memberlist
-          - runner: ubuntu-24.04
+          - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_overrides
           - runner: ubuntu-24.04-arm
@@ -221,9 +221,9 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_querier
-          - runner: ubuntu-24.04
+          - runner: ubuntu-24.04-arm
             arch: arm64
-            tags: integration_querier_microservices_mode            
+            tags: integration_querier_microservices_mode
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0

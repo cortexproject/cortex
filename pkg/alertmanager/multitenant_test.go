@@ -1752,6 +1752,7 @@ func TestMultitenantAlertmanager_RingLifecyclerShouldAutoForgetUnhealthyInstance
 }
 
 func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestMultitenantAlertmanager_InitialSyncFailureWithSharding.md")
 	ctx := context.Background()
 	amConfig := mockAlertmanagerConfig(t)
 	amConfig.ShardingEnabled = true

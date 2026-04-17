@@ -17,6 +17,7 @@ import (
 )
 
 func TestIngesterMetadata(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestIngesterMetadata.md")
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

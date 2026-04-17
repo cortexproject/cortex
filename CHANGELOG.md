@@ -4,6 +4,7 @@
 
 ## 1.21.0 in progress
 
+* [BUGFIX] Tenant Federation: Fix `unsupported character` error when `tenant-federation.regex-matcher-enabled` is enabled and the input regex matches 0 or 1 existing tenant. #7424
 * [BUGFIX] KV store: Fix false-positive `status_code="500"` metrics for HA tracker CAS operations when using memberlist. #7408
 * [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
 * [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372

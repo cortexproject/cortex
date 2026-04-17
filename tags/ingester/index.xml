@@ -17,9 +17,9 @@
 &lt;h2 id="how-to-use-readonly-state">How to Use READONLY State&lt;/h2>
 &lt;h3 id="step-1-transition-to-readonly">Step 1: Transition to READONLY&lt;/h3>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set multiple ingesters to READONLY simultaneously&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-2:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-3:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-1:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-2:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-3:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="step-2-monitor-data-status-optional">Step 2: Monitor Data Status (Optional)&lt;/h3>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Check user statistics and loaded blocks on the ingester&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl http://ingester-1:8080/ingester/all_user_stats
@@ -68,7 +68,7 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait for safe removal window&lt;/span>
@@ -99,7 +99,7 @@
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Set ingesters to READONLY&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">for&lt;/span> ingester in &lt;span style="color:#e6db74">&amp;#34;&lt;/span>&lt;span style="color:#e6db74">${&lt;/span>INGESTERS_TO_SCALE[@]&lt;span style="color:#e6db74">}&lt;/span>&lt;span style="color:#e6db74">&amp;#34;&lt;/span>; &lt;span style="color:#66d9ef">do&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> echo &lt;span style="color:#e6db74">&amp;#34;Setting &lt;/span>$ingester&lt;span style="color:#e6db74"> to READONLY...&amp;#34;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> curl -X POST http://$ingester:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">done&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Wait and check for data removal&lt;/span>
@@ -123,7 +123,7 @@
 &lt;h2 id="emergency-rollback">Emergency Rollback&lt;/h2>
 &lt;p>If issues arise, return ingesters to ACTIVE state:&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Revert to ACTIVE state&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;ACTIVE&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-1:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=ACTIVE&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="conclusion">Conclusion&lt;/h2>
 &lt;p>The READONLY state improves Cortex&amp;rsquo;s operational capabilities. This feature makes scaling operations safer, simpler, more flexible, and more performant than the traditional approach. Configuration changes across multiple components are no longer required - set ingesters to READONLY and remove them when convenient.&lt;/p>
 &lt;p>For detailed information and examples, check out our &lt;a href="../../../../../docs/guides/ingesters-scaling-up-and-down/">Ingesters Scaling Guide&lt;/a>.&lt;/p></description></item></channel></rss>

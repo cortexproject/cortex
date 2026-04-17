@@ -496,9 +496,9 @@ no special care is required to take when scaling up ingesters.&lt;/p>
 &lt;li>
 &lt;p>&lt;strong>Set ingesters to READONLY mode&lt;/strong>&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Transition ingester to READONLY state&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-1:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-2:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://ingester-3:8080/ingester/mode -d &lt;span style="color:#e6db74">&amp;#39;{&amp;#34;mode&amp;#34;: &amp;#34;READONLY&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-1:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-2:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST &lt;span style="color:#e6db74">&amp;#34;http://ingester-3:8080/ingester/mode&amp;#34;&lt;/span> -d &lt;span style="color:#e6db74">&amp;#39;mode=READONLY&amp;#39;&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;/li>
 &lt;li>
 &lt;p>&lt;strong>Monitor data aging&lt;/strong> (Optional but recommended)&lt;/p>

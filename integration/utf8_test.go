@@ -164,7 +164,7 @@ overrides:
 
 	err = c.SetRuleGroup(ruleGroup, "namespace")
 	require.NoError(t, err)
-	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ruler_managers_total"}, e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "user-1"))))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(1), "cortex_ruler_managers_total"))
 	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ruler_rule_groups_in_store"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "user", "user-1")),
 		e2e.WaitMissingMetrics,

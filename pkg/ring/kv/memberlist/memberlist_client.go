@@ -838,6 +838,11 @@ func (m *KV) WatchPrefix(ctx context.Context, prefix string, codec codec.Codec, 
 				continue
 			}
 
+			if val == nil {
+				// Skip nil that can be returned when the key is deleted.
+				continue
+			}
+
 			if !f(key, val) {
 				return
 			}

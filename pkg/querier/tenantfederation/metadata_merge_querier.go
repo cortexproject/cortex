@@ -61,7 +61,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	m.tenantsPerMetadataQuery.Observe(float64(len(tenantIds)))
 
 	if len(tenantIds) == 1 {
-		return m.upstream.MetricsMetadata(ctx, req)
+		return m.upstream.MetricsMetadata(user.InjectOrgID(ctx, tenantIds[0]), req)
 	}
 
 	jobs := make([]any, len(tenantIds))

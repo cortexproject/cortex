@@ -26,3 +26,4 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | 2026-04-16T22:08:00Z | PASS | All jobs passed | [ci run 24535673138](https://github.com/cortexproject/cortex/actions/runs/24535673138) |
 | 2026-04-16T22:19:31Z | FLAKY | TestVerticalShardingFuzz (integration/query_fuzz, arm64) — non-deterministic fuzz + Docker container vanished | [ci run 24536561113](https://github.com/cortexproject/cortex/actions/runs/24536561113) |
 | 2026-04-16T22:34:58Z | FLAKY | TestPushRace (pkg/ingester, arm64) — race condition with zero timestamp | [ci run 24537394343](https://github.com/cortexproject/cortex/actions/runs/24537394343) |
+| 2026-04-17T16:59:00Z | PASS | All jobs passed (upstream merged) | [ci run 24576043912](https://github.com/cortexproject/cortex/actions/runs/24576043912) |

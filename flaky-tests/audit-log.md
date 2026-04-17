@@ -30,3 +30,4 @@ This file tracks every CI run on the `flaky-test-audit` branch. Any test failure
 | 2026-04-17T17:21:00Z | PASS | All jobs passed | [ci run 24576956010](https://github.com/cortexproject/cortex/actions/runs/24576956010) |
 | 2026-04-17T17:25:08Z | FLAKY | TestMultitenantAlertmanager_InitialSyncFailureWithSharding (pkg/alertmanager, arm64) — ring membership race | [ci run 24577873547](https://github.com/cortexproject/cortex/actions/runs/24577873547) |
 | 2026-04-17T18:02:58Z | FLAKY | TestIngesterMetadata (integration/requires_docker, arm64) — metrics timeout; integration_memberlist Docker Hub rate limit | [ci run 24578865123](https://github.com/cortexproject/cortex/actions/runs/24578865123) |
+| 2026-04-17T18:16:01Z | INFRA | integration_querier Docker Hub rate limit. All tests passed. | [ci run 24579811817](https://github.com/cortexproject/cortex/actions/runs/24579811817) |

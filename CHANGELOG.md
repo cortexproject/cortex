@@ -4,14 +4,6 @@
 
 ## 1.21.0 in progress
 
-* [BUGFIX] Memberlist: Skip nil values delivered by `WatchPrefix` when a key is deleted, preventing a panic in the HA tracker caused by a failed type assertion on a nil interface value. #7429
-* [BUGFIX] Tenant Federation: Fix `unsupported character` error when `tenant-federation.regex-matcher-enabled` is enabled and the input regex matches 0 or 1 existing tenant. #7424
-* [BUGFIX] KV store: Fix false-positive `status_code="500"` metrics for HA tracker CAS operations when using memberlist. #7408
-* [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
-* [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372
-* [BUGFIX] Fix memory leak in `ReuseWriteRequestV2` by explicitly clearing the `Symbols` backing array string pointers before returning the object to `sync.Pool`. #7373
-* [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7375
-
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
   * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.
   * Ruler API is no longer marked as experimental.
@@ -37,6 +29,7 @@
 * [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to IncidentIO and Mattermost. #7092 #7267
 * [FEATURE] Tenant Federation: Add experimental support for partial responses using the `-tenant-federation.allow-partial-data` flag. When enabled, failures from individual tenants during a federated query are treated as warnings, allowing results from successful tenants to be returned. #7232
 * [FEATURE] Alertmanager: Add `-alertmanager.disable-replica-set-extension` flag to limit blast radius during config corruption incidents. #7153
+* [ENHANCEMENT] Tenant Federation: Add a local cache to regex resolver. #7363
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
@@ -95,6 +88,13 @@
 * [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
 * [BUGFIX] Ingester: Fix panic due to concurrent access to rand in active queried series. #7329
 * [BUGFIX] Distributor: Fix request slice not being properly reused in push error paths. #7123
+* [BUGFIX] Memberlist: Skip nil values delivered by `WatchPrefix` when a key is deleted, preventing a panic in the HA tracker caused by a failed type assertion on a nil interface value. #7429
+* [BUGFIX] Tenant Federation: Fix `unsupported character` error when `tenant-federation.regex-matcher-enabled` is enabled and the input regex matches 0 or 1 existing tenant. #7424
+* [BUGFIX] KV store: Fix false-positive `status_code="500"` metrics for HA tracker CAS operations when using memberlist. #7408
+* [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
+* [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372
+* [BUGFIX] Fix memory leak in `ReuseWriteRequestV2` by explicitly clearing the `Symbols` backing array string pointers before returning the object to `sync.Pool`. #7373
+* [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7375
 
 
 ## 1.20.1 2025-12-03

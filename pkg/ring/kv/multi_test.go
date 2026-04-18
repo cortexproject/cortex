@@ -7,8 +7,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+//go:fix inline
 func boolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }
 
 func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
@@ -17,8 +18,8 @@ func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
 		expected *bool
 	}{
 		"nil":   {"primary: test", nil},
-		"true":  {"primary: test\nmirror_enabled: true", boolPtr(true)},
-		"false": {"mirror_enabled: false", boolPtr(false)},
+		"true":  {"primary: test\nmirror_enabled: true", new(true)},
+		"false": {"mirror_enabled: false", new(false)},
 	}
 
 	for name, tc := range testcases {

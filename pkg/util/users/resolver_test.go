@@ -8,8 +8,9 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
+//go:fix inline
 func strptr(s string) *string {
-	return &s
+	return new(s)
 }
 
 type resolverTestCase struct {
@@ -55,48 +56,48 @@ var commonResolverTestCases = []resolverTestCase{
 	},
 	{
 		name:        "empty",
-		headerValue: strptr(""),
+		headerValue: new(""),
 		tenantIDs:   []string{""},
 	},
 	{
 		name:        "single-tenant",
-		headerValue: strptr("tenant-a"),
+		headerValue: new("tenant-a"),
 		tenantID:    "tenant-a",
 		tenantIDs:   []string{"tenant-a"},
 	},
 	{
 		name:         "parent-dir",
-		headerValue:  strptr(".."),
+		headerValue:  new(".."),
 		errTenantID:  errTenantIDUnsafe,
 		errTenantIDs: errTenantIDUnsafe,
 	},
 	{
 		name:         "current-dir",
-		headerValue:  strptr("."),
+		headerValue:  new("."),
 		errTenantID:  errTenantIDUnsafe,
 		errTenantIDs: errTenantIDUnsafe,
 	},
 	{
 		name:         "__markers__",
-		headerValue:  strptr("__markers__"),
+		headerValue:  new("__markers__"),
 		errTenantID:  errTenantIDMarkers,
 		errTenantIDs: errTenantIDMarkers,
 	},
 	{
 		name:         "white space",
-		headerValue:  strptr(" "),
+		headerValue:  new(" "),
 		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 0, tenantID: " "},
 		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 0, tenantID: " "},
 	},
 	{
 		name:         "containing-forward-slash",
-		headerValue:  strptr("forward/slash"),
+		headerValue:  new("forward/slash"),
 		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
 		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 7, tenantID: "forward/slash"},
 	},
 	{
 		name:         "containing-backward-slash",
-		headerValue:  strptr(`backward\slash`),
+		headerValue:  new(`backward\slash`),
 		errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
 		errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "backward\\slash"},
 	},
@@ -107,13 +108,13 @@ func TestSingleResolver(t *testing.T) {
 	for _, tc := range append(commonResolverTestCases, []resolverTestCase{
 		{
 			name:         "multi-tenant",
-			headerValue:  strptr("tenant-a|tenant-b"),
+			headerValue:  new("tenant-a|tenant-b"),
 			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "tenant-a|tenant-b"},
 			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 8, tenantID: "tenant-a|tenant-b"},
 		},
 		{
 			name:         "containing-invalid-character",
-			headerValue:  strptr("+"),
+			headerValue:  new("+"),
 			errTenantID:  &errTenantIDUnsupportedCharacter{pos: 0, tenantID: "+"},
 			errTenantIDs: &errTenantIDUnsupportedCharacter{pos: 0, tenantID: "+"},
 		},
@@ -127,31 +128,31 @@ func TestMultiResolver(t *testing.T) {
 	for _, tc := range append(commonResolverTestCases, []resolverTestCase{
 		{
 			name:        "multi-tenant",
-			headerValue: strptr("tenant-a|tenant-b"),
+			headerValue: new("tenant-a|tenant-b"),
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
 			name:        "multi-tenant-wrong-order",
-			headerValue: strptr("tenant-b|tenant-a"),
+			headerValue: new("tenant-b|tenant-a"),
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
 			name:        "multi-tenant-duplicate-order",
-			headerValue: strptr("tenant-b|tenant-b|tenant-a"),
+			headerValue: new("tenant-b|tenant-b|tenant-a"),
 			errTenantID: user.ErrTooManyOrgIDs,
 			tenantIDs:   []string{"tenant-a", "tenant-b"},
 		},
 		{
 			name:         "multi-tenant-with-unsafe-path-segment(.)",
-			headerValue:  strptr("tenant-a|tenant-b|."),
+			headerValue:  new("tenant-a|tenant-b|."),
 			errTenantID:  errTenantIDUnsafe,
 			errTenantIDs: errTenantIDUnsafe,
 		},
 		{
 			name:         "multi-tenant-with-unsafe-path-segment(..)",
-			headerValue:  strptr("tenant-a|tenant-b|.."),
+			headerValue:  new("tenant-a|tenant-b|.."),
 			errTenantID:  errTenantIDUnsafe,
 			errTenantIDs: errTenantIDUnsafe,
 		},

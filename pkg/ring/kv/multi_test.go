@@ -7,11 +7,6 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-//go:fix inline
-func boolPtr(b bool) *bool {
-	return new(b)
-}
-
 func TestMultiRuntimeConfigWithVariousEnabledValues(t *testing.T) {
 	testcases := map[string]struct {
 		yaml     string

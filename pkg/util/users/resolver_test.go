@@ -8,11 +8,6 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-//go:fix inline
-func strptr(s string) *string {
-	return new(s)
-}
-
 type resolverTestCase struct {
 	name         string
 	headerValue  *string

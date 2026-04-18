@@ -97,7 +97,6 @@ func parseConfig(block *configBlock, cfg any, flags map[uintptr]*flag.Flag, adde
 	}
 
 	for field := range t.Fields() {
-		field := field
 		fieldValue := v.FieldByIndex(field.Index)
 
 		// Skip fields explicitly marked as "hidden" in the doc

@@ -22,15 +22,15 @@ func TestSum(t *testing.T) {
 	require.Equal(t, float64(0), sum(nil, counterValue))
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: nil}, counterValue))
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
-	require.Equal(t, 12345.6789, sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
+	require.Equal(t, 12345.6789, sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: new(12345.6789)}}}}, counterValue))
 	require.Equal(t, 20235.80235, sum(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}},
-		{Counter: &dto.Counter{Value: proto.Float64(7890.12345)}},
+		{Counter: &dto.Counter{Value: new(12345.6789)}},
+		{Counter: &dto.Counter{Value: new(7890.12345)}},
 	}}, counterValue))
 	// using 'counterValue' as function only sums counters
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Gauge: &dto.Gauge{Value: proto.Float64(12345.6789)}},
-		{Gauge: &dto.Gauge{Value: proto.Float64(7890.12345)}},
+		{Gauge: &dto.Gauge{Value: new(12345.6789)}},
+		{Gauge: &dto.Gauge{Value: new(7890.12345)}},
 	}}, counterValue))
 }
 
@@ -38,15 +38,15 @@ func TestMax(t *testing.T) {
 	require.Equal(t, float64(0), max(nil, counterValue))
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: nil}, counterValue))
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
-	require.Equal(t, 12345.6789, max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
+	require.Equal(t, 12345.6789, max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: new(12345.6789)}}}}, counterValue))
 	require.Equal(t, 7890.12345, max(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Counter: &dto.Counter{Value: proto.Float64(1234.56789)}},
-		{Counter: &dto.Counter{Value: proto.Float64(7890.12345)}},
+		{Counter: &dto.Counter{Value: new(1234.56789)}},
+		{Counter: &dto.Counter{Value: new(7890.12345)}},
 	}}, counterValue))
 	// using 'counterValue' as function only works on counters
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Gauge: &dto.Gauge{Value: proto.Float64(12345.6789)}},
-		{Gauge: &dto.Gauge{Value: proto.Float64(7890.12345)}},
+		{Gauge: &dto.Gauge{Value: new(12345.6789)}},
+		{Gauge: &dto.Gauge{Value: new(7890.12345)}},
 	}}, counterValue))
 }
 
@@ -54,7 +54,7 @@ func TestCounterValue(t *testing.T) {
 	require.Equal(t, float64(0), counterValue(nil))
 	require.Equal(t, float64(0), counterValue(&dto.Metric{}))
 	require.Equal(t, float64(0), counterValue(&dto.Metric{Counter: &dto.Counter{}}))
-	require.Equal(t, float64(543857.12837), counterValue(&dto.Metric{Counter: &dto.Counter{Value: proto.Float64(543857.12837)}}))
+	require.Equal(t, float64(543857.12837), counterValue(&dto.Metric{Counter: &dto.Counter{Value: new(543857.12837)}}))
 }
 
 func TestGetMetricsWithLabelNames(t *testing.T) {
@@ -64,7 +64,7 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(&dto.MetricFamily{}, labels))
 
 	m1 := &dto.Metric{Label: makeLabels("a", "5"), Counter: &dto.Counter{Value: proto.Float64(1)}}
-	m2 := &dto.Metric{Label: makeLabels("a", "10", "b", "20"), Counter: &dto.Counter{Value: proto.Float64(1.5)}}
+	m2 := &dto.Metric{Label: makeLabels("a", "10", "b", "20"), Counter: &dto.Counter{Value: new(1.5)}}
 	m3 := &dto.Metric{Label: makeLabels("a", "10", "b", "20", "c", "1"), Counter: &dto.Counter{Value: proto.Float64(2)}}
 	m4 := &dto.Metric{Label: makeLabels("a", "10", "b", "20", "c", "2"), Counter: &dto.Counter{Value: proto.Float64(3)}}
 	m5 := &dto.Metric{Label: makeLabels("a", "11", "b", "21"), Counter: &dto.Counter{Value: proto.Float64(4)}}
@@ -105,20 +105,20 @@ func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
 	mf := &dto.MetricFamily{Metric: make([]*dto.Metric, 0, numMetrics)}
 	for i := range numMetrics {
 		labels := []*dto.LabelPair{{
-			Name:  proto.String("unique"),
-			Value: proto.String(strconv.Itoa(i)),
+			Name:  new("unique"),
+			Value: new(strconv.Itoa(i)),
 		}}
 
 		for l := 1; l < numLabelsPerMetric; l++ {
 			labels = append(labels, &dto.LabelPair{
-				Name:  proto.String(fmt.Sprintf("label_%d", l)),
-				Value: proto.String(fmt.Sprintf("value_%d", l)),
+				Name:  new(fmt.Sprintf("label_%d", l)),
+				Value: new(fmt.Sprintf("value_%d", l)),
 			})
 		}
 
 		mf.Metric = append(mf.Metric, &dto.Metric{
 			Label:   labels,
-			Counter: &dto.Counter{Value: proto.Float64(1.5)},
+			Counter: &dto.Counter{Value: new(1.5)},
 		})
 	}
 
@@ -138,8 +138,8 @@ func makeLabels(namesAndValues ...string) []*dto.LabelPair {
 
 	for i := 0; i+1 < len(namesAndValues); i = i + 2 {
 		out = append(out, &dto.LabelPair{
-			Name:  proto.String(namesAndValues[i]),
-			Value: proto.String(namesAndValues[i+1]),
+			Name:  new(namesAndValues[i]),
+			Value: new(namesAndValues[i+1]),
 		})
 	}
 
@@ -411,15 +411,15 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 					SampleSum:   float64p(150),
 					Quantile: []*dto.Quantile{
 						{
-							Quantile: proto.Float64(.25),
+							Quantile: new(.25),
 							Value:    proto.Float64(25),
 						},
 						{
-							Quantile: proto.Float64(.5),
+							Quantile: new(.5),
 							Value:    proto.Float64(50),
 						},
 						{
-							Quantile: proto.Float64(.75),
+							Quantile: new(.75),
 							Value:    proto.Float64(75),
 						},
 					},
@@ -432,15 +432,15 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 					SampleSum:   float64p(151),
 					Quantile: []*dto.Quantile{
 						{
-							Quantile: proto.Float64(.25),
+							Quantile: new(.25),
 							Value:    proto.Float64(25),
 						},
 						{
-							Quantile: proto.Float64(.5),
+							Quantile: new(.5),
 							Value:    proto.Float64(50),
 						},
 						{
-							Quantile: proto.Float64(.75),
+							Quantile: new(.75),
 							Value:    proto.Float64(76),
 						},
 					},
@@ -1109,12 +1109,14 @@ func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.
 	return metrics
 }
 
+//go:fix inline
 func float64p(v float64) *float64 {
-	return &v
+	return new(v)
 }
 
+//go:fix inline
 func uint64p(v uint64) *uint64 {
-	return &v
+	return new(v)
 }
 
 func BenchmarkGetLabels_SmallSet(b *testing.B) {
@@ -1271,9 +1273,9 @@ func TestIsNative(t *testing.T) {
 	// Classic histogram has no Schema
 	classicHisto := &dto.Histogram{
 		SampleCount: proto.Uint64(10),
-		SampleSum:   proto.Float64(100.0),
+		SampleSum:   new(100.0),
 		Bucket: []*dto.Bucket{
-			{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+			{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
 		},
 	}
 	require.False(t, isNative(classicHisto))
@@ -1299,7 +1301,7 @@ func TestHistogramData_AddHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(10),
-					SampleSum:     proto.Float64(100.0),
+					SampleSum:     new(100.0),
 					ZeroCount:     proto.Uint64(2),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
@@ -1328,11 +1330,11 @@ func TestHistogramData_AddHistogram(t *testing.T) {
 			histograms: []*dto.Histogram{
 				{
 					SampleCount: proto.Uint64(10),
-					SampleSum:   proto.Float64(100.0),
+					SampleSum:   new(100.0),
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
-						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
-						{UpperBound: proto.Float64(10.0), CumulativeCount: proto.Uint64(10)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
+						{UpperBound: new(10.0), CumulativeCount: proto.Uint64(10)},
 					},
 				},
 			},
@@ -1352,15 +1354,15 @@ func TestHistogramData_AddHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(10),
-					SampleSum:     proto.Float64(100.0),
+					SampleSum:     new(100.0),
 					ZeroCount:     proto.Uint64(2),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
 					},
 					PositiveDelta: []int64{5},
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
-						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
 					},
 				},
 			},
@@ -1379,7 +1381,7 @@ func TestHistogramData_AddHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(10),
-					SampleSum:     proto.Float64(100.0),
+					SampleSum:     new(100.0),
 					ZeroCount:     proto.Uint64(2),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
@@ -1390,7 +1392,7 @@ func TestHistogramData_AddHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(5),
-					SampleSum:     proto.Float64(50.0),
+					SampleSum:     new(50.0),
 					ZeroCount:     proto.Uint64(1),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(1), Length: proto.Uint32(1)},
@@ -1488,14 +1490,14 @@ func TestMergeHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(10),
-					SampleSum:     proto.Float64(100.0),
+					SampleSum:     new(100.0),
 					ZeroCount:     proto.Uint64(2),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
 					},
 					PositiveDelta: []int64{5},
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
 					},
 				},
 			},
@@ -1504,14 +1506,14 @@ func TestMergeHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(5),
-					SampleSum:     proto.Float64(50.0),
+					SampleSum:     new(50.0),
 					ZeroCount:     proto.Uint64(1),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
 					},
 					PositiveDelta: []int64{3},
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
 					},
 				},
 			},
@@ -1533,7 +1535,7 @@ func TestMergeHistogram(t *testing.T) {
 					Schema:        &schema,
 					ZeroThreshold: &zt,
 					SampleCount:   proto.Uint64(10),
-					SampleSum:     proto.Float64(100.0),
+					SampleSum:     new(100.0),
 					ZeroCount:     proto.Uint64(2),
 					PositiveSpan: []*dto.BucketSpan{
 						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
@@ -1544,10 +1546,10 @@ func TestMergeHistogram(t *testing.T) {
 			m2: &dto.Metric{
 				Histogram: &dto.Histogram{
 					SampleCount: proto.Uint64(5),
-					SampleSum:   proto.Float64(50.0),
+					SampleSum:   new(50.0),
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
-						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(5)},
 					},
 				},
 			},
@@ -1570,20 +1572,20 @@ func TestMergeHistogram(t *testing.T) {
 			m1: &dto.Metric{
 				Histogram: &dto.Histogram{
 					SampleCount: proto.Uint64(10),
-					SampleSum:   proto.Float64(100.0),
+					SampleSum:   new(100.0),
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(5)},
-						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(8)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
 					},
 				},
 			},
 			m2: &dto.Metric{
 				Histogram: &dto.Histogram{
 					SampleCount: proto.Uint64(5),
-					SampleSum:   proto.Float64(50.0),
+					SampleSum:   new(50.0),
 					Bucket: []*dto.Bucket{
-						{UpperBound: proto.Float64(1.0), CumulativeCount: proto.Uint64(3)},
-						{UpperBound: proto.Float64(5.0), CumulativeCount: proto.Uint64(4)},
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(4)},
 					},
 				},
 			},

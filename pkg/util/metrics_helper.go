@@ -1180,7 +1180,7 @@ func makeBucketsFromMap(buckets map[int]int64) ([]*dto.BucketSpan, []int64) {
 			// at the very beginning, or because we have found a gap
 			// of more than two buckets.
 			spans = append(spans, &dto.BucketSpan{
-				Offset: proto.Int32(iDelta),
+				Offset: new(iDelta),
 				Length: proto.Uint32(0),
 			})
 		} else {

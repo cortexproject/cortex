@@ -345,8 +345,26 @@ jobs:
             dist/*.rpm
             dist/*-sha-256
 
+  test-packages:
+    needs: packages
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
+      - name: Download Packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Packages
+          path: dist
+      - name: Test Packages
+        run: |
+          touch dist/.uptodate-packages
+          make PACKAGE_IN_CONTAINER=false test-packages
+
   deploy:
-    needs: [build, test, lint, integration, integration-configs-db, packages]
+    needs: [build, test, lint, integration, integration-configs-db, packages, test-packages]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:

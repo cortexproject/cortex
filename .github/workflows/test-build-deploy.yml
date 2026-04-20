@@ -157,7 +157,6 @@ jobs:
           path: ./images.tar
 
   build-dist:
-    needs: lint
     runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
@@ -377,11 +376,10 @@ jobs:
         with:
           name: Packages
           path: dist
+      - name: Build Test Images
+        run: make TTY='' packaging/rpm/rockylinux-systemd/.uptodate packaging/deb/debian-systemd/.uptodate
       - name: Test Packages
-        run: |
-          touch dist/.uptodate
-          touch dist/.uptodate-packages
-          make TTY='' PACKAGE_IN_CONTAINER=false test-packages
+        run: ./tools/packaging/test-packages quay.io/cortexproject/ $(cat VERSION)
 
   deploy:
     needs: [build, test, lint, integration, integration-configs-db, packages, test-packages]

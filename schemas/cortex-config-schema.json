@@ -6034,6 +6034,33 @@
           "type": "boolean",
           "x-cli-flag": "querier.per-step-stats-enabled"
         },
+        "query_protection": {
+          "properties": {
+            "rejection": {
+              "properties": {
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.rejection.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.rejection.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
         "response_compression": {
           "default": "gzip",
           "description": "Use compression for metrics query API or instant and range query APIs. Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)",

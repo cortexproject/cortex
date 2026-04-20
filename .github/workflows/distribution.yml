@@ -1,0 +1,91 @@
+name: distribution
+permissions: read-all
+on:
+  push:
+    branches: [master]
+    tags:
+      - v[0-9]+.[0-9]+.[0-9]+** # Tag filters not as strict due to different regex system on Github Actions
+    paths-ignore:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yml'
+  pull_request:
+    paths-ignore:
+      - 'build-image/**'
+      - '.github/workflows/build-image.yml'
+
+jobs:
+  build-dist:
+    runs-on: ubuntu-24.04
+    container:
+      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Build Dist Binaries
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false dist
+      - name: Upload Dist Binaries
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: Dist Binaries
+          path: dist/
+
+  packages:
+    needs: build-dist
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Download Dist Binaries
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Dist Binaries
+          path: dist
+      - name: Fix Permissions
+        run: chmod +x dist/cortex-* dist/query-tee-*
+      - name: Build Packages
+        run: |
+          touch dist/.uptodate
+          make TTY='' ARCHS=amd64 packages
+      - name: Upload Packages
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: Packages
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*-sha-256
+
+  test-packages:
+    needs: packages
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Download Packages
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Packages
+          path: dist
+      - name: Build Test Images
+        run: make TTY='' ARCHS=${{ matrix.arch }} packaging/rpm/rockylinux-systemd/.uptodate packaging/deb/debian-systemd/.uptodate
+      - name: Test Packages
+        run: ./tools/packaging/test-packages quay.io/cortexproject/ $(cat VERSION) ${{ matrix.arch }}

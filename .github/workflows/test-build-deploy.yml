@@ -350,6 +350,8 @@ jobs:
         with:
           name: Dist Binaries
           path: dist
+      - name: Fix Permissions
+        run: chmod +x dist/cortex-* dist/query-tee-*
       - name: Build Packages
         run: |
           touch dist/.uptodate

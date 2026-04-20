@@ -155,8 +155,28 @@ jobs:
         with:
           name: Docker Images
           path: ./images.tar
+
+  build-dist:
+    needs: lint
+    runs-on: ubuntu-24.04
+    container:
+      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Setup Git safe.directory
+        run: |
+          echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
+          echo "See https://github.com/actions/runner/issues/2033. We should use --system instead of --global"
+          git config --system --add safe.directory $GITHUB_WORKSPACE
+      - name: Sym Link Expected Path to Workspace
+        run: |
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Build Dist Binaries
-        run: make BUILD_IN_CONTAINER=false dist
+        run: |
+          touch build-image/.uptodate
+          make BUILD_IN_CONTAINER=false dist
       - name: Upload Dist Binaries
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -321,7 +341,7 @@ jobs:
           make BUILD_IMAGE=quay.io/cortexproject/build-image:master-ee0b97cc37 TTY='' configs-integration-test
 
   packages:
-    needs: build
+    needs: build-dist
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repo
@@ -361,7 +381,7 @@ jobs:
         run: |
           touch dist/.uptodate
           touch dist/.uptodate-packages
-          make TTY='' test-packages
+          make TTY='' PACKAGE_IN_CONTAINER=false test-packages
 
   deploy:
     needs: [build, test, lint, integration, integration-configs-db, packages, test-packages]

@@ -155,6 +155,13 @@ jobs:
         with:
           name: Docker Images
           path: ./images.tar
+      - name: Build Dist Binaries
+        run: make BUILD_IN_CONTAINER=false dist
+      - name: Upload Dist Binaries
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: Dist Binaries
+          path: dist/
 
   integration:
     needs: [build, lint]
@@ -314,13 +321,16 @@ jobs:
           make BUILD_IMAGE=quay.io/cortexproject/build-image:master-ee0b97cc37 TTY='' configs-integration-test
 
   packages:
-    needs: lint
+    needs: build
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - name: Build Binaries
-        run: make dist
+      - name: Download Dist Binaries
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: Dist Binaries
+          path: dist
       - name: Build Packages
         run: make TTY='' ARCHS=amd64 packages
       - name: Upload Packages
@@ -348,7 +358,7 @@ jobs:
       - name: Test Packages
         run: |
           touch dist/.uptodate-packages
-          make PACKAGE_IN_CONTAINER=false test-packages
+          make TTY='' test-packages
 
   deploy:
     needs: [build, test, lint, integration, integration-configs-db, packages, test-packages]

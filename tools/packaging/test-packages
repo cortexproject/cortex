@@ -68,5 +68,5 @@ function test_with_systemd() {
 test_with_systemd "${IMAGE_PREFIX}"debian-systemd:amd64 linux/amd64 "dpkg -i /opt/cortex/cortex-${VERSION}_amd64.deb"
 test_with_systemd "${IMAGE_PREFIX}"debian-systemd:arm64 linux/arm64 "dpkg -i /opt/cortex/cortex-${VERSION}_arm64.deb"
 
-test_with_systemd "${IMAGE_PREFIX}"centos-systemd:amd64 linux/amd64 "rpm -i /opt/cortex/cortex-${VERSION}_amd64.rpm"
-test_with_systemd "${IMAGE_PREFIX}"centos-systemd:arm64 linux/arm64 "rpm -i /opt/cortex/cortex-${VERSION}_arm64.rpm"
+test_with_systemd "${IMAGE_PREFIX}"rockylinux-systemd:amd64 linux/amd64 "rpm -i /opt/cortex/cortex-${VERSION}_amd64.rpm"
+test_with_systemd "${IMAGE_PREFIX}"rockylinux-systemd:arm64 linux/arm64 "rpm -i /opt/cortex/cortex-${VERSION}_arm64.rpm"

@@ -332,7 +332,9 @@ jobs:
           name: Dist Binaries
           path: dist
       - name: Build Packages
-        run: make TTY='' ARCHS=amd64 packages
+        run: |
+          touch dist/.uptodate
+          make TTY='' ARCHS=amd64 packages
       - name: Upload Packages
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -357,6 +359,7 @@ jobs:
           path: dist
       - name: Test Packages
         run: |
+          touch dist/.uptodate
           touch dist/.uptodate-packages
           make TTY='' test-packages
 

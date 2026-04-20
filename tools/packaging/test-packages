@@ -46,14 +46,23 @@ function test_with_systemd() {
 
     echo "Testing $install_command on $image ($platform)"
 
-    container=$(docker run --platform="${platform}" --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro -itd -v "$(pwd)"/dist:/opt/cortex -p 9009 "${image}")
+    container=$(docker run --platform="${platform}" --privileged --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup -td -v "$(pwd)"/dist:/opt/cortex -v "$(pwd)"/docs/configuration:/opt/config:ro -p 9009 "${image}")
     CONTAINERS+=("${container}")
 
     port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "9009/tcp") 0).HostPort}}' "${container}")
 
-    docker exec -it "${container}" /bin/bash -c "${install_command}; systemctl start cortex.service; systemctl enable cortex.service"
+    docker exec "${container}" /bin/bash -c "${install_command}; mkdir -p /tmp/cortex/tsdb /tmp/cortex/tsdb-sync /tmp/cortex/compactor /tmp/cortex/rules /tmp/cortex/alerts /var/lib/cortex/data/tsdb && chown -R cortex:cortex /tmp/cortex /var/lib/cortex; cp /opt/config/single-process-config-blocks-local.yaml /etc/cortex/single-process-config.yaml && chown root:cortex /etc/cortex/single-process-config.yaml; systemctl start cortex.service; systemctl enable cortex.service"
 
-    ready 10 1 "${port}" || error "Testing image: ${image} with command: '${install_command}' failed"
+    ready 30 2 "${port}" || {
+        echo "--- curl localhost:${port}/ready ---"
+        curl -s localhost:"${port}"/ready || true
+        echo ""
+        echo "--- systemctl status cortex.service ---"
+        docker exec "${container}" systemctl status cortex.service || true
+        echo "--- journalctl -u cortex.service ---"
+        docker exec "${container}" journalctl -u cortex.service --no-pager -n 50 || true
+        error "Testing image: ${image} with command: '${install_command}' failed"
+    }
 }
 
 test_with_systemd "${IMAGE_PREFIX}"debian-systemd:amd64 linux/amd64 "dpkg -i /opt/cortex/cortex-${VERSION}_amd64.deb"

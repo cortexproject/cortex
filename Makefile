@@ -397,4 +397,4 @@ packaging/deb/debian-systemd/$(UPTODATE): packaging/deb/debian-systemd/Dockerfil
 
 .PHONY: test-packages
 test-packages: packages packaging/rpm/rockylinux-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
-	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION)
+	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION) $(ARCHS)

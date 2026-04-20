@@ -4,6 +4,8 @@ set -euf -o pipefail
 
 readonly IMAGE_PREFIX=$1
 readonly VERSION=$2
+shift 2
+readonly ARCHS=("$@")
 readonly DISABLE_CLEANUP=${DISABLE_CLEANUP:-0}
 
 declare -a CONTAINERS=()
@@ -65,8 +67,7 @@ function test_with_systemd() {
     }
 }
 
-test_with_systemd "${IMAGE_PREFIX}"debian-systemd:amd64 linux/amd64 "dpkg -i /opt/cortex/cortex-${VERSION}_amd64.deb"
-test_with_systemd "${IMAGE_PREFIX}"debian-systemd:arm64 linux/arm64 "dpkg -i /opt/cortex/cortex-${VERSION}_arm64.deb"
-
-test_with_systemd "${IMAGE_PREFIX}"rockylinux-systemd:amd64 linux/amd64 "rpm -i /opt/cortex/cortex-${VERSION}_amd64.rpm"
-test_with_systemd "${IMAGE_PREFIX}"rockylinux-systemd:arm64 linux/arm64 "rpm -i /opt/cortex/cortex-${VERSION}_arm64.rpm"
+for arch in "${ARCHS[@]}"; do
+    test_with_systemd "${IMAGE_PREFIX}"debian-systemd:"${arch}" linux/"${arch}" "dpkg -i /opt/cortex/cortex-${VERSION}_${arch}.deb"
+    test_with_systemd "${IMAGE_PREFIX}"rockylinux-systemd:"${arch}" linux/"${arch}" "rpm -i /opt/cortex/cortex-${VERSION}_${arch}.rpm"
+done

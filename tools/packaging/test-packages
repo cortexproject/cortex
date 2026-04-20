@@ -48,8 +48,16 @@ function test_with_systemd() {
 
     echo "Testing $install_command on $image ($platform)"
 
-    container=$(docker run --platform="${platform}" --privileged --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup -td -v "$(pwd)"/dist:/opt/cortex -v "$(pwd)"/docs/configuration:/opt/config:ro -p 9009 "${image}")
+    container=$(docker run --platform="${platform}" --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw -td -v "$(pwd)"/dist:/opt/cortex -v "$(pwd)"/docs/configuration:/opt/config:ro -p 9009 "${image}")
     CONTAINERS+=("${container}")
+
+    # Wait briefly for systemd to initialize and verify container is running
+    sleep 2
+    if ! docker inspect --format='{{.State.Running}}' "${container}" | grep -q true; then
+        echo "Container failed to start:"
+        docker logs "${container}" || true
+        error "Container ${container} is not running"
+    fi
 
     port=$(docker inspect --format='{{(index (index .NetworkSettings.Ports "9009/tcp") 0).HostPort}}' "${container}")
 

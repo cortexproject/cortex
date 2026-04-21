@@ -151,6 +151,10 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 			# TYPE cortex_ingester_ingested_samples_total counter
 			cortex_ingester_ingested_samples_total 0
+			# HELP cortex_ingester_start_timestamp_append_failures_total Total number of failed appends for samples and histograms with a start timestamp.
+			# TYPE cortex_ingester_start_timestamp_append_failures_total counter
+			cortex_ingester_start_timestamp_append_failures_total{type="float"} 0
+			cortex_ingester_start_timestamp_append_failures_total{type="histogram"} 0
 			# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
 			# TYPE cortex_ingester_ingested_native_histograms_total counter
 			cortex_ingester_ingested_native_histograms_total 0
@@ -440,6 +444,23 @@ func TestTSDBMetrics(t *testing.T) {
 			# HELP cortex_ingester_tsdb_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
 			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
 			cortex_ingester_tsdb_checkpoint_creations_total 1883489
+
+			# HELP cortex_ingester_tsdb_wal_record_part_writes_total Total number of WAL record parts written before flushing.
+			# TYPE cortex_ingester_tsdb_wal_record_part_writes_total counter
+			# 32*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_part_writes_total 3172192
+
+			# HELP cortex_ingester_tsdb_wal_record_parts_bytes_written_total Total number of WAL record part bytes written before flushing, including CRC and compression headers.
+			# TYPE cortex_ingester_tsdb_wal_record_parts_bytes_written_total counter
+			# 33*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_parts_bytes_written_total 3271323
+
+			# HELP cortex_ingester_tsdb_wal_record_bytes_saved_total Total number of bytes saved by the optional WAL record compression.
+			# TYPE cortex_ingester_tsdb_wal_record_bytes_saved_total counter
+			# 34*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="snappy"} 3370454
+			# 35*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="zstd"} 3469585
 
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter
@@ -739,6 +760,23 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# HELP cortex_ingester_tsdb_checkpoint_creations_total Total number of TSDB checkpoint creations attempted.
 			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
 			cortex_ingester_tsdb_checkpoint_creations_total 1883489
+
+			# HELP cortex_ingester_tsdb_wal_record_part_writes_total Total number of WAL record parts written before flushing.
+			# TYPE cortex_ingester_tsdb_wal_record_part_writes_total counter
+			# 32*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_part_writes_total 3172192
+
+			# HELP cortex_ingester_tsdb_wal_record_parts_bytes_written_total Total number of WAL record part bytes written before flushing, including CRC and compression headers.
+			# TYPE cortex_ingester_tsdb_wal_record_parts_bytes_written_total counter
+			# 33*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_parts_bytes_written_total 3271323
+
+			# HELP cortex_ingester_tsdb_wal_record_bytes_saved_total Total number of bytes saved by the optional WAL record compression.
+			# TYPE cortex_ingester_tsdb_wal_record_bytes_saved_total counter
+			# 34*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="snappy"} 3370454
+			# 35*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="zstd"} 3469585
 
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter
@@ -1203,6 +1241,27 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of stale series in the head block.",
 	})
 	headStaleSeries.Set(31 * base)
+
+	recordPartWrites := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_part_writes_total",
+		Help: "Total number of record parts written before flushing.",
+	})
+	recordPartWrites.Add(32 * base)
+
+	recordPartBytes := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_parts_bytes_written_total",
+		Help: "Total number of record part bytes written before flushing, including" +
+			" CRC and compression headers.",
+	})
+	recordPartBytes.Add(33 * base)
+
+	recordBytesSaved := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_bytes_saved_total",
+		Help: "Total number of bytes saved by the optional record compression." +
+			" Use this metric to learn about the effectiveness compression.",
+	}, []string{"compression"})
+	recordBytesSaved.WithLabelValues("snappy").Add(34 * base)
+	recordBytesSaved.WithLabelValues("zstd").Add(35 * base)
 
 	return r
 }

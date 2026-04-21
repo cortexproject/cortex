@@ -4111,6 +4111,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.enable-type-and-unit-labels
 [enable_type_and_unit_labels: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2
+# samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is
+# not set.
+# CLI flag: -distributor.enable-start-timestamp
+[enable_start_timestamp: <boolean> | default = false]
+
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]
@@ -4285,6 +4291,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Enable to allow queries to be evaluated with data from a single zone, if other
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
+
+# Maximum lookback duration for querying data from ingesters. Queries for data
+# older than this will only query the long-term storage. This is a per-tenant
+# limit that can be overridden in the runtime configuration. Should be less than
+# or equal to close-idle-tsdb-timeout.
+# CLI flag: -limits.query-ingesters-within
+[query_ingesters_within: <duration> | default = 0s]
+
+# Minimum age of data before querying the long-term storage. Queries for data
+# younger than this will only query ingesters. This is a per-tenant limit that
+# can be overridden in the runtime configuration.
+# CLI flag: -limits.query-store-after
+[query_store_after: <duration> | default = 0s]
+
+# Lookback period for shuffle sharding of ingesters. This is a per-tenant limit
+# that can be overridden in the runtime configuration. Should be greater than or
+# equal to query-ingesters-within.
+# CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
+[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
 # The maximum number of rows that can be fetched when querying parquet storage.
 # Each row maps to a series in a parquet file. This limit applies before
@@ -4575,6 +4600,20 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.advertise-port
 [advertise_port: <int> | default = 7946]
 
+# The cluster label is an optional string to include in outbound packets and
+# gossip streams. Other members in the memberlist cluster will discard any
+# message whose label doesn't match the configured one, unless the
+# 'cluster-label-verification-disabled' configuration option is set to true.
+# CLI flag: -memberlist.cluster-label
+[cluster_label: <string> | default = ""]
+
+# When true, memberlist doesn't verify that inbound packets and gossip streams
+# have the cluster label matching the configured one. This verification should
+# be disabled while rolling out the change to the configured cluster label in a
+# live memberlist cluster.
+# CLI flag: -memberlist.cluster-label-verification-disabled
+[cluster_label_verification_disabled: <boolean> | default = false]
+
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format.
 # CLI flag: -memberlist.join
@@ -4766,11 +4805,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]
 
-# Maximum lookback beyond which queries are not sent to ingester. 0 means all
-# queries are sent to ingester.
-# CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 0s]
-
 # Enable returning samples stats per steps in query response.
 # CLI flag: -querier.per-step-stats-enabled
 [per_step_stats_enabled: <boolean> | default = false]
@@ -4779,14 +4813,6 @@ The `querier_config` configures the Cortex querier.
 # Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)
 # CLI flag: -querier.response-compression
 [response_compression: <string> | default = "gzip"]
-
-# The time after which a metric should be queried from storage and not just
-# ingesters. 0 means all queries are sent to store. When running the blocks
-# storage, if this option is enabled, the time range of the query sent to the
-# store will be manipulated to ensure the query end is not more recent than 'now
-# - query-store-after'.
-# CLI flag: -querier.query-store-after
-[query_store_after: <duration> | default = 0s]
 
 # Maximum duration into the future you can query. 0 to disable.
 # CLI flag: -querier.max-query-into-future
@@ -4896,16 +4922,6 @@ store_gateway_client:
 # CLI flag: -querier.ingester-query-max-attempts
 [ingester_query_max_attempts: <int> | default = 1]
 
-# When distributor's sharding strategy is shuffle-sharding and this setting is >
-# 0, queriers fetch in-memory series from the minimum set of required ingesters,
-# selecting only ingesters which may have received series since 'now - lookback
-# period'. The lookback period should be greater or equal than the configured
-# 'query store after' and 'query ingesters within'. If this setting is 0,
-# queriers always query all ingesters (ingesters shuffle sharding on read path
-# is disabled).
-# CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
-[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
-
 thanos_engine:
   # Experimental. Use Thanos promql engine
   # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
@@ -4970,6 +4986,20 @@ thanos_engine:
 # types (parquet and non-parquet) and not querying ingesters.
 # CLI flag: -querier.honor-projection-hints
 [honor_projection_hints: <boolean> | default = false]
+
+# If true, classify query timeouts as 4XX (user error) or 5XX (system error)
+# based on phase timing.
+# CLI flag: -querier.timeout-classification-enabled
+[timeout_classification_enabled: <boolean> | default = false]
+
+# The total time before the querier proactively cancels a query for timeout
+# classification. Set this a few seconds less than the querier timeout.
+# CLI flag: -querier.timeout-classification-deadline
+[timeout_classification_deadline: <duration> | default = 1m59s]
+
+# Eval time threshold above which a timeout is classified as user error (4XX).
+# CLI flag: -querier.timeout-classification-eval-threshold
+[timeout_classification_eval_threshold: <duration> | default = 1m30s]
 ```
 
 ### `query_frontend_config`

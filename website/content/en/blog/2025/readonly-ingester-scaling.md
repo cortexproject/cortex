@@ -39,9 +39,9 @@ The READONLY state addresses these challenges. When an ingester transitions to R
 
 ```bash
 # Set multiple ingesters to READONLY simultaneously
-curl -X POST http://ingester-1:8080/ingester/mode -d '{"mode": "READONLY"}'
-curl -X POST http://ingester-2:8080/ingester/mode -d '{"mode": "READONLY"}'
-curl -X POST http://ingester-3:8080/ingester/mode -d '{"mode": "READONLY"}'
+curl -X POST "http://ingester-1:8080/ingester/mode" -d 'mode=READONLY'
+curl -X POST "http://ingester-2:8080/ingester/mode" -d 'mode=READONLY'
+curl -X POST "http://ingester-3:8080/ingester/mode" -d 'mode=READONLY'
 ```
 
 ### Step 2: Monitor Data Status (Optional)
@@ -106,7 +106,7 @@ WAIT_DURATION="5h"
 # Set ingesters to READONLY
 for ingester in "${INGESTERS_TO_SCALE[@]}"; do
     echo "Setting $ingester to READONLY..."
-    curl -X POST http://$ingester:8080/ingester/mode -d '{"mode": "READONLY"}'
+    curl -X POST http://$ingester:8080/ingester/mode -d 'mode=READONLY'
 done
 
 # Wait for safe removal window
@@ -141,7 +141,7 @@ INGESTERS_TO_SCALE=("ingester-1" "ingester-2" "ingester-3")
 # Set ingesters to READONLY
 for ingester in "${INGESTERS_TO_SCALE[@]}"; do
     echo "Setting $ingester to READONLY..."
-    curl -X POST http://$ingester:8080/ingester/mode -d '{"mode": "READONLY"}'
+    curl -X POST http://$ingester:8080/ingester/mode -d 'mode=READONLY'
 done
 
 # Wait and check for data removal
@@ -170,7 +170,7 @@ If issues arise, return ingesters to ACTIVE state:
 
 ```bash
 # Revert to ACTIVE state
-curl -X POST http://ingester-1:8080/ingester/mode -d '{"mode": "ACTIVE"}'
+curl -X POST "http://ingester-1:8080/ingester/mode" -d 'mode=ACTIVE'
 ```
 
 ## Conclusion

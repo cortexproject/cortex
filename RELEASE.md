@@ -133,13 +133,11 @@ To publish a stable release:
 
 ### <a name="sing-and-sbom"></a>Sign the release artifacts and generate SBOM
 1. Make sure you have the release branch checked out, and you don't have any local modifications
-1. Create and `cd` to an empty directory not within the project directory
-1. Run `mkdir sbom`
-1. Generate SBOMs using https://github.com/kubernetes-sigs/bom
-   1. `bom generate -o sbom/go-mod.spdx -n https://github.com/cortexproject/cortex -d <cortex repo>`
-   1. `bom generate -o sbom/cortex-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/cortex:<release tag>`
-   1. `bom generate -o sbom/query-tee-container-image.spdx -n https://github.com/cortexproject/cortex -i quay.io/cortexproject/query-tee:<release tag>`
-   1. `tar -zcvf  sbom.tar.gz sbom`
+1. Generate SBOMs using the provided script (requires https://github.com/kubernetes-sigs/bom):
+   ```bash
+   ./tools/generate-sbom.sh /path/to/cortex
+   ```
+   This generates SBOMs for the Go modules and all container images (cortex, query-tee, test-exporter, thanosconvert) and packages them into `dist/sbom.tar.gz`.
 1. Download the artifacts attached to the published release
    ```bash
    curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release tag> \

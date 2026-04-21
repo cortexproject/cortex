@@ -45,9 +45,9 @@ The READONLY state allows ingesters to:
 1. **Set ingesters to READONLY mode**
    ```bash
    # Transition ingester to READONLY state
-   curl -X POST http://ingester-1:8080/ingester/mode -d '{"mode": "READONLY"}'
-   curl -X POST http://ingester-2:8080/ingester/mode -d '{"mode": "READONLY"}'
-   curl -X POST http://ingester-3:8080/ingester/mode -d '{"mode": "READONLY"}'
+   curl -X POST "http://ingester-1:8080/ingester/mode" -d 'mode=READONLY'
+   curl -X POST "http://ingester-2:8080/ingester/mode" -d 'mode=READONLY'
+   curl -X POST "http://ingester-3:8080/ingester/mode" -d 'mode=READONLY'
    ```
 
 2. **Monitor data aging** (Optional but recommended)

@@ -117,11 +117,6 @@ querier:
   # CLI flag: -querier.max-samples
   [max_samples: <int> | default = 50000000]
 
-  # Maximum lookback beyond which queries are not sent to ingester. 0 means all
-  # queries are sent to ingester.
-  # CLI flag: -querier.query-ingesters-within
-  [query_ingesters_within: <duration> | default = 0s]
-
   # Enable returning samples stats per steps in query response.
   # CLI flag: -querier.per-step-stats-enabled
   [per_step_stats_enabled: <boolean> | default = false]
@@ -130,14 +125,6 @@ querier:
   # Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)
   # CLI flag: -querier.response-compression
   [response_compression: <string> | default = "gzip"]
-
-  # The time after which a metric should be queried from storage and not just
-  # ingesters. 0 means all queries are sent to store. When running the blocks
-  # storage, if this option is enabled, the time range of the query sent to the
-  # store will be manipulated to ensure the query end is not more recent than
-  # 'now - query-store-after'.
-  # CLI flag: -querier.query-store-after
-  [query_store_after: <duration> | default = 0s]
 
   # Maximum duration into the future you can query. 0 to disable.
   # CLI flag: -querier.max-query-into-future
@@ -247,16 +234,6 @@ querier:
   # CLI flag: -querier.ingester-query-max-attempts
   [ingester_query_max_attempts: <int> | default = 1]
 
-  # When distributor's sharding strategy is shuffle-sharding and this setting is
-  # > 0, queriers fetch in-memory series from the minimum set of required
-  # ingesters, selecting only ingesters which may have received series since
-  # 'now - lookback period'. The lookback period should be greater or equal than
-  # the configured 'query store after' and 'query ingesters within'. If this
-  # setting is 0, queriers always query all ingesters (ingesters shuffle
-  # sharding on read path is disabled).
-  # CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
-  [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
-
   thanos_engine:
     # Experimental. Use Thanos promql engine
     # https://github.com/thanos-io/promql-engine rather than the Prometheus
@@ -322,6 +299,20 @@ querier:
   # mixed block types (parquet and non-parquet) and not querying ingesters.
   # CLI flag: -querier.honor-projection-hints
   [honor_projection_hints: <boolean> | default = false]
+
+  # If true, classify query timeouts as 4XX (user error) or 5XX (system error)
+  # based on phase timing.
+  # CLI flag: -querier.timeout-classification-enabled
+  [timeout_classification_enabled: <boolean> | default = false]
+
+  # The total time before the querier proactively cancels a query for timeout
+  # classification. Set this a few seconds less than the querier timeout.
+  # CLI flag: -querier.timeout-classification-deadline
+  [timeout_classification_deadline: <duration> | default = 1m59s]
+
+  # Eval time threshold above which a timeout is classified as user error (4XX).
+  # CLI flag: -querier.timeout-classification-eval-threshold
+  [timeout_classification_eval_threshold: <duration> | default = 1m30s]
 ```
 
 ### `blocks_storage_config`

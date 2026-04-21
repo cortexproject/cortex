@@ -143,9 +143,6 @@ type Config struct {
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
 
-	// Injected at runtime and read from querier config.
-	QueryIngestersWithin time.Duration `yaml:"-"`
-
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
 
@@ -1336,6 +1333,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		failedHistogramsCount                  = 0
 		succeededExemplarsCount                = 0
 		failedExemplarsCount                   = 0
+		startTimestampSampleAppendFailCount    = 0
+		startTimestampHistogramAppendFailCount = 0
 		startAppend                            = time.Now()
 		sampleOutOfBoundsCount                 = 0
 		sampleOutOfOrderCount                  = 0
@@ -1460,6 +1459,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		for _, s := range ts.Samples {
 			var err error
 
+			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
+				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
+				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+					startTimestampSampleAppendFailCount++
+					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
+				}
+			}
+
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
@@ -1504,6 +1511,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
 				} else {
 					h = cortexpb.HistogramProtoToHistogram(hp)
+				}
+
+				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
+					// TODO(SungJin1212): Change to AppendHistogramSTZeroSample after update the Prometheus v3.9.0+
+					if _, err = app.AppendHistogramCTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+						startTimestampHistogramAppendFailCount++
+						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
+					}
 				}
 
 				if ref != 0 {
@@ -1586,6 +1601,15 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// At this point all samples have been added to the appender, so we can track the time it took.
 	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
+
+	if startTimestampSampleAppendFailCount > 0 || startTimestampHistogramAppendFailCount > 0 {
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log(
+			"msg", "failed to append start timestamp in push",
+			"user", userID,
+			"sample_failures", startTimestampSampleAppendFailCount,
+			"histogram_failures", startTimestampHistogramAppendFailCount,
+		)
+	}
 
 	startCommit := time.Now()
 	if err := app.Commit(); err != nil {
@@ -1926,7 +1950,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2042,7 +2066,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2174,7 +2198,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return cleanup, err
 	}

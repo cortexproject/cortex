@@ -161,7 +161,7 @@ func (m *mergeQuerier) LabelValues(ctx context.Context, name string, hints *stor
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
-		return queriers[0].LabelValues(ctx, name, hints, matchers...)
+		return queriers[0].LabelValues(user.InjectOrgID(ctx, ids[0]), name, hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelValues")
 	defer log.Finish()
@@ -202,7 +202,7 @@ func (m *mergeQuerier) LabelNames(ctx context.Context, hints *storage.LabelHints
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
-		return queriers[0].LabelNames(ctx, hints, matchers...)
+		return queriers[0].LabelNames(user.InjectOrgID(ctx, ids[0]), hints, matchers...)
 	}
 	log, _ := spanlogger.New(ctx, "mergeQuerier.LabelNames")
 	defer log.Finish()
@@ -349,7 +349,7 @@ func (m *mergeQuerier) Select(ctx context.Context, sortSeries bool, hints *stora
 
 	// by pass when only single querier is returned
 	if m.byPassWithSingleQuerier && len(queriers) == 1 {
-		return queriers[0].Select(ctx, sortSeries, hints, matchers...)
+		return queriers[0].Select(user.InjectOrgID(ctx, ids[0]), sortSeries, hints, matchers...)
 	}
 
 	log, ctx := spanlogger.New(ctx, "mergeQuerier.Select")

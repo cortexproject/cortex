@@ -79,6 +79,10 @@ compactor:
 frontend_worker:
   match_max_concurrent: true
 
+# https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config
+limits:
+  cardinality_api_enabled: true
+
 # https://cortexmetrics.io/docs/configuration/configuration-file/#ruler_config
 ruler:
   enable_api: true

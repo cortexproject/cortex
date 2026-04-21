@@ -36,6 +36,7 @@ import (
 	grpc_metadata "google.golang.org/grpc/metadata"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/series"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querysharding"
@@ -1239,4 +1240,204 @@ func isRetryableError(err error) bool {
 	default:
 		return false
 	}
+}
+
+// BlocksCardinality queries store gateways for cardinality statistics from compacted blocks.
+// It returns the aggregated CardinalityResponse, whether the results are approximated (due to
+// overlapping blocks), and any error.
+func (q *BlocksStoreQueryable) BlocksCardinality(ctx context.Context, userID string, minT, maxT int64, limit int32) (*ingester_client.CardinalityResponse, bool, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BlocksStoreQueryable.BlocksCardinality")
+	defer spanLog.Finish()
+
+	sq := &blocksStoreQuerier{
+		minT:                                    minT,
+		maxT:                                    maxT,
+		finder:                                  q.finder,
+		stores:                                  q.stores,
+		metrics:                                 q.metrics,
+		limits:                                  q.limits,
+		consistency:                             q.consistency,
+		logger:                                  q.logger,
+		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
+	}
+
+	var (
+		resMtx       sync.Mutex
+		resResps     []*storegatewaypb.CardinalityResponse
+		approximated bool
+	)
+
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error) {
+		resps, queriedBlocks, err, retryableError := sq.fetchCardinalityFromStores(spanCtx, userID, clients, minT, maxT, limit)
+		if err != nil {
+			return nil, err, retryableError
+		}
+
+		resMtx.Lock()
+		resResps = append(resResps, resps...)
+		resMtx.Unlock()
+
+		return queriedBlocks, nil, retryableError
+	}
+
+	if err := sq.queryWithConsistencyCheck(spanCtx, spanLog, minT, maxT, nil, userID, queryFunc); err != nil {
+		// If the consistency check fails (missing blocks), we still return partial results
+		// with approximated=true rather than failing entirely.
+		if len(resResps) == 0 {
+			return nil, false, err
+		}
+		approximated = true
+	}
+
+	// Aggregate results from all store gateways.
+	result := aggregateBlocksCardinalityResponses(resResps, int(limit))
+
+	return result, approximated, nil
+}
+
+// fetchCardinalityFromStores concurrently fetches cardinality statistics from store gateway clients.
+func (q *blocksStoreQuerier) fetchCardinalityFromStores(
+	ctx context.Context,
+	userID string,
+	clients map[BlocksStoreClient][]ulid.ULID,
+	minT int64,
+	maxT int64,
+	limit int32,
+) ([]*storegatewaypb.CardinalityResponse, []ulid.ULID, error, error) {
+	var (
+		reqCtx        = grpc_metadata.AppendToOutgoingContext(ctx, cortex_tsdb.TenantIDExternalLabel, userID)
+		g, gCtx       = errgroup.WithContext(reqCtx)
+		mtx           = sync.Mutex{}
+		resps         = []*storegatewaypb.CardinalityResponse{}
+		queriedBlocks = []ulid.ULID(nil)
+		spanLog       = spanlogger.FromContext(ctx)
+		merrMtx       = sync.Mutex{}
+		merr          = multierror.MultiError{}
+	)
+
+	for c, blockIDs := range clients {
+		g.Go(func() error {
+			// Convert block ULIDs to bytes for the request.
+			blockIDBytes := make([][]byte, len(blockIDs))
+			for i, id := range blockIDs {
+				b := id // copy
+				blockIDBytes[i] = b[:]
+			}
+
+			req := &storegatewaypb.CardinalityRequest{
+				Limit:    limit,
+				MinTime:  minT,
+				MaxTime:  maxT,
+				BlockIds: blockIDBytes,
+			}
+
+			resp, err := c.Cardinality(gCtx, req)
+			if err != nil {
+				if isRetryableError(err) || status.Code(err) == codes.Unimplemented {
+					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch cardinality from %s due to retryable error", c.RemoteAddress()))
+					merrMtx.Lock()
+					merr.Add(err)
+					merrMtx.Unlock()
+					return nil
+				}
+
+				s, ok := status.FromError(err)
+				if !ok {
+					s, ok = status.FromError(errors.Cause(err))
+				}
+
+				if ok {
+					if s.Code() == codes.ResourceExhausted {
+						return validation.LimitError(s.Message())
+					}
+					if s.Code() == codes.PermissionDenied {
+						return validation.AccessDeniedError(s.Message())
+					}
+				}
+				return errors.Wrapf(err, "failed to fetch cardinality from %s", c.RemoteAddress())
+			}
+
+			// Parse queried blocks from response.
+			myQueriedBlocks := make([]ulid.ULID, 0, len(resp.QueriedBlocks))
+			for _, b := range resp.QueriedBlocks {
+				if len(b) != len(ulid.ULID{}) {
+					continue
+				}
+				var id ulid.ULID
+				copy(id[:], b)
+				myQueriedBlocks = append(myQueriedBlocks, id)
+			}
+
+			level.Debug(spanLog).Log("msg", "received cardinality from store-gateway",
+				"instance", c.RemoteAddress(),
+				"num_series", resp.NumSeries,
+				"requested_blocks", len(blockIDs),
+				"queried_blocks", len(myQueriedBlocks))
+
+			mtx.Lock()
+			resps = append(resps, resp)
+			queriedBlocks = append(queriedBlocks, myQueriedBlocks...)
+			mtx.Unlock()
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, nil, err, merr.Err()
+	}
+
+	return resps, queriedBlocks, nil, merr.Err()
+}
+
+// aggregateBlocksCardinalityResponses merges cardinality responses from multiple store gateways.
+// No RF division is applied since each block is sent to exactly one store gateway.
+func aggregateBlocksCardinalityResponses(resps []*storegatewaypb.CardinalityResponse, limit int) *ingester_client.CardinalityResponse {
+	var totalNumSeries uint64
+	seriesByMetric := make(map[string]uint64)
+	labelValueCounts := make(map[string]uint64)
+	seriesByPair := make(map[string]uint64)
+
+	for _, resp := range resps {
+		totalNumSeries += resp.NumSeries
+
+		for _, item := range resp.SeriesCountByMetricName {
+			seriesByMetric[item.Name] += item.Value
+		}
+		for _, item := range resp.LabelValueCountByLabelName {
+			if item.Value > labelValueCounts[item.Name] {
+				labelValueCounts[item.Name] = item.Value
+			}
+		}
+		for _, item := range resp.SeriesCountByLabelValuePair {
+			seriesByPair[item.Name] += item.Value
+		}
+	}
+
+	return &ingester_client.CardinalityResponse{
+		NumSeries:                   totalNumSeries,
+		SeriesCountByMetricName:     sortAndTruncateStatItems(seriesByMetric, limit),
+		LabelValueCountByLabelName:  sortAndTruncateStatItems(labelValueCounts, limit),
+		SeriesCountByLabelValuePair: sortAndTruncateStatItems(seriesByPair, limit),
+	}
+}
+
+// sortAndTruncateStatItems sorts items descending by value and returns the top N.
+func sortAndTruncateStatItems(items map[string]uint64, limit int) []*cortexpb.CardinalityStatItem {
+	result := make([]*cortexpb.CardinalityStatItem, 0, len(items))
+	for name, value := range items {
+		result = append(result, &cortexpb.CardinalityStatItem{
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Value > result[j].Value
+	})
+
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+	return result
 }

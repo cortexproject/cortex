@@ -6,16 +6,20 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -26,6 +30,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/thanos-io/thanos/pkg/store"
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
@@ -33,8 +38,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
@@ -49,6 +56,7 @@ type BucketStores interface {
 	storepb.StoreServer
 	SyncBlocks(ctx context.Context) error
 	InitialSync(ctx context.Context) error
+	Cardinality(ctx context.Context, req *storegatewaypb.CardinalityRequest) (*storegatewaypb.CardinalityResponse, error)
 }
 
 // ThanosBucketStores is a multi-tenant wrapper of Thanos BucketStore.
@@ -445,6 +453,211 @@ func (u *ThanosBucketStores) LabelValues(ctx context.Context, req *storepb.Label
 	}
 
 	return store.LabelValues(ctx, req)
+}
+
+// Cardinality returns cardinality statistics for specific blocks owned by a tenant.
+func (u *ThanosBucketStores) Cardinality(ctx context.Context, req *storegatewaypb.CardinalityRequest) (*storegatewaypb.CardinalityResponse, error) {
+	spanLog, spanCtx := spanlogger.New(ctx, "BucketStores.Cardinality")
+	defer spanLog.Finish()
+
+	userID := getUserIDFromGRPCContext(spanCtx)
+	if userID == "" {
+		return nil, fmt.Errorf("no userID")
+	}
+
+	err := u.getStoreError(userID)
+	if err != nil {
+		userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
+		if cortex_errors.ErrorIs(err, userBkt.IsAccessDeniedErr) {
+			return nil, httpgrpc.Errorf(int(codes.PermissionDenied), "store error: %s", err)
+		}
+		return nil, err
+	}
+
+	userStore := u.getStore(userID)
+	if userStore == nil {
+		return &storegatewaypb.CardinalityResponse{}, nil
+	}
+
+	// Parse requested block IDs.
+	requestedBlocks := make([]ulid.ULID, 0, len(req.BlockIds))
+	for _, b := range req.BlockIds {
+		if len(b) != 16 {
+			continue
+		}
+		var id ulid.ULID
+		copy(id[:], b)
+		requestedBlocks = append(requestedBlocks, id)
+	}
+
+	// Build block hints once, reused for the Series request.
+	blockRegex := buildBlockIDRegex(requestedBlocks)
+
+	// Use Series with SkipChunks=true to compute all cardinality statistics in a
+	// single pass: per-metric series counts, per-label-value-pair series counts,
+	// label value cardinality per label name, and total series count.
+	countingSrv := newCardinalityCountingServer(spanCtx)
+
+	// Build series request hints to filter by requested blocks.
+	var seriesHints *types.Any
+	if blockRegex != "" {
+		hints := &hintspb.SeriesRequestHints{
+			BlockMatchers: []storepb.LabelMatcher{
+				{
+					Type:  storepb.LabelMatcher_RE,
+					Name:  block.BlockIDLabel,
+					Value: blockRegex,
+				},
+			},
+		}
+		seriesHints, err = types.MarshalAny(hints)
+		if err != nil {
+			return nil, errors.Wrap(err, "marshal series hints")
+		}
+	}
+
+	seriesReq := &storepb.SeriesRequest{
+		MinTime: req.MinTime,
+		MaxTime: req.MaxTime,
+		Matchers: []storepb.LabelMatcher{
+			{
+				Type:  storepb.LabelMatcher_NEQ,
+				Name:  labels.MetricName,
+				Value: "",
+			},
+		},
+		SkipChunks: true,
+		Hints:      seriesHints,
+	}
+
+	if seriesErr := userStore.Series(seriesReq, countingSrv); seriesErr != nil {
+		level.Warn(spanLog).Log("msg", "failed to fetch series for cardinality counting", "err", seriesErr)
+	}
+
+	// Build the response from the counting server's aggregated data.
+	resp := &storegatewaypb.CardinalityResponse{
+		NumSeries: countingSrv.numSeries,
+	}
+
+	// seriesCountByMetricName from the counting server.
+	for name, count := range countingSrv.seriesByMetric {
+		resp.SeriesCountByMetricName = append(resp.SeriesCountByMetricName, &cortexpb.CardinalityStatItem{
+			Name:  name,
+			Value: count,
+		})
+	}
+	resp.SeriesCountByMetricName = sortAndTruncateStatItems(resp.SeriesCountByMetricName, int(req.Limit))
+
+	// labelValueCountByLabelName from the counting server.
+	for name, count := range countingSrv.distinctLabelValueCounts() {
+		resp.LabelValueCountByLabelName = append(resp.LabelValueCountByLabelName, &cortexpb.CardinalityStatItem{
+			Name:  name,
+			Value: count,
+		})
+	}
+
+	// seriesCountByLabelValuePair from the counting server.
+	for pair, count := range countingSrv.seriesByLabelPair {
+		resp.SeriesCountByLabelValuePair = append(resp.SeriesCountByLabelValuePair, &cortexpb.CardinalityStatItem{
+			Name:  pair,
+			Value: count,
+		})
+	}
+	resp.SeriesCountByLabelValuePair = sortAndTruncateStatItems(resp.SeriesCountByLabelValuePair, int(req.Limit))
+
+	// Set queried blocks in response.
+	for _, id := range requestedBlocks {
+		b := id // copy
+		resp.QueriedBlocks = append(resp.QueriedBlocks, b[:])
+	}
+
+	level.Debug(spanLog).Log("msg", "computed cardinality", "user", userID,
+		"num_series", countingSrv.numSeries,
+		"num_metrics", len(countingSrv.seriesByMetric),
+		"queried_blocks", len(requestedBlocks))
+
+	return resp, nil
+}
+
+// cardinalityCountingServer is a lightweight in-memory gRPC server that counts
+// series by metric name, label-value pair, and distinct values per label name,
+// without retaining series data.
+type cardinalityCountingServer struct {
+	storepb.Store_SeriesServer
+	ctx context.Context
+
+	numSeries         uint64
+	seriesByMetric    map[string]uint64
+	seriesByLabelPair map[string]uint64
+	labelValueCounts  map[string]map[string]struct{} // label name -> set of distinct values
+}
+
+func newCardinalityCountingServer(ctx context.Context) *cardinalityCountingServer {
+	return &cardinalityCountingServer{
+		ctx:               ctx,
+		seriesByMetric:    make(map[string]uint64),
+		seriesByLabelPair: make(map[string]uint64),
+		labelValueCounts:  make(map[string]map[string]struct{}),
+	}
+}
+
+func (s *cardinalityCountingServer) Send(r *storepb.SeriesResponse) error {
+	series := r.GetSeries()
+	if series == nil {
+		return nil
+	}
+	s.numSeries++
+	for _, lbl := range series.Labels {
+		if lbl.Name == labels.MetricName {
+			s.seriesByMetric[lbl.Value]++
+		}
+		s.seriesByLabelPair[lbl.Name+"="+lbl.Value]++
+
+		// Track distinct values per label name.
+		vals, ok := s.labelValueCounts[lbl.Name]
+		if !ok {
+			vals = make(map[string]struct{})
+			s.labelValueCounts[lbl.Name] = vals
+		}
+		vals[lbl.Value] = struct{}{}
+	}
+	return nil
+}
+
+func (s *cardinalityCountingServer) Context() context.Context {
+	return s.ctx
+}
+
+// distinctLabelValueCounts returns the number of distinct values per label name.
+func (s *cardinalityCountingServer) distinctLabelValueCounts() map[string]uint64 {
+	result := make(map[string]uint64, len(s.labelValueCounts))
+	for name, vals := range s.labelValueCounts {
+		result[name] = uint64(len(vals))
+	}
+	return result
+}
+
+// sortAndTruncateStatItems sorts items by value descending and truncates to limit.
+func sortAndTruncateStatItems(items []*cortexpb.CardinalityStatItem, limit int) []*cortexpb.CardinalityStatItem {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].Value > items[j].Value
+	})
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items
+}
+
+// buildBlockIDRegex creates a regex pattern matching the given block ULIDs.
+func buildBlockIDRegex(blockIDs []ulid.ULID) string {
+	if len(blockIDs) == 0 {
+		return ""
+	}
+	strs := make([]string, len(blockIDs))
+	for i, id := range blockIDs {
+		strs[i] = id.String()
+	}
+	return strings.Join(strs, "|")
 }
 
 // scanUsers in the bucket and return the list of found users. It includes active and deleting users

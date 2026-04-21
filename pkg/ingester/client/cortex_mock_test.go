@@ -81,3 +81,8 @@ func (m *IngesterServerMock) MetricsMetadata(ctx context.Context, r *MetricsMeta
 	args := m.Called(ctx, r)
 	return args.Get(0).(*MetricsMetadataResponse), args.Error(1)
 }
+
+func (m *IngesterServerMock) Cardinality(ctx context.Context, r *CardinalityRequest) (*CardinalityResponse, error) {
+	args := m.Called(ctx, r)
+	return args.Get(0).(*CardinalityResponse), args.Error(1)
+}

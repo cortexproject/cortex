@@ -1390,6 +1390,9 @@ func (m *errDistributor) MetricsForLabelMatchersStream(ctx context.Context, from
 func (m *errDistributor) MetricsMetadata(ctx context.Context, request *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	return nil, errDistributorError
 }
+func (m *errDistributor) Cardinality(ctx context.Context, req *client.CardinalityRequest) (*client.CardinalityResponse, error) {
+	return nil, errDistributorError
+}
 
 type emptyChunkStore struct {
 	sync.Mutex
@@ -1445,6 +1448,9 @@ func (d *emptyDistributor) MetricsForLabelMatchersStream(ctx context.Context, fr
 
 func (d *emptyDistributor) MetricsMetadata(ctx context.Context, request *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error) {
 	return nil, nil
+}
+func (d *emptyDistributor) Cardinality(ctx context.Context, req *client.CardinalityRequest) (*client.CardinalityResponse, error) {
+	return &client.CardinalityResponse{}, nil
 }
 
 type mockStore interface {

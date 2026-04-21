@@ -5022,6 +5022,32 @@
           "type": "boolean",
           "x-cli-flag": "alertmanager.receivers-firewall-block-private-addresses"
         },
+        "cardinality_api_enabled": {
+          "default": false,
+          "description": "[Experimental] Enables the per-tenant cardinality API endpoint. When disabled, the endpoint returns HTTP 403.",
+          "type": "boolean",
+          "x-cli-flag": "querier.cardinality-api-enabled"
+        },
+        "cardinality_max_concurrent_requests": {
+          "default": 2,
+          "description": "[Experimental] Maximum number of concurrent cardinality requests per tenant. Excess requests are rejected with HTTP 429.",
+          "type": "number",
+          "x-cli-flag": "querier.cardinality-max-concurrent-requests"
+        },
+        "cardinality_max_query_range": {
+          "default": "1d",
+          "description": "[Experimental] Maximum allowed time range (end - start) for source=blocks cardinality queries.",
+          "type": "string",
+          "x-cli-flag": "querier.cardinality-max-query-range",
+          "x-format": "duration"
+        },
+        "cardinality_query_timeout": {
+          "default": "1m",
+          "description": "[Experimental] Per-request timeout for cardinality computation. On timeout, partial results are returned.",
+          "type": "string",
+          "x-cli-flag": "querier.cardinality-query-timeout",
+          "x-format": "duration"
+        },
         "compactor_blocks_retention_period": {
           "default": "0s",
           "description": "Delete blocks containing samples older than the specified retention period. 0 to disable.",

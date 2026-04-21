@@ -8104,3 +8104,169 @@ func TestIngester_DiscardOutOfOrderFlagIntegration(t *testing.T) {
 	require.NoError(t, iter.Err())
 	require.Equal(t, 1, sampleCount, "Should have exactly one sample stored")
 }
+
+func TestIngester_Cardinality_IncludesLocalBlocks(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.BlocksStorageConfig.TSDB.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour}
+	cfg.BlocksStorageConfig.TSDB.Retention = 24 * time.Hour
+
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	// Push samples for different metrics with different series counts.
+	now := time.Now().UnixMilli()
+	app := func(metricName, labelValue string) {
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, metricName, "instance", labelValue), 1, now)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	// metric_a: 3 series
+	app("metric_a", "inst_0")
+	app("metric_a", "inst_1")
+	app("metric_a", "inst_2")
+
+	// metric_b: 2 series
+	app("metric_b", "inst_0")
+	app("metric_b", "inst_1")
+
+	// Query cardinality from head only (no blocks yet).
+	resp, err := i.Cardinality(ctx, &client.CardinalityRequest{Limit: 10})
+	require.NoError(t, err)
+	assert.Equal(t, uint64(5), resp.NumSeries)
+
+	metricCounts := make(map[string]uint64)
+	for _, item := range resp.SeriesCountByMetricName {
+		metricCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(3), metricCounts["metric_a"])
+	assert.Equal(t, uint64(2), metricCounts["metric_b"])
+
+	// Force compaction to move head data into local blocks.
+	compactionCallbackCh := make(chan struct{})
+	i.TSDBState.forceCompactTrigger <- requestWithUsersAndCallback{users: nil, callback: compactionCallbackCh}
+	<-compactionCallbackCh
+
+	// Verify that blocks were created.
+	db := getTSDB(t, i, "test-user")
+	require.NotEmpty(t, db.Blocks(), "Expected at least one compacted block")
+
+	// Query cardinality again - should now include data from local blocks.
+	resp, err = i.Cardinality(ctx, &client.CardinalityRequest{Limit: 10})
+	require.NoError(t, err)
+
+	// Series count should reflect data from local blocks (head may be empty after compaction).
+	assert.GreaterOrEqual(t, resp.NumSeries, uint64(5))
+
+	metricCounts = make(map[string]uint64)
+	for _, item := range resp.SeriesCountByMetricName {
+		metricCounts[item.Name] = item.Value
+	}
+	assert.GreaterOrEqual(t, metricCounts["metric_a"], uint64(3))
+	assert.GreaterOrEqual(t, metricCounts["metric_b"], uint64(2))
+}
+
+func TestMergeCardinalityResponses(t *testing.T) {
+	a := &client.CardinalityResponse{
+		NumSeries: 10,
+		SeriesCountByMetricName: []*cortexpb.CardinalityStatItem{
+			{Name: "metric_a", Value: 5},
+			{Name: "metric_b", Value: 3},
+		},
+		LabelValueCountByLabelName: []*cortexpb.CardinalityStatItem{
+			{Name: "__name__", Value: 2},
+			{Name: "instance", Value: 3},
+		},
+		SeriesCountByLabelValuePair: []*cortexpb.CardinalityStatItem{
+			{Name: "__name__=metric_a", Value: 5},
+			{Name: "__name__=metric_b", Value: 3},
+		},
+	}
+
+	b := &client.CardinalityResponse{
+		NumSeries: 7,
+		SeriesCountByMetricName: []*cortexpb.CardinalityStatItem{
+			{Name: "metric_a", Value: 2},
+			{Name: "metric_c", Value: 4},
+		},
+		LabelValueCountByLabelName: []*cortexpb.CardinalityStatItem{
+			{Name: "__name__", Value: 3},
+			{Name: "pod", Value: 5},
+		},
+		SeriesCountByLabelValuePair: []*cortexpb.CardinalityStatItem{
+			{Name: "__name__=metric_a", Value: 2},
+			{Name: "__name__=metric_c", Value: 4},
+		},
+	}
+
+	result := mergeCardinalityResponses(a, b, 10)
+
+	// NumSeries: sum.
+	assert.Equal(t, uint64(17), result.NumSeries)
+
+	// SeriesCountByMetricName: sum per metric.
+	metricCounts := make(map[string]uint64)
+	for _, item := range result.SeriesCountByMetricName {
+		metricCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(7), metricCounts["metric_a"]) // 5+2
+	assert.Equal(t, uint64(3), metricCounts["metric_b"]) // 3+0
+	assert.Equal(t, uint64(4), metricCounts["metric_c"]) // 0+4
+
+	// LabelValueCountByLabelName: max per label.
+	labelCounts := make(map[string]uint64)
+	for _, item := range result.LabelValueCountByLabelName {
+		labelCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(3), labelCounts["__name__"]) // max(2,3)
+	assert.Equal(t, uint64(3), labelCounts["instance"]) // max(3,0)
+	assert.Equal(t, uint64(5), labelCounts["pod"])      // max(0,5)
+
+	// SeriesCountByLabelValuePair: sum per pair.
+	pairCounts := make(map[string]uint64)
+	for _, item := range result.SeriesCountByLabelValuePair {
+		pairCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(7), pairCounts["__name__=metric_a"]) // 5+2
+	assert.Equal(t, uint64(3), pairCounts["__name__=metric_b"]) // 3+0
+	assert.Equal(t, uint64(4), pairCounts["__name__=metric_c"]) // 0+4
+
+	// Verify results are sorted descending.
+	for i := 1; i < len(result.SeriesCountByMetricName); i++ {
+		assert.GreaterOrEqual(t, result.SeriesCountByMetricName[i-1].Value, result.SeriesCountByMetricName[i].Value)
+	}
+}
+
+func TestMergeCardinalityResponses_Truncation(t *testing.T) {
+	a := &client.CardinalityResponse{
+		NumSeries: 10,
+		SeriesCountByMetricName: []*cortexpb.CardinalityStatItem{
+			{Name: "metric_a", Value: 100},
+			{Name: "metric_b", Value: 50},
+			{Name: "metric_c", Value: 25},
+		},
+	}
+	b := &client.CardinalityResponse{
+		NumSeries: 5,
+		SeriesCountByMetricName: []*cortexpb.CardinalityStatItem{
+			{Name: "metric_d", Value: 10},
+		},
+	}
+
+	// Limit to top 2.
+	result := mergeCardinalityResponses(a, b, 2)
+	assert.Len(t, result.SeriesCountByMetricName, 2)
+	assert.Equal(t, "metric_a", result.SeriesCountByMetricName[0].Name)
+	assert.Equal(t, uint64(100), result.SeriesCountByMetricName[0].Value)
+	assert.Equal(t, "metric_b", result.SeriesCountByMetricName[1].Name)
+	assert.Equal(t, uint64(50), result.SeriesCountByMetricName[1].Value)
+}

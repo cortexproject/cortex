@@ -562,6 +562,31 @@ func (c *Client) LabelValuesRaw(label string, matches []string, startTime, endTi
 	return c.query(u.String(), headers)
 }
 
+// CardinalityRaw runs a cardinality request directly against the querier API.
+func (c *Client) CardinalityRaw(source string, limit int, start, end time.Time) (*http.Response, []byte, error) {
+	u := &url.URL{
+		Scheme: "http",
+		Path:   fmt.Sprintf("%s/api/prom/api/v1/cardinality", c.querierAddress),
+	}
+	q := u.Query()
+
+	if source != "" {
+		q.Set("source", source)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	if !start.IsZero() {
+		q.Set("start", FormatTime(start))
+	}
+	if !end.IsZero() {
+		q.Set("end", FormatTime(end))
+	}
+
+	u.RawQuery = q.Encode()
+	return c.query(u.String(), nil)
+}
+
 // RemoteRead runs a remote read query.
 func (c *Client) RemoteRead(matchers []*labels.Matcher, start, end time.Time, step time.Duration) (*prompb.ReadResponse, error) {
 	startMs := start.UnixMilli()

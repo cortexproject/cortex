@@ -41,6 +41,7 @@ type Distributor interface {
 	MetricsForLabelMatchers(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	MetricsForLabelMatchersStream(ctx context.Context, from, through model.Time, hint *storage.SelectHints, partialDataEnabled bool, matchers ...*labels.Matcher) ([]labels.Labels, error)
 	MetricsMetadata(ctx context.Context, req *client.MetricsMetadataRequest) ([]scrape.MetricMetadata, error)
+	Cardinality(ctx context.Context, req *client.CardinalityRequest) (*client.CardinalityResponse, error)
 }
 
 func newDistributorQueryable(distributor Distributor, streamingMetdata bool, labelNamesWithMatchers bool, iteratorFn chunkIteratorFunc, isPartialDataEnabled partialdata.IsCfgEnabledFunc, ingesterQueryMaxAttempts int, limits *validation.Overrides, nowFn func() time.Time) QueryableWithFilter {

@@ -46,6 +46,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -817,6 +818,86 @@ func setUserIDToGRPCContext(ctx context.Context, userID string) context.Context 
 	// We have to store it in the incoming metadata because we have to emulate the
 	// case it's coming from a gRPC request, while here we're running everything in-memory.
 	return metadata.NewIncomingContext(ctx, metadata.Pairs(cortex_tsdb.TenantIDExternalLabel, userID))
+}
+
+func TestBucketStores_Cardinality(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user-1"
+	ctx := context.Background()
+	cfg := prepareStorageConfig(t)
+	storageDir := t.TempDir()
+
+	// Create a block with multiple metrics having different series counts.
+	userDir := filepath.Join(storageDir, userID)
+	require.NoError(t, os.Mkdir(userDir, os.ModePerm))
+
+	tmpDir := t.TempDir()
+	db, err := tsdb.Open(tmpDir, promslog.NewNopLogger(), nil, tsdb.DefaultOptions(), nil)
+	require.NoError(t, err)
+
+	app := db.Appender(context.Background())
+	// metric_a: 3 series
+	for i := range 3 {
+		_, err = app.Append(0, labels.FromStrings(labels.MetricName, "metric_a", "instance", fmt.Sprintf("inst_%d", i)), 10, float64(i))
+		require.NoError(t, err)
+	}
+	// metric_b: 5 series
+	for i := range 5 {
+		_, err = app.Append(0, labels.FromStrings(labels.MetricName, "metric_b", "instance", fmt.Sprintf("inst_%d", i)), 10, float64(i))
+		require.NoError(t, err)
+	}
+	// metric_c: 1 series
+	_, err = app.Append(0, labels.FromStrings(labels.MetricName, "metric_c", "pod", "pod_0"), 10, 0)
+	require.NoError(t, err)
+	require.NoError(t, app.Commit())
+	require.NoError(t, db.Snapshot(userDir, true))
+	require.NoError(t, db.Close())
+
+	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, stores.InitialSync(ctx))
+
+	thanosStores := stores.(*ThanosBucketStores)
+	grpcCtx := setUserIDToGRPCContext(ctx, userID)
+	grpcCtx = user.InjectOrgID(grpcCtx, userID)
+
+	resp, err := thanosStores.Cardinality(grpcCtx, &storegatewaypb.CardinalityRequest{
+		Limit:   10,
+		MinTime: 0,
+		MaxTime: 100,
+	})
+	require.NoError(t, err)
+
+	// Verify total series count.
+	assert.Equal(t, uint64(9), resp.NumSeries) // 3 + 5 + 1
+
+	// Verify seriesCountByMetricName has real counts (not placeholder 1).
+	metricCounts := make(map[string]uint64)
+	for _, item := range resp.SeriesCountByMetricName {
+		metricCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(3), metricCounts["metric_a"])
+	assert.Equal(t, uint64(5), metricCounts["metric_b"])
+	assert.Equal(t, uint64(1), metricCounts["metric_c"])
+
+	// Verify seriesCountByMetricName is sorted descending.
+	for i := 1; i < len(resp.SeriesCountByMetricName); i++ {
+		assert.GreaterOrEqual(t, resp.SeriesCountByMetricName[i-1].Value, resp.SeriesCountByMetricName[i].Value)
+	}
+
+	// Verify labelValueCountByLabelName is populated.
+	labelCounts := make(map[string]uint64)
+	for _, item := range resp.LabelValueCountByLabelName {
+		labelCounts[item.Name] = item.Value
+	}
+	assert.Equal(t, uint64(3), labelCounts[labels.MetricName]) // metric_a, metric_b, metric_c
+
+	// Verify seriesCountByLabelValuePair is populated.
+	assert.NotEmpty(t, resp.SeriesCountByLabelValuePair)
 }
 
 func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {

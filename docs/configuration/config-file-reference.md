@@ -4311,6 +4311,26 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
+# [Experimental] Enables the per-tenant cardinality API endpoint. When disabled,
+# the endpoint returns HTTP 403.
+# CLI flag: -querier.cardinality-api-enabled
+[cardinality_api_enabled: <boolean> | default = false]
+
+# [Experimental] Maximum allowed time range (end - start) for source=blocks
+# cardinality queries.
+# CLI flag: -querier.cardinality-max-query-range
+[cardinality_max_query_range: <duration> | default = 1d]
+
+# [Experimental] Maximum number of concurrent cardinality requests per tenant.
+# Excess requests are rejected with HTTP 429.
+# CLI flag: -querier.cardinality-max-concurrent-requests
+[cardinality_max_concurrent_requests: <int> | default = 2]
+
+# [Experimental] Per-request timeout for cardinality computation. On timeout,
+# partial results are returned.
+# CLI flag: -querier.cardinality-query-timeout
+[cardinality_query_timeout: <duration> | default = 1m]
+
 # The maximum number of rows that can be fetched when querying parquet storage.
 # Each row maps to a series in a parquet file. This limit applies before
 # materializing chunks. 0 to disable.

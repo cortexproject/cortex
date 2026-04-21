@@ -1675,6 +1675,121 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 	return totalStats, nil
 }
 
+// Cardinality returns per-tenant cardinality statistics from ingesters.
+func (d *Distributor) Cardinality(ctx context.Context, req *ingester_client.CardinalityRequest) (*ingester_client.CardinalityResponse, error) {
+	replicationSet, err := d.GetIngestersForMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// All ingesters must respond for the RF-based aggregation to be accurate.
+	replicationSet.MaxErrors = 0
+
+	resps, err := d.ForReplicationSet(ctx, replicationSet, false, false, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {
+		return client.Cardinality(ctx, req)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	factor := d.ingestersRing.ReplicationFactor()
+	limit := int(req.Limit)
+
+	// Aggregate numSeries across all ingesters.
+	var totalNumSeries uint64
+	for _, resp := range resps {
+		r := resp.(*ingester_client.CardinalityResponse)
+		totalNumSeries += r.NumSeries
+	}
+	totalNumSeries /= uint64(factor)
+
+	// Aggregate seriesCountByMetricName: sum per metric, divide by RF, top N.
+	seriesByMetric := aggregateStatItems(resps, func(r *ingester_client.CardinalityResponse) []*cortexpb.CardinalityStatItem {
+		return r.SeriesCountByMetricName
+	})
+	seriesCountByMetricName := topNStats(seriesByMetric, factor, limit)
+
+	// Aggregate labelValueCountByLabelName: max per label (not affected by RF).
+	labelValueCounts := maxStatItems(resps, func(r *ingester_client.CardinalityResponse) []*cortexpb.CardinalityStatItem {
+		return r.LabelValueCountByLabelName
+	})
+	labelValueCountByLabelName := topNStatsByMax(labelValueCounts, limit)
+
+	// Aggregate seriesCountByLabelValuePair: sum per pair, divide by RF, top N.
+	seriesByPair := aggregateStatItems(resps, func(r *ingester_client.CardinalityResponse) []*cortexpb.CardinalityStatItem {
+		return r.SeriesCountByLabelValuePair
+	})
+	seriesCountByLabelValuePair := topNStats(seriesByPair, factor, limit)
+
+	return &ingester_client.CardinalityResponse{
+		NumSeries:                   totalNumSeries,
+		SeriesCountByMetricName:     seriesCountByMetricName,
+		LabelValueCountByLabelName:  labelValueCountByLabelName,
+		SeriesCountByLabelValuePair: seriesCountByLabelValuePair,
+	}, nil
+}
+
+// aggregateStatItems sums stat item values across all ingester responses using the provided extractor.
+func aggregateStatItems(resps []any, extract func(*ingester_client.CardinalityResponse) []*cortexpb.CardinalityStatItem) map[string]uint64 {
+	totals := make(map[string]uint64)
+	for _, resp := range resps {
+		r := resp.(*ingester_client.CardinalityResponse)
+		for _, item := range extract(r) {
+			totals[item.Name] += item.Value
+		}
+	}
+	return totals
+}
+
+// maxStatItems takes the maximum stat item value across all ingester responses using the provided extractor.
+func maxStatItems(resps []any, extract func(*ingester_client.CardinalityResponse) []*cortexpb.CardinalityStatItem) map[string]uint64 {
+	totals := make(map[string]uint64)
+	for _, resp := range resps {
+		r := resp.(*ingester_client.CardinalityResponse)
+		for _, item := range extract(r) {
+			if item.Value > totals[item.Name] {
+				totals[item.Name] = item.Value
+			}
+		}
+	}
+	return totals
+}
+
+// topNStats divides values by the replication factor, sorts descending, and returns the top N items.
+func topNStats(items map[string]uint64, replicationFactor, limit int) []*cortexpb.CardinalityStatItem {
+	return sortAndTruncateCardinalityItems(items, limit, func(v uint64) uint64 {
+		return v / uint64(replicationFactor)
+	})
+}
+
+// topNStatsByMax sorts descending by value and returns the top N items (no RF division).
+func topNStatsByMax(items map[string]uint64, limit int) []*cortexpb.CardinalityStatItem {
+	return sortAndTruncateCardinalityItems(items, limit, nil)
+}
+
+// sortAndTruncateCardinalityItems converts a map to sorted stat items, optionally transforming values.
+func sortAndTruncateCardinalityItems(items map[string]uint64, limit int, transform func(uint64) uint64) []*cortexpb.CardinalityStatItem {
+	result := make([]*cortexpb.CardinalityStatItem, 0, len(items))
+	for name, value := range items {
+		if transform != nil {
+			value = transform(value)
+		}
+		result = append(result, &cortexpb.CardinalityStatItem{
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Value > result[j].Value
+	})
+
+	if limit > 0 && len(result) > limit {
+		result = result[:limit]
+	}
+	return result
+}
+
 // AllUserStats returns statistics about all users.
 // Note it does not divide by the ReplicationFactor like UserStats()
 func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats, int, error) {

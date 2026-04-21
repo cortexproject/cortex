@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
@@ -194,6 +195,11 @@ func (u *ParquetBucketStores) LabelValues(ctx context.Context, req *storepb.Labe
 	}
 
 	return store.LabelValues(ctx, req)
+}
+
+// Cardinality is not supported for Parquet stores; returns empty response.
+func (u *ParquetBucketStores) Cardinality(_ context.Context, _ *storegatewaypb.CardinalityRequest) (*storegatewaypb.CardinalityResponse, error) {
+	return &storegatewaypb.CardinalityResponse{}, nil
 }
 
 // SyncBlocks implements BucketStores

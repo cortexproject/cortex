@@ -40,6 +40,7 @@ type ingesterMetrics struct {
 	ingestedExemplarsFail    prometheus.Counter
 	ingestedMetadataFail     prometheus.Counter
 	ingestedHistogramBuckets *prometheus.HistogramVec
+	ingestionDelaySeconds    *prometheus.HistogramVec
 	oooLabelsTotal           *prometheus.CounterVec
 	queries                  prometheus.Counter
 	queriedSamples           prometheus.Histogram
@@ -143,6 +144,14 @@ func newIngesterMetrics(r prometheus.Registerer,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1,
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
+		}, []string{"user"}),
+		ingestionDelaySeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_ingestion_delay_seconds",
+			Help:                            "Delay in seconds between sample ingestion time and sample timestamp.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
 		}, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_out_of_order_labels_total",
@@ -377,6 +386,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.ingestedHistogramBuckets.DeleteLabelValues(userID)
+	m.ingestionDelaySeconds.DeleteLabelValues(userID)
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)

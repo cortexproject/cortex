@@ -1819,6 +1819,9 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	seed := now.Unix()
 	rnd := rand.New(rand.NewSource(seed))
 
+	ctx := context.Background()
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
+
 	opts := []promqlsmith.Option{
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
 		promqlsmith.WithEnabledAggrs(enabledAggrs),

@@ -45,6 +45,7 @@ type PartitionCompactionGrouper struct {
 	blockFilesConcurrency    int
 	blocksFetchConcurrency   int
 	compactionConcurrency    int
+	totalGroupsPlanned       int
 
 	doRandomPick bool
 
@@ -114,6 +115,11 @@ func NewPartitionCompactionGrouper(
 
 // Groups function modified from https://github.com/cortexproject/cortex/pull/2616
 func (g *PartitionCompactionGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta) (res []*compact.Group, err error) {
+	remainingConcurrency := g.compactionConcurrency - g.totalGroupsPlanned
+	if remainingConcurrency <= 0 {
+		return nil, nil
+	}
+
 	// Check if this compactor is on the subring.
 	// If the compactor is not on the subring when using the userID as a identifier
 	// no plans generated below will be owned by the compactor so we can just return an empty array
@@ -140,7 +146,8 @@ func (g *PartitionCompactionGrouper) Groups(blocks map[ulid.ULID]*metadata.Meta)
 		return nil, errors.Wrap(err, "unable to generate compaction jobs")
 	}
 
-	pickedPartitionCompactionJobs := g.pickPartitionCompactionJob(partitionCompactionJobs)
+	pickedPartitionCompactionJobs := g.pickPartitionCompactionJob(partitionCompactionJobs, remainingConcurrency)
+	g.totalGroupsPlanned += len(pickedPartitionCompactionJobs)
 
 	return pickedPartitionCompactionJobs, nil
 }
@@ -624,7 +631,7 @@ func (g *PartitionCompactionGrouper) handleEmptyPartition(partitionedGroupInfo *
 	return nil
 }
 
-func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompactionJobs []*blocksGroupWithPartition) []*compact.Group {
+func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompactionJobs []*blocksGroupWithPartition, remainingConcurrency int) []*compact.Group {
 	var outGroups []*compact.Group
 	for _, partitionedGroup := range partitionCompactionJobs {
 		groupHash := partitionedGroup.groupHash
@@ -712,7 +719,7 @@ func (g *PartitionCompactionGrouper) pickPartitionCompactionJob(partitionCompact
 
 		outGroups = append(outGroups, thanosGroup)
 		level.Debug(partitionedGroupLogger).Log("msg", "added partition to compaction groups")
-		if len(outGroups) >= g.compactionConcurrency {
+		if len(outGroups) >= remainingConcurrency {
 			break
 		}
 	}
@@ -816,6 +823,7 @@ func NewCompletenessChecker(blocks map[ulid.ULID]*metadata.Meta, groups []blocks
 		}
 	}
 	previousTimeRanges := []int64{0}
+	smallestTr := timeRanges[0]
 	for _, tr := range timeRanges {
 	timeRangeLoop:
 		for rangeStart, status := range timeRangesStatus[tr] {
@@ -829,6 +837,15 @@ func NewCompletenessChecker(blocks map[ulid.ULID]*metadata.Meta, groups []blocks
 							continue timeRangeLoop
 						}
 						previousTrBlocks += previousTrStatus.numActiveBlocks
+					}
+				}
+			}
+			// Level-1 blocks are stored under tr=0; include them when evaluating the smallest time range
+			// so that level-1-only compaction is allowed (required for workloads that only have level-1 blocks).
+			if tr == smallestTr {
+				if level1Status, ok := timeRangesStatus[0]; ok {
+					if st, ok := level1Status[rangeStart]; ok {
+						previousTrBlocks += st.numActiveBlocks
 					}
 				}
 			}

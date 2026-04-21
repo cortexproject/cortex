@@ -418,6 +418,104 @@ func TestShuffleShardingGrouper_Groups(t *testing.T) {
 	}
 }
 
+func TestShuffleShardingGrouper_ShouldRespectCumulativeConcurrencyLimit(t *testing.T) {
+	block0hto1hUlid := ulid.MustNew(100, nil)
+	block1hto2hUlid := ulid.MustNew(101, nil)
+	block2hto3hUlid := ulid.MustNew(102, nil)
+	block3hto4hUlid := ulid.MustNew(103, nil)
+
+	blocks := map[ulid.ULID]*metadata.Meta{
+		block0hto1hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block0hto1hUlid, MinTime: 0, MaxTime: 1 * time.Hour.Milliseconds()},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block1hto2hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block1hto2hUlid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block2hto3hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block2hto3hUlid, MinTime: 2 * time.Hour.Milliseconds(), MaxTime: 3 * time.Hour.Milliseconds()},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+		block3hto4hUlid: {
+			BlockMeta: tsdb.BlockMeta{ULID: block3hto4hUlid, MinTime: 3 * time.Hour.Milliseconds(), MaxTime: 4 * time.Hour.Milliseconds()},
+			Thanos:    metadata.Thanos{Labels: map[string]string{"external": "1"}},
+		},
+	}
+
+	compactorCfg := &Config{
+		BlockRanges: []time.Duration{2 * time.Hour, 4 * time.Hour},
+	}
+
+	limits := &validation.Limits{}
+	overrides := validation.NewOverrides(*limits, nil)
+
+	rs := ring.ReplicationSet{
+		Instances: []ring.InstanceDesc{
+			{Addr: "test-addr"},
+		},
+	}
+	subring := &ring.RingMock{}
+	subring.On("GetAllHealthy", mock.Anything).Return(rs, nil)
+
+	r := &ring.RingMock{}
+	r.On("ShuffleShard", mock.Anything, mock.Anything).Return(subring, nil)
+
+	registerer := prometheus.NewPedanticRegistry()
+	blockVisitMarkerReadFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_block_visit_marker_read_failed",
+		Help: "Number of block visit marker file failed to be read.",
+	})
+	blockVisitMarkerWriteFailed := promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Name: "cortex_compactor_block_visit_marker_write_failed",
+		Help: "Number of block visit marker file failed to be written.",
+	})
+
+	bkt := &bucket.ClientMock{}
+	bkt.MockUpload(mock.Anything, nil)
+	bkt.MockGet(mock.Anything, "", nil)
+
+	metrics := newCompactorMetrics(registerer)
+
+	noCompactFilter := func() map[ulid.ULID]*metadata.NoCompactMark {
+		return nil
+	}
+
+	ctx := t.Context()
+	g := NewShuffleShardingGrouper(
+		ctx,
+		nil,
+		objstore.WithNoopInstr(bkt),
+		false,
+		true,
+		nil,
+		metadata.NoneFunc,
+		metrics.getSyncerMetrics("test-user"),
+		metrics,
+		*compactorCfg,
+		r,
+		"test-addr",
+		"test-compactor",
+		overrides,
+		"test-user",
+		10,
+		3,
+		1, // concurrency = 1
+		5*time.Minute,
+		blockVisitMarkerReadFailed,
+		blockVisitMarkerWriteFailed,
+		noCompactFilter,
+	)
+
+	result1, err := g.Groups(blocks)
+	require.NoError(t, err)
+	require.Len(t, result1, 1, "first Groups() call should return exactly 1 group")
+
+	result2, err := g.Groups(blocks)
+	require.NoError(t, err)
+	require.Len(t, result2, 0, "second Groups() call should return 0 groups when cumulative concurrency limit is reached")
+}
+
 func TestGroupBlocksByCompactableRanges(t *testing.T) {
 	tests := map[string]struct {
 		ranges   []int64

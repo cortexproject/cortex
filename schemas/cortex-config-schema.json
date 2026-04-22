@@ -1888,7 +1888,7 @@
                 },
                 "bucket_index_content_ttl": {
                   "default": "5m0s",
-                  "description": "How long to cache content of the bucket index.",
+                  "description": "How long to cache content of the bucket index. 0 disables caching",
                   "type": "string",
                   "x-cli-flag": "blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl",
                   "x-format": "duration"

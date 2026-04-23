@@ -540,6 +540,10 @@ type generatorURLTemplateData struct {
 }
 
 // executeGeneratorURLTemplate executes a Go text/template to produce a generator URL.
+// We intentionally use text/template instead of html/template because the output is a URL,
+// not HTML. HTML-escaping would corrupt URL characters (e.g., & → &amp;). The template is
+// configured per-tenant by the operator via runtime config, so the risk is limited to
+// self-harm (a tenant operator misconfiguring their own alert links).
 func executeGeneratorURLTemplate(tmplStr, externalURL, expr string) (string, error) {
 	tmpl, err := template.New("generator_url").Parse(tmplStr)
 	if err != nil {

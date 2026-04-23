@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"time"
 
@@ -377,6 +378,20 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		// for graceful shutdown of rules that are still in execution even in case the cortex context is canceled.
 		prometheusContext := user.InjectOrgID(context.WithoutCancel(ctx), userID)
 
+		// Resolve the per-tenant external URL, falling back to the global config.
+		// This is used both for alert annotation/label template expansion ({{ $externalURL }})
+		// and for generating the alert generator URL in NotifyFunc.
+		externalURL := cfg.ExternalURL.URL
+		externalURLStr := cfg.ExternalURL.String()
+		if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
+			externalURLStr = tenantURL
+			if parsed, err := url.Parse(tenantURL); err == nil {
+				externalURL = parsed
+			} else {
+				level.Warn(logger).Log("msg", "failed to parse per-tenant ruler external URL, using global", "user", userID, "url", tenantURL, "err", err)
+			}
+		}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
@@ -384,20 +399,16 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Queryable:   q,
 			QueryFunc:   queryFunc,
 			Context:     prometheusContext,
-			ExternalURL: cfg.ExternalURL.URL,
+			ExternalURL: externalURL,
 			NotifyFunc: SendAlerts(notifier, func(expr string) string {
-				externalURL := cfg.ExternalURL.String()
-				if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
-					externalURL = tenantURL
-				}
 				tmplStr := overrides.RulerAlertGeneratorURLTemplate(userID)
 				if tmplStr == "" {
-					return externalURL + strutil.TableLinkForExpression(expr)
+					return externalURLStr + strutil.TableLinkForExpression(expr)
 				}
-				result, err := executeGeneratorURLTemplate(tmplStr, externalURL, expr)
+				result, err := executeGeneratorURLTemplate(tmplStr, externalURLStr, expr)
 				if err != nil {
 					level.Warn(logger).Log("msg", "failed to execute generator URL template, falling back to prometheus format", "err", err)
-					return externalURL + strutil.TableLinkForExpression(expr)
+					return externalURLStr + strutil.TableLinkForExpression(expr)
 				}
 				return result
 			}),

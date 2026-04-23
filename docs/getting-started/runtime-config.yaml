@@ -11,7 +11,7 @@ overrides:
   tenant-a:
     ruler_external_url: "http://localhost:3000"
     ruler_alert_generator_url_template: >-
-      {{ .ExternalURL }}/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22cortex%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1
+      {{ .ExternalURL }}/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22tenant-a%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1
 
   # Tenant using Perses for alert generator URLs.
   # Clicking "Source" on an alert opens Perses explore view with

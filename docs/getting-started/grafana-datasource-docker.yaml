@@ -23,6 +23,7 @@ datasources:
     isDefault: true
   - name: Tenant A
     type: prometheus
+    uid: tenant-a
     access: proxy
     orgId: 1
     url: http://cortex:9009/api/prom

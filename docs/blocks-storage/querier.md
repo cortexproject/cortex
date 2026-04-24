@@ -317,14 +317,14 @@ querier:
   query_protection:
     rejection:
       threshold:
-        # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+        # EXPERIMENTAL: Max CPU utilization that this instance can reach before
         # rejecting new query request (across all tenants) in percentage,
         # between 0 and 1. monitored_resources config must include the resource
         # type. 0 to disable.
         # CLI flag: -querier.query-protection.rejection.threshold.cpu-utilization
         [cpu_utilization: <float> | default = 0]
 
-        # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+        # EXPERIMENTAL: Max heap utilization that this instance can reach before
         # rejecting new query request (across all tenants) in percentage,
         # between 0 and 1. monitored_resources config must include the resource
         # type. 0 to disable.

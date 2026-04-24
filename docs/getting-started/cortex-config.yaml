@@ -82,6 +82,14 @@ frontend_worker:
 # https://cortexmetrics.io/docs/configuration/configuration-file/#ruler_config
 ruler:
   enable_api: true
+  external_url: http://localhost:9009
+  alertmanager_url: http://localhost:9009/alertmanager
+
+# Per-tenant runtime configuration (hot-reloaded without restart).
+# This file configures per-tenant overrides such as custom alert generator
+# URL templates for Grafana, Perses, or any metrics explorer.
+runtime_config:
+  file: /config/runtime-config.yaml
 
 # https://cortexmetrics.io/docs/configuration/configuration-file/#ruler_storage_config
 ruler_storage:

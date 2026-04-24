@@ -384,17 +384,19 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 
 endif
 
-# Build both arm64 and amd64 images, so that we can test deb/rpm packages for both architectures.
-packaging/rpm/centos-systemd/$(UPTODATE): packaging/rpm/centos-systemd/Dockerfile
-	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+# Build test images for the architectures specified by ARCHS.
+packaging/rpm/rockylinux-systemd/$(UPTODATE): packaging/rpm/rockylinux-systemd/Dockerfile
+	@for arch in $(ARCHS); do \
+		$(SUDO) docker build --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$$arch $(@D)/ ; \
+	done
 	touch $@
 
 packaging/deb/debian-systemd/$(UPTODATE): packaging/deb/debian-systemd/Dockerfile
-	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	@for arch in $(ARCHS); do \
+		$(SUDO) docker build --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$$arch $(@D)/ ; \
+	done
 	touch $@
 
 .PHONY: test-packages
-test-packages: packages packaging/rpm/centos-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
-	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION)
+test-packages: packages packaging/rpm/rockylinux-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
+	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION) $(ARCHS)

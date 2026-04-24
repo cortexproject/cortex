@@ -402,6 +402,11 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			return globalExternalURLStr
 		}
 
+		// Cache for the parsed generator URL template. The closure below is called
+		// on every alert send; caching avoids re-parsing the template each time.
+		// The cache is invalidated if the template string changes via runtime config.
+		tmplCache := &generatorURLTemplateCache{}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
@@ -416,7 +421,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 				if tmplStr == "" {
 					return externalURLStr + strutil.TableLinkForExpression(expr)
 				}
-				result, err := executeGeneratorURLTemplate(tmplStr, externalURLStr, expr)
+				result, err := executeGeneratorURLTemplate(tmplCache, tmplStr, externalURLStr, expr)
 				if err != nil {
 					level.Warn(logger).Log("msg", "failed to execute generator URL template, falling back to prometheus format", "err", err)
 					return externalURLStr + strutil.TableLinkForExpression(expr)

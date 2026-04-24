@@ -2780,7 +2780,8 @@ func TestSendAlerts(t *testing.T) {
 				},
 			},
 			generatorURLFn: func(expr string) string {
-				result, _ := executeGeneratorURLTemplate(
+				cache := &generatorURLTemplateCache{}
+				result, _ := executeGeneratorURLTemplate(cache,
 					"{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}",
 					"http://grafana.example.com", expr)
 				return result
@@ -2877,7 +2878,8 @@ func TestExecuteGeneratorURLTemplate(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := executeGeneratorURLTemplate(tc.tmplStr, tc.externalURL, tc.expr)
+			cache := &generatorURLTemplateCache{}
+			result, err := executeGeneratorURLTemplate(cache, tc.tmplStr, tc.externalURL, tc.expr)
 			if tc.expectErr {
 				require.Error(t, err)
 			} else {
@@ -2886,6 +2888,28 @@ func TestExecuteGeneratorURLTemplate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGeneratorURLTemplateCaching(t *testing.T) {
+	cache := &generatorURLTemplateCache{}
+
+	// First call parses and caches the template.
+	result1, err := executeGeneratorURLTemplate(cache, "{{ .ExternalURL }}/graph?expr={{ urlquery .Expression }}", "http://localhost:9090", "up")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:9090/graph?expr=up", result1)
+	cachedTmpl := cache.tmpl
+
+	// Same template string reuses the cached parsed template.
+	result2, err := executeGeneratorURLTemplate(cache, "{{ .ExternalURL }}/graph?expr={{ urlquery .Expression }}", "http://localhost:9090", "rate(http_requests_total[5m])")
+	require.NoError(t, err)
+	require.Equal(t, "http://localhost:9090/graph?expr=rate%28http_requests_total%5B5m%5D%29", result2)
+	require.Same(t, cachedTmpl, cache.tmpl, "expected cached template to be reused")
+
+	// Different template string invalidates the cache.
+	result3, err := executeGeneratorURLTemplate(cache, "{{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}", "http://grafana:3000", "up")
+	require.NoError(t, err)
+	require.Equal(t, "http://grafana:3000/explore?expr=up", result3)
+	require.NotSame(t, cachedTmpl, cache.tmpl, "expected cache to be invalidated for new template string")
 }
 
 // Tests for whether the Ruler is able to recover ALERTS_FOR_STATE state

@@ -539,12 +539,34 @@ type generatorURLTemplateData struct {
 	Expression  string
 }
 
+// generatorURLTemplateCache caches a parsed text/template keyed on the template string.
+// If the template string changes (e.g., via runtime config), the cache is invalidated.
+type generatorURLTemplateCache struct {
+	tmplStr string
+	tmpl    *template.Template
+}
+
+// getOrParse returns a parsed template, reusing the cached one if the template string
+// hasn't changed. This avoids re-parsing on every alert send.
+func (c *generatorURLTemplateCache) getOrParse(tmplStr string) (*template.Template, error) {
+	if c.tmpl != nil && c.tmplStr == tmplStr {
+		return c.tmpl, nil
+	}
+	tmpl, err := template.New("generator_url").Parse(tmplStr)
+	if err != nil {
+		return nil, err
+	}
+	c.tmplStr = tmplStr
+	c.tmpl = tmpl
+	return tmpl, nil
+}
+
 // executeGeneratorURLTemplate executes a Go text/template to produce a generator URL.
 // We intentionally use text/template instead of html/template because the output is a URL,
 // not HTML. HTML-escaping would corrupt URL characters (e.g., & → &amp;). The output is
 // validated to ensure it uses http/https scheme to prevent javascript: or data: injection.
-func executeGeneratorURLTemplate(tmplStr, externalURL, expr string) (string, error) {
-	tmpl, err := template.New("generator_url").Parse(tmplStr)
+func executeGeneratorURLTemplate(cache *generatorURLTemplateCache, tmplStr, externalURL, expr string) (string, error) {
+	tmpl, err := cache.getOrParse(tmplStr)
 	if err != nil {
 		return "", err
 	}

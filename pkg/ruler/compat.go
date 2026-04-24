@@ -378,18 +378,28 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		// for graceful shutdown of rules that are still in execution even in case the cortex context is canceled.
 		prometheusContext := user.InjectOrgID(context.WithoutCancel(ctx), userID)
 
-		// Resolve the per-tenant external URL, falling back to the global config.
-		// This is used both for alert annotation/label template expansion ({{ $externalURL }})
-		// and for generating the alert generator URL in NotifyFunc.
+		// Resolve the per-tenant external URL for ManagerOptions.ExternalURL.
+		// This *url.URL is set once at manager creation and cannot be refreshed
+		// without recreating the manager. It powers the {{ externalURL }} and
+		// {{ pathPrefix }} template functions (not {{ $externalURL }}).
 		externalURL := cfg.ExternalURL.URL
-		externalURLStr := cfg.ExternalURL.String()
 		if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
-			externalURLStr = tenantURL
 			if parsed, err := url.Parse(tenantURL); err == nil {
 				externalURL = parsed
 			} else {
 				level.Warn(logger).Log("msg", "failed to parse per-tenant ruler external URL, using global", "user", userID, "url", tenantURL, "err", err)
 			}
+		}
+
+		// resolveExternalURL returns the per-tenant external URL string,
+		// re-reading from runtime config on each call so that changes
+		// take effect without restarting the ruler.
+		globalExternalURLStr := cfg.ExternalURL.String()
+		resolveExternalURL := func() string {
+			if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
+				return tenantURL
+			}
+			return globalExternalURLStr
 		}
 
 		return rules.NewManager(&rules.ManagerOptions{
@@ -401,6 +411,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			Context:     prometheusContext,
 			ExternalURL: externalURL,
 			NotifyFunc: SendAlerts(notifier, func(expr string) string {
+				externalURLStr := resolveExternalURL()
 				tmplStr := overrides.RulerAlertGeneratorURLTemplate(userID)
 				if tmplStr == "" {
 					return externalURLStr + strutil.TableLinkForExpression(expr)

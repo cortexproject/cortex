@@ -147,7 +147,128 @@
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> alertmanager load alertmanager-config.yaml --id cortex --address http://cortex:9009
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="view-alertmanager-in-grafana">View Alertmanager in Grafana&lt;/h3>
 &lt;p>Configure Alertmanager notification policies in Grafana: &lt;a href="http://localhost:3000/alerting/notifications?search=&amp;amp;alertmanager=Cortex%20Alertmanager">Alerting → Notification policies&lt;/a>&lt;/p>
-&lt;h2 id="explore-and-experiment">Explore and Experiment&lt;/h2>
+&lt;h2 id="step-7-per-tenant-alert-generator-urls-optional">Step 7: Per-Tenant Alert Generator URLs (Optional)&lt;/h2>
+&lt;p>Cortex supports customizing the &amp;ldquo;Source&amp;rdquo; link on alerts per-tenant using Go &lt;code>text/template&lt;/code> strings. This lets each tenant&amp;rsquo;s alerts link back to their preferred metrics explorer — Grafana Explore, Perses, or any other tool.&lt;/p>
+&lt;p>The getting-started example includes a &lt;code>runtime-config.yaml&lt;/code> with two tenant configurations:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>tenant-a&lt;/strong>: Alert source links point to &lt;strong>Grafana Explore&lt;/strong>&lt;/li>
+&lt;li>&lt;strong>tenant-b&lt;/strong>: Alert source links point to &lt;strong>Perses&lt;/strong>&lt;/li>
+&lt;/ul>
+&lt;h3 id="how-it-works">How It Works&lt;/h3>
+&lt;p>The &lt;code>ruler_alert_generator_url_template&lt;/code> field accepts a Go template with two variables:&lt;/p>
+&lt;ul>
+&lt;li>&lt;code>{{ .ExternalURL }}&lt;/code> — the resolved external URL for this tenant (set via &lt;code>ruler_external_url&lt;/code>)&lt;/li>
+&lt;li>&lt;code>{{ .Expression }}&lt;/code> — the PromQL expression that triggered the alert&lt;/li>
+&lt;/ul>
+&lt;p>Built-in Go template functions like &lt;code>urlquery&lt;/code> are available for URL encoding.&lt;/p>
+&lt;p>Example for Grafana Explore:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_external_url&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;http://localhost:3000&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_alert_generator_url_template&lt;/span>: &amp;gt;-&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &lt;/span> {{ &lt;span style="color:#ae81ff">.ExternalURL }}/explore?expr={{ urlquery .Expression }}&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="try-it-out">Try It Out&lt;/h3>
+&lt;ol>
+&lt;li>&lt;strong>Load alertmanager configs&lt;/strong> for tenant-a and tenant-b:&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Upload alertmanager config for tenant-a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://localhost:9009/api/v1/alerts &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-a&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;Content-Type: application/yaml&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --data-binary @- &lt;span style="color:#e6db74">&amp;lt;&amp;lt;&amp;#39;EOF&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">alertmanager_config: |
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receivers:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - name: default-receiver
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> route:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receiver: default-receiver
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_wait: 5s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_interval: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Upload alertmanager config for tenant-b&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://localhost:9009/api/v1/alerts &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-b&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;Content-Type: application/yaml&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --data-binary @- &lt;span style="color:#e6db74">&amp;lt;&amp;lt;&amp;#39;EOF&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">alertmanager_config: |
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receivers:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - name: default-receiver
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> route:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> receiver: default-receiver
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_wait: 5s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> group_interval: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="2">
+&lt;li>&lt;strong>Load demo alert rules&lt;/strong> that fire immediately:&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Alert rules for tenant-a&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://localhost:9009/api/v1/rules/demo &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-a&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;Content-Type: application/yaml&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --data-binary @- &lt;span style="color:#e6db74">&amp;lt;&amp;lt;&amp;#39;EOF&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">name: demo_alerts
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">interval: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">rules:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: HighMemoryUsage
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: vector(85) &amp;gt; 80
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: warning
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Memory usage is above 80%&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: HighErrorRate
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: vector(5.2) &amp;gt; 5
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: critical
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Error rate exceeds 5%&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Alert rules for tenant-b&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -X POST http://localhost:9009/api/v1/rules/demo &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-b&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;Content-Type: application/yaml&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> --data-binary @- &lt;span style="color:#e6db74">&amp;lt;&amp;lt;&amp;#39;EOF&amp;#39;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">name: demo_alerts
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">interval: 10s
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">rules:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: DiskSpaceLow
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: vector(92) &amp;gt; 90
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: critical
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Disk space usage above 90%&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: HighLatency
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: vector(3.5) &amp;gt; 2
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: warning
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;P99 latency exceeds 2s&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="3">
+&lt;li>
+&lt;p>&lt;strong>Wait ~30 seconds&lt;/strong> for the ruler to evaluate rules and send alerts to the alertmanager.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>View alerts in Grafana&lt;/strong> at &lt;a href="http://localhost:3000/alerting/groups?groupBy=alertname">Alerting → Alert groups&lt;/a>:&lt;/p>
+&lt;ul>
+&lt;li>Select the &lt;strong>Tenant A Alertmanager&lt;/strong> datasource — click &amp;ldquo;See source&amp;rdquo; to open Grafana Explore&lt;/li>
+&lt;li>Select the &lt;strong>Tenant B Alertmanager&lt;/strong> datasource — click &amp;ldquo;See source&amp;rdquo; to open Perses&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Verify generator URLs&lt;/strong> via the API:&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-sh" data-lang="sh">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Tenant A: Grafana Explore URLs&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -s &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/alertmanager/api/v2/alerts&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-a&amp;#34;&lt;/span> | jq &lt;span style="color:#e6db74">&amp;#39;.[].generatorURL&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Tenant B: Perses URLs&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>curl -s &lt;span style="color:#e6db74">&amp;#34;http://localhost:9009/alertmanager/api/v2/alerts&amp;#34;&lt;/span> &lt;span style="color:#ae81ff">\
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#ae81ff">&lt;/span> -H &lt;span style="color:#e6db74">&amp;#34;X-Scope-OrgID: tenant-b&amp;#34;&lt;/span> | jq &lt;span style="color:#e6db74">&amp;#39;.[].generatorURL&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h2 id="explore-and-experiment">Explore and Experiment&lt;/h2>
 &lt;p>Now that everything is running, try these experiments to learn how Cortex works:&lt;/p>
 &lt;h3 id="experiment-1-stop-the-ingester">Experiment 1: Stop the Ingester&lt;/h3>
 &lt;p>Cortex runs all components in one process, so stopping Cortex simulates an ingester failure.&lt;/p>
@@ -213,6 +334,10 @@
 &lt;tr>
 &lt;td>&lt;code>cortex-config.yaml&lt;/code>&lt;/td>
 &lt;td>Cortex configuration (storage, limits, components)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>runtime-config.yaml&lt;/code>&lt;/td>
+&lt;td>Per-tenant runtime overrides (alert generator URL templates)&lt;/td>
 &lt;/tr>
 &lt;tr>
 &lt;td>&lt;code>prometheus-config.yaml&lt;/code>&lt;/td>

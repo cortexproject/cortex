@@ -51,9 +51,17 @@ function test_with_systemd() {
     container=$(docker run --platform="${platform}" --privileged --cgroupns=host --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:rw -td -v "$(pwd)"/dist:/opt/cortex -v "$(pwd)"/docs/configuration:/opt/config:ro -p 9009 "${image}")
     CONTAINERS+=("${container}")
 
-    # Wait briefly for systemd to initialize and verify container is running
-    sleep 2
-    if ! docker inspect --format='{{.State.Running}}' "${container}" | grep -q true; then
+    # Wait for container to be running (timeout 10 seconds)
+    timeout=10
+    while [ $timeout -gt 0 ]; do
+        if docker inspect --format='{{.State.Running}}' "${container}" | grep -q true; then
+            break
+        fi
+        sleep 1
+        timeout=$((timeout - 1))
+    done
+
+    if [ $timeout -eq 0 ]; then
         echo "Container failed to start:"
         docker logs "${container}" || true
         error "Container ${container} is not running"

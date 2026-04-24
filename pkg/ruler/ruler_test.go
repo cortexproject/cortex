@@ -2838,6 +2838,41 @@ func TestExecuteGeneratorURLTemplate(t *testing.T) {
 			expr:        "up",
 			expected:    "http://grafana:3000/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22up%22%7D%5D%7D",
 		},
+		{
+			name:        "javascript URI scheme is rejected",
+			tmplStr:     "javascript://alert('xss')",
+			externalURL: "http://localhost:3000",
+			expr:        "up",
+			expectErr:   true,
+		},
+		{
+			name:        "data URI scheme is rejected",
+			tmplStr:     "data:text/html,<script>alert('xss')</script>",
+			externalURL: "http://localhost:3000",
+			expr:        "up",
+			expectErr:   true,
+		},
+		{
+			name:        "fragment with script tag is rejected",
+			tmplStr:     "{{ .ExternalURL }}/explore#<script>alert('xss')</script>",
+			externalURL: "http://localhost:3000",
+			expr:        "up",
+			expectErr:   true,
+		},
+		{
+			name:        "missing host is rejected",
+			tmplStr:     "http:///path",
+			externalURL: "http://localhost:3000",
+			expr:        "up",
+			expectErr:   true,
+		},
+		{
+			name:        "valid URL with fragment is allowed",
+			tmplStr:     "{{ .ExternalURL }}/explore#tab=graph",
+			externalURL: "http://localhost:3000",
+			expr:        "up",
+			expected:    "http://localhost:3000/explore#tab=graph",
+		},
 	}
 
 	for _, tc := range testCases {

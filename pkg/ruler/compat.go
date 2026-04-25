@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -173,6 +175,8 @@ type RulesLimits interface {
 	RulerQueryOffset(userID string) time.Duration
 	DisabledRuleGroups(userID string) validation.DisabledRuleGroups
 	RulerExternalLabels(userID string) labels.Labels
+	RulerExternalURL(userID string) string
+	RulerAlertGeneratorURLTemplate(userID string) string
 }
 
 type QueryExecutor func(ctx context.Context, qs string, t time.Time) (promql.Vector, error)
@@ -374,15 +378,56 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		// for graceful shutdown of rules that are still in execution even in case the cortex context is canceled.
 		prometheusContext := user.InjectOrgID(context.WithoutCancel(ctx), userID)
 
+		// Resolve the per-tenant external URL for ManagerOptions.ExternalURL.
+		// This *url.URL is set once at manager creation and cannot be refreshed
+		// without recreating the manager. It powers the {{ externalURL }} and
+		// {{ pathPrefix }} template functions (not {{ $externalURL }}).
+		externalURL := cfg.ExternalURL.URL
+		if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
+			if parsed, err := url.Parse(tenantURL); err == nil {
+				externalURL = parsed
+			} else {
+				level.Warn(logger).Log("msg", "failed to parse per-tenant ruler external URL, using global", "user", userID, "url", tenantURL, "err", err)
+			}
+		}
+
+		// resolveExternalURL returns the per-tenant external URL string,
+		// re-reading from runtime config on each call so that changes
+		// take effect without restarting the ruler.
+		globalExternalURLStr := cfg.ExternalURL.String()
+		resolveExternalURL := func() string {
+			if tenantURL := overrides.RulerExternalURL(userID); tenantURL != "" {
+				return tenantURL
+			}
+			return globalExternalURLStr
+		}
+
+		// Cache for the parsed generator URL template. The closure below is called
+		// on every alert send; caching avoids re-parsing the template each time.
+		// The cache is invalidated if the template string changes via runtime config.
+		tmplCache := &generatorURLTemplateCache{}
+
 		return rules.NewManager(&rules.ManagerOptions{
 			Appendable: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
 				evalMetrics.FailedWritesVec.WithLabelValues(userID)),
-			Queryable:              q,
-			QueryFunc:              queryFunc,
-			Context:                prometheusContext,
-			ExternalURL:            cfg.ExternalURL.URL,
-			NotifyFunc:             SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			Queryable:   q,
+			QueryFunc:   queryFunc,
+			Context:     prometheusContext,
+			ExternalURL: externalURL,
+			NotifyFunc: SendAlerts(notifier, func(expr string) string {
+				externalURLStr := resolveExternalURL()
+				tmplStr := overrides.RulerAlertGeneratorURLTemplate(userID)
+				if tmplStr == "" {
+					return externalURLStr + strutil.TableLinkForExpression(expr)
+				}
+				result, err := executeGeneratorURLTemplate(tmplCache, tmplStr, externalURLStr, expr)
+				if err != nil {
+					level.Warn(logger).Log("msg", "failed to execute generator URL template, falling back to prometheus format", "err", err)
+					return externalURLStr + strutil.TableLinkForExpression(expr)
+				}
+				return result
+			}),
 			Logger:                 util_log.GoKitLogToSlog(log.With(logger, "user", userID)),
 			Registerer:             reg,
 			OutageTolerance:        cfg.OutageTolerance,

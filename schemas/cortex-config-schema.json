@@ -5521,6 +5521,10 @@
           "x-cli-flag": "frontend.results-cache-ttl",
           "x-format": "duration"
         },
+        "ruler_alert_generator_url_template": {
+          "description": "Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. If empty, uses default Prometheus /graph format.",
+          "type": "string"
+        },
         "ruler_evaluation_delay_duration": {
           "default": "0s",
           "description": "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.",
@@ -5533,6 +5537,10 @@
           "default": [],
           "description": "external labels for alerting rules",
           "type": "object"
+        },
+        "ruler_external_url": {
+          "description": "Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications.",
+          "type": "string"
         },
         "ruler_max_rule_groups_per_tenant": {
           "default": 0,

@@ -242,7 +242,7 @@ func runPRW2HandleFromPool(ctx context.Context, body []byte, contentLength int, 
 	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, req, util.RawSnappy); err != nil {
 		return err
 	}
-	_, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+	_, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID))
 	return err
 }
 
@@ -254,7 +254,7 @@ func runPRW2HandleFromScratch(ctx context.Context, body []byte, contentLength in
 	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, &req, util.RawSnappy); err != nil {
 		return err
 	}
-	_, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+	_, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
 	return err
 }
 

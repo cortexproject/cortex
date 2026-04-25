@@ -1,6 +1,7 @@
 package cortexpb
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"

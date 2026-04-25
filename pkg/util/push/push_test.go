@@ -58,12 +58,12 @@ func makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount int) *cortexpb.Preallo
 	symbols = append(symbols, "", "__name__", "bench_metric", "help text", "unit")
 
 	extraPairs := (symbolCount - baseSymbols) / 2
-	for i := 0; i < extraPairs; i++ {
+	for i := range extraPairs {
 		symbols = append(symbols, fmt.Sprintf("lbl_%d", i), fmt.Sprintf("val_%d", i))
 	}
 
 	labelsRefs := []uint32{1, 2} // __name__ = "bench_metric"
-	for i := 0; i < extraPairs; i++ {
+	for i := range extraPairs {
 		nameIdx := uint32(baseSymbols + i*2)
 		labelsRefs = append(labelsRefs, nameIdx, nameIdx+1)
 	}

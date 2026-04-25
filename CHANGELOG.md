@@ -1,8 +1,6 @@
 # Changelog
 
-## master / unreleased
-
-## 1.21.0 in progress
+## 1.21.0 2026-04-24
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
   * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.

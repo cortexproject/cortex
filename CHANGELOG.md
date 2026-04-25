@@ -1,8 +1,6 @@
 # Changelog
 
-## master / unreleased
-
-## 1.21.0 in progress
+## 1.21.0 2026-04-24
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
   * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.
@@ -71,6 +69,7 @@
 * [ENHANCEMENT] Parquet: Support sharded parquet files in parquet converter and queryable. #7189
 * [ENHANCEMENT] Compactor: Add graceful period for compaction groups to prevent compacting recently written blocks. #7182
 * [ENHANCEMENT] Query Engine: Add projection pushdown optimizer for improved query performance. #7141
+* [ENHANCEMENT] Distributor: Optimize memory allocations by pooling PreallocWriteRequestV2 and preserving the capacity of the Symbols slice during resets. #7404
 * [ENHANCEMENT] Ruler: Allow ExternalPusher and ExternalQueryable to be specified separately. #7224
 * [BUGFIX] Distributor: Add bounds checking for symbol references in Remote Write V2 requests to prevent panics when UnitRef or HelpRef exceed the symbols array length. #7290
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238

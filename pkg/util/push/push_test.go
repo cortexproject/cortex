@@ -24,9 +24,13 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+// benchMaxRecvMsgSize is the max message size used in benchmarks.
+const benchMaxRecvMsgSize = 100 * 1024 * 1024
 
 var (
 	testHistogram = histogram.Histogram{
@@ -42,6 +46,51 @@ var (
 	}
 )
 
+// makeV2ReqWithSeriesAndSymbols builds a PRW2 request with the given number of
+// series and symbols
+func makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount int) *cortexpb.PreallocWriteRequestV2 {
+	const baseSymbols = 5 // "", "__name__", "bench_metric", "help text", "unit"
+	if symbolCount < baseSymbols {
+		symbolCount = baseSymbols
+	}
+
+	symbols := make([]string, 0, symbolCount)
+	symbols = append(symbols, "", "__name__", "bench_metric", "help text", "unit")
+
+	extraPairs := (symbolCount - baseSymbols) / 2
+	for i := range extraPairs {
+		symbols = append(symbols, fmt.Sprintf("lbl_%d", i), fmt.Sprintf("val_%d", i))
+	}
+
+	labelsRefs := []uint32{1, 2} // __name__ = "bench_metric"
+	for i := range extraPairs {
+		nameIdx := uint32(baseSymbols + i*2)
+		labelsRefs = append(labelsRefs, nameIdx, nameIdx+1)
+	}
+
+	ts := make([]cortexpb.PreallocTimeseriesV2, 0, seriesNum)
+	for range seriesNum {
+		ts = append(ts, cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: labelsRefs,
+				Metadata: cortexpb.MetadataV2{
+					Type:    cortexpb.METRIC_TYPE_GAUGE,
+					HelpRef: 3,
+					UnitRef: 4,
+				},
+				Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+			},
+		})
+	}
+
+	return &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols:    symbols,
+			Timeseries: ts,
+		},
+	}
+}
+
 func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 	ts := make([]cortexpb.PreallocTimeseriesV2, 0, num)
 	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
@@ -50,8 +99,7 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 			TimeSeriesV2: &cortexpb.TimeSeriesV2{
 				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 				Metadata: cortexpb.MetadataV2{
-					Type: cortexpb.METRIC_TYPE_GAUGE,
-
+					Type:    cortexpb.METRIC_TYPE_GAUGE,
 					HelpRef: 15,
 					UnitRef: 16,
 				},
@@ -170,6 +218,73 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 			for b.Loop() {
 				_, err := convertV2RequestToV1(series, false)
 				require.NoError(b, err)
+			}
+		})
+	}
+}
+
+func makeEncodedPRW2Body(b *testing.B, seriesNum, symbolCount int) (body []byte, contentLength int) {
+	b.Helper()
+	series := makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount)
+	protobuf, err := series.Marshal()
+	if err != nil {
+		b.Fatal(err)
+	}
+	encoded := snappy.Encode(nil, protobuf)
+	return encoded, len(encoded)
+}
+
+// runPRW2HandleFromPool simulates handlePRW2 using the sync.Pool
+func runPRW2HandleFromPool(ctx context.Context, body []byte, contentLength int, overrides *validation.Overrides, userID string) error {
+	req := cortexpb.PreallocWriteRequestV2FromPool()
+	defer cortexpb.ReuseWriteRequestV2(req)
+
+	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, req, util.RawSnappy); err != nil {
+		return err
+	}
+	_, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID))
+	return err
+}
+
+// runPRW2HandleFromScratch simulates handlePRW2 without using the sync.Pool.
+func runPRW2HandleFromScratch(ctx context.Context, body []byte, contentLength int, overrides *validation.Overrides, userID string) error {
+	var req cortexpb.PreallocWriteRequestV2
+	defer cortexpb.ReuseWriteRequestV2(&req)
+
+	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, &req, util.RawSnappy); err != nil {
+		return err
+	}
+	_, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID))
+	return err
+}
+
+// Benchmark_HandlePRW2_PoolVsScratch compares two allocation strategies for the PRW2 parse path.
+//   - pool:    req := cortexpb.PreallocWriteRequestV2FromPool() + defer ReuseWriteRequestV2(req)
+//   - scratch: var req cortexpb.PreallocWriteRequestV2          + defer ReuseWriteRequestV2(&req)
+func Benchmark_HandlePRW2_PoolVsScratch(b *testing.B) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	userID := "bench-user"
+	seriesNum := 100
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for _, symCount := range []int{32, 128, 512, 2048, 4096} {
+		body, contentLength := makeEncodedPRW2Body(b, seriesNum, symCount)
+		name := fmt.Sprintf("symbols=%d", symCount)
+
+		b.Run("pool/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				require.NoError(b, runPRW2HandleFromPool(ctx, body, contentLength, overrides, userID))
+			}
+		})
+
+		b.Run("scratch/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				require.NoError(b, runPRW2HandleFromScratch(ctx, body, contentLength, overrides, userID))
 			}
 		})
 	}

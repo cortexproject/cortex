@@ -93,6 +93,14 @@ func PreallocWriteRequestV2FromPool() *PreallocWriteRequestV2 {
 	return writeRequestPoolV2.Get().(*PreallocWriteRequestV2)
 }
 
+// Reset implements proto.Message and preserves the capacity of the Symbols slice.
+func (p *PreallocWriteRequestV2) Reset() {
+	savedSymbols := p.Symbols
+	p.WriteRequestV2.Reset()
+	p.Symbols = savedSymbols[:0]
+	p.data = nil
+}
+
 // PreallocTimeseriesV2SliceFromPool retrieves a slice of PreallocTimeseriesV2 from a sync.Pool.
 // ReuseSliceV2 should be called once done.
 func PreallocTimeseriesV2SliceFromPool() []PreallocTimeseriesV2 {

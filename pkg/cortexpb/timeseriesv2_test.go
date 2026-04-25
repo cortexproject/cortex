@@ -122,6 +122,71 @@ func TestReuseWriteRequestV2(t *testing.T) {
 	})
 }
 
+func TestPreallocWriteRequestV2Reset(t *testing.T) {
+	t.Run("preserves Symbols capacity", func(t *testing.T) {
+		const symbolsCap = 100
+		req := &PreallocWriteRequestV2{
+			WriteRequestV2: WriteRequestV2{
+				Symbols: make([]string, 0, symbolsCap),
+			},
+		}
+		req.Symbols = append(req.Symbols, "a", "b", "c")
+
+		ptrBefore := &req.Symbols[:cap(req.Symbols)][0]
+
+		req.Reset()
+
+		assert.Equal(t, 0, len(req.Symbols), "Symbols length should be 0 after Reset")
+		assert.Equal(t, symbolsCap, cap(req.Symbols), "Symbols capacity should be preserved after Reset")
+		assert.Same(t, ptrBefore, &req.Symbols[:cap(req.Symbols)][0], "Symbols backing array should be reused after Reset")
+	})
+
+	t.Run("clears non-Symbols WriteRequestV2 fields", func(t *testing.T) {
+		b := []byte{1, 2, 3}
+		req := &PreallocWriteRequestV2{
+			WriteRequestV2: WriteRequestV2{
+				Source:                  RULE,
+				SkipLabelNameValidation: true,
+				Timeseries:              []PreallocTimeseriesV2{{TimeSeriesV2: &TimeSeriesV2{}}},
+			},
+			data: &b,
+		}
+
+		req.Reset()
+
+		assert.Equal(t, SourceEnum(0), req.Source)
+		assert.False(t, req.SkipLabelNameValidation)
+		assert.Nil(t, req.Timeseries)
+		assert.Nil(t, req.data)
+	})
+
+	t.Run("Unmarshal after Reset reuses Symbols backing array", func(t *testing.T) {
+		const symbolsCount = 50
+		symbols := make([]string, symbolsCount)
+		for i := range symbols {
+			symbols[i] = fmt.Sprintf("symbol_%04d", i)
+		}
+		data, err := (&WriteRequestV2{Symbols: symbols}).Marshal()
+		require.NoError(t, err)
+
+		req := &PreallocWriteRequestV2{
+			WriteRequestV2: WriteRequestV2{
+				Symbols: make([]string, 0, symbolsCount*2),
+			},
+		}
+
+		// Simulate Reset in util.ParseProtoReader()
+		req.Reset()
+		ptrAfterReset := &req.Symbols[:cap(req.Symbols)][0]
+		capAfterReset := cap(req.Symbols)
+
+		require.NoError(t, req.WriteRequestV2.Unmarshal(data))
+		assert.Equal(t, symbolsCount, len(req.Symbols))
+		assert.Equal(t, capAfterReset, cap(req.Symbols), "capacity should not change: Unmarshal reused the existing backing array")
+		assert.Same(t, ptrAfterReset, &req.Symbols[:cap(req.Symbols)][0], "backing array pointer should be identical: no new allocation occurred")
+	})
+}
+
 func BenchmarkMarshallWriteRequestV2(b *testing.B) {
 	ts := PreallocTimeseriesV2SliceFromPool()
 

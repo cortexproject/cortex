@@ -94,14 +94,11 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				return
 			}
 
-			var req cortexpb.PreallocWriteRequestV2
+			req := cortexpb.PreallocWriteRequestV2FromPool()
 			// v1 request is put back into the pool by the Distributor.
-			defer func() {
-				cortexpb.ReuseWriteRequestV2(&req)
-				req.Free()
-			}()
+			defer cortexpb.ReuseWriteRequestV2(req)
 
-			err = util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy)
+			err = util.ParseProtoReader(ctx, r.Body, int(r.ContentLength), maxRecvMsgSize, req, util.RawSnappy)
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -113,7 +110,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+			v1Req, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)

@@ -362,20 +362,22 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--architecture $$deb_arch \
 			--after-install packaging/deb/control/postinst \
 			--before-remove packaging/deb/control/prerm \
+			--config-files /etc/default/cortex \
 			--package dist/cortex-$(VERSION)_$$arch.deb \
-			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			dist/cortex-linux-$$arch=/usr/bin/cortex \
 			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/deb/default/cortex=/etc/default/cortex \
-			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+			packaging/deb/systemd/cortex.service=/lib/systemd/system/cortex.service; \
 		$(FPM_OPTS) -t rpm  \
 			--architecture $$rpm_arch \
 			--after-install packaging/rpm/control/post \
 			--before-remove packaging/rpm/control/preun \
+			--config-files /etc/sysconfig/cortex \
 			--package dist/cortex-$(VERSION)_$$arch.rpm \
-			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			dist/cortex-linux-$$arch=/usr/bin/cortex \
 			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
-			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+			packaging/rpm/systemd/cortex.service=/usr/lib/systemd/system/cortex.service; \
 	done
 	for pkg in dist/*.deb dist/*.rpm; do \
   		sha256sum $$pkg | cut -d ' ' -f 1 > $${pkg}-sha-256; \

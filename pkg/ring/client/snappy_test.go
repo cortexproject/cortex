@@ -28,7 +28,9 @@ func TestSnappyGRPCCompression(t *testing.T) {
 
 	srv := grpc.NewServer()
 	grpc_health_v1.RegisterHealthServer(srv, &testHealthServer{})
-	go srv.Serve(lis)
+	go func() {
+		_ = srv.Serve(lis)
+	}()
 	defer srv.Stop()
 
 	conn, err := grpc.NewClient(

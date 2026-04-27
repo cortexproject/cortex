@@ -664,6 +664,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 }
 
 func TestPushRace(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestPushRace.md")
 	cfg := defaultIngesterTestConfig(t)
 	l := defaultLimitsTestConfig()
 	l.EnableNativeHistograms = true

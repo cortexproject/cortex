@@ -459,6 +459,7 @@ func TestGetOrAddQueueShouldUpdateProperties(t *testing.T) {
 }
 
 func TestQueueConcurrency(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestQueueConcurrency.md")
 	const numGoRoutines = 30
 	limits := MockLimits{
 		MaxOutstanding: 50,

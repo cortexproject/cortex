@@ -248,6 +248,7 @@ func stripEvaluationFields(t *testing.T, r util_api.Response) {
 }
 
 func TestRuler_rules(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestRuler_rules.md")
 	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
 
@@ -365,6 +366,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 }
 
 func TestRuler_rules_limit(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestRuler_rules_limit.md")
 	store := newMockRuleStore(mockRulesLimit, nil)
 	cfg := defaultRulerConfig(t)
 

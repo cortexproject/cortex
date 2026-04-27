@@ -1,0 +1,33 @@
+# Flaky Test Audit Log
+
+This file tracks every CI run on the `flaky-test-audit` branch. Any test failure on this branch is a flaky test since no test logic has been modified from `master`.
+
+| Timestamp | Result | Details | CI Job |
+|-----------|--------|---------|--------|
+| 2026-04-12T19:09:52Z | FLAKY | TestDistributorQuerier_QueryIngestersWithinBoundary/maxT_well_after_lookback_boundary (pkg/querier) | [ci run 24314068155](https://github.com/cortexproject/cortex/actions/runs/24314068155) |
+| 2026-04-12T19:47:00Z | PASS | No flaky tests detected | [ci run 24314518781](https://github.com/cortexproject/cortex/actions/runs/24314518781) |
+| 2026-04-12T20:23:09Z | FLAKY | TestQueueConcurrency (pkg/scheduler/queue) — timed out after 30m on arm64 | [ci run 24314927948](https://github.com/cortexproject/cortex/actions/runs/24314927948) |
+| 2026-04-12T20:32:32Z | FLAKY | TestDistributorQuerier_QueryIngestersWithinBoundary/maxT_well_after_lookback_boundary (pkg/querier) — occurrence #2 | [ci run 24315645679](https://github.com/cortexproject/cortex/actions/runs/24315645679) |
+| 2026-04-12T20:49:56Z | FLAKY | TestQuerierWithBlocksStorageRunningInSingleBinaryMode (integration/querier, arm64) — Docker container vanished; TestQueueConcurrency timeout (arm64) — already skipped | [ci run 24316060467](https://github.com/cortexproject/cortex/actions/runs/24316060467) |
+| 2026-04-12T21:22:00Z | PASS | No flaky tests detected (with skips applied) | [ci run 24316099145](https://github.com/cortexproject/cortex/actions/runs/24316099145) |
+| 2026-04-12T21:37:26Z | FLAKY | TestQuerierWithStoreGatewayDataBytesLimits (integration/querier, amd64) — Docker containers vanished | [ci run 24316771541](https://github.com/cortexproject/cortex/actions/runs/24316771541) |
+| 2026-04-13T20:43:11Z | FLAKY | TestRuler_rules_limit (pkg/ruler) — alert state race; TestParquetFuzz (integration/query_fuzz) — fuzz non-determinism; requires_docker — Docker install failure | [ci run 24365433548](https://github.com/cortexproject/cortex/actions/runs/24365433548) |
+| 2026-04-13T21:00:49Z | FLAKY | TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod (pkg/compactor, arm64); TestRuler_rules (pkg/ruler, configs-db) — alert state race | [ci run 24366476213](https://github.com/cortexproject/cortex/actions/runs/24366476213) |
+| 2026-04-16T17:27:44Z | INFRA | integration_overrides Docker install failed — Docker Hub rate limit (toomanyrequests). All tests passed. | [ci run 24524134384](https://github.com/cortexproject/cortex/actions/runs/24524134384) |
+| 2026-04-16T17:50:32Z | INFRA | requires_docker Docker install failed — Docker Hub rate limit (toomanyrequests). All tests passed. | [ci run 24525138727](https://github.com/cortexproject/cortex/actions/runs/24525138727) |
+| 2026-04-16T18:18:08Z | FLAKY | TestQuerierWithBlocksStorageLimits (integration/querier, arm64) — expected 422 got 500 | [ci run 24526116820](https://github.com/cortexproject/cortex/actions/runs/24526116820) |
+| 2026-04-16T18:52:00Z | PASS | All jobs passed, no flaky tests detected | [ci run 24527178425](https://github.com/cortexproject/cortex/actions/runs/24527178425) |
+| 2026-04-16T19:15:00Z | PASS | All jobs passed, no flaky tests detected (2nd consecutive clean run) | [ci run 24528187016](https://github.com/cortexproject/cortex/actions/runs/24528187016) |
+| 2026-04-16T19:38:00Z | PASS | All jobs passed (3rd consecutive clean run) | [ci run 24529191249](https://github.com/cortexproject/cortex/actions/runs/24529191249) |
+| 2026-04-16T20:00:00Z | PASS | All jobs passed (4th consecutive clean run) | [ci run 24530173026](https://github.com/cortexproject/cortex/actions/runs/24530173026) |
+| 2026-04-16T20:58:00Z | PASS | All jobs passed (5th consecutive clean run) | [ci run 24532713349](https://github.com/cortexproject/cortex/actions/runs/24532713349) |
+| 2026-04-16T21:22:00Z | PASS | All jobs passed (6th consecutive clean run) | [ci run 24533695679](https://github.com/cortexproject/cortex/actions/runs/24533695679) |
+| 2026-04-16T21:27:42Z | FLAKY | TestMinimizeSpreadTokenGenerator (pkg/ring) — floating point precision boundary (0.01097 > 0.01 threshold) | [ci run 24534699120](https://github.com/cortexproject/cortex/actions/runs/24534699120) |
+| 2026-04-16T22:08:00Z | PASS | All jobs passed | [ci run 24535673138](https://github.com/cortexproject/cortex/actions/runs/24535673138) |
+| 2026-04-16T22:19:31Z | FLAKY | TestVerticalShardingFuzz (integration/query_fuzz, arm64) — non-deterministic fuzz + Docker container vanished | [ci run 24536561113](https://github.com/cortexproject/cortex/actions/runs/24536561113) |
+| 2026-04-16T22:34:58Z | FLAKY | TestPushRace (pkg/ingester, arm64) — race condition with zero timestamp | [ci run 24537394343](https://github.com/cortexproject/cortex/actions/runs/24537394343) |
+| 2026-04-17T16:59:00Z | PASS | All jobs passed (upstream merged) | [ci run 24576043912](https://github.com/cortexproject/cortex/actions/runs/24576043912) |
+| 2026-04-17T17:21:00Z | PASS | All jobs passed | [ci run 24576956010](https://github.com/cortexproject/cortex/actions/runs/24576956010) |
+| 2026-04-17T17:25:08Z | FLAKY | TestMultitenantAlertmanager_InitialSyncFailureWithSharding (pkg/alertmanager, arm64) — ring membership race | [ci run 24577873547](https://github.com/cortexproject/cortex/actions/runs/24577873547) |
+| 2026-04-17T18:02:58Z | FLAKY | TestIngesterMetadata (integration/requires_docker, arm64) — metrics timeout; integration_memberlist Docker Hub rate limit | [ci run 24578865123](https://github.com/cortexproject/cortex/actions/runs/24578865123) |
+| 2026-04-17T18:16:01Z | INFRA | integration_querier Docker Hub rate limit. All tests passed. | [ci run 24579811817](https://github.com/cortexproject/cortex/actions/runs/24579811817) |

@@ -76,6 +76,7 @@ func TestGenerateTokens_IgnoresOldTokens(t *testing.T) {
 }
 
 func TestMinimizeSpreadTokenGenerator(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestMinimizeSpreadTokenGenerator.md")
 	rindDesc := NewDesc()
 	zones := []string{"zone1", "zone2", "zone3"}
 

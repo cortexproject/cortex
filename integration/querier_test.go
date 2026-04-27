@@ -31,6 +31,7 @@ import (
 )
 
 func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestQuerierWithBlocksStorageRunningInSingleBinaryMode.md")
 	tests := map[string]struct {
 		bucketStorageType     string
 		blocksShardingEnabled bool
@@ -381,6 +382,7 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 }
 
 func TestQuerierWithBlocksStorageLimits(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestQuerierWithBlocksStorageLimits.md")
 	const blockRangePeriod = 5 * time.Second
 
 	s, err := e2e.NewScenario(networkName)
@@ -484,6 +486,7 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 }
 
 func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
+	t.Skip("Flaky test auto-skipped. See flaky-tests/TestQuerierWithStoreGatewayDataBytesLimits.md")
 	const blockRangePeriod = 5 * time.Second
 
 	s, err := e2e.NewScenario(networkName)

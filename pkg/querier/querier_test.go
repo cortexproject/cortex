@@ -296,7 +296,12 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+
+		// Create limits with default QueryIngestersWithin
+		limits := DefaultLimitsConfig()
+		testOverrides := validation.NewOverrides(limits, nil)
+
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -356,7 +361,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 
 					for _, queryable := range append(wQueriables, wDistributorQueriable) {
 						var wQueryable = queryable.(*wrappedSampleAndChunkQueryable)
-						if wQueryable.UseQueryable(time.Now(), start.Unix()*1000, end.Unix()*1000) {
+						if wQueryable.UseQueryable(time.Now(), "0", start.Unix()*1000, end.Unix()*1000) {
 							require.Equal(t, tc.sorted, wQueryable.queriers[0].selectCallsArgs[0][0])
 						}
 					}
@@ -441,7 +446,11 @@ func TestLimits(t *testing.T) {
 			response: &streamResponse,
 		}
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+		// Create limits with default QueryIngestersWithin
+		limits := DefaultLimitsConfig()
+		testOverrides := validation.NewOverrides(limits, nil)
+
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -659,7 +668,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	for _, thanosEngine := range []bool{true, false} {
 		for _, encoding := range encodings {
 			for _, c := range testCases {
-				cfg.QueryIngestersWithin = c.queryIngestersWithin
 				t.Run(fmt.Sprintf("thanosEngine=%t,encoding=%s,queryIngestersWithin=%v, test=%s", thanosEngine, encoding.String(), c.queryIngestersWithin, c.name), func(t *testing.T) {
 					var queryEngine promql.QueryEngine
 					if thanosEngine {
@@ -674,7 +682,10 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					chunkStore, _ := makeMockChunkStore(t, 24, encoding)
 					distributor := &errDistributor{}
 
-					overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+					// Create limits with QueryIngestersWithin from test case
+					limits := DefaultLimitsConfig()
+					limits.QueryIngestersWithin = model.Duration(c.queryIngestersWithin)
+					overrides := validation.NewOverrides(limits, nil)
 
 					ctx := user.InjectOrgID(context.Background(), "0")
 					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
@@ -1558,14 +1569,16 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	cfg.ActiveQueryTrackerDir = ""
 
 	for _, c := range testCases {
-		cfg.QueryIngestersWithin = c.queryIngestersWithin
-		cfg.QueryStoreAfter = c.queryStoreAfter
 		t.Run(c.name, func(t *testing.T) {
 			//parallel testing causes data race
 			chunkStore := &emptyChunkStore{}
 			distributor := &errDistributor{}
 
-			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			// Create limits with QueryIngestersWithin and QueryStoreAfter from test case
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(c.queryIngestersWithin)
+			limits.QueryStoreAfter = model.Duration(c.queryStoreAfter)
+			overrides := validation.NewOverrides(limits, nil)
 
 			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
 			ctx := user.InjectOrgID(context.Background(), "0")
@@ -1597,7 +1610,7 @@ func TestUseAlwaysQueryable(t *testing.T) {
 	m := &mockQueryableWithFilter{}
 	qwf := UseAlwaysQueryable(m)
 
-	require.True(t, qwf.UseQueryable(time.Now(), 0, 0))
+	require.True(t, qwf.UseQueryable(time.Now(), "test", 0, 0))
 	require.False(t, m.useQueryableCalled)
 }
 
@@ -1607,13 +1620,13 @@ func TestUseBeforeTimestamp(t *testing.T) {
 	now := time.Now()
 	qwf := UseBeforeTimestampQueryable(m, now.Add(-1*time.Hour))
 
-	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.False(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.True(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
+	require.True(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled) // UseBeforeTimestampQueryable wraps Queryable, and not QueryableWithFilter.
 }
 
@@ -1621,15 +1634,21 @@ func TestStoreQueryable(t *testing.T) {
 	t.Parallel()
 	m := &mockQueryableWithFilter{}
 	now := time.Now()
-	sq := storeQueryable{m, time.Hour}
 
-	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	// Create limits with QueryStoreAfter set to 1 hour
+	limits := DefaultLimitsConfig()
+	limits.QueryStoreAfter = model.Duration(time.Hour)
+	overrides := validation.NewOverrides(limits, nil)
+
+	sq := storeQueryable{m, overrides}
+
+	require.False(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.True(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.True(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
 	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
 }
 
@@ -1641,24 +1660,6 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		"should pass with default config": {
 			setup: func(cfg *Config) {},
-		},
-		"should pass if 'query store after' is enabled and shuffle-sharding is disabled": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-			},
-		},
-		"should pass if 'query store after' is enabled and shuffle-sharding is enabled with greater value": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-				cfg.ShuffleShardingIngestersLookbackPeriod = 2 * time.Hour
-			},
-		},
-		"should fail if 'query store after' is enabled and shuffle-sharding is enabled with lesser value": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-				cfg.ShuffleShardingIngestersLookbackPeriod = time.Minute
-			},
-			expected: errShuffleShardingLookbackLessThanQueryStoreAfter,
 		},
 		"should fail if invalid parquet queryable default block store": {
 			setup: func(cfg *Config) {
@@ -1678,6 +1679,71 @@ func TestConfig_Validate(t *testing.T) {
 				cfg.StoreGatewaySeriesBatchSize = 0
 			},
 			expected: nil,
+		},
+		"should pass with valid timeout classification config": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail with zero timeout classification deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationDeadlineNotPositive,
+		},
+		"should fail with negative timeout classification eval threshold": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdNotPositive,
+		},
+		"should fail when eval threshold exceeds deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 30 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdExceedsDeadline,
+		},
+		"should pass when eval threshold equals deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 45 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail when deadline equals engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 2 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should fail when deadline exceeds engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 3 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should pass with timeout classification disabled even with invalid values": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = false
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
 		},
 	}
 
@@ -1734,7 +1800,7 @@ func (m *mockQueryableWithFilter) Querier(_, _ int64) (storage.Querier, error) {
 	return nil, nil
 }
 
-func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
+func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _ string, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
 }
@@ -1815,15 +1881,19 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			distributor := &MockDistributor{}
 			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
+			// Create limits with default QueryIngestersWithin
+			limits := DefaultLimitsConfig()
+			testOverrides := validation.NewOverrides(limits, nil)
+
 			// Create distributor queryable that can be controlled to be used or not
 			var distributorQueryable QueryableWithFilter
 			if testData.queryIngesters {
 				// Ingesters will be queried
-				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 			} else {
 				// Ingesters will not be queried (time range is too old)
 				distributorQueryable = UseBeforeTimestampQueryable(
-					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1),
+					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil),
 					start.Add(-1*time.Hour),
 				)
 			}
@@ -1851,7 +1921,7 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			var receivedHints *storage.SelectHints
 			for _, queryable := range append([]QueryableWithFilter{storeQueryable}, wDistributorQueryable) {
 				wQueryable := queryable.(*wrappedSampleAndChunkQueryable)
-				if wQueryable.UseQueryable(time.Now(), util.TimeToMillis(start), util.TimeToMillis(end)) {
+				if wQueryable.UseQueryable(time.Now(), "0", util.TimeToMillis(start), util.TimeToMillis(end)) {
 					require.Len(t, wQueryable.queriers, 1)
 					require.Len(t, wQueryable.queriers[0].selectCallsArgs, 1)
 					receivedHints = wQueryable.queriers[0].selectCallsArgs[0][1].(*storage.SelectHints)

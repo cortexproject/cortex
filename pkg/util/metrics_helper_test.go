@@ -22,15 +22,15 @@ func TestSum(t *testing.T) {
 	require.Equal(t, float64(0), sum(nil, counterValue))
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: nil}, counterValue))
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
-	require.Equal(t, 12345.6789, sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
+	require.Equal(t, 12345.6789, sum(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: new(12345.6789)}}}}, counterValue))
 	require.Equal(t, 20235.80235, sum(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}},
-		{Counter: &dto.Counter{Value: proto.Float64(7890.12345)}},
+		{Counter: &dto.Counter{Value: new(12345.6789)}},
+		{Counter: &dto.Counter{Value: new(7890.12345)}},
 	}}, counterValue))
 	// using 'counterValue' as function only sums counters
 	require.Equal(t, float64(0), sum(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Gauge: &dto.Gauge{Value: proto.Float64(12345.6789)}},
-		{Gauge: &dto.Gauge{Value: proto.Float64(7890.12345)}},
+		{Gauge: &dto.Gauge{Value: new(12345.6789)}},
+		{Gauge: &dto.Gauge{Value: new(7890.12345)}},
 	}}, counterValue))
 }
 
@@ -38,15 +38,15 @@ func TestMax(t *testing.T) {
 	require.Equal(t, float64(0), max(nil, counterValue))
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: nil}, counterValue))
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{}}}}, counterValue))
-	require.Equal(t, 12345.6789, max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: proto.Float64(12345.6789)}}}}, counterValue))
+	require.Equal(t, 12345.6789, max(&dto.MetricFamily{Metric: []*dto.Metric{{Counter: &dto.Counter{Value: new(12345.6789)}}}}, counterValue))
 	require.Equal(t, 7890.12345, max(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Counter: &dto.Counter{Value: proto.Float64(1234.56789)}},
-		{Counter: &dto.Counter{Value: proto.Float64(7890.12345)}},
+		{Counter: &dto.Counter{Value: new(1234.56789)}},
+		{Counter: &dto.Counter{Value: new(7890.12345)}},
 	}}, counterValue))
 	// using 'counterValue' as function only works on counters
 	require.Equal(t, float64(0), max(&dto.MetricFamily{Metric: []*dto.Metric{
-		{Gauge: &dto.Gauge{Value: proto.Float64(12345.6789)}},
-		{Gauge: &dto.Gauge{Value: proto.Float64(7890.12345)}},
+		{Gauge: &dto.Gauge{Value: new(12345.6789)}},
+		{Gauge: &dto.Gauge{Value: new(7890.12345)}},
 	}}, counterValue))
 }
 
@@ -54,7 +54,7 @@ func TestCounterValue(t *testing.T) {
 	require.Equal(t, float64(0), counterValue(nil))
 	require.Equal(t, float64(0), counterValue(&dto.Metric{}))
 	require.Equal(t, float64(0), counterValue(&dto.Metric{Counter: &dto.Counter{}}))
-	require.Equal(t, float64(543857.12837), counterValue(&dto.Metric{Counter: &dto.Counter{Value: proto.Float64(543857.12837)}}))
+	require.Equal(t, float64(543857.12837), counterValue(&dto.Metric{Counter: &dto.Counter{Value: new(543857.12837)}}))
 }
 
 func TestGetMetricsWithLabelNames(t *testing.T) {
@@ -64,7 +64,7 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(&dto.MetricFamily{}, labels))
 
 	m1 := &dto.Metric{Label: makeLabels("a", "5"), Counter: &dto.Counter{Value: proto.Float64(1)}}
-	m2 := &dto.Metric{Label: makeLabels("a", "10", "b", "20"), Counter: &dto.Counter{Value: proto.Float64(1.5)}}
+	m2 := &dto.Metric{Label: makeLabels("a", "10", "b", "20"), Counter: &dto.Counter{Value: new(1.5)}}
 	m3 := &dto.Metric{Label: makeLabels("a", "10", "b", "20", "c", "1"), Counter: &dto.Counter{Value: proto.Float64(2)}}
 	m4 := &dto.Metric{Label: makeLabels("a", "10", "b", "20", "c", "2"), Counter: &dto.Counter{Value: proto.Float64(3)}}
 	m5 := &dto.Metric{Label: makeLabels("a", "11", "b", "21"), Counter: &dto.Counter{Value: proto.Float64(4)}}
@@ -105,20 +105,20 @@ func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
 	mf := &dto.MetricFamily{Metric: make([]*dto.Metric, 0, numMetrics)}
 	for i := range numMetrics {
 		labels := []*dto.LabelPair{{
-			Name:  proto.String("unique"),
-			Value: proto.String(strconv.Itoa(i)),
+			Name:  new("unique"),
+			Value: new(strconv.Itoa(i)),
 		}}
 
 		for l := 1; l < numLabelsPerMetric; l++ {
 			labels = append(labels, &dto.LabelPair{
-				Name:  proto.String(fmt.Sprintf("label_%d", l)),
-				Value: proto.String(fmt.Sprintf("value_%d", l)),
+				Name:  new(fmt.Sprintf("label_%d", l)),
+				Value: new(fmt.Sprintf("value_%d", l)),
 			})
 		}
 
 		mf.Metric = append(mf.Metric, &dto.Metric{
 			Label:   labels,
-			Counter: &dto.Counter{Value: proto.Float64(1.5)},
+			Counter: &dto.Counter{Value: new(1.5)},
 		})
 	}
 
@@ -138,8 +138,8 @@ func makeLabels(namesAndValues ...string) []*dto.LabelPair {
 
 	for i := 0; i+1 < len(namesAndValues); i = i + 2 {
 		out = append(out, &dto.LabelPair{
-			Name:  proto.String(namesAndValues[i]),
-			Value: proto.String(namesAndValues[i+1]),
+			Name:  new(namesAndValues[i]),
+			Value: new(namesAndValues[i+1]),
 		})
 	}
 
@@ -411,15 +411,15 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 					SampleSum:   float64p(150),
 					Quantile: []*dto.Quantile{
 						{
-							Quantile: proto.Float64(.25),
+							Quantile: new(.25),
 							Value:    proto.Float64(25),
 						},
 						{
-							Quantile: proto.Float64(.5),
+							Quantile: new(.5),
 							Value:    proto.Float64(50),
 						},
 						{
-							Quantile: proto.Float64(.75),
+							Quantile: new(.75),
 							Value:    proto.Float64(75),
 						},
 					},
@@ -432,15 +432,15 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 					SampleSum:   float64p(151),
 					Quantile: []*dto.Quantile{
 						{
-							Quantile: proto.Float64(.25),
+							Quantile: new(.25),
 							Value:    proto.Float64(25),
 						},
 						{
-							Quantile: proto.Float64(.5),
+							Quantile: new(.5),
 							Value:    proto.Float64(50),
 						},
 						{
-							Quantile: proto.Float64(.75),
+							Quantile: new(.75),
 							Value:    proto.Float64(76),
 						},
 					},
@@ -1109,12 +1109,14 @@ func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.
 	return metrics
 }
 
+//go:fix inline
 func float64p(v float64) *float64 {
-	return &v
+	return new(v)
 }
 
+//go:fix inline
 func uint64p(v uint64) *uint64 {
-	return &v
+	return new(v)
 }
 
 func BenchmarkGetLabels_SmallSet(b *testing.B) {
@@ -1257,4 +1259,356 @@ func verifyLabels(t *testing.T, m prometheus.Collector, filter map[string]string
 	})
 
 	require.Equal(t, expectedLabels, result)
+}
+
+// TestIsNative tests the native histogram detection function
+func TestIsNative(t *testing.T) {
+	// Native histogram has Schema set
+	schema := int32(0)
+	nativeHisto := &dto.Histogram{
+		Schema: &schema,
+	}
+	require.True(t, isNative(nativeHisto))
+
+	// Classic histogram has no Schema
+	classicHisto := &dto.Histogram{
+		SampleCount: proto.Uint64(10),
+		SampleSum:   new(100.0),
+		Bucket: []*dto.Bucket{
+			{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+		},
+	}
+	require.False(t, isNative(classicHisto))
+
+	// Empty histogram
+	require.False(t, isNative(&dto.Histogram{}))
+}
+
+// TestHistogramData_AddHistogram_Native tests adding native histograms
+func TestHistogramData_AddHistogram(t *testing.T) {
+	schema := int32(0)
+	zt := 0.001
+
+	tests := []struct {
+		name       string
+		histograms []*dto.Histogram
+		validate   func(t *testing.T, hd *HistogramData)
+	}{
+		{
+			name: "native histogram",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     new(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+					},
+					PositiveDelta: []int64{5, 3},
+					NegativeSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					NegativeDelta: []int64{2},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.True(t, hd.hasNative())
+				require.Equal(t, int32(0), hd.Schema)
+				require.Equal(t, 0.001, hd.ZeroThreshold)
+				require.Equal(t, uint64(10), hd.sampleCount)
+				require.Equal(t, 100.0, hd.sampleSum)
+				require.Equal(t, uint64(2), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, int64(8), hd.PositiveBuckets[1])
+				require.Equal(t, int64(2), hd.NegativeBuckets[0])
+			},
+		},
+		{
+			name: "classic histogram",
+			histograms: []*dto.Histogram{
+				{
+					SampleCount: proto.Uint64(10),
+					SampleSum:   new(100.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
+						{UpperBound: new(10.0), CumulativeCount: proto.Uint64(10)},
+					},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.False(t, hd.hasNative())
+				require.Equal(t, uint64(10), hd.sampleCount)
+				require.Equal(t, 100.0, hd.sampleSum)
+				require.Equal(t, uint64(5), hd.buckets[1.0])
+				require.Equal(t, uint64(8), hd.buckets[5.0])
+				require.Equal(t, uint64(10), hd.buckets[10.0])
+			},
+		},
+		{
+			name: "dual format histogram",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     new(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
+					},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.True(t, hd.hasNative())
+				require.Equal(t, uint64(2), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, uint64(5), hd.buckets[1.0])
+				require.Equal(t, uint64(8), hd.buckets[5.0])
+			},
+		},
+		{
+			name: "multiple histograms",
+			histograms: []*dto.Histogram{
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     new(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(2)},
+					},
+					PositiveDelta: []int64{5, 3},
+				},
+				{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(5),
+					SampleSum:     new(50.0),
+					ZeroCount:     proto.Uint64(1),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(1), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{2},
+				},
+			},
+			validate: func(t *testing.T, hd *HistogramData) {
+				require.Equal(t, uint64(15), hd.sampleCount)
+				require.Equal(t, 150.0, hd.sampleSum)
+				require.Equal(t, uint64(3), hd.ZeroCount)
+				require.Equal(t, int64(5), hd.PositiveBuckets[0])
+				require.Equal(t, int64(10), hd.PositiveBuckets[1])
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hd := &HistogramData{}
+			for _, h := range tt.histograms {
+				hd.AddHistogram(h)
+			}
+			tt.validate(t, hd)
+		})
+	}
+}
+
+// TestMakeBucketsFromMap tests the conversion from bucket map to spans and deltas
+func TestMakeBucketsFromMap(t *testing.T) {
+	tests := []struct {
+		name           string
+		buckets        map[int]int64
+		expectedSpans  int
+		expectedDeltas []int64
+	}{
+		{
+			name:           "empty bucket map",
+			buckets:        map[int]int64{},
+			expectedSpans:  0,
+			expectedDeltas: nil,
+		},
+		{
+			name:           "single bucket",
+			buckets:        map[int]int64{0: 5},
+			expectedSpans:  1,
+			expectedDeltas: []int64{5},
+		},
+		{
+			name:           "contiguous buckets",
+			buckets:        map[int]int64{0: 5, 1: 8, 2: 3},
+			expectedSpans:  1,
+			expectedDeltas: []int64{5, 3, -5}, // deltas from previous count
+		},
+		{
+			name:           "buckets with small gap (filled)",
+			buckets:        map[int]int64{0: 5, 2: 3}, // gap of 1
+			expectedSpans:  1,
+			expectedDeltas: []int64{5, -5, 3}, // includes zero for gap
+		},
+		{
+			name:           "buckets with large gap (new span)",
+			buckets:        map[int]int64{0: 5, 5: 3}, // gap of 4
+			expectedSpans:  2,
+			expectedDeltas: []int64{5, -2}, // deltas carry across spans: bucket0=5, bucket5=3-5=-2
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spans, deltas := makeBucketsFromMap(tt.buckets)
+			require.Equal(t, tt.expectedSpans, len(spans))
+			if tt.expectedDeltas != nil {
+				require.Equal(t, tt.expectedDeltas, deltas)
+			}
+		})
+	}
+}
+
+// TestMergeHistogram tests the mergeHistogram function with various histogram format combinations
+func TestMergeHistogram(t *testing.T) {
+	schema := int32(0)
+	zt := 0.001
+
+	tests := []struct {
+		name     string
+		m1       *dto.Metric
+		m2       *dto.Metric
+		validate func(t *testing.T, h *dto.Histogram)
+	}{
+		{
+			name: "dual-mode + dual-mode",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     new(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+					},
+				},
+			},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(5),
+					SampleSum:     new(50.0),
+					ZeroCount:     proto.Uint64(1),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{3},
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Equal(t, uint64(3), h.GetZeroCount())
+				require.Equal(t, 1, len(h.Bucket))
+				require.Equal(t, uint64(8), h.Bucket[0].GetCumulativeCount())
+				posCounts := deltasToCountsInt(h.GetPositiveDelta())
+				require.Equal(t, 1, len(posCounts))
+				require.Equal(t, int64(8), posCounts[0])
+			},
+		},
+		{
+			name: "native + classic",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					Schema:        &schema,
+					ZeroThreshold: &zt,
+					SampleCount:   proto.Uint64(10),
+					SampleSum:     new(100.0),
+					ZeroCount:     proto.Uint64(2),
+					PositiveSpan: []*dto.BucketSpan{
+						{Offset: proto.Int32(0), Length: proto.Uint32(1)},
+					},
+					PositiveDelta: []int64{5},
+				},
+			},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(5),
+					SampleSum:   new(50.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(5)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Equal(t, int32(0), h.GetSchema())
+				require.Equal(t, uint64(2), h.GetZeroCount())
+				posCounts := deltasToCountsInt(h.GetPositiveDelta())
+				require.Equal(t, int64(5), posCounts[0])
+				require.Equal(t, 2, len(h.Bucket))
+				require.Equal(t, 1.0, h.Bucket[0].GetUpperBound())
+				require.Equal(t, uint64(3), h.Bucket[0].GetCumulativeCount())
+				require.Equal(t, 5.0, h.Bucket[1].GetUpperBound())
+				require.Equal(t, uint64(5), h.Bucket[1].GetCumulativeCount())
+			},
+		},
+		{
+			name: "classic + classic",
+			m1: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(10),
+					SampleSum:   new(100.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(5)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(8)},
+					},
+				},
+			},
+			m2: &dto.Metric{
+				Histogram: &dto.Histogram{
+					SampleCount: proto.Uint64(5),
+					SampleSum:   new(50.0),
+					Bucket: []*dto.Bucket{
+						{UpperBound: new(1.0), CumulativeCount: proto.Uint64(3)},
+						{UpperBound: new(5.0), CumulativeCount: proto.Uint64(4)},
+					},
+				},
+			},
+			validate: func(t *testing.T, h *dto.Histogram) {
+				require.Equal(t, uint64(15), h.GetSampleCount())
+				require.Equal(t, 150.0, h.GetSampleSum())
+				require.Nil(t, h.Schema)
+				require.Equal(t, uint64(0), h.GetZeroCount())
+				require.Equal(t, 2, len(h.Bucket))
+				bucketCounts := make(map[float64]uint64)
+				for _, b := range h.Bucket {
+					bucketCounts[b.GetUpperBound()] = b.GetCumulativeCount()
+				}
+				require.Equal(t, uint64(8), bucketCounts[1.0])
+				require.Equal(t, uint64(12), bucketCounts[5.0])
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mergeHistogram(tt.m1, tt.m2)
+			tt.validate(t, tt.m1.Histogram)
+		})
+	}
 }

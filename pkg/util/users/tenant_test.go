@@ -20,30 +20,30 @@ func TestValidTenantIDs(t *testing.T) {
 		},
 		{
 			name: "invalid|",
-			err:  strptr("tenant ID 'invalid|' contains unsupported character '|'"),
+			err:  new("tenant ID 'invalid|' contains unsupported character '|'"),
 		},
 		{
 			name: strings.Repeat("a", 150),
 		},
 		{
 			name: strings.Repeat("a", 151),
-			err:  strptr("tenant ID is too long: max 150 characters"),
+			err:  new("tenant ID is too long: max 150 characters"),
 		},
 		{
 			name: ".",
-			err:  strptr("tenant ID is '.' or '..'"),
+			err:  new("tenant ID is '.' or '..'"),
 		},
 		{
 			name: "..",
-			err:  strptr("tenant ID is '.' or '..'"),
+			err:  new("tenant ID is '.' or '..'"),
 		},
 		{
 			name: "__markers__",
-			err:  strptr("tenant ID '__markers__' is not allowed"),
+			err:  new("tenant ID '__markers__' is not allowed"),
 		},
 		{
 			name: "user-index.json.gz",
-			err:  strptr("tenant ID 'user-index.json.gz' is not allowed"),
+			err:  new("tenant ID 'user-index.json.gz' is not allowed"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

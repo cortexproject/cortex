@@ -10,6 +10,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -154,6 +155,7 @@ type Limits struct {
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 	EnableTypeAndUnitLabels           bool                `yaml:"enable_type_and_unit_labels" json:"enable_type_and_unit_labels"`
+	EnableStartTimestamp              bool                `yaml:"enable_start_timestamp" json:"enable_start_timestamp"`
 
 	// Ingester enforced limits.
 	// Series
@@ -191,9 +193,17 @@ type Limits struct {
 	MaxQueryParallelism          int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
 	MaxQueryResponseSize         int64          `yaml:"max_query_response_size" json:"max_query_response_size"`
 	MaxCacheFreshness            model.Duration `yaml:"max_cache_freshness" json:"max_cache_freshness"`
+	ResultsCacheTTL              model.Duration `yaml:"results_cache_ttl" json:"results_cache_ttl"`
+	OutOfOrderResultsCacheTTL    model.Duration `yaml:"out_of_order_results_cache_ttl" json:"out_of_order_results_cache_ttl"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	QueryIngestersWithin         model.Duration `yaml:"query_ingesters_within" json:"query_ingesters_within"`
+
+	// If set, the querier manipulates the max time to not be greater than
+	// "now - queryStoreAfter" so that most recent blocks are not queried.
+	QueryStoreAfter                        model.Duration `yaml:"query_store_after" json:"query_store_after"`
+	ShuffleShardingIngestersLookbackPeriod model.Duration `yaml:"shuffle_sharding_ingesters_lookback_period" json:"shuffle_sharding_ingesters_lookback_period"`
 
 	// Parquet Queryable enforced limits.
 	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
@@ -208,13 +218,15 @@ type Limits struct {
 	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
-	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
-	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	RulerEvaluationDelay           model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize           float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup      int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant    int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerQueryOffset               model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels            labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulerExternalURL               string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
+	RulerAlertGeneratorURLTemplate string         `yaml:"ruler_alert_generator_url_template" json:"ruler_alert_generator_url_template" doc:"nocli|description=Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. If empty, uses default Prometheus /graph format."`
+	RulesPartialData               bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -272,6 +284,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
+	f.BoolVar(&l.EnableStartTimestamp, "distributor.enable-start-timestamp", false, "EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2 samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is not set.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -310,12 +323,25 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable")
 	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxFetchedDataBytesPerQuery, "querier.max-fetched-data-bytes-per-query", 0, "The maximum combined size of all data that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler for `query`, `query_range` and `series` APIs. 0 to disable.")
+
+	_ = l.QueryIngestersWithin.Set("0")
+	f.Var(&l.QueryIngestersWithin, "limits.query-ingesters-within", "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.")
+
+	_ = l.QueryStoreAfter.Set("0")
+	f.Var(&l.QueryStoreAfter, "limits.query-store-after", "Minimum age of data before querying the long-term storage. Queries for data younger than this will only query ingesters. This is a per-tenant limit that can be overridden in the runtime configuration.")
+
+	_ = l.ShuffleShardingIngestersLookbackPeriod.Set("0")
+	f.Var(&l.ShuffleShardingIngestersLookbackPeriod, "limits.shuffle-sharding-ingesters-lookback-period", "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.")
+
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time of range query parameter and max - min of data fetched time range). This limit is enforced in the query-frontend and ruler (on the received query). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Int64Var(&l.MaxQueryResponseSize, "frontend.max-query-response-size", 0, "The maximum total uncompressed query response size. If the query was sharded the limit is applied to the total response size of all shards. This limit is enforced in query-frontend for `query` and `query_range` APIs. 0 to disable.")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+	// ResultsCacheTTL and OutOfOrderResultsCacheTTL default to 0 (use global cache config expiration)
+	f.Var(&l.ResultsCacheTTL, "frontend.results-cache-ttl", "Per-tenant TTL for cached query results in the cache backend (Memcached/Redis/FIFO). This is the standard TTL for results that do not overlap with the out-of-order time window. 0 (default) means use the global cache backend TTL configuration.")
+	f.Var(&l.OutOfOrderResultsCacheTTL, "frontend.out-of-order-results-cache-ttl", "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
 	f.BoolVar(&l.QueryPriority.Enabled, "frontend.query-priority.enabled", false, "Whether queries are assigned with priorities.")
@@ -410,6 +436,34 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", err)
 			return errInvalidMetricRelabelConfigs
 		}
+	}
+
+	if l.RulerAlertGeneratorURLTemplate != "" {
+		if _, err := template.New("").Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
+			return fmt.Errorf("invalid ruler_alert_generator_url_template: %w", err)
+		}
+	}
+
+	return nil
+}
+func (l *Limits) ValidateQueryLimits(userID string, closeIdleTSDBTimeout time.Duration) error {
+	queryIngestersWithin := time.Duration(l.QueryIngestersWithin)
+	queryStoreAfter := time.Duration(l.QueryStoreAfter)
+	shuffleShardingLookback := time.Duration(l.ShuffleShardingIngestersLookbackPeriod)
+
+	if queryIngestersWithin > 0 && closeIdleTSDBTimeout > 0 && queryIngestersWithin >= closeIdleTSDBTimeout {
+		return fmt.Errorf("tenant %s: query_ingesters_within (%s) must be less than close_idle_tsdb_timeout (%s)",
+			userID, queryIngestersWithin, closeIdleTSDBTimeout)
+	}
+
+	if queryIngestersWithin > 0 && queryStoreAfter > 0 && queryStoreAfter >= queryIngestersWithin {
+		return fmt.Errorf("tenant %s: query_store_after (%s) must be less than query_ingesters_within (%s)",
+			userID, queryStoreAfter, queryIngestersWithin)
+	}
+
+	if queryStoreAfter > 0 && shuffleShardingLookback > 0 && shuffleShardingLookback < queryStoreAfter {
+		return fmt.Errorf("tenant %s: shuffle_sharding_ingesters_lookback_period (%s) is less than query_store_after (%s)",
+			userID, shuffleShardingLookback, queryStoreAfter)
 	}
 
 	return nil
@@ -825,6 +879,18 @@ func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).MaxCacheFreshness)
 }
 
+// ResultsCacheTTL returns the standard TTL for cached query results.
+// Returns 0 if not configured, meaning use global backend TTL.
+func (o *Overrides) ResultsCacheTTL(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).ResultsCacheTTL)
+}
+
+// OutOfOrderResultsCacheTTL returns the TTL for cached results that may contain out-of-order samples.
+// Returns 0 if not configured, meaning use global backend TTL.
+func (o *Overrides) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).OutOfOrderResultsCacheTTL)
+}
+
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
 func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 	return o.GetOverridesForUser(userID).MaxQueriersPerTenant
@@ -1120,6 +1186,10 @@ func (o *Overrides) EnableTypeAndUnitLabels(userID string) bool {
 	return o.GetOverridesForUser(userID).EnableTypeAndUnitLabels
 }
 
+func (o *Overrides) EnableStartTimestamp(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableStartTimestamp
+}
+
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)
@@ -1144,6 +1214,14 @@ func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
 }
 
+func (o *Overrides) RulerExternalURL(userID string) string {
+	return o.GetOverridesForUser(userID).RulerExternalURL
+}
+
+func (o *Overrides) RulerAlertGeneratorURLTemplate(userID string) string {
+	return o.GetOverridesForUser(userID).RulerAlertGeneratorURLTemplate
+}
+
 // MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.
 // This is only used in Ingester.
 func (o *Overrides) MaxRegexPatternLength(userID string) int {
@@ -1160,6 +1238,18 @@ func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
 // This is only used in Ingester.
 func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
 	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
+}
+
+func (o *Overrides) QueryIngestersWithin(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryIngestersWithin)
+}
+
+func (o *Overrides) QueryStoreAfter(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryStoreAfter)
+}
+
+func (o *Overrides) ShuffleShardingIngestersLookbackPeriod(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).ShuffleShardingIngestersLookbackPeriod)
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

@@ -90,6 +90,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 		handlePRW2 := func() {
 			userID, err := users.TenantID(ctx)
 			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
@@ -109,7 +110,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID))
+			v1Req, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
 			if err != nil {
 				level.Error(logger).Log("err", err.Error())
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -205,10 +206,20 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool) (cortexpb.PreallocWriteRequest, error) {
-	var v1Req cortexpb.PreallocWriteRequest
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (v1Req cortexpb.PreallocWriteRequest, err error) {
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
+
+	// Release any pulled TimeSeries back to the pool to prevent memory leaks in case of an error.
+	defer func() {
+		if err != nil {
+			for _, pts := range v1Timeseries {
+				if pts.TimeSeries != nil {
+					cortexpb.ReuseTimeseries(pts.TimeSeries)
+				}
+			}
+		}
+	}()
 
 	b := labels.NewScratchBuilder(0)
 	symbols := req.Symbols
@@ -243,27 +254,54 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			lbs = slb.Labels()
 		}
 
-		exemplars, err := convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars)
+		ts := cortexpb.TimeseriesFromPool()
+		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
+		ts.Samples = ts.Samples[:0]
+		for _, sample := range v2Ts.Samples {
+			if enableStartTimestamp {
+				// Use created_timestamp as a fallback for start_timestamp_ms when not set.
+				if sample.StartTimestampMs == 0 {
+					sample.StartTimestampMs = v2Ts.CreatedTimestamp
+				}
+			} else {
+				sample.StartTimestampMs = 0
+			}
+			ts.Samples = append(ts.Samples, sample)
+		}
+
+		ts.Exemplars, err = convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars, ts.Exemplars[:0])
 		if err != nil {
+			// Current ts is not appended to the v1Timeseries, so we should call reuse here.
+			cortexpb.ReuseTimeseries(ts)
 			return v1Req, err
 		}
 
-		ts := cortexpb.TimeseriesFromPool()
-		ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbs)
-		ts.Samples = append(ts.Samples, v2Ts.Samples...)
-		ts.Exemplars = exemplars
-		ts.Histograms = append(ts.Histograms, v2Ts.Histograms...)
+		ts.Histograms = ts.Histograms[:0]
+		for _, histogram := range v2Ts.Histograms {
+			if enableStartTimestamp {
+				// Use created_timestamp as a fallback for start_timestamp_ms when not set.
+				if histogram.StartTimestampMs == 0 {
+					histogram.StartTimestampMs = v2Ts.CreatedTimestamp
+				}
+			} else {
+				histogram.StartTimestampMs = 0
+			}
+			ts.Histograms = append(ts.Histograms, histogram)
+		}
 
 		v1Timeseries = append(v1Timeseries, cortexpb.PreallocTimeseries{
 			TimeSeries: ts,
 		})
 
 		if shouldConvertV2Metadata(v2Ts.Metadata) {
-			metricName, err := extract.MetricNameFromLabels(lbs)
+			var metricName string
+			metricName, err = extract.MetricNameFromLabels(lbs)
 			if err != nil {
 				return v1Req, err
 			}
-			metadata, err := convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+
+			var metadata *cortexpb.MetricMetadata
+			metadata, err = convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
 			if err != nil {
 				return v1Req, err
 			}
@@ -316,12 +354,11 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 	}, nil
 }
 
-func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2) ([]cortexpb.Exemplar, error) {
-	v1Exemplars := make([]cortexpb.Exemplar, 0, len(v2Exemplars))
+func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2, v1Exemplars []cortexpb.Exemplar) ([]cortexpb.Exemplar, error) {
 	for _, e := range v2Exemplars {
 		lbs, err := e.ToLabels(b, symbols)
 		if err != nil {
-			return nil, err
+			return v1Exemplars, err
 		}
 		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
 			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),

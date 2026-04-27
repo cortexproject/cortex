@@ -1,6 +1,9 @@
 package cache
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type tiered []Cache
 
@@ -19,13 +22,13 @@ func IsEmptyTieredCache(cache Cache) bool {
 	return ok && len(c) == 0
 }
 
-func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte) {
+func (t tiered) Store(ctx context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
 	for _, c := range []Cache(t) {
-		c.Store(ctx, keys, bufs)
+		c.Store(ctx, keys, bufs, ttl)
 	}
 }
 
-func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string) {
+func (t tiered) Fetch(ctx context.Context, keys []string, ttl time.Duration) ([]string, [][]byte, []string) {
 	found := make(map[string][]byte, len(keys))
 	missing := keys
 	previousCaches := make([]Cache, 0, len(t))
@@ -36,8 +39,8 @@ func (t tiered) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, [
 			passBufs [][]byte
 		)
 
-		passKeys, passBufs, missing = c.Fetch(ctx, missing)
-		tiered(previousCaches).Store(ctx, passKeys, passBufs)
+		passKeys, passBufs, missing = c.Fetch(ctx, missing, ttl)
+		tiered(previousCaches).Store(ctx, passKeys, passBufs, ttl)
 
 		for i, key := range passKeys {
 			found[key] = passBufs[i]

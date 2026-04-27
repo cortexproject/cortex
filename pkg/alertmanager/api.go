@@ -405,8 +405,7 @@ func validateAlertmanagerConfig(cfg any) error {
 
 	// If the input config is a struct, recursively iterate on all fields.
 	if t.Kind() == reflect.Struct {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+		for field := range t.Fields() {
 			fieldValue := v.FieldByIndex(field.Index)
 
 			// Skip any field value which can't be converted to interface (eg. primitive types).

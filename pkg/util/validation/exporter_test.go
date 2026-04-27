@@ -54,6 +54,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="compactor_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="creation_grace_period",user="tenant-a"} 600
 		cortex_overrides{limit_name="enable_native_histograms",user="tenant-a"} 0
+		cortex_overrides{limit_name="enable_start_timestamp",user="tenant-a"} 0
 		cortex_overrides{limit_name="enable_type_and_unit_labels",user="tenant-a"} 0
 		cortex_overrides{limit_name="enforce_metadata_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="enforce_metric_name",user="tenant-a"} 1
@@ -96,22 +97,27 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="max_total_label_value_length_for_unoptimized_regex",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_burst_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="native_histogram_ingestion_rate",user="tenant-a"} 1.7976931348623157e+308
+		cortex_overrides{limit_name="out_of_order_results_cache_ttl",user="tenant-a"} 0
 		cortex_overrides{limit_name="out_of_order_time_window",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_enabled",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_chunk_bytes",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_data_bytes",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_row_count",user="tenant-a"} 0
+		cortex_overrides{limit_name="query_ingesters_within",user="tenant-a"} 0
 		cortex_overrides{limit_name="query_partial_data",user="tenant-a"} 0
+		cortex_overrides{limit_name="query_store_after",user="tenant-a"} 0
 		cortex_overrides{limit_name="query_vertical_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples",user="tenant-a"} 0
 		cortex_overrides{limit_name="reject_old_samples_max_age",user="tenant-a"} 1.2096e+06
+		cortex_overrides{limit_name="results_cache_ttl",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_evaluation_delay_duration",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rule_groups_per_tenant",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_max_rules_per_rule_group",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_query_offset",user="tenant-a"} 0
 		cortex_overrides{limit_name="ruler_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="rules_partial_data",user="tenant-a"} 0
+		cortex_overrides{limit_name="shuffle_sharding_ingesters_lookback_period",user="tenant-a"} 0
 		cortex_overrides{limit_name="store_gateway_tenant_shard_size",user="tenant-a"} 0
 	`), "cortex_overrides"))
 }

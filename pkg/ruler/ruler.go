@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/go-kit/log"
@@ -26,7 +28,6 @@ import (
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql/parser"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -507,7 +508,7 @@ type sender interface {
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, generatorURLFn func(expr string) string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -516,7 +517,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: generatorURLFn(expr),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
@@ -530,6 +531,76 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 			n.Send(res...)
 		}
 	}
+}
+
+// generatorURLTemplateData holds the variables available in generator URL templates.
+type generatorURLTemplateData struct {
+	ExternalURL string
+	Expression  string
+}
+
+// generatorURLTemplateCache caches a parsed text/template keyed on the template string.
+// If the template string changes (e.g., via runtime config), the cache is invalidated.
+type generatorURLTemplateCache struct {
+	tmplStr string
+	tmpl    *template.Template
+}
+
+// getOrParse returns a parsed template, reusing the cached one if the template string
+// hasn't changed. This avoids re-parsing on every alert send.
+func (c *generatorURLTemplateCache) getOrParse(tmplStr string) (*template.Template, error) {
+	if c.tmpl != nil && c.tmplStr == tmplStr {
+		return c.tmpl, nil
+	}
+	tmpl, err := template.New("generator_url").Parse(tmplStr)
+	if err != nil {
+		return nil, err
+	}
+	c.tmplStr = tmplStr
+	c.tmpl = tmpl
+	return tmpl, nil
+}
+
+// executeGeneratorURLTemplate executes a Go text/template to produce a generator URL.
+// We intentionally use text/template instead of html/template because the output is a URL,
+// not HTML. HTML-escaping would corrupt URL characters (e.g., & → &amp;). The output is
+// validated to ensure it uses http/https scheme to prevent javascript: or data: injection.
+func executeGeneratorURLTemplate(cache *generatorURLTemplateCache, tmplStr, externalURL, expr string) (string, error) {
+	tmpl, err := cache.getOrParse(tmplStr)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, generatorURLTemplateData{
+		ExternalURL: externalURL,
+		Expression:  expr,
+	}); err != nil {
+		return "", err
+	}
+	result := buf.String()
+	if err := validateGeneratorURL(result); err != nil {
+		return "", err
+	}
+	return result, nil
+}
+
+// validateGeneratorURL checks that the URL is well-formed, uses http or https scheme,
+// and does not contain HTML in the fragment.
+func validateGeneratorURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid generator URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("generator URL has unsupported scheme %q, must be http or https", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("generator URL is missing host")
+	}
+	if strings.ContainsAny(u.Fragment, "<>") {
+		return fmt.Errorf("generator URL fragment contains invalid characters")
+	}
+	return nil
 }
 
 func ruleGroupDisabled(ruleGroup *rulespb.RuleGroupDesc, disabledRuleGroupsForUser validation.DisabledRuleGroups) bool {

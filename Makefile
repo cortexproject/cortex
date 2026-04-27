@@ -112,7 +112,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-fe84258322
+LATEST_BUILD_IMAGE_TAG ?= master-ee0b97cc37
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -293,7 +293,7 @@ clean-doc:
 		./docs/guides/encryption-at-rest.md
 
 check-doc: doc
-	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md
+	@git diff --exit-code -- ./docs/configuration/config-file-reference.md ./docs/blocks-storage/*.md ./docs/configuration/*.md ./schemas/cortex-config-schema.json
 
 clean-white-noise:
 	@find . -path ./.pkg -prune -o -path ./vendor -prune -o -path ./website -prune -or -type f -name "*.md" -print | \
@@ -362,20 +362,22 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 			--architecture $$deb_arch \
 			--after-install packaging/deb/control/postinst \
 			--before-remove packaging/deb/control/prerm \
+			--config-files /etc/default/cortex \
 			--package dist/cortex-$(VERSION)_$$arch.deb \
-			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			dist/cortex-linux-$$arch=/usr/bin/cortex \
 			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/deb/default/cortex=/etc/default/cortex \
-			packaging/deb/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+			packaging/deb/systemd/cortex.service=/lib/systemd/system/cortex.service; \
 		$(FPM_OPTS) -t rpm  \
 			--architecture $$rpm_arch \
 			--after-install packaging/rpm/control/post \
 			--before-remove packaging/rpm/control/preun \
+			--config-files /etc/sysconfig/cortex \
 			--package dist/cortex-$(VERSION)_$$arch.rpm \
-			dist/cortex-linux-$$arch=/usr/local/bin/cortex \
+			dist/cortex-linux-$$arch=/usr/bin/cortex \
 			docs/configuration/single-process-config-blocks.yaml=/etc/cortex/single-process-config.yaml \
 			packaging/rpm/sysconfig/cortex=/etc/sysconfig/cortex \
-			packaging/rpm/systemd/cortex.service=/etc/systemd/system/cortex.service; \
+			packaging/rpm/systemd/cortex.service=/usr/lib/systemd/system/cortex.service; \
 	done
 	for pkg in dist/*.deb dist/*.rpm; do \
   		sha256sum $$pkg | cut -d ' ' -f 1 > $${pkg}-sha-256; \
@@ -384,17 +386,19 @@ dist/$(UPTODATE)-packages: dist $(wildcard packaging/deb/**) $(wildcard packagin
 
 endif
 
-# Build both arm64 and amd64 images, so that we can test deb/rpm packages for both architectures.
-packaging/rpm/centos-systemd/$(UPTODATE): packaging/rpm/centos-systemd/Dockerfile
-	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+# Build test images for the architectures specified by ARCHS.
+packaging/rpm/rockylinux-systemd/$(UPTODATE): packaging/rpm/rockylinux-systemd/Dockerfile
+	@for arch in $(ARCHS); do \
+		$(SUDO) docker build --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$$arch $(@D)/ ; \
+	done
 	touch $@
 
 packaging/deb/debian-systemd/$(UPTODATE): packaging/deb/debian-systemd/Dockerfile
-	$(SUDO) docker build --platform linux/amd64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):amd64 $(@D)/
-	$(SUDO) docker build --platform linux/arm64 --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):arm64 $(@D)/
+	@for arch in $(ARCHS); do \
+		$(SUDO) docker build --platform linux/$$arch --build-arg=revision=$(GIT_REVISION) --build-arg=goproxyValue=$(GOPROXY_VALUE) -t $(IMAGE_PREFIX)$(shell basename $(@D)):$$arch $(@D)/ ; \
+	done
 	touch $@
 
 .PHONY: test-packages
-test-packages: packages packaging/rpm/centos-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
-	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION)
+test-packages: packages packaging/rpm/rockylinux-systemd/$(UPTODATE) packaging/deb/debian-systemd/$(UPTODATE)
+	./tools/packaging/test-packages $(IMAGE_PREFIX) $(VERSION) $(ARCHS)

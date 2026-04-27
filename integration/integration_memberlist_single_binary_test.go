@@ -39,6 +39,96 @@ func TestSingleBinaryWithMemberlist(t *testing.T) {
 	})
 }
 
+func TestSingleBinaryWithMemberlistClusterLabelIsolation(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	clusterA1 := newSingleBinary("cluster-a-1", "", "", map[string]string{
+		"-memberlist.cluster-label":       "cluster-a",
+		"-memberlist.abort-if-join-fails": "false",
+	})
+	clusterA2 := newSingleBinary("cluster-a-2", "", networkName+"-cluster-a-1:8000", map[string]string{
+		"-memberlist.cluster-label":       "cluster-a",
+		"-memberlist.abort-if-join-fails": "false",
+	})
+	clusterB1 := newSingleBinary("cluster-b-1", "", networkName+"-cluster-a-1:8000", map[string]string{
+		"-memberlist.cluster-label":       "cluster-b",
+		"-memberlist.abort-if-join-fails": "false",
+	})
+	clusterB2 := newSingleBinary("cluster-b-2", "", networkName+"-cluster-b-1:8000", map[string]string{
+		"-memberlist.cluster-label":       "cluster-b",
+		"-memberlist.abort-if-join-fails": "false",
+	})
+
+	require.NoError(t, s.StartAndWaitReady(clusterA1))
+	require.NoError(t, s.StartAndWaitReady(clusterB1))
+	require.NoError(t, s.StartAndWaitReady(clusterA2, clusterB2))
+
+	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
+	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
+
+	// Verify cross-cluster isolation: sleep for an observation window to confirm
+	// member counts remain stable and no cross-cluster leakage occurs over time.
+	// A fixed sleep is intentional here — we are asserting that nothing changes,
+	// which cannot be verified with polling.
+	time.Sleep(5 * time.Second)
+	requireMemberlistClusterState(t, 2, 2*512, clusterA1, clusterA2)
+	requireMemberlistClusterState(t, 2, 2*512, clusterB1, clusterB2)
+}
+
+func TestSingleBinaryWithMemberlistClusterLabelRollingMigration(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	const clusterLabel = "migration-cluster"
+
+	configs := []struct {
+		name string
+		join string
+	}{
+		{name: "migration-cortex-1", join: networkName + "-migration-cortex-2:8000"},
+		{name: "migration-cortex-2", join: networkName + "-migration-cortex-1:8000"},
+		{name: "migration-cortex-3", join: networkName + "-migration-cortex-1:8000"},
+	}
+
+	cortexServices := make([]*e2ecortex.CortexService, 0, len(configs))
+	for _, cfg := range configs {
+		cortexServices = append(cortexServices, newMigrationSingleBinary(cfg.name, cfg.join, "", true))
+	}
+
+	require.NoError(t, s.StartAndWaitReady(cortexServices[0]))
+	require.NoError(t, s.StartAndWaitReady(cortexServices[1], cortexServices[2]))
+	requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
+
+	for i, cfg := range configs {
+		replacement := newMigrationSingleBinary(cfg.name, cfg.join, clusterLabel, true)
+		require.NoError(t, s.Stop(cortexServices[i]))
+		require.NoError(t, s.StartAndWaitReady(replacement))
+		cortexServices[i] = replacement
+		requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
+	}
+
+	for i, cfg := range configs {
+		replacement := newMigrationSingleBinary(cfg.name, cfg.join, clusterLabel, false)
+		require.NoError(t, s.Stop(cortexServices[i]))
+		require.NoError(t, s.StartAndWaitReady(replacement))
+		cortexServices[i] = replacement
+		requireMemberlistClusterState(t, 3, 3*512, cortexServices...)
+	}
+}
+
 func testSingleBinaryEnv(t *testing.T, tlsEnabled bool, flags map[string]string) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -160,6 +250,28 @@ func newSingleBinary(name string, servername string, join string, testFlags map[
 
 	serv.SetBackoff(backOff)
 	return serv
+}
+
+func newMigrationSingleBinary(name string, join string, clusterLabel string, verificationDisabled bool) *e2ecortex.CortexService {
+	flags := map[string]string{
+		"-memberlist.abort-if-join-fails":                 "false",
+		"-memberlist.cluster-label-verification-disabled": fmt.Sprintf("%t", verificationDisabled),
+	}
+
+	if clusterLabel != "" {
+		flags["-memberlist.cluster-label"] = clusterLabel
+	}
+
+	return newSingleBinary(name, "", join, flags)
+}
+
+func requireMemberlistClusterState(t *testing.T, expectedMembers, expectedTokens int, services ...*e2ecortex.CortexService) {
+	t.Helper()
+
+	for _, service := range services {
+		require.NoError(t, service.WaitSumMetrics(e2e.Equals(float64(expectedMembers)), "memberlist_client_cluster_members_count"))
+		require.NoError(t, service.WaitSumMetrics(e2e.Equals(float64(expectedTokens)), "cortex_ring_tokens_total"))
+	}
 }
 
 func TestSingleBinaryWithMemberlistScaling(t *testing.T) {

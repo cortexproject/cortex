@@ -475,14 +475,17 @@ func TestLoader_ShouldCacheIndexNotFoundOnBackgroundUpdates(t *testing.T) {
 		return testutil.ToFloat64(loader.loadAttempts) > prevLoads
 	})
 
+	// Wait until the index is offloaded (metrics becomes 0).
 	// We expect the bucket index is not considered loaded because of the error.
-	assert.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+	test.Poll(t, 3*time.Second, true, func() any {
+		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 			# HELP cortex_bucket_index_loaded Number of bucket indexes currently loaded in-memory.
 			# TYPE cortex_bucket_index_loaded gauge
 			cortex_bucket_index_loaded 0
-		`),
-		"cortex_bucket_index_loaded",
-	))
+		`), "cortex_bucket_index_loaded")
+
+		return err == nil
+	})
 
 	// Try to get the index again. We expect no load attempt because the error has been cached.
 	prevLoads = testutil.ToFloat64(loader.loadAttempts)

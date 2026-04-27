@@ -3,6 +3,8 @@ package tripperware
 import (
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -25,6 +27,17 @@ type Limits interface {
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
 	MaxCacheFreshness(string) time.Duration
+
+	// ResultsCacheTTL returns the standard TTL for cached query results.
+	// Returns 0 if not configured, meaning use global backend TTL.
+	ResultsCacheTTL(userID string) time.Duration
+
+	// OutOfOrderResultsCacheTTL returns the TTL for cached results that may contain out-of-order samples.
+	// Returns 0 if not configured, meaning use global backend TTL.
+	OutOfOrderResultsCacheTTL(userID string) time.Duration
+
+	// OutOfOrderTimeWindow returns the allowed time window for ingestion of out-of-order samples.
+	OutOfOrderTimeWindow(userID string) model.Duration
 
 	// QueryVerticalShardSize returns the maximum number of queriers that can handle requests for this user.
 	QueryVerticalShardSize(userID string) int

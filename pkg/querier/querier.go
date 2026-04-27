@@ -264,7 +264,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			limits:              limits,
 		}
 	}
-	queryable := NewQueryable(distributorQueryable, ns, cfg, limits, resourceBasedLimiter, logger)
+	queryable := NewQueryable(distributorQueryable, ns, cfg, limits, resourceBasedLimiter, logger, reg)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
@@ -340,21 +340,31 @@ type limiterHolder struct {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, cfg Config, limits *validation.Overrides, resourceBasedLimiter *limiter.ResourceBasedLimiter, logger log.Logger) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, cfg Config, limits *validation.Overrides, resourceBasedLimiter *limiter.ResourceBasedLimiter, logger log.Logger, reg prometheus.Registerer) storage.Queryable {
+	var rejectedRequestsCounter *prometheus.CounterVec
+	if resourceBasedLimiter != nil {
+		rejectedRequestsCounter = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "querier_rejected_requests_total",
+			Help:      "Total number of queries rejected by resource based throttling.",
+		}, []string{"reason"})
+	}
+
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
-			now:                  time.Now(),
-			mint:                 mint,
-			maxt:                 maxt,
-			limits:               limits,
-			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
-			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
-			honorProjectionHints: cfg.HonorProjectionHints,
-			distributor:          distributor,
-			stores:               stores,
-			limiterHolder:        &limiterHolder{},
-			resourceBasedLimiter: resourceBasedLimiter,
-			logger:               logger,
+			now:                     time.Now(),
+			mint:                    mint,
+			maxt:                    maxt,
+			limits:                  limits,
+			maxQueryIntoFuture:      cfg.MaxQueryIntoFuture,
+			ignoreMaxQueryLength:    cfg.IgnoreMaxQueryLength,
+			honorProjectionHints:    cfg.HonorProjectionHints,
+			distributor:             distributor,
+			stores:                  stores,
+			limiterHolder:           &limiterHolder{},
+			resourceBasedLimiter:    resourceBasedLimiter,
+			rejectedRequestsCounter: rejectedRequestsCounter,
+			logger:                  logger,
 		}
 
 		return q, nil
@@ -362,16 +372,17 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	now                  time.Time
-	mint, maxt           int64
-	limits               *validation.Overrides
-	maxQueryIntoFuture   time.Duration
-	honorProjectionHints bool
-	distributor          QueryableWithFilter
-	stores               []QueryableWithFilter
-	limiterHolder        *limiterHolder
-	resourceBasedLimiter *limiter.ResourceBasedLimiter
-	logger               log.Logger
+	now                     time.Time
+	mint, maxt              int64
+	limits                  *validation.Overrides
+	maxQueryIntoFuture      time.Duration
+	honorProjectionHints    bool
+	distributor             QueryableWithFilter
+	stores                  []QueryableWithFilter
+	limiterHolder           *limiterHolder
+	resourceBasedLimiter    *limiter.ResourceBasedLimiter
+	rejectedRequestsCounter *prometheus.CounterVec
+	logger                  log.Logger
 
 	ignoreMaxQueryLength bool
 }
@@ -680,6 +691,9 @@ func (q querier) checkResourceUtilization() error {
 
 	if err := q.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 		level.Warn(q.logger).Log("msg", "querier failed to accept request due to resource utilization", "err", err)
+		if q.rejectedRequestsCounter != nil {
+			q.rejectedRequestsCounter.WithLabelValues("resource_utilization").Inc()
+		}
 		return limiter.ErrResourceLimitReached
 	}
 

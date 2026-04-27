@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -339,7 +340,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					for _, queryable := range tc.storeQueriables {
 						wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 					}
-					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger())
+					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger(), nil)
 					opts := promql.EngineOpts{
 						Logger:     promslog.NewNopLogger(),
 						MaxSamples: 1e6,
@@ -530,7 +531,7 @@ func TestLimits(t *testing.T) {
 				}
 				overrides := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger())
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger(), nil)
 				opts := promql.EngineOpts{
 					Logger:     promslog.NewNopLogger(),
 					MaxSamples: 1e6,
@@ -1902,7 +1903,7 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 
 			wDistributorQueryable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: distributorQueryable}
 
-			queryable := NewQueryable(wDistributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides, nil, log.NewNopLogger())
+			queryable := NewQueryable(wDistributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides, nil, log.NewNopLogger(), nil)
 			q, err := queryable.Querier(util.TimeToMillis(start), util.TimeToMillis(end))
 			require.NoError(t, err)
 
@@ -1962,7 +1963,8 @@ func TestQuerier_ResourceBasedLimiter(t *testing.T) {
 	chunkStore := &errDistributor{}
 	distributorQueryable := newDistributorQueryable(chunkStore, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, overrides, nil)
 
-	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, resourceBasedLimiter, log.NewNopLogger())
+	reg := prometheus.NewPedanticRegistry()
+	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, resourceBasedLimiter, log.NewNopLogger(), reg)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 	q, err := queryable.Querier(util.TimeToMillis(time.Now().Add(-1*time.Hour)), util.TimeToMillis(time.Now()))
@@ -1982,6 +1984,14 @@ func TestQuerier_ResourceBasedLimiter(t *testing.T) {
 	_, _, err = q.LabelNames(ctx, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
+
+	// Verify the rejected requests metric was incremented for all 3 rejected queries.
+	err = promutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_querier_rejected_requests_total Total number of queries rejected by resource based throttling.
+		# TYPE cortex_querier_rejected_requests_total counter
+		cortex_querier_rejected_requests_total{reason="resource_utilization"} 3
+	`), "cortex_querier_rejected_requests_total")
+	require.NoError(t, err)
 }
 
 func TestQuerier_ResourceBasedLimiter_Nil(t *testing.T) {
@@ -2000,7 +2010,7 @@ func TestQuerier_ResourceBasedLimiter_Nil(t *testing.T) {
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, overrides, nil)
 
 	// nil resourceBasedLimiter should not block queries.
-	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, nil, log.NewNopLogger())
+	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, nil, log.NewNopLogger(), nil)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 	q, err := queryable.Querier(util.TimeToMillis(time.Now().Add(-1*time.Hour)), util.TimeToMillis(time.Now()))

@@ -2,7 +2,7 @@
 # WARNING: do not commit to a repository!
 -include Makefile.local
 
-.PHONY: all test cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image
+.PHONY: all test test-stress cover clean images protos exes dist doc clean-doc check-doc push-multiarch-build-image
 .DEFAULT_GOAL := all
 
 # Version number
@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test test-stress cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -217,6 +217,14 @@ test:
 
 test-no-race:
 	go test -tags "netgo slicelabels" -timeout 30m -count 1 ./...
+
+test-stress:
+	@if [ -z "$(STRESS_TEST_PACKAGES)" ]; then \
+		echo "No packages to stress test."; \
+	else \
+		echo "Stress testing packages: $(STRESS_TEST_PACKAGES)"; \
+		go test -tags "netgo slicelabels" -timeout 30m -count 5 -v $(STRESS_TEST_PACKAGES); \
+	fi
 
 cover:
 	$(eval COVERDIR := $(shell mktemp -d coverage.XXXXXXXXXX))

@@ -50,7 +50,7 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 		"-blocks-storage.bucket-store.bucket-store-type": "parquet",
 
 		// Set query-ingesters-within to 1h so queries older than 1h don't hit ingesters
-		"-querier.query-ingesters-within": "1h",
+		"-limits.query-ingesters-within": "1h",
 
 		// Configure Parquet Converter
 		"-parquet-converter.enabled":              "true",

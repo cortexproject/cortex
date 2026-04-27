@@ -320,105 +320,22 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		HATracker:                           haTracker,
 		ingestionRate:                       util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
-		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression and exemplar queries.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
-		}, []string{"method", "status_code"})),
-		receivedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_received_samples_total",
-			Help:      "The total number of received samples, excluding rejected and deduped samples.",
-		}, []string{"user", "type"}),
-		receivedSamplesPerLabelSet: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_received_samples_per_labelset_total",
-			Help:      "The total number of received samples per label set, excluding rejected and deduped samples.",
-		}, []string{"user", "type", "labelset"}),
-		receivedExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_received_exemplars_total",
-			Help:      "The total number of received exemplars, excluding rejected and deduped exemplars.",
-		}, []string{"user"}),
-		receivedMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_received_metadata_total",
-			Help:      "The total number of received metadata, excluding rejected.",
-		}, []string{"user"}),
-		incomingSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_samples_in_total",
-			Help:      "The total number of samples that have come in to the distributor, including rejected or deduped samples.",
-		}, []string{"user", "type"}),
-		incomingExemplars: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_exemplars_in_total",
-			Help:      "The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars.",
-		}, []string{"user"}),
-		incomingMetadata: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_metadata_in_total",
-			Help:      "The total number of metadata that have come in to the distributor, including rejected.",
-		}, []string{"user"}),
-		nonHASamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_non_ha_samples_received_total",
-			Help:      "The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels.",
-		}, []string{"user"}),
-		dedupedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_deduped_samples_total",
-			Help:      "The total number of deduplicated samples.",
-		}, []string{"user", "cluster"}),
-		labelsHistogram: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "labels_per_sample",
-			Help:      "Number of labels per sample.",
-			Buckets:   []float64{5, 10, 15, 20, 25},
-		}),
-		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_appends_total",
-			Help:      "The total number of batch appends sent to ingesters.",
-		}, []string{"ingester", "type"}),
-		ingesterAppendFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_append_failures_total",
-			Help:      "The total number of failed batch appends sent to ingesters.",
-		}, []string{"ingester", "type", "status"}),
-		ingesterQueries: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_queries_total",
-			Help:      "The total number of queries sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterQueryFailures: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_query_failures_total",
-			Help:      "The total number of failed queries sent to ingesters.",
-		}, []string{"ingester"}),
-		ingesterPartialDataQueries: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace: "cortex",
-			Name:      "distributor_ingester_partial_data_queries_total",
-			Help:      "The total number of queries sent to ingesters that may have returned partial data.",
-		}),
-		replicationFactor: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace: "cortex",
-			Name:      "distributor_replication_factor",
-			Help:      "The configured replication factor.",
-		}),
-		latestSeenSampleTimestampPerUser: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "cortex_distributor_latest_seen_sample_timestamp_seconds",
-			Help: "Unix timestamp of latest received sample per user.",
-		}, []string{"user"}),
-		distributorIngesterPushTimeout: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Name: "cortex_distributor_ingester_push_timeouts_total",
-			Help: "The total number of push requests to ingesters that were canceled due to timeout.",
-		}),
-
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
 	}
+
+	// Register all Distributor-owned metrics from the generated schema.
+	registerDistributorMetrics(d, reg, DistributorGaugeFuncs{
+		CortexDistributorInflightPushRequestsFunc: func() float64 {
+			return float64(d.inflightPushRequests.Load())
+		},
+		CortexDistributorInflightClientRequestsFunc: func() float64 {
+			return float64(d.inflightClientRequests.Load())
+		},
+		CortexDistributorIngestionRateSamplesPerSecondFunc: func() float64 {
+			return d.ingestionRate.Rate()
+		},
+	})
 
 	d.labelSetTracker = labelset.NewLabelSetTracker()
 
@@ -427,6 +344,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		d.asyncExecutor = util.NewWorkerPool("distributor", cfg.NumPushWorkers, reg)
 	}
 
+	// Instance limits metrics use ConstLabels and are kept hand-written.
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 		Name:        instanceLimitsMetric,
 		Help:        instanceLimitsMetricHelp,
@@ -442,26 +360,6 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		Help:        instanceLimitsMetricHelp,
 		ConstLabels: map[string]string{limitLabel: "max_ingestion_rate"},
 	}).Set(cfg.InstanceLimits.MaxIngestionRate)
-
-	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_distributor_inflight_push_requests",
-		Help: "Current number of inflight push requests in distributor.",
-	}, func() float64 {
-		return float64(d.inflightPushRequests.Load())
-	})
-
-	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_distributor_inflight_client_requests",
-		Help: "Current number of inflight client requests in distributor.",
-	}, func() float64 {
-		return float64(d.inflightClientRequests.Load())
-	})
-	promauto.With(reg).NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "cortex_distributor_ingestion_rate_samples_per_second",
-		Help: "Current ingestion rate in samples/sec that distributor is using to limit access.",
-	}, func() float64 {
-		return d.ingestionRate.Rate()
-	})
 
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	d.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(d.cleanupInactiveUser)

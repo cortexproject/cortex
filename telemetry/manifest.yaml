@@ -1,0 +1,4 @@
+file_format: 1.2.0
+schema_url: https://github.com/cortexproject/cortex/telemetry
+registries:
+  - registry

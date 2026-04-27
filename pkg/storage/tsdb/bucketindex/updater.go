@@ -180,6 +180,12 @@ func (w *Updater) updateBlockIndexEntry(ctx context.Context, id ulid.ULID) (*Blo
 
 	// Get the meta.json attributes.
 	attrs, err := w.bkt.Attributes(ctx, metaFile)
+	if w.bkt.IsObjNotFoundErr(err) {
+		return nil, ErrBlockMetaNotFound
+	}
+	if w.bkt.IsAccessDeniedErr(err) {
+		return nil, errBlockMetaKeyAccessDeniedErr
+	}
 	if err != nil {
 		return nil, errors.Wrapf(err, "read meta file attributes: %v", metaFile)
 	}

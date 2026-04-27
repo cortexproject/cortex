@@ -785,7 +785,14 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
 	t.Cfg.ParquetConverter.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	return parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.OverridesConfig)
+	t.Parquetconverter, err = parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.OverridesConfig)
+	if err != nil {
+		return
+	}
+
+	// Expose HTTP endpoints.
+	t.API.RegisterParquetConverter(t.Parquetconverter)
+	return t.Parquetconverter, nil
 }
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {

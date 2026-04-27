@@ -3,6 +3,7 @@ package ruler
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -539,6 +540,20 @@ type generatorURLTemplateData struct {
 	Expression  string
 }
 
+// generatorURLTemplateFuncMap contains custom functions available in generator URL templates.
+//   - jsonEscape: escapes a string for embedding inside a JSON string value (e.g., " → \", \ → \\).
+//     Useful when the expression is placed inside a JSON-encoded URL parameter like Grafana's panes.
+var generatorURLTemplateFuncMap = template.FuncMap{
+	"jsonEscape": func(s string) string {
+		b, err := json.Marshal(s)
+		if err != nil {
+			return s
+		}
+		// json.Marshal wraps the string in quotes; strip them to get just the escaped content.
+		return string(b[1 : len(b)-1])
+	},
+}
+
 // generatorURLTemplateCache caches a parsed text/template keyed on the template string.
 // If the template string changes (e.g., via runtime config), the cache is invalidated.
 type generatorURLTemplateCache struct {
@@ -552,7 +567,7 @@ func (c *generatorURLTemplateCache) getOrParse(tmplStr string) (*template.Templa
 	if c.tmpl != nil && c.tmplStr == tmplStr {
 		return c.tmpl, nil
 	}
-	tmpl, err := template.New("generator_url").Parse(tmplStr)
+	tmpl, err := template.New("generator_url").Funcs(generatorURLTemplateFuncMap).Parse(tmplStr)
 	if err != nil {
 		return nil, err
 	}

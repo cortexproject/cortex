@@ -225,7 +225,7 @@ type Limits struct {
 	RulerQueryOffset               model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
 	RulerExternalLabels            labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
 	RulerExternalURL               string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
-	RulerAlertGeneratorURLTemplate string         `yaml:"ruler_alert_generator_url_template" json:"ruler_alert_generator_url_template" doc:"nocli|description=Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. If empty, uses default Prometheus /graph format."`
+	RulerAlertGeneratorURLTemplate string         `yaml:"ruler_alert_generator_url_template" json:"ruler_alert_generator_url_template" doc:"nocli|description=Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. A jsonEscape function is also provided for embedding expressions inside JSON-encoded URL parameters. If empty, uses default Prometheus /graph format."`
 	RulesPartialData               bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
@@ -439,7 +439,13 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 	}
 
 	if l.RulerAlertGeneratorURLTemplate != "" {
-		if _, err := template.New("").Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
+		// Register custom functions so that templates using them pass validation.
+		// The actual implementations are in the ruler package; these stubs just
+		// allow the parser to accept the function names.
+		funcMap := template.FuncMap{
+			"jsonEscape": func(s string) string { return s },
+		}
+		if _, err := template.New("").Funcs(funcMap).Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
 			return fmt.Errorf("invalid ruler_alert_generator_url_template: %w", err)
 		}
 	}

@@ -4394,8 +4394,9 @@ query_rejection:
 
 # Go text/template for alert generator URLs. Available variables: .ExternalURL
 # (resolved external URL) and .Expression (PromQL expression). Built-in
-# functions like urlquery are available. If empty, uses default Prometheus
-# /graph format.
+# functions like urlquery are available. A jsonEscape function is also provided
+# for embedding expressions inside JSON-encoded URL parameters. If empty, uses
+# default Prometheus /graph format.
 [ruler_alert_generator_url_template: <string> | default = ""]
 
 # Enable to allow rules to be evaluated with data from a single zone, if other

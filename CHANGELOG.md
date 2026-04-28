@@ -18,7 +18,7 @@
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
 * [BUGFIX] Packaging: Fix RPM and deb packages to install the binary to `/usr/bin`, install the systemd unit to the correct system path (`/usr/lib/systemd/system` for RPM, `/lib/systemd/system` for deb), and mark the sysconfig/default env file as a config file so it is not overwritten on upgrade. #7445
-* [BUGFIX] Compactor: Handle not-found and access-denied errors from `Attributes()` in bucket index updater, preventing a stale cached `Get()` from causing the entire cleanup cycle to fail when `meta.json` has been deleted from object storage. #7453
+* [BUGFIX] Compactor: Handle not-found and access-denied errors from `Attributes()` in bucket index updater, preventing a stale cached `Get()` from causing the entire cleanup cycle to fail when `meta.json` has been deleted from object storage. #7454
 * [BUGFIX] gRPC: Fix panic when `grpc_compression` is set to `snappy` on ingester client or store-gateway client configurations. #7459
 
 ## 1.21.0 2026-04-24

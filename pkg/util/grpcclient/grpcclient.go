@@ -76,6 +76,9 @@ func (cfg *Config) Validate(log log.Logger) error {
 	default:
 		return errors.Errorf("unsupported compression type: %s", cfg.GRPCCompression)
 	}
+	if cfg.GRPCCompression == snappy.Name {
+		snappy.Register()
+	}
 	return nil
 }
 

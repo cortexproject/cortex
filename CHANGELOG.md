@@ -2,6 +2,7 @@
 
 ## 1.21.1 / unreleased
 
+* [BUGFIX] gRPC: Fix panic when `grpc_compression` is set to `snappy` on ingester client or store-gateway client configurations. #7459
 * [BUGFIX] Config: Mask Swift, etcd, Redis, and HTTP basic-auth credentials on the `/config` endpoint. #7473
 * [BUGFIX] Memberlist: Drop incoming TCP transport packets when digest verification fails, preventing corrupted payloads from being forwarded. #7474
 * [BUGFIX] Ingester: Reject `PushStream` requests where the per-message `TenantID` does not match the authenticated caller, and add HMAC-SHA256 stream authentication for `PushStream` via `-distributor.sign-write-requests-keys`. #7475

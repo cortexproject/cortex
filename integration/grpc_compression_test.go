@@ -25,6 +25,10 @@ func TestGRPCSnappyCompression(t *testing.T) {
 		"store gateway client": {
 			"-querier.store-gateway-client.grpc-compression": "snappy",
 		},
+		"both": {
+			"-ingester.client.grpc-compression":              "snappy",
+			"-querier.store-gateway-client.grpc-compression": "snappy",
+		},
 	}
 
 	for name, compressionFlags := range tests {

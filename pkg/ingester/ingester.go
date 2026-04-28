@@ -1471,6 +1471,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
+					if delayMs := time.Now().UnixMilli() - s.TimestampMs; delayMs >= 0 {
+						i.metrics.ingestionDelaySeconds.WithLabelValues(userID).Observe(float64(delayMs) / 1000.0)
+					}
 					continue
 				}
 
@@ -1482,6 +1485,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 						newSeries = append(newSeries, copiedLabels)
 					}
 					succeededSamplesCount++
+					if delayMs := time.Now().UnixMilli() - s.TimestampMs; delayMs >= 0 {
+						i.metrics.ingestionDelaySeconds.WithLabelValues(userID).Observe(float64(delayMs) / 1000.0)
+					}
 					continue
 				}
 			}
@@ -1525,6 +1531,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
 						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						// Observe ingestion delay
+						if delayMs := time.Now().UnixMilli() - hp.TimestampMs; delayMs >= 0 {
+							i.metrics.ingestionDelaySeconds.WithLabelValues(userID).Observe(float64(delayMs) / 1000.0)
+						}
 						continue
 					}
 				} else {
@@ -1537,6 +1547,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 						}
 						succeededHistogramsCount++
 						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						// Observe ingestion delay
+						if delayMs := time.Now().UnixMilli() - hp.TimestampMs; delayMs >= 0 {
+							i.metrics.ingestionDelaySeconds.WithLabelValues(userID).Observe(float64(delayMs) / 1000.0)
+						}
 						continue
 					}
 				}

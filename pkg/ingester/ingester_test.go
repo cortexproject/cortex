@@ -2833,6 +2833,193 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestIngester_IngestionDelayMetric(t *testing.T) {
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+	t.Run("float samples with delays", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		userID := "user-1"
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		// Push samples with different delays (oldest first to avoid OOO)
+		now := time.Now().UnixMilli()
+		samples := []cortexpb.Sample{
+			{Value: 1, TimestampMs: now - 30000}, // 30 seconds ago
+			{Value: 2, TimestampMs: now - 10000}, // 10 seconds ago
+			{Value: 3, TimestampMs: now - 5000},  // 5 seconds ago
+		}
+
+		for _, sample := range samples {
+			req := cortexpb.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]cortexpb.Sample{sample},
+				nil,
+				nil,
+				cortexpb.API,
+			)
+			_, err = ing.Push(ctx, req)
+			require.NoError(t, err)
+		}
+
+		// Verify metric exists and has 3 observations
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		var found bool
+		var sampleCount uint64
+		var sampleSum float64
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" && label.GetValue() == userID {
+							found = true
+							if metric.Histogram != nil {
+								sampleCount = metric.Histogram.GetSampleCount()
+								sampleSum = metric.Histogram.GetSampleSum()
+							}
+						}
+					}
+				}
+			}
+		}
+
+		require.True(t, found, "ingestion delay metric not found")
+		assert.Equal(t, uint64(3), sampleCount, "expected 3 observations")
+
+		// Verify delays were actually measured (sum should be positive and reasonable)
+		// We sent samples 30s, 10s, and 5s old, so total delay should be ~45s (with some execution time added)
+		assert.Greater(t, sampleSum, 40.0, "sum of delays should be at least 40s")
+	})
+
+	t.Run("future timestamps are filtered", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		userID := "user-future"
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		// Push sample with future timestamp
+		futureTimestamp := time.Now().UnixMilli() + 60000 // 60 seconds in the future
+		req := cortexpb.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]cortexpb.Sample{{Value: 1, TimestampMs: futureTimestamp}},
+			nil,
+			nil,
+			cortexpb.API,
+		)
+
+		_, err = ing.Push(ctx, req)
+		require.NoError(t, err)
+
+		// Verify metric has 0 observations (future timestamp filtered)
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" && label.GetValue() == userID {
+							if metric.Histogram != nil {
+								assert.Equal(t, uint64(0), metric.Histogram.GetSampleCount(),
+									"future timestamp should not be observed")
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("per-user isolation", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		// Push samples for two users
+		baseTime := time.Now().UnixMilli()
+		for _, u := range []struct {
+			id         string
+			numSamples int
+			delayMs    int64
+		}{
+			{"user-a", 2, 5000},
+			{"user-b", 3, 30000},
+		} {
+			ctx := user.InjectOrgID(context.Background(), u.id)
+			// Send in chronological order (oldest first)
+			for idx := u.numSamples - 1; idx >= 0; idx-- {
+				timestamp := baseTime - u.delayMs - int64(idx*1000)
+				req := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: float64(idx + 1), TimestampMs: timestamp}},
+					nil,
+					nil,
+					cortexpb.API,
+				)
+				_, err := ing.Push(ctx, req)
+				require.NoError(t, err)
+			}
+		}
+
+		// Verify each user has their own metric
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		userCounts := make(map[string]uint64)
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" {
+							userID := label.GetValue()
+							if metric.Histogram != nil {
+								userCounts[userID] = metric.Histogram.GetSampleCount()
+							}
+						}
+					}
+				}
+			}
+		}
+
+		assert.Equal(t, uint64(2), userCounts["user-a"])
+		assert.Equal(t, uint64(3), userCounts["user-b"])
+	})
+}
+
 func BenchmarkIngesterPush(b *testing.B) {
 	limits := defaultLimitsTestConfig()
 	benchmarkIngesterPush(b, limits, false)

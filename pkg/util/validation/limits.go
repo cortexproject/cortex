@@ -10,6 +10,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -217,13 +218,15 @@ type Limits struct {
 	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
-	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
-	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	RulerEvaluationDelay           model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize           float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup      int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant    int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerQueryOffset               model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels            labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulerExternalURL               string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
+	RulerAlertGeneratorURLTemplate string         `yaml:"ruler_alert_generator_url_template" json:"ruler_alert_generator_url_template" doc:"nocli|description=Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. If empty, uses default Prometheus /graph format."`
+	RulesPartialData               bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -432,6 +435,12 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 		if err := rc.Validate(nameValidationScheme); err != nil {
 			level.Error(util_log.Logger).Log("msg", "invalid metric_relabel_configs", "index", i, "err", err)
 			return errInvalidMetricRelabelConfigs
+		}
+	}
+
+	if l.RulerAlertGeneratorURLTemplate != "" {
+		if _, err := template.New("").Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
+			return fmt.Errorf("invalid ruler_alert_generator_url_template: %w", err)
 		}
 	}
 
@@ -1203,6 +1212,14 @@ func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 
 func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
+}
+
+func (o *Overrides) RulerExternalURL(userID string) string {
+	return o.GetOverridesForUser(userID).RulerExternalURL
+}
+
+func (o *Overrides) RulerAlertGeneratorURLTemplate(userID string) string {
+	return o.GetOverridesForUser(userID).RulerAlertGeneratorURLTemplate
 }
 
 // MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.

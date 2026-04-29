@@ -1,31 +1,29 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
+* [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
+* [FEATURE] Ruler: Add per-tenant `ruler_alert_generator_url_template` runtime config option to customize alert generator URLs using Go templates. Supports Grafana Explore, Perses, and other UIs. #7302
 * [FEATURE] Distributor: Add experimental `-distributor.enable-start-timestamp` flag for Prometheus Remote Write 2.0. When enabled, `StartTimestamp (ST)` is ingested. #7371
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
 * [FEATURE] Querier: Implement Resource Based Throttling in Querier. #7442
+* [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455
 * [ENHANCEMENT] Ingester: Add WAL record metrics to help evaluate the effectiveness of WAL compression type (e.g. snappy, zstd): `cortex_ingester_tsdb_wal_record_part_writes_total`, `cortex_ingester_tsdb_wal_record_parts_bytes_written_total`, and `cortex_ingester_tsdb_wal_record_bytes_saved_total`. #7420
 * [ENHANCEMENT] Distributor: Introduce dynamic `Symbols` slice capacity pooling. #7398 #7401
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #7359
 * [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #7357
 * [ENHANCEMENT] Update build image and Go version to 1.26. #7437
-* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
-* [ENHANCEMENT] Tenant Federation: Add a local cache to regex resolver. #7363
 * [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
 * [ENHANCEMENT] Compactor: Prevent partition compaction to compact any blocks marked for deletion. #7391
 * [ENHANCEMENT] Distributor: Optimize memory allocations by reusing the existing capacity of these pooled slices in the Prometheus Remote Write 2.0 path. #7392
-* [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372
-* [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
-* [BUGFIX] Fix memory leak in `ReuseWriteRequestV2` by explicitly clearing the `Symbols` backing array string pointers before returning the object to `sync.Pool`. #7373
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
-* [BUGFIX] KV store: Fix false-positive `status_code="500"` metrics for HA tracker CAS operations when using memberlist. #7408
-* [BUGFIX] Memberlist: Skip nil values delivered by `WatchPrefix` when a key is deleted, preventing a panic in the HA tracker caused by a failed type assertion on a nil interface value. #7429
-* [BUGFIX] Tenant Federation: Fix `unsupported character` error when `tenant-federation.regex-matcher-enabled` is enabled and the input regex matches 0 or 1 existing tenant. #7424
+* [BUGFIX] Packaging: Fix RPM and deb packages to install the binary to `/usr/bin`, install the systemd unit to the correct system path (`/usr/lib/systemd/system` for RPM, `/lib/systemd/system` for deb), and mark the sysconfig/default env file as a config file so it is not overwritten on upgrade. #7445
+* [BUGFIX] gRPC: Fix panic when `grpc_compression` is set to `snappy` on ingester client or store-gateway client configurations. #7459
 
-## 1.21.0 in progress
+## 1.21.0 2026-04-24
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312
   * Flag: Renamed `-experimental.ruler.enable-api` to `-ruler.enable-api`. The old flag is kept as deprecated.
@@ -41,6 +39,7 @@
   * Metrics: Renamed `cortex_parquet_queryable_cache_*` to `cortex_parquet_cache_*`.
   * Flags: Renamed `-querier.parquet-queryable-shard-cache-size` to `-querier.parquet-shard-cache-size` and `-querier.parquet-queryable-shard-cache-ttl` to `-querier.parquet-shard-cache-ttl`.
   * Config: Renamed `parquet_queryable_shard_cache_size` to `parquet_shard_cache_size` and `parquet_queryable_shard_cache_ttl` to `parquet_shard_cache_ttl`.
+* [FEATURE] Overrides: Add new Overrides API component and rename old overrides module to `overrides-configs`. #6975
 * [FEATURE] HATracker: Add experimental support for `memberlist` and `multi` as a KV store backend. #7284
 * [FEATURE] Distributor: Add `-distributor.otlp.add-metric-suffixes` flag. If true, suffixes will be added to the metrics for name normalization. #7286
 * [FEATURE] StoreGateway: Introduces a new parquet mode. #7046
@@ -50,6 +49,8 @@
 * [FEATURE] Ingester: Add experimental active series queried metric. #7173
 * [FEATURE] Update prometheus Alertmanager version to v0.31.1 and add new integration to IncidentIO and Mattermost. #7092 #7267
 * [FEATURE] Tenant Federation: Add experimental support for partial responses using the `-tenant-federation.allow-partial-data` flag. When enabled, failures from individual tenants during a federated query are treated as warnings, allowing results from successful tenants to be returned. #7232
+* [FEATURE] Alertmanager: Add `-alertmanager.disable-replica-set-extension` flag to limit blast radius during config corruption incidents. #7153
+* [ENHANCEMENT] Tenant Federation: Add a local cache to regex resolver. #7363
 * [ENHANCEMENT] Distributor: Add `cortex_distributor_push_requests_total` metric to track the number of push requests by type. #7239
 * [ENHANCEMENT] Querier: Add `-querier.store-gateway-series-batch-size` flag to configure the maximum number of series to be batched in a single gRPC response message from Store Gateways. #7203
 * [ENHANCEMENT] HATracker: Add `-distributor.ha-tracker.enable-startup-sync` flag. If enabled, the ha-tracker fetches all tracked keys on startup to populate the local cache. #7213
@@ -66,7 +67,7 @@
 * [ENHANCEMENT] Alertmanager/Ruler: Introduce a user scanner to reduce the number of list calls to object storage. #6999
 * [ENHANCEMENT] Ruler: Add DecodingConcurrency config flag for Thanos Engine. #7118
 * [ENHANCEMENT] Query Frontend: Add query priority based on operation. #7128
-* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7130 #7209 #7257
+* [ENHANCEMENT] Compactor: Avoid double compaction by cleaning partition files in 2 cycles. #7130 #7209 #7260
 * [ENHANCEMENT] Distributor: Optimize memory usage by recycling v2 requests. #7131
 * [ENHANCEMENT] Compactor: Avoid double compaction by not filtering delete blocks on real time when using bucketIndex lister. #7156
 * [ENHANCEMENT] Upgrade to go 1.25.8 #7164 #7340
@@ -78,11 +79,21 @@
 * [ENHANCEMENT] Compactor: Add partition group creation time to visit marker. #7217
 * [ENHANCEMENT] Compactor: Add concurrency for partition cleanup and mark block for deletion #7246
 * [ENHANCEMENT] Distributor: Validate metric name before removing empty labels. #7253
-* [ENHANCEMENT] Ruler/Ingester: Propagate append hints to discard out of order samples on Ingester #7226
-* [ENHANCEMENT] Make cortex_ingester_tsdb_sample_ooo_delta metric per-tenant #7278
+* [ENHANCEMENT] Ruler/Ingester: Propagate append hints to discard out of order samples on Ingester #7330
+* [ENHANCEMENT] Make cortex_ingester_tsdb_sample_ooo_delta metric per-tenant #7279
 * [ENHANCEMENT] Distributor: Add dimension `nhcb` to keep track of nhcb samples in `cortex_distributor_received_samples_total` and `cortex_distributor_samples_in_total` metrics.
 * [ENHANCEMENT] Distributor: Add `-distributor.accept-unknown-remote-write-content-type` flag. When enabled, requests with unknown or invalid Content-Type header are treated as remote write v1 instead of returning 415 Unsupported Media Type. Default is false. #7293
 * [ENHANCEMENT] Ingester: Added `cortex_ingester_ingested_histogram_buckets` metric to track number of histogram buckets ingested per user. #7297
+* [ENHANCEMENT] Ring: Reuse timers in lifecycler and backoff loops to reduce allocations. #7270
+* [ENHANCEMENT] Ring/KV: Reuse timers in DynamoDB watch loops to avoid per-poll allocations. #7266
+* [ENHANCEMENT] Ring/KV: Reuse timers in memberlist client to reduce allocations. #7285
+* [ENHANCEMENT] PromQL: Add `holt_winters` backwards compatibility as alias for `double_exponential_smoothing`. #7223
+* [ENHANCEMENT] Query Frontend: Add logical plan fragmentation for distributed query execution. #7018
+* [ENHANCEMENT] Parquet: Support sharded parquet files in parquet converter and queryable. #7189
+* [ENHANCEMENT] Compactor: Add graceful period for compaction groups to prevent compacting recently written blocks. #7182
+* [ENHANCEMENT] Query Engine: Add projection pushdown optimizer for improved query performance. #7141
+* [ENHANCEMENT] Distributor: Optimize memory allocations by pooling PreallocWriteRequestV2 and preserving the capacity of the Symbols slice during resets. #7404
+* [ENHANCEMENT] Ruler: Allow ExternalPusher and ExternalQueryable to be specified separately. #7224
 * [BUGFIX] Distributor: Add bounds checking for symbol references in Remote Write V2 requests to prevent panics when UnitRef or HelpRef exceed the symbols array length. #7290
 * [BUGFIX] Distributor: If remote write v2 is disabled, explicitly return HTTP 415 (Unsupported Media Type) for Remote Write V2 requests instead of attempting to parse them as V1. #7238
 * [BUGFIX] Ring: Change DynamoDB KV to retry indefinitely for WatchKey. #7088
@@ -97,6 +108,15 @@
 * [BUGFIX] Cache: Fix Redis Cluster EXECABORT error in MSet by using individual SET commands instead of transactions for cluster mode. #7262
 * [BUGFIX] Distributor: Fix an `index out of range` panic in PRW2.0 handler caused by dirty metadata when reusing requests from `sync.Pool`. #7299
 * [BUGFIX] Distributor: Fix data corruption in the push handler caused by shallow copying `Samples` and `Histograms` when converting Remote Write V2 requests to V1. #7337
+* [BUGFIX] Ingester: Fix panic due to concurrent access to rand in active queried series. #7329
+* [BUGFIX] Distributor: Fix request slice not being properly reused in push error paths. #7123
+* [BUGFIX] Memberlist: Skip nil values delivered by `WatchPrefix` when a key is deleted, preventing a panic in the HA tracker caused by a failed type assertion on a nil interface value. #7429
+* [BUGFIX] Tenant Federation: Fix `unsupported character` error when `tenant-federation.regex-matcher-enabled` is enabled and the input regex matches 0 or 1 existing tenant. #7424
+* [BUGFIX] KV store: Fix false-positive `status_code="500"` metrics for HA tracker CAS operations when using memberlist. #7408
+* [BUGFIX] Fix nil when ingester_query_max_attempts > 1. #7369
+* [BUGFIX] Alertmanager: Fix disappearing user config and state when ring is temporarily unreachable. #7372
+* [BUGFIX] Fix memory leak in `ReuseWriteRequestV2` by explicitly clearing the `Symbols` backing array string pointers before returning the object to `sync.Pool`. #7373
+* [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7375
 
 
 ## 1.20.1 2025-12-03

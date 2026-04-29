@@ -36,7 +36,7 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.18.0        | 2024-08-16                                 | Daniel Blando (@danielblando)               |
 | v1.19.0        | 2025-01-22                                 | Charlie Le (@charlietle)                    |
 | v1.20.0        | 2025-10-31                                 | Ben Ye (@yeya24)                            |
-| v1.21.0        | 2026-03-09                                 | Friedrich Gonzalez (@friedrichg)            |
+| v1.21.0        | 2026-03-12                                 | Friedrich Gonzalez (@friedrichg)            |
 
 ## Release shepherd responsibilities
 
@@ -102,8 +102,8 @@ To publish a release candidate:
 1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a pre-release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
-   - Build binaries with `make dist` and attach them to the release
-   - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
+   - Download binaries from the `Dist Binaries` artifact in the [distribution](https://github.com/cortexproject/cortex/actions/workflows/distribution.yml) GitHub Actions workflow for the tag and attach them to the release
+   - Download packages from the `Packages` artifact in the [distribution](https://github.com/cortexproject/cortex/actions/workflows/distribution.yml) GitHub Actions workflow for the tag and attach them to the release
 1. [Sign the artifact and generate SBOM for the release](#sing-and-sbom)
 
 ### Publish a stable release
@@ -119,8 +119,8 @@ To publish a stable release:
 1. Wait until CI pipeline succeeded (once a tag is created, the release process through GitHub actions will be triggered for this tag)
 1. Create a release in GitHub
    - Write the release notes (including a copy-paste of the changelog)
-   - Build binaries with `make dist` and attach them to the release
-   - Build packages with `make packages`, test them with `make test-packages` and attach them to the release
+   - Download binaries from the `Dist Binaries` artifact in the [distribution](https://github.com/cortexproject/cortex/actions/workflows/distribution.yml) GitHub Actions workflow for the tag and attach them to the release
+   - Download packages from the `Packages` artifact in the [distribution](https://github.com/cortexproject/cortex/actions/workflows/distribution.yml) GitHub Actions workflow for the tag and attach them to the release
 1. [Sign the artifact and generate SBOM for the release](#sing-and-sbom)
 1. Merge the release branch `release-x.y` to `master`
    - Create `merge-release-X.Y-to-master` branch **from `release-X.Y` branch** locally

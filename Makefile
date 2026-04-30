@@ -180,7 +180,7 @@ copy-am-ui:
 	mkdir -p $$AM_UI_DIR/dist; \
 	cp -r tools/alertmanager-ui/dist/. $$AM_UI_DIR/dist/
 
-lint: copy-am-ui
+lint:
 	misspell -error docs
 
 

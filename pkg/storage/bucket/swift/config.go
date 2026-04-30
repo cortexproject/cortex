@@ -9,27 +9,27 @@ import (
 
 // Config holds the config options for Swift backend
 type Config struct {
-	AuthVersion                 int           `yaml:"auth_version"`
-	AuthURL                     string        `yaml:"auth_url"`
-	ApplicationCredentialID     string        `yaml:"application_credential_id"`
-	ApplicationCredentialName   string        `yaml:"application_credential_name"`
+	AuthVersion                 int            `yaml:"auth_version"`
+	AuthURL                     string         `yaml:"auth_url"`
+	ApplicationCredentialID     string         `yaml:"application_credential_id"`
+	ApplicationCredentialName   string         `yaml:"application_credential_name"`
 	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret"`
-	Username                    string        `yaml:"username"`
-	UserDomainName              string        `yaml:"user_domain_name"`
-	UserDomainID                string        `yaml:"user_domain_id"`
-	UserID                      string        `yaml:"user_id"`
+	Username                    string         `yaml:"username"`
+	UserDomainName              string         `yaml:"user_domain_name"`
+	UserDomainID                string         `yaml:"user_domain_id"`
+	UserID                      string         `yaml:"user_id"`
 	Password                    flagext.Secret `yaml:"password"`
-	DomainID                    string        `yaml:"domain_id"`
-	DomainName                  string        `yaml:"domain_name"`
-	ProjectID                   string        `yaml:"project_id"`
-	ProjectName                 string        `yaml:"project_name"`
-	ProjectDomainID             string        `yaml:"project_domain_id"`
-	ProjectDomainName           string        `yaml:"project_domain_name"`
-	RegionName                  string        `yaml:"region_name"`
-	ContainerName               string        `yaml:"container_name"`
-	MaxRetries                  int           `yaml:"max_retries"`
-	ConnectTimeout              time.Duration `yaml:"connect_timeout"`
-	RequestTimeout              time.Duration `yaml:"request_timeout"`
+	DomainID                    string         `yaml:"domain_id"`
+	DomainName                  string         `yaml:"domain_name"`
+	ProjectID                   string         `yaml:"project_id"`
+	ProjectName                 string         `yaml:"project_name"`
+	ProjectDomainID             string         `yaml:"project_domain_id"`
+	ProjectDomainName           string         `yaml:"project_domain_name"`
+	RegionName                  string         `yaml:"region_name"`
+	ContainerName               string         `yaml:"container_name"`
+	MaxRetries                  int            `yaml:"max_retries"`
+	ConnectTimeout              time.Duration  `yaml:"connect_timeout"`
+	RequestTimeout              time.Duration  `yaml:"request_timeout"`
 }
 
 // RegisterFlags registers the flags for Swift storage

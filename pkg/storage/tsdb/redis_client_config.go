@@ -13,11 +13,11 @@ import (
 )
 
 type RedisClientConfig struct {
-	Addresses  string `yaml:"addresses"`
-	Username   string `yaml:"username"`
+	Addresses  string         `yaml:"addresses"`
+	Username   string         `yaml:"username"`
 	Password   flagext.Secret `yaml:"password"`
-	DB         int    `yaml:"db"`
-	MasterName string `yaml:"master_name"`
+	DB         int            `yaml:"db"`
+	MasterName string         `yaml:"master_name"`
 
 	MaxGetMultiConcurrency int `yaml:"max_get_multi_concurrency"`
 	GetMultiBatchSize      int `yaml:"get_multi_batch_size"`

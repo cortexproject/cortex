@@ -27,9 +27,9 @@ type Config struct {
 	EnableTLS   bool                   `yaml:"tls_enabled"`
 	TLS         cortextls.ClientConfig `yaml:",inline"`
 
-	UserName            string `yaml:"username"`
+	UserName            string         `yaml:"username"`
 	Password            flagext.Secret `yaml:"password"`
-	PermitWithoutStream bool   `yaml:"ping-without-stream-allowed"`
+	PermitWithoutStream bool           `yaml:"ping-without-stream-allowed"`
 }
 
 // Clientv3Facade is a subset of all Etcd client operations that are required

@@ -235,7 +235,20 @@ mod-check:
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
 	GO111MODULE=on go mod tidy
+	# go mod vendor (Go 1.22+) validates //go:embed patterns using the module cache.
+	# The Alertmanager module proxy zip excludes pre-built UI assets (app/dist/),
+	# so we create a placeholder in the module cache to allow embed resolution to succeed.
+	@set -e; \
+	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
+	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
+	chmod -R u+w $$AM_UI_DIR 2>/dev/null || true; \
+	mkdir -p $$AM_UI_DIR/dist; \
+	touch $$AM_UI_DIR/dist/placeholder
 	GO111MODULE=on go mod vendor
+	# Restore Alertmanager UI assets (app/dist/) which are pre-built and not included
+	# in the Go module proxy zip. They are manually maintained in vendor/ and must be
+	# restored after go mod vendor removes them.
+	git checkout -- vendor/github.com/prometheus/alertmanager/ui/app/dist/
 	@git diff --exit-code -- go.sum go.mod vendor/
 
 check-protos: clean-protos protos

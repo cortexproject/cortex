@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize copy-am-ui: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -167,20 +167,22 @@ protos: $(PROTO_GOS)
 	@# to configure all such relative paths.
 	protoc -I $(GOPATH)/src:./vendor/github.com/thanos-io/thanos/pkg:./vendor/github.com/gogo/protobuf:./vendor:./$(@D) --gogoslick_out=plugins=grpc,Mgoogle/protobuf/any.proto=github.com/gogo/protobuf/types,:./$(@D) ./$(patsubst %.pb.go,%.proto,$@)
 
-lint:
-	misspell -error docs
-
-	# go mod vendor (Go 1.22+) copies //go:embed files from the module cache.
-	# The Alertmanager module proxy zip excludes pre-built UI assets (app/dist/).
-	# We keep a canonical copy in tools/alertmanager-ui/dist/ (outside vendor/) so
-	# that it is never deleted by go mod vendor. Copy it into the module cache so
-	# go mod vendor can include the real UI files automatically.
+copy-am-ui:
+	# Copy Alertmanager UI assets from tools/alertmanager-ui/dist/ to:
+	# 1. vendor/ so golangci-lint can compile //go:embed app/dist
+	# 2. module cache so go mod vendor picks up the real files
 	@set -e; \
+	mkdir -p vendor/github.com/prometheus/alertmanager/ui/app/dist; \
+	cp -r tools/alertmanager-ui/dist/. vendor/github.com/prometheus/alertmanager/ui/app/dist/; \
 	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
 	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
 	chmod -R u+w $$AM_UI_DIR 2>/dev/null || true; \
 	mkdir -p $$AM_UI_DIR/dist; \
 	cp -r tools/alertmanager-ui/dist/. $$AM_UI_DIR/dist/
+
+lint: copy-am-ui
+	misspell -error docs
+
 
 	# Configured via .golangci.yml.
 	golangci-lint run
@@ -243,7 +245,7 @@ shell:
 configs-integration-test:
 	/bin/bash -c "go test -v -tags 'netgo integration slicelabels' -timeout 10m ./pkg/configs/... ./pkg/ruler/..."
 
-mod-check:
+mod-check: copy-am-ui
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
 	GO111MODULE=on go mod tidy

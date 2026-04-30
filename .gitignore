@@ -14,6 +14,7 @@ e2e_integration_test*
 active-query-tracker
 dist/
 !vendor/**/dist/
+!tools/alertmanager-ui/dist/
 
 # Binaries built from ./cmd
 /blocksconvert

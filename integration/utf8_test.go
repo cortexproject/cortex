@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	amlabels "github.com/prometheus/alertmanager/pkg/labels"
-	"github.com/prometheus/alertmanager/types"
+	"github.com/go-openapi/strfmt"
+	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
@@ -64,13 +64,22 @@ func Test_Alertmanager_UTF8(t *testing.T) {
 	require.NoError(t, alertmanager.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_alertmanager_config_last_reload_successful"}, e2e.WaitMissingMetrics))
 	require.NoError(t, alertmanager.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_alertmanager_config_hash"}, e2e.WaitMissingMetrics))
 
-	silenceId, err := c.CreateSilence(ctx, types.Silence{
-		Matchers: amlabels.Matchers{
-			{Name: "silences.name.🙂", Value: "silences.value.🙂"},
+	silenceName := "silences.name.🙂"
+	silenceValue := "silences.value.🙂"
+	silenceComment := "test silences"
+	silenceCreatedBy := "integration-test"
+	isRegex := false
+	isEqual := true
+	startsAt := strfmt.DateTime(time.Now())
+	endsAt := strfmt.DateTime(time.Now().Add(time.Minute))
+	silenceId, err := c.CreateSilence(ctx, open_api_models.Silence{
+		Matchers: open_api_models.Matchers{
+			{Name: &silenceName, Value: &silenceValue, IsRegex: &isRegex, IsEqual: &isEqual},
 		},
-		Comment:  "test silences",
-		StartsAt: time.Now(),
-		EndsAt:   time.Now().Add(time.Minute),
+		Comment:   &silenceComment,
+		CreatedBy: &silenceCreatedBy,
+		StartsAt:  &startsAt,
+		EndsAt:    &endsAt,
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, silenceId)

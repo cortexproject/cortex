@@ -31,12 +31,13 @@ import (
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/store"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
 const alertChannelLength = 200
 
-var tracer = otel.Tracer("github.com/prometheus/alertmanager/provider/mem")
+var tracer = tracing.NewTracer("github.com/prometheus/alertmanager/provider/mem")
 
 // Alerts gives access to a set of alerts. All methods are goroutine-safe.
 type Alerts struct {
@@ -71,8 +72,11 @@ type AlertStoreCallback interface {
 	// PostStore is called after alert has been put into store.
 	PostStore(alert *types.Alert, existing bool)
 
-	// PostDelete is called after alert has been removed from the store due to alert garbage collection.
+	// PostDelete is called after alert have been removed from the store due to alert garbage collection.
 	PostDelete(alert *types.Alert)
+
+	// PostGC is called after alerts have been removed from the store due to alert garbage collection.
+	PostGC(fingerprints model.Fingerprints)
 }
 
 type listeningAlerts struct {
@@ -170,17 +174,37 @@ func (a *Alerts) gcLoop(ctx context.Context, interval time.Duration) {
 }
 
 func (a *Alerts) gc() {
+	a.gcListeners()
+
+	// As we don't persist alerts, we no longer consider them after
+	// they are resolved. Alerts waiting for resolved notifications are
+	// held in memory in aggregation groups redundantly.
+	deleted := a.gcAlerts()
+
+	// If there are no deleted alerts, there is nothing to do.
+	if len(deleted) == 0 {
+		return
+	}
+
+	// Delete markers for deleted alerts.
+	ff := make(model.Fingerprints, len(deleted))
+	for i, alert := range deleted {
+		ff[i] = alert.Fingerprint()
+		a.callback.PostDelete(alert)
+	}
+	a.marker.Delete(ff...)
+	a.callback.PostGC(ff)
+}
+
+func (a *Alerts) gcAlerts() []*types.Alert {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
+	return a.alerts.GC()
+}
 
-	deleted := a.alerts.GC()
-	for _, alert := range deleted {
-		// As we don't persist alerts, we no longer consider them after
-		// they are resolved. Alerts waiting for resolved notifications are
-		// held in memory in aggregation groups redundantly.
-		a.marker.Delete(alert.Fingerprint())
-		a.callback.PostDelete(&alert)
-	}
+func (a *Alerts) gcListeners() {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
 
 	for i, l := range a.listeners {
 		select {
@@ -391,3 +415,4 @@ type noopCallback struct{}
 func (n noopCallback) PreStore(_ *types.Alert, _ bool) error { return nil }
 func (n noopCallback) PostStore(_ *types.Alert, _ bool)      {}
 func (n noopCallback) PostDelete(_ *types.Alert)             {}
+func (n noopCallback) PostGC(_ model.Fingerprints)           {}

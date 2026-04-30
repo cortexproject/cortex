@@ -207,7 +207,7 @@ func objectExists(bucketClient any, key string) (bool, error) {
 func makeTestFullState(content string) alertspb.FullStateDesc {
 	return alertspb.FullStateDesc{
 		State: &clusterpb.FullState{
-			Parts: []clusterpb.Part{
+			Parts: []*clusterpb.Part{
 				{
 					Key:  "key",
 					Data: []byte(content),

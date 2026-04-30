@@ -1,4 +1,4 @@
-// Copyright 2015 Prometheus Team
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -27,21 +27,22 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/nflog/nflogpb"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/timeinterval"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
-var tracer = otel.Tracer("github.com/prometheus/alertmanager/notify")
+var tracer = tracing.NewTracer("github.com/prometheus/alertmanager/notify")
 
 // ResolvedSender returns true if resolved notifications should be sent.
 type ResolvedSender interface {
@@ -143,6 +144,7 @@ const (
 	keyActiveTimeIntervals
 	keyRouteID
 	keyNflogStore
+	keyNotificationReason
 )
 
 // WithReceiverName populates a context with a receiver name.
@@ -191,6 +193,10 @@ func WithActiveTimeIntervals(ctx context.Context, at []string) context.Context {
 
 func WithRouteID(ctx context.Context, routeID string) context.Context {
 	return context.WithValue(ctx, keyRouteID, routeID)
+}
+
+func WithNotificationReason(ctx context.Context, reason NotifyReason) context.Context {
+	return context.WithValue(ctx, keyNotificationReason, reason)
 }
 
 // RepeatInterval extracts a repeat interval from the context. Iff none exists, the
@@ -260,6 +266,11 @@ func ActiveTimeIntervalNames(ctx context.Context) ([]string, bool) {
 // // second argument is false.
 func RouteID(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(keyRouteID).(string)
+	return v, ok
+}
+
+func NotificationReason(ctx context.Context) (NotifyReason, bool) {
+	v, ok := ctx.Value(keyNotificationReason).(NotifyReason)
 	return v, ok
 }
 
@@ -526,28 +537,28 @@ func (ms MultiStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.
 type FanoutStage []Stage
 
 // Exec attempts to execute all stages concurrently and discards the results.
-// It returns its input alerts and a types.MultiError if one or more stages fail.
+// It returns its input alerts and an error if one or more stages fail.
 func (fs FanoutStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	var (
-		wg sync.WaitGroup
-		me types.MultiError
+		wg   sync.WaitGroup
+		mtx  sync.Mutex
+		errs error
 	)
 	wg.Add(len(fs))
 
 	for _, s := range fs {
 		go func(s Stage) {
 			if _, _, err := s.Exec(ctx, l, alerts...); err != nil {
-				me.Add(err)
+				mtx.Lock()
+				errs = errors.Join(errs, err)
+				mtx.Unlock()
 			}
 			wg.Done()
 		}(s)
 	}
 	wg.Wait()
 
-	if me.Len() > 0 {
-		return ctx, alerts, &me
-	}
-	return ctx, alerts, nil
+	return ctx, alerts, errs
 }
 
 // GossipSettleStage waits until the Gossip has settled to forward alerts.
@@ -575,61 +586,6 @@ const (
 	SuppressedReasonMuteTimeInterval   = "mute_time_interval"
 	SuppressedReasonActiveTimeInterval = "active_time_interval"
 )
-
-// MuteStage filters alerts through a Muter.
-type MuteStage struct {
-	muter   types.Muter
-	metrics *Metrics
-}
-
-// NewMuteStage return a new MuteStage.
-func NewMuteStage(m types.Muter, metrics *Metrics) *MuteStage {
-	return &MuteStage{muter: m, metrics: metrics}
-}
-
-// Exec implements the Stage interface.
-func (n *MuteStage) Exec(ctx context.Context, logger *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
-	ctx, span := tracer.Start(ctx, "notify.MuteStage.Exec",
-		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
-		trace.WithSpanKind(trace.SpanKindInternal),
-	)
-	defer span.End()
-
-	var (
-		filtered []*types.Alert
-		muted    []*types.Alert
-	)
-	for _, a := range alerts {
-		// TODO(fabxc): increment total alerts counter.
-		// Do not send the alert if muted.
-		if n.muter.Mutes(ctx, a.Labels) {
-			muted = append(muted, a)
-		} else {
-			filtered = append(filtered, a)
-		}
-		// TODO(fabxc): increment muted alerts counter if muted.
-	}
-	if len(muted) > 0 {
-
-		var reason string
-		switch n.muter.(type) {
-		case *silence.Silencer:
-			reason = SuppressedReasonSilence
-		case *inhibit.Inhibitor:
-			reason = SuppressedReasonInhibition
-		default:
-		}
-		span.SetAttributes(
-			attribute.Int("alerting.alerts.muted.count", len(muted)),
-			attribute.Int("alerting.alerts.filtered.count", len(filtered)),
-			attribute.String("alerting.suppressed.reason", reason),
-		)
-		n.metrics.numNotificationSuppressedTotal.WithLabelValues(reason).Add(float64(len(muted)))
-		logger.Debug("Notifications will not be sent for muted alerts", "alerts", fmt.Sprintf("%v", muted), "reason", reason)
-	}
-
-	return ctx, filtered, nil
-}
 
 // WaitStage waits for a certain amount of time before continuing or until the
 // context is done.
@@ -715,15 +671,59 @@ func hashAlert(a *types.Alert) uint64 {
 	return hash
 }
 
-func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint64]struct{}, repeat time.Duration) bool {
+type NotifyReason int
+
+const (
+	ReasonDoNotNotify NotifyReason = iota
+	ReasonFirstNotification
+	ReasonNewAlertsInGroup
+	ReasonNewResolvedAlerts
+	ReasonAllAlertsResolved
+	ReasonRepeatIntervalElapsed
+	ReasonUnknown
+)
+
+func (r NotifyReason) shouldNotify() bool {
+	return r != ReasonDoNotNotify
+}
+
+func (r NotifyReason) String() string {
+	switch r {
+	case ReasonDoNotNotify:
+		return "none"
+	case ReasonFirstNotification:
+		return "first notification"
+	case ReasonNewAlertsInGroup:
+		return "new alerts added"
+	case ReasonNewResolvedAlerts:
+		return "some alerts resolved"
+	case ReasonAllAlertsResolved:
+		return "all alerts resolved"
+	case ReasonRepeatIntervalElapsed:
+		return "repeat interval elapsed"
+	default:
+		return "unknown"
+	}
+}
+
+func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint64]struct{}, repeat time.Duration, now time.Time) NotifyReason {
 	// If we haven't notified about the alert group before, notify right away
 	// unless we only have resolved alerts.
 	if entry == nil {
-		return len(firing) > 0
+		if len(firing) > 0 {
+			return ReasonFirstNotification
+		}
+		return ReasonDoNotNotify
 	}
 
+	// new alerts in the group
 	if !entry.IsFiringSubset(firing) {
-		return true
+		// If the previous entry has no firing alerts, it was a resolution and we
+		// should treat this as the first notification for the group.
+		if len(entry.FiringAlerts) == 0 {
+			return ReasonFirstNotification
+		}
+		return ReasonNewAlertsInGroup
 	}
 
 	// Notify about all alerts being resolved.
@@ -734,15 +734,42 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 		// alert, it means that some alerts have been fired and resolved during the
 		// last interval. In this case, there is no need to notify the receiver
 		// since it doesn't know about them.
-		return len(entry.FiringAlerts) > 0
+		if len(entry.FiringAlerts) > 0 {
+			return ReasonAllAlertsResolved
+		}
+		return ReasonDoNotNotify
 	}
 
 	if n.rs.SendResolved() && !entry.IsResolvedSubset(resolved) {
-		return true
+		return ReasonNewResolvedAlerts
 	}
 
 	// Nothing changed, only notify if the repeat interval has passed.
-	return entry.Timestamp.Before(n.now().Add(-repeat))
+	isRepeatIntervalElapsed := entry.Timestamp.AsTime().Before(now.Add(-repeat))
+	if isRepeatIntervalElapsed {
+		return ReasonRepeatIntervalElapsed
+	}
+	return ReasonDoNotNotify
+}
+
+// partitionAlertsByState separates alerts into firing and resolved, returning both slices and sets.
+func partitionAlertsByState(alerts []*types.Alert, hashFn func(*types.Alert) uint64) (firing, resolved []uint64, firingSet, resolvedSet map[uint64]struct{}) {
+	firingSet = make(map[uint64]struct{}, len(alerts))
+	resolvedSet = make(map[uint64]struct{}, len(alerts))
+	firing = make([]uint64, 0, len(alerts))
+	resolved = make([]uint64, 0, len(alerts))
+
+	for _, a := range alerts {
+		hash := hashFn(a)
+		if a.Resolved() {
+			resolved = append(resolved, hash)
+			resolvedSet[hash] = struct{}{}
+		} else {
+			firing = append(firing, hash)
+			firingSet[hash] = struct{}{}
+		}
+	}
+	return firing, resolved, firingSet, resolvedSet
 }
 
 // Exec implements the Stage interface.
@@ -764,22 +791,7 @@ func (n *DedupStage) Exec(ctx context.Context, _ *slog.Logger, alerts ...*types.
 		return ctx, nil, errors.New("repeat interval missing")
 	}
 
-	firingSet := map[uint64]struct{}{}
-	resolvedSet := map[uint64]struct{}{}
-	firing := []uint64{}
-	resolved := []uint64{}
-
-	var hash uint64
-	for _, a := range alerts {
-		hash = n.hash(a)
-		if a.Resolved() {
-			resolved = append(resolved, hash)
-			resolvedSet[hash] = struct{}{}
-		} else {
-			firing = append(firing, hash)
-			firingSet[hash] = struct{}{}
-		}
-	}
+	firing, resolved, firingSet, resolvedSet := partitionAlertsByState(alerts, n.hash)
 
 	ctx = WithFiringAlerts(ctx, firing)
 	ctx = WithResolvedAlerts(ctx, resolved)
@@ -790,26 +802,28 @@ func (n *DedupStage) Exec(ctx context.Context, _ *slog.Logger, alerts ...*types.
 	}
 
 	var entry *nflogpb.Entry
-	var isFirstNotification bool
 	switch len(entries) {
 	case 0:
-		isFirstNotification = true
 	case 1:
 		entry = entries[0]
-		// if this condition true, we're sending a notification for a new alert group, but the nflog entry for the previous alert
-		// group is still in log
-		isFirstNotification = len(entry.FiringAlerts) == 0 && len(firing) > 0
 	default:
 		return ctx, nil, fmt.Errorf("unexpected entry result size %d", len(entries))
 	}
 
-	if isFirstNotification {
+	now := n.now()
+	if ctxNow, ok := Now(ctx); ok {
+		now = ctxNow
+	}
+	updateReason := n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval, now)
+	ctx = WithNotificationReason(ctx, updateReason)
+
+	if updateReason == ReasonFirstNotification {
 		ctx = WithNflogStore(ctx, nflog.NewStore(nil))
 	} else {
 		ctx = WithNflogStore(ctx, nflog.NewStore(entry))
 	}
 
-	if n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval) {
+	if updateReason.shouldNotify() {
 		span.AddEvent("notify.DedupStage.Exec nflog needs update")
 		return ctx, alerts, nil
 	}
@@ -870,7 +884,7 @@ func (r RetryStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.A
 }
 
 func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
-	var sent []*types.Alert
+	var sent alert.AlertSlice
 
 	// If we shouldn't send notifications for resolved alerts, but there are only
 	// resolved alerts, report them all as successfully notified (we still want the
@@ -952,10 +966,13 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*types.A
 					iErr = err
 				}
 			} else {
-				l := l.With("attempts", i, "duration", dur)
+				l := l.With(
+					"attempts", i,
+					"duration", dur,
+					"numAlerts", len(sent),
+				)
 				if i <= 1 {
-					l = l.With("alerts", fmt.Sprintf("%v", alerts))
-					l.Debug("Notify success")
+					l.Debug("Notify success", "alerts", sent)
 				} else {
 					l.Info("Notify success")
 				}
@@ -1020,140 +1037,4 @@ func (n SetNotifiesStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*t
 	// Extract receiver data from context if present (it's ok for it to be nil).
 	store, _ := NflogStore(ctx)
 	return ctx, alerts, n.nflog.Log(n.recv, gkey, firing, resolved, store, expiry)
-}
-
-type timeStage struct {
-	muter   types.TimeMuter
-	marker  types.GroupMarker
-	metrics *Metrics
-}
-
-type TimeMuteStage timeStage
-
-func NewTimeMuteStage(muter types.TimeMuter, marker types.GroupMarker, metrics *Metrics) *TimeMuteStage {
-	return &TimeMuteStage{muter, marker, metrics}
-}
-
-// Exec implements the stage interface for TimeMuteStage.
-// TimeMuteStage is responsible for muting alerts whose route is not in an active time.
-func (tms TimeMuteStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
-	ctx, span := tracer.Start(ctx, "notify.TimeMuteStage.Exec",
-		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
-		trace.WithSpanKind(trace.SpanKindInternal),
-	)
-	defer span.End()
-
-	routeID, ok := RouteID(ctx)
-	if !ok {
-		err := errors.New("route ID missing")
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-		return ctx, nil, err
-	}
-	span.SetAttributes(attribute.String("alerting.route.id", routeID))
-
-	gkey, ok := GroupKey(ctx)
-	if !ok {
-		return ctx, nil, errors.New("group key missing")
-	}
-	span.SetAttributes(attribute.String("alerting.group.key", gkey))
-
-	muteTimeIntervalNames, ok := MuteTimeIntervalNames(ctx)
-	if !ok {
-		return ctx, alerts, nil
-	}
-	now, ok := Now(ctx)
-	if !ok {
-		return ctx, alerts, errors.New("missing now timestamp")
-	}
-
-	// Skip this stage if there are no mute timings.
-	if len(muteTimeIntervalNames) == 0 {
-		return ctx, alerts, nil
-	}
-
-	muted, mutedBy, err := tms.muter.Mutes(muteTimeIntervalNames, now)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		span.RecordError(err)
-		return ctx, alerts, err
-	}
-	// If muted is false then mutedBy is nil and the muted marker is removed.
-	tms.marker.SetMuted(routeID, gkey, mutedBy)
-
-	// If the current time is inside a mute time, all alerts are removed from the pipeline.
-	if muted {
-		tms.metrics.numNotificationSuppressedTotal.WithLabelValues(SuppressedReasonMuteTimeInterval).Add(float64(len(alerts)))
-		l.Debug("Notifications not sent, route is within mute time", "alerts", len(alerts))
-		span.AddEvent("notify.TimeMuteStage.Exec muted the alerts")
-		return ctx, nil, nil
-	}
-
-	return ctx, alerts, nil
-}
-
-type TimeActiveStage timeStage
-
-func NewTimeActiveStage(muter types.TimeMuter, marker types.GroupMarker, metrics *Metrics) *TimeActiveStage {
-	return &TimeActiveStage{muter, marker, metrics}
-}
-
-// Exec implements the stage interface for TimeActiveStage.
-// TimeActiveStage is responsible for muting alerts whose route is not in an active time.
-func (tas TimeActiveStage) Exec(ctx context.Context, l *slog.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
-	routeID, ok := RouteID(ctx)
-	if !ok {
-		return ctx, nil, errors.New("route ID missing")
-	}
-
-	ctx, span := tracer.Start(ctx, "notify.TimeActiveStage.Exec",
-		trace.WithAttributes(attribute.String("alerting.route.id", routeID)),
-		trace.WithAttributes(attribute.Int("alerting.alerts.count", len(alerts))),
-		trace.WithSpanKind(trace.SpanKindInternal),
-	)
-	defer span.End()
-
-	gkey, ok := GroupKey(ctx)
-	if !ok {
-		return ctx, nil, errors.New("group key missing")
-	}
-
-	activeTimeIntervalNames, ok := ActiveTimeIntervalNames(ctx)
-	if !ok {
-		return ctx, alerts, nil
-	}
-
-	// if we don't have active time intervals at all it is always active.
-	if len(activeTimeIntervalNames) == 0 {
-		return ctx, alerts, nil
-	}
-
-	now, ok := Now(ctx)
-	if !ok {
-		return ctx, alerts, errors.New("missing now timestamp")
-	}
-
-	active, _, err := tas.muter.Mutes(activeTimeIntervalNames, now)
-	if err != nil {
-		return ctx, alerts, err
-	}
-
-	var mutedBy []string
-	if !active {
-		// If the group is muted, then it must be muted by all active time intervals.
-		// Otherwise, the group must be in at least one active time interval for it
-		// to be active.
-		mutedBy = activeTimeIntervalNames
-	}
-	tas.marker.SetMuted(routeID, gkey, mutedBy)
-
-	// If the current time is not inside an active time, all alerts are removed from the pipeline
-	if !active {
-		span.AddEvent("notify.TimeActiveStage.Exec not active, removing all alerts")
-		tas.metrics.numNotificationSuppressedTotal.WithLabelValues(SuppressedReasonActiveTimeInterval).Add(float64(len(alerts)))
-		l.Debug("Notifications not sent, route is not within active time", "alerts", len(alerts))
-		return ctx, nil, nil
-	}
-
-	return ctx, alerts, nil
 }

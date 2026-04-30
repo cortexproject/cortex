@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -43,8 +44,8 @@ func TestSilencesLimits(t *testing.T) {
 		createSilences := func() *silencepb.Silence {
 			return &silencepb.Silence{
 				Matchers: []*silencepb.Matcher{{Name: "name", Pattern: "pattern"}},
-				StartsAt: time.Now(),
-				EndsAt:   time.Now().Add(time.Minute * 30),
+				StartsAt: timestamppb.New(time.Now()),
+				EndsAt:   timestamppb.New(time.Now().Add(time.Minute * 30)),
 			}
 		}
 		ctx := context.Background()
@@ -81,8 +82,8 @@ func TestSilencesLimits(t *testing.T) {
 	t.Run("Test maxSilencesSizeBytes", func(t *testing.T) {
 		bigSilences := &silencepb.Silence{
 			Matchers: []*silencepb.Matcher{{Name: strings.Repeat("a", maxSilencesSizeBytes/2+1), Pattern: strings.Repeat("b", maxSilencesSizeBytes/2+1)}},
-			StartsAt: time.Now(),
-			EndsAt:   time.Now().Add(time.Minute * 30),
+			StartsAt: timestamppb.New(time.Now()),
+			EndsAt:   timestamppb.New(time.Now().Add(time.Minute * 30)),
 		}
 
 		err = am.silences.Set(context.Background(), bigSilences)

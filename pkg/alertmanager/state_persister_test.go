@@ -72,7 +72,7 @@ func (f *fakeStore) getWrites() []fakeStoreWrite {
 
 func makeTestFullState() *clusterpb.FullState {
 	return &clusterpb.FullState{
-		Parts: []clusterpb.Part{
+		Parts: []*clusterpb.Part{
 			{
 				Key:  "key",
 				Data: []byte("data"),

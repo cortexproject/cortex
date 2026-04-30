@@ -60,6 +60,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -314,7 +315,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
-	ui.Register(router, webReload, util_log.GoKitLogToSlog(log.With(am.logger, "component", "ui")))
+	ui.Register(router)
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
 
 	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
@@ -523,7 +524,7 @@ func buildIntegrationsMap(nc []config.Receiver, tmpl *template.Template, firewal
 // Taken from https://github.com/prometheus/alertmanager/blob/d7b4f0c7322e7151d6e3b1e31cbc15361e295d8d/cmd/alertmanager/main.go#L135-L193.
 func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
-		errs         types.MultiError
+		errs         multierror.MultiError
 		integrations []notify.Integration
 		add          = func(name string, i int, rs notify.ResolvedSender, f func(l log.Logger) (notify.Notifier, error)) {
 			n, err := f(log.With(logger, "integration", name))
@@ -633,8 +634,8 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	}
 
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
-	if errs.Len() > 0 {
-		return nil, &errs
+	if len(errs) > 0 {
+		return nil, errs.Err()
 	}
 	return integrations, nil
 }
@@ -824,6 +825,8 @@ func (a *alertsLimiter) PostDelete(alert *types.Alert) {
 	delete(a.sizes, fp)
 	a.count--
 }
+
+func (a *alertsLimiter) PostGC(_ model.Fingerprints) {}
 
 func (a *alertsLimiter) currentStats() (count, totalSize int) {
 	a.mx.Lock()

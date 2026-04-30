@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -146,7 +147,7 @@ func TestStateReplication(t *testing.T) {
 			ch := s.AddState("nflog:user-1", &fakeState{}, reg)
 
 			part := tt.message
-			d, err := part.Marshal()
+			d, err := proto.Marshal(part)
 			require.NoError(t, err)
 			ch.Broadcast(d)
 
@@ -224,8 +225,8 @@ func TestStateReplication_Settle(t *testing.T) {
 			replicationFactor: 3,
 			read: readStateResult{
 				res: []*clusterpb.FullState{
-					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}, {Key: "key2", Data: []byte("Datum2")}}},
-					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum3")}, {Key: "key2", Data: []byte("Datum4")}}},
+					{Parts: []*clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}, {Key: "key2", Data: []byte("Datum2")}}},
+					{Parts: []*clusterpb.Part{{Key: "key1", Data: []byte("Datum3")}, {Key: "key2", Data: []byte("Datum4")}}},
 				},
 			},
 			results: map[string][][]byte{
@@ -237,7 +238,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			name:              "with full state having no parts, nothing is merged.",
 			replicationFactor: 3,
 			read: readStateResult{
-				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{}}},
+				res: []*clusterpb.FullState{{Parts: []*clusterpb.Part{}}},
 			},
 			results: map[string][][]byte{
 				"key1": nil,
@@ -248,7 +249,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			name:              "with an unknown key, parts in the same state are merged.",
 			replicationFactor: 3,
 			read: readStateResult{
-				res: []*clusterpb.FullState{{Parts: []clusterpb.Part{
+				res: []*clusterpb.FullState{{Parts: []*clusterpb.Part{
 					{Key: "unknown", Data: []byte("Wow")},
 					{Key: "key1", Data: []byte("Datum1")},
 				}}},
@@ -263,8 +264,8 @@ func TestStateReplication_Settle(t *testing.T) {
 			replicationFactor: 3,
 			read: readStateResult{
 				res: []*clusterpb.FullState{
-					{Parts: []clusterpb.Part{{Key: "unknown", Data: []byte("Wow")}}},
-					{Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}}},
+					{Parts: []*clusterpb.Part{{Key: "unknown", Data: []byte("Wow")}}},
+					{Parts: []*clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}}},
 				},
 			},
 			results: map[string][][]byte{
@@ -279,7 +280,7 @@ func TestStateReplication_Settle(t *testing.T) {
 			storeStates: map[string]alertspb.FullStateDesc{
 				"user-1": {
 					State: &clusterpb.FullState{
-						Parts: []clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}},
+						Parts: []*clusterpb.Part{{Key: "key1", Data: []byte("Datum1")}},
 					},
 				},
 			},
@@ -354,7 +355,7 @@ func TestStateReplication_GetFullState(t *testing.T) {
 			name: "no keys",
 			data: map[string][]byte{},
 			result: &clusterpb.FullState{
-				Parts: []clusterpb.Part{},
+				Parts: []*clusterpb.Part{},
 			},
 		},
 		{
@@ -363,7 +364,7 @@ func TestStateReplication_GetFullState(t *testing.T) {
 				"key1": {},
 			},
 			result: &clusterpb.FullState{
-				Parts: []clusterpb.Part{
+				Parts: []*clusterpb.Part{
 					{Key: "key1", Data: []byte{}},
 				},
 			},
@@ -375,7 +376,7 @@ func TestStateReplication_GetFullState(t *testing.T) {
 				"key2": []byte("Datum2"),
 			},
 			result: &clusterpb.FullState{
-				Parts: []clusterpb.Part{
+				Parts: []*clusterpb.Part{
 					{Key: "key1", Data: []byte("Datum1")},
 					{Key: "key2", Data: []byte("Datum2")},
 				},

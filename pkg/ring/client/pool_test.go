@@ -36,6 +36,10 @@ func (i mockClient) Watch(ctx context.Context, in *grpc_health_v1.HealthCheckReq
 	return nil, status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
+func (i mockClient) List(ctx context.Context, in *grpc_health_v1.HealthListRequest, opts ...grpc.CallOption) (*grpc_health_v1.HealthListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "Listing is not supported")
+}
+
 func TestHealthCheck(t *testing.T) {
 	tcs := []struct {
 		client   mockClient

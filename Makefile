@@ -170,6 +170,18 @@ protos: $(PROTO_GOS)
 lint:
 	misspell -error docs
 
+	# go mod vendor (Go 1.22+) copies //go:embed files from the module cache.
+	# The Alertmanager module proxy zip excludes pre-built UI assets (app/dist/).
+	# We keep a canonical copy in tools/alertmanager-ui/dist/ (outside vendor/) so
+	# that it is never deleted by go mod vendor. Copy it into the module cache so
+	# go mod vendor can include the real UI files automatically.
+	@set -e; \
+	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
+	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
+	chmod -R u+w $$AM_UI_DIR 2>/dev/null || true; \
+	mkdir -p $$AM_UI_DIR/dist; \
+	cp -r tools/alertmanager-ui/dist/. $$AM_UI_DIR/dist/
+
 	# Configured via .golangci.yml.
 	golangci-lint run
 
@@ -235,17 +247,6 @@ mod-check:
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
 	GO111MODULE=on go mod tidy
-	# go mod vendor (Go 1.22+) copies //go:embed files from the module cache.
-	# The Alertmanager module proxy zip excludes pre-built UI assets (app/dist/).
-	# We keep a canonical copy in tools/alertmanager-ui/dist/ (outside vendor/) so
-	# that it is never deleted by go mod vendor. Copy it into the module cache so
-	# go mod vendor can include the real UI files automatically.
-	@set -e; \
-	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
-	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
-	chmod -R u+w $$AM_UI_DIR 2>/dev/null || true; \
-	mkdir -p $$AM_UI_DIR/dist; \
-	cp -r tools/alertmanager-ui/dist/. $$AM_UI_DIR/dist/
 	GO111MODULE=on go mod vendor
 	@git diff --exit-code -- go.sum go.mod vendor/
 

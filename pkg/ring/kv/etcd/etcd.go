@@ -28,7 +28,7 @@ type Config struct {
 	TLS         cortextls.ClientConfig `yaml:",inline"`
 
 	UserName            string `yaml:"username"`
-	Password            string `yaml:"password"`
+	Password            flagext.Secret `yaml:"password"`
 	PermitWithoutStream bool   `yaml:"ping-without-stream-allowed"`
 }
 
@@ -59,7 +59,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.IntVar(&cfg.MaxRetries, prefix+"etcd.max-retries", 10, "The maximum number of retries to do for failed ops.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"etcd.tls-enabled", false, "Enable TLS.")
 	f.StringVar(&cfg.UserName, prefix+"etcd.username", "", "Etcd username.")
-	f.StringVar(&cfg.Password, prefix+"etcd.password", "", "Etcd password.")
+	f.Var(&cfg.Password, prefix+"etcd.password", "Etcd password.")
 	f.BoolVar(&cfg.PermitWithoutStream, prefix+"etcd.ping-without-stream-allowed", true, "Send Keepalive pings with no streams.")
 	cfg.TLS.RegisterFlagsWithPrefix(prefix+"etcd", f)
 }
@@ -107,7 +107,7 @@ func New(cfg Config, codec codec.Codec, logger log.Logger) (*Client, error) {
 		PermitWithoutStream:  cfg.PermitWithoutStream,
 		TLS:                  tlsConfig,
 		Username:             cfg.UserName,
-		Password:             cfg.Password,
+		Password:             cfg.Password.Value,
 	})
 	if err != nil {
 		return nil, err

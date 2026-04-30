@@ -3,6 +3,8 @@ package swift
 import (
 	"flag"
 	"time"
+
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 // Config holds the config options for Swift backend
@@ -11,12 +13,12 @@ type Config struct {
 	AuthURL                     string        `yaml:"auth_url"`
 	ApplicationCredentialID     string        `yaml:"application_credential_id"`
 	ApplicationCredentialName   string        `yaml:"application_credential_name"`
-	ApplicationCredentialSecret string        `yaml:"application_credential_secret"`
+	ApplicationCredentialSecret flagext.Secret `yaml:"application_credential_secret"`
 	Username                    string        `yaml:"username"`
 	UserDomainName              string        `yaml:"user_domain_name"`
 	UserDomainID                string        `yaml:"user_domain_id"`
 	UserID                      string        `yaml:"user_id"`
-	Password                    string        `yaml:"password"`
+	Password                    flagext.Secret `yaml:"password"`
 	DomainID                    string        `yaml:"domain_id"`
 	DomainName                  string        `yaml:"domain_name"`
 	ProjectID                   string        `yaml:"project_id"`
@@ -43,7 +45,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.UserDomainName, prefix+"swift.user-domain-name", "", "OpenStack Swift user's domain name.")
 	f.StringVar(&cfg.UserDomainID, prefix+"swift.user-domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.UserID, prefix+"swift.user-id", "", "OpenStack Swift user ID.")
-	f.StringVar(&cfg.Password, prefix+"swift.password", "", "OpenStack Swift API key.")
+	f.Var(&cfg.Password, prefix+"swift.password", "OpenStack Swift API key.")
 	f.StringVar(&cfg.DomainID, prefix+"swift.domain-id", "", "OpenStack Swift user's domain ID.")
 	f.StringVar(&cfg.DomainName, prefix+"swift.domain-name", "", "OpenStack Swift user's domain name.")
 	f.StringVar(&cfg.ProjectID, prefix+"swift.project-id", "", "OpenStack Swift project ID (v2,v3 auth only).")
@@ -52,7 +54,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.ProjectDomainName, prefix+"swift.project-domain-name", "", "Name of the OpenStack Swift project's domain (v3 auth only), only needed if it differs from the user domain.")
 	f.StringVar(&cfg.ApplicationCredentialID, prefix+"swift.application-credential-id", "", "OpenStack Swift application credential ID.")
 	f.StringVar(&cfg.ApplicationCredentialName, prefix+"swift.application-credential-name", "", "OpenStack Swift application credential name.")
-	f.StringVar(&cfg.ApplicationCredentialSecret, prefix+"swift.application-credential-secret", "", "OpenStack Swift application credential secret.")
+	f.Var(&cfg.ApplicationCredentialSecret, prefix+"swift.application-credential-secret", "OpenStack Swift application credential secret.")
 	f.StringVar(&cfg.RegionName, prefix+"swift.region-name", "", "OpenStack Swift Region to use (v2,v3 auth only).")
 	f.StringVar(&cfg.ContainerName, prefix+"swift.container-name", "", "Name of the OpenStack Swift container to put chunks in.")
 	f.IntVar(&cfg.MaxRetries, prefix+"swift.max-retries", 3, "Max retries on requests error.")

@@ -35,9 +35,10 @@ func PrepareFilesystemBucket(t testing.TB) (objstore.InstrumentedBucket, string)
 type MockBucketFailure struct {
 	objstore.Bucket
 
-	DeleteFailures []string
-	GetFailures    map[string]error
-	UploadFailures map[string]error
+	DeleteFailures     []string
+	GetFailures        map[string]error
+	UploadFailures     map[string]error
+	AttributesFailures map[string]error
 
 	UploadCalls atomic.Int32
 	GetCalls    atomic.Int32
@@ -92,9 +93,16 @@ func (m *MockBucketFailure) Upload(ctx context.Context, name string, r io.Reader
 	return m.Bucket.Upload(ctx, name, r, opts...)
 }
 
+func (m *MockBucketFailure) Attributes(ctx context.Context, name string) (objstore.ObjectAttributes, error) {
+	if e, ok := m.AttributesFailures[name]; ok {
+		return objstore.ObjectAttributes{}, e
+	}
+	return m.Bucket.Attributes(ctx, name)
+}
+
 func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.Bucket {
 	if ibkt, ok := m.Bucket.(objstore.InstrumentedBucket); ok {
-		return &MockBucketFailure{Bucket: ibkt.WithExpectedErrs(expectedFunc), DeleteFailures: m.DeleteFailures, GetFailures: m.GetFailures}
+		return &MockBucketFailure{Bucket: ibkt.WithExpectedErrs(expectedFunc), DeleteFailures: m.DeleteFailures, GetFailures: m.GetFailures, AttributesFailures: m.AttributesFailures}
 	}
 
 	return m
@@ -102,7 +110,7 @@ func (m *MockBucketFailure) WithExpectedErrs(expectedFunc objstore.IsOpFailureEx
 
 func (m *MockBucketFailure) ReaderWithExpectedErrs(expectedFunc objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
 	if ibkt, ok := m.Bucket.(objstore.InstrumentedBucket); ok {
-		return &MockBucketFailure{Bucket: ibkt.WithExpectedErrs(expectedFunc), DeleteFailures: m.DeleteFailures, GetFailures: m.GetFailures}
+		return &MockBucketFailure{Bucket: ibkt.WithExpectedErrs(expectedFunc), DeleteFailures: m.DeleteFailures, GetFailures: m.GetFailures, AttributesFailures: m.AttributesFailures}
 	}
 
 	return m

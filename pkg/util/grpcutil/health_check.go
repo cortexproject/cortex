@@ -37,6 +37,11 @@ func (h *HealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_health_
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
+// List implements the grpc healthcheck.
+func (h *HealthCheck) List(_ context.Context, _ *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "Listing is not supported")
+}
+
 // isHealthy returns whether the instance should be considered healthy.
 func (h *HealthCheck) isHealthy() bool {
 	states := h.sm.ServicesByState()

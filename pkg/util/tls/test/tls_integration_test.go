@@ -51,6 +51,10 @@ func (h *grpcHealthCheck) Watch(_ *grpc_health_v1.HealthCheckRequest, _ grpc_hea
 	return status.Error(codes.Unimplemented, "Watching is not supported")
 }
 
+func (h *grpcHealthCheck) List(_ context.Context, _ *grpc_health_v1.HealthListRequest) (*grpc_health_v1.HealthListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "Listing is not supported")
+}
+
 func getLocalHostPort() (int, func() error, error) {
 	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
 	if err != nil {

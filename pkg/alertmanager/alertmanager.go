@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
@@ -303,7 +304,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		Peer:     &NilPeer{},
 		Registry: am.registry,
 		Logger:   util_log.GoKitLogToSlog(log.With(am.logger, "component", "api")),
-		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
+		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*alert.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
 			return am.dispatcher.Groups(ctx, f1, f2)
 		},
 		Concurrency:     am.cfg.APIConcurrency,
@@ -759,7 +760,7 @@ func newAlertsLimiter(tenant string, limits Limits, reg prometheus.Registerer) *
 	return limiter
 }
 
-func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
+func (a *alertsLimiter) PreStore(alert *alert.Alert, existing bool) error {
 	if alert == nil {
 		return nil
 	}
@@ -791,7 +792,7 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 	return nil
 }
 
-func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
+func (a *alertsLimiter) PostStore(alert *alert.Alert, existing bool) {
 	if alert == nil {
 		return
 	}
@@ -811,7 +812,7 @@ func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
 	a.totalSize += newSize
 }
 
-func (a *alertsLimiter) PostDelete(alert *types.Alert) {
+func (a *alertsLimiter) PostDelete(alert *alert.Alert) {
 	if alert == nil {
 		return
 	}

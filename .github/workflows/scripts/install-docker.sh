@@ -28,4 +28,7 @@ mkdir -vp ~/.docker/cli-plugins/
 curl --silent -L "https://github.com/docker/buildx/releases/download/v0.31.1/buildx-v0.31.1.linux-$BUILDX_ARCH" > ~/.docker/cli-plugins/docker-buildx
 chmod a+x ~/.docker/cli-plugins/docker-buildx
 mv /tmp/docker/* /usr/bin
+if [ -n "$DOCKER_REGISTRY_PASSWORD" ]; then
+  docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
+fi
 docker run --privileged --rm tonistiigi/binfmt --install all

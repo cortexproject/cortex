@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore/bucketclient"
@@ -217,6 +218,11 @@ func makeTestFullState(content string) alertspb.FullStateDesc {
 	}
 }
 
+func assertFullStateEqual(t *testing.T, expected, actual alertspb.FullStateDesc) {
+	t.Helper()
+	assert.True(t, googleproto.Equal(expected.State, actual.State), "FullState mismatch:\nexpected: %v\nactual:   %v", expected.State, actual.State)
+}
+
 func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	mBucketClient := &MockBucket{Bucket: bucket}
@@ -261,11 +267,11 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 
 		res, err := store.GetFullState(ctx, "user-1")
 		require.NoError(t, err)
-		assert.Equal(t, state1, res)
+		assertFullStateEqual(t, state1, res)
 
 		res, err = store.GetFullState(ctx, "user-2")
 		require.NoError(t, err)
-		assert.Equal(t, state2, res)
+		assertFullStateEqual(t, state2, res)
 
 		// Ensure the config is stored at the expected location. Without this check
 		// we have no guarantee that the objects are stored at the expected location.
@@ -292,7 +298,7 @@ func TestBucketAlertStore_GetSetDeleteFullState(t *testing.T) {
 
 		res, err := store.GetFullState(ctx, "user-2")
 		require.NoError(t, err)
-		assert.Equal(t, state2, res)
+		assertFullStateEqual(t, state2, res)
 
 		users, err := store.ListUsersWithFullState(ctx)
 		assert.NoError(t, err)

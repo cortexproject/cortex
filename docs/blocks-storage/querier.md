@@ -313,6 +313,23 @@ querier:
   # Eval time threshold above which a timeout is classified as user error (4XX).
   # CLI flag: -querier.timeout-classification-eval-threshold
   [timeout_classification_eval_threshold: <duration> | default = 1m30s]
+
+  query_protection:
+    rejection:
+      threshold:
+        # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+        # rejecting new query request (across all tenants) in percentage,
+        # between 0 and 1. monitored_resources config must include the resource
+        # type. 0 to disable.
+        # CLI flag: -querier.query-protection.rejection.threshold.cpu-utilization
+        [cpu_utilization: <float> | default = 0]
+
+        # EXPERIMENTAL: Max heap utilization that this instance can reach before
+        # rejecting new query request (across all tenants) in percentage,
+        # between 0 and 1. monitored_resources config must include the resource
+        # type. 0 to disable.
+        # CLI flag: -querier.query-protection.rejection.threshold.heap-utilization
+        [heap_utilization: <float> | default = 0]
 ```
 
 ### `blocks_storage_config`

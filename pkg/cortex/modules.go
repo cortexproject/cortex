@@ -284,7 +284,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData)
+	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
 
 	// Use distributor as default MetadataQuerier
 	t.MetadataQuerier = t.Distributor
@@ -701,7 +701,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		queryEngine = engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 	} else {
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData)
+		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
@@ -956,7 +956,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ingester:                 {IngesterService, OverridesConfig, API},
 		IngesterService:          {OverridesConfig, RuntimeConfig, MemberlistKV, ResourceMonitor},
 		Flusher:                  {OverridesConfig, API},
-		Queryable:                {OverridesConfig, DistributorService, OverridesConfig, Ring, API, StoreQueryable, MemberlistKV},
+		Queryable:                {OverridesConfig, DistributorService, OverridesConfig, Ring, API, StoreQueryable, MemberlistKV, ResourceMonitor},
 		Querier:                  {TenantFederation},
 		StoreQueryable:           {OverridesConfig, OverridesConfig, MemberlistKV, GrpcClientService},
 		QueryFrontendTripperware: {API, OverridesConfig},

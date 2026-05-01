@@ -2432,6 +2432,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 				logger:      log.NewNopLogger(),
 				metrics:     newBlocksStoreQueryableMetrics(nil),
 				limits:      &blocksStoreLimitsMock{queryStoreAfter: testData.queryStoreAfter},
+				nowFn:       func() time.Time { return now },
 			}
 
 			sp := &storage.SelectHints{
@@ -2447,7 +2448,7 @@ func TestBlocksStoreQuerier_SelectSortedShouldHonorQueryStoreAfter(t *testing.T)
 			} else {
 				require.Len(t, finder.Calls, 1)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2))
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()))
+				assert.Equal(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3))
 			}
 		})
 	}
@@ -3073,6 +3074,7 @@ func TestBlocksStoreQuerier_MultiTenantQueryStoreAfter(t *testing.T) {
 				logger:      log.NewNopLogger(),
 				metrics:     newBlocksStoreQueryableMetrics(nil),
 				limits:      &blocksStoreLimitsMock{queryStoreAfter: testData.queryStoreAfter},
+				nowFn:       func() time.Time { return now },
 			}
 
 			sp := &storage.SelectHints{
@@ -3088,10 +3090,7 @@ func TestBlocksStoreQuerier_MultiTenantQueryStoreAfter(t *testing.T) {
 			} else {
 				require.Len(t, finder.Calls, 1, testData.description)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
-				// Allow 15 seconds of time drift to account for CI environment delays.
-				// The actual code calls time.Now() when manipulating query time ranges,
-				// which can differ from the test's captured 'now' value.
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
+				assert.Equal(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), testData.description)
 			}
 		})
 	}
@@ -3170,6 +3169,7 @@ func TestBlocksStoreQuerier_QueryStoreAfterBoundary(t *testing.T) {
 				logger:      log.NewNopLogger(),
 				metrics:     newBlocksStoreQueryableMetrics(nil),
 				limits:      &blocksStoreLimitsMock{queryStoreAfter: cutoff},
+				nowFn:       func() time.Time { return now },
 			}
 
 			sp := &storage.SelectHints{
@@ -3185,10 +3185,7 @@ func TestBlocksStoreQuerier_QueryStoreAfterBoundary(t *testing.T) {
 			} else {
 				require.Len(t, finder.Calls, 1, testData.description)
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
-				// Allow 15 seconds of time drift to account for CI environment delays.
-				// The actual code calls time.Now() when manipulating query time ranges,
-				// which can differ from the test's captured 'now' value.
-				assert.InDelta(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), float64(15*time.Second.Milliseconds()), testData.description)
+				assert.Equal(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), testData.description)
 			}
 		})
 	}

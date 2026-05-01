@@ -307,6 +307,7 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 		storeGatewayQueryStatsEnabled:           q.storeGatewayQueryStatsEnabled,
 		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
 		storeGatewaySeriesBatchSize:             q.storeGatewaySeriesBatchSize,
+		nowFn:                                   time.Now,
 	}, nil
 }
 
@@ -328,6 +329,8 @@ type blocksStoreQuerier struct {
 
 	// The maximum number of series to be batched in a single gRPC response message from Store Gateways.
 	storeGatewaySeriesBatchSize int64
+
+	nowFn func() time.Time
 }
 
 // Select implements storage.Querier interface.
@@ -492,7 +495,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 	// optimization is particularly important for the blocks storage because can be used to skip
 	// querying most recent not-compacted-yet blocks from the storage.
 	if queryStoreAfter > 0 {
-		now := time.Now()
+		now := q.nowFn()
 		origMaxT := maxT
 		maxT = min(maxT, util.TimeToMillis(now.Add(-queryStoreAfter)))
 

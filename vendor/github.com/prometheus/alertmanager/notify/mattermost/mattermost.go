@@ -68,7 +68,7 @@ func New(c *config.MattermostConfig, t *template.Template, l *slog.Logger, httpO
 // request is the request for sending a Mattermost notification.
 // https://developers.mattermost.com/integrate/webhooks/incoming/#parameters
 type request struct {
-	Text        string                     `json:"text"`
+	Text        string                     `json:"text,omitempty"`
 	Channel     string                     `json:"channel,omitempty"`
 	Username    string                     `json:"username,omitempty"`
 	IconURL     string                     `json:"icon_url,omitempty"`
@@ -153,8 +153,8 @@ func (n *Notifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, err
 }
 
 func (n *Notifier) createRequest(tmpl func(string) string) *request {
+	text := tmpl(n.conf.Text)
 	req := &request{
-		Text:      tmpl(n.conf.Text),
 		Channel:   tmpl(n.conf.Channel),
 		Username:  tmpl(n.conf.Username),
 		IconURL:   tmpl(n.conf.IconURL),
@@ -209,7 +209,40 @@ func (n *Notifier) createRequest(tmpl func(string) string) *request {
 			}
 
 			req.Attachments[idxAtt] = att
+			req.Text = text
 		}
+	} else {
+		req.Attachments = make([]attachment, 1)
+		att := attachment{
+			Text:       text,
+			Fallback:   tmpl(n.conf.Fallback),
+			Color:      tmpl(n.conf.Color),
+			Pretext:    tmpl(n.conf.Pretext),
+			AuthorName: tmpl(n.conf.AuthorName),
+			AuthorLink: tmpl(n.conf.AuthorLink),
+			AuthorIcon: tmpl(n.conf.AuthorIcon),
+			Title:      tmpl(n.conf.Title),
+			TitleLink:  tmpl(n.conf.TitleLink),
+			ThumbURL:   tmpl(n.conf.ThumbURL),
+			Footer:     tmpl(n.conf.Footer),
+			FooterIcon: tmpl(n.conf.FooterIcon),
+			ImageURL:   tmpl(n.conf.ImageURL),
+		}
+
+		lenFields := len(n.conf.Fields)
+		if lenFields > 0 {
+			att.Fields = make([]config.MattermostField, lenFields)
+			for idxField, field := range n.conf.Fields {
+				att.Fields[idxField] = config.MattermostField{
+					Title: tmpl(field.Title),
+					Value: tmpl(field.Value),
+					Short: field.Short,
+				}
+			}
+		}
+
+		req.Attachments[0] = att
+
 	}
 
 	return req

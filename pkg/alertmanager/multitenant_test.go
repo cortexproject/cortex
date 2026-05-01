@@ -21,10 +21,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/notify"
-	"github.com/prometheus/alertmanager/pkg/labels"
-	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -713,7 +712,7 @@ receivers:
 	`), "cortex_alertmanager_config_last_reload_successful"))
 
 				// Create an alert to push.
-				alerts := types.Alerts(&types.Alert{
+				alerts := alert.Alerts(&alert.Alert{
 					Alert: model.Alert{
 						Labels:   map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
 						StartsAt: time.Now().Add(-time.Minute),
@@ -2000,15 +1999,17 @@ func TestAlertmanager_StateReplicationWithSharding(t *testing.T) {
 			multitenantAM.alertmanagersMtx.Unlock()
 
 			// 3. Now that we have our alertmanager user, let's create a silence and make sure it is replicated.
-			silence := types.Silence{
-				Matchers: labels.Matchers{
-					{Name: "instance", Value: "prometheus-one"},
+			now := time.Now()
+			silenceReq := map[string]any{
+				"matchers": []map[string]any{
+					{"name": "instance", "value": "prometheus-one", "isRegex": false, "isEqual": true},
 				},
-				Comment:  "Created for a test case.",
-				StartsAt: time.Now(),
-				EndsAt:   time.Now().Add(time.Hour),
+				"comment":   "Created for a test case.",
+				"createdBy": "test",
+				"startsAt":  now.UTC().Format(time.RFC3339),
+				"endsAt":    now.Add(time.Hour).UTC().Format(time.RFC3339),
 			}
-			data, err := json.Marshal(silence)
+			data, err := json.Marshal(silenceReq)
 			require.NoError(t, err)
 
 			// 4. Create the silence in one of the alertmanagers
@@ -2165,15 +2166,17 @@ func TestAlertmanager_StateReplicationWithSharding_InitialSyncFromPeers(t *testi
 			}
 
 			writeSilence := func(i *MultitenantAlertmanager, userID string) {
-				silence := types.Silence{
-					Matchers: labels.Matchers{
-						{Name: "instance", Value: "prometheus-one"},
+				now := time.Now()
+				silenceReq := map[string]any{
+					"matchers": []map[string]any{
+						{"name": "instance", "value": "prometheus-one", "isRegex": false, "isEqual": true},
 					},
-					Comment:  "Created for a test case.",
-					StartsAt: time.Now(),
-					EndsAt:   time.Now().Add(time.Hour),
+					"comment":   "Created for a test case.",
+					"createdBy": "test",
+					"startsAt":  now.UTC().Format(time.RFC3339),
+					"endsAt":    now.Add(time.Hour).UTC().Format(time.RFC3339),
 				}
-				data, err := json.Marshal(silence)
+				data, err := json.Marshal(silenceReq)
 				require.NoError(t, err)
 
 				req := httptest.NewRequest(http.MethodPost, externalURL.String()+"/api/v2/silences", bytes.NewReader(data))
@@ -2387,7 +2390,7 @@ receivers:
 	ctx = notify.WithRouteID(ctx, "routeId")
 
 	// Verify that rate-limiter is in place for email notifier.
-	_, _, err = uam.lastPipeline.Exec(ctx, promslog.NewNopLogger(), &types.Alert{})
+	_, _, err = uam.lastPipeline.Exec(ctx, promslog.NewNopLogger(), &alert.Alert{})
 	require.NotNil(t, err)
 	require.Contains(t, err.Error(), errRateLimited.Error())
 }

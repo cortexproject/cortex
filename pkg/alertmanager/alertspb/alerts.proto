@@ -24,6 +24,11 @@ message TemplateDesc {
 message FullStateDesc {
   // Alertmanager (clusterpb) types do not have Equal methods.
   option (gogoproto.equal) = false;
+  // clusterpb.FullState uses standard protobuf (not gogo), so we disable
+  // the gogo-specific marshaler/unmarshaler/sizer for this message.
+  option (gogoproto.marshaler) = false;
+  option (gogoproto.unmarshaler) = false;
+  option (gogoproto.sizer) = false;
 
   clusterpb.FullState state = 1;
 }

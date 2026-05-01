@@ -126,7 +126,7 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize copy-am-ui-assets: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
@@ -169,6 +169,7 @@ protos: $(PROTO_GOS)
 
 lint:
 	misspell -error docs
+
 
 	# Configured via .golangci.yml.
 	golangci-lint run
@@ -231,11 +232,38 @@ shell:
 configs-integration-test:
 	/bin/bash -c "go test -v -tags 'netgo integration slicelabels' -timeout 10m ./pkg/configs/... ./pkg/ruler/..."
 
+copy-am-ui-assets:
+	@set -e; \
+	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
+	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
+	chmod -R u+w "$$AM_UI_DIR" 2>/dev/null || true; \
+	mkdir -p "$$AM_UI_DIR/dist"; \
+	cp -r tools/alertmanager-ui/dist/. "$$AM_UI_DIR/dist/"; \
+
 mod-check:
+	@set -e; \
+	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
+	AM_CACHE_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION; \
+	if [ -d "$$AM_CACHE_DIR" ]; then \
+		chmod -R u+w "$$AM_CACHE_DIR" 2>/dev/null || true; \
+		rm -rf "$$AM_CACHE_DIR"; \
+		echo "Removed modified alertmanager cache: $$AM_CACHE_DIR"; \
+	fi
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
+	@set -e; \
+	AM_VERSION=$$(grep '^[[:space:]]*github.com/prometheus/alertmanager[[:space:]]' go.mod | awk '{print $$2}'); \
+	AM_UI_DIR=$$(go env GOMODCACHE)/github.com/prometheus/alertmanager@$$AM_VERSION/ui/app; \
+	chmod -R u+w "$$AM_UI_DIR" 2>/dev/null || true; \
+	mkdir -p "$$AM_UI_DIR/dist"; \
+	cp -r tools/alertmanager-ui/dist/. "$$AM_UI_DIR/dist/"; \
+	echo "Copied UI assets to module cache"
 	GO111MODULE=on go mod tidy
 	GO111MODULE=on go mod vendor
+	@# go mod vendor excludes dotfiles (e.g. .build_stamp) from //go:embed patterns.
+	@# Restore them explicitly so vendor/ matches the committed state.
+	@mkdir -p vendor/github.com/prometheus/alertmanager/ui/app/dist; \
+	cp -r tools/alertmanager-ui/dist/. vendor/github.com/prometheus/alertmanager/ui/app/dist/
 	@git diff --exit-code -- go.sum go.mod vendor/
 
 check-protos: clean-protos protos

@@ -20,7 +20,7 @@ jobs:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Git safe.directory
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
@@ -56,7 +56,7 @@ jobs:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1 
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Git safe.directory
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
@@ -84,7 +84,7 @@ jobs:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Git safe.directory
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
@@ -107,19 +107,19 @@ jobs:
       security-events: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v3.29.5
+        uses: github/codeql-action/init@e46ed2cbd01164d986452f91f178727624ae40d7 # v3.29.5
         with:
           languages: go
 
       - name: Autobuild
-        uses: github/codeql-action/autobuild@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v3.29.5
+        uses: github/codeql-action/autobuild@e46ed2cbd01164d986452f91f178727624ae40d7 # v3.29.5
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v3.29.5
+        uses: github/codeql-action/analyze@e46ed2cbd01164d986452f91f178727624ae40d7 # v3.29.5
 
   
   build:
@@ -128,7 +128,7 @@ jobs:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Git safe.directory
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
@@ -155,7 +155,7 @@ jobs:
       - name: Create Docker Images Archive
         run: tar -cvf images.tar /tmp/images
       - name: Upload Docker Images Artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Docker Images
           path: ./images.tar
@@ -236,17 +236,17 @@ jobs:
             tags: integration_grpc
     steps:
       - name: Upgrade golang
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: 1.26.2
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Sym Link Expected Path to Workspace
         run: |
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
           sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -304,9 +304,9 @@ jobs:
             arch: arm64
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
@@ -328,7 +328,7 @@ jobs:
       image: quay.io/cortexproject/build-image:master-ee0b97cc37
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Setup Git safe.directory
         run: |
           echo "this step is needed because when running in container, actions/checkout does not set safe.directory effectively."
@@ -344,7 +344,7 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Download Docker Images Artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: Docker Images
       - name: Extract Docker Images Archive

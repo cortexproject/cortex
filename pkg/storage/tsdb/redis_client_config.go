@@ -8,15 +8,16 @@ import (
 	"github.com/thanos-io/thanos/pkg/cacheutil"
 	"github.com/thanos-io/thanos/pkg/model"
 
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
 type RedisClientConfig struct {
-	Addresses  string `yaml:"addresses"`
-	Username   string `yaml:"username"`
-	Password   string `yaml:"password"`
-	DB         int    `yaml:"db"`
-	MasterName string `yaml:"master_name"`
+	Addresses  string         `yaml:"addresses"`
+	Username   string         `yaml:"username"`
+	Password   flagext.Secret `yaml:"password"`
+	DB         int            `yaml:"db"`
+	MasterName string         `yaml:"master_name"`
 
 	MaxGetMultiConcurrency int `yaml:"max_get_multi_concurrency"`
 	GetMultiBatchSize      int `yaml:"get_multi_batch_size"`
@@ -45,7 +46,7 @@ type RedisClientConfig struct {
 func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.StringVar(&cfg.Addresses, prefix+"addresses", "", "Comma separated list of redis addresses. Supported prefixes are: dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after that).")
 	f.StringVar(&cfg.Username, prefix+"username", "", "Redis username.")
-	f.StringVar(&cfg.Password, prefix+"password", "", "Redis password.")
+	f.Var(&cfg.Password, prefix+"password", "Redis password.")
 	f.IntVar(&cfg.DB, prefix+"db", 0, "Database to be selected after connecting to the server.")
 	f.DurationVar(&cfg.DialTimeout, prefix+"dial-timeout", time.Second*5, "Client dial timeout.")
 	f.DurationVar(&cfg.ReadTimeout, prefix+"read-timeout", time.Second*3, "Client read timeout.")
@@ -82,7 +83,7 @@ func (cfg *RedisClientConfig) ToRedisClientConfig() cacheutil.RedisClientConfig 
 	return cacheutil.RedisClientConfig{
 		Addr:                   cfg.Addresses,
 		Username:               cfg.Username,
-		Password:               cfg.Password,
+		Password:               cfg.Password.Value,
 		DB:                     cfg.DB,
 		MasterName:             cfg.MasterName,
 		DialTimeout:            cfg.DialTimeout,

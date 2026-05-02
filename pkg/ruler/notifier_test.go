@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func TestBuildNotifierConfig(t *testing.T) {
@@ -195,7 +196,7 @@ func TestBuildNotifierConfig(t *testing.T) {
 				Notifier: NotifierConfig{
 					BasicAuth: util.BasicAuth{
 						Username: "jacob",
-						Password: "test",
+						Password: flagext.Secret{Value: "test"},
 					},
 				},
 			},

@@ -1,8 +1,8 @@
 package alertmanager
 
 import (
-	"net/http"
 	"html/template"
+	"net/http"
 
 	"github.com/go-kit/log/level"
 

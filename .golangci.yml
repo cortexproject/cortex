@@ -1,6 +1,6 @@
 version: "2"
 run:
-  timeout: 5m
+  timeout: 10m
   # List of build tags, all linters use it.
   build-tags:
     - netgo

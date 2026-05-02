@@ -228,13 +228,20 @@ The `ruler_alert_generator_url_template` field accepts a Go template with two va
 - `{{ .ExternalURL }}` — the resolved external URL for this tenant (set via `ruler_external_url`)
 - `{{ .Expression }}` — the PromQL expression that triggered the alert
 
-Built-in Go template functions like `urlquery` are available for URL encoding.
+Built-in Go template functions like `urlquery` are available for URL encoding. Cortex also provides a `jsonEscape` function that escapes a string for embedding inside a JSON string value (e.g., `"` → `\"`). Use `jsonEscape` when the expression is placed inside a JSON-encoded URL parameter, such as Grafana's `panes`.
 
-Example for Grafana Explore:
+Example for Grafana Explore (simple query parameter):
 ```yaml
 ruler_external_url: "http://localhost:3000"
 ruler_alert_generator_url_template: >-
   {{ .ExternalURL }}/explore?expr={{ urlquery .Expression }}
+```
+
+Example for Grafana Explore (JSON-encoded `panes` parameter — use `jsonEscape` to properly escape quotes in expressions):
+```yaml
+ruler_external_url: "http://localhost:3000"
+ruler_alert_generator_url_template: >-
+  {{ .ExternalURL }}/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22my-datasource%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery (jsonEscape .Expression) }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1
 ```
 
 ### Try It Out
@@ -296,6 +303,13 @@ rules:
       severity: critical
     annotations:
       summary: "Error rate exceeds 5%"
+  - alert: AlwaysFiringWithQuotes
+    expr: count(up{job!="nonexistent"} or vector(1))
+    for: 0m
+    labels:
+      severity: info
+    annotations:
+      summary: "Demo alert with quotes in expression"
 EOF
 
 # Alert rules for tenant-b
@@ -320,6 +334,13 @@ rules:
       severity: warning
     annotations:
       summary: "P99 latency exceeds 2s"
+  - alert: AlwaysFiringWithQuotes
+    expr: count(up{job!="nonexistent"} or vector(1))
+    for: 0m
+    labels:
+      severity: info
+    annotations:
+      summary: "Demo alert with quotes in expression"
 EOF
 ```
 

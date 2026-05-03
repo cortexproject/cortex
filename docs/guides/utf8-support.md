@@ -50,7 +50,7 @@ YAML:
 name_validation_scheme: utf8
 ```
 
-### Impact on Cortex components
+## Impact on Cortex components
 
 ### Distributor
 
@@ -59,6 +59,20 @@ The [Distributor](https://cortexmetrics.io/docs/architecture/#distributor) valid
 When `name_validation_scheme` is set to `legacy`, Cortex applies the legacy validation behavior. When it is set to `utf8`, the Distributor accepts names that are valid under the UTF-8 scheme.
 
 In practice, this means that enabling UTF-8 support can change whether samples or series are accepted during ingestion by the Distributor. With legacy validation, samples containing invalid metric or label names are dropped during validation. With UTF-8 validation enabled, names that are valid under the UTF-8 scheme can pass validation. Writers that send UTF-8 metric or label names require the Distributor to run with `utf8` validation enabled.
+
+### Ruler
+
+The [Ruler](https://cortexmetrics.io/docs/architecture/#ruler) is affected by the selected name validation scheme in the places where it validates rule definitions, ruler external labels, and alert notifications.
+
+Cortex validates each rule using the configured `name_validation_scheme`. This means that recording rule names, alerting rule labels, and other rule fields that are subject to Prometheus name validation are checked according to the selected scheme.
+
+Ruler external labels are also validated with the selected scheme. With `legacy`, external label names must follow the legacy validation rules. With `utf8`, external label names that are valid under the UTF-8 validation scheme can be used.
+
+The Ruler also passes the configured validation scheme to the notifier that sends alerts to Alertmanager. As a result, alert labels handled by the notification path are validated according to the selected scheme before alerts are sent.
+
+### Alertmanager
+
+The `name_validation_scheme` setting is not applied directly by Cortex [Alertmanager](https://cortexmetrics.io/docs/architecture/#alertmanager) in the same way it is applied by the Distributor or Ruler. Its effect on Alertmanager is indirect. Alerts sent by the Ruler pass through the Ruler notifier, which is created with the configured validation scheme. As a result, Alertmanager may receive alert labels that were validated according to the selected scheme.
 
 ## Recommended rollout strategy
 

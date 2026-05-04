@@ -799,6 +799,9 @@ func (a *alertsLimiter) PostDelete(alert *alert.Alert) {
 	a.count--
 }
 
+// PostGC is a no-op because alertsLimiter already cleans up per-alert state
+// (count, totalSize, and sizes map) in PostDelete, which is called individually
+// for each alert before PostGC is invoked. There is nothing left to do here.
 func (a *alertsLimiter) PostGC(_ model.Fingerprints) {}
 
 func (a *alertsLimiter) currentStats() (count, totalSize int) {

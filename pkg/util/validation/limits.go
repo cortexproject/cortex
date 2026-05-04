@@ -160,14 +160,15 @@ type Limits struct {
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser                 int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric               int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxLocalNativeHistogramSeriesPerUser  int                 `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
-	MaxGlobalSeriesPerUser                int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric              int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	MaxGlobalNativeHistogramSeriesPerUser int                 `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
-	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
-	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
+	MaxLocalSeriesPerUser                 int                        `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric               int                        `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxLocalNativeHistogramSeriesPerUser  int                        `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
+	MaxGlobalSeriesPerUser                int                        `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric              int                        `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxGlobalNativeHistogramSeriesPerUser int                        `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
+	LimitsPerLabelSet                     []LimitsPerLabelSet        `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	ActiveSeriesTrackers                  ActiveSeriesTrackersConfig `yaml:"active_series_trackers,omitempty" json:"active_series_trackers,omitempty" doc:"nocli|description=List of active series tracker configurations. Each tracker counts active series matching its matchers and exposes the count as a metric."`
+	EnableNativeHistograms                bool                       `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Regex matcher query limits.
 	MaxRegexPatternLength                       int `yaml:"max_regex_pattern_length" json:"max_regex_pattern_length"`
@@ -504,6 +505,10 @@ func (l *Limits) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
+	if err := l.ActiveSeriesTrackers.Validate(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -531,6 +536,10 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
+
+	if err := l.ActiveSeriesTrackers.Validate(); err != nil {
 		return err
 	}
 
@@ -832,6 +841,11 @@ func (o *Overrides) MaxGlobalSeriesPerMetric(userID string) int {
 // LimitsPerLabelSet returns the user limits per labelset across the cluster.
 func (o *Overrides) LimitsPerLabelSet(userID string) []LimitsPerLabelSet {
 	return o.GetOverridesForUser(userID).LimitsPerLabelSet
+}
+
+// ActiveSeriesTrackers returns the active series tracker configurations for a given user.
+func (o *Overrides) ActiveSeriesTrackers(userID string) ActiveSeriesTrackersConfig {
+	return o.GetOverridesForUser(userID).ActiveSeriesTrackers
 }
 
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching

@@ -2,6 +2,19 @@
   "$id": "https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "definitions": {
+    "ActiveSeriesTrackerConfig": {
+      "properties": {
+        "matchers": {
+          "description": "PromQL series selector (e.g. {__name__=~\"api_.*\"}). All matchers must match for a series to be counted.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the tracker, used as a label value in the emitted metric.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DisabledRuleGroup": {
       "properties": {
         "name": {
@@ -4947,6 +4960,14 @@
           "description": "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.",
           "type": "boolean",
           "x-cli-flag": "experimental.distributor.ha-tracker.mixed-ha-samples"
+        },
+        "active_series_trackers": {
+          "default": [],
+          "description": "List of active series tracker configurations. Each tracker counts active series matching its matchers and exposes the count as a metric.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "alertmanager_max_alerts_count": {
           "default": 0,

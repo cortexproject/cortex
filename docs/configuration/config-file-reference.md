@@ -4164,6 +4164,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
 
+# List of active series tracker configurations. Each tracker counts active
+# series matching its matchers and exposes the count as a metric.
+[active_series_trackers: <list of ActiveSeriesTrackerConfig> | default = []]
+
 # [EXPERIMENTAL] True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
 [enable_native_histograms: <boolean> | default = false]
@@ -6890,6 +6894,17 @@ limits:
 # becomes the default partition which matches any series that doesn't match any
 # other explicitly defined label sets.'
 [label_set: <map of string (labelName) to string (labelValue)> | default = []]
+```
+
+### `ActiveSeriesTrackerConfig`
+
+```yaml
+# Name of the tracker, used as a label value in the emitted metric.
+[name: <string> | default = ""]
+
+# PromQL series selector (e.g. {__name__=~"api_.*"}). All matchers must match
+# for a series to be counted.
+[matchers: <string> | default = ""]
 ```
 
 ### `PriorityDef`

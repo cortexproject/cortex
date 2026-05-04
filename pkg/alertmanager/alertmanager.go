@@ -8,9 +8,7 @@ import (
 
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -134,20 +132,6 @@ type Alertmanager struct {
 	rateLimitedNotifications *prometheus.CounterVec
 
 	requestDuration *prometheus.HistogramVec
-}
-
-var (
-	webReload = make(chan chan error)
-)
-
-func init() {
-	go func() {
-		// Since this is not a "normal" Alertmanager which reads its config
-		// from disk, we just accept and ignore web-based reload signals. Config
-		// updates are only applied externally via ApplyConfig().
-		for range webReload {
-		}
-	}()
 }
 
 // State helps with replication and synchronization of notifications and silences across several alertmanager replicas.
@@ -318,18 +302,6 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	ui.Register(router)
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
-
-	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
-	// Entire router is registered in Mux to "/" path, so there is no conflict with overwriting specific paths.
-	for _, p := range []string{"/metrics", "/-/reload", "/debug/"} {
-		a := path.Join(am.cfg.ExternalURL.Path, p)
-		// Preserve end slash, as for Mux it means entire subtree.
-		if strings.HasSuffix(p, "/") {
-			a = a + "/"
-		}
-		am.mux.Handle(a, http.NotFoundHandler())
-	}
-
 	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.

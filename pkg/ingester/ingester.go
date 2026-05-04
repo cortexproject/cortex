@@ -1724,6 +1724,16 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		if err != nil {
 			return err
 		}
+
+		if contextOrgID, extractErr := users.TenantID(ctx); extractErr == nil {
+			if !isDistributorWorkerOrgID(contextOrgID) && contextOrgID != req.TenantID {
+				req.Free()
+				return status.Errorf(codes.PermissionDenied,
+					"tenant ID mismatch: stream authenticated as %q but request specifies %q",
+					contextOrgID, req.TenantID)
+			}
+		}
+
 		pushCtx := user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
@@ -1745,6 +1755,18 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}
 	}
+}
+
+// isDistributorWorkerOrgID reports whether orgID matches the worker-name pattern that
+// the distributor client injects as X-Scope-OrgID on its long-lived PushStream connections:
+//
+//	"ingester-<addr>-stream-push-worker-<N>"
+//
+// When this pattern is detected, PushStream trusts req.TenantID from the payload because
+// the stream belongs to an internal distributor worker, not to a specific tenant.
+func isDistributorWorkerOrgID(orgID string) bool {
+	return strings.HasPrefix(orgID, client.StreamWorkerOrgIDPrefix) &&
+		strings.Contains(orgID, client.StreamWorkerOrgIDSuffix)
 }
 
 func (u *userTSDB) acquireReadLock() error {

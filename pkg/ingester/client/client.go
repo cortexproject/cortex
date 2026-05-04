@@ -40,6 +40,9 @@ var errTooManyInflightPushRequests = errors.New("too many inflight push requests
 
 const INGESTER_CLIENT_STREAM_WORKER_COUNT = 100
 
+const StreamWorkerOrgIDPrefix = "ingester-"
+const StreamWorkerOrgIDSuffix = "-stream-push-worker-"
+
 // ClosableClientConn is grpc.ClientConnInterface with Close function
 type ClosableClientConn interface {
 	grpc.ClientConnInterface

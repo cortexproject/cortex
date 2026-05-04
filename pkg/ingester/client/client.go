@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-kit/log"
@@ -39,9 +40,6 @@ var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOp
 var errTooManyInflightPushRequests = errors.New("too many inflight push requests in ingester client")
 
 const INGESTER_CLIENT_STREAM_WORKER_COUNT = 100
-
-const StreamWorkerOrgIDPrefix = "ingester-"
-const StreamWorkerOrgIDSuffix = "-stream-push-worker-"
 
 // ClosableClientConn is grpc.ClientConnInterface with Close function
 type ClosableClientConn interface {
@@ -208,8 +206,10 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 
 	var workerErr error
 	var wg sync.WaitGroup
+	// Sanitize addr: colons (from host:port) are not allowed in tenant IDs.
+	sanitizedAddr := strings.ReplaceAll(c.addr, ":", "-")
 	for i := range INGESTER_CLIENT_STREAM_WORKER_COUNT {
-		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", c.addr, i)
+		workerName := fmt.Sprintf("ingester-%s-stream-push-worker-%d", sanitizedAddr, i)
 		wg.Go(func() {
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)

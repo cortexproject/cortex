@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func changeTargetConfig(c *Config) {
@@ -247,4 +251,105 @@ func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
 	// log warning message and spin up other cortex services
 	_, err := cortex.initResourceMonitor()
 	require.ErrorContains(t, err, "unknown resource type")
+}
+
+func TestConfigEndpoint_SecretsMasked(t *testing.T) {
+	cfg := newDefaultConfig()
+
+	// Use reflection to find every flagext.Secret field in the config and set
+	// it to a sentinel value. This ensures newly added Secret fields are
+	// automatically covered without updating this test.
+	sentinel := "LEAKED_SECRET_VALUE"
+	setAllSecrets(reflect.ValueOf(cfg), sentinel)
+
+	cortex := &Cortex{
+		Server: &server.Server{},
+		Cfg:    *cfg,
+	}
+	cortex.Server.HTTP = mux.NewRouter()
+
+	_, err := cortex.initAPI()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/config", nil)
+	resp := httptest.NewRecorder()
+	cortex.Server.HTTP.ServeHTTP(resp, req)
+
+	require.Equal(t, 200, resp.Code)
+
+	body := resp.Body.String()
+
+	// Verify the sentinel never appears in cleartext.
+	assert.NotContains(t, body, sentinel, "a flagext.Secret value was leaked in /config output")
+
+	// Verify at least one masked value is present (sanity check).
+	assert.Contains(t, body, "********", "expected masked secrets in /config output")
+}
+
+// TestConfig_SensitiveFieldTypes verifies that every struct field in Config
+// whose YAML tag name suggests a credential uses flagext.Secret, not string.
+// This catches new password/secret fields added as plain strings even if they
+// have no default value.
+func TestConfig_SensitiveFieldTypes(t *testing.T) {
+	sensitivePattern := regexp.MustCompile(`(?i)^(password|secret|secret_key|application_credential_secret|basic_auth_password)$`)
+	secretType := reflect.TypeFor[flagext.Secret]()
+
+	var violations []string
+	checkSensitiveFields(reflect.TypeFor[Config](), "", sensitivePattern, secretType, &violations)
+
+	for _, v := range violations {
+		t.Errorf("field should use flagext.Secret, not string: %s", v)
+	}
+}
+
+// checkSensitiveFields recursively walks a type and reports any string field
+// whose YAML tag matches the sensitive pattern.
+func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp, secretType reflect.Type, violations *[]string) {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
+	for f := range t.Fields() {
+		path := prefix + f.Name
+
+		yamlTag := f.Tag.Get("yaml")
+		yamlName := strings.Split(yamlTag, ",")[0]
+
+		if pattern.MatchString(yamlName) && f.Type.Kind() == reflect.String {
+			*violations = append(*violations, path+" (yaml:\""+yamlName+"\")")
+		}
+
+		ft := f.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct && ft != secretType {
+			checkSensitiveFields(ft, path+".", pattern, secretType, violations)
+		}
+	}
+}
+
+// setAllSecrets recursively walks a reflect.Value and sets every flagext.Secret
+// field's Value to the given sentinel string.
+func setAllSecrets(v reflect.Value, sentinel string) {
+	switch v.Kind() {
+	case reflect.Ptr:
+		if !v.IsNil() {
+			setAllSecrets(v.Elem(), sentinel)
+		}
+	case reflect.Struct:
+		secretType := reflect.TypeFor[flagext.Secret]()
+		for _, f := range v.Fields() {
+			if !f.CanSet() {
+				continue
+			}
+			if f.Type() == secretType {
+				f.Set(reflect.ValueOf(flagext.Secret{Value: sentinel}))
+			} else {
+				setAllSecrets(f, sentinel)
+			}
+		}
+	}
 }

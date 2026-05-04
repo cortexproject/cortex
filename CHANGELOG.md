@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.21.1 / unreleased
+
+* [BUGFIX] Config: Mask Swift, etcd, Redis, and HTTP basic-auth credentials on the `/config` endpoint. #7473
+
 ## 1.21.0 2026-04-24
 
 * [CHANGE] Ruler: Graduate Ruler API from experimental. #7312

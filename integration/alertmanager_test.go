@@ -10,14 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thanos-io/objstore/providers/s3"
-
-	amlabels "github.com/prometheus/alertmanager/pkg/labels"
-	"github.com/prometheus/alertmanager/types"
+	"github.com/go-openapi/strfmt"
+	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore/providers/s3"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -306,14 +305,23 @@ func TestAlertmanagerSharding(t *testing.T) {
 			comment := func(i int) string {
 				return fmt.Sprintf("Silence Comment #%d", i)
 			}
-			silence := func(i int) types.Silence {
-				return types.Silence{
-					Matchers: amlabels.Matchers{
-						{Name: "instance", Value: "prometheus-one"},
+			silence := func(i int) open_api_models.Silence {
+				commentStr := comment(i)
+				createdBy := "integration-test"
+				isRegex := false
+				isEqual := true
+				name := "instance"
+				value := "prometheus-one"
+				startsAt := strfmt.DateTime(time.Now())
+				endsAt := strfmt.DateTime(time.Now().Add(time.Hour))
+				return open_api_models.Silence{
+					Matchers: open_api_models.Matchers{
+						{Name: &name, Value: &value, IsRegex: &isRegex, IsEqual: &isEqual},
 					},
-					Comment:  comment(i),
-					StartsAt: time.Now(),
-					EndsAt:   time.Now().Add(time.Hour),
+					Comment:   &commentStr,
+					CreatedBy: &createdBy,
+					StartsAt:  &startsAt,
+					EndsAt:    &endsAt,
 				}
 			}
 
@@ -356,30 +364,30 @@ func TestAlertmanagerSharding(t *testing.T) {
 				require.NoError(t, waitForSilences("active", 3*testCfg.replicationFactor))
 			}
 
-			assertSilences := func(list []types.Silence, s1, s2, s3 types.SilenceState) {
+			assertSilences := func(list []open_api_models.GettableSilence, s1, s2, s3 string) {
 				assert.Equal(t, 3, len(list))
 
-				ids := make(map[string]types.Silence, len(list))
+				ids := make(map[string]open_api_models.GettableSilence, len(list))
 				for _, s := range list {
-					ids[s.ID] = s
+					ids[*s.ID] = s
 				}
 
 				require.Contains(t, ids, id1)
-				assert.Equal(t, comment(1), ids[id1].Comment)
-				assert.Equal(t, s1, ids[id1].Status.State)
+				assert.Equal(t, comment(1), *ids[id1].Comment)
+				assert.Equal(t, s1, *ids[id1].Status.State)
 				require.Contains(t, ids, id2)
-				assert.Equal(t, comment(2), ids[id2].Comment)
-				assert.Equal(t, s2, ids[id2].Status.State)
+				assert.Equal(t, comment(2), *ids[id2].Comment)
+				assert.Equal(t, s2, *ids[id2].Status.State)
 				require.Contains(t, ids, id3)
-				assert.Equal(t, comment(3), ids[id3].Comment)
-				assert.Equal(t, s3, ids[id3].Status.State)
+				assert.Equal(t, comment(3), *ids[id3].Comment)
+				assert.Equal(t, s3, *ids[id3].Status.State)
 			}
 			// Endpoint: GET /v2/silences
 			{
 				for _, c := range clients {
 					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
-					assertSilences(list, types.SilenceStateActive, types.SilenceStateActive, types.SilenceStateActive)
+					assertSilences(list, open_api_models.SilenceStatusStateActive, open_api_models.SilenceStatusStateActive, open_api_models.SilenceStatusStateActive)
 				}
 			}
 
@@ -388,18 +396,18 @@ func TestAlertmanagerSharding(t *testing.T) {
 				for _, c := range clients {
 					sil1, err := c.GetSilenceV2(context.Background(), id1)
 					require.NoError(t, err)
-					assert.Equal(t, comment(1), sil1.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil1.Status.State)
+					assert.Equal(t, comment(1), *sil1.Comment)
+					assert.Equal(t, open_api_models.SilenceStatusStateActive, *sil1.Status.State)
 
 					sil2, err := c.GetSilenceV2(context.Background(), id2)
 					require.NoError(t, err)
-					assert.Equal(t, comment(2), sil2.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil2.Status.State)
+					assert.Equal(t, comment(2), *sil2.Comment)
+					assert.Equal(t, open_api_models.SilenceStatusStateActive, *sil2.Status.State)
 
 					sil3, err := c.GetSilenceV2(context.Background(), id3)
 					require.NoError(t, err)
-					assert.Equal(t, comment(3), sil3.Comment)
-					assert.Equal(t, types.SilenceStateActive, sil3.Status.State)
+					assert.Equal(t, comment(3), *sil3.Comment)
+					assert.Equal(t, open_api_models.SilenceStatusStateActive, *sil3.Status.State)
 				}
 			}
 
@@ -443,7 +451,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				for _, c := range clients {
 					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
-					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateActive)
+					assertSilences(list, open_api_models.SilenceStatusStateActive, open_api_models.SilenceStatusStateExpired, open_api_models.SilenceStatusStateActive)
 				}
 
 				err = c2.DeleteSilence(context.Background(), id3)
@@ -453,7 +461,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				for _, c := range clients {
 					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
-					assertSilences(list, types.SilenceStateActive, types.SilenceStateExpired, types.SilenceStateExpired)
+					assertSilences(list, open_api_models.SilenceStatusStateActive, open_api_models.SilenceStatusStateExpired, open_api_models.SilenceStatusStateExpired)
 				}
 
 				err = c3.DeleteSilence(context.Background(), id1)
@@ -463,7 +471,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 				for _, c := range clients {
 					list, err := c.GetSilencesV2(context.Background())
 					require.NoError(t, err)
-					assertSilences(list, types.SilenceStateExpired, types.SilenceStateExpired, types.SilenceStateExpired)
+					assertSilences(list, open_api_models.SilenceStatusStateExpired, open_api_models.SilenceStatusStateExpired, open_api_models.SilenceStatusStateExpired)
 				}
 			}
 
@@ -667,13 +675,22 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 					require.NoError(t, err)
 
 					for j := 1; j <= 10; j++ {
-						silence := types.Silence{
-							Matchers: amlabels.Matchers{
-								{Name: "instance", Value: "prometheus-one"},
+						commentStr := fmt.Sprintf("Silence Comment #%d", j)
+						createdBy := "integration-test"
+						isRegex := false
+						isEqual := true
+						name := "instance"
+						value := "prometheus-one"
+						startsAt := strfmt.DateTime(time.Now())
+						endsAt := strfmt.DateTime(time.Now().Add(time.Hour))
+						silence := open_api_models.Silence{
+							Matchers: open_api_models.Matchers{
+								{Name: &name, Value: &value, IsRegex: &isRegex, IsEqual: &isEqual},
 							},
-							Comment:  fmt.Sprintf("Silence Comment #%d", j),
-							StartsAt: time.Now(),
-							EndsAt:   time.Now().Add(time.Hour),
+							Comment:   &commentStr,
+							CreatedBy: &createdBy,
+							StartsAt:  &startsAt,
+							EndsAt:    &endsAt,
 						}
 
 						_, err = client.CreateSilence(context.Background(), silence)

@@ -14,7 +14,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
 	"github.com/prometheus/alertmanager/template"
+	amtracing "github.com/prometheus/alertmanager/tracing"
 	commoncfg "github.com/prometheus/common/config"
 	"gopkg.in/yaml.v2"
 
@@ -364,11 +366,11 @@ var configValidators = map[reflect.Type]func(any) error{
 	reflect.TypeFor[config.SNSConfig]():           nil, // No file-based fields to validate
 	reflect.TypeFor[config.JiraConfig]():          nil, // No file-based fields to validate
 	// Non-receiver config types (ignored during validation)
-	reflect.TypeFor[config.Config]():          noopValidator,
-	reflect.TypeFor[config.NotifierConfig]():  noopValidator,
-	reflect.TypeFor[config.TracingConfig]():   noopValidator,
-	reflect.TypeFor[config.ThreadingConfig](): noopValidator,
-	reflect.TypeFor[config.JiraFieldConfig](): noopValidator,
+	reflect.TypeFor[config.Config]():              noopValidator,
+	reflect.TypeFor[amcommoncfg.NotifierConfig](): noopValidator,
+	reflect.TypeFor[amtracing.TracingConfig]():    noopValidator,
+	reflect.TypeFor[config.ThreadingConfig]():     noopValidator,
+	reflect.TypeFor[config.JiraFieldConfig]():     noopValidator,
 }
 
 // validateAlertmanagerConfig recursively scans the input config looking for data types for which

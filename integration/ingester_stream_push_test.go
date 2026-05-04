@@ -129,6 +129,7 @@ func TestIngesterStreamPushConnectionWithMatchingSigningKey(t *testing.T) {
 	flags["-distributor.sign-write-requests"] = "true"
 	flags["-distributor.sign-write-requests-keys"] = signingKey
 	flags["-ingester.heartbeat-period"] = "1s"
+	flags["-distributor.ring.heartbeat-period"] = "1s"
 
 	consul := e2edb.NewConsul()
 	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
@@ -138,10 +139,11 @@ func TestIngesterStreamPushConnectionWithMatchingSigningKey(t *testing.T) {
 	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
-	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
-		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
-	time.Sleep(2 * time.Second)
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	now := time.Now()
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
@@ -189,10 +191,11 @@ func TestIngesterStreamPushConnectionWithMismatchedSigningKey(t *testing.T) {
 	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), ingesterFlags, "")
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
 
-	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
-		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
-	time.Sleep(2 * time.Second)
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	now := time.Now()
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)

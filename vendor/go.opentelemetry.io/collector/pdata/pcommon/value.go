@@ -166,7 +166,6 @@ func (v Value) FromRaw(iv any) error {
 	case int64:
 		v.SetInt(tv)
 	case uint:
-		//nolint:gosec
 		v.SetInt(int64(tv))
 	case uint8:
 		v.SetInt(int64(tv))
@@ -175,7 +174,6 @@ func (v Value) FromRaw(iv any) error {
 	case uint32:
 		v.SetInt(int64(tv))
 	case uint64:
-		//nolint:gosec
 		v.SetInt(int64(tv))
 	case float32:
 		v.SetDouble(float64(tv))
@@ -421,8 +419,14 @@ func (v Value) AsString() string {
 // See https://cs.opensource.google/go/go/+/refs/tags/go1.17.7:src/encoding/json/encode.go;l=585.
 // This allows us to avoid using reflection.
 func float64AsString(f float64) string {
-	if math.IsInf(f, 0) || math.IsNaN(f) {
-		return "json: unsupported value: " + strconv.FormatFloat(f, 'g', -1, 64)
+	if math.IsNaN(f) {
+		return "NaN"
+	}
+	if math.IsInf(f, 1) {
+		return "Infinity"
+	}
+	if math.IsInf(f, -1) {
+		return "-Infinity"
 	}
 
 	// Convert as if by ES6 number to string conversion.

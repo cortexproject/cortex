@@ -129,5 +129,5 @@ func TestAttack_DirectGRPC_BypassWithWorkerID(t *testing.T) {
 
 	err := ing.PushStream(srv)
 
-	require.NoError(t, err, "ATTACK SUCCEEDED: The attacker bypassed the check by spoofing the worker ID")
+	require.NoError(t, err, "ATTACK SUCCEEDED: The attacker bypassed the check by spoofing the worker ID, `-distributor.sign-write-requests-keys` should be used to prevent this")
 }

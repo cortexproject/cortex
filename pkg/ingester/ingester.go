@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -110,6 +111,8 @@ var (
 	errLabelsOutOfOrder = errors.New("labels out of order")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
+
+	distributorWorkerOrgIDRe = regexp.MustCompile(`^ingester-.+-stream-push-worker-\d+$`)
 )
 
 // Config for an Ingester.
@@ -1757,16 +1760,19 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 	}
 }
 
-// isDistributorWorkerOrgID reports whether orgID matches the worker-name pattern that
-// the distributor client injects as X-Scope-OrgID on its long-lived PushStream connections:
+// isDistributorWorkerOrgID reports whether orgID matches the synthetic worker-name pattern
+// that the distributor injects as X-Scope-OrgID when opening a long-lived PushStream:
 //
 //	"ingester-<addr>-stream-push-worker-<N>"
 //
-// When this pattern is detected, PushStream trusts req.TenantID from the payload because
-// the stream belongs to an internal distributor worker, not to a specific tenant.
+// When this pattern is detected, PushStream bypasses the orgID == req.TenantID check and
+// instead trusts req.TenantID from the payload.
+//
+// Note: trusting this pattern alone is not sufficient — an attacker who knows the
+// pattern can spoof it and write to any tenant.  The stream-level gRPC interceptor
+// enabled via -distributor.sign-write-requests-keys provides cryptographic proof.
 func isDistributorWorkerOrgID(orgID string) bool {
-	return strings.HasPrefix(orgID, client.StreamWorkerOrgIDPrefix) &&
-		strings.Contains(orgID, client.StreamWorkerOrgIDSuffix)
+	return distributorWorkerOrgIDRe.MatchString(orgID)
 }
 
 func (u *userTSDB) acquireReadLock() error {

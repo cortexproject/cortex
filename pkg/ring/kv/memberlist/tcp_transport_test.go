@@ -76,12 +76,12 @@ func TestTCPTransport_PacketDigestMismatch(t *testing.T) {
 
 	transport, err := NewTCPTransport(cfg, logger)
 	require.NoError(t, err)
-	defer transport.Shutdown()
+	defer transport.Shutdown() //nolint:errcheck
 
 	port := transport.GetAutoBindPort()
 	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	require.NoError(t, err)
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	ourAddr := "127.0.0.1:0"
 	data := []byte("test data")

@@ -3,6 +3,7 @@ package parquetutil
 import (
 	"bytes"
 	"context"
+	"maps"
 	"testing"
 	"time"
 
@@ -253,9 +254,7 @@ func newFakeThanosCache() *fakeThanosCache {
 
 func (c *fakeThanosCache) Store(data map[string][]byte, ttl time.Duration) {
 	c.lastTTL = ttl
-	for key, value := range data {
-		c.entries[key] = value
-	}
+	maps.Copy(c.entries, data)
 }
 
 func (c *fakeThanosCache) Fetch(_ context.Context, keys []string) map[string][]byte {

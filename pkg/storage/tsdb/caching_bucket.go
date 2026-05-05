@@ -218,6 +218,37 @@ func (cfg *ParquetLabelsCacheConfig) Validate() error {
 	return cfg.BucketCacheBackend.Validate()
 }
 
+type ParquetRowRangesCacheConfig struct {
+	BucketCacheBackend `yaml:",inline"`
+
+	TTL time.Duration `yaml:"ttl"`
+}
+
+func (cfg *ParquetRowRangesCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	f.StringVar(&cfg.Backend, prefix+"backend", "", fmt.Sprintf("The parquet row ranges cache backend type. Single or Multiple cache backend can be provided. "+
+		"Supported values in single cache: %s, %s, %s, and '' (disable). "+
+		"Supported values in multi level cache: a comma-separated list of (%s)", CacheBackendMemcached, CacheBackendRedis, CacheBackendInMemory, strings.Join(supportedBucketCacheBackends, ", ")))
+
+	cfg.Memcached.RegisterFlagsWithPrefix(f, prefix+"memcached.")
+	cfg.Redis.RegisterFlagsWithPrefix(f, prefix+"redis.")
+	cfg.InMemory.RegisterFlagsWithPrefix(f, prefix+"inmemory.", "parquet-row-ranges")
+	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
+
+	f.DurationVar(&cfg.TTL, prefix+"ttl", 10*time.Minute, "TTL for caching parquet row ranges.")
+
+	// In the multi level parquet row ranges cache, backfill TTL follows the row ranges TTL.
+	cfg.MultiLevel.BackFillTTL = cfg.TTL
+}
+
+func (cfg *ParquetRowRangesCacheConfig) Validate() error {
+	return cfg.BucketCacheBackend.Validate()
+}
+
+func CreateParquetRowRangesCache(cfg ParquetRowRangesCacheConfig, logger log.Logger, reg prometheus.Registerer) (cache.Cache, error) {
+	cfg.MultiLevel.BackFillTTL = cfg.TTL
+	return createBucketCache("parquet-row-ranges-cache", &cfg.BucketCacheBackend, logger, reg)
+}
+
 func CreateCachingBucket(chunksConfig ChunksCacheConfig, metadataConfig MetadataCacheConfig, parquetLabelsConfig ParquetLabelsCacheConfig, matchers Matchers, bkt objstore.InstrumentedBucket, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	cfg := cache.NewCachingBucketConfig()
 	cachingConfigured := false

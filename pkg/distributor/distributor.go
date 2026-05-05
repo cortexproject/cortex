@@ -154,14 +154,14 @@ type Config struct {
 	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy                    string                 `yaml:"sharding_strategy"`
-	ShardByAllLabels                    bool                   `yaml:"shard_by_all_labels"`
-	ExtendWrites                        bool                   `yaml:"extend_writes"`
-	SignWriteRequestsEnabled            bool                   `yaml:"sign_write_requests"`
-	SignWriteRequestsKeys               flagext.StringSliceCSV `yaml:"sign_write_requests_keys"`
-	UseStreamPush                       bool                   `yaml:"use_stream_push"`
-	RemoteWriteV2Enabled                bool                   `yaml:"remote_writev2_enabled"`
-	AcceptUnknownRemoteWriteContentType bool                   `yaml:"accept_unknown_remote_write_content_type"`
+	ShardingStrategy                    string                       `yaml:"sharding_strategy"`
+	ShardByAllLabels                    bool                         `yaml:"shard_by_all_labels"`
+	ExtendWrites                        bool                         `yaml:"extend_writes"`
+	SignWriteRequestsEnabled            bool                         `yaml:"sign_write_requests"`
+	SignWriteRequestsKeys               flagext.SecretStringSliceCSV `yaml:"sign_write_requests_keys"`
+	UseStreamPush                       bool                         `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled                bool                         `yaml:"remote_writev2_enabled"`
+	AcceptUnknownRemoteWriteContentType bool                         `yaml:"accept_unknown_remote_write_content_type"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`

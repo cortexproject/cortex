@@ -427,7 +427,7 @@ func (t *Cortex) setupRequestSigning() {
 		// When signing keys are configured, authenticate PushStream connections.
 		// All keys in the list are accepted by the server; the first key is used by
 		// the client to sign.  Multiple keys enable zero-downtime key rotation.
-		if keys := []string(t.Cfg.Distributor.SignWriteRequestsKeys); len(keys) > 0 {
+		if keys := t.Cfg.Distributor.SignWriteRequestsKeys.Value(); len(keys) > 0 {
 			t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcclient.NewStreamSigningServerInterceptor(keys...))
 		}
 	}

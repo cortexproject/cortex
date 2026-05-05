@@ -247,7 +247,7 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsEnabled = t.Cfg.Distributor.SignWriteRequestsEnabled
 	// The client signs with the first key in the list; additional keys are only used on the
 	// server side (ingester) for accepting signatures during key rotation.
-	if keys := []string(t.Cfg.Distributor.SignWriteRequestsKeys); len(keys) > 0 {
+	if keys := t.Cfg.Distributor.SignWriteRequestsKeys.Value(); len(keys) > 0 {
 		t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsKey = keys[0]
 	}
 

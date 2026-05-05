@@ -285,6 +285,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "flagext.StringSliceCSV":
 		return "string", nil
+	case "flagext.SecretStringSliceCSV":
+		return "string", nil
 	case "flagext.CIDRSliceCSV":
 		return "string", nil
 	case "[]*relabel.Config":
@@ -393,6 +395,22 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 		}, nil
 	}
 	if field.Type == reflect.TypeFor[flagext.Secret]() {
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "string",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeFor[flagext.SecretStringSliceCSV]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err

@@ -105,7 +105,7 @@ func TestPushStream_TenantImpersonation(t *testing.T) {
 	st, ok := status.FromError(err)
 	require.True(t, ok, "error must be a gRPC status error")
 	require.Equal(t, codes.PermissionDenied, st.Code(),
-		"tenant ID mismatch must result in Unauthenticated")
+		"tenant ID mismatch must result in PermissionDenied")
 }
 
 // TestAttack_DirectGRPC_BypassWithWorkerID proves that a knowledgeable attacker

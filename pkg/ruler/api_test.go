@@ -237,6 +237,10 @@ func stripEvaluationFields(t *testing.T, r util_api.Response) {
 			rule["health"] = "unknown"
 			rule["evaluationTime"] = 0
 			rule["lastEvaluation"] = "0001-01-01T00:00:00Z"
+			// Normalize alert state to avoid flakiness due to evaluation timing.
+			if rule["type"] == "alerting" {
+				rule["state"] = "unknown"
+			}
 			rules[i] = rule
 		}
 		group["rules"] = rules

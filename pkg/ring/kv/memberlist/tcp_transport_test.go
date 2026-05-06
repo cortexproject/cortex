@@ -1,7 +1,12 @@
 package memberlist
 
 import (
+	"bytes"
+	"crypto/md5"
+	"fmt"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
@@ -58,4 +63,57 @@ func TestTCPTransport_WriteTo_ShouldNotLogAsWarningExpectedFailures(t *testing.T
 			}
 		})
 	}
+}
+
+func TestTCPTransport_PacketDigestMismatch(t *testing.T) {
+	logs := &concurrency.SyncBuffer{}
+	logger := log.NewLogfmtLogger(logs)
+
+	cfg := TCPTransportConfig{}
+	flagext.DefaultValues(&cfg)
+	cfg.BindAddrs = []string{"127.0.0.1"}
+	cfg.BindPort = 0
+
+	transport, err := NewTCPTransport(cfg, logger)
+	require.NoError(t, err)
+	defer transport.Shutdown() //nolint:errcheck
+
+	port := transport.GetAutoBindPort()
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	require.NoError(t, err)
+	defer conn.Close() //nolint:errcheck
+
+	ourAddr := "127.0.0.1:0"
+	data := []byte("test data")
+	wrongDigest := make([]byte, md5.Size) // All zeros, incorrect digest
+
+	var buf bytes.Buffer
+	buf.WriteByte(byte(packet))
+	buf.WriteByte(byte(len(ourAddr)))
+	buf.WriteString(ourAddr)
+	buf.Write(data)
+	buf.Write(wrongDigest)
+
+	_, err = conn.Write(buf.Bytes())
+	require.NoError(t, err)
+	conn.Close() // Close connection to terminate server's io.ReadAll
+
+	packetReceived := make(chan struct{})
+	go func() {
+		select {
+		case <-transport.PacketCh():
+			close(packetReceived)
+		case <-time.After(500 * time.Millisecond):
+			// Expected timeout
+		}
+	}()
+
+	select {
+	case <-packetReceived:
+		t.Fatal("Received corrupted packet, expected it to be dropped")
+	case <-time.After(500 * time.Millisecond):
+		// Success
+	}
+
+	assert.Contains(t, logs.String(), "packet digest mismatch")
 }

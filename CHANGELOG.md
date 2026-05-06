@@ -3,6 +3,7 @@
 ## 1.21.1 / unreleased
 
 * [BUGFIX] Config: Mask Swift, etcd, Redis, and HTTP basic-auth credentials on the `/config` endpoint. #7473
+* [BUGFIX] Memberlist: Drop incoming TCP transport packets when digest verification fails, preventing corrupted payloads from being forwarded. #7474
 
 ## 1.21.0 2026-04-24
 

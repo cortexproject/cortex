@@ -1892,8 +1892,8 @@ blocks_storage:
 
     # If TSDB has not received any data for this duration, and all blocks from
     # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-    # to positive value, this value should be equal or higher than
-    # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+    # to positive value, this value must be greater than
+    # -limits.query-ingesters-within flag to make sure that TSDB is not closed
     # prematurely, which could cause partial query results. 0 or negative value
     # disables closing of idle TSDB.
     # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout

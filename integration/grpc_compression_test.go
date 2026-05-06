@@ -43,7 +43,8 @@ func TestGRPCCompression(t *testing.T) {
 
 			require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 				labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-				labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+				labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+				e2e.WaitMissingMetrics))
 
 			c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 			require.NoError(t, err)
@@ -95,7 +96,8 @@ func TestGRPCCompression(t *testing.T) {
 
 			require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 				labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-				labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+				labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+				e2e.WaitMissingMetrics))
 
 			c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 			require.NoError(t, err)

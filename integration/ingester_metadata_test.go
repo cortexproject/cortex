@@ -47,12 +47,14 @@ func TestIngesterMetadata(t *testing.T) {
 	// Wait until distributor has updated the ring.
 	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	// Wait until querier has updated the ring.
 	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
 		labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
-		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
 
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", userID)
 	require.NoError(t, err)

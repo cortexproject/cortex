@@ -235,9 +235,6 @@ func (cfg *ParquetRowRangesCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet,
 	cfg.MultiLevel.RegisterFlagsWithPrefix(f, prefix+"multilevel.")
 
 	f.DurationVar(&cfg.TTL, prefix+"ttl", 10*time.Minute, "TTL for caching parquet row ranges.")
-
-	// In the multi level parquet row ranges cache, backfill TTL follows the row ranges TTL.
-	cfg.MultiLevel.BackFillTTL = cfg.TTL
 }
 
 func (cfg *ParquetRowRangesCacheConfig) Validate() error {

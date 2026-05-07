@@ -138,6 +138,7 @@ type Limits struct {
 	HAClusterLabel                    string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
 	HAReplicaLabel                    string              `yaml:"ha_replica_label" json:"ha_replica_label"`
 	HAMaxClusters                     int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
+	HATrackerFailoverTimeout          model.Duration      `yaml:"ha_tracker_failover_timeout" json:"ha_tracker_failover_timeout"`
 	DropLabels                        flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
 	MaxLabelNameLength                int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
 	MaxLabelValueLength               int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
@@ -281,6 +282,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
+	_ = l.HATrackerFailoverTimeout.Set("30s")
+	f.Var(&l.HATrackerFailoverTimeout, "distributor.ha-tracker.failover-timeout", "If the elected replica doesn't send samples in this time, the HA tracker will accept a new replica. This value must be greater than the update timeout plus the maximum jitter.")
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
@@ -397,7 +400,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
+func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool, haTrackerUpdateTimeout time.Duration, haTrackerUpdateTimeoutJitterMax time.Duration) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
@@ -441,6 +444,13 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 	if l.RulerAlertGeneratorURLTemplate != "" {
 		if _, err := template.New("").Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
 			return fmt.Errorf("invalid ruler_alert_generator_url_template: %w", err)
+		}
+	}
+
+	if haTrackerUpdateTimeout > 0 || haTrackerUpdateTimeoutJitterMax > 0 || l.HATrackerFailoverTimeout > 0 {
+		minFailoverTimeout := haTrackerUpdateTimeout + haTrackerUpdateTimeoutJitterMax + time.Second
+		if time.Duration(l.HATrackerFailoverTimeout) < minFailoverTimeout {
+			return fmt.Errorf("HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)", time.Duration(l.HATrackerFailoverTimeout), minFailoverTimeout)
 		}
 	}
 
@@ -1068,6 +1078,11 @@ func (o *Overrides) StoreGatewayTenantShardSize(userID string) float64 {
 // MaxHAReplicaGroups returns maximum number of clusters that HA tracker will track for a user.
 func (o *Overrides) MaxHAReplicaGroups(user string) int {
 	return o.GetOverridesForUser(user).HAMaxClusters
+}
+
+// HATrackerFailoverTimeout returns the per-tenant HA tracker failover timeout.
+func (o *Overrides) HATrackerFailoverTimeout(user string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(user).HATrackerFailoverTimeout)
 }
 
 // S3SSEType returns the per-tenant S3 SSE type.

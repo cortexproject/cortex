@@ -3101,12 +3101,6 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.update-timeout-jitter-max
   [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
 
-  # The timeout after which a new replica will be accepted if the currently
-  # elected replica stops sending data. This value must be greater than the
-  # update timeout plus the maximum jitter.
-  # CLI flag: -distributor.ha-tracker.failover-timeout
-  [ha_tracker_failover_timeout: <duration> | default = 30s]
-
   # [Experimental] If enabled, fetches all tracked keys on startup to populate
   # the local cache. This prevents duplicate GET calls for the same key while
   # the cache is cold, but could cause a spike in GET requests during
@@ -4026,6 +4020,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # 0 to disable the limit.
 # CLI flag: -distributor.ha-tracker.max-clusters
 [ha_max_clusters: <int> | default = 0]
+
+# If the elected replica doesn't send samples in this time, the HA tracker will
+# accept a new replica. This value must be greater than the update timeout plus
+# the maximum jitter.
+# CLI flag: -distributor.ha-tracker.failover-timeout
+[ha_tracker_failover_timeout: <duration> | default = 30s]
 
 # This flag can be used to specify label names that to drop during sample
 # ingestion within the distributor and can be repeated in order to drop multiple

@@ -45,11 +45,13 @@ func TestLimits_Validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		limits                     Limits
-		shardByAllLabels           bool
-		activeSeriesMetricsEnabled bool
-		expected                   error
-		nameValidationScheme       model.ValidationScheme
+		limits                          Limits
+		shardByAllLabels                bool
+		activeSeriesMetricsEnabled      bool
+		expected                        error
+		nameValidationScheme            model.ValidationScheme
+		haTrackerUpdateTimeout          time.Duration
+		haTrackerUpdateTimeoutJitterMax time.Duration
 	}{
 		"max-global-series-per-user disabled and shard-by-all-labels=false": {
 			limits:           Limits{MaxGlobalSeriesPerUser: 0},
@@ -186,6 +188,24 @@ func TestLimits_Validate(t *testing.T) {
 			},
 			expected: errInvalidMetricRelabelConfigs,
 		},
+		"ha_tracker_failover_timeout too small": {
+			limits:                          Limits{HATrackerFailoverTimeout: model.Duration(5 * time.Second)},
+			haTrackerUpdateTimeout:          4 * time.Second,
+			haTrackerUpdateTimeoutJitterMax: 2 * time.Second,
+			expected:                        fmt.Errorf("HA Tracker failover timeout (5s) must be at least 1s greater than update timeout - max jitter (7s)"),
+		},
+		"ha_tracker_failover_timeout zero is rejected": {
+			limits:                          Limits{HATrackerFailoverTimeout: 0},
+			haTrackerUpdateTimeout:          15 * time.Second,
+			haTrackerUpdateTimeoutJitterMax: 5 * time.Second,
+			expected:                        fmt.Errorf("HA Tracker failover timeout (0s) must be at least 1s greater than update timeout - max jitter (21s)"),
+		},
+		"ha_tracker_failover_timeout valid": {
+			limits:                          Limits{HATrackerFailoverTimeout: model.Duration(7 * time.Second)},
+			haTrackerUpdateTimeout:          4 * time.Second,
+			haTrackerUpdateTimeoutJitterMax: 2 * time.Second,
+			expected:                        nil,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -194,7 +214,15 @@ func TestLimits_Validate(t *testing.T) {
 			if testData.nameValidationScheme == model.UTF8Validation {
 				nameValidationScheme = testData.nameValidationScheme
 			}
-			assert.ErrorIs(t, testData.limits.Validate(nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled), testData.expected)
+			err := testData.limits.Validate(nameValidationScheme, testData.shardByAllLabels, testData.activeSeriesMetricsEnabled, testData.haTrackerUpdateTimeout, testData.haTrackerUpdateTimeoutJitterMax)
+			if testData.expected == nil {
+				assert.NoError(t, err)
+			} else if testData.haTrackerUpdateTimeout > 0 {
+				// HA tracker validation uses formatted errors, not sentinel errors.
+				assert.EqualError(t, err, testData.expected.Error())
+			} else {
+				assert.ErrorIs(t, err, testData.expected)
+			}
 		})
 	}
 }

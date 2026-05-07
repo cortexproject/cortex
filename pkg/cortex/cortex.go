@@ -217,7 +217,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
-	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled, c.Distributor.HATrackerConfig.UpdateTimeout, c.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.LimitsConfig.ValidateQueryLimits("default", c.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {

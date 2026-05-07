@@ -5,9 +5,10 @@ import (
 	"sync"
 	"testing"
 
-	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 )
 
 // newTestStats creates a QueryStats with the given fetched samples value.

@@ -6,9 +6,10 @@ import (
 	"sync"
 	"time"
 
-	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/gogo/status"
 	"google.golang.org/grpc/codes"
+
+	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 )
 
 // ErrQueryEvicted is returned when a query is cancelled by the evictor.

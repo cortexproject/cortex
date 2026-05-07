@@ -29,7 +29,7 @@ func TestRegister_UniqueMonotonicallyIncreasingIDs(t *testing.T) {
 	defer cancel()
 
 	ids := make([]uint64, 10)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ids[i] = reg.Register(cancel, newTestStats(0), "query", "user", "")
 	}
 
@@ -138,10 +138,10 @@ func TestConcurrent_RegisterDeregisterFindHeaviest(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 
-	for g := 0; g < goroutines; g++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
-			for i := 0; i < opsPerGoroutine; i++ {
+			for i := range opsPerGoroutine {
 				_, cancel := context.WithCancel(context.Background())
 				stats := newTestStats(uint64(i))
 				id := reg.Register(cancel, stats, "concurrent-query", "user", "")

@@ -198,7 +198,7 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 	reg := NewQueryRegistry(testMetricFunc)
 	evictor := startEvictor(t, newMockMonitor(0.95, 0.0), reg, testEvictorConfig(0.9, 0, 0))
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, evicted := registerTestQuery(reg, uint64(1000+i), "q", "user")
 		waitEvicted(t, evicted)
 	}

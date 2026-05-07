@@ -2,7 +2,6 @@ package queryeviction
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/resource"
@@ -18,8 +18,8 @@ import (
 )
 
 type mockMonitor struct {
-	cpuUtil  atomic.Value
-	heapUtil atomic.Value
+	cpuUtil  atomic.Float64
+	heapUtil atomic.Float64
 }
 
 func newMockMonitor(cpu, heap float64) *mockMonitor {
@@ -29,8 +29,8 @@ func newMockMonitor(cpu, heap float64) *mockMonitor {
 	return m
 }
 
-func (m *mockMonitor) GetCPUUtilization() float64  { return m.cpuUtil.Load().(float64) }
-func (m *mockMonitor) GetHeapUtilization() float64 { return m.heapUtil.Load().(float64) }
+func (m *mockMonitor) GetCPUUtilization() float64  { return m.cpuUtil.Load() }
+func (m *mockMonitor) GetHeapUtilization() float64 { return m.heapUtil.Load() }
 
 func testEvictorConfig(cpu, heap float64, cooldown int) EvictionConfig {
 	return EvictionConfig{

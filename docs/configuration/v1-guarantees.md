@@ -129,3 +129,10 @@ Currently experimental features are:
     - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
     - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
 - HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled, fetches all tracked keys on startup to populate the local cache.
+- Querier: Resource-based query eviction
+  - `-querier.query-protection.eviction.threshold.cpu-utilization` (float)
+  - `-querier.query-protection.eviction.threshold.heap-utilization` (float)
+  - `-querier.query-protection.eviction.check-interval` (duration)
+  - `-querier.query-protection.eviction.cooldown-period` (int)
+  - `-querier.query-protection.eviction.eviction-metric` (string)
+  - `-querier.query-protection.eviction.min-query-age` (duration)

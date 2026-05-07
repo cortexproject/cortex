@@ -284,7 +284,8 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
+	var evictorService services.Service
+	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine, evictorService = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
 
 	// Use distributor as default MetadataQuerier
 	t.MetadataQuerier = t.Distributor
@@ -292,7 +293,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
-	return nil, nil
+	return evictorService, nil
 }
 
 // Enable merge querier if multi tenant query federation is enabled
@@ -701,7 +702,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		queryEngine = engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 	} else {
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
+		queryable, _, queryEngine, _ = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)

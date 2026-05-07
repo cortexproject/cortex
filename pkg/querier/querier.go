@@ -33,7 +33,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
+	"github.com/cortexproject/cortex/pkg/util/queryeviction"
 	"github.com/cortexproject/cortex/pkg/util/resource"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -233,7 +235,7 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc, resourceMonitor resource.IMonitor) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc, resourceMonitor resource.IMonitor) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine, services.Service) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
 
 	// Create resource-based limiter if resource monitor is available and thresholds are configured.
@@ -251,6 +253,36 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, reg, "querier")
 			if err != nil {
 				level.Error(logger).Log("msg", "failed to create resource based limiter for querier", "err", err)
+			}
+		}
+	}
+
+	// Set up query eviction if configured.
+	var queryRegistry *queryeviction.QueryRegistry
+	var queryEvictor *queryeviction.QueryEvictor
+
+	evictionCfg := cfg.QueryProtection.Eviction
+	if evictionCfg.Enabled() && resourceMonitor != nil {
+		evCfg := queryeviction.EvictionConfig{
+			CPUUtilization:  evictionCfg.Threshold.CPUUtilization,
+			HeapUtilization: evictionCfg.Threshold.HeapUtilization,
+			CheckInterval:   evictionCfg.CheckInterval,
+			CooldownPeriod:  evictionCfg.CooldownPeriod,
+			EvictionMetric:  evictionCfg.EvictionMetric,
+			MinQueryAge:     evictionCfg.MinQueryAge,
+		}
+
+		metricFunc, err := queryeviction.ResolveMetricFunc(evCfg.EvictionMetric)
+		if err != nil {
+			level.Error(logger).Log("msg", "invalid eviction metric", "err", err)
+		} else {
+			queryRegistry = queryeviction.NewQueryRegistry(metricFunc)
+			queryEvictor, err = queryeviction.NewQueryEvictor(
+				resourceMonitor, queryRegistry, evCfg,
+				logger, reg, "querier",
+			)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to create query evictor", "err", err)
 			}
 		}
 	}
@@ -298,7 +330,19 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		},
 	}
 	queryEngine := engine.New(opts, cfg.ThanosEngine, reg)
-	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, queryEngine
+
+	// Wrap the engine with eviction support if the registry was created.
+	var eng engine.QueryEngine = queryEngine
+	if queryRegistry != nil {
+		eng = queryeviction.NewResourceEvictingEngine(queryEngine, queryRegistry)
+	}
+
+	// Return the evictor as a service so the caller can manage its lifecycle.
+	var evictorService services.Service
+	if queryEvictor != nil {
+		evictorService = queryEvictor
+	}
+	return NewSampleAndChunkQueryable(lazyQueryable), exemplarQueryable, eng, evictorService
 }
 
 // NewSampleAndChunkQueryable creates a SampleAndChunkQueryable from a

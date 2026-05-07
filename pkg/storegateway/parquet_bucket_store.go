@@ -40,6 +40,7 @@ type parquetBucketStore struct {
 
 	matcherCache      storecache.MatchersCache
 	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	rowRangesCache    search.RowRangesForConstraintsCache
 }
 
 func (p *parquetBucketStore) Close() error {
@@ -66,7 +67,7 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 	for _, blockID := range blockIDs {
 		// TODO: support shard ID > 0 later.
-		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, noopQuota, noopQuota, noopQuota)
+		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, p.rowRangesCache, noopQuota, noopQuota, noopQuota)
 		if err != nil {
 			return nil, err
 		}

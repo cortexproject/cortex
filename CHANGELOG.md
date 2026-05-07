@@ -26,6 +26,7 @@
 * [BUGFIX] gRPC: Fix panic when `grpc_compression` is set to `snappy` on ingester client or store-gateway client configurations. #7459
 * [BUGFIX] Config: Mask Swift, etcd, Redis, and HTTP basic-auth credentials on the `/config` endpoint. #7473
 * [BUGFIX] Memberlist: Drop incoming TCP transport packets when digest verification fails, preventing corrupted payloads from being forwarded. #7474
+* [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7485
 
 ## 1.21.0 2026-04-24
 

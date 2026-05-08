@@ -989,6 +989,9 @@ func TestQueryFrontendResponseSizeLimit(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 	require.NoError(t, s.WaitReady(queryFrontend))
 
+	// Wait until the distributor has discovered the ingester in the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)
 

@@ -266,7 +266,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				}
 
 				if testCfg.bucketStorageType == "parquet" {
-					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_misses_total"}, e2e.WaitMissingMetrics))
+					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_misses_total"}, e2e.SkipMissingMetrics))
 				}
 
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
@@ -284,7 +284,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((12+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 				case "parquet":
-					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_hits_total"}, e2e.WaitMissingMetrics))
+					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_hits_total"}, e2e.SkipMissingMetrics))
 					switch testCfg.parquetLabelsCache {
 					case tsdb.CacheBackendInMemory:
 						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))

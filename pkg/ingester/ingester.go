@@ -64,6 +64,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -1835,7 +1836,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		resp, err = i.queryExemplars(ctx, userID, req)
 	})
 	return resp, err
@@ -1905,7 +1906,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
 		defer cleanup()
@@ -1924,7 +1925,7 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelValuesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
@@ -2021,7 +2022,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
 		defer cleanup()
@@ -2040,7 +2041,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelNamesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
@@ -2137,7 +2138,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result = &client.MetricsForLabelMatchersResponse{}
 		var cleanup func()
 		cleanup, err = i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
@@ -2161,7 +2162,7 @@ func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatc
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result := &client.MetricsForLabelMatchersStreamResponse{}
 
 		var cleanup func()
@@ -2301,7 +2302,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		userMetadata := i.getUserMetadata(userID)
 
 		if userMetadata == nil {
@@ -2443,7 +2444,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		err = i.queryStream(ctx, userID, req, stream, spanlog)
 	})
 

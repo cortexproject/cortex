@@ -3,6 +3,7 @@ package ingester
 import (
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
@@ -33,6 +34,15 @@ type RingCount interface {
 	ZonesCount() int
 }
 
+// localLimitEntry stores a previously computed local limit along with the
+// global limit that was used to derive it. This is used to prevent the local
+// limit from shrinking during ingester scale-up when the global limit has not
+// changed.
+type localLimitEntry struct {
+	localLimit  int
+	globalLimit int
+}
+
 // Limiter implements primitives to get the maximum number of series
 // an ingester can handle for a specific tenant
 type Limiter struct {
@@ -43,6 +53,21 @@ type Limiter struct {
 	shardByAllLabels       bool
 	zoneAwarenessEnabled   bool
 	AdminLimitMessage      string
+
+	// localLimitCacheEnabled gates the local limit caching behavior that prevents
+	// false throttling during ingester scale-up. When enabled, the limiter caches
+	// the previous local limit per tenant and prevents it from shrinking when the
+	// global limit has not changed. This avoids rejecting writes for tenants who
+	// are within their global quota but whose local limit dropped due to ring growth.
+	//
+	// Note: enabling this may cause temporary over-commitment of the global series
+	// limit until head compaction redistributes series to new ingesters (~2h).
+	localLimitCacheEnabled bool
+
+	// prevLocalLimits caches the previous local limit per user to prevent
+	// false throttling during ingester ring topology changes.
+	prevLocalLimitsMu sync.RWMutex
+	prevLocalLimits   map[string]localLimitEntry
 }
 
 // NewLimiter makes a new in-memory series limiter
@@ -54,6 +79,7 @@ func NewLimiter(
 	replicationFactor int,
 	zoneAwarenessEnabled bool,
 	AdminLimitMessage string,
+	localLimitCacheEnabled bool,
 ) *Limiter {
 	return &Limiter{
 		limits:                 limits,
@@ -63,6 +89,8 @@ func NewLimiter(
 		shardByAllLabels:       shardByAllLabels,
 		zoneAwarenessEnabled:   zoneAwarenessEnabled,
 		AdminLimitMessage:      AdminLimitMessage,
+		localLimitCacheEnabled: localLimitCacheEnabled,
+		prevLocalLimits:        make(map[string]localLimitEntry),
 	}
 }
 
@@ -333,7 +361,38 @@ func (l *Limiter) convertGlobalToLocalLimit(userID string, globalLimit int) int 
 		numIngesters = min(numIngesters, util.ShuffleShardExpectedInstances(shardSize, l.getNumZones()))
 	}
 
-	return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+	newLimit := int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+
+	// Prevent the local limit from shrinking when the global limit has not changed.
+	// During ingester scale-up, numIngesters increases before series redistribute
+	// (which happens at head compaction), causing the local limit to drop below the
+	// series count an ingester already holds. This results in false throttling for
+	// tenants who are within their global limit.
+	//
+	// We only cache when the global limit is unchanged — if the global limit changes
+	// (increase or decrease), we always recalculate to respect the new configuration.
+	if l.localLimitCacheEnabled {
+		l.prevLocalLimitsMu.RLock()
+		prev, ok := l.prevLocalLimits[userID]
+		l.prevLocalLimitsMu.RUnlock()
+		if ok && newLimit < prev.localLimit && globalLimit == prev.globalLimit {
+			return prev.localLimit
+		}
+		l.prevLocalLimitsMu.Lock()
+		l.prevLocalLimits[userID] = localLimitEntry{localLimit: newLimit, globalLimit: globalLimit}
+		l.prevLocalLimitsMu.Unlock()
+	}
+	return newLimit
+}
+
+// ResetLocalLimitCache clears the cached local limit for a specific user.
+// This should be called after the user's TSDB head compaction when series have
+// been redistributed and the ingester's actual series count for this user
+// reflects its true post-resharding ownership.
+func (l *Limiter) ResetLocalLimitCache(userID string) {
+	l.prevLocalLimitsMu.Lock()
+	delete(l.prevLocalLimits, userID)
+	l.prevLocalLimitsMu.Unlock()
 }
 
 func (l *Limiter) getShardSize(userID string) int {

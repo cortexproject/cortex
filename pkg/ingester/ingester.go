@@ -180,6 +180,12 @@ type Config struct {
 	// for unoptimized regex matchers, and enforce per-tenant limits if configured.
 	EnableRegexMatcherLimits bool `yaml:"enable_regex_matcher_limits"`
 
+	// LocalLimitCacheEnabled prevents the per-ingester local series limit from shrinking
+	// during ring topology changes (e.g., ingester scale-up). When enabled, the limiter
+	// caches the previous local limit per tenant and prevents it from decreasing when the
+	// global limit has not changed. The cache is reset per-tenant after head compaction.
+	LocalLimitCacheEnabled bool `yaml:"local_limit_cache_enabled"`
+
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
@@ -212,6 +218,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.SkipMetadataLimits, "ingester.skip-metadata-limits", true, "If enabled, the metadata API returns all metadata regardless of the limits.")
 	f.BoolVar(&cfg.EnableMatcherOptimization, "ingester.enable-matcher-optimization", false, "Enable optimization of label matchers when query chunks. When enabled, matchers with low selectivity such as =~.+ are applied lazily during series scanning instead of being used for postings matching.")
 	f.BoolVar(&cfg.EnableRegexMatcherLimits, "ingester.enable-regex-matcher-limits", false, "Enable regex matcher limits and metrics collection for unoptimized regex queries. When enabled, the ingester will track pattern length, label cardinality, and total value length for unoptimized regex matchers.")
+	f.BoolVar(&cfg.LocalLimitCacheEnabled, "ingester.local-limit-cache-enabled", false, "[Experimental] When enabled, the per-ingester local series limit is cached and prevented from shrinking during ring topology changes if the global limit has not changed. This prevents false throttling during ingester scale-up at the cost of potential temporary over-commitment until head compaction.")
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
 }
@@ -855,6 +862,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
 		cfg.AdminLimitMessage,
+		cfg.LocalLimitCacheEnabled,
 	)
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
@@ -908,6 +916,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		cfg.LifecyclerConfig.RingConfig.ReplicationFactor,
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
 		cfg.AdminLimitMessage,
+		cfg.LocalLimitCacheEnabled,
 	)
 	i.metrics = newIngesterMetrics(registerer,
 		false,
@@ -3360,6 +3369,10 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
 		} else {
 			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
+			// Reset the local limit cache after successful compaction.
+			// Idle series (including those resharded to other ingesters) are now
+			// flushed from the head, so the series count reflects true ownership.
+			i.limiter.ResetLocalLimitCache(userID)
 		}
 
 		return nil
@@ -3460,6 +3473,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 
 	i.deleteUserMetadata(userID)
 	i.metrics.deletePerUserMetrics(userID)
+	i.limiter.ResetLocalLimitCache(userID)
 
 	validation.DeletePerUserValidationMetrics(i.validateMetrics, userID, i.logger)
 

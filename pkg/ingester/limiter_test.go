@@ -235,12 +235,12 @@ func runLimiterMaxFunctionTest(
 			overrides := validation.NewOverrides(limits, nil)
 
 			// Assert on default sharding strategy.
-			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
+			limiter := NewLimiter(overrides, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "", false)
 			actual := runMaxFn(limiter)
 			assert.Equal(t, testData.expectedDefaultSharding, actual)
 
 			// Assert on shuffle sharding strategy.
-			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "")
+			limiter = NewLimiter(overrides, ring, util.ShardingStrategyShuffle, testData.shardByAllLabels, testData.ringReplicationFactor, testData.ringZoneAwarenessEnabled, "", false)
 			actual = runMaxFn(limiter)
 			assert.Equal(t, testData.expectedShuffleSharding, actual)
 		})
@@ -300,7 +300,7 @@ func TestLimiter_AssertMaxSeriesPerMetric(t *testing.T) {
 				MaxGlobalSeriesPerMetric: testData.maxGlobalSeriesPerMetric,
 			}, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxSeriesPerMetric("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -360,7 +360,7 @@ func TestLimiter_AssertMaxMetadataPerMetric(t *testing.T) {
 				MaxGlobalMetadataPerMetric: testData.maxGlobalMetadataPerMetric,
 			}, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxMetadataPerMetric("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)
@@ -421,7 +421,7 @@ func TestLimiter_AssertMaxSeriesPerUser(t *testing.T) {
 				MaxGlobalSeriesPerUser: testData.maxGlobalSeriesPerUser,
 			}, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -482,7 +482,7 @@ func TestLimiter_AssertMaxNativeHistogramsSeriesPerUser(t *testing.T) {
 				MaxGlobalNativeHistogramSeriesPerUser: testData.maxGlobalNativeHistogramsSeriesPerUser,
 			}, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxNativeHistogramSeriesPerUser("test", testData.series)
 
 			assert.Equal(t, testData.expected, actual)
@@ -562,7 +562,7 @@ func TestLimiter_AssertMaxSeriesPerLabelSet(t *testing.T) {
 			// Mock limits
 			limits := validation.NewOverrides(testData.limits, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxSeriesPerLabelSet("test", labels.FromStrings("foo", "bar"), func(limits []validation.LimitsPerLabelSet, limit validation.LimitsPerLabelSet) (int, error) {
 				return testData.series, nil
 			})
@@ -625,7 +625,7 @@ func TestLimiter_AssertMaxMetricsWithMetadataPerUser(t *testing.T) {
 				MaxGlobalMetricsWithMetadataPerUser: testData.maxGlobalMetadataPerUser,
 			}, nil)
 
-			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "")
+			limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, testData.shardByAllLabels, testData.ringReplicationFactor, false, "", false)
 			actual := limiter.AssertMaxMetricsWithMetadataPerUser("test", testData.metadata)
 
 			assert.Equal(t, testData.expected, actual)
@@ -648,7 +648,7 @@ func TestLimiter_FormatError(t *testing.T) {
 		MaxGlobalMetadataPerMetric:            3,
 	}, nil)
 
-	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it")
+	limiter := NewLimiter(limits, ring, util.ShardingStrategyDefault, true, 3, false, "please contact administrator to raise it", false)
 	lbls := labels.FromStrings(labels.MetricName, "testMetric")
 
 	actual := limiter.FormatError("user-1", errMaxSeriesPerUserLimitExceeded, lbls)
@@ -726,4 +726,122 @@ func (m *ringCountMock) HealthyInstancesCount() int {
 func (m *ringCountMock) ZonesCount() int {
 	args := m.Called()
 	return args.Int(0)
+}
+
+func TestLimiter_convertGlobalToLocalLimit_CacheDuringScaleUp(t *testing.T) {
+	tests := map[string]struct {
+		initialIngesterCount int
+		scaledIngesterCount  int
+		globalLimit          int
+		replicationFactor    int
+		expectedFirstLimit   int
+		expectedSecondLimit  int
+	}{
+		"local limit should not shrink when global limit unchanged during scale-up": {
+			initialIngesterCount: 75,
+			scaledIngesterCount:  249,
+			globalLimit:          2700000,
+			replicationFactor:    3,
+			expectedFirstLimit:   108000, // 2700000 / 75 * 3
+			expectedSecondLimit:  108000, // cached, not 32530
+		},
+		"local limit should increase when ingesters decrease (scale-down)": {
+			initialIngesterCount: 249,
+			scaledIngesterCount:  75,
+			globalLimit:          2700000,
+			replicationFactor:    3,
+			expectedFirstLimit:   32530,  // 2700000 / 249 * 3
+			expectedSecondLimit:  108000, // 2700000 / 75 * 3 (higher, so updated)
+		},
+		"local limit should recalculate when global limit changes": {
+			initialIngesterCount: 75,
+			scaledIngesterCount:  249,
+			globalLimit:          5000000, // changed from initial
+			replicationFactor:    3,
+			expectedFirstLimit:   108000, // 2700000 / 75 * 3 (with initial global)
+			expectedSecondLimit:  60240,  // 5000000 / 249 * 3 (recalculated)
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Setup with initial ingester count
+			ring := &ringCountMock{}
+			ring.On("HealthyInstancesCount").Return(testData.initialIngesterCount).Once()
+			ring.On("ZonesCount").Return(1)
+
+			limiter := NewLimiter(
+				nil, ring, "", true, testData.replicationFactor, false, "", true,
+			)
+
+			// First call with initial ingester count
+			initialGlobal := 2700000
+			firstLimit := limiter.convertGlobalToLocalLimit("test-user", initialGlobal)
+			assert.Equal(t, testData.expectedFirstLimit, firstLimit)
+
+			// Scale up: change ingester count
+			ring2 := &ringCountMock{}
+			ring2.On("HealthyInstancesCount").Return(testData.scaledIngesterCount)
+			ring2.On("ZonesCount").Return(1)
+			limiter.ring = ring2
+
+			// Second call after scale-up
+			secondLimit := limiter.convertGlobalToLocalLimit("test-user", testData.globalLimit)
+			assert.Equal(t, testData.expectedSecondLimit, secondLimit)
+		})
+	}
+}
+
+func TestLimiter_convertGlobalToLocalLimit_CacheResetOnHeadCompaction(t *testing.T) {
+	ring := &ringCountMock{}
+	ring.On("HealthyInstancesCount").Return(75)
+	ring.On("ZonesCount").Return(1)
+
+	limiter := NewLimiter(nil, ring, "", true, 3, false, "", true)
+
+	// First call: establishes cache
+	limit1 := limiter.convertGlobalToLocalLimit("test-user", 2700000)
+	assert.Equal(t, 108000, limit1) // 2700000 / 75 * 3
+
+	// Scale up
+	ring2 := &ringCountMock{}
+	ring2.On("HealthyInstancesCount").Return(249)
+	ring2.On("ZonesCount").Return(1)
+	limiter.ring = ring2
+
+	// Second call: cache prevents shrinking
+	limit2 := limiter.convertGlobalToLocalLimit("test-user", 2700000)
+	assert.Equal(t, 108000, limit2) // cached
+
+	// Another user also cached
+	limit2b := limiter.convertGlobalToLocalLimit("other-user", 2700000)
+	assert.Equal(t, 32530, limit2b) // fresh for other-user (no prior cache)
+
+	// Simulate head compaction for test-user only
+	limiter.ResetLocalLimitCache("test-user")
+
+	// test-user: cache cleared, uses new calculation
+	limit3 := limiter.convertGlobalToLocalLimit("test-user", 2700000)
+	assert.Equal(t, 32530, limit3) // 2700000 / 249 * 3
+
+	// other-user: unaffected by test-user's reset, cache still holds
+	// (other-user had no prior higher cache, so it stays at 32530)
+	limit3b := limiter.convertGlobalToLocalLimit("other-user", 2700000)
+	assert.Equal(t, 32530, limit3b)
+}
+
+func TestLimiter_convertGlobalToLocalLimit_GlobalLimitDecrease(t *testing.T) {
+	ring := &ringCountMock{}
+	ring.On("HealthyInstancesCount").Return(100)
+	ring.On("ZonesCount").Return(1)
+
+	limiter := NewLimiter(nil, ring, "", true, 3, false, "", true)
+
+	// First call with high global limit
+	limit1 := limiter.convertGlobalToLocalLimit("test-user", 5000000)
+	assert.Equal(t, 150000, limit1) // 5000000 / 100 * 3
+
+	// Global limit decreases (customer downgrade)
+	limit2 := limiter.convertGlobalToLocalLimit("test-user", 2000000)
+	assert.Equal(t, 60000, limit2) // 2000000 / 100 * 3 (recalculated, not cached)
 }

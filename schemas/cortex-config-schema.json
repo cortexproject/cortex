@@ -4864,6 +4864,12 @@
           },
           "type": "object"
         },
+        "local_limit_cache_enabled": {
+          "default": false,
+          "description": "[Experimental] When enabled, the per-ingester local series limit is cached and prevented from shrinking during ring topology changes if the global limit has not changed. This prevents false throttling during ingester scale-up at the cost of potential temporary over-commitment until head compaction.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.local-limit-cache-enabled"
+        },
         "matchers_cache_max_items": {
           "default": 0,
           "description": "Maximum number of entries in the regex matchers cache. 0 to disable.",

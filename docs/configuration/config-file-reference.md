@@ -3861,6 +3861,13 @@ instance_limits:
 # CLI flag: -ingester.enable-regex-matcher-limits
 [enable_regex_matcher_limits: <boolean> | default = false]
 
+# [Experimental] When enabled, the per-ingester local series limit is cached and
+# prevented from shrinking during ring topology changes if the global limit has
+# not changed. This prevents false throttling during ingester scale-up at the
+# cost of potential temporary over-commitment until head compaction.
+# CLI flag: -ingester.local-limit-cache-enabled
+[local_limit_cache_enabled: <boolean> | default = false]
+
 query_protection:
   rejection:
     threshold:

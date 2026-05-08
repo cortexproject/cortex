@@ -37,7 +37,7 @@ func Test_UserMetricsMetadata(t *testing.T) {
 
 	limits := validation.Limits{}
 	overrides := validation.NewOverrides(limits, nil)
-	limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 1, false, "")
+	limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 1, false, "", false)
 
 	tests := []struct {
 		description        string

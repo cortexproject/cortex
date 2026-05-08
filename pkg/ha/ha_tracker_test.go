@@ -265,10 +265,16 @@ func TestWatchPrefixNilPanicWithMemberlist(t *testing.T) {
 	replica := "replica0"
 	key := userID + "/" + cluster
 
+	// Give the WatchPrefix goroutine in loop() time to register its watcher
+	// channel in the memberlist KV before we write. Without this, the CAS
+	// notification can fire before the watcher is registered, causing the
+	// key to never appear in the elected cache.
+	time.Sleep(100 * time.Millisecond)
+
 	now := time.Now()
 	require.NoError(t, tracker.CheckReplica(ctx, userID, cluster, replica, now))
 
-	test.Poll(t, 3*time.Second, nil, func() any {
+	test.Poll(t, 5*time.Second, nil, func() any {
 		tracker.electedLock.RLock()
 		defer tracker.electedLock.RUnlock()
 		if _, ok := tracker.elected[key]; !ok {

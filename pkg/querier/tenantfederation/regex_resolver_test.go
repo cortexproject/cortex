@@ -361,6 +361,62 @@ func Test_RegexResolver_UsesConfiguredCacheSize(t *testing.T) {
 	regexResolver.RUnlock()
 }
 
+func Test_RegexResolver_CacheNotPurgedWhenUsersUnchanged(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	existingTenants := []string{"user-1", "user-2"}
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", existingTenants, nil)
+	bucketClient.MockIter("__markers__", []string{}, nil)
+	for _, tenant := range existingTenants {
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(tenant), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(tenant), false, nil)
+	}
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	// Short sync interval to trigger multiple ticks quickly.
+	tenantFederationConfig := Config{UserSyncInterval: 100 * time.Millisecond, MaxTenant: 0, RegexCacheSize: 10}
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+	defer services.StopAndAwaitTerminated(context.Background(), regexResolver) //nolint:errcheck
+
+	// Wait for initial sync.
+	test.Poll(t, time.Second*10, true, func() any {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0 &&
+			testutil.ToFloat64(regexResolver.discoveredUsers) == float64(len(existingTenants))
+	})
+
+	// Populate the cache with a regex query.
+	ctx := user.InjectOrgID(context.Background(), "user-.+")
+	orgIDs, err := regexResolver.TenantIDs(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"user-1", "user-2"}, orgIDs)
+
+	// Verify cache is populated.
+	regexResolver.RLock()
+	require.Equal(t, 1, regexResolver.matchedCache.Len())
+	regexResolver.RUnlock()
+
+	// Record the timestamp of the first sync run.
+	firstRunTime := testutil.ToFloat64(regexResolver.lastUpdateUserRun)
+
+	// Wait for a second sync tick.
+	// so the cache should NOT be purged.
+	test.Poll(t, time.Second*10, true, func() any {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > firstRunTime
+	})
+
+	// Cache must still contain the entry because users have not changed.
+	regexResolver.RLock()
+	cacheLen := regexResolver.matchedCache.Len()
+	regexResolver.RUnlock()
+	require.Equal(t, 1, cacheLen, "cache should not be purged when the set of users has not changed")
+}
+
 func BenchmarkRegexResolver_TenantIDs(b *testing.B) {
 	numUsers := 1000
 	existingTenants := make([]string, numUsers)

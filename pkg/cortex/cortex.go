@@ -416,6 +416,13 @@ func (t *Cortex) setupRequestSigning() {
 	if t.Cfg.Distributor.SignWriteRequestsEnabled {
 		util_log.WarnExperimentalUse("Distributor SignWriteRequestsEnabled")
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcclient.UnarySigningServerInterceptor)
+
+		// When signing keys are configured, authenticate PushStream connections.
+		// All keys in the list are accepted by the server; the first key is used by
+		// the client to sign.  Multiple keys enable zero-downtime key rotation.
+		if keys := t.Cfg.Distributor.SignWriteRequestsKeys.Value(); len(keys) > 0 {
+			t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcclient.NewStreamSigningServerInterceptor(keys...))
+		}
 	}
 }
 

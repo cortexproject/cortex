@@ -114,6 +114,7 @@ Currently experimental features are:
   - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
+  - Enable stream push authentication on Distributor/Ingester. (`-distributor.sign-write-requests-keys`)
   - Add `__type__` and `__unit__` labels to OTLP and remote write v2 requests (`-distributor.enable-type-and-unit-labels`)
 - Ingester: Series Queried Metric
   - Enable on Ingester via `-ingester.active-queried-series-metrics-enabled=true`

@@ -3213,6 +3213,17 @@ ha_tracker:
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
 
+# EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating
+# PushStream connections between distributors and ingesters. The first key is
+# used by the distributor to sign; all keys are accepted by the ingester. It
+# only takes effect when the -distributor.sign-write-requests is true. The key
+# change procedure for zero downtime is: (1) redeploy ingesters first with
+# 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with
+# 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy
+# both with 'newkey' to drop the old key.
+# CLI flag: -distributor.sign-write-requests-keys
+[sign_write_requests_keys: <string> | default = ""]
+
 # EXPERIMENTAL: If enabled, distributor would use stream connection to send
 # requests to ingesters.
 # CLI flag: -distributor.use-stream-push

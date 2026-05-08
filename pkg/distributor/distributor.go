@@ -37,6 +37,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -153,13 +154,14 @@ type Config struct {
 	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy                    string `yaml:"sharding_strategy"`
-	ShardByAllLabels                    bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites                        bool   `yaml:"extend_writes"`
-	SignWriteRequestsEnabled            bool   `yaml:"sign_write_requests"`
-	UseStreamPush                       bool   `yaml:"use_stream_push"`
-	RemoteWriteV2Enabled                bool   `yaml:"remote_writev2_enabled"`
-	AcceptUnknownRemoteWriteContentType bool   `yaml:"accept_unknown_remote_write_content_type"`
+	ShardingStrategy                    string                       `yaml:"sharding_strategy"`
+	ShardByAllLabels                    bool                         `yaml:"shard_by_all_labels"`
+	ExtendWrites                        bool                         `yaml:"extend_writes"`
+	SignWriteRequestsEnabled            bool                         `yaml:"sign_write_requests"`
+	SignWriteRequestsKeys               flagext.SecretStringSliceCSV `yaml:"sign_write_requests_keys"`
+	UseStreamPush                       bool                         `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled                bool                         `yaml:"remote_writev2_enabled"`
+	AcceptUnknownRemoteWriteContentType bool                         `yaml:"accept_unknown_remote_write_content_type"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -220,6 +222,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
+	f.Var(&cfg.SignWriteRequestsKeys, "distributor.sign-write-requests-keys", "EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating PushStream connections between distributors and ingesters. The first key is used by the distributor to sign; all keys are accepted by the ingester. It only takes effect when the -distributor.sign-write-requests is true. The key change procedure for zero downtime is: (1) redeploy ingesters first with 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy both with 'newkey' to drop the old key.")
 	f.BoolVar(&cfg.UseStreamPush, "distributor.use-stream-push", false, "EXPERIMENTAL: If enabled, distributor would use stream connection to send requests to ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")

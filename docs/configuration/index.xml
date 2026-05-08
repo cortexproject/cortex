@@ -3148,6 +3148,17 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.sign-write-requests&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[sign_write_requests&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;boolean&amp;gt; | default = false]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># PushStream connections between distributors and ingesters. The first key is&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># used by the distributor to sign; all keys are accepted by the ingester. It&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># only takes effect when the -distributor.sign-write-requests is true. The key&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># change procedure for zero downtime is: (1) redeploy ingesters first with&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># &amp;#39;newkey,oldkey&amp;#39; — ingester accepts both keys; (2) redeploy distributors with&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># &amp;#39;newkey,oldkey&amp;#39; — distributor signs with newkey; (3) once stable, redeploy&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># both with &amp;#39;newkey&amp;#39; to drop the old key.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.sign-write-requests-keys&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">[sign_write_requests_keys&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># EXPERIMENTAL: If enabled, distributor would use stream connection to send&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># requests to ingesters.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># CLI flag: -distributor.use-stream-push&lt;/span>
@@ -7460,6 +7471,7 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;li>Distributor/Ingester: Stream push connection
 &lt;ul>
 &lt;li>Enable stream push connection between distributor and ingester by setting &lt;code>-distributor.use-stream-push=true&lt;/code> on Distributor.&lt;/li>
+&lt;li>Enable stream push authentication on Distributor/Ingester. (&lt;code>-distributor.sign-write-requests-keys&lt;/code>)&lt;/li>
 &lt;li>Add &lt;code>__type__&lt;/code> and &lt;code>__unit__&lt;/code> labels to OTLP and remote write v2 requests (&lt;code>-distributor.enable-type-and-unit-labels&lt;/code>)&lt;/li>
 &lt;li>Handle StartTimestampMs (ST) for remote write v2 samples and histograms, using CreatedTimestamp (CT) as a fallback when ST is not set (&lt;code>-distributor.enable-start-timestamp&lt;/code>)&lt;/li>
 &lt;/ul>

@@ -83,9 +83,9 @@ func parseConfig(block *configBlock, cfg any, flags map[uintptr]*flag.Flag, adde
 	}
 
 	// The input config is expected to be addressable.
-	if reflect.TypeOf(cfg).Kind() != reflect.Ptr {
+	if reflect.TypeOf(cfg).Kind() != reflect.Pointer {
 		t := reflect.TypeOf(cfg)
-		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Ptr)
+		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Pointer)
 	}
 
 	// The input config is expected to be a pointer to struct.

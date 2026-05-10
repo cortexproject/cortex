@@ -3804,6 +3804,24 @@ lifecycler:
 # CLI flag: -ingester.active-queried-series-metrics-windows
 [active_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
+# Experimental: Enable tracking of series queried from head only and expose them
+# as metrics.
+# CLI flag: -ingester.head-queried-series-metrics-enabled
+[head_queried_series_metrics_enabled: <boolean> | default = false]
+
+# Duration of each sub-window for head queried series tracking.
+# CLI flag: -ingester.head-queried-series-metrics-window-duration
+[head_queried_series_metrics_window_duration: <duration> | default = 15m]
+
+# Sampling rate for head queried series tracking (1.0 = 100%%).
+# CLI flag: -ingester.head-queried-series-metrics-sample-rate
+[head_queried_series_metrics_sample_rate: <float> | default = 1]
+
+# Time windows to expose head queried series metrics. Also controls how long
+# per-metric-name cardinality is reported after last query.
+# CLI flag: -ingester.head-queried-series-metrics-windows
+[head_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]

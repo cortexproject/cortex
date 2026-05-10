@@ -136,6 +136,11 @@ type Config struct {
 	ActiveQueriedSeriesMetricsSampleRate     float64                  `yaml:"active_queried_series_metrics_sample_rate"`
 	ActiveQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"active_queried_series_metrics_windows"`
 
+	HeadQueriedSeriesMetricsEnabled        bool                     `yaml:"head_queried_series_metrics_enabled"`
+	HeadQueriedSeriesMetricsWindowDuration time.Duration            `yaml:"head_queried_series_metrics_window_duration"`
+	HeadQueriedSeriesMetricsSampleRate     float64                  `yaml:"head_queried_series_metrics_sample_rate"`
+	HeadQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"head_queried_series_metrics_windows"`
+
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
@@ -201,6 +206,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.ActiveQueriedSeriesMetricsSampleRate, "ingester.active-queried-series-metrics-sample-rate", 1.0, "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.")
 	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
 	f.Var(&cfg.ActiveQueriedSeriesMetricsWindows, "ingester.active-queried-series-metrics-windows", "Time windows to expose queried series metric. Each window tracks queried series within that time period.")
+
+	f.BoolVar(&cfg.HeadQueriedSeriesMetricsEnabled, "ingester.head-queried-series-metrics-enabled", false, "Experimental: Enable tracking of series queried from head only and expose them as metrics.")
+	f.DurationVar(&cfg.HeadQueriedSeriesMetricsWindowDuration, "ingester.head-queried-series-metrics-window-duration", 15*time.Minute, "Duration of each sub-window for head queried series tracking.")
+	f.Float64Var(&cfg.HeadQueriedSeriesMetricsSampleRate, "ingester.head-queried-series-metrics-sample-rate", 1.0, "Sampling rate for head queried series tracking (1.0 = 100%%).")
+	cfg.HeadQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
+	f.Var(&cfg.HeadQueriedSeriesMetricsWindows, "ingester.head-queried-series-metrics-windows", "Time windows to expose head queried series metrics. Also controls how long per-metric-name cardinality is reported after last query.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
@@ -367,6 +378,7 @@ type userTSDB struct {
 	userID              string
 	activeSeries        *ActiveSeries
 	activeQueriedSeries *ActiveQueriedSeries
+	headQueriedSeries   *ActiveQueriedSeries
 	seriesInMetric      *metricCounter
 	labelSetCounter     *labelSetCounter
 	limiter             *Limiter
@@ -803,7 +815,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		matchersCache:                storecache.NoopMatchersCache,
 	}
 
-	if cfg.ActiveQueriedSeriesMetricsEnabled {
+	if cfg.ActiveQueriedSeriesMetricsEnabled || cfg.HeadQueriedSeriesMetricsEnabled {
 		i.activeQueriedSeriesService = NewActiveQueriedSeriesService(logger, registerer)
 	}
 
@@ -820,6 +832,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
 		cfg.ActiveQueriedSeriesMetricsEnabled,
+		cfg.HeadQueriedSeriesMetricsEnabled,
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.maxInflightPushRequests,
@@ -915,6 +928,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		cfg.AdminLimitMessage,
 	)
 	i.metrics = newIngesterMetrics(registerer,
+		false,
 		false,
 		false,
 		false,
@@ -1058,6 +1072,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		defer t.Stop()
 	}
 
+	var headQueriedSeriesTickerChan <-chan time.Time
+	if i.cfg.HeadQueriedSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveQueriedSeriesMetricsUpdatePeriod)
+		headQueriedSeriesTickerChan = t.C
+		defer t.Stop()
+	}
+
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
@@ -1086,6 +1107,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateActiveSeries(ctx)
 		case <-activeQueriedSeriesTickerChan:
 			i.updateActiveQueriedSeries(ctx)
+		case <-headQueriedSeriesTickerChan:
+			i.updateHeadQueriedMetrics(ctx)
 		case <-maxTrackerResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
 			i.maxInflightPushRequests.Tick()
@@ -1185,6 +1208,30 @@ func (i *Ingester) updateActiveQueriedSeries(ctx context.Context) {
 			// Update metric with window label
 			i.metrics.activeQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
 		}
+	}
+}
+
+func (i *Ingester) updateHeadQueriedMetrics(ctx context.Context) {
+	now := time.Now()
+	for _, userID := range i.getTSDBUsers() {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
+			continue
+		}
+
+		// Metric 1: total series queried from head (HLL)
+		if userDB.headQueriedSeries != nil {
+			userDB.headQueriedSeries.Purge(now)
+			for _, windowDuration := range i.cfg.HeadQueriedSeriesMetricsWindows {
+				estimatedCount, err := userDB.headQueriedSeries.GetSeriesQueried(now, windowDuration)
+				if err != nil {
+					level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to get head queried series count", "user", userID, "window", windowDuration, "err", err)
+					continue
+				}
+				i.metrics.headQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
+			}
+		}
+
 	}
 }
 
@@ -2886,11 +2933,28 @@ func (i *Ingester) blockChunkQuerierFunc(userId string) tsdb.BlockChunkQuerierFu
 		// This occurs because the tsdb.PostingsForMatchers function can return invalid data in such scenarios.
 		// For more details, see: https://github.com/cortexproject/cortex/issues/6556
 		// TODO: alanprot: Consider removing this logic when prometheus is updated as this logic is "fixed" upstream.
+		var q storage.ChunkQuerier
 		if postingCache == nil || mint > db.Head().MaxTime() {
-			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+			q, err = tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		} else {
+			q, err = cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+		}
+		if err != nil {
+			return nil, err
 		}
 
-		return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+		// Wrap only for head queriers when head queried series metrics are enabled.
+		if i.cfg.HeadQueriedSeriesMetricsEnabled && isHead(b) && db != nil && db.headQueriedSeries != nil {
+			q = &headQueriedSeriesChunkQuerier{
+				ChunkQuerier:               q,
+				headQueriedSeries:          db.headQueriedSeries,
+				activeQueriedSeriesService: i.activeQueriedSeriesService,
+				userID:                     userId,
+				sampled:                    db.headQueriedSeries.SampleRequest(),
+			}
+		}
+
+		return q, nil
 	}
 }
 
@@ -2917,10 +2981,21 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		)
 	}
 
+	var headQueriedSeries *ActiveQueriedSeries
+	if i.cfg.HeadQueriedSeriesMetricsEnabled {
+		headQueriedSeries = NewActiveQueriedSeries(
+			i.cfg.HeadQueriedSeriesMetricsWindows,
+			i.cfg.HeadQueriedSeriesMetricsWindowDuration,
+			i.cfg.HeadQueriedSeriesMetricsSampleRate,
+			i.logger,
+		)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
 		activeSeries:        NewActiveSeries(),
 		activeQueriedSeries: activeQueriedSeries,
+		headQueriedSeries:   headQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
 		trackerCounter:      newTrackerCounter(),

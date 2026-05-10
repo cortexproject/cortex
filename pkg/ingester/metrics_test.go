@@ -20,7 +20,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 	// Test with feature flag disabled - metrics should be nil
 	t.Run("metrics are nil when feature flag is disabled", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
 
@@ -33,7 +33,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 	// Test with feature flag enabled - metrics should be initialized
 	t.Run("metrics are initialized when feature flag is enabled", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -51,7 +51,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 
 	t.Run("rejected metric increments correctly", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -75,7 +75,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 
 	t.Run("metric cleanup works correctly", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -109,6 +109,7 @@ func TestIngesterMetrics(t *testing.T) {
 	m := newIngesterMetrics(mainReg,
 		false,
 		true,
+		false,
 		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{

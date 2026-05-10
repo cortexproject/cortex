@@ -3719,4 +3719,59 @@ Blocks: B1, B3, B5, B7&lt;/li>
 setting unreasonable limits?&lt;/li>
 &lt;li>What set of overrides can be configurable through this API?
 Limits like &lt;code>shard_size&lt;/code> should only be modified by the admin.&lt;/li>
+&lt;/ul></description></item><item><title>Docs:</title><link>/docs/proposals/active-series-tracker/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/active-series-tracker/</guid><description>
+&lt;h1 id="active-series-tracker">Active Series Tracker&lt;/h1>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>AMP needs to monitor active series counts by configurable patterns (e.g., all series with &lt;code>__name__=~&amp;quot;api_.*&amp;quot;&lt;/code>) for internal observability. The existing &lt;code>LimitsPerLabelSet&lt;/code> feature is unsuitable because:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>No regex matching&lt;/strong> — only supports exact &lt;code>label=value&lt;/code> matching.&lt;/li>
+&lt;li>&lt;strong>Default partition side-effects&lt;/strong> — adding labelset buckets reduces the default partition count.&lt;/li>
+&lt;li>&lt;strong>Coupled to limit enforcement&lt;/strong> — designed for enforcing series limits, not pure monitoring.&lt;/li>
+&lt;/ol>
+&lt;h2 id="requirements">Requirements&lt;/h2>
+&lt;ul>
+&lt;li>Track active series counts by configurable label matchers (including regex).&lt;/li>
+&lt;li>Expose counts as Prometheus metrics on the ingester (internal only, not vended to customers).&lt;/li>
+&lt;li>Configuration supports &lt;strong>per-tenant overrides&lt;/strong> with a &lt;strong>default&lt;/strong> fallback (same pattern as all other Limits fields).&lt;/li>
+&lt;li>&lt;strong>Runtime hot-reloadable&lt;/strong> via the existing runtime config file mechanism.&lt;/li>
+&lt;li>&lt;strong>No limit enforcement&lt;/strong> — purely observational.&lt;/li>
+&lt;li>&lt;strong>No default partition&lt;/strong> — unmatched series are simply not tracked.&lt;/li>
+&lt;li>A series can match multiple tracker entries simultaneously.&lt;/li>
+&lt;/ul>
+&lt;h2 id="design">Design&lt;/h2>
+&lt;h3 id="configuration">Configuration&lt;/h3>
+&lt;p>Tracker config lives in the &lt;code>Limits&lt;/code> struct, following the same per-tenant override pattern as &lt;code>LimitsPerLabelSet&lt;/code>:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Default trackers (applied to all tenants without overrides)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">limits&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">active_series_trackers&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">api_metrics&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">matchers&lt;/span>: &lt;span style="color:#e6db74">&amp;#39;{__name__=~&amp;#34;api_.*&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Per-tenant overrides via runtime config&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-123&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">active_series_trackers&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">api_metrics&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">matchers&lt;/span>: &lt;span style="color:#e6db74">&amp;#39;{__name__=~&amp;#34;api_.*&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> - &lt;span style="color:#f92672">name&lt;/span>: &lt;span style="color:#ae81ff">system_metrics&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">matchers&lt;/span>: &lt;span style="color:#e6db74">&amp;#39;{__name__=~&amp;#34;node_.*|process_.*&amp;#34;}&amp;#39;&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>The &lt;code>matchers&lt;/code> field uses standard PromQL matcher syntax parsed via &lt;code>parser.ParseMetricSelector&lt;/code>.&lt;/p>
+&lt;h3 id="runtime-reload">Runtime Reload&lt;/h3>
+&lt;p>Tracker config is part of &lt;code>Limits&lt;/code>, which is reloaded via the runtime config manager every &lt;code>runtime-config.reload-period&lt;/code> (default 10s). Matchers are parsed and validated during YAML/JSON unmarshalling. Invalid configs are rejected (existing config stays active).&lt;/p>
+&lt;h3 id="metrics">Metrics&lt;/h3>
+&lt;p>A new gauge metric emitted per ingester:&lt;/p>
+&lt;pre tabindex="0">&lt;code>cortex_ingester_active_series_per_tracker{user=&amp;#34;&amp;lt;tenant&amp;gt;&amp;#34;, name=&amp;#34;&amp;lt;tracker_name&amp;gt;&amp;#34;} &amp;lt;count&amp;gt;
+&lt;/code>&lt;/pre>&lt;h3 id="matching-logic">Matching Logic&lt;/h3>
+&lt;p>On each active series metrics update tick (default 1min), for each tenant:&lt;/p>
+&lt;ol>
+&lt;li>Read the tenant&amp;rsquo;s tracker config via &lt;code>i.limits.ActiveSeriesTrackers(userID)&lt;/code>&lt;/li>
+&lt;li>For each tracker, count active series whose labels satisfy all matchers&lt;/li>
+&lt;li>Emit the gauge metric&lt;/li>
+&lt;/ol>
+&lt;p>A series can match multiple trackers. Tenants without configured trackers emit no tracker metrics.&lt;/p>
+&lt;h3 id="performance-considerations">Performance Considerations&lt;/h3>
+&lt;ul>
+&lt;li>Matching runs once per update period (default 1min), not on every sample ingestion.&lt;/li>
+&lt;li>The number of trackers is expected to be small (&amp;lt; 10).&lt;/li>
+&lt;li>Compiled matchers are cached in the parsed Limits and only recompiled on config change.&lt;/li>
 &lt;/ul></description></item></channel></rss>

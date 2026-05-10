@@ -1109,16 +1109,6 @@ func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.
 	return metrics
 }
 
-//go:fix inline
-func float64p(v float64) *float64 {
-	return new(v)
-}
-
-//go:fix inline
-func uint64p(v uint64) *uint64 {
-	return new(v)
-}
-
 func BenchmarkGetLabels_SmallSet(b *testing.B) {
 	m := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "test",

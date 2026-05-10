@@ -133,3 +133,5 @@ Currently experimental features are:
 - Ingester: Active Series Tracker
   - Per-tenant `active_series_trackers` configuration in runtime config overrides
   - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric
+- Runtime Config: Default Tenant ID
+  - `-runtime-config.default-tenant-id` (string) - Synthetic tenant ID used as fallback for runtime config defaults. Overrides for this tenant apply to all tenants without per-tenant overrides.

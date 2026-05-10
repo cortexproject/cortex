@@ -6382,6 +6382,12 @@ filesystem:
   # Local filesystem storage directory.
   # CLI flag: -runtime-config.filesystem.dir
   [dir: <string> | default = ""]
+
+# [Experimental] Synthetic tenant ID used as fallback for runtime config
+# defaults. When set, overrides for this tenant ID apply to all tenants without
+# per-tenant overrides, before falling back to CLI flag defaults.
+# CLI flag: -runtime-config.default-tenant-id
+[default_tenant_id: <string> | default = ""]
 ```
 
 ### `s3_sse_config`

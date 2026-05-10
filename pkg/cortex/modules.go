@@ -206,7 +206,7 @@ func (t *Cortex) initRuntimeConfig() (services.Service, error) {
 }
 
 func (t *Cortex) initOverridesConfig() (services.Service, error) {
-	t.OverridesConfig = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
+	t.OverridesConfig = validation.NewOverridesWithDefaultTenantID(t.Cfg.LimitsConfig, t.TenantLimits, t.Cfg.RuntimeConfig.DefaultTenantID)
 	// overrides don't have operational state, nor do they need to do anything more in starting/stopping phase,
 	// so there is no need to return any service.
 	return nil, nil

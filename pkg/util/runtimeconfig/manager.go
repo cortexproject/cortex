@@ -36,12 +36,19 @@ type Config struct {
 	Loader   Loader `yaml:"-"`
 
 	StorageConfig bucket.Config `yaml:",inline"`
+
+	// DefaultTenantID is the synthetic tenant ID used as a fallback for default
+	// runtime config values. When set, overrides for this tenant ID are applied
+	// to all tenants that do not have their own per-tenant override, before
+	// falling back to CLI flag defaults. This is an experimental feature.
+	DefaultTenantID string `yaml:"default_tenant_id"`
 }
 
 // RegisterFlags registers flags.
 func (mc *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&mc.LoadPath, "runtime-config.file", "", "File with the configuration that can be updated in runtime.")
 	f.DurationVar(&mc.ReloadPeriod, "runtime-config.reload-period", 10*time.Second, "How often to check runtime config file.")
+	f.StringVar(&mc.DefaultTenantID, "runtime-config.default-tenant-id", "", "[Experimental] Synthetic tenant ID used as fallback for runtime config defaults. When set, overrides for this tenant ID apply to all tenants without per-tenant overrides, before falling back to CLI flag defaults.")
 
 	mc.StorageConfig.RegisterFlagsWithPrefixAndBackend("runtime-config.", f, bucket.Filesystem)
 }

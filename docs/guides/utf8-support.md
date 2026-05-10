@@ -50,6 +50,70 @@ YAML:
 name_validation_scheme: utf8
 ```
 
+## Using UTF-8
+
+After enabling UTF-8 name validation, UTF-8 metric names and label names can be used. The examples below show practical examples.
+
+### Querying
+
+PromQL queries support UTF-8 metric names and label names. For example, a UTF-8 metric name can be queried with the following expression:
+
+```promql
+series.1{"test.utf8.metric"="😄"}
+```
+
+Note, that the metric name `series.1` is not valid under the `legacy` validation scheme. It is accepted only when UTF-8 validation is enabled. This is useful when metric or label names contain characters, such as `.`, that are supported by UTF-8 validation but not by the legacy validation scheme.
+
+### Alertmanager
+
+Alertmanager configuration can use UTF-8 names in matchers, `group_by` fields, and silence matchers. For example, a route can group and match on UTF-8 label names:
+
+```yaml
+route:
+  receiver: default
+  group_by:
+    - "group.test.🙂"
+  routes:
+    - receiver: utf8-receiver
+      matchers:
+        - '"🙂.utf8.label"="😄"'
+
+receivers:
+  - name: default
+  - name: utf8-receiver
+```
+
+Silences can also match alerts using UTF-8 label names and values. For example:
+
+```yaml
+matchers:
+  - "🙂.utf8.label"
+    value: "😄"
+    isRegex: false
+```
+
+This allows alert routing, silencing and grouping to work with alerts that contain UTF-8 label names and values.
+
+### Ruler
+
+Ruler rule definition can use UTF-8 names in rule names, rule labels and rule group labels. For example:
+
+```yaml
+groups:
+  - name: "test.utf8.group"
+    labels:
+      "test.utf8.group.label": "😄"
+    rules:
+      - record: "test.utf8.recording.rule"
+        expr: up
+        labels:
+          "test.utf8.rule.label": "😄"
+      - alert: "test.utf8.alert"
+        expr: up == 0
+        labels:
+          "test.utf8.alert.label": "😄"
+```
+
 ## Impact on Cortex components
 
 ### Distributor

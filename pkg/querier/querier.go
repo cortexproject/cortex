@@ -265,16 +265,16 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 	if evictionCfg.Enabled() && resourceMonitor != nil {
 		metricFunc, err := queryeviction.ResolveMetricFunc(evictionCfg.EvictionMetric)
 		if err != nil {
-			level.Error(logger).Log("msg", "invalid eviction metric", "err", err)
-		} else {
-			queryRegistry = queryeviction.NewQueryRegistry(metricFunc)
-			queryEvictor, err = queryeviction.NewQueryEvictor(
-				resourceMonitor, queryRegistry, evictionCfg,
-				logger, reg, "querier",
-			)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to create query evictor", "err", err)
-			}
+			panic(fmt.Sprintf("invalid eviction metric %q: %v", evictionCfg.EvictionMetric, err))
+		}
+
+		queryRegistry = queryeviction.NewQueryRegistry(metricFunc)
+		queryEvictor, err = queryeviction.NewQueryEvictor(
+			resourceMonitor, queryRegistry, evictionCfg,
+			logger, reg, "querier",
+		)
+		if err != nil {
+			panic(fmt.Sprintf("failed to create query evictor: %v", err))
 		}
 	}
 

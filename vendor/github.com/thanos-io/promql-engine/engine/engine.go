@@ -198,6 +198,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 		},
 		decodingConcurrency: decodingConcurrency,
 		selectorBatchSize:   selectorBatchSize,
+		maxSamplesPerQuery:  opts.MaxSamples,
 	}
 }
 
@@ -227,6 +228,7 @@ type Engine struct {
 	selectorBatchSize        int64
 	enableAnalysis           bool
 	noStepSubqueryIntervalFn func(time.Duration) time.Duration
+	maxSamplesPerQuery       int
 }
 
 func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts *QueryOpts, qs string, ts time.Time) (promql.Query, error) {
@@ -444,7 +446,9 @@ func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duratio
 		EnableAnalysis:           e.enableAnalysis,
 		NoStepSubqueryIntervalFn: e.noStepSubqueryIntervalFn,
 		DecodingConcurrency:      e.decodingConcurrency,
+		SampleTracker:            query.NewSampleTracker(e.maxSamplesPerQuery),
 	}
+
 	if opts == nil {
 		return res
 	}
@@ -496,7 +500,7 @@ func (q *Query) Explain() *ExplainOutputNode {
 }
 
 func (q *Query) Analyze() *AnalyzeOutputNode {
-	if observableRoot, ok := q.exec.(telemetry.ObservableVectorOperator); ok {
+	if observableRoot, ok := model.Unwrap(q.exec).(telemetry.ObservableVectorOperator); ok {
 		return analyzeQuery(observableRoot)
 	}
 	return nil

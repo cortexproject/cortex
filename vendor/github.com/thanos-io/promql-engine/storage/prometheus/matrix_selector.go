@@ -78,6 +78,8 @@ type matrixSelector struct {
 
 var ErrNativeHistogramsNotSupported = errors.New("native histograms are not supported in extended range functions")
 
+const sampleLimitCheckInterval = 500
+
 // NewMatrixSelector creates operator which selects vector of series over time.
 func NewMatrixSelector(
 	selector SeriesSelector,
@@ -179,11 +181,14 @@ func (o *matrixSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 	// Reset the current timestamp.
 	ts = o.currentStep
 	firstSeries := o.currentSeries
+	batchSamplesDelta := 0
 	for ; o.currentSeries-firstSeries < o.seriesBatchSize && o.currentSeries < int64(len(o.scanners)); o.currentSeries++ {
 		var (
 			scanner  = &o.scanners[o.currentSeries]
 			seriesTs = ts
 		)
+
+		sampleCountBefore := scanner.buffer.SampleCount()
 
 		for currStep := 0; currStep < n && seriesTs <= o.maxt; currStep++ {
 			maxt := seriesTs - o.offset
@@ -217,12 +222,33 @@ func (o *matrixSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 			o.telemetry.IncrementSamplesAtTimestamp(scanner.buffer.SampleCount(), seriesTs)
 			seriesTs += o.step
 		}
+
+		sampleCountAfter := scanner.buffer.SampleCount()
+		batchSamplesDelta += sampleCountAfter - sampleCountBefore
+
+		if o.shouldCheckSampleLimit(firstSeries) {
+			if err := o.updateSampleTracker(batchSamplesDelta); err != nil {
+				return 0, err
+			}
+			batchSamplesDelta = 0
+		}
 	}
+
 	if o.currentSeries == int64(len(o.scanners)) {
 		o.currentStep += o.step * int64(n)
 		o.currentSeries = 0
 	}
 	return n, nil
+}
+
+func (o *matrixSelector) updateSampleTracker(delta int) error {
+	if delta > 0 {
+		o.opts.SampleTracker.Add(delta)
+		return o.opts.SampleTracker.CheckLimit()
+	} else if delta < 0 {
+		o.opts.SampleTracker.Remove(-delta)
+	}
+	return nil
 }
 
 func (o *matrixSelector) loadSeries(ctx context.Context) error {
@@ -277,6 +303,19 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 	return err
 }
 
+func (o *matrixSelector) shouldCheckSampleLimit(firstSeries int64) bool {
+	seriesProcessed := o.currentSeries + 1 - firstSeries
+
+	if seriesProcessed%sampleLimitCheckInterval == 0 {
+		return true
+	}
+
+	isEndOfBatch := seriesProcessed >= o.seriesBatchSize
+	isLastSeries := o.currentSeries+1 >= int64(len(o.scanners))
+
+	return isEndOfBatch || isLastSeries
+}
+
 func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
 	if ringbuffer.UseStreamingRingBuffers(*o.opts, o.selectRange) {
 		switch o.functionName {
@@ -311,6 +350,7 @@ func (o *matrixSelector) newBuffer(ctx context.Context) ringbuffer.Buffer {
 		return ringbuffer.NewWithExtLookback(ctx, 8, o.selectRange, o.offset, o.opts.ExtLookbackDelta.Milliseconds()-1, o.call)
 	}
 	return ringbuffer.New(ctx, 8, o.selectRange, o.offset, o.call)
+
 }
 
 func (o *matrixSelector) String() string {

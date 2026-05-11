@@ -210,11 +210,8 @@ func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-	// wait to upload blocks
-	require.NoError(t, ingester.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_ingester_shipper_uploads_total"}, e2e.WaitMissingMetrics))
-
 	// wait to update knownUsers
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}, e2e.WaitMissingMetrics))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1), "cortex_regex_resolver_discovered_users"))
 
 	clientForMatchOneTenant, err = e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-.+")
 	require.NoError(t, err)
@@ -377,13 +374,10 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 		require.NoError(t, querier2.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	}
 
-	// wait to upload blocks
-	require.NoError(t, ingester.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_ingester_shipper_uploads_total"}, e2e.WaitMissingMetrics))
-
 	// wait to update knownUsers
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}, e2e.WaitMissingMetrics))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numUsers)), "cortex_regex_resolver_discovered_users"))
 	if cfg.shuffleShardingEnabled {
-		require.NoError(t, querier2.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}, e2e.WaitMissingMetrics))
+		require.NoError(t, querier2.WaitSumMetrics(e2e.Equals(float64(numUsers)), "cortex_regex_resolver_discovered_users"))
 	}
 
 	// query all tenants

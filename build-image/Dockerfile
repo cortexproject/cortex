@@ -17,7 +17,7 @@ RUN GOARCH=$(go env GOARCH) && \
 	chmod +x shfmt && \
 	mv shfmt /usr/bin
 
-RUN curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b /usr/bin v2.10.1
+RUN curl -sfL https://golangci-lint.run/install.sh| sh -s -- -b /usr/bin v2.12.2
 
 RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/golang/protobuf/protoc-gen-go@v1.3.1 &&\

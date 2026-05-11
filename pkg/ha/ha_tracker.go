@@ -32,7 +32,6 @@ const (
 
 var (
 	errNegativeUpdateTimeoutJitterMax = errors.New("HA tracker max update timeout jitter shouldn't be negative")
-	errInvalidFailoverTimeout         = "HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)"
 )
 
 // nolint:revive
@@ -40,6 +39,9 @@ type HATrackerLimits interface {
 	// MaxHAReplicaGroups returns max number of replica groups that HA tracker should track for a user.
 	// Samples from additional replicaGroups are rejected.
 	MaxHAReplicaGroups(user string) int
+
+	// HATrackerFailoverTimeout returns the failover timeout for a user.
+	HATrackerFailoverTimeout(user string) time.Duration
 }
 
 // ProtoReplicaDescFactory makes new InstanceDescs
@@ -61,11 +63,6 @@ type HATrackerConfig struct {
 	// is more than this duration.
 	UpdateTimeout          time.Duration `yaml:"ha_tracker_update_timeout"`
 	UpdateTimeoutJitterMax time.Duration `yaml:"ha_tracker_update_timeout_jitter_max"`
-	// We should only failover to accepting samples from a replica
-	// other than the replica written in the KVStore if the difference
-	// between the stored timestamp and the time we received a sample is
-	// more than this duration
-	FailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout"`
 	// EnableStartupSync controls whether to fetch all tracked keys from the KV store
 	// on startup to populate the local cache.
 	// This prevents duplicate GET calls for the same key while the cache is cold,
@@ -182,7 +179,6 @@ func (cfg *HATrackerConfig) RegisterFlagsWithPrefix(flagPrefix string, kvPrefix 
 	f.BoolVar(&cfg.EnableHATracker, finalFlagPrefix+"ha-tracker.enable", false, "Enable the HA tracker so that it can accept data from Prometheus HA replicas gracefully (requires labels).")
 	f.DurationVar(&cfg.UpdateTimeout, finalFlagPrefix+"ha-tracker.update-timeout", 15*time.Second, "The time interval that must pass since the last timestamp update in the KV store before updating it again for a given cluster.")
 	f.DurationVar(&cfg.UpdateTimeoutJitterMax, finalFlagPrefix+"ha-tracker.update-timeout-jitter-max", 5*time.Second, "The maximum jitter applied to the update timeout to spread KV store updates over time.")
-	f.DurationVar(&cfg.FailoverTimeout, finalFlagPrefix+"ha-tracker.failover-timeout", 30*time.Second, "The timeout after which a new replica will be accepted if the currently elected replica stops sending data. This value must be greater than the update timeout plus the maximum jitter.")
 	f.BoolVar(&cfg.EnableStartupSync, finalFlagPrefix+"ha-tracker.enable-startup-sync", false, "[Experimental] If enabled, fetches all tracked keys on startup to populate the local cache. This prevents duplicate GET calls for the same key while the cache is cold, but could cause a spike in GET requests during initialization if the number of tracked keys is large.")
 
 	// We want the ability to use different Consul instances for the ring and
@@ -196,11 +192,6 @@ func (cfg *HATrackerConfig) RegisterFlagsWithPrefix(flagPrefix string, kvPrefix 
 func (cfg *HATrackerConfig) Validate() error {
 	if cfg.UpdateTimeoutJitterMax < 0 {
 		return errNegativeUpdateTimeoutJitterMax
-	}
-
-	minFailureTimeout := cfg.UpdateTimeout + cfg.UpdateTimeoutJitterMax + time.Second
-	if cfg.FailoverTimeout < minFailureTimeout {
-		return fmt.Errorf(errInvalidFailoverTimeout, cfg.FailoverTimeout, minFailureTimeout)
 	}
 
 	// Tracker kv store only supports consul, etcd, memberlist, and multi.
@@ -612,7 +603,7 @@ func (c *HATracker) CheckReplica(ctx context.Context, userID, replicaGroup, repl
 		}
 	}
 
-	err := c.checkKVStore(ctx, key, replica, now)
+	err := c.checkKVStore(ctx, key, replica, userID, now)
 	c.kvCASCalls.WithLabelValues(userID, replicaGroup).Inc()
 	if err != nil {
 		// The callback within checkKVStore will return a ReplicasNotMatchError if the sample is being deduped,
@@ -624,7 +615,7 @@ func (c *HATracker) CheckReplica(ctx context.Context, userID, replicaGroup, repl
 	return err
 }
 
-func (c *HATracker) checkKVStore(ctx context.Context, key, replica string, now time.Time) error {
+func (c *HATracker) checkKVStore(ctx context.Context, key, replica, userID string, now time.Time) error {
 	return c.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 		if desc, ok := in.(*ReplicaDesc); ok && desc.DeletedAt == 0 {
 			// We don't need to CAS and update the timestamp in the KV store if the timestamp we've received
@@ -635,7 +626,7 @@ func (c *HATracker) checkKVStore(ctx context.Context, key, replica string, now t
 
 			// We shouldn't failover to accepting a new replica if the timestamp we've received this sample at
 			// is less than failover timeout amount of time since the timestamp in the KV store.
-			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.cfg.FailoverTimeout {
+			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.limits.HATrackerFailoverTimeout(userID) {
 				return nil, false, ReplicasNotMatchError{replica: replica, elected: desc.Replica}
 			}
 		}

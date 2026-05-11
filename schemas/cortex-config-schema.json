@@ -2,6 +2,19 @@
   "$id": "https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "definitions": {
+    "ActiveSeriesTrackerConfig": {
+      "properties": {
+        "matchers": {
+          "description": "PromQL series selector (e.g. {__name__=~\"api_.*\"}). All matchers must match for a series to be counted.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the tracker, used as a label value in the emitted metric.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DisabledRuleGroup": {
       "properties": {
         "name": {
@@ -3734,13 +3747,6 @@
               "type": "boolean",
               "x-cli-flag": "distributor.ha-tracker.enable-startup-sync"
             },
-            "ha_tracker_failover_timeout": {
-              "default": "30s",
-              "description": "The timeout after which a new replica will be accepted if the currently elected replica stops sending data. This value must be greater than the update timeout plus the maximum jitter.",
-              "type": "string",
-              "x-cli-flag": "distributor.ha-tracker.failover-timeout",
-              "x-format": "duration"
-            },
             "ha_tracker_update_timeout": {
               "default": "15s",
               "description": "The time interval that must pass since the last timestamp update in the KV store before updating it again for a given cluster.",
@@ -4103,6 +4109,11 @@
           "description": "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.",
           "type": "boolean",
           "x-cli-flag": "distributor.sign-write-requests"
+        },
+        "sign_write_requests_keys": {
+          "description": "EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating PushStream connections between distributors and ingesters. The first key is used by the distributor to sign; all keys are accepted by the ingester. It only takes effect when the -distributor.sign-write-requests is true. The key change procedure for zero downtime is: (1) redeploy ingesters first with 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy both with 'newkey' to drop the old key.",
+          "type": "string",
+          "x-cli-flag": "distributor.sign-write-requests-keys"
         },
         "use_stream_push": {
           "default": false,
@@ -5004,6 +5015,14 @@
           "type": "boolean",
           "x-cli-flag": "experimental.distributor.ha-tracker.mixed-ha-samples"
         },
+        "active_series_trackers": {
+          "default": [],
+          "description": "List of active series tracker configurations. Each tracker counts active series matching its matchers and exposes the count as a metric.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "alertmanager_max_alerts_count": {
           "default": 0,
           "description": "Maximum number of alerts that a single user can have. Inserting more alerts will fail with a log message and metric increment. 0 = no limit.",
@@ -5172,6 +5191,13 @@
           "description": "Prometheus label to look for in samples to identify a Prometheus HA replica.",
           "type": "string",
           "x-cli-flag": "distributor.ha-tracker.replica"
+        },
+        "ha_tracker_failover_timeout": {
+          "default": "30s",
+          "description": "If the elected replica doesn't send samples in this time, the HA tracker will accept a new replica. This value must be greater than the update timeout plus the maximum jitter.",
+          "type": "string",
+          "x-cli-flag": "distributor.ha-tracker.failover-timeout",
+          "x-format": "duration"
         },
         "ingestion_burst_size": {
           "default": 50000,

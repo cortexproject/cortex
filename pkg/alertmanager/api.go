@@ -385,7 +385,7 @@ func validateAlertmanagerConfig(cfg any) error {
 
 	// If the input config is a pointer then we need to get its value.
 	// At this point the pointer value can't be nil.
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 		t = v.Type()
 	}

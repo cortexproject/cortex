@@ -33,6 +33,7 @@ type Config struct {
 	TLSEnabled               bool             `yaml:"tls_enabled"`
 	TLS                      tls.ClientConfig `yaml:",inline"`
 	SignWriteRequestsEnabled bool             `yaml:"-"`
+	SignWriteRequestsKey     string           `yaml:"-"`
 
 	ConnectTimeout time.Duration `yaml:"connect_timeout"`
 }
@@ -130,6 +131,9 @@ func (cfg *Config) DialOption(unaryClientInterceptors []grpc.UnaryClientIntercep
 
 	if cfg.SignWriteRequestsEnabled {
 		unaryClientInterceptors = append(unaryClientInterceptors, UnarySigningClientInterceptor)
+		if cfg.SignWriteRequestsKey != "" {
+			streamClientInterceptors = append(streamClientInterceptors, NewStreamSigningClientInterceptor(cfg.SignWriteRequestsKey))
+		}
 	}
 
 	return append(

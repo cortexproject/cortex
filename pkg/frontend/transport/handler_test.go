@@ -401,6 +401,22 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			expectedStatusCode: http.StatusServiceUnavailable,
 		},
 		{
+			name:            "test handler with reasonQueryTooExpensive",
+			cfg:             HandlerConfig{QueryStatsEnabled: true},
+			expectedMetrics: 6,
+			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusUnprocessableEntity,
+					Body:       io.NopCloser(strings.NewReader("query timed out: query spent too long in evaluation - consider simplifying your query")),
+				}, nil
+			}),
+			additionalMetricsCheckFunc: func(h *Handler) {
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonQueryTooExpensive, requestmeta.SourceAPI, userID))
+				assert.Equal(t, float64(1), v)
+			},
+			expectedStatusCode: http.StatusUnprocessableEntity,
+		},
+		{
 			name:            "test cortex_slow_queries_total",
 			cfg:             HandlerConfig{QueryStatsEnabled: true, LogQueriesLongerThan: time.Second * 2},
 			expectedMetrics: 7,
@@ -582,6 +598,27 @@ func TestReportQueryStatsFormat(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReportQueryStatsRejectionReason(t *testing.T) {
+	outputBuf := bytes.NewBuffer(nil)
+	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
+	userID := "fake"
+	req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
+	resp := &http.Response{ContentLength: 0}
+	responseTime := time.Second
+
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
+	req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), requestmeta.SourceAPI))
+
+	queryErr := httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", `query timed out: query spent too long in evaluation - consider simplifying your query`)
+	handler.reportQueryStats(req, requestmeta.SourceAPI, userID, nil, responseTime, &querier_stats.QueryStats{}, queryErr, http.StatusUnprocessableEntity, resp)
+
+	data, err := io.ReadAll(outputBuf)
+	require.NoError(t, err)
+	logLine := string(data)
+	assert.Contains(t, logLine, "reason=query_too_expensive")
+	assert.Contains(t, logLine, "status_code=422")
 }
 
 func Test_ExtractTenantIDs(t *testing.T) {

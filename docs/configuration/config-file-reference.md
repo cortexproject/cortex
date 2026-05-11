@@ -3101,12 +3101,6 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.update-timeout-jitter-max
   [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
 
-  # The timeout after which a new replica will be accepted if the currently
-  # elected replica stops sending data. This value must be greater than the
-  # update timeout plus the maximum jitter.
-  # CLI flag: -distributor.ha-tracker.failover-timeout
-  [ha_tracker_failover_timeout: <duration> | default = 30s]
-
   # [Experimental] If enabled, fetches all tracked keys on startup to populate
   # the local cache. This prevents duplicate GET calls for the same key while
   # the cache is cold, but could cause a spike in GET requests during
@@ -3212,6 +3206,17 @@ ha_tracker:
 # ingesters.
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
+
+# EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating
+# PushStream connections between distributors and ingesters. The first key is
+# used by the distributor to sign; all keys are accepted by the ingester. It
+# only takes effect when the -distributor.sign-write-requests is true. The key
+# change procedure for zero downtime is: (1) redeploy ingesters first with
+# 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with
+# 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy
+# both with 'newkey' to drop the old key.
+# CLI flag: -distributor.sign-write-requests-keys
+[sign_write_requests_keys: <string> | default = ""]
 
 # EXPERIMENTAL: If enabled, distributor would use stream connection to send
 # requests to ingesters.
@@ -4069,6 +4074,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.ha-tracker.max-clusters
 [ha_max_clusters: <int> | default = 0]
 
+# If the elected replica doesn't send samples in this time, the HA tracker will
+# accept a new replica. This value must be greater than the update timeout plus
+# the maximum jitter.
+# CLI flag: -distributor.ha-tracker.failover-timeout
+[ha_tracker_failover_timeout: <duration> | default = 30s]
+
 # This flag can be used to specify label names that to drop during sample
 # ingestion within the distributor and can be repeated in order to drop multiple
 # labels.
@@ -4194,6 +4205,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
+
+# List of active series tracker configurations. Each tracker counts active
+# series matching its matchers and exposes the count as a metric.
+[active_series_trackers: <list of ActiveSeriesTrackerConfig> | default = []]
 
 # [EXPERIMENTAL] True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
@@ -7005,6 +7020,17 @@ limits:
 # becomes the default partition which matches any series that doesn't match any
 # other explicitly defined label sets.'
 [label_set: <map of string (labelName) to string (labelValue)> | default = []]
+```
+
+### `ActiveSeriesTrackerConfig`
+
+```yaml
+# Name of the tracker, used as a label value in the emitted metric.
+[name: <string> | default = ""]
+
+# PromQL series selector (e.g. {__name__=~"api_.*"}). All matchers must match
+# for a series to be counted.
+[matchers: <string> | default = ""]
 ```
 
 ### `PriorityDef`

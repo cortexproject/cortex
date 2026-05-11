@@ -3402,9 +3402,9 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
-				FailoverTimeout: time.Hour,
 			}
 			cfg.limits.HAMaxClusters = 100
+			cfg.limits.HATrackerFailoverTimeout = model.Duration(time.Hour)
 		}
 
 		distributorCfg.RemoteWriteV2Enabled = cfg.remoteWriteV2Enabled

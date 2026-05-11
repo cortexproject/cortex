@@ -16,6 +16,7 @@ import (
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
@@ -658,8 +659,7 @@ func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 }
 
 func TestBlocksCleaner_ShouldRemoveBlocksOutsideRetentionPeriod(t *testing.T) {
-	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+	bucketClient := bucketindex.BucketWithGlobalMarkers(objstore.WithNoopInstr(objstore.NewInMemBucket()))
 
 	ts := func(hours int) int64 {
 		return time.Now().Add(time.Duration(hours)*time.Hour).Unix() * 1000

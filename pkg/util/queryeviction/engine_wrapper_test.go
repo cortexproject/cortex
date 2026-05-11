@@ -118,9 +118,9 @@ func TestEngineWrapper_EvictedQueryReturnsErrQueryEvicted(t *testing.T) {
 	mq := &mockQuery{
 		execFunc: func(ctx context.Context) *promql.Result {
 			// Simulate eviction: find the registered query and cancel it.
-			heaviest := registry.FindHeaviest(0)
-			require.NotNil(t, heaviest, "query should be registered during Exec")
-			heaviest.Cancel() // This cancels the child context, simulating evictor behavior.
+			victims := registry.FindHeaviest(1, 0)
+			require.Len(t, victims, 1, "query should be registered during Exec")
+			victims[0].Cancel() // This cancels the child context, simulating evictor behavior.
 
 			// The inner query would see a cancelled context and return an error.
 			return &promql.Result{Err: context.Canceled}

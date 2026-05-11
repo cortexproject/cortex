@@ -54,14 +54,14 @@ func TestDeregister_RemovesEntry(t *testing.T) {
 	require.Equal(t, 1, reg.Len())
 
 	// FindHeaviest should return the registered entry.
-	heaviest := reg.FindHeaviest(0)
-	require.NotNil(t, heaviest)
-	assert.Equal(t, id, heaviest.QueryID)
+	results := reg.FindHeaviest(1, 0)
+	require.Len(t, results, 1)
+	assert.Equal(t, id, results[0].QueryID)
 
 	// Deregister and verify it's gone.
 	reg.Deregister(id)
 	assert.Equal(t, 0, reg.Len())
-	assert.Nil(t, reg.FindHeaviest(0), "FindHeaviest should return nil after deregistering the only entry")
+	assert.Nil(t, reg.FindHeaviest(1, 0), "FindHeaviest should return nil after deregistering the only entry")
 }
 
 func TestDeregister_UnknownID_IsNoOp(t *testing.T) {
@@ -76,9 +76,9 @@ func TestDeregister_UnknownID_IsNoOp(t *testing.T) {
 
 	// Original entry should still be present.
 	assert.Equal(t, 1, reg.Len())
-	heaviest := reg.FindHeaviest(0)
-	require.NotNil(t, heaviest)
-	assert.Equal(t, id, heaviest.QueryID)
+	results := reg.FindHeaviest(1, 0)
+	require.Len(t, results, 1)
+	assert.Equal(t, id, results[0].QueryID)
 }
 
 func TestFindHeaviest_ReturnsHighestMetricValue(t *testing.T) {
@@ -91,16 +91,16 @@ func TestFindHeaviest_ReturnsHighestMetricValue(t *testing.T) {
 	heaviestID := reg.Register(cancel, newTestStats(1000), "large-query", "user3", "")
 	reg.Register(cancel, newTestStats(200), "another-query", "user4", "")
 
-	heaviest := reg.FindHeaviest(0)
-	require.NotNil(t, heaviest)
-	assert.Equal(t, heaviestID, heaviest.QueryID)
-	assert.Equal(t, "large-query", heaviest.QueryExpr)
-	assert.Equal(t, uint64(1000), heaviest.Stats.LoadFetchedSamples())
+	results := reg.FindHeaviest(1, 0)
+	require.Len(t, results, 1)
+	assert.Equal(t, heaviestID, results[0].QueryID)
+	assert.Equal(t, "large-query", results[0].QueryExpr)
+	assert.Equal(t, uint64(1000), results[0].Stats.LoadFetchedSamples())
 }
 
 func TestFindHeaviest_EmptyRegistry(t *testing.T) {
 	reg := NewQueryRegistry(testMetricFunc)
-	assert.Nil(t, reg.FindHeaviest(0), "FindHeaviest should return nil for empty registry")
+	assert.Nil(t, reg.FindHeaviest(1, 0), "FindHeaviest should return nil for empty registry")
 }
 
 func TestLen_ReflectsCurrentCount(t *testing.T) {
@@ -147,7 +147,7 @@ func TestConcurrent_RegisterDeregisterFindHeaviest(t *testing.T) {
 				id := reg.Register(cancel, stats, "concurrent-query", "user", "")
 
 				// Interleave FindHeaviest and Len calls.
-				_ = reg.FindHeaviest(0)
+				_ = reg.FindHeaviest(1, 0)
 				_ = reg.Len()
 
 				reg.Deregister(id)

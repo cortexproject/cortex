@@ -82,31 +82,31 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 				continue // no breach
 			}
 
-			// Find the heaviest running query.
-			heaviest := e.registry.FindHeaviest(e.cfg.MinQueryAge)
-			if heaviest == nil {
+			// Find the heaviest running queries (up to MaxEvictionsPerCycle).
+			victims := e.registry.FindHeaviest(e.cfg.MaxEvictionsPerCycle, e.cfg.MinQueryAge)
+			if len(victims) == 0 {
 				continue // no running queries to evict
 			}
 
-			// Evict the heaviest query.
-			metricValue := e.registry.metric(heaviest.Stats)
-			heaviest.Cancel()
+			// Evict each victim.
+			for _, victim := range victims {
+				metricValue := e.registry.metric(victim.Stats)
+				victim.Cancel()
 
-			// Log the eviction.
-			level.Warn(e.logger).Log(
-				"msg", "evicting heaviest query due to resource pressure",
-				"resource", breachedResource,
-				"utilization", utilization,
-				"threshold", threshold,
-				"request_id", heaviest.RequestID,
-				"query", heaviest.QueryExpr,
-				"user", heaviest.UserID,
-				"metric", e.cfg.EvictionMetric,
-				"metric_value", metricValue,
-			)
+				level.Warn(e.logger).Log(
+					"msg", "evicting query due to resource pressure",
+					"resource", breachedResource,
+					"utilization", utilization,
+					"threshold", threshold,
+					"request_id", victim.RequestID,
+					"query", victim.QueryExpr,
+					"user", victim.UserID,
+					"metric", e.cfg.EvictionMetric,
+					"metric_value", metricValue,
+				)
 
-			// Increment metrics.
-			e.evictionsTotal.WithLabelValues(string(breachedResource)).Inc()
+				e.evictionsTotal.WithLabelValues(string(breachedResource)).Inc()
+			}
 
 			// Enter cooldown.
 			cooldownRemaining = e.cfg.CooldownPeriod

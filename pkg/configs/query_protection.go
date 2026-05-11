@@ -36,11 +36,12 @@ type Threshold struct {
 
 // EvictionConfig configures the resource-based query evictor.
 type EvictionConfig struct {
-	Threshold      Threshold     `yaml:"threshold"`
-	CheckInterval  time.Duration `yaml:"check_interval"`
-	CooldownPeriod int           `yaml:"cooldown_period"`
-	EvictionMetric string        `yaml:"eviction_metric"`
-	MinQueryAge    time.Duration `yaml:"min_query_age"`
+	Threshold            Threshold     `yaml:"threshold"`
+	CheckInterval        time.Duration `yaml:"check_interval"`
+	CooldownPeriod       int           `yaml:"cooldown_period"`
+	EvictionMetric       string        `yaml:"eviction_metric"`
+	MinQueryAge          time.Duration `yaml:"min_query_age"`
+	MaxEvictionsPerCycle int           `yaml:"max_evictions_per_cycle"`
 }
 
 // Enabled returns true when at least one eviction threshold is greater than 0.
@@ -60,6 +61,7 @@ func (cfg *QueryProtection) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix stri
 	f.IntVar(&cfg.Eviction.CooldownPeriod, prefix+"query-protection.eviction.cooldown-period", 3, "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.")
 	f.StringVar(&cfg.Eviction.EvictionMetric, prefix+"query-protection.eviction.eviction-metric", "fetched_samples", "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.")
 	f.DurationVar(&cfg.Eviction.MinQueryAge, prefix+"query-protection.eviction.min-query-age", 10*time.Second, "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.")
+	f.IntVar(&cfg.Eviction.MaxEvictionsPerCycle, prefix+"query-protection.eviction.max-evictions-per-cycle", 1, "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.")
 }
 
 func (cfg *QueryProtection) Validate(monitoredResources flagext.StringSliceCSV) error {
@@ -102,6 +104,10 @@ func (cfg *QueryProtection) Validate(monitoredResources flagext.StringSliceCSV) 
 
 		if !recognizedEvictionMetrics[cfg.Eviction.EvictionMetric] {
 			return fmt.Errorf("unrecognized eviction_metric %q; supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes", cfg.Eviction.EvictionMetric)
+		}
+
+		if cfg.Eviction.MaxEvictionsPerCycle < 1 {
+			return errors.New("eviction max_evictions_per_cycle must be >= 1")
 		}
 
 		if evThreshold.CPUUtilization > 0 && !strings.Contains(monitoredResources.String(), string(resource.CPU)) {

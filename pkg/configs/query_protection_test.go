@@ -99,10 +99,11 @@ func Test_EvictionConfig_Validation(t *testing.T) {
 	validBase := func() QueryProtection {
 		return QueryProtection{
 			Eviction: EvictionConfig{
-				Threshold:      Threshold{CPUUtilization: 0.8, HeapUtilization: 0.85},
-				CheckInterval:  1 * time.Second,
-				CooldownPeriod: 3,
-				EvictionMetric: "fetched_samples",
+				Threshold:            Threshold{CPUUtilization: 0.8, HeapUtilization: 0.85},
+				CheckInterval:        1 * time.Second,
+				CooldownPeriod:       3,
+				EvictionMetric:       "fetched_samples",
+				MaxEvictionsPerCycle: 1,
 			},
 		}
 	}
@@ -112,17 +113,18 @@ func Test_EvictionConfig_Validation(t *testing.T) {
 		monitoredResources []string
 		err                string
 	}{
-		"valid config passes":          {func(qp *QueryProtection) {}, []string{"cpu", "heap"}, ""},
-		"cpu > 1 fails":                {func(qp *QueryProtection) { qp.Eviction.Threshold.CPUUtilization = 1.5 }, []string{"cpu", "heap"}, "eviction cpu_utilization must be between 0 and 1"},
-		"cpu < 0 fails":                {func(qp *QueryProtection) { qp.Eviction.Threshold.CPUUtilization = -0.1 }, []string{"cpu", "heap"}, "eviction cpu_utilization must be between 0 and 1"},
-		"heap > 1 fails":               {func(qp *QueryProtection) { qp.Eviction.Threshold.HeapUtilization = 2.0 }, []string{"cpu", "heap"}, "eviction heap_utilization must be between 0 and 1"},
-		"heap < 0 fails":               {func(qp *QueryProtection) { qp.Eviction.Threshold.HeapUtilization = -0.5 }, []string{"cpu", "heap"}, "eviction heap_utilization must be between 0 and 1"},
-		"check_interval 0 fails":       {func(qp *QueryProtection) { qp.Eviction.CheckInterval = 0 }, []string{"cpu", "heap"}, "eviction check_interval must be greater than 0 when eviction is enabled"},
-		"cooldown < 0 fails":           {func(qp *QueryProtection) { qp.Eviction.CooldownPeriod = -1 }, []string{"cpu", "heap"}, "eviction cooldown_period must be >= 0"},
-		"unknown metric fails":         {func(qp *QueryProtection) { qp.Eviction.EvictionMetric = "unknown" }, []string{"cpu", "heap"}, `unrecognized eviction_metric "unknown"; supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes`},
-		"cpu without monitored fails":  {func(qp *QueryProtection) {}, []string{"heap"}, `monitored_resources config must include "cpu" when eviction cpu threshold is set`},
-		"heap without monitored fails": {func(qp *QueryProtection) {}, []string{"cpu"}, `monitored_resources config must include "heap" when eviction heap threshold is set`},
-		"cooldown 0 is valid":          {func(qp *QueryProtection) { qp.Eviction.CooldownPeriod = 0 }, []string{"cpu", "heap"}, ""},
+		"valid config passes":               {func(qp *QueryProtection) {}, []string{"cpu", "heap"}, ""},
+		"cpu > 1 fails":                     {func(qp *QueryProtection) { qp.Eviction.Threshold.CPUUtilization = 1.5 }, []string{"cpu", "heap"}, "eviction cpu_utilization must be between 0 and 1"},
+		"cpu < 0 fails":                     {func(qp *QueryProtection) { qp.Eviction.Threshold.CPUUtilization = -0.1 }, []string{"cpu", "heap"}, "eviction cpu_utilization must be between 0 and 1"},
+		"heap > 1 fails":                    {func(qp *QueryProtection) { qp.Eviction.Threshold.HeapUtilization = 2.0 }, []string{"cpu", "heap"}, "eviction heap_utilization must be between 0 and 1"},
+		"heap < 0 fails":                    {func(qp *QueryProtection) { qp.Eviction.Threshold.HeapUtilization = -0.5 }, []string{"cpu", "heap"}, "eviction heap_utilization must be between 0 and 1"},
+		"check_interval 0 fails":            {func(qp *QueryProtection) { qp.Eviction.CheckInterval = 0 }, []string{"cpu", "heap"}, "eviction check_interval must be greater than 0 when eviction is enabled"},
+		"cooldown < 0 fails":                {func(qp *QueryProtection) { qp.Eviction.CooldownPeriod = -1 }, []string{"cpu", "heap"}, "eviction cooldown_period must be >= 0"},
+		"unknown metric fails":              {func(qp *QueryProtection) { qp.Eviction.EvictionMetric = "unknown" }, []string{"cpu", "heap"}, `unrecognized eviction_metric "unknown"; supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes`},
+		"cpu without monitored fails":       {func(qp *QueryProtection) {}, []string{"heap"}, `monitored_resources config must include "cpu" when eviction cpu threshold is set`},
+		"heap without monitored fails":      {func(qp *QueryProtection) {}, []string{"cpu"}, `monitored_resources config must include "heap" when eviction heap threshold is set`},
+		"cooldown 0 is valid":               {func(qp *QueryProtection) { qp.Eviction.CooldownPeriod = 0 }, []string{"cpu", "heap"}, ""},
+		"max_evictions_per_cycle < 1 fails": {func(qp *QueryProtection) { qp.Eviction.MaxEvictionsPerCycle = 0 }, []string{"cpu", "heap"}, "eviction max_evictions_per_cycle must be >= 1"},
 		"disabled skips interval check": {func(qp *QueryProtection) {
 			qp.Eviction.Threshold = Threshold{}
 			qp.Eviction.CheckInterval = 0
@@ -154,5 +156,6 @@ func Test_RegisterFlagsWithPrefix_EvictionDefaults(t *testing.T) {
 	assert.Equal(t, 1*time.Second, cfg.Eviction.CheckInterval)
 	assert.Equal(t, 3, cfg.Eviction.CooldownPeriod)
 	assert.Equal(t, "fetched_samples", cfg.Eviction.EvictionMetric)
+	assert.Equal(t, 1, cfg.Eviction.MaxEvictionsPerCycle)
 	assert.False(t, cfg.Eviction.Enabled())
 }

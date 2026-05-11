@@ -39,9 +39,10 @@ func testEvictorConfig(cpu, heap float64, cooldown int) configs.EvictionConfig {
 			CPUUtilization:  cpu,
 			HeapUtilization: heap,
 		},
-		CheckInterval:  10 * time.Millisecond,
-		CooldownPeriod: cooldown,
-		EvictionMetric: "fetched_samples",
+		CheckInterval:        10 * time.Millisecond,
+		CooldownPeriod:       cooldown,
+		EvictionMetric:       "fetched_samples",
+		MaxEvictionsPerCycle: 1,
 	}
 }
 
@@ -178,8 +179,9 @@ func TestCheckThresholds(t *testing.T) {
 					CPUUtilization:  tc.cpuThresh,
 					HeapUtilization: tc.heapThresh,
 				},
-				CheckInterval:  time.Second,
-				EvictionMetric: "fetched_samples",
+				CheckInterval:        time.Second,
+				EvictionMetric:       "fetched_samples",
+				MaxEvictionsPerCycle: 1,
 			}
 
 			var evictor *QueryEvictor
@@ -212,7 +214,7 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 }
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {
-	cfg := configs.EvictionConfig{CheckInterval: time.Second, EvictionMetric: "fetched_samples"}
+	cfg := configs.EvictionConfig{CheckInterval: time.Second, EvictionMetric: "fetched_samples", MaxEvictionsPerCycle: 1}
 	evictor, err := NewQueryEvictor(newMockMonitor(0, 0), NewQueryRegistry(testMetricFunc), cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 	assert.NoError(t, err)
 	assert.Nil(t, evictor)
@@ -235,4 +237,30 @@ func TestEviction_HeaviestQueryIsEvicted(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("expected heaviest query to be evicted")
 	}
+}
+
+func TestEviction_MultipleQueriesPerCycle(t *testing.T) {
+	reg := NewQueryRegistry(testMetricFunc)
+	_, evictedSmall := registerTestQuery(reg, 100, "small", "user1")
+	_, evictedLarge := registerTestQuery(reg, 10000, "large", "user2")
+	_, evictedMedium := registerTestQuery(reg, 500, "medium", "user3")
+
+	cfg := configs.EvictionConfig{
+		Threshold: configs.Threshold{
+			CPUUtilization: 0.9,
+		},
+		CheckInterval:        10 * time.Millisecond,
+		CooldownPeriod:       300,
+		EvictionMetric:       "fetched_samples",
+		MaxEvictionsPerCycle: 2,
+	}
+
+	startEvictor(t, newMockMonitor(0.95, 0.0), reg, cfg)
+
+	// The two heaviest (large=10000, medium=500) should be evicted in the same cycle.
+	waitEvicted(t, evictedLarge)
+	waitEvicted(t, evictedMedium)
+
+	// The smallest should not be evicted because max per cycle is 2 and cooldown prevents another cycle.
+	assertNotEvicted(t, evictedSmall, 50*time.Millisecond)
 }

@@ -1,6 +1,7 @@
 package queryeviction
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
 	"sync"
@@ -80,29 +81,61 @@ func (r *QueryRegistry) Deregister(id uint64) {
 	delete(r.queries, id)
 }
 
-// FindHeaviest returns the entry with the highest metric value
+// FindHeaviest returns up to n entries with the highest metric values
 // among queries that have been running for at least minAge,
-// or nil if no eligible queries exist.
-func (r *QueryRegistry) FindHeaviest(minAge time.Duration) *QueryEntry {
+// sorted heaviest first. Returns nil if no eligible queries exist.
+func (r *QueryRegistry) FindHeaviest(n int, minAge time.Duration) []*QueryEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	var heaviest *QueryEntry
-	var maxWeight uint64
 	now := time.Now()
+
+	// Use a min-heap of size n to find the top-n queries
+	h := &weightedHeap{}
 
 	for _, entry := range r.queries {
 		if now.Sub(entry.RegisteredAt) < minAge {
 			continue
 		}
-		weight := r.metric(entry.Stats)
-		if heaviest == nil || weight > maxWeight {
-			heaviest = entry
-			maxWeight = weight
+		w := weighted{entry: entry, weight: r.metric(entry.Stats)}
+
+		if h.Len() < n {
+			heap.Push(h, w)
+		} else if w.weight > (*h)[0].weight {
+			(*h)[0] = w
+			heap.Fix(h, 0)
 		}
 	}
 
-	return heaviest
+	if h.Len() == 0 {
+		return nil
+	}
+
+	result := make([]*QueryEntry, h.Len())
+	for i := len(result) - 1; i >= 0; i-- {
+		result[i] = heap.Pop(h).(weighted).entry
+	}
+	return result
+}
+
+// weightedHeap is a min-heap of weighted entries (smallest weight at root).
+type weightedHeap []weighted
+
+type weighted struct {
+	entry  *QueryEntry
+	weight uint64
+}
+
+func (h weightedHeap) Len() int            { return len(h) }
+func (h weightedHeap) Less(i, j int) bool  { return h[i].weight < h[j].weight }
+func (h weightedHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *weightedHeap) Push(x interface{}) { *h = append(*h, x.(weighted)) }
+func (h *weightedHeap) Pop() interface{} {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[:n-1]
+	return x
 }
 
 // Len returns the number of currently registered queries.

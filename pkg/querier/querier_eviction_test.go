@@ -85,9 +85,10 @@ func TestQuerier_EvictionIntegration(t *testing.T) {
 						CPUUtilization:  tc.evictionCPU,
 						HeapUtilization: tc.evictionHeap,
 					},
-					CheckInterval:  1 * time.Second,
-					CooldownPeriod: 3,
-					EvictionMetric: "fetched_samples",
+					CheckInterval:        1 * time.Second,
+					CooldownPeriod:       3,
+					EvictionMetric:       "fetched_samples",
+					MaxEvictionsPerCycle: 1,
 				},
 			}
 

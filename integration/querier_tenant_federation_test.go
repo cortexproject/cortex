@@ -210,7 +210,6 @@ func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 200, res.StatusCode)
 
-
 	// wait to update knownUsers
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1), "cortex_regex_resolver_discovered_users"))
 

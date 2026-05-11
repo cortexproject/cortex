@@ -212,7 +212,7 @@ func (r *RegexResolver) validateAndReturnMatched(orgID string, matched []string)
 			// when querying for a newly created orgID, the query may not
 			// work because it has not been uploaded to object storage.
 			// To make the query work (not breaking existing behavior),
-			// paas the orgID if it is valid.
+			// pass the orgID if it is valid.
 			return []string{orgID}, nil
 		}
 

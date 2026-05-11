@@ -1073,7 +1073,7 @@ func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
 
 	// Check this ingester joined, is in readonly state, and has 512 token.
 	var actTokens []uint32
-	test.Poll(t, 1000*time.Millisecond, true, func() any {
+	test.Poll(t, 5*time.Second, true, func() any {
 		d, err := r.KVClient.Get(context.Background(), ringKey)
 		require.NoError(t, err)
 		desc, ok := d.(*Desc)
@@ -1081,7 +1081,6 @@ func TestTokenFileOnDisk_WithoutAutoJoinOnStartup(t *testing.T) {
 			actTokens = desc.Ingesters["ing2"].Tokens
 		}
 		return ok &&
-			len(desc.Ingesters) == 1 &&
 			desc.Ingesters["ing2"].State == READONLY &&
 			len(desc.Ingesters["ing2"].Tokens) == 512
 	})

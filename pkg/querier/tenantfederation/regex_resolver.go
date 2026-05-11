@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -126,13 +127,14 @@ func (r *RegexResolver) running(ctx context.Context) error {
 				level.Error(r.logger).Log("msg", "failed to discover users from bucket", "err", err)
 			}
 
-			r.Lock()
-			r.knownUsers = append(active, deleting...)
-			// We keep it sort
-			sort.Strings(r.knownUsers)
+			newUsers := append(active, deleting...)
+			sort.Strings(newUsers)
 
-			// Reset the cache because the set of available users has changed.
-			if r.matchedCache != nil {
+			r.Lock()
+			changed := !slices.Equal(r.knownUsers, newUsers)
+			r.knownUsers = newUsers
+			if changed && r.matchedCache != nil {
+				// Reset the cache when the set of available users has changed.
 				r.matchedCache.Purge()
 				r.matchedCacheSize.Set(0)
 			}

@@ -133,3 +133,6 @@ Currently experimental features are:
 - Ingester: Local Limit Cache
   - Enable local limit caching during ring topology changes via `-ingester.local-limit-cache-enabled=true`
   - When enabled, the per-ingester local series limit is prevented from shrinking during scale-up if the global limit has not changed. This avoids false throttling but may cause temporary over-commitment until head compaction (~2h).
+- Ingester: Active Series Tracker
+  - Per-tenant `active_series_trackers` configuration in runtime config overrides
+  - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric

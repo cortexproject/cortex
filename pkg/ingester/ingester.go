@@ -415,6 +415,9 @@ type userTSDB struct {
 	blockRetentionPeriod int64
 
 	postingCache cortex_tsdb.ExpandedPostingsCache
+
+	// Tracks active series per configured tracker pattern.
+	trackerCounter *trackerCounter
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -556,6 +559,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
+	u.trackerCounter.increase(metric)
 
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
@@ -574,6 +578,7 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
+		u.trackerCounter.decrease(metric)
 		if u.postingCache != nil {
 			u.postingCache.ExpireSeries(metric)
 		}
@@ -1159,6 +1164,11 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
+
+		// Per-tenant active series trackers (hot-reloadable via runtime config overrides).
+		trackers := i.limits.ActiveSeriesTrackers(userID)
+		userDB.trackerCounter.updateConfig(ctx, userDB.db, trackers)
+		userDB.trackerCounter.updateMetrics(i.metrics.activeSeriesPerTracker, userID, trackers)
 	}
 }
 
@@ -2906,6 +2916,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		activeQueriedSeries: activeQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
+		trackerCounter:      newTrackerCounter(),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 

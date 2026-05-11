@@ -248,3 +248,13 @@ func (s *activeSeriesStripe) getActiveNativeHistogram() int {
 
 	return s.activeNativeHistogram
 }
+
+// matchesAll returns true if the labels satisfy all given matchers.
+func matchesAll(lbs labels.Labels, matchers []*labels.Matcher) bool {
+	for _, m := range matchers {
+		if !m.Matches(lbs.Get(m.Name)) {
+			return false
+		}
+	}
+	return true
+}

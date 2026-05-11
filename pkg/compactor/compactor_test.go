@@ -2201,6 +2201,7 @@ func TestCompactor_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
 		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
 		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.WaitActiveInstanceTimeout = 30 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 		cfg.ShardingRing.HeartbeatPeriod = 200 * time.Millisecond
 		cfg.ShardingRing.UnregisterOnShutdown = false

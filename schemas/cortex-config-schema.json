@@ -4902,6 +4902,12 @@
                   "type": "string",
                   "x-cli-flag": "ingester.query-protection.eviction.eviction-metric"
                 },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "ingester.query-protection.eviction.max-evictions-per-cycle"
+                },
                 "min_query_age": {
                   "default": "10s",
                   "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
@@ -6112,6 +6118,12 @@
                   "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
                   "type": "string",
                   "x-cli-flag": "querier.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "querier.query-protection.eviction.max-evictions-per-cycle"
                 },
                 "min_query_age": {
                   "default": "10s",
@@ -8526,6 +8538,12 @@
                   "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
                   "type": "string",
                   "x-cli-flag": "store-gateway.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.max-evictions-per-cycle"
                 },
                 "min_query_age": {
                   "default": "10s",

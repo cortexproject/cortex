@@ -3909,6 +3909,11 @@ query_protection:
     # eligible for eviction. Queries younger than this are ignored.
     # CLI flag: -ingester.query-protection.eviction.min-query-age
     [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -ingester.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `ingester_client_config`
@@ -5090,6 +5095,11 @@ query_protection:
     # eligible for eviction. Queries younger than this are ignored.
     # CLI flag: -querier.query-protection.eviction.min-query-age
     [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `query_frontend_config`
@@ -6895,6 +6905,11 @@ query_protection:
     # eligible for eviction. Queries younger than this are ignored.
     # CLI flag: -store-gateway.query-protection.eviction.min-query-age
     [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -store-gateway.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with

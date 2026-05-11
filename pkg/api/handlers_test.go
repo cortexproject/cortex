@@ -250,3 +250,51 @@ func TestBuildInfoAPI(t *testing.T) {
 		})
 	}
 }
+
+func TestFeaturesAPI(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		features         []string
+		expectedStatus   int
+		expectedFeatures []string
+	}{
+		{
+			name:             "no features enabled",
+			features:         nil,
+			expectedStatus:   200,
+			expectedFeatures: nil,
+		},
+		{
+			name:             "single feature enabled",
+			features:         []string{"remote_write_v2"},
+			expectedStatus:   200,
+			expectedFeatures: []string{"remote_write_v2"},
+		},
+		{
+			name:             "multiple features enabled",
+			features:         []string{"remote_write_v2", "streaming_ingestion", "parquet_queryable", "tenant_federation"},
+			expectedStatus:   200,
+			expectedFeatures: []string{"remote_write_v2", "streaming_ingestion", "parquet_queryable", "tenant_federation"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := &featuresHandler{
+				features: tc.features,
+				logger:   &FakeLogger{},
+			}
+
+			writer := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/api/v1/features", nil)
+			handler.ServeHTTP(writer, req)
+
+			assert.Equal(t, tc.expectedStatus, writer.Code)
+			assert.Equal(t, "application/json", writer.Header().Get("Content-Type"))
+
+			var resp featuresResponse
+			err := json.Unmarshal(writer.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, "success", resp.Status)
+			assert.Equal(t, tc.expectedFeatures, resp.Data)
+		})
+	}
+}

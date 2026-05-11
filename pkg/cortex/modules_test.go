@@ -353,3 +353,78 @@ func setAllSecrets(v reflect.Value, sentinel string) {
 		}
 	}
 }
+
+func TestCortexFeatures(t *testing.T) {
+	tests := []struct {
+		name             string
+		configFn         func(*Config)
+		expectedFeatures []string
+	}{
+		{
+			name:             "no features enabled",
+			configFn:         func(cfg *Config) {},
+			expectedFeatures: nil,
+		},
+		{
+			name: "remote_write_v2 enabled",
+			configFn: func(cfg *Config) {
+				cfg.Distributor.RemoteWriteV2Enabled = true
+			},
+			expectedFeatures: []string{"remote_write_v2"},
+		},
+		{
+			name: "streaming_ingestion enabled",
+			configFn: func(cfg *Config) {
+				cfg.Distributor.UseStreamPush = true
+			},
+			expectedFeatures: []string{"streaming_ingestion"},
+		},
+		{
+			name: "parquet_queryable enabled",
+			configFn: func(cfg *Config) {
+				cfg.Querier.EnableParquetQueryable = true
+			},
+			expectedFeatures: []string{"parquet_queryable"},
+		},
+		{
+			name: "tenant_federation enabled",
+			configFn: func(cfg *Config) {
+				cfg.TenantFederation.Enabled = true
+			},
+			expectedFeatures: []string{"tenant_federation"},
+		},
+		{
+			name: "distributed_execution enabled",
+			configFn: func(cfg *Config) {
+				cfg.Querier.DistributedExecEnabled = true
+			},
+			expectedFeatures: []string{"distributed_execution"},
+		},
+		{
+			name: "promql_experimental_functions enabled",
+			configFn: func(cfg *Config) {
+				cfg.Querier.EnablePromQLExperimentalFunctions = true
+			},
+			expectedFeatures: []string{"promql_experimental_functions"},
+		},
+		{
+			name: "multiple features enabled",
+			configFn: func(cfg *Config) {
+				cfg.Distributor.RemoteWriteV2Enabled = true
+				cfg.Distributor.UseStreamPush = true
+				cfg.TenantFederation.Enabled = true
+				cfg.Querier.EnableParquetQueryable = true
+			},
+			expectedFeatures: []string{"remote_write_v2", "streaming_ingestion", "parquet_queryable", "tenant_federation"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{}
+			tc.configFn(&cfg)
+			features := cortexFeatures(cfg)
+			assert.Equal(t, tc.expectedFeatures, features)
+		})
+	}
+}

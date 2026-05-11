@@ -353,6 +353,11 @@ func NewQuerierHandler(
 		router.Path(path.Join(legacyPrefix, "/api/v1/status/buildinfo")).Methods("GET").Handler(legacyPromRouter)
 	}
 
+	// Register /api/v1/features endpoint on the internal querier router.
+	fHandler := &featuresHandler{features: cfg.Features, logger: logger}
+	router.Path(path.Join(prefix, "/api/v1/features")).Methods("GET").Handler(fHandler)
+	router.Path(path.Join(legacyPrefix, "/api/v1/features")).Methods("GET").Handler(fHandler)
+
 	// Track execution time.
 	return stats.NewWallTimeMiddleware().Wrap(router)
 }
@@ -387,5 +392,33 @@ func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request
 	writer.WriteHeader(http.StatusOK)
 	if _, err := writer.Write(output); err != nil {
 		level.Error(h.logger).Log("msg", "write build info response", "error", err)
+	}
+}
+
+type featuresHandler struct {
+	features []string
+	logger   log.Logger
+}
+
+type featuresResponse struct {
+	Status string   `json:"status"`
+	Data   []string `json:"data"`
+}
+
+func (h *featuresHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
+	resp := featuresResponse{
+		Status: "success",
+		Data:   h.features,
+	}
+	output, err := json.Marshal(resp)
+	if err != nil {
+		level.Error(h.logger).Log("msg", "marshal features response", "error", err)
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	if _, err := writer.Write(output); err != nil {
+		level.Error(h.logger).Log("msg", "write features response", "error", err)
 	}
 }

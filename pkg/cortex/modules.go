@@ -113,6 +113,9 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
+	// Compute the list of enabled features from the root config.
+	t.Cfg.API.Features = cortexFeatures(t.Cfg)
+
 	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util_log.Logger)
 	if err != nil {
 		return nil, err
@@ -122,6 +125,35 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg, newDefaultConfig())
 
 	return nil, nil
+}
+
+// cortexFeatures returns a list of feature names that are enabled in the given config.
+func cortexFeatures(cfg Config) []string {
+	var features []string
+
+	if cfg.Distributor.RemoteWriteV2Enabled {
+		features = append(features, "remote_write_v2")
+	}
+	if cfg.Distributor.UseStreamPush {
+		features = append(features, "streaming_ingestion")
+	}
+	if cfg.Querier.EnableParquetQueryable {
+		features = append(features, "parquet_queryable")
+	}
+	if cfg.TenantFederation.Enabled {
+		features = append(features, "tenant_federation")
+	}
+	if cfg.Querier.DistributedExecEnabled {
+		features = append(features, "distributed_execution")
+	}
+	if cfg.Querier.EnablePromQLExperimentalFunctions {
+		features = append(features, "promql_experimental_functions")
+	}
+	if cfg.API.BuildInfoEnabled() {
+		features = append(features, "build_info")
+	}
+
+	return features
 }
 
 func (t *Cortex) initServer() (services.Service, error) {

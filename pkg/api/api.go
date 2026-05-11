@@ -85,6 +85,10 @@ type Config struct {
 	buildInfoEnabled bool `yaml:"build_info_enabled"`
 
 	QuerierDefaultCodec string `yaml:"querier_default_codec"`
+
+	// Features is a list of enabled feature names to be exposed via the /api/v1/features endpoint.
+	// This is injected by the upstream caller.
+	Features []string `yaml:"-"`
 }
 
 var (
@@ -114,6 +118,11 @@ func (cfg *Config) Validate() error {
 		return errUnsupportedDefaultCodec
 	}
 	return nil
+}
+
+// BuildInfoEnabled returns true if the build info API is enabled.
+func (cfg *Config) BuildInfoEnabled() bool {
+	return cfg.buildInfoEnabled
 }
 
 // Push either wraps the distributor push function as configured or returns the distributor push directly.
@@ -484,6 +493,11 @@ func (a *API) RegisterQueryAPI(handler http.Handler) {
 		a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
 		a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/status/buildinfo"), infoHandler, true, "GET")
 	}
+
+	// Register /api/v1/features endpoint on both Prometheus and legacy HTTP prefixes.
+	fHandler := &featuresHandler{features: a.cfg.Features, logger: a.logger}
+	a.RegisterRoute(path.Join(a.cfg.PrometheusHTTPPrefix, "/api/v1/features"), fHandler, true, "GET")
+	a.RegisterRoute(path.Join(a.cfg.LegacyHTTPPrefix, "/api/v1/features"), fHandler, true, "GET")
 }
 
 // RegisterQueryFrontendHandler registers the Prometheus routes supported by the

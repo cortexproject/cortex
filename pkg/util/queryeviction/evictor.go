@@ -9,24 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
-
-// EvictionConfig configures the resource-based query evictor.
-type EvictionConfig struct {
-	CPUUtilization  float64       `yaml:"cpu_utilization"`
-	HeapUtilization float64       `yaml:"heap_utilization"`
-	CheckInterval   time.Duration `yaml:"check_interval"`
-	CooldownPeriod  int           `yaml:"cooldown_period"`
-	EvictionMetric  string        `yaml:"eviction_metric"`
-	MinQueryAge     time.Duration `yaml:"min_query_age"`
-}
-
-// Enabled returns true if at least one threshold is > 0.
-func (c EvictionConfig) Enabled() bool {
-	return c.CPUUtilization > 0 || c.HeapUtilization > 0
-}
 
 // QueryEvictor monitors system-wide resource utilization and evicts
 // the heaviest running query when thresholds are breached.
@@ -35,7 +21,7 @@ type QueryEvictor struct {
 
 	monitor  resource.IMonitor
 	registry *QueryRegistry
-	cfg      EvictionConfig
+	cfg      configs.EvictionConfig
 	logger   log.Logger
 
 	// Prometheus metrics
@@ -46,7 +32,7 @@ type QueryEvictor struct {
 func NewQueryEvictor(
 	monitor resource.IMonitor,
 	registry *QueryRegistry,
-	cfg EvictionConfig,
+	cfg configs.EvictionConfig,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	component string,
@@ -132,17 +118,17 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 // utilization, and the configured threshold. Returns ("", 0, 0) if no breach.
 // CPU is checked before heap (deterministic priority).
 func (e *QueryEvictor) checkThresholds() (resource.Type, float64, float64) {
-	if e.cfg.CPUUtilization > 0 {
+	if e.cfg.Threshold.CPUUtilization > 0 {
 		cpuUtil := e.monitor.GetCPUUtilization()
-		if cpuUtil >= e.cfg.CPUUtilization {
-			return resource.CPU, cpuUtil, e.cfg.CPUUtilization
+		if cpuUtil >= e.cfg.Threshold.CPUUtilization {
+			return resource.CPU, cpuUtil, e.cfg.Threshold.CPUUtilization
 		}
 	}
 
-	if e.cfg.HeapUtilization > 0 {
+	if e.cfg.Threshold.HeapUtilization > 0 {
 		heapUtil := e.monitor.GetHeapUtilization()
-		if heapUtil >= e.cfg.HeapUtilization {
-			return resource.Heap, heapUtil, e.cfg.HeapUtilization
+		if heapUtil >= e.cfg.Threshold.HeapUtilization {
+			return resource.Heap, heapUtil, e.cfg.Threshold.HeapUtilization
 		}
 	}
 

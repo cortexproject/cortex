@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -32,18 +33,20 @@ func newMockMonitor(cpu, heap float64) *mockMonitor {
 func (m *mockMonitor) GetCPUUtilization() float64  { return m.cpuUtil.Load() }
 func (m *mockMonitor) GetHeapUtilization() float64 { return m.heapUtil.Load() }
 
-func testEvictorConfig(cpu, heap float64, cooldown int) EvictionConfig {
-	return EvictionConfig{
-		CPUUtilization:  cpu,
-		HeapUtilization: heap,
-		CheckInterval:   10 * time.Millisecond,
-		CooldownPeriod:  cooldown,
-		EvictionMetric:  "fetched_samples",
+func testEvictorConfig(cpu, heap float64, cooldown int) configs.EvictionConfig {
+	return configs.EvictionConfig{
+		Threshold: configs.Threshold{
+			CPUUtilization:  cpu,
+			HeapUtilization: heap,
+		},
+		CheckInterval:  10 * time.Millisecond,
+		CooldownPeriod: cooldown,
+		EvictionMetric: "fetched_samples",
 	}
 }
 
 // startEvictor creates and starts an evictor, returning it and a cleanup function.
-func startEvictor(t *testing.T, mon *mockMonitor, reg *QueryRegistry, cfg EvictionConfig) *QueryEvictor {
+func startEvictor(t *testing.T, mon *mockMonitor, reg *QueryRegistry, cfg configs.EvictionConfig) *QueryEvictor {
 	t.Helper()
 	evictor, err := NewQueryEvictor(mon, reg, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 	require.NoError(t, err)
@@ -170,11 +173,13 @@ func TestCheckThresholds(t *testing.T) {
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			mon := newMockMonitor(tc.cpuUtil, tc.heapUtil)
-			cfg := EvictionConfig{
-				CPUUtilization:  tc.cpuThresh,
-				HeapUtilization: tc.heapThresh,
-				CheckInterval:   time.Second,
-				EvictionMetric:  "fetched_samples",
+			cfg := configs.EvictionConfig{
+				Threshold: configs.Threshold{
+					CPUUtilization:  tc.cpuThresh,
+					HeapUtilization: tc.heapThresh,
+				},
+				CheckInterval:  time.Second,
+				EvictionMetric: "fetched_samples",
 			}
 
 			var evictor *QueryEvictor
@@ -207,7 +212,7 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 }
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {
-	cfg := EvictionConfig{CheckInterval: time.Second, EvictionMetric: "fetched_samples"}
+	cfg := configs.EvictionConfig{CheckInterval: time.Second, EvictionMetric: "fetched_samples"}
 	evictor, err := NewQueryEvictor(newMockMonitor(0, 0), NewQueryRegistry(testMetricFunc), cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 	assert.NoError(t, err)
 	assert.Nil(t, evictor)

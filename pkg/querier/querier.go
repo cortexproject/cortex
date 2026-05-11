@@ -263,22 +263,13 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 
 	evictionCfg := cfg.QueryProtection.Eviction
 	if evictionCfg.Enabled() && resourceMonitor != nil {
-		evCfg := queryeviction.EvictionConfig{
-			CPUUtilization:  evictionCfg.Threshold.CPUUtilization,
-			HeapUtilization: evictionCfg.Threshold.HeapUtilization,
-			CheckInterval:   evictionCfg.CheckInterval,
-			CooldownPeriod:  evictionCfg.CooldownPeriod,
-			EvictionMetric:  evictionCfg.EvictionMetric,
-			MinQueryAge:     evictionCfg.MinQueryAge,
-		}
-
-		metricFunc, err := queryeviction.ResolveMetricFunc(evCfg.EvictionMetric)
+		metricFunc, err := queryeviction.ResolveMetricFunc(evictionCfg.EvictionMetric)
 		if err != nil {
 			level.Error(logger).Log("msg", "invalid eviction metric", "err", err)
 		} else {
 			queryRegistry = queryeviction.NewQueryRegistry(metricFunc)
 			queryEvictor, err = queryeviction.NewQueryEvictor(
-				resourceMonitor, queryRegistry, evCfg,
+				resourceMonitor, queryRegistry, evictionCfg,
 				logger, reg, "querier",
 			)
 			if err != nil {

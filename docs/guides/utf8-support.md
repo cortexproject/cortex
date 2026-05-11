@@ -62,7 +62,7 @@ PromQL queries support UTF-8 metric names and label names. For example, a UTF-8 
 series.1{"test.utf8.metric"="😄"}
 ```
 
-Note, that the metric name `series.1` is not valid under the `legacy` validation scheme. It is accepted only when UTF-8 validation is enabled. This is useful when metric or label names contain characters, such as `.`, that are supported by UTF-8 validation but not by the legacy validation scheme.
+Note that the metric name `series.1` is not valid under the `legacy` validation scheme. It is accepted only when UTF-8 validation is enabled. This is useful when metric or label names contain characters, such as `.`, that are supported by UTF-8 validation but not by the legacy validation scheme.
 
 ### Alertmanager
 

@@ -1775,7 +1775,12 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	err = am.AwaitRunning(ctx)
 	require.Error(t, err)
 	require.Equal(t, services.Failed, am.State())
-	require.False(t, am.ringLifecycler.IsRegistered())
+
+	// The lifecycler's background goroutine may briefly re-register the instance
+	// before the stopping function fully unregisters it. Poll until unregistered.
+	require.Eventually(t, func() bool {
+		return !am.ringLifecycler.IsRegistered()
+	}, 5*time.Second, 100*time.Millisecond)
 	require.NotNil(t, am.ring)
 }
 

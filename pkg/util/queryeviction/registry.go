@@ -126,11 +126,11 @@ type weighted struct {
 	weight uint64
 }
 
-func (h weightedHeap) Len() int            { return len(h) }
-func (h weightedHeap) Less(i, j int) bool  { return h[i].weight < h[j].weight }
-func (h weightedHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-func (h *weightedHeap) Push(x interface{}) { *h = append(*h, x.(weighted)) }
-func (h *weightedHeap) Pop() interface{} {
+func (h weightedHeap) Len() int           { return len(h) }
+func (h weightedHeap) Less(i, j int) bool { return h[i].weight < h[j].weight }
+func (h weightedHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *weightedHeap) Push(x any)        { *h = append(*h, x.(weighted)) }
+func (h *weightedHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]

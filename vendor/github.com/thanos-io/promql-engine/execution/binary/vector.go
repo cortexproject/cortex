@@ -106,12 +106,17 @@ func (o *vectorOperator) Next(ctx context.Context, buf []model.StepVector) (int,
 	var lhsN int
 	var lerrChan = make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				lerrChan <- errors.Newf("unexpected panic: %v", r)
+			}
+			close(lerrChan)
+		}()
 		var err error
 		lhsN, err = o.lhs.Next(ctx, o.lhsBuf)
 		if err != nil {
 			lerrChan <- err
 		}
-		close(lerrChan)
 	}()
 
 	rhsN, rerr := o.rhs.Next(ctx, o.rhsBuf)
@@ -153,12 +158,17 @@ func (o *vectorOperator) init(ctx context.Context) error {
 	var highCardSide []labels.Labels
 	var errChan = make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				errChan <- errors.Newf("unexpected panic: %v", r)
+			}
+			close(errChan)
+		}()
 		var err error
 		highCardSide, err = o.lhs.Series(ctx)
 		if err != nil {
 			errChan <- err
 		}
-		close(errChan)
 	}()
 
 	lowCardSide, err := o.rhs.Series(ctx)

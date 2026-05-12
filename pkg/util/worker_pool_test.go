@@ -32,10 +32,18 @@ func TestWorkerPool_TestMetric(t *testing.T) {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
+	// Use a channel to signal that the first job has started executing.
+	started := make(chan struct{})
+
 	// Block the first job
 	workerPool.Submit(func() {
+		close(started)
 		wg.Wait()
 	})
+
+	// Wait for the first job to actually start running on the worker,
+	// ensuring the worker is busy before we submit the next job.
+	<-started
 
 	// create an extra job to increment the metric
 	workerPool.Submit(func() {})

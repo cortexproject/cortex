@@ -305,7 +305,7 @@ func TestConfig_SensitiveFieldTypes(t *testing.T) {
 // checkSensitiveFields recursively walks a type and reports any string field
 // whose YAML tag matches the sensitive pattern.
 func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp, secretType reflect.Type, violations *[]string) {
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -322,7 +322,7 @@ func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp,
 		}
 
 		ft := f.Type
-		if ft.Kind() == reflect.Ptr {
+		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if ft.Kind() == reflect.Struct && ft != secretType {
@@ -335,7 +335,7 @@ func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp,
 // field's Value to the given sentinel string.
 func setAllSecrets(v reflect.Value, sentinel string) {
 	switch v.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if !v.IsNil() {
 			setAllSecrets(v.Elem(), sentinel)
 		}

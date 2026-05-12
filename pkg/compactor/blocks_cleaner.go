@@ -412,30 +412,48 @@ func (c *BlocksCleaner) scanUsers(ctx context.Context) ([]string, []string, erro
 	markedForDeletion = append(markedForDeletion, deleted...)
 	isMarkedForDeletion := util.StringsMap(markedForDeletion)
 	allUsers := append(active, markedForDeletion...)
+	currentOwnedUsers := util.StringsMap(allUsers)
+
 	// Delete per-tenant metrics for all tenants not belonging anymore to this shard.
 	// Such tenants have been moved to a different shard, so their updated metrics will
 	// be exported by the new shard.
 	for _, userID := range c.lastOwnedUsers {
 		if !isActive[userID] && !isMarkedForDeletion[userID] {
-			c.tenantBlocks.DeleteLabelValues(userID)
-			c.tenantParquetBlocks.DeleteLabelValues(userID)
-			c.tenantParquetUnConvertedBlocks.DeleteLabelValues(userID)
-			c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
-			c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
-			c.tenantPartialBlocks.DeleteLabelValues(userID)
-			c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
-			if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
-				c.remainingPlannedCompactions.DeleteLabelValues(userID)
-				if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
-					c.inProgressCompactions.DeleteLabelValues(userID)
-					c.oldestPartitionGroupOffset.DeleteLabelValues(userID)
-				}
-			}
+			c.deleteUserMetrics(userID)
 		}
 	}
+
+	// Also reset metrics for any user that was previously tracked but is no longer
+	// in the current owned set. This handles the case where a user's ownership changed
+	// due to ring rebalancing but the user still exists in the bucket (so it appears
+	// in the base scanner results but is filtered out by the shard check).
+	for _, userID := range c.lastOwnedUsers {
+		if _, stillOwned := currentOwnedUsers[userID]; !stillOwned {
+			c.deleteUserMetrics(userID)
+		}
+	}
+
 	c.lastOwnedUsers = allUsers
 
 	return active, markedForDeletion, nil
+}
+
+// deleteUserMetrics removes all per-tenant metrics for the given user.
+func (c *BlocksCleaner) deleteUserMetrics(userID string) {
+	c.tenantBlocks.DeleteLabelValues(userID)
+	c.tenantParquetBlocks.DeleteLabelValues(userID)
+	c.tenantParquetUnConvertedBlocks.DeleteLabelValues(userID)
+	c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
+	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
+	c.tenantPartialBlocks.DeleteLabelValues(userID)
+	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
+	if c.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
+		c.remainingPlannedCompactions.DeleteLabelValues(userID)
+		if c.cfg.CompactionStrategy == util.CompactionStrategyPartitioning {
+			c.inProgressCompactions.DeleteLabelValues(userID)
+			c.oldestPartitionGroupOffset.DeleteLabelValues(userID)
+		}
+	}
 }
 
 func (c *BlocksCleaner) obtainVisitMarkerManager(ctx context.Context, userLogger log.Logger, userBucket objstore.InstrumentedBucket) (visitMarkerManager *VisitMarkerManager, isVisited bool, err error) {
@@ -473,7 +491,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	if err := bucketindex.DeleteIndexSyncStatus(ctx, c.bucketClient, userID); err != nil {
 		return err
 	}
-	c.tenantBucketIndexLastUpdate.DeleteLabelValues(userID)
+	c.deleteUserMetrics(userID)
 
 	var blocksToDelete []any
 	err := userBucket.Iter(ctx, "", func(name string) error {
@@ -524,12 +542,7 @@ func (c *BlocksCleaner) deleteUserMarkedForDeletion(ctx context.Context, userLog
 	}
 
 	// Given all blocks have been deleted, we can also remove the metrics.
-	c.tenantBlocks.DeleteLabelValues(userID)
-	c.tenantParquetBlocks.DeleteLabelValues(userID)
-	c.tenantParquetUnConvertedBlocks.DeleteLabelValues(userID)
-	c.tenantBlocksMarkedForDelete.DeleteLabelValues(userID)
-	c.tenantBlocksMarkedForNoCompaction.DeleteLabelValues(userID)
-	c.tenantPartialBlocks.DeleteLabelValues(userID)
+	c.deleteUserMetrics(userID)
 
 	if deletedBlocks.Load() > 0 {
 		level.Info(userLogger).Log("msg", "deleted blocks for tenant marked for deletion", "deletedBlocks", deletedBlocks.Load())

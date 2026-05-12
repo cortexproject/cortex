@@ -77,7 +77,7 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 			// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
 			if overrides != nil {
 				for userID, ul := range overrides.TenantLimits {
-					if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+					if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled, l.cfg.Distributor.HATrackerConfig.UpdateTimeout, l.cfg.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 						return nil, err
 					}
 					if err := ul.ValidateQueryLimits(userID, l.cfg.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {

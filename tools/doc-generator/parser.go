@@ -83,9 +83,9 @@ func parseConfig(block *configBlock, cfg any, flags map[uintptr]*flag.Flag, adde
 	}
 
 	// The input config is expected to be addressable.
-	if reflect.TypeOf(cfg).Kind() != reflect.Ptr {
+	if reflect.TypeOf(cfg).Kind() != reflect.Pointer {
 		t := reflect.TypeOf(cfg)
-		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Ptr)
+		return nil, fmt.Errorf("%s is a %s while a %s is expected", t, t.Kind(), reflect.Pointer)
 	}
 
 	// The input config is expected to be a pointer to struct.
@@ -285,6 +285,8 @@ func getFieldType(t reflect.Type) (string, error) {
 		return "string", nil
 	case "flagext.StringSliceCSV":
 		return "string", nil
+	case "flagext.SecretStringSliceCSV":
+		return "string", nil
 	case "flagext.CIDRSliceCSV":
 		return "string", nil
 	case "[]*relabel.Config":
@@ -393,6 +395,22 @@ func getCustomFieldEntry(parent reflect.Type, field reflect.StructField, fieldVa
 		}, nil
 	}
 	if field.Type == reflect.TypeFor[flagext.Secret]() {
+		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
+		if err != nil {
+			return nil, err
+		}
+
+		return &configEntry{
+			kind:         "field",
+			name:         getFieldName(field),
+			required:     isFieldRequired(field),
+			fieldFlag:    fieldFlag.Name,
+			fieldDesc:    fieldFlag.Usage,
+			fieldType:    "string",
+			fieldDefault: fieldFlag.DefValue,
+		}, nil
+	}
+	if field.Type == reflect.TypeFor[flagext.SecretStringSliceCSV]() {
 		fieldFlag, err := getFieldFlag(parent, field, fieldValue, flags)
 		if err != nil {
 			return nil, err

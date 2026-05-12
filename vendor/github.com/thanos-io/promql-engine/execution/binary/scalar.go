@@ -14,6 +14,7 @@ import (
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/warnings"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -91,12 +92,17 @@ func (o *scalarOperator) Next(ctx context.Context, buf []model.StepVector) (int,
 	var lhsN int
 	var lerrChan = make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				lerrChan <- errors.Newf("unexpected panic: %v", r)
+			}
+			close(lerrChan)
+		}()
 		var err error
 		lhsN, err = o.lhs.Next(ctx, o.lhsBuf)
 		if err != nil {
 			lerrChan <- err
 		}
-		close(lerrChan)
 	}()
 
 	rhsN, rerr := o.rhs.Next(ctx, o.rhsBuf)

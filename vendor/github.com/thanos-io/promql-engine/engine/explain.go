@@ -32,6 +32,7 @@ type AnalyzeOutputNode struct {
 
 type ExplainOutputNode struct {
 	OperatorName string              `json:"name,omitempty"`
+	OperatorID   *uint64             `json:"operatorId,omitempty"`
 	Children     []ExplainOutputNode `json:"children,omitempty"`
 }
 
@@ -87,7 +88,7 @@ func analyzeQuery(obsv telemetry.ObservableVectorOperator) *AnalyzeOutputNode {
 	children := obsv.Explain()
 	var childTelemetry []*AnalyzeOutputNode
 	for _, child := range children {
-		if obsChild, ok := child.(telemetry.ObservableVectorOperator); ok {
+		if obsChild, ok := model.Unwrap(child).(telemetry.ObservableVectorOperator); ok {
 			childTelemetry = append(childTelemetry, analyzeQuery(obsChild))
 		}
 	}
@@ -106,8 +107,13 @@ func explainVector(v model.VectorOperator) *ExplainOutputNode {
 		children = append(children, *explainVector(vector))
 	}
 
-	return &ExplainOutputNode{
+	node := &ExplainOutputNode{
 		OperatorName: v.String(),
 		Children:     children,
 	}
+	if id, ok := v.(model.OperatorIDer); ok {
+		operatorID := id.OperatorID()
+		node.OperatorID = &operatorID
+	}
+	return node
 }

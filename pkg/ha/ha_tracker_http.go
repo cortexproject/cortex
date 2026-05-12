@@ -82,7 +82,7 @@ func (h *HATracker) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			Replica:      desc.Replica,
 			ElectedAt:    timestamp.Time(desc.ReceivedAt),
 			UpdateTime:   time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.UpdateTimeout)),
-			FailoverTime: time.Until(timestamp.Time(desc.ReceivedAt).Add(h.cfg.FailoverTimeout)),
+			FailoverTime: time.Until(timestamp.Time(desc.ReceivedAt).Add(h.limits.HATrackerFailoverTimeout(chunks[0]))),
 		})
 	}
 	h.electedLock.RUnlock()

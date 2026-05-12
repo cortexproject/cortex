@@ -55,7 +55,7 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 		MaxBytes: 10 << 20,
 	}
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
-	cache := newFifoCache[int](cfg, "test", m, time.Now)
+	cache := newLruCache[int](cfg, "test", m, time.Now)
 	calls := atomic.Int64{}
 	concurrency := 100
 	wg := sync.WaitGroup{}
@@ -84,7 +84,7 @@ func TestFifoCacheDisabled(t *testing.T) {
 	cfg.Enabled = false
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
-	cache := newFifoCache[int](cfg, "test", m, timeNow)
+	cache := newLruCache[int](cfg, "test", m, timeNow)
 	old, loaded := cache.getPromiseForKey("key1", func() (int, int64, error) {
 		return 1, 0, nil
 	})
@@ -127,7 +127,7 @@ func TestFifoCacheExpire(t *testing.T) {
 			r := prometheus.NewPedanticRegistry()
 			m := NewPostingCacheMetrics(r)
 			timeNow := time.Now
-			cache := newFifoCache[int](c.cfg, "test", m, timeNow)
+			cache := newLruCache[int](c.cfg, "test", m, timeNow)
 
 			for i := range numberOfKeys {
 				key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
@@ -291,4 +291,108 @@ func TestPostingsCacheFetchTimeout(t *testing.T) {
 	require.False(t, fetchCompleted.Load(), "Fetch should have been cancelled by timeout, not completed")
 
 	close(fetchShouldBlock)
+}
+
+func TestLruCacheEvictsLeastRecentlyUsed(t *testing.T) {
+	r := prometheus.NewPedanticRegistry()
+	m := NewPostingCacheMetrics(r)
+
+	// Cache fits exactly 3 entries (each entry = 8 bytes value + 4 bytes key = 12 bytes)
+	cfg := PostingsCacheConfig{
+		Enabled:  true,
+		Ttl:      time.Hour,
+		MaxBytes: int64(3 * (8 + 4)),
+	}
+	cache := newLruCache[int](cfg, "test", m, time.Now)
+
+	// Insert 3 entries: A, B, C
+	cache.getPromiseForKey("aaaa", func() (int, int64, error) { return 1, 8, nil })
+	cache.getPromiseForKey("bbbb", func() (int, int64, error) { return 2, 8, nil })
+	cache.getPromiseForKey("cccc", func() (int, int64, error) { return 3, 8, nil })
+
+	require.True(t, cache.contains("aaaa"))
+	require.True(t, cache.contains("bbbb"))
+	require.True(t, cache.contains("cccc"))
+
+	// Access A to make it recently used (B is now least recently used)
+	cache.getPromiseForKey("aaaa", func() (int, int64, error) { return 1, 8, nil })
+
+	// Insert D — should evict B (least recently used), not A
+	cache.getPromiseForKey("dddd", func() (int, int64, error) { return 4, 8, nil })
+
+	require.True(t, cache.contains("aaaa"), "A should still be cached (recently accessed)")
+	require.False(t, cache.contains("bbbb"), "B should be evicted (least recently used)")
+	require.True(t, cache.contains("cccc"), "C should still be cached")
+	require.True(t, cache.contains("dddd"), "D should be cached (just inserted)")
+}
+
+func BenchmarkLruCacheHitUnderPressure(b *testing.B) {
+	// Simulates: 50 "hot" queries (rulers, every 30s) + many "cold" queries (ad-hoc)
+	// Cache fits 100 entries. With FIFO, cold queries push out hot ones.
+	// With LRU, hot queries stay cached because they're accessed frequently.
+
+	r := prometheus.NewPedanticRegistry()
+	m := NewPostingCacheMetrics(r)
+
+	keySize := 20
+	cfg := PostingsCacheConfig{
+		Enabled:  true,
+		Ttl:      time.Hour,
+		MaxBytes: int64(100 * (8 + keySize)), // fits 100 entries
+	}
+	cache := newLruCache[int](cfg, "bench", m, time.Now)
+
+	// Pre-populate with 50 hot keys
+	hotKeys := make([]string, 50)
+	for i := range hotKeys {
+		hotKeys[i] = RepeatStringIfNeeded(fmt.Sprintf("hot-%d", i), keySize)
+		cache.getPromiseForKey(hotKeys[i], func() (int, int64, error) { return i, 8, nil })
+	}
+
+	coldIdx := 0
+	b.ReportAllocs()
+
+	for i := 0; b.Loop(); i++ {
+		if i%3 == 0 {
+			// 1/3 of accesses are hot queries (simulating ruler every 30s)
+			key := hotKeys[i%len(hotKeys)]
+			cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 8, nil })
+		} else {
+			// 2/3 are cold unique queries (ad-hoc from Grafana)
+			key := RepeatStringIfNeeded(fmt.Sprintf("cold-%d", coldIdx), keySize)
+			coldIdx++
+			cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 8, nil })
+		}
+	}
+
+	// Report hit rate for hot keys
+	hits := 0
+	for _, k := range hotKeys {
+		if cache.contains(k) {
+			hits++
+		}
+	}
+	b.ReportMetric(float64(hits)/float64(len(hotKeys))*100, "%hot-retained")
+}
+
+func BenchmarkCacheGetPromise(b *testing.B) {
+	r := prometheus.NewPedanticRegistry()
+	m := NewPostingCacheMetrics(r)
+	cfg := PostingsCacheConfig{Enabled: true, Ttl: time.Hour, MaxBytes: 10 << 20}
+	cache := newLruCache[int](cfg, "bench", m, time.Now)
+
+	// Pre-populate 1000 keys
+	for i := range 1000 {
+		key := fmt.Sprintf("key-%04d", i)
+		cache.getPromiseForKey(key, func() (int, int64, error) { return i, 100, nil })
+	}
+
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("key-%04d", i%1000)
+			cache.getPromiseForKey(key, func() (int, int64, error) { return 1, 100, nil })
+			i++
+		}
+	})
 }

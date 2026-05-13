@@ -3,6 +3,7 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -38,8 +39,9 @@ type parquetBucketStore struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache      storecache.MatchersCache
-	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	matcherCache         storecache.MatchersCache
+	parquetShardCache    parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	honorProjectionHints bool
 }
 
 func (p *parquetBucketStore) Close() error {
@@ -107,6 +109,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 		return fmt.Errorf("failed to find parquet shards: %w", err)
 	}
 
+	storageHints := p.buildSelectHints(req.QueryHints, shards, req.MinTime, req.MaxTime)
 	seriesSet := make([]prom_storage.ChunkSeriesSet, len(shards))
 	errGroup, ctx := errgroup.WithContext(srv.Context())
 	errGroup.SetLimit(p.concurrency)
@@ -116,7 +119,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 			Id: shard.name,
 		})
 		errGroup.Go(func() error {
-			ss, err := shard.Query(ctx, req.MinTime, req.MaxTime, req.SkipChunks, matchers)
+			ss, err := shard.Query(ctx, storageHints, req.SkipChunks, matchers)
 			seriesSet[i] = ss
 			return err
 		})
@@ -278,4 +281,43 @@ func (p *parquetBucketStore) LabelValues(ctx context.Context, req *storepb.Label
 		Values: result,
 		Hints:  anyHints,
 	}, nil
+}
+
+func (p *parquetBucketStore) buildSelectHints(queryHints *storepb.QueryHints, shards []*parquetBlock, minT, maxT int64) *prom_storage.SelectHints {
+	storageHints := &prom_storage.SelectHints{
+		Start: minT,
+		End:   maxT,
+	}
+
+	if p.honorProjectionHints && queryHints != nil {
+		storageHints.ProjectionInclude = queryHints.ProjectionInclude
+		storageHints.ProjectionLabels = queryHints.ProjectionLabels
+
+		if storageHints.ProjectionInclude {
+			// Reset projection hints if not all parquet shard have the hash column.
+			if !allParquetBlocksHaveHashColumn(shards) {
+				storageHints.ProjectionInclude = false
+				storageHints.ProjectionLabels = nil
+			}
+		} else {
+			// Reset hints for non-include projections to force a full scan, matching querier behavior.
+			storageHints.ProjectionLabels = nil
+		}
+
+		if storageHints.ProjectionInclude && !slices.Contains(storageHints.ProjectionLabels, schema.SeriesHashColumn) {
+			storageHints.ProjectionLabels = append(storageHints.ProjectionLabels, schema.SeriesHashColumn)
+		}
+	}
+
+	return storageHints
+}
+
+func allParquetBlocksHaveHashColumn(blocks []*parquetBlock) bool {
+	// TODO(Sungjin1212): Change it to read marker version
+	for _, b := range blocks {
+		if !b.hasHashColumn() {
+			return false
+		}
+	}
+	return true
 }

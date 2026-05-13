@@ -40,6 +40,173 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
+// BenchmarkParquetBucketStore_ProjectionHints compares query performance
+// with and without projectionHints enabled.
+func BenchmarkParquetBucketStore_ProjectionHints(b *testing.B) {
+	seriesNum := []int{100, 1000, 10000}
+	samplePerSeries := 100
+
+	// projectionLabels is the subset of labels requested via projection hints.
+	// The test data contains: __name__, idx, job, instance
+	projectionLabels := []string{"job"}
+
+	for _, numSeries := range seriesNum {
+		b.Run(fmt.Sprintf("series_%d", numSeries), func(b *testing.B) {
+			ctx := context.Background()
+			tmpDir := b.TempDir()
+			storageDir := filepath.Join(tmpDir, "storage")
+			dataDir := filepath.Join(tmpDir, "data")
+			userID := "user-1"
+
+			storageCfg := cortex_tsdb.BlocksStorageConfig{
+				UsersScanner: users.UsersScannerConfig{
+					Strategy:       users.UserScanStrategyList,
+					UpdateInterval: time.Second,
+				},
+				Bucket: bucket.Config{
+					Backend: "filesystem",
+					Filesystem: filesystem.Config{
+						Directory: storageDir,
+					},
+				},
+				BucketStore: cortex_tsdb.BucketStoreConfig{
+					SyncDir:                filepath.Join(tmpDir, "sync"),
+					BucketStoreType:        "parquet",
+					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+				},
+			}
+
+			bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, nil, "test", log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(b, err)
+
+			blockID := prepareParquetBlock(b, ctx, storageCfg, bucketClient, dataDir, userID, numSeries, samplePerSeries)
+
+			startGRPCServer := func(honorProjectionHints bool) (storepb.StoreClient, func()) {
+				cfg := storageCfg
+				cfg.BucketStore.HonorProjectionHints = honorProjectionHints
+
+				reg := prometheus.NewPedanticRegistry()
+				stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), reg)
+				require.NoError(b, err)
+
+				listener, err := net.Listen("tcp", "localhost:0")
+				require.NoError(b, err)
+
+				gRPCServer := grpc.NewServer(
+					grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor),
+				)
+				storepb.RegisterStoreServer(gRPCServer, stores)
+
+				go func() {
+					if err := gRPCServer.Serve(listener); err != nil && err != grpc.ErrServerStopped {
+						b.Error(err)
+					}
+				}()
+
+				conn, err := grpc.NewClient(listener.Addr().String(),
+					grpc.WithTransportCredentials(insecure.NewCredentials()),
+					grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt32)),
+				)
+				require.NoError(b, err)
+
+				return storepb.NewStoreClient(conn), func() {
+					_ = conn.Close()
+					gRPCServer.Stop()
+				}
+			}
+
+			// Benchmark without projectionHints (full scan)
+			b.Run("without_projection_hints", func(b *testing.B) {
+				client, stop := startGRPCServer(false)
+				defer stop()
+
+				b.ReportAllocs()
+				for b.Loop() {
+					benchmarkProjectionHints(b, client, userID, blockID, numSeries, nil)
+				}
+			})
+
+			// Benchmark with projectionHints enabled and projection labels specified
+			b.Run("with_projection_hints", func(b *testing.B) {
+				client, stop := startGRPCServer(true)
+				defer stop()
+
+				b.ReportAllocs()
+				for b.Loop() {
+					benchmarkProjectionHints(b, client, userID, blockID, numSeries, projectionLabels)
+				}
+			})
+		})
+	}
+}
+
+func benchmarkProjectionHints(b *testing.B, client storepb.StoreClient, userID, blockID string, expectedSeries int, projectionLabels []string) {
+	b.Helper()
+
+	ctx := grpcMetadata.NewOutgoingContext(context.Background(), grpcMetadata.Pairs(cortex_tsdb.TenantIDExternalLabel, userID))
+	ctx, err := user.InjectIntoGRPCRequest(user.InjectOrgID(ctx, userID))
+	require.NoError(b, err)
+
+	hintMatchers := []storepb.LabelMatcher{
+		{
+			Type:  storepb.LabelMatcher_RE,
+			Name:  block.BlockIDLabel,
+			Value: blockID,
+		},
+	}
+
+	dataMatchers := []storepb.LabelMatcher{
+		{
+			Type:  storepb.LabelMatcher_RE,
+			Name:  "__name__",
+			Value: ".+",
+		},
+	}
+
+	hints := &hintspb.SeriesRequestHints{
+		BlockMatchers: hintMatchers,
+	}
+	hintsAny, err := types.MarshalAny(hints)
+	require.NoError(b, err)
+
+	req := &storepb.SeriesRequest{
+		MinTime:           0,
+		MaxTime:           math.MaxInt64,
+		Matchers:          dataMatchers,
+		ResponseBatchSize: 1000,
+		Hints:             hintsAny,
+	}
+
+	if len(projectionLabels) > 0 {
+		req.QueryHints = &storepb.QueryHints{
+			ProjectionInclude: true,
+			ProjectionLabels:  projectionLabels,
+		}
+	}
+
+	stream, err := client.Series(ctx, req)
+	require.NoError(b, err)
+
+	got := 0
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(b, err)
+
+		if series := resp.GetSeries(); series != nil {
+			got++
+		} else if batch := resp.GetBatch(); batch != nil {
+			got += len(batch.Series)
+		}
+	}
+
+	if got != expectedSeries {
+		b.Fatalf("expected %d series, got %d", expectedSeries, got)
+	}
+}
+
 func BenchmarkParquetBucketStore_SeriesBatch(b *testing.B) {
 	seriesNum := []int{100, 1000, 10000, 100000}
 	samplePerSeries := 100

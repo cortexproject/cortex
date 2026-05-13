@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"html/template"
@@ -396,13 +397,13 @@ func (h *buildInfoHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request
 }
 
 type featuresHandler struct {
-	features []string
+	features map[string]map[string]bool
 	logger   log.Logger
 }
 
 type featuresResponse struct {
-	Status string   `json:"status"`
-	Data   []string `json:"data"`
+	Status string                       `json:"status"`
+	Data   map[string]map[string]bool   `json:"data"`
 }
 
 func (h *featuresHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {
@@ -410,15 +411,19 @@ func (h *featuresHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request)
 		Status: "success",
 		Data:   h.features,
 	}
-	output, err := json.Marshal(resp)
-	if err != nil {
+	// Use a non-HTML-escaping encoder to avoid escaping PromQL operators
+	// like >=, <=, etc., matching the Prometheus features endpoint behavior.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(resp); err != nil {
 		level.Error(h.logger).Log("msg", "marshal features response", "error", err)
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(http.StatusOK)
-	if _, err := writer.Write(output); err != nil {
+	if _, err := writer.Write(buf.Bytes()); err != nil {
 		level.Error(h.logger).Log("msg", "write features response", "error", err)
 	}
 }

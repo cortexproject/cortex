@@ -86,9 +86,9 @@ type Config struct {
 
 	QuerierDefaultCodec string `yaml:"querier_default_codec"`
 
-	// Features is a list of enabled feature names to be exposed via the /api/v1/features endpoint.
-	// This is injected by the upstream caller.
-	Features []string `yaml:"-"`
+	// Features is a map of feature categories to their feature flags, matching the Prometheus
+	// features.json format. This is injected by the upstream caller.
+	Features map[string]map[string]bool `yaml:"-"`
 }
 
 var (

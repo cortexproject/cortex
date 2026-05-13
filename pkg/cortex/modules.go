@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/objstore"
@@ -127,30 +128,61 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	return nil, nil
 }
 
-// cortexFeatures returns a list of feature names that are enabled in the given config.
-func cortexFeatures(cfg Config) []string {
-	var features []string
+// cortexFeatures returns a Prometheus-compatible features map based on the given config.
+// The response format matches Prometheus's GET /api/v1/features endpoint, providing
+// clients like Grafana with accurate capability discovery.
+func cortexFeatures(cfg Config) map[string]map[string]bool {
+	features := make(map[string]map[string]bool)
 
-	if cfg.Distributor.RemoteWriteV2Enabled {
-		features = append(features, "remote_write_v2")
+	experimentalFunctions := cfg.Querier.EnablePromQLExperimentalFunctions
+
+	// Build promql_functions from the vendored Prometheus parser.
+	promqlFunctions := make(map[string]bool, len(parser.Functions))
+	for name, fn := range parser.Functions {
+		if fn.Experimental {
+			promqlFunctions[name] = experimentalFunctions
+		} else {
+			promqlFunctions[name] = true
+		}
 	}
-	if cfg.Distributor.UseStreamPush {
-		features = append(features, "streaming_ingestion")
+	features["promql_functions"] = promqlFunctions
+
+	// PromQL language features supported by Cortex.
+	features["promql"] = map[string]bool{
+		"at_modifier":     true,
+		"negative_offset": true,
+		"offset":          true,
+		"subqueries":      true,
+		"bool":            true,
+		"by":              true,
+		"without":         true,
+		"on":              true,
+		"ignoring":        true,
+		"group_left":      true,
+		"group_right":     true,
+		"per_step_stats":  cfg.Querier.EnablePerStepStats,
 	}
-	if cfg.Querier.EnableParquetQueryable {
-		features = append(features, "parquet_queryable")
+
+	// PromQL operators supported by Cortex.
+	features["promql_operators"] = map[string]bool{
+		"+": true, "-": true, "*": true, "/": true, "%": true, "^": true,
+		"==": true, "!=": true, ">": true, "<": true, ">=": true, "<=": true,
+		"=~": true, "!~": true, "@": true,
+		"and": true, "or": true, "unless": true,
+		"sum": true, "avg": true, "count": true, "min": true, "max": true,
+		"group": true, "stddev": true, "stdvar": true,
+		"topk": true, "bottomk": true, "count_values": true, "quantile": true,
+		"atan2": true,
+		"limitk":      false,
+		"limit_ratio": false,
 	}
-	if cfg.TenantFederation.Enabled {
-		features = append(features, "tenant_federation")
-	}
-	if cfg.Querier.DistributedExecEnabled {
-		features = append(features, "distributed_execution")
-	}
-	if cfg.Querier.EnablePromQLExperimentalFunctions {
-		features = append(features, "promql_experimental_functions")
-	}
-	if cfg.API.BuildInfoEnabled() {
-		features = append(features, "build_info")
+
+	// API features relevant to Cortex as a Prometheus-compatible query backend.
+	features["api"] = map[string]bool{
+		"query_stats":        cfg.Querier.EnablePerStepStats,
+		"label_values_match": true,
+		"time_range_labels":  true,
+		"time_range_series":  true,
 	}
 
 	return features

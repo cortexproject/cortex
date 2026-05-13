@@ -257,8 +257,8 @@ github.com/coreos/go-systemd/v22 v22.6.0 h1:aGVa/v8B7hpb0TKl0MWoAavPDmHvobFe5R5z
 github.com/coreos/go-systemd/v22 v22.6.0/go.mod h1:iG+pp635Fo7ZmV/j14KUcmEyWF+0X7Lua8rrTWzYgWU=
 github.com/cortexproject/promqlsmith v0.0.0-20260205231645-0c8ef5fe46a5 h1:MTGag0oh+M3hyWWg7a1Bju2VPeFLjG2l+LWLhUCFTYI=
 github.com/cortexproject/promqlsmith v0.0.0-20260205231645-0c8ef5fe46a5/go.mod h1:GrzWqtj9aJG+n4Cl1O30Zdk8cIgjqSUc2l5nZV8BnaA=
-github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f h1:hDM26bY51+giykKRIH8TUYzEy7fn62iKfTW7vfgDuNw=
-github.com/cortexproject/weaveworks-common v0.0.0-20250902164925-0315015a8b9f/go.mod h1:bls8PY13xoOKkZuRhhDdR2rNk4pfdGWCR6k2jF9s9+4=
+github.com/cortexproject/weaveworks-common v0.0.0-20260508185357-75366cf4edfb h1:3Kr+IwRd0ybfFhUYpzdkmm6jIyRWonIWMsToRcycrL4=
+github.com/cortexproject/weaveworks-common v0.0.0-20260508185357-75366cf4edfb/go.mod h1:bls8PY13xoOKkZuRhhDdR2rNk4pfdGWCR6k2jF9s9+4=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/cristalhq/hedgedhttp v0.9.1 h1:g68L9cf8uUyQKQJwciD0A1Vgbsz+QgCjuB1I8FAsCDs=
 github.com/cristalhq/hedgedhttp v0.9.1/go.mod h1:XkqWU6qVMutbhW68NnzjWrGtH8NUx1UfYqGYtHVKIsI=

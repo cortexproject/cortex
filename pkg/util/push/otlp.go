@@ -160,6 +160,7 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 				if err != nil {
 					return req, err
 				}
+				reader = io.LimitReader(reader, int64(maxSize)+1)
 			}
 
 			var buf bytes.Buffer

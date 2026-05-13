@@ -220,11 +220,11 @@ func decompressFromReader(reader io.Reader, expectedSize, maxSize int, compressi
 		}
 		body, err = decompressFromBuffer(&buf, maxSize, RawSnappy, sp)
 	case Gzip:
-		reader, err = gzip.NewReader(reader)
-		if err != nil {
-			return nil, err
+		gzReader, gzErr := gzip.NewReader(reader)
+		if gzErr != nil {
+			return nil, gzErr
 		}
-		_, err = buf.ReadFrom(reader)
+		_, err = buf.ReadFrom(io.LimitReader(gzReader, int64(maxSize)+1))
 		body = buf.Bytes()
 	}
 	return body, err

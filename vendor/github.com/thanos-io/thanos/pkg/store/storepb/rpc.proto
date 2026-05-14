@@ -8,6 +8,7 @@ import "store/storepb/types.proto";
 import "gogoproto/gogo.proto";
 import "store/storepb/prompb/types.proto";
 import "google/protobuf/any.proto";
+import "github.com/cortexproject/cortex/pkg/cortexpb/cortex.proto";
 
 option go_package = "storepb";
 
@@ -208,6 +209,9 @@ message SeriesResponse {
     /// batch is an array of series so more than 1 series can be included in the response
     SeriesBatch batch = 4;
   }
+
+  // Buffer reference for explicit memory management via cortexCodec.
+  cortexpb.MessageWithBufRef Ref = 1001 [(gogoproto.embed) = true, (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.MessageWithBufRef", (gogoproto.nullable) = false];
 }
 
 message LabelNamesRequest {

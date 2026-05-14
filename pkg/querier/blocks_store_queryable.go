@@ -29,6 +29,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	thanosquery "github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"go.uber.org/atomic"
@@ -67,6 +68,10 @@ var (
 	errNoStoreGatewayAddress  = errors.New("no store-gateway address configured")
 	errMaxChunksPerQueryLimit = "the query hit the max number of chunks limit while fetching chunks from store-gateways for %s (limit: %d)"
 	defaultAggrs              = []storepb.Aggr{storepb.Aggr_COUNT, storepb.Aggr_SUM}
+
+	// Compile-time check: SeriesResponse must satisfy cortexpb.ReleasableMessage
+	// so that cortexCodec registers unmarshal buffers for explicit lifecycle management.
+	_ cortexpb.ReleasableMessage = &storepb.SeriesResponse{}
 )
 
 // BlocksStoreSet is the interface used to get the clients to query series on a set of blocks.
@@ -675,6 +680,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			myQueriedBlocks := []ulid.ULID(nil)
 
 			processSeries := func(s *storepb.Series) error {
+				// Detach series data from the gRPC unmarshal buffer so that
+				// resp.Free() can safely return the buffer to the pool.
+				detachSeriesFromBuffer(s)
 				mySeries = append(mySeries, s)
 
 				// Add series fingerprint to query limiter; will return error if we are over the limit
@@ -746,6 +754,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				// Response may either contain series, batch, warning or hints.
 				if s := resp.GetSeries(); s != nil {
 					if err := processSeries(s); err != nil {
+						resp.Free()
 						return err
 					}
 				}
@@ -753,6 +762,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if b := resp.GetBatch(); b != nil {
 					for _, s := range b.Series {
 						if err := processSeries(s); err != nil {
+							resp.Free()
 							return err
 						}
 					}
@@ -765,11 +775,13 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 				if h := resp.GetHints(); h != nil {
 					hints := hintspb.SeriesResponseHints{}
 					if err := types.UnmarshalAny(h, &hints); err != nil {
+						resp.Free()
 						return errors.Wrapf(err, "failed to unmarshal series hints from %s", c.RemoteAddress())
 					}
 
 					ids, err := convertBlockHintsToULIDs(hints.QueriedBlocks)
 					if err != nil {
+						resp.Free()
 						return errors.Wrapf(err, "failed to parse queried block IDs from received hints")
 					}
 
@@ -778,6 +790,8 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 						seriesQueryStats.Merge(hints.QueryStats)
 					}
 				}
+
+				resp.Free()
 			}
 
 			numSeries := len(mySeries)
@@ -1187,6 +1201,18 @@ func convertBlockHintsToULIDs(hints []hintspb.Block) ([]ulid.ULID, error) {
 	}
 
 	return res, nil
+}
+
+// detachSeriesFromBuffer re-allocates label strings and chunk data byte slices
+// so that the series no longer references the gRPC unmarshal buffer. This allows
+// resp.Free() to safely return the buffer to the pool without causing use-after-free.
+func detachSeriesFromBuffer(s *storepb.Series) {
+	labelpb.ReAllocZLabelsStrings(&s.Labels, true)
+	for i := range s.Chunks {
+		if s.Chunks[i].Raw != nil && len(s.Chunks[i].Raw.Data) > 0 {
+			s.Chunks[i].Raw.Data = append([]byte(nil), s.Chunks[i].Raw.Data...)
+		}
+	}
 }
 
 // countChunkBytes returns the size of the chunks making up the provided series in bytes

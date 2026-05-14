@@ -440,7 +440,8 @@ type SeriesResponse struct {
 	//	*SeriesResponse_Warning
 	//	*SeriesResponse_Hints
 	//	*SeriesResponse_Batch
-	Result isSeriesResponse_Result `protobuf_oneof:"result"`
+	Result            isSeriesResponse_Result `protobuf_oneof:"result"`
+	MessageWithBufRef `protobuf:"bytes,1001,opt,name=Ref,proto3,embedded=Ref" json:"Ref"`
 }
 
 func (m *SeriesResponse) Reset()         { *m = SeriesResponse{} }
@@ -1602,6 +1603,18 @@ func (m *SeriesResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size := m.MessageWithBufRef.Size()
+		i -= size
+		if _, err := m.MessageWithBufRef.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintRpc(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x3e
+	i--
+	dAtA[i] = 0xca
 	if m.Result != nil {
 		{
 			size := m.Result.Size()
@@ -2201,6 +2214,8 @@ func (m *SeriesResponse) Size() (n int) {
 	if m.Result != nil {
 		n += m.Result.Size()
 	}
+	l = m.MessageWithBufRef.Size()
+	n += 2 + l + sovRpc(uint64(l))
 	return n
 }
 
@@ -3847,6 +3862,39 @@ func (m *SeriesResponse) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			m.Result = &SeriesResponse_Batch{v}
+			iNdEx = postIndex
+		case 1001:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MessageWithBufRef", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.MessageWithBufRef.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

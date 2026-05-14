@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	cortextls "github.com/cortexproject/cortex/pkg/util/tls"
@@ -50,6 +51,15 @@ type TCPTransportConfig struct {
 	// Timeout for writing packet data. Zero = no timeout.
 	PacketWriteTimeout time.Duration `yaml:"packet_write_timeout"`
 
+	// Timeout for reading inbound packet data. Zero = no timeout.
+	PacketReadTimeout time.Duration `yaml:"packet_read_timeout"`
+
+	// Maximum size in bytes of a single inbound packet. Zero = no limit.
+	MaxPacketSize int64 `yaml:"max_packet_size"`
+
+	// Maximum number of concurrent inbound TCP connections. Zero = no limit.
+	MaxConcurrentConnections int `yaml:"max_concurrent_connections"`
+
 	// Transport logs lot of messages at debug level, so it deserves an extra flag for turning it on
 	TransportDebug bool `yaml:"-"`
 
@@ -72,6 +82,9 @@ func (cfg *TCPTransportConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix s
 	f.IntVar(&cfg.BindPort, prefix+"memberlist.bind-port", 7946, "Port to listen on for gossip messages.")
 	f.DurationVar(&cfg.PacketDialTimeout, prefix+"memberlist.packet-dial-timeout", 5*time.Second, "Timeout used when connecting to other nodes to send packet.")
 	f.DurationVar(&cfg.PacketWriteTimeout, prefix+"memberlist.packet-write-timeout", 5*time.Second, "Timeout for writing 'packet' data.")
+	f.DurationVar(&cfg.PacketReadTimeout, prefix+"memberlist.packet-read-timeout", 5*time.Second, "Timeout for reading packet data from inbound connections. 0 = no limit.")
+	f.Int64Var(&cfg.MaxPacketSize, prefix+"memberlist.max-packet-size", 1*1024*1024 /*1MB*/, "Maximum size in bytes of an inbound gossip packet. 0 = no limit.")
+	f.IntVar(&cfg.MaxConcurrentConnections, prefix+"memberlist.max-concurrent-connections", 100, "Maximum number of concurrent inbound TCP connections. 0 = no limit.")
 	f.BoolVar(&cfg.TransportDebug, prefix+"memberlist.transport-debug", false, "Log debug transport messages. Note: global log.level must be at debug level as well.")
 
 	f.BoolVar(&cfg.TLSEnabled, prefix+"memberlist.tls-enabled", false, "Enable TLS on the memberlist transport layer.")
@@ -90,6 +103,9 @@ type TCPTransport struct {
 	tcpListeners []net.Listener
 	tlsConfig    *tls.Config
 
+	// connSemaphore limits the number of concurrent inbound TCP connections.
+	connSemaphore *semaphore.Weighted
+
 	shutdown atomic.Int32
 
 	advertiseMu   sync.RWMutex
@@ -107,6 +123,7 @@ type TCPTransport struct {
 	sentPacketsBytes      prometheus.Counter
 	sentPacketsErrors     prometheus.Counter
 	unknownConnections    prometheus.Counter
+	rejectedConnections   prometheus.Counter
 }
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
@@ -123,6 +140,10 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		logger:   log.With(logger, "component", "memberlist TCPTransport"),
 		packetCh: make(chan *memberlist.Packet),
 		connCh:   make(chan net.Conn),
+	}
+
+	if config.MaxConcurrentConnections > 0 {
+		t.connSemaphore = semaphore.NewWeighted(int64(config.MaxConcurrentConnections))
 	}
 
 	var err error
@@ -222,7 +243,24 @@ func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 		// No error, reset loop delay
 		loopDelay = 0
 
-		go t.handleConnection(conn)
+		// Enforce concurrent connection via semaphore.
+		if t.connSemaphore != nil {
+			if !t.connSemaphore.TryAcquire(1) {
+				t.rejectedConnections.Inc()
+				level.Warn(t.logger).Log("msg", "max concurrent connections reached, closing connection", "remote", conn.RemoteAddr())
+				_ = conn.Close()
+				continue
+			}
+		}
+
+		go func() {
+			defer func() {
+				if t.connSemaphore != nil {
+					t.connSemaphore.Release(1)
+				}
+			}()
+			t.handleConnection(conn)
+		}()
 	}
 }
 
@@ -245,6 +283,15 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 		}
 	}()
 
+	// Apply a read deadline for the entire packet receive so that a slow or
+	// adversarial peer cannot hold the goroutine open indefinitely.
+	if t.cfg.PacketReadTimeout > 0 {
+		if err := conn.SetReadDeadline(time.Now().Add(t.cfg.PacketReadTimeout)); err != nil {
+			level.Warn(t.logger).Log("msg", "failed to set read deadline", "err", err, "remote", conn.RemoteAddr())
+			return
+		}
+	}
+
 	// let's read first byte, and determine what to do about this connection
 	msgType := []byte{0}
 	_, err := io.ReadFull(conn, msgType)
@@ -255,6 +302,13 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 
 	if messageType(msgType[0]) == stream {
 		t.incomingStreams.Inc()
+
+		// Stream connections are handed off to memberlist which manages them
+		// independently – clear the deadline so memberlist can use its own
+		// timeouts, then pass the connection over.
+		if t.cfg.PacketReadTimeout > 0 {
+			_ = conn.SetReadDeadline(time.Time{})
+		}
 
 		// hand over this connection to memberlist
 		closeConn = false
@@ -280,11 +334,22 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 			return
 		}
 
-		// read the rest to buffer -- this is the "packet" itself
-		buf, err := io.ReadAll(conn)
+		var reader io.Reader = conn
+		if t.cfg.MaxPacketSize > 0 {
+			// Read one byte beyond the limit so we can detect oversized packets.
+			reader = io.LimitReader(conn, t.cfg.MaxPacketSize+1)
+		}
+		buf, err := io.ReadAll(reader)
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
 			level.Warn(t.logger).Log("msg", "error while reading packet data", "err", err, "remote", conn.RemoteAddr())
+			return
+		}
+
+		// Reject oversized packets
+		if t.cfg.MaxPacketSize > 0 && int64(len(buf)) > t.cfg.MaxPacketSize {
+			t.receivedPacketsErrors.Inc()
+			level.Warn(t.logger).Log("msg", "packet too large, dropping", "size", len(buf), "max", t.cfg.MaxPacketSize, "remote", conn.RemoteAddr())
 			return
 		}
 
@@ -633,5 +698,12 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Subsystem: subsystem,
 		Name:      "unknown_connections_total",
 		Help:      "Number of unknown TCP connections (not a packet or stream)",
+	})
+
+	t.rejectedConnections = promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+		Namespace: t.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "rejected_connections_total",
+		Help:      "Number of inbound TCP connections rejected because the concurrent connection limit was reached",
 	})
 }

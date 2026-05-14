@@ -2,7 +2,6 @@ package querier
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 
 	"github.com/go-kit/log"
@@ -15,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/mem"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"

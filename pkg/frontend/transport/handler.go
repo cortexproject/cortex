@@ -49,23 +49,23 @@ var (
 )
 
 const (
-	reasonTooManyTenants           = "too_many_tenants"
-	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
-	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
-	reasonTooManyRequests          = "too_many_requests"
-	reasonResourceExhausted        = "resource_exhausted"
-	reasonTimeRangeExceeded        = "time_range_exceeded"
-	reasonResponseSizeExceeded     = "response_size_exceeded"
-	reasonTooManySamples           = "too_many_samples"
-	reasonSeriesFetched            = "series_fetched"
-	reasonChunksFetched            = "chunks_fetched"
-	reasonChunkBytesFetched        = "chunk_bytes_fetched"
-	reasonDataBytesFetched         = "data_bytes_fetched"
-	reasonSeriesLimitStoreGateway  = "store_gateway_series_limit"
-	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
-	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
-	reasonUnOptimizedRegexMatcher  = `unoptimized_regex_matcher`
-	reasonQueryTooExpensive        = "query_too_expensive"
+	reasonTooManyTenants            = "too_many_tenants"
+	reasonRequestBodySizeExceeded   = "request_body_size_exceeded"
+	reasonResponseBodySizeExceeded  = "response_body_size_exceeded"
+	reasonTooManyRequests           = "too_many_requests"
+	reasonResourceExhausted         = "resource_exhausted"
+	reasonTimeRangeExceeded         = "time_range_exceeded"
+	reasonResponseSizeExceeded      = "response_size_exceeded"
+	reasonTooManySamples            = "too_many_samples"
+	reasonFetchedSeriesExceeded     = "fetched_series_exceeded"
+	reasonFetchedChunksExceeded     = "fetched_chunks_exceeded"
+	reasonFetchedChunkBytesExceeded = "fetched_chunk_bytes_exceeded"
+	reasonFetchedDataBytesExceeded  = "fetched_data_bytes_exceeded"
+	reasonSeriesLimitStoreGateway   = "store_gateway_series_limit"
+	reasonChunksLimitStoreGateway   = "store_gateway_chunks_limit"
+	reasonBytesLimitStoreGateway    = "store_gateway_bytes_limit"
+	reasonUnOptimizedRegexMatcher   = `unoptimized_regex_matcher`
+	reasonQueryTooExpensive         = "query_too_expensive"
 
 	limitTooManySamples          = `query processing would load too many samples into memory`
 	limitTimeRangeExceeded       = `the query time range exceeds the limit`
@@ -579,13 +579,13 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		} else if strings.Contains(errMsg, limitResponseSizeExceeded) {
 			reason = reasonResponseSizeExceeded
 		} else if strings.Contains(errMsg, limitSeriesFetched) {
-			reason = reasonSeriesFetched
+			reason = reasonFetchedSeriesExceeded
 		} else if strings.Contains(errMsg, limitChunksFetched) {
-			reason = reasonChunksFetched
+			reason = reasonFetchedChunksExceeded
 		} else if strings.Contains(errMsg, limitChunkBytesFetched) {
-			reason = reasonChunkBytesFetched
+			reason = reasonFetchedChunkBytesExceeded
 		} else if strings.Contains(errMsg, limitDataBytesFetched) {
-			reason = reasonDataBytesFetched
+			reason = reasonFetchedDataBytesExceeded
 		} else if strings.Contains(errMsg, limitSeriesStoreGateway) {
 			reason = reasonSeriesLimitStoreGateway
 		} else if strings.Contains(errMsg, limitChunksStoreGateway) {

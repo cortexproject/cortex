@@ -266,10 +266,10 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one")
 		})
 		expected := []*dto.Metric{
-			{Label: makeLabels("label_one", "a"), Histogram: &dto.Histogram{SampleCount: uint64p(4), SampleSum: float64p(10), Bucket: []*dto.Bucket{
-				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(2), CumulativeCount: uint64p(2)},
-				{UpperBound: float64p(3), CumulativeCount: uint64p(3)},
+			{Label: makeLabels("label_one", "a"), Histogram: &dto.Histogram{SampleCount: new(uint64(4)), SampleSum: new(float64(10)), Bucket: []*dto.Bucket{
+				{UpperBound: new(float64(1)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(2)), CumulativeCount: new(uint64(2))},
+				{UpperBound: new(float64(3)), CumulativeCount: new(uint64(3))},
 			}}},
 		}
 		require.ElementsMatch(t, expected, actual)
@@ -281,15 +281,15 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_two")
 		})
 		expected := []*dto.Metric{
-			{Label: makeLabels("label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
-				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(3), CumulativeCount: uint64p(2)},
+			{Label: makeLabels("label_two", "b"), Histogram: &dto.Histogram{SampleCount: new(uint64(2)), SampleSum: new(float64(4)), Bucket: []*dto.Bucket{
+				{UpperBound: new(float64(1)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(2)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(3)), CumulativeCount: new(uint64(2))},
 			}}},
-			{Label: makeLabels("label_two", "c"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(6), Bucket: []*dto.Bucket{
-				{UpperBound: float64p(1), CumulativeCount: uint64p(0)},
-				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(3), CumulativeCount: uint64p(1)},
+			{Label: makeLabels("label_two", "c"), Histogram: &dto.Histogram{SampleCount: new(uint64(2)), SampleSum: new(float64(6)), Bucket: []*dto.Bucket{
+				{UpperBound: new(float64(1)), CumulativeCount: new(uint64(0))},
+				{UpperBound: new(float64(2)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(3)), CumulativeCount: new(uint64(1))},
 			}}},
 		}
 		require.ElementsMatch(t, expected, actual)
@@ -301,15 +301,15 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 			mf.SendSumOfHistogramsWithLabels(out, desc, "test_metric", "label_one", "label_two")
 		})
 		expected := []*dto.Metric{
-			{Label: makeLabels("label_one", "a", "label_two", "b"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(4), Bucket: []*dto.Bucket{
-				{UpperBound: float64p(1), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(3), CumulativeCount: uint64p(2)},
+			{Label: makeLabels("label_one", "a", "label_two", "b"), Histogram: &dto.Histogram{SampleCount: new(uint64(2)), SampleSum: new(float64(4)), Bucket: []*dto.Bucket{
+				{UpperBound: new(float64(1)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(2)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(3)), CumulativeCount: new(uint64(2))},
 			}}},
-			{Label: makeLabels("label_one", "a", "label_two", "c"), Histogram: &dto.Histogram{SampleCount: uint64p(2), SampleSum: float64p(6), Bucket: []*dto.Bucket{
-				{UpperBound: float64p(1), CumulativeCount: uint64p(0)},
-				{UpperBound: float64p(2), CumulativeCount: uint64p(1)},
-				{UpperBound: float64p(3), CumulativeCount: uint64p(1)},
+			{Label: makeLabels("label_one", "a", "label_two", "c"), Histogram: &dto.Histogram{SampleCount: new(uint64(2)), SampleSum: new(float64(6)), Bucket: []*dto.Bucket{
+				{UpperBound: new(float64(1)), CumulativeCount: new(uint64(0))},
+				{UpperBound: new(float64(2)), CumulativeCount: new(uint64(1))},
+				{UpperBound: new(float64(3)), CumulativeCount: new(uint64(1))},
 			}}},
 		}
 		require.ElementsMatch(t, expected, actual)
@@ -407,8 +407,8 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 			{
 				Label: makeLabels("user", "user-1"),
 				Summary: &dto.Summary{
-					SampleCount: uint64p(3),
-					SampleSum:   float64p(150),
+					SampleCount: new(uint64(3)),
+					SampleSum:   new(float64(150)),
 					Quantile: []*dto.Quantile{
 						{
 							Quantile: new(.25),
@@ -428,8 +428,8 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 			{
 				Label: makeLabels("user", "user-2"),
 				Summary: &dto.Summary{
-					SampleCount: uint64p(3),
-					SampleSum:   float64p(151),
+					SampleCount: new(uint64(3)),
+					SampleSum:   new(float64(151)),
 					Quantile: []*dto.Quantile{
 						{
 							Quantile: new(.25),
@@ -1107,16 +1107,6 @@ func collectMetrics(t *testing.T, send func(out chan prometheus.Metric)) []*dto.
 	}
 
 	return metrics
-}
-
-//go:fix inline
-func float64p(v float64) *float64 {
-	return new(v)
-}
-
-//go:fix inline
-func uint64p(v uint64) *uint64 {
-	return new(v)
 }
 
 func BenchmarkGetLabels_SmallSet(b *testing.B) {

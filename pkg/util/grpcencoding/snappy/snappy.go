@@ -15,6 +15,13 @@ func init() {
 	encoding.RegisterCompressor(newCompressor())
 }
 
+// Register re-registers the Cortex snappy compressor with gRPC, overriding any
+// previously registered compressor with the same name (e.g. the Thanos vendored
+// one whose Read() panics). See https://github.com/cortexproject/cortex/issues/7456.
+func Register() {
+	encoding.RegisterCompressor(newCompressor())
+}
+
 type compressor struct {
 	writersPool sync.Pool
 	readersPool sync.Pool

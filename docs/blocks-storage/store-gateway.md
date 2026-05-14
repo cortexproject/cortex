@@ -358,14 +358,14 @@ store_gateway:
   query_protection:
     rejection:
       threshold:
-        # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+        # EXPERIMENTAL: Max CPU utilization that this instance can reach before
         # rejecting new query request (across all tenants) in percentage,
         # between 0 and 1. monitored_resources config must include the resource
         # type. 0 to disable.
         # CLI flag: -store-gateway.query-protection.rejection.threshold.cpu-utilization
         [cpu_utilization: <float> | default = 0]
 
-        # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+        # EXPERIMENTAL: Max heap utilization that this instance can reach before
         # rejecting new query request (across all tenants) in percentage,
         # between 0 and 1. monitored_resources config must include the resource
         # type. 0 to disable.
@@ -1487,7 +1487,7 @@ blocks_storage:
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
       [block_index_attributes_ttl: <duration> | default = 168h]
 
-      # How long to cache content of the bucket index.
+      # How long to cache content of the bucket index. 0 disables caching
       # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
       [bucket_index_content_ttl: <duration> | default = 5m]
 
@@ -1950,8 +1950,8 @@ blocks_storage:
 
     # If TSDB has not received any data for this duration, and all blocks from
     # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-    # to positive value, this value should be equal or higher than
-    # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+    # to positive value, this value must be greater than
+    # -limits.query-ingesters-within flag to make sure that TSDB is not closed
     # prematurely, which could cause partial query results. 0 or negative value
     # disables closing of idle TSDB.
     # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout

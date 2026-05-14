@@ -59,6 +59,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="enforce_metadata_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="enforce_metric_name",user="tenant-a"} 1
 		cortex_overrides{limit_name="ha_max_clusters",user="tenant-a"} 0
+		cortex_overrides{limit_name="ha_tracker_failover_timeout",user="tenant-a"} 30
 		cortex_overrides{limit_name="ingestion_burst_size",user="tenant-a"} 50000
 		cortex_overrides{limit_name="ingestion_rate",user="tenant-a"} 25000
 		cortex_overrides{limit_name="ingestion_tenant_shard_size",user="tenant-a"} 0

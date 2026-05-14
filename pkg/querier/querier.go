@@ -22,6 +22,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/engine"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
@@ -32,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -103,6 +105,9 @@ type Config struct {
 	TimeoutClassificationEnabled       bool          `yaml:"timeout_classification_enabled"`
 	TimeoutClassificationDeadline      time.Duration `yaml:"timeout_classification_deadline"`
 	TimeoutClassificationEvalThreshold time.Duration `yaml:"timeout_classification_eval_threshold"`
+
+	// Query protection: resource-based rejection.
+	QueryProtection configs.QueryProtection `yaml:"query_protection"`
 }
 
 var (
@@ -161,10 +166,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.TimeoutClassificationEnabled, "querier.timeout-classification-enabled", false, "If true, classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing.")
 	f.DurationVar(&cfg.TimeoutClassificationDeadline, "querier.timeout-classification-deadline", time.Minute+59*time.Second, "The total time before the querier proactively cancels a query for timeout classification. Set this a few seconds less than the querier timeout.")
 	f.DurationVar(&cfg.TimeoutClassificationEvalThreshold, "querier.timeout-classification-eval-threshold", time.Minute+30*time.Second, "Eval time threshold above which a timeout is classified as user error (4XX).")
+	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "querier.")
 }
 
 // Validate the config
-func (cfg *Config) Validate() error {
+func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 
 	if cfg.ResponseCompression != "" && cfg.ResponseCompression != "gzip" && cfg.ResponseCompression != "snappy" && cfg.ResponseCompression != "zstd" {
 		return errUnsupportedResponseCompression
@@ -207,6 +213,10 @@ func (cfg *Config) Validate() error {
 		return err
 	}
 
+	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -223,8 +233,27 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 }
 
 // New builds a queryable and promql engine.
-func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine) {
+func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc, resourceMonitor resource.IMonitor) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
+
+	// Create resource-based limiter if resource monitor is available and thresholds are configured.
+	var resourceBasedLimiter *limiter.ResourceBasedLimiter
+	if resourceMonitor != nil {
+		resourceLimits := make(map[resource.Type]float64)
+		if cfg.QueryProtection.Rejection.Threshold.CPUUtilization > 0 {
+			resourceLimits[resource.CPU] = cfg.QueryProtection.Rejection.Threshold.CPUUtilization
+		}
+		if cfg.QueryProtection.Rejection.Threshold.HeapUtilization > 0 {
+			resourceLimits[resource.Heap] = cfg.QueryProtection.Rejection.Threshold.HeapUtilization
+		}
+		if len(resourceLimits) > 0 {
+			var err error
+			resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(resourceMonitor, resourceLimits, reg, "querier")
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to create resource based limiter for querier", "err", err)
+			}
+		}
+	}
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
 
@@ -235,7 +264,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 			limits:              limits,
 		}
 	}
-	queryable := NewQueryable(distributorQueryable, ns, cfg, limits)
+	queryable := NewQueryable(distributorQueryable, ns, cfg, limits, resourceBasedLimiter, logger, reg)
 	exemplarQueryable := newDistributorExemplarQueryable(distributor)
 
 	lazyQueryable := storage.QueryableFunc(func(mint int64, maxt int64) (storage.Querier, error) {
@@ -311,19 +340,31 @@ type limiterHolder struct {
 }
 
 // NewQueryable creates a new Queryable for cortex.
-func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, cfg Config, limits *validation.Overrides) storage.Queryable {
+func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter, cfg Config, limits *validation.Overrides, resourceBasedLimiter *limiter.ResourceBasedLimiter, logger log.Logger, reg prometheus.Registerer) storage.Queryable {
+	var rejectedRequestsCounter *prometheus.CounterVec
+	if resourceBasedLimiter != nil {
+		rejectedRequestsCounter = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "querier_rejected_requests_total",
+			Help:      "Total number of queries rejected by resource based throttling.",
+		}, []string{"reason"})
+	}
+
 	return storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
 		q := querier{
-			now:                  time.Now(),
-			mint:                 mint,
-			maxt:                 maxt,
-			limits:               limits,
-			maxQueryIntoFuture:   cfg.MaxQueryIntoFuture,
-			ignoreMaxQueryLength: cfg.IgnoreMaxQueryLength,
-			honorProjectionHints: cfg.HonorProjectionHints,
-			distributor:          distributor,
-			stores:               stores,
-			limiterHolder:        &limiterHolder{},
+			now:                     time.Now(),
+			mint:                    mint,
+			maxt:                    maxt,
+			limits:                  limits,
+			maxQueryIntoFuture:      cfg.MaxQueryIntoFuture,
+			ignoreMaxQueryLength:    cfg.IgnoreMaxQueryLength,
+			honorProjectionHints:    cfg.HonorProjectionHints,
+			distributor:             distributor,
+			stores:                  stores,
+			limiterHolder:           &limiterHolder{},
+			resourceBasedLimiter:    resourceBasedLimiter,
+			rejectedRequestsCounter: rejectedRequestsCounter,
+			logger:                  logger,
 		}
 
 		return q, nil
@@ -331,14 +372,17 @@ func NewQueryable(distributor QueryableWithFilter, stores []QueryableWithFilter,
 }
 
 type querier struct {
-	now                  time.Time
-	mint, maxt           int64
-	limits               *validation.Overrides
-	maxQueryIntoFuture   time.Duration
-	honorProjectionHints bool
-	distributor          QueryableWithFilter
-	stores               []QueryableWithFilter
-	limiterHolder        *limiterHolder
+	now                     time.Time
+	mint, maxt              int64
+	limits                  *validation.Overrides
+	maxQueryIntoFuture      time.Duration
+	honorProjectionHints    bool
+	distributor             QueryableWithFilter
+	stores                  []QueryableWithFilter
+	limiterHolder           *limiterHolder
+	resourceBasedLimiter    *limiter.ResourceBasedLimiter
+	rejectedRequestsCounter *prometheus.CounterVec
+	logger                  log.Logger
 
 	ignoreMaxQueryLength bool
 }
@@ -390,6 +434,11 @@ func (q querier) setupFromCtx(ctx context.Context) (context.Context, *querier_st
 // Select implements storage.Querier interface.
 // The bool passed is ignored because the series is always sorted.
 func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	// Check resource utilization before processing the query.
+	if err := q.checkResourceUtilization(); err != nil {
+		return storage.ErrSeriesSet(err)
+	}
+
 	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return storage.EmptySeriesSet()
@@ -490,6 +539,11 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 
 // LabelValues implements storage.Querier.
 func (q querier) LabelValues(ctx context.Context, name string, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	// Check resource utilization before processing the query.
+	if err := q.checkResourceUtilization(); err != nil {
+		return nil, nil, err
+	}
+
 	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
@@ -558,6 +612,11 @@ func (q querier) LabelValues(ctx context.Context, name string, hints *storage.La
 }
 
 func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matchers ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+	// Check resource utilization before processing the query.
+	if err := q.checkResourceUtilization(); err != nil {
+		return nil, nil, err
+	}
+
 	ctx, stats, userID, mint, maxt, metadataQuerier, queriers, err := q.setupFromCtx(ctx)
 	if err == errEmptyTimeRange {
 		return nil, nil, nil
@@ -623,6 +682,22 @@ func (q querier) LabelNames(ctx context.Context, hints *storage.LabelHints, matc
 	}
 
 	return strutil.MergeSlices(limit, sets...), warnings, nil
+}
+
+func (q querier) checkResourceUtilization() error {
+	if q.resourceBasedLimiter == nil {
+		return nil
+	}
+
+	if err := q.resourceBasedLimiter.AcceptNewRequest(); err != nil {
+		level.Warn(q.logger).Log("msg", "querier failed to accept request due to resource utilization", "err", err)
+		if q.rejectedRequestsCounter != nil {
+			q.rejectedRequestsCounter.WithLabelValues("resource_utilization").Inc()
+		}
+		return limiter.ErrResourceLimitReached
+	}
+
+	return nil
 }
 
 func (querier) Close() error {

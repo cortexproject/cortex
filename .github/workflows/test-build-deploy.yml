@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -53,7 +53,7 @@ jobs:
     name: test (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     container:
-      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1 
@@ -81,7 +81,7 @@ jobs:
     name: test-no-race (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     container:
-      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -99,6 +99,7 @@ jobs:
 
   security:
     name: CodeQL
+    if: github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     permissions:
       actions: read
@@ -124,7 +125,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -135,6 +136,9 @@ jobs:
           git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
+        env:
+          DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
       - name: Sym Link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
@@ -194,6 +198,9 @@ jobs:
           - runner: ubuntu-24.04
             arch: amd64
             tags: integration_remote_write_v2
+          - runner: ubuntu-24.04
+            arch: amd64
+            tags: integration_grpc
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: requires_docker
@@ -224,6 +231,9 @@ jobs:
           - runner: ubuntu-24.04-arm
             arch: arm64
             tags: integration_querier_microservices_mode
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            tags: integration_grpc
     steps:
       - name: Upgrade golang
         uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
@@ -231,8 +241,6 @@ jobs:
           go-version: 1.26.2
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - name: Install Docker Client
-        run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Sym Link Expected Path to Workspace
         run: |
           sudo mkdir -p /go/src/github.com/cortexproject/cortex
@@ -254,7 +262,7 @@ jobs:
         run: |
           docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
           docker pull consul:1.8.4
-          docker pull gcr.io/etcd-development/etcd:v3.4.7
+          docker pull quay.io/coreos/etcd:v3.5.29
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
             docker pull quay.io/cortexproject/cortex:v1.16.1
             docker pull quay.io/cortexproject/cortex:v1.17.2
@@ -297,8 +305,6 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
-      - name: Install Docker Client
-        run: sudo ./.github/workflows/scripts/install-docker.sh
       - name: Download Docker Images Artifact
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -312,14 +318,14 @@ jobs:
           touch build-image/.uptodate
           MIGRATIONS_DIR=$(pwd)/cmd/cortex/migrations
           echo "Running configs integration tests on ${{ matrix.arch }}"
-          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-ee0b97cc37 TTY='' configs-integration-test
+          make BUILD_IMAGE=quay.io/cortexproject/build-image:master-5f643d518c TTY='' configs-integration-test
 
   deploy:
     needs: [build, test, lint, integration, integration-configs-db]
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-ee0b97cc37
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -330,6 +336,9 @@ jobs:
           git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Install Docker Client
         run: ./.github/workflows/scripts/install-docker.sh
+        env:
+          DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
       - name: Sym link Expected Path to Workspace
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex

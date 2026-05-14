@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -63,6 +64,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -110,6 +112,8 @@ var (
 	errLabelsOutOfOrder = errors.New("labels out of order")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
+
+	distributorWorkerOrgIDRe = regexp.MustCompile(`^ingester-.+-stream-push-worker-\d+$`)
 )
 
 // Config for an Ingester.
@@ -404,6 +408,9 @@ type userTSDB struct {
 	blockRetentionPeriod int64
 
 	postingCache cortex_tsdb.ExpandedPostingsCache
+
+	// Tracks active series per configured tracker pattern.
+	trackerCounter *trackerCounter
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -545,6 +552,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
+	u.trackerCounter.increase(metric)
 
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
@@ -563,6 +571,7 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
+		u.trackerCounter.decrease(metric)
 		if u.postingCache != nil {
 			u.postingCache.ExpireSeries(metric)
 		}
@@ -1146,6 +1155,11 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
+
+		// Per-tenant active series trackers (hot-reloadable via runtime config overrides).
+		trackers := i.limits.ActiveSeriesTrackers(userID)
+		userDB.trackerCounter.updateConfig(ctx, userDB.db, trackers)
+		userDB.trackerCounter.updateMetrics(i.metrics.activeSeriesPerTracker, userID, trackers)
 	}
 }
 
@@ -1724,6 +1738,16 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		if err != nil {
 			return err
 		}
+
+		if contextOrgID, extractErr := users.TenantID(ctx); extractErr == nil {
+			if !isDistributorWorkerOrgID(contextOrgID) && contextOrgID != req.TenantID {
+				req.Free()
+				return status.Errorf(codes.PermissionDenied,
+					"tenant ID mismatch: stream authenticated as %q but request specifies %q",
+					contextOrgID, req.TenantID)
+			}
+		}
+
 		pushCtx := user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
@@ -1745,6 +1769,21 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}
 	}
+}
+
+// isDistributorWorkerOrgID reports whether orgID matches the synthetic worker-name pattern
+// that the distributor injects as X-Scope-OrgID when opening a long-lived PushStream:
+//
+//	"ingester-<addr>-stream-push-worker-<N>"
+//
+// When this pattern is detected, PushStream bypasses the orgID == req.TenantID check and
+// instead trusts req.TenantID from the payload.
+//
+// Note: trusting this pattern alone is not sufficient — an attacker who knows the
+// pattern can spoof it and write to any tenant.  The stream-level gRPC interceptor
+// enabled via -distributor.sign-write-requests-keys provides cryptographic proof.
+func isDistributorWorkerOrgID(orgID string) bool {
+	return distributorWorkerOrgIDRe.MatchString(orgID)
 }
 
 func (u *userTSDB) acquireReadLock() error {
@@ -1807,7 +1846,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		resp, err = i.queryExemplars(ctx, userID, req)
 	})
 	return resp, err
@@ -1877,7 +1916,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
 		defer cleanup()
@@ -1896,7 +1935,7 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelValuesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
@@ -1993,7 +2032,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
 		defer cleanup()
@@ -2012,7 +2051,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelNamesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
@@ -2109,7 +2148,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result = &client.MetricsForLabelMatchersResponse{}
 		var cleanup func()
 		cleanup, err = i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
@@ -2133,7 +2172,7 @@ func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatc
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result := &client.MetricsForLabelMatchersStreamResponse{}
 
 		var cleanup func()
@@ -2273,7 +2312,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		userMetadata := i.getUserMetadata(userID)
 
 		if userMetadata == nil {
@@ -2415,7 +2454,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		err = i.queryStream(ctx, userID, req, stream, spanlog)
 	})
 
@@ -2868,6 +2907,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		activeQueriedSeries: activeQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
+		trackerCounter:      newTrackerCounter(),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 

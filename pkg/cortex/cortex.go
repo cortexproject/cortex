@@ -217,7 +217,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
-	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled); err != nil {
+	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled, c.Distributor.HATrackerConfig.UpdateTimeout, c.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
 	if err := c.LimitsConfig.ValidateQueryLimits("default", c.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {
@@ -229,7 +229,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Distributor.Validate(c.LimitsConfig); err != nil {
 		return errors.Wrap(err, "invalid distributor config")
 	}
-	if err := c.Querier.Validate(); err != nil {
+	if err := c.Querier.Validate(c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
 	if c.Querier.TimeoutClassificationEnabled && !c.Frontend.Handler.QueryStatsEnabled {
@@ -423,6 +423,13 @@ func (t *Cortex) setupRequestSigning() {
 	if t.Cfg.Distributor.SignWriteRequestsEnabled {
 		util_log.WarnExperimentalUse("Distributor SignWriteRequestsEnabled")
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, grpcclient.UnarySigningServerInterceptor)
+
+		// When signing keys are configured, authenticate PushStream connections.
+		// All keys in the list are accepted by the server; the first key is used by
+		// the client to sign.  Multiple keys enable zero-downtime key rotation.
+		if keys := t.Cfg.Distributor.SignWriteRequestsKeys.Value(); len(keys) > 0 {
+			t.Cfg.Server.GRPCStreamMiddleware = append(t.Cfg.Server.GRPCStreamMiddleware, grpcclient.NewStreamSigningServerInterceptor(keys...))
+		}
 	}
 }
 

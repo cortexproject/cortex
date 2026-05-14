@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path"
 	"strings"
 	"testing"
@@ -182,6 +183,39 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetricCustomerKey(
             thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="iter"} 0
             thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="upload"} 0
 		`), "thanos_objstore_bucket_operation_failures_total"))
+}
+
+func TestUpdater_UpdateIndex_ShouldSkipBlockWithMetaAttributesNotFound(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+
+	// Simulate a race condition where Get() on meta.json succeeds but Attributes() returns not-found.
+	// This can happen in object stores like S3 when meta.json is deleted between the Get and Attributes calls.
+	bkt = &testutil.MockBucketFailure{
+		Bucket: bkt,
+		AttributesFailures: map[string]error{
+			path.Join(userID, block2.ULID.String(), "meta.json"): os.ErrNotExist,
+		},
+	}
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1},
+		[]*metadata.DeletionMark{})
+
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block2.ULID], ErrBlockMetaNotFound))
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {

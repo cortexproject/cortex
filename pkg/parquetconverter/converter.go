@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -543,6 +544,17 @@ func (c *Converter) ownBlock(ring ring.ReadRing, blockId string) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+// RingHandler is an HTTP handler that returns the ring status page.
+func (c *Converter) RingHandler(w http.ResponseWriter, req *http.Request) {
+	if c.State() != services.Running {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Parquet Converter is not running yet."))
+		return
+	}
+
+	c.ring.ServeHTTP(w, req)
 }
 
 func (c *Converter) cleanupMetricsForNotOwnedUser(userID string) {

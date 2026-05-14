@@ -757,40 +757,6 @@ receivers:
 	}
 }
 
-func TestMultitenantAlertmanager_migrateStateFilesToPerTenantDirectories(t *testing.T) {
-	ctx := context.Background()
-
-	const (
-		user1 = "user1"
-		user2 = "user2"
-	)
-
-	store, err := prepareInMemoryAlertStore()
-	require.NoError(t, err)
-	require.NoError(t, store.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
-		User:      user2,
-		RawConfig: simpleConfigOne,
-		Templates: []*alertspb.TemplateDesc{},
-	}))
-
-	reg := prometheus.NewPedanticRegistry()
-	cfg := mockAlertmanagerConfig(t)
-	am, err := createMultitenantAlertmanager(cfg, nil, nil, store, nil, nil, log.NewNopLogger(), reg)
-	require.NoError(t, err)
-
-	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user1))
-	createFile(t, filepath.Join(cfg.DataDir, "silences:"+user1))
-	createFile(t, filepath.Join(cfg.DataDir, "nflog:"+user2))
-	createFile(t, filepath.Join(cfg.DataDir, "templates", user2, "template.tpl"))
-
-	require.NoError(t, am.migrateStateFilesToPerTenantDirectories())
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, notificationLogSnapshot)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user1, silencesSnapshot)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, notificationLogSnapshot)))
-	require.True(t, dirExists(t, filepath.Join(cfg.DataDir, user2, templatesDir)))
-	require.True(t, fileExists(t, filepath.Join(cfg.DataDir, user2, templatesDir, "template.tpl")))
-}
-
 func fileExists(t *testing.T, path string) bool {
 	return checkExists(t, path, false)
 }
@@ -1775,7 +1741,12 @@ func TestMultitenantAlertmanager_InitialSyncFailureWithSharding(t *testing.T) {
 	err = am.AwaitRunning(ctx)
 	require.Error(t, err)
 	require.Equal(t, services.Failed, am.State())
-	require.False(t, am.ringLifecycler.IsRegistered())
+
+	// The lifecycler's background goroutine may briefly re-register the instance
+	// before the stopping function fully unregisters it. Poll until unregistered.
+	require.Eventually(t, func() bool {
+		return !am.ringLifecycler.IsRegistered()
+	}, 5*time.Second, 100*time.Millisecond)
 	require.NotNil(t, am.ring)
 }
 

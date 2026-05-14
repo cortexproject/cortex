@@ -116,6 +116,101 @@ func TestIngesterStreamPushConnection(t *testing.T) {
 	assertServiceMetricsPrefixes(t, Ingester, ingester3)
 }
 
+func TestIngesterStreamPushConnectionWithMatchingSigningKey(t *testing.T) {
+	const signingKey = "shared-secret-for-integration-test"
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	flags := BlocksStorageFlags()
+	flags["-distributor.use-stream-push"] = "true"
+	flags["-distributor.replication-factor"] = "1"
+	flags["-distributor.sign-write-requests"] = "true"
+	flags["-distributor.sign-write-requests-keys"] = signingKey
+	flags["-ingester.heartbeat-period"] = "1s"
+	flags["-distributor.ring.heartbeat-period"] = "1s"
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
+
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
+
+	now := time.Now()
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	// Push a few series; all should succeed because the signing key matches.
+	for i := 0; i < 5; i++ {
+		series, _ := generateSeries(fmt.Sprintf("test_signing_ok_%d", i), now)
+		res, err := client.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode,
+			"push must succeed when distributor and ingester share the same signing key")
+	}
+}
+
+func TestIngesterStreamPushConnectionWithMismatchedSigningKey(t *testing.T) {
+	const distributorKey = "distributor-key"
+	const ingesterKey = "ingester-key-different"
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Distributor signs with distributorKey.
+	distributorFlags := BlocksStorageFlags()
+	distributorFlags["-distributor.use-stream-push"] = "true"
+	distributorFlags["-distributor.replication-factor"] = "1"
+	distributorFlags["-distributor.sign-write-requests"] = "true"
+	distributorFlags["-distributor.sign-write-requests-keys"] = distributorKey
+	distributorFlags["-ingester.heartbeat-period"] = "1s"
+
+	// Ingester verifies with ingesterKey (intentionally different).
+	ingesterFlags := BlocksStorageFlags()
+	ingesterFlags["-distributor.use-stream-push"] = "true"
+	ingesterFlags["-distributor.replication-factor"] = "1"
+	ingesterFlags["-distributor.sign-write-requests"] = "true"
+	ingesterFlags["-distributor.sign-write-requests-keys"] = ingesterKey
+	ingesterFlags["-ingester.heartbeat-period"] = "1s"
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, distributorFlags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), distributorFlags, "")
+	ingester1 := e2ecortex.NewIngester("ingester-1", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), ingesterFlags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester1))
+
+	require.NoError(t, distributor.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"},
+		e2e.WithLabelMatchers(
+			labels.MustNewMatcher(labels.MatchEqual, "name", "ingester"),
+			labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE")),
+		e2e.WaitMissingMetrics))
+
+	now := time.Now()
+	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ {
+		series, _ := generateSeries(fmt.Sprintf("test_signing_mismatch_%d", i), now)
+		res, err := client.Push(series)
+		if err == nil {
+			require.NotEqual(t, 200, res.StatusCode,
+				"push must fail when distributor and ingester use different signing keys")
+		}
+	}
+}
+
 func TestIngesterStreamPushConnectionWithError(t *testing.T) {
 
 	s, err := e2e.NewScenario(networkName)

@@ -2,6 +2,19 @@
   "$id": "https://raw.githubusercontent.com/cortexproject/cortex/master/schemas/cortex-config-schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "definitions": {
+    "ActiveSeriesTrackerConfig": {
+      "properties": {
+        "matchers": {
+          "description": "PromQL series selector (e.g. {__name__=~\"api_.*\"}). All matchers must match for a series to be counted.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Name of the tracker, used as a label value in the emitted metric.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "DisabledRuleGroup": {
       "properties": {
         "name": {
@@ -1888,7 +1901,7 @@
                 },
                 "bucket_index_content_ttl": {
                   "default": "5m0s",
-                  "description": "How long to cache content of the bucket index.",
+                  "description": "How long to cache content of the bucket index. 0 disables caching",
                   "type": "string",
                   "x-cli-flag": "blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl",
                   "x-format": "duration"
@@ -2955,7 +2968,7 @@
             },
             "close_idle_tsdb_timeout": {
               "default": "0s",
-              "description": "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value should be equal or higher than -querier.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.",
+              "description": "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value must be greater than -limits.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.",
               "type": "string",
               "x-cli-flag": "blocks-storage.tsdb.close-idle-tsdb-timeout",
               "x-format": "duration"
@@ -3734,13 +3747,6 @@
               "type": "boolean",
               "x-cli-flag": "distributor.ha-tracker.enable-startup-sync"
             },
-            "ha_tracker_failover_timeout": {
-              "default": "30s",
-              "description": "The timeout after which a new replica will be accepted if the currently elected replica stops sending data. This value must be greater than the update timeout plus the maximum jitter.",
-              "type": "string",
-              "x-cli-flag": "distributor.ha-tracker.failover-timeout",
-              "x-format": "duration"
-            },
             "ha_tracker_update_timeout": {
               "default": "15s",
               "description": "The time interval that must pass since the last timestamp update in the KV store before updating it again for a given cluster.",
@@ -4103,6 +4109,11 @@
           "description": "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.",
           "type": "boolean",
           "x-cli-flag": "distributor.sign-write-requests"
+        },
+        "sign_write_requests_keys": {
+          "description": "EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating PushStream connections between distributors and ingesters. The first key is used by the distributor to sign; all keys are accepted by the ingester. It only takes effect when the -distributor.sign-write-requests is true. The key change procedure for zero downtime is: (1) redeploy ingesters first with 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy both with 'newkey' to drop the old key.",
+          "type": "string",
+          "x-cli-flag": "distributor.sign-write-requests-keys"
         },
         "use_stream_push": {
           "default": false,
@@ -4887,13 +4898,13 @@
                   "properties": {
                     "cpu_utilization": {
                       "default": 0,
-                      "description": "EXPERIMENTAL: Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
                       "type": "number",
                       "x-cli-flag": "ingester.query-protection.rejection.threshold.cpu-utilization"
                     },
                     "heap_utilization": {
                       "default": 0,
-                      "description": "EXPERIMENTAL: Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
                       "type": "number",
                       "x-cli-flag": "ingester.query-protection.rejection.threshold.heap-utilization"
                     }
@@ -4949,6 +4960,14 @@
           "description": "[Experimental] Flag to enable handling of samples with mixed external labels identifying replicas in an HA Prometheus setup. Supported only if -distributor.ha-tracker.enable-for-all-users is true.",
           "type": "boolean",
           "x-cli-flag": "experimental.distributor.ha-tracker.mixed-ha-samples"
+        },
+        "active_series_trackers": {
+          "default": [],
+          "description": "List of active series tracker configurations. Each tracker counts active series matching its matchers and exposes the count as a metric.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "alertmanager_max_alerts_count": {
           "default": 0,
@@ -5118,6 +5137,13 @@
           "description": "Prometheus label to look for in samples to identify a Prometheus HA replica.",
           "type": "string",
           "x-cli-flag": "distributor.ha-tracker.replica"
+        },
+        "ha_tracker_failover_timeout": {
+          "default": "30s",
+          "description": "If the elected replica doesn't send samples in this time, the HA tracker will accept a new replica. This value must be greater than the update timeout plus the maximum jitter.",
+          "type": "string",
+          "x-cli-flag": "distributor.ha-tracker.failover-timeout",
+          "x-format": "duration"
         },
         "ingestion_burst_size": {
           "default": 50000,
@@ -6041,6 +6067,33 @@
           "description": "Enable returning samples stats per steps in query response.",
           "type": "boolean",
           "x-cli-flag": "querier.per-step-stats-enabled"
+        },
+        "query_protection": {
+          "properties": {
+            "rejection": {
+              "properties": {
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.rejection.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.rejection.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
         },
         "response_compression": {
           "default": "gzip",
@@ -8389,13 +8442,13 @@
                   "properties": {
                     "cpu_utilization": {
                       "default": 0,
-                      "description": "EXPERIMENTAL: Max CPU utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
                       "type": "number",
                       "x-cli-flag": "store-gateway.query-protection.rejection.threshold.cpu-utilization"
                     },
                     "heap_utilization": {
                       "default": 0,
-                      "description": "EXPERIMENTAL: Max heap utilization that this ingester can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before rejecting new query request (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
                       "type": "number",
                       "x-cli-flag": "store-gateway.query-protection.rejection.threshold.heap-utilization"
                     }

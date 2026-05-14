@@ -65,6 +65,7 @@ const (
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
 	reasonUnOptimizedRegexMatcher  = `unoptimized_regex_matcher`
+	reasonQueryTooExpensive        = "query_too_expensive"
 
 	limitTooManySamples          = `query processing would load too many samples into memory`
 	limitTimeRangeExceeded       = `the query time range exceeds the limit`
@@ -74,6 +75,7 @@ const (
 	limitChunkBytesFetched       = `the query hit the aggregated chunks size limit`
 	limitDataBytesFetched        = `the query hit the aggregated data size limit`
 	limitUnOptimizedRegexMatcher = `unoptimized regex matcher`
+	limitQueryTooExpensive       = `query spent too long in evaluation`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -562,16 +564,6 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		}
 	}
 
-	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
-	if shouldLog {
-		logMessage = append(logMessage, formatQueryString(queryString)...)
-		if error != nil {
-			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
-		} else {
-			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
-		}
-	}
-
 	var reason string
 	if statusCode == http.StatusTooManyRequests {
 		reason = reasonTooManyRequests
@@ -602,6 +594,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonBytesLimitStoreGateway
 		} else if strings.Contains(errMsg, limitUnOptimizedRegexMatcher) {
 			reason = reasonUnOptimizedRegexMatcher
+		} else if strings.Contains(errMsg, limitQueryTooExpensive) {
+			reason = reasonQueryTooExpensive
 		}
 	} else if statusCode == http.StatusServiceUnavailable && error != nil {
 		errMsg := error.Error()
@@ -610,8 +604,19 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		}
 	}
 	if len(reason) > 0 {
+		logMessage = append(logMessage, "reason", reason)
 		f.rejectedQueries.WithLabelValues(reason, source, userID).Inc()
 		stats.LimitHit = reason
+	}
+
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		if error != nil {
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		} else {
+			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		}
 	}
 }
 

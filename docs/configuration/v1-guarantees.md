@@ -114,6 +114,7 @@ Currently experimental features are:
   - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
+  - Enable stream push authentication on Distributor/Ingester. (`-distributor.sign-write-requests-keys`)
   - Add `__type__` and `__unit__` labels to OTLP and remote write v2 requests (`-distributor.enable-type-and-unit-labels`)
   - Handle StartTimestampMs (ST) for remote write v2 samples and histograms, using CreatedTimestamp (CT) as a fallback when ST is not set (`-distributor.enable-start-timestamp`)
 - Ingester: Series Queried Metric
@@ -129,3 +130,6 @@ Currently experimental features are:
     - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
     - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
 - HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled, fetches all tracked keys on startup to populate the local cache.
+- Ingester: Active Series Tracker
+  - Per-tenant `active_series_trackers` configuration in runtime config overrides
+  - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric

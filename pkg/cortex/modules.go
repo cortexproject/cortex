@@ -245,6 +245,11 @@ func (t *Cortex) initDistributorService() (serv services.Service, err error) {
 	t.Cfg.Distributor.DistributorRing.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Distributor.NameValidationScheme = t.Cfg.NameValidationScheme
 	t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsEnabled = t.Cfg.Distributor.SignWriteRequestsEnabled
+	// The client signs with the first key in the list; additional keys are only used on the
+	// server side (ingester) for accepting signatures during key rotation.
+	if keys := t.Cfg.Distributor.SignWriteRequestsKeys.Value(); len(keys) > 0 {
+		t.Cfg.IngesterClient.GRPCClientConfig.SignWriteRequestsKey = keys[0]
+	}
 
 	// Check whether the distributor can join the distributors ring, which is
 	// whenever it's not running as an internal dependency (ie. querier or
@@ -284,7 +289,7 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData)
+	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
 
 	// Use distributor as default MetadataQuerier
 	t.MetadataQuerier = t.Distributor
@@ -701,7 +706,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		queryEngine = engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 	} else {
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData)
+		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
@@ -785,7 +790,14 @@ func (t *Cortex) initAlertManager() (serv services.Service, err error) {
 
 func (t *Cortex) initParquetConverter() (serv services.Service, err error) {
 	t.Cfg.ParquetConverter.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
-	return parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.OverridesConfig)
+	t.Parquetconverter, err = parquetconverter.NewConverter(t.Cfg.ParquetConverter, t.Cfg.BlocksStorage, t.Cfg.Compactor.BlockRanges.ToMilliseconds(), util_log.Logger, prometheus.DefaultRegisterer, t.OverridesConfig)
+	if err != nil {
+		return
+	}
+
+	// Expose HTTP endpoints.
+	t.API.RegisterParquetConverter(t.Parquetconverter)
+	return t.Parquetconverter, nil
 }
 
 func (t *Cortex) initCompactor() (serv services.Service, err error) {
@@ -949,7 +961,7 @@ func (t *Cortex) setupModuleManager() error {
 		Ingester:                 {IngesterService, OverridesConfig, API},
 		IngesterService:          {OverridesConfig, RuntimeConfig, MemberlistKV, ResourceMonitor},
 		Flusher:                  {OverridesConfig, API},
-		Queryable:                {OverridesConfig, DistributorService, OverridesConfig, Ring, API, StoreQueryable, MemberlistKV},
+		Queryable:                {OverridesConfig, DistributorService, OverridesConfig, Ring, API, StoreQueryable, MemberlistKV, ResourceMonitor},
 		Querier:                  {TenantFederation},
 		StoreQueryable:           {OverridesConfig, OverridesConfig, MemberlistKV, GrpcClientService},
 		QueryFrontendTripperware: {API, OverridesConfig},

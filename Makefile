@@ -170,6 +170,7 @@ protos: $(PROTO_GOS)
 lint:
 	misspell -error docs
 
+
 	# Configured via .golangci.yml.
 	golangci-lint run
 

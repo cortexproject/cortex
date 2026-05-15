@@ -160,11 +160,15 @@
 &lt;li>&lt;code>{{ .ExternalURL }}&lt;/code> — the resolved external URL for this tenant (set via &lt;code>ruler_external_url&lt;/code>)&lt;/li>
 &lt;li>&lt;code>{{ .Expression }}&lt;/code> — the PromQL expression that triggered the alert&lt;/li>
 &lt;/ul>
-&lt;p>Built-in Go template functions like &lt;code>urlquery&lt;/code> are available for URL encoding.&lt;/p>
-&lt;p>Example for Grafana Explore:&lt;/p>
+&lt;p>Built-in Go template functions like &lt;code>urlquery&lt;/code> are available for URL encoding. Cortex also provides a &lt;code>jsonEscape&lt;/code> function that escapes a string for embedding inside a JSON string value (e.g., &lt;code>&amp;quot;&lt;/code> → &lt;code>\&amp;quot;&lt;/code>). Use &lt;code>jsonEscape&lt;/code> when the expression is placed inside a JSON-encoded URL parameter, such as Grafana&amp;rsquo;s &lt;code>panes&lt;/code>.&lt;/p>
+&lt;p>Example for Grafana Explore (simple query parameter):&lt;/p>
 &lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_external_url&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;http://localhost:3000&amp;#34;&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_alert_generator_url_template&lt;/span>: &amp;gt;-&lt;span style="color:#e6db74">
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &lt;/span> {{ &lt;span style="color:#ae81ff">.ExternalURL }}/explore?expr={{ urlquery .Expression }}&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Example for Grafana Explore (JSON-encoded &lt;code>panes&lt;/code> parameter — use &lt;code>jsonEscape&lt;/code> to properly escape quotes in expressions):&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_external_url&lt;/span>: &lt;span style="color:#e6db74">&amp;#34;http://localhost:3000&amp;#34;&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">ruler_alert_generator_url_template&lt;/span>: &amp;gt;-&lt;span style="color:#e6db74">
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> &lt;/span> {{ &lt;span style="color:#ae81ff">.ExternalURL }}/explore?schemaVersion=1&amp;amp;panes=%7B%22default%22:%7B%22datasource%22:%22my-datasource%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery (jsonEscape .Expression) }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&amp;amp;orgId=1&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;h3 id="try-it-out">Try It Out&lt;/h3>
 &lt;ol>
 &lt;li>&lt;strong>Load alertmanager configs&lt;/strong> for tenant-a and tenant-b:&lt;/li>
@@ -221,6 +225,13 @@
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: critical
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Error rate exceeds 5%&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: AlwaysFiringWithQuotes
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: count(up{job!=&amp;#34;nonexistent&amp;#34;} or vector(1))
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: info
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Demo alert with quotes in expression&amp;#34;
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Alert rules for tenant-b&lt;/span>
@@ -245,6 +256,13 @@
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: warning
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;P99 latency exceeds 2s&amp;#34;
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> - alert: AlwaysFiringWithQuotes
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> expr: count(up{job!=&amp;#34;nonexistent&amp;#34;} or vector(1))
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> for: 0m
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> labels:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> severity: info
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> annotations:
+&lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74"> summary: &amp;#34;Demo alert with quotes in expression&amp;#34;
 &lt;/span>&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#e6db74">EOF&lt;/span>
 &lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;ol start="3">
 &lt;li>

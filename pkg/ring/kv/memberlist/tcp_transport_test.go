@@ -326,7 +326,7 @@ func TestTCPTransport_StreamHoldsSlotUntilClose(t *testing.T) {
 			c.Close() //nolint:errcheck
 		}
 	}()
-	for i := 0; i < maxConns; i++ {
+	for range maxConns {
 		clients = append(clients, openStreamConn())
 	}
 

@@ -2833,11 +2833,18 @@ func TestExecuteGeneratorURLTemplate(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			name:        "template with multiple variables",
-			tmplStr:     "{{ .ExternalURL }}/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22{{ urlquery .Expression }}%22%7D%5D%7D",
+			name:        "template with JSON-encoded panes parameter",
+			tmplStr:     "{{ .ExternalURL }}/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22{{ urlquery (jsonEscape .Expression) }}%22%7D%5D%7D",
 			externalURL: "http://grafana:3000",
 			expr:        "up",
 			expected:    "http://grafana:3000/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22up%22%7D%5D%7D",
+		},
+		{
+			name:        "grafana explore template with expression containing double quotes",
+			tmplStr:     `{{ .ExternalURL }}/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22tenant-a%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22{{ urlquery (jsonEscape .Expression) }}%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1`,
+			externalURL: "http://localhost:3000",
+			expr:        `count(up{job!="nonexistent"} or vector(1))`,
+			expected:    `http://localhost:3000/explore?schemaVersion=1&panes=%7B%22default%22:%7B%22datasource%22:%22tenant-a%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22count%28up%7Bjob%21%3D%5C%22nonexistent%5C%22%7D+or+vector%281%29%29%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D%7D%7D&orgId=1`,
 		},
 		{
 			name:        "javascript URI scheme is rejected",

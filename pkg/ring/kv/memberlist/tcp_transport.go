@@ -247,19 +247,20 @@ func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 		if t.connSemaphore != nil {
 			if !t.connSemaphore.TryAcquire(1) {
 				t.rejectedConnections.Inc()
-				level.Warn(t.logger).Log("msg", "max concurrent connections reached, closing connection", "remote", conn.RemoteAddr())
+				level.Debug(t.logger).Log("msg", "max concurrent connections reached, closing connection", "remote", conn.RemoteAddr())
 				_ = conn.Close()
 				continue
 			}
 		}
 
 		go func() {
-			defer func() {
-				if t.connSemaphore != nil {
-					t.connSemaphore.Release(1)
-				}
-			}()
-			t.handleConnection(conn)
+			// handleConnection returns true when it wrapped the conn in a
+			// semaphoreConn and transferred ownership of the slot to that
+			// wrapper (stream path). In that case we must not release here.
+			semTransferred := t.handleConnection(conn)
+			if t.connSemaphore != nil && !semTransferred {
+				t.connSemaphore.Release(1)
+			}
 		}()
 	}
 }
@@ -273,7 +274,7 @@ func (t *TCPTransport) debugLog() log.Logger {
 	return noopLogger
 }
 
-func (t *TCPTransport) handleConnection(conn net.Conn) {
+func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 	t.debugLog().Log("msg", "New connection", "addr", conn.RemoteAddr())
 
 	closeConn := true
@@ -310,9 +311,16 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 			_ = conn.SetReadDeadline(time.Time{})
 		}
 
-		// hand over this connection to memberlist
+		// hand over this connection to memberlist.
+		// If the semaphore is active, wrap the conn so that the slot is held
+		// for the real lifetime of the stream. The memberlist will close it.
 		closeConn = false
-		t.connCh <- conn
+		if t.connSemaphore != nil {
+			t.connCh <- &semaphoreConn{Conn: conn, sem: t.connSemaphore}
+			semTransferred = true
+		} else {
+			t.connCh <- conn
+		}
 	} else if messageType(msgType[0]) == packet {
 		// it's a memberlist "packet", which contains an address and data.
 		t.receivedPackets.Inc()
@@ -383,6 +391,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn) {
 		t.unknownConnections.Inc()
 		level.Error(t.logger).Log("msg", "unknown message type", "msgType", msgType, "remote", conn.RemoteAddr())
 	}
+	return
 }
 
 type addr string
@@ -393,6 +402,20 @@ func (a addr) Network() string {
 
 func (a addr) String() string {
 	return string(a)
+}
+
+// semaphoreConn wraps a net.Conn and releases a semaphore slot exactly once
+// when the connection is closed. It is used on the stream path to keep the
+// concurrent-connection slot held for the real lifetime of the connection.
+type semaphoreConn struct {
+	net.Conn
+	sem  *semaphore.Weighted
+	once sync.Once
+}
+
+func (c *semaphoreConn) Close() error {
+	c.once.Do(func() { c.sem.Release(1) })
+	return c.Conn.Close()
 }
 
 func (t *TCPTransport) getConnection(addr string, timeout time.Duration) (net.Conn, error) {

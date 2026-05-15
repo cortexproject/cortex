@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -240,8 +241,9 @@ func TestTCPTransport_MaxConcurrentConnections(t *testing.T) {
 		}
 	}()
 
-	// Give goroutines a moment to acquire the semaphore slots.
-	time.Sleep(100 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.receivedPackets) == float64(maxConns)
+	}, 2*time.Second, 10*time.Millisecond, "server never accepted %d connections", maxConns)
 
 	// This extra connection should be rejected.
 	var wg sync.WaitGroup
@@ -259,4 +261,89 @@ func TestTCPTransport_MaxConcurrentConnections(t *testing.T) {
 	wg.Wait()
 
 	assert.Contains(t, logs.String(), "max concurrent connections reached")
+}
+
+// TestTCPTransport_StreamHoldsSlotUntilClose asserts that
+// -memberlist.max-concurrent-connections bounds the number of *live* inbound
+// TCP connections: once a stream conn has been handed off to memberlist via
+// StreamCh(), its slot stays held until the conn is actually closed.
+func TestTCPTransport_StreamHoldsSlotUntilClose(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	const maxConns = 2
+
+	cfg := TCPTransportConfig{}
+	flagext.DefaultValues(&cfg)
+	cfg.BindAddrs = []string{"127.0.0.1"}
+	cfg.BindPort = 0
+	cfg.PacketReadTimeout = 5 * time.Second
+	cfg.MaxConcurrentConnections = maxConns
+
+	transport, err := NewTCPTransport(cfg, logger)
+	require.NoError(t, err)
+	defer transport.Shutdown() //nolint:errcheck
+
+	port := transport.GetAutoBindPort()
+
+	// Consumer goroutine: drains StreamCh and holds conns alive (never closes
+	// them) — simulating memberlist actively using streams.
+	var heldMu sync.Mutex
+	var held []net.Conn
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case c := <-transport.StreamCh():
+				heldMu.Lock()
+				held = append(held, c)
+				heldMu.Unlock()
+			}
+		}
+	}()
+	defer func() {
+		close(done)
+		heldMu.Lock()
+		for _, c := range held {
+			c.Close() //nolint:errcheck
+		}
+		heldMu.Unlock()
+	}()
+
+	openStreamConn := func() net.Conn {
+		c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		require.NoError(t, err)
+		_, err = c.Write([]byte{byte(stream)})
+		require.NoError(t, err)
+		return c
+	}
+
+	// Fill the semaphore with maxConns live stream handoffs.
+	clients := make([]net.Conn, 0, maxConns+1)
+	defer func() {
+		for _, c := range clients {
+			c.Close() //nolint:errcheck
+		}
+	}()
+	for i := 0; i < maxConns; i++ {
+		clients = append(clients, openStreamConn())
+	}
+
+	// Wait until memberlist side has observed all maxConns streams.
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.incomingStreams) == float64(maxConns)
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// One extra stream conn. If the slot is correctly held for the conn's
+	// real lifetime, the transport must reject this one because all slots
+	// are still occupied by the held streams above.
+	clients = append(clients, openStreamConn())
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.rejectedConnections) >= 1
+	}, 2*time.Second, 10*time.Millisecond,
+		"expected extra stream conn to be rejected while %d prior streams are held open, "+
+			"but the transport released the slot on handoff — flag does not bound live connections",
+		maxConns)
 }

@@ -357,7 +357,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 		// Reject oversized packets
 		if t.cfg.MaxPacketSize > 0 && int64(len(buf)) > t.cfg.MaxPacketSize {
 			t.receivedPacketsErrors.Inc()
-			level.Warn(t.logger).Log("msg", "packet too large, dropping", "size", len(buf), "max", t.cfg.MaxPacketSize, "remote", conn.RemoteAddr())
+			level.Debug(t.logger).Log("msg", "packet too large, dropping", "size", len(buf), "max", t.cfg.MaxPacketSize, "remote", conn.RemoteAddr())
 			return
 		}
 

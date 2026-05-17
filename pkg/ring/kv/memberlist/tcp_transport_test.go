@@ -118,6 +118,10 @@ func TestTCPTransport_PacketDigestMismatch(t *testing.T) {
 	}
 
 	assert.Contains(t, logs.String(), "packet digest mismatch")
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.activeConnections) == 0
+	}, 2*time.Second, 10*time.Millisecond, "activeConnections should be back to 0 after digest mismatch")
 }
 
 func TestTCPTransport_PacketReadTimeout(t *testing.T) {
@@ -154,6 +158,10 @@ func TestTCPTransport_PacketReadTimeout(t *testing.T) {
 	oneByte := make([]byte, 1)
 	_, readErr := conn.Read(oneByte)
 	assert.Error(t, readErr, "expected connection to be closed by server after read timeout")
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.activeConnections) == 0
+	}, 2*time.Second, 10*time.Millisecond, "activeConnections should be back to 0 after read timeout")
 }
 
 func TestTCPTransport_MaxPacketSize(t *testing.T) {
@@ -200,6 +208,10 @@ func TestTCPTransport_MaxPacketSize(t *testing.T) {
 	}
 
 	assert.Contains(t, logs.String(), "packet too large")
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.activeConnections) == 0
+	}, 2*time.Second, 10*time.Millisecond, "activeConnections should be back to 0 after oversized packet")
 }
 
 func TestTCPTransport_MaxConcurrentConnections(t *testing.T) {
@@ -261,6 +273,9 @@ func TestTCPTransport_MaxConcurrentConnections(t *testing.T) {
 	wg.Wait()
 
 	assert.Contains(t, logs.String(), "max concurrent connections reached")
+
+	assert.GreaterOrEqual(t, testutil.ToFloat64(transport.rejectedConnections), float64(1))
+	assert.Equal(t, float64(maxConns), testutil.ToFloat64(transport.activeConnections))
 }
 
 // TestTCPTransport_StreamHoldsSlotUntilClose asserts that

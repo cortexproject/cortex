@@ -124,6 +124,8 @@ type TCPTransport struct {
 	sentPacketsErrors     prometheus.Counter
 	unknownConnections    prometheus.Counter
 	rejectedConnections   prometheus.Counter
+	activeConnections     prometheus.Gauge
+	packetReceiveDuration prometheus.Histogram
 }
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
@@ -253,6 +255,7 @@ func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 			}
 		}
 
+		t.activeConnections.Inc()
 		go func() {
 			// handleConnection returns true when it wrapped the conn in a
 			// semaphoreConn and transferred ownership of the slot to that
@@ -261,6 +264,7 @@ func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 			if t.connSemaphore != nil && !semTransferred {
 				t.connSemaphore.Release(1)
 			}
+			t.activeConnections.Dec()
 		}()
 	}
 }
@@ -325,6 +329,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 		// it's a memberlist "packet", which contains an address and data.
 		t.receivedPackets.Inc()
 
+		packetStart := time.Now()
 		// before reading packet, read the address
 		addrLengthBuf := []byte{0}
 		_, err := io.ReadFull(conn, addrLengthBuf)
@@ -348,6 +353,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 			reader = io.LimitReader(conn, t.cfg.MaxPacketSize+1)
 		}
 		buf, err := io.ReadAll(reader)
+		t.packetReceiveDuration.Observe(time.Since(packetStart).Seconds())
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
 			level.Warn(t.logger).Log("msg", "error while reading packet data", "err", err, "remote", conn.RemoteAddr())
@@ -728,5 +734,23 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Subsystem: subsystem,
 		Name:      "rejected_connections_total",
 		Help:      "Number of inbound TCP connections rejected because the concurrent connection limit was reached",
+	})
+
+	t.activeConnections = promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
+		Namespace: t.cfg.MetricsNamespace,
+		Subsystem: subsystem,
+		Name:      "active_connections",
+		Help:      "Current number of active inbound TCP connections.",
+	})
+
+	t.packetReceiveDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		Namespace:                       t.cfg.MetricsNamespace,
+		Subsystem:                       subsystem,
+		Name:                            "packet_receive_duration_seconds",
+		Help:                            "Duration (in seconds) of inbound packet-type message reads.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
 	})
 }

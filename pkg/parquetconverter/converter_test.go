@@ -529,7 +529,7 @@ func TestConverter_WriteNoConvertMarkForBlockWithTooManyLabels(t *testing.T) {
 
 	err = services.StartAndAwaitRunning(context.Background(), c)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(ctx, c)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
 
 	// Start the converter
 	err = c.convertUser(ctx, logger, c.ring, user)
@@ -597,7 +597,7 @@ func TestConverter_SkipBlockWhenNoConvertMarkAlreadyExists(t *testing.T) {
 
 	err = services.StartAndAwaitRunning(context.Background(), c)
 	require.NoError(t, err)
-	defer services.StopAndAwaitTerminated(ctx, c)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
 
 	// start converter
 	err = c.convertUser(ctx, logger, c.ring, user)

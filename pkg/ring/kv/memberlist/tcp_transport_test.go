@@ -350,6 +350,9 @@ func TestTCPTransport_StreamHoldsSlotUntilClose(t *testing.T) {
 		return testutil.ToFloat64(transport.incomingStreams) == float64(maxConns)
 	}, 2*time.Second, 10*time.Millisecond)
 
+	// activeConnections must reflect both stream slots still being held.
+	assert.Equal(t, float64(maxConns), testutil.ToFloat64(transport.activeConnections))
+
 	// One extra stream conn. If the slot is correctly held for the conn's
 	// real lifetime, the transport must reject this one because all slots
 	// are still occupied by the held streams above.
@@ -361,4 +364,89 @@ func TestTCPTransport_StreamHoldsSlotUntilClose(t *testing.T) {
 		"expected extra stream conn to be rejected while %d prior streams are held open, "+
 			"but the transport released the slot on handoff — flag does not bound live connections",
 		maxConns)
+}
+
+// TestTCPTransport_ActiveConnectionsCountsLiveStreams asserts that
+// active_connections reflects the number of *live* inbound TCP connections,
+// including stream connections that have been handed off to memberlist but
+// have not yet been closed. Operators rely on this gauge to size
+// -memberlist.max-concurrent-connections.
+func TestTCPTransport_ActiveConnectionsCountsLiveStreams(t *testing.T) {
+	logger := log.NewNopLogger()
+
+	const numStreams = 3
+
+	cfg := TCPTransportConfig{}
+	flagext.DefaultValues(&cfg)
+	cfg.BindAddrs = []string{"127.0.0.1"}
+	cfg.BindPort = 0
+	cfg.PacketReadTimeout = 5 * time.Second
+	// Plenty of headroom — we want this test to assert on the gauge, not on the
+	// semaphore.
+	cfg.MaxConcurrentConnections = numStreams + 5
+
+	transport, err := NewTCPTransport(cfg, logger)
+	require.NoError(t, err)
+	defer transport.Shutdown() //nolint:errcheck
+
+	port := transport.GetAutoBindPort()
+
+	// Consumer goroutine: drains StreamCh and holds conns alive (never closes
+	// them) — simulating memberlist actively using streams.
+	var heldMu sync.Mutex
+	var held []net.Conn
+	done := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case c := <-transport.StreamCh():
+				heldMu.Lock()
+				held = append(held, c)
+				heldMu.Unlock()
+			}
+		}
+	}()
+	defer func() {
+		close(done)
+		heldMu.Lock()
+		for _, c := range held {
+			c.Close() //nolint:errcheck
+		}
+		heldMu.Unlock()
+	}()
+
+	openStreamConn := func() net.Conn {
+		c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		require.NoError(t, err)
+		_, err = c.Write([]byte{byte(stream)})
+		require.NoError(t, err)
+		return c
+	}
+
+	// Open numStreams stream connections. Memberlist is holding all of them
+	// open (consumer goroutine above never closes them).
+	clients := make([]net.Conn, 0, numStreams)
+	defer func() {
+		for _, c := range clients {
+			c.Close() //nolint:errcheck
+		}
+	}()
+	for range numStreams {
+		clients = append(clients, openStreamConn())
+	}
+
+	// Wait until all stream handoffs have been observed.
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.incomingStreams) == float64(numStreams)
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// While numStreams stream conns are still alive on the memberlist side,
+	// active_connections should equal numStreams.
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(transport.activeConnections) == float64(numStreams)
+	}, 2*time.Second, 10*time.Millisecond,
+		"expected active_connections == %d while %d stream conns are held open by memberlist; got %v",
+		numStreams, numStreams, testutil.ToFloat64(transport.activeConnections))
 }

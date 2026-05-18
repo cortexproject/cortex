@@ -258,13 +258,16 @@ func (t *TCPTransport) tcpListen(tcpLn net.Listener) {
 		t.activeConnections.Inc()
 		go func() {
 			// handleConnection returns true when it wrapped the conn in a
-			// semaphoreConn and transferred ownership of the slot to that
-			// wrapper (stream path). In that case we must not release here.
+			// semaphoreConn and transferred ownership of the slot (and the
+			// activeConnections gauge) to that wrapper (stream path).
+			// In that case we must not release here.
 			semTransferred := t.handleConnection(conn)
-			if t.connSemaphore != nil && !semTransferred {
-				t.connSemaphore.Release(1)
+			if !semTransferred {
+				if t.connSemaphore != nil {
+					t.connSemaphore.Release(1)
+				}
+				t.activeConnections.Dec()
 			}
-			t.activeConnections.Dec()
 		}()
 	}
 }
@@ -320,11 +323,11 @@ func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 		// for the real lifetime of the stream. The memberlist will close it.
 		closeConn = false
 		if t.connSemaphore != nil {
-			t.connCh <- &semaphoreConn{Conn: conn, sem: t.connSemaphore}
-			semTransferred = true
+			t.connCh <- &semaphoreConn{Conn: conn, sem: t.connSemaphore, activeGauge: t.activeConnections}
 		} else {
-			t.connCh <- conn
+			t.connCh <- &semaphoreConn{Conn: conn, activeGauge: t.activeConnections}
 		}
+		semTransferred = true
 	} else if messageType(msgType[0]) == packet {
 		// it's a memberlist "packet", which contains an address and data.
 		t.receivedPackets.Inc()
@@ -410,17 +413,24 @@ func (a addr) String() string {
 	return string(a)
 }
 
-// semaphoreConn wraps a net.Conn and releases a semaphore slot exactly once
-// when the connection is closed. It is used on the stream path to keep the
-// concurrent-connection slot held for the real lifetime of the connection.
+// semaphoreConn wraps a net.Conn and releases a semaphore slot (if set) and
+// decrements the active-connections gauge exactly once when the connection is
+// closed. It is used on the stream path to keep both the semaphore slot and
+// the gauge accurate for the real lifetime of the connection.
 type semaphoreConn struct {
 	net.Conn
-	sem  *semaphore.Weighted
-	once sync.Once
+	sem         *semaphore.Weighted
+	activeGauge prometheus.Gauge
+	once        sync.Once
 }
 
 func (c *semaphoreConn) Close() error {
-	c.once.Do(func() { c.sem.Release(1) })
+	c.once.Do(func() {
+		if c.sem != nil {
+			c.sem.Release(1)
+		}
+		c.activeGauge.Dec()
+	})
 	return c.Conn.Close()
 }
 

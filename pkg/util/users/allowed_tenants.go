@@ -34,8 +34,7 @@ func NewAllowedTenants(enabled []string, disabled []string) *AllowedTenants {
 }
 
 func (a *AllowedTenants) IsAllowed(tenantID string) bool {
-	if tenantID == GlobalMarkersDir {
-		// __markers__ is reserved for global markers and no tenant should be allowed to have that name.
+	if err := ValidTenantID(tenantID); err != nil {
 		return false
 	}
 

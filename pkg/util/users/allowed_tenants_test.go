@@ -1,6 +1,7 @@
 package users
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -44,4 +45,27 @@ func TestAllowedTenants_Nil(t *testing.T) {
 	require.True(t, a.IsAllowed("A"))
 	require.True(t, a.IsAllowed("B"))
 	require.True(t, a.IsAllowed("C"))
+}
+
+func TestAllowedTenants_InvalidTenantID(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		tenantID string
+	}{
+		{name: "markers dir", tenantID: GlobalMarkersDir},
+		{name: "user-index", tenantID: "user-index.json.gz"},
+		{name: "dot", tenantID: "."},
+		{name: "double dot", tenantID: ".."},
+		{name: "unsupported char pipe", tenantID: "tenant|id"},
+		{name: "unsupported char space", tenantID: "tenant id"},
+		{name: "too long", tenantID: strings.Repeat("a", 151)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Invalid tenant IDs must be rejected regardless of AllowedTenants config.
+			require.False(t, NewAllowedTenants(nil, nil).IsAllowed(tc.tenantID), "NoConfig should reject invalid tenant")
+			require.False(t, NewAllowedTenants([]string{tc.tenantID}, nil).IsAllowed(tc.tenantID), "Enabled list should still reject invalid tenant")
+			var nilTenants *AllowedTenants
+			require.False(t, nilTenants.IsAllowed(tc.tenantID), "Nil AllowedTenants should reject invalid tenant")
+		})
+	}
 }

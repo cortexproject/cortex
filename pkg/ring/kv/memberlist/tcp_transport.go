@@ -126,6 +126,7 @@ type TCPTransport struct {
 	rejectedConnections   prometheus.Counter
 	activeConnections     prometheus.Gauge
 	packetReceiveDuration prometheus.Histogram
+	packetReceiveBytes    prometheus.Histogram
 }
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
@@ -357,6 +358,7 @@ func (t *TCPTransport) handleConnection(conn net.Conn) (semTransferred bool) {
 		}
 		buf, err := io.ReadAll(reader)
 		t.packetReceiveDuration.Observe(time.Since(packetStart).Seconds())
+		t.packetReceiveBytes.Observe(float64(len(buf)))
 		if err != nil {
 			t.receivedPacketsErrors.Inc()
 			level.Warn(t.logger).Log("msg", "error while reading packet data", "err", err, "remote", conn.RemoteAddr())
@@ -759,6 +761,17 @@ func (t *TCPTransport) registerMetrics(registerer prometheus.Registerer) {
 		Name:                            "packet_receive_duration_seconds",
 		Help:                            "Duration (in seconds) of inbound packet-type message reads.",
 		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: 1 * time.Hour,
+	})
+
+	t.packetReceiveBytes = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
+		Namespace:                       t.cfg.MetricsNamespace,
+		Subsystem:                       subsystem,
+		Name:                            "packet_receive_bytes",
+		Help:                            "Distribution of inbound packet sizes in bytes.",
+		Buckets:                         prometheus.ExponentialBuckets(64, 4, 8), // 64, 256, 1K, 4K, 16K, 64K, 256K, 1M
 		NativeHistogramBucketFactor:     1.1,
 		NativeHistogramMaxBucketNumber:  100,
 		NativeHistogramMinResetDuration: 1 * time.Hour,

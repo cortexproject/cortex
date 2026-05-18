@@ -4779,6 +4779,12 @@ query_rejection:
 # CLI flag: -parquet-converter.sort-columns
 [parquet_converter_sort_columns: <list of string> | default = []]
 
+# [Experimental] Maximum number of distinct label names allowed in a TSDB block
+# for parquet conversion. If exceeded, the converter writes a no-convert marker.
+# 0 to disable.
+# CLI flag: -parquet-converter.max-block-label-names
+[parquet_converter_max_block_label_names: <int> | default = 0]
+
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
 # are used.

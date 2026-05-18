@@ -5835,6 +5835,12 @@
           "type": "boolean",
           "x-cli-flag": "parquet-converter.enabled"
         },
+        "parquet_converter_max_block_label_names": {
+          "default": 0,
+          "description": "[Experimental] Maximum number of distinct label names allowed in a TSDB block for parquet conversion. If exceeded, the converter writes a no-convert marker. 0 to disable.",
+          "type": "number",
+          "x-cli-flag": "parquet-converter.max-block-label-names"
+        },
         "parquet_converter_sort_columns": {
           "default": [],
           "description": "Additional label names for specific tenants to sort by after metric name, in order of precedence. These are applied during Parquet file generation.",

@@ -396,6 +396,21 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
+		maxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
+
+		// If the threshold is enabled, check for no-convert mark
+		if maxBlockLabelNames > 0 {
+
+			noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
+			if err != nil {
+				level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
+				continue
+			}
+			if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+				continue
+			}
+		}
+
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
 			if c.checkConvertError(userID, err) {
@@ -423,6 +438,32 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 				return err
 			}
 			continue
+		}
+
+		if maxBlockLabelNames > 0 {
+			labelNames, err := tsdbBlock.LabelNames(ctx)
+			if err != nil {
+				_ = tsdbBlock.Close()
+				level.Error(logger).Log("msg", "failed to get label names", "block", b.ULID.String(), "err", err)
+				if c.checkConvertError(userID, err) {
+					return err
+				}
+				continue
+			}
+			labelNamesCount := len(labelNames)
+			if labelNamesCount > maxBlockLabelNames {
+				if err := cortex_parquet.WriteNoConvertMark(ctx, b.ULID, uBucket, labelNamesCount, maxBlockLabelNames); err != nil {
+					_ = tsdbBlock.Close()
+					level.Error(logger).Log("msg", "failed to write parquet no-convert marker", "block", b.ULID.String(), "err", err)
+					if c.checkConvertError(userID, err) {
+						return err
+					}
+					continue
+				}
+				level.Info(logger).Log("msg", "skipping parquet conversion for block with too many label names", "block", b.ULID.String(), "label_names", labelNamesCount, "limit", maxBlockLabelNames)
+				_ = tsdbBlock.Close()
+				continue
+			}
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)

@@ -269,13 +269,10 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		}
 
 		queryRegistry = queryeviction.NewQueryRegistry(metricFunc)
-		queryEvictor, err = queryeviction.NewQueryEvictor(
+		queryEvictor = queryeviction.NewQueryEvictor(
 			resourceMonitor, queryRegistry, evictionCfg,
 			logger, reg, "querier",
 		)
-		if err != nil {
-			panic(fmt.Sprintf("failed to create query evictor: %v", err))
-		}
 	}
 
 	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)

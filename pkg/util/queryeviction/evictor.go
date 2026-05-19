@@ -36,9 +36,9 @@ func NewQueryEvictor(
 	logger log.Logger,
 	reg prometheus.Registerer,
 	component string,
-) (*QueryEvictor, error) {
+) *QueryEvictor {
 	if !cfg.Enabled() {
-		return nil, nil
+		return nil
 	}
 
 	e := &QueryEvictor{
@@ -54,7 +54,7 @@ func NewQueryEvictor(
 	}
 
 	e.Service = services.NewBasicService(nil, e.running, nil)
-	return e, nil
+	return e
 }
 
 // running is the main loop (called by services.Service).
@@ -85,7 +85,15 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 			// Find the heaviest running queries (up to MaxEvictionsPerCycle).
 			victims := e.registry.FindHeaviest(e.cfg.MaxEvictionsPerCycle, e.cfg.MinQueryAge)
 			if len(victims) == 0 {
-				continue // no running queries to evict
+				level.Debug(e.logger).Log(
+					"msg", "resource threshold breached but no evictable queries found",
+					"resource", breachedResource,
+					"utilization", utilization,
+					"threshold", threshold,
+					"registered_queries", e.registry.Len(),
+					"min_query_age", e.cfg.MinQueryAge,
+				)
+				continue
 			}
 
 			// Evict each victim.

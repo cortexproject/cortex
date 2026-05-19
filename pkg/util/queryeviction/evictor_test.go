@@ -49,8 +49,7 @@ func testEvictorConfig(cpu, heap float64, cooldown int) configs.EvictionConfig {
 // startEvictor creates and starts an evictor, returning it and a cleanup function.
 func startEvictor(t *testing.T, mon *mockMonitor, reg *QueryRegistry, cfg configs.EvictionConfig) *QueryEvictor {
 	t.Helper()
-	evictor, err := NewQueryEvictor(mon, reg, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
-	require.NoError(t, err)
+	evictor := NewQueryEvictor(mon, reg, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 	require.NotNil(t, evictor)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), evictor))
 	t.Cleanup(func() { services.StopAndAwaitTerminated(context.Background(), evictor) }) //nolint:errcheck
@@ -186,9 +185,7 @@ func TestCheckThresholds(t *testing.T) {
 
 			var evictor *QueryEvictor
 			if cfg.Enabled() {
-				var err error
-				evictor, err = NewQueryEvictor(mon, reg, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
-				require.NoError(t, err)
+				evictor = NewQueryEvictor(mon, reg, cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 			} else {
 				evictor = &QueryEvictor{monitor: mon, cfg: cfg}
 			}
@@ -215,8 +212,7 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {
 	cfg := configs.EvictionConfig{CheckInterval: time.Second, EvictionMetric: "fetched_samples", MaxEvictionsPerCycle: 1}
-	evictor, err := NewQueryEvictor(newMockMonitor(0, 0), NewQueryRegistry(testMetricFunc), cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
-	assert.NoError(t, err)
+	evictor := NewQueryEvictor(newMockMonitor(0, 0), NewQueryRegistry(testMetricFunc), cfg, log.NewNopLogger(), prometheus.NewPedanticRegistry(), "test")
 	assert.Nil(t, evictor)
 }
 

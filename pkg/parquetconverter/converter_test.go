@@ -539,7 +539,7 @@ func TestConverter_WriteNoConvertMarkForBlockWithTooManyLabels(t *testing.T) {
 	readNoConvertMark, err := parquet.ReadNoConvertMark(ctx, blockID, userBucket, logger)
 	require.NoError(t, err)
 	require.True(t, parquet.ValidNoConvertMarkVersion(readNoConvertMark.Version))
-	require.Equal(t, "too_many_labels", readNoConvertMark.Reason)
+	require.Equal(t, parquet.NoConvertReasonTooManyLabels, readNoConvertMark.Reason)
 	require.Equal(t, 1, readNoConvertMark.Threshold)
 	require.Equal(t, 2, readNoConvertMark.LabelNamesCount)
 
@@ -585,7 +585,7 @@ func TestConverter_SkipBlockWhenNoConvertMarkAlreadyExists(t *testing.T) {
 
 	markerV1 := parquet.NoConvertMark{
 		Version:         parquet.CurrentNoConvertMarkVersion,
-		Reason:          "too_many_labels",
+		Reason:          parquet.NoConvertReasonTooManyLabels,
 		LabelNamesCount: 2,
 		Threshold:       1,
 	}
@@ -609,7 +609,7 @@ func TestConverter_SkipBlockWhenNoConvertMarkAlreadyExists(t *testing.T) {
 	markerAfter, err := parquet.ReadNoConvertMark(ctx, blockID, userBucket, logger)
 	require.NoError(t, err)
 	require.True(t, parquet.ValidNoConvertMarkVersion(markerAfter.Version))
-	require.Equal(t, "too_many_labels", markerAfter.Reason)
+	require.Equal(t, parquet.NoConvertReasonTooManyLabels, markerAfter.Reason)
 	require.Equal(t, 1, markerAfter.Threshold)
 	require.Equal(t, 2, markerAfter.LabelNamesCount)
 }

@@ -19,11 +19,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -32,174 +29,11 @@ import (
 	"github.com/prometheus/common/model"
 	"gopkg.in/yaml.v2"
 
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
 	"github.com/prometheus/alertmanager/matcher/compat"
-	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/timeinterval"
+	"github.com/prometheus/alertmanager/tracing"
 )
-
-const secretToken = "<secret>"
-
-var secretTokenJSON string
-
-// MarshalSecretValue if set to true will expose Secret type
-// through the marshal interfaces. Useful for outside projects
-// that load and marshal the Alertmanager config.
-var MarshalSecretValue bool = commoncfg.MarshalSecretValue
-
-func init() {
-	b, err := json.Marshal(secretToken)
-	if err != nil {
-		panic(err)
-	}
-	secretTokenJSON = string(b)
-}
-
-// Secret is a string that must not be revealed on marshaling.
-type Secret string
-
-// MarshalYAML implements the yaml.Marshaler interface for Secret.
-func (s Secret) MarshalYAML() (any, error) {
-	if MarshalSecretValue {
-		return string(s), nil
-	}
-	if s != "" {
-		return secretToken, nil
-	}
-	return nil, nil
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for Secret.
-func (s *Secret) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain Secret
-	return unmarshal((*plain)(s))
-}
-
-// MarshalJSON implements the json.Marshaler interface for Secret.
-func (s Secret) MarshalJSON() ([]byte, error) {
-	if MarshalSecretValue {
-		return json.Marshal(string(s))
-	}
-	if len(s) == 0 {
-		return json.Marshal("")
-	}
-	return json.Marshal(secretToken)
-}
-
-// URL is a custom type that represents an HTTP or HTTPS URL and allows validation at configuration load time.
-type URL struct {
-	*url.URL
-}
-
-// Copy makes a deep-copy of the struct.
-func (u *URL) Copy() *URL {
-	v := *u.URL
-	return &URL{&v}
-}
-
-// MarshalYAML implements the yaml.Marshaler interface for URL.
-func (u URL) MarshalYAML() (any, error) {
-	if u.URL != nil {
-		return u.String(), nil
-	}
-	return nil, nil
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for URL.
-func (u *URL) UnmarshalYAML(unmarshal func(any) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	urlp, err := parseURL(s)
-	if err != nil {
-		return err
-	}
-	u.URL = urlp.URL
-	return nil
-}
-
-// MarshalJSON implements the json.Marshaler interface for URL.
-func (u URL) MarshalJSON() ([]byte, error) {
-	if u.URL != nil {
-		return json.Marshal(u.String())
-	}
-	return []byte("null"), nil
-}
-
-// UnmarshalJSON implements the json.Marshaler interface for URL.
-func (u *URL) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	urlp, err := parseURL(s)
-	if err != nil {
-		return err
-	}
-	u.URL = urlp.URL
-	return nil
-}
-
-// SecretURL is a URL that must not be revealed on marshaling.
-type SecretURL URL
-
-// MarshalYAML implements the yaml.Marshaler interface for SecretURL.
-func (s SecretURL) MarshalYAML() (any, error) {
-	if s.URL != nil {
-		if MarshalSecretValue {
-			return s.String(), nil
-		}
-		return secretToken, nil
-	}
-	return nil, nil
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for SecretURL.
-func (s *SecretURL) UnmarshalYAML(unmarshal func(any) error) error {
-	var str string
-	if err := unmarshal(&str); err != nil {
-		return err
-	}
-	// In order to deserialize a previously serialized configuration (eg from
-	// the Alertmanager API with amtool), `<secret>` needs to be treated
-	// specially, as it isn't a valid URL.
-	if str == secretToken {
-		s.URL = &url.URL{}
-		return nil
-	}
-	return unmarshal((*URL)(s))
-}
-
-// MarshalJSON implements the json.Marshaler interface for SecretURL.
-func (s SecretURL) MarshalJSON() ([]byte, error) {
-	if s.URL == nil {
-		return json.Marshal("")
-	}
-	if MarshalSecretValue {
-		return json.Marshal(s.String())
-	}
-	return json.Marshal(secretToken)
-}
-
-// UnmarshalJSON implements the json.Marshaler interface for SecretURL.
-func (s *SecretURL) UnmarshalJSON(data []byte) error {
-	// In order to deserialize a previously serialized configuration (eg from
-	// the Alertmanager API with amtool), `<secret>` needs to be treated
-	// specially, as it isn't a valid URL.
-	if string(data) == secretToken || string(data) == secretTokenJSON {
-		s.URL = &url.URL{}
-		return nil
-	}
-	// Redact the secret URL in case of errors
-	if err := json.Unmarshal(data, (*URL)(s)); err != nil {
-		if MarshalSecretValue {
-			return err
-		}
-		return errors.New(strings.ReplaceAll(err.Error(), string(data), "[REDACTED]"))
-	}
-
-	return nil
-}
 
 // containsTemplating checks if the string contains template syntax.
 func containsTemplating(s string) (bool, error) {
@@ -217,22 +51,22 @@ func containsTemplating(s string) (bool, error) {
 // SecretTemplateURL is a Secret string that represents a URL which may contain
 // Go template syntax. Unlike SecretURL, it allows templated values and only
 // validates non-templated URLs at unmarshal time.
-type SecretTemplateURL Secret
+type SecretTemplateURL commoncfg.Secret
 
 // MarshalYAML implements the yaml.Marshaler interface for SecretTemplateURL.
 func (s SecretTemplateURL) MarshalYAML() (any, error) {
 	if s != "" {
-		if MarshalSecretValue {
+		if commoncfg.MarshalSecretValue {
 			return string(s), nil
 		}
-		return secretToken, nil
+		return amcommoncfg.SecretToken, nil
 	}
 	return nil, nil
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for SecretTemplateURL.
 func (s *SecretTemplateURL) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain Secret
+	type plain commoncfg.Secret
 	if err := unmarshal((*plain)(s)); err != nil {
 		return err
 	}
@@ -240,7 +74,7 @@ func (s *SecretTemplateURL) UnmarshalYAML(unmarshal func(any) error) error {
 	urlStr := string(*s)
 
 	// Skip validation for empty strings or secret token
-	if urlStr == "" || urlStr == secretToken {
+	if urlStr == "" || urlStr == amcommoncfg.SecretToken {
 		return nil
 	}
 
@@ -252,7 +86,7 @@ func (s *SecretTemplateURL) UnmarshalYAML(unmarshal func(any) error) error {
 
 	// Only validate as URL if it's not templated
 	if !isTemplated {
-		if _, err := parseURL(urlStr); err != nil {
+		if _, err := amcommoncfg.ParseURL(urlStr); err != nil {
 			return fmt.Errorf("invalid URL: %w", err)
 		}
 	}
@@ -262,12 +96,12 @@ func (s *SecretTemplateURL) UnmarshalYAML(unmarshal func(any) error) error {
 
 // MarshalJSON implements the json.Marshaler interface for SecretTemplateURL.
 func (s SecretTemplateURL) MarshalJSON() ([]byte, error) {
-	return Secret(s).MarshalJSON()
+	return commoncfg.Secret(s).MarshalJSON()
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface for SecretTemplateURL.
 func (s *SecretTemplateURL) UnmarshalJSON(data []byte) error {
-	if string(data) == secretToken || string(data) == secretTokenJSON {
+	if string(data) == amcommoncfg.SecretToken || string(data) == amcommoncfg.SecretTokenJSON {
 		*s = ""
 		return nil
 	}
@@ -423,16 +257,16 @@ func (ti *TimeInterval) UnmarshalYAML(unmarshal func(any) error) error {
 
 // Config is the top-level configuration for Alertmanager's config files.
 type Config struct {
-	Global       *GlobalConfig `yaml:"global,omitempty" json:"global,omitempty"`
-	Route        *Route        `yaml:"route,omitempty" json:"route,omitempty"`
-	InhibitRules []InhibitRule `yaml:"inhibit_rules,omitempty" json:"inhibit_rules,omitempty"`
-	Receivers    []Receiver    `yaml:"receivers,omitempty" json:"receivers,omitempty"`
-	Templates    []string      `yaml:"templates" json:"templates"`
+	Global       *GlobalConfig             `yaml:"global,omitempty" json:"global,omitempty"`
+	Route        *Route                    `yaml:"route,omitempty" json:"route,omitempty"`
+	InhibitRules []amcommoncfg.InhibitRule `yaml:"inhibit_rules,omitempty" json:"inhibit_rules,omitempty"`
+	Receivers    []Receiver                `yaml:"receivers,omitempty" json:"receivers,omitempty"`
+	Templates    []string                  `yaml:"templates" json:"templates"`
 	// Deprecated. Remove before v1.0 release.
 	MuteTimeIntervals []MuteTimeInterval `yaml:"mute_time_intervals,omitempty" json:"mute_time_intervals,omitempty"`
 	TimeIntervals     []TimeInterval     `yaml:"time_intervals,omitempty" json:"time_intervals,omitempty"`
 
-	TracingConfig TracingConfig `yaml:"tracing,omitempty" json:"tracing,omitempty"`
+	TracingConfig tracing.TracingConfig `yaml:"tracing,omitempty" json:"tracing,omitempty"`
 
 	// original is the input from which the config was parsed.
 	original string
@@ -512,6 +346,10 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		return errors.New("at most one of wechat_api_secret & wechat_api_secret_file must be configured")
 	}
 
+	if c.Global.MattermostWebhookURL != nil && len(c.Global.MattermostWebhookURLFile) > 0 {
+		return errors.New("at most one of mattermost_webhook_url & mattermost_webhook_url_file must be configured")
+	}
+
 	names := map[string]struct{}{}
 
 	for _, rcv := range c.Receivers {
@@ -519,9 +357,15 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			return fmt.Errorf("notification config name %q is not unique", rcv.Name)
 		}
 		for _, wh := range rcv.WebhookConfigs {
+			if wh == nil {
+				return errors.New("missing webhook config")
+			}
 			wh.HTTPConfig = cmp.Or(wh.HTTPConfig, c.Global.HTTPConfig)
 		}
 		for _, ec := range rcv.EmailConfigs {
+			if ec == nil {
+				return errors.New("missing email config")
+			}
 			ec.TLSConfig = cmp.Or(ec.TLSConfig, c.Global.SMTPTLSConfig)
 			ec.Smarthost = cmp.Or(ec.Smarthost, c.Global.SMTPSmarthost)
 			if ec.Smarthost.String() == "" {
@@ -549,6 +393,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, sc := range rcv.SlackConfigs {
+			if sc == nil {
+				sc = &SlackConfig{}
+			}
 			sc.AppURL = cmp.Or(sc.AppURL, c.Global.SlackAppURL)
 			if sc.AppURL == nil {
 				return errors.New("no global Slack App URL set")
@@ -579,13 +426,19 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 					Credentials:     commoncfg.Secret(sc.AppToken),
 					CredentialsFile: sc.AppTokenFile,
 				}
-				sc.APIURL = (*SecretURL)(sc.AppURL)
+				sc.APIURL = (*amcommoncfg.SecretURL)(sc.AppURL)
 			}
 		}
 		for _, poc := range rcv.PushoverConfigs {
+			if poc == nil {
+				return errors.New("missing pushover config")
+			}
 			poc.HTTPConfig = cmp.Or(poc.HTTPConfig, c.Global.HTTPConfig)
 		}
 		for _, pdc := range rcv.PagerdutyConfigs {
+			if pdc == nil {
+				return errors.New("missing pagerduty config")
+			}
 			pdc.HTTPConfig = cmp.Or(pdc.HTTPConfig, c.Global.HTTPConfig)
 			pdc.URL = cmp.Or(pdc.URL, c.Global.PagerdutyURL)
 			if pdc.URL == nil {
@@ -593,9 +446,15 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, iio := range rcv.IncidentioConfigs {
+			if iio == nil {
+				return errors.New("missing incidentio config")
+			}
 			iio.HTTPConfig = cmp.Or(iio.HTTPConfig, c.Global.HTTPConfig)
 		}
 		for _, ogc := range rcv.OpsGenieConfigs {
+			if ogc == nil {
+				ogc = &OpsGenieConfig{}
+			}
 			ogc.HTTPConfig = cmp.Or(ogc.HTTPConfig, c.Global.HTTPConfig)
 			ogc.APIURL = cmp.Or(ogc.APIURL, c.Global.OpsGenieAPIURL)
 			if ogc.APIURL == nil {
@@ -611,6 +470,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, wcc := range rcv.WechatConfigs {
+			if wcc == nil {
+				wcc = &WechatConfig{}
+			}
 			wcc.HTTPConfig = cmp.Or(wcc.HTTPConfig, c.Global.HTTPConfig)
 			wcc.APIURL = cmp.Or(wcc.APIURL, c.Global.WeChatAPIURL)
 			if wcc.APIURL == nil {
@@ -635,6 +497,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, voc := range rcv.VictorOpsConfigs {
+			if voc == nil {
+				return errors.New("missing victorops config")
+			}
 			voc.HTTPConfig = cmp.Or(voc.HTTPConfig, c.Global.HTTPConfig)
 			voc.APIURL = cmp.Or(voc.APIURL, c.Global.VictorOpsAPIURL)
 			if voc.APIURL == nil {
@@ -650,10 +515,16 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, sns := range rcv.SNSConfigs {
+			if sns == nil {
+				return errors.New("missing sns config")
+			}
 			sns.HTTPConfig = cmp.Or(sns.HTTPConfig, c.Global.HTTPConfig)
 		}
 
 		for _, telegram := range rcv.TelegramConfigs {
+			if telegram == nil {
+				return errors.New("missing telegram config")
+			}
 			telegram.HTTPConfig = cmp.Or(telegram.HTTPConfig, c.Global.HTTPConfig)
 			telegram.APIUrl = cmp.Or(telegram.APIUrl, c.Global.TelegramAPIUrl)
 			if telegram.BotToken == "" && len(telegram.BotTokenFile) == 0 {
@@ -665,12 +536,18 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, discord := range rcv.DiscordConfigs {
+			if discord == nil {
+				return errors.New("missing discord config")
+			}
 			discord.HTTPConfig = cmp.Or(discord.HTTPConfig, c.Global.HTTPConfig)
 			if discord.WebhookURL == nil && len(discord.WebhookURLFile) == 0 {
 				return errors.New("no discord webhook URL or URLFile provided")
 			}
 		}
 		for _, webex := range rcv.WebexConfigs {
+			if webex == nil {
+				return errors.New("missing webex config")
+			}
 			webex.HTTPConfig = cmp.Or(webex.HTTPConfig, c.Global.HTTPConfig)
 			webex.APIURL = cmp.Or(webex.APIURL, c.Global.WebexAPIURL)
 			if webex.APIURL == nil {
@@ -678,18 +555,27 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, msteams := range rcv.MSTeamsConfigs {
+			if msteams == nil {
+				return errors.New("missing msteams config")
+			}
 			msteams.HTTPConfig = cmp.Or(msteams.HTTPConfig, c.Global.HTTPConfig)
 			if msteams.WebhookURL == nil && len(msteams.WebhookURLFile) == 0 {
 				return errors.New("no msteams webhook URL or URLFile provided")
 			}
 		}
 		for _, msteamsv2 := range rcv.MSTeamsV2Configs {
+			if msteamsv2 == nil {
+				return errors.New("missing msteamsv2 config")
+			}
 			msteamsv2.HTTPConfig = cmp.Or(msteamsv2.HTTPConfig, c.Global.HTTPConfig)
 			if msteamsv2.WebhookURL == nil && len(msteamsv2.WebhookURLFile) == 0 {
 				return errors.New("no msteamsv2 webhook URL or URLFile provided")
 			}
 		}
 		for _, jira := range rcv.JiraConfigs {
+			if jira == nil {
+				return errors.New("missing jira config")
+			}
 			jira.HTTPConfig = cmp.Or(jira.HTTPConfig, c.Global.HTTPConfig)
 			jira.APIURL = cmp.Or(jira.APIURL, c.Global.JiraAPIURL)
 			if jira.APIURL == nil {
@@ -697,6 +583,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, rocketchat := range rcv.RocketchatConfigs {
+			if rocketchat == nil {
+				rocketchat = &RocketchatConfig{}
+			}
 			rocketchat.HTTPConfig = cmp.Or(rocketchat.HTTPConfig, c.Global.HTTPConfig)
 			rocketchat.APIURL = cmp.Or(rocketchat.APIURL, c.Global.RocketchatAPIURL)
 
@@ -713,7 +602,17 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 			}
 		}
 		for _, mattermost := range rcv.MattermostConfigs {
+			if mattermost == nil {
+				return errors.New("missing mattermost config")
+			}
 			mattermost.HTTPConfig = cmp.Or(mattermost.HTTPConfig, c.Global.HTTPConfig)
+			if mattermost.WebhookURL == nil && len(mattermost.WebhookURLFile) == 0 {
+				if c.Global.MattermostWebhookURL == nil && len(c.Global.MattermostWebhookURLFile) == 0 {
+					return errors.New("missing webhook_url or webhook_url_file on mattermost_config")
+				}
+				mattermost.WebhookURL = c.Global.MattermostWebhookURL
+				mattermost.WebhookURLFile = c.Global.MattermostWebhookURLFile
+			}
 		}
 
 		names[rcv.Name] = struct{}{}
@@ -812,37 +711,15 @@ func DefaultGlobalConfig() GlobalConfig {
 		SMTPHello:        "localhost",
 		SMTPRequireTLS:   true,
 		SMTPTLSConfig:    &defaultSMTPTLSConfig,
-		PagerdutyURL:     mustParseURL("https://events.pagerduty.com/v2/enqueue"),
-		OpsGenieAPIURL:   mustParseURL("https://api.opsgenie.com/"),
-		WeChatAPIURL:     mustParseURL("https://qyapi.weixin.qq.com/cgi-bin/"),
-		VictorOpsAPIURL:  mustParseURL("https://alert.victorops.com/integrations/generic/20131114/alert/"),
-		TelegramAPIUrl:   mustParseURL("https://api.telegram.org"),
-		WebexAPIURL:      mustParseURL("https://webexapis.com/v1/messages"),
-		RocketchatAPIURL: mustParseURL("https://open.rocket.chat/"),
-		SlackAppURL:      mustParseURL("https://slack.com/api/chat.postMessage"),
+		PagerdutyURL:     amcommoncfg.MustParseURL("https://events.pagerduty.com/v2/enqueue"),
+		OpsGenieAPIURL:   amcommoncfg.MustParseURL("https://api.opsgenie.com/"),
+		WeChatAPIURL:     amcommoncfg.MustParseURL("https://qyapi.weixin.qq.com/cgi-bin/"),
+		VictorOpsAPIURL:  amcommoncfg.MustParseURL("https://alert.victorops.com/integrations/generic/20131114/alert/"),
+		TelegramAPIUrl:   amcommoncfg.MustParseURL("https://api.telegram.org"),
+		WebexAPIURL:      amcommoncfg.MustParseURL("https://webexapis.com/v1/messages"),
+		RocketchatAPIURL: amcommoncfg.MustParseURL("https://open.rocket.chat/"),
+		SlackAppURL:      amcommoncfg.MustParseURL("https://slack.com/api/chat.postMessage"),
 	}
-}
-
-func mustParseURL(s string) *URL {
-	u, err := parseURL(s)
-	if err != nil {
-		panic(err)
-	}
-	return u
-}
-
-func parseURL(s string) (*URL, error) {
-	u, err := url.Parse(s)
-	if err != nil {
-		return nil, err
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("unsupported scheme %q for URL", u.Scheme)
-	}
-	if u.Host == "" {
-		return nil, errors.New("missing host for URL")
-	}
-	return &URL{u}, nil
 }
 
 // HostPort represents a "host:port" network address.
@@ -909,7 +786,7 @@ func (hp HostPort) String() string {
 	if hp.Host == "" && hp.Port == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s:%s", hp.Host, hp.Port)
+	return net.JoinHostPort(hp.Host, hp.Port)
 }
 
 // GlobalConfig defines configuration parameters that are valid globally
@@ -921,44 +798,46 @@ type GlobalConfig struct {
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
 
-	JiraAPIURL            *URL                 `yaml:"jira_api_url,omitempty" json:"jira_api_url,omitempty"`
-	SMTPFrom              string               `yaml:"smtp_from,omitempty" json:"smtp_from,omitempty"`
-	SMTPHello             string               `yaml:"smtp_hello,omitempty" json:"smtp_hello,omitempty"`
-	SMTPSmarthost         HostPort             `yaml:"smtp_smarthost,omitempty" json:"smtp_smarthost,omitempty"`
-	SMTPAuthUsername      string               `yaml:"smtp_auth_username,omitempty" json:"smtp_auth_username,omitempty"`
-	SMTPAuthPassword      Secret               `yaml:"smtp_auth_password,omitempty" json:"smtp_auth_password,omitempty"`
-	SMTPAuthPasswordFile  string               `yaml:"smtp_auth_password_file,omitempty" json:"smtp_auth_password_file,omitempty"`
-	SMTPAuthSecret        Secret               `yaml:"smtp_auth_secret,omitempty" json:"smtp_auth_secret,omitempty"`
-	SMTPAuthSecretFile    string               `yaml:"smtp_auth_secret_file,omitempty" json:"smtp_auth_secret_file,omitempty"`
-	SMTPAuthIdentity      string               `yaml:"smtp_auth_identity,omitempty" json:"smtp_auth_identity,omitempty"`
-	SMTPRequireTLS        bool                 `yaml:"smtp_require_tls" json:"smtp_require_tls,omitempty"`
-	SMTPTLSConfig         *commoncfg.TLSConfig `yaml:"smtp_tls_config,omitempty" json:"smtp_tls_config,omitempty"`
-	SMTPForceImplicitTLS  *bool                `yaml:"smtp_force_implicit_tls,omitempty" json:"smtp_force_implicit_tls,omitempty"`
-	SlackAPIURL           *SecretURL           `yaml:"slack_api_url,omitempty" json:"slack_api_url,omitempty"`
-	SlackAPIURLFile       string               `yaml:"slack_api_url_file,omitempty" json:"slack_api_url_file,omitempty"`
-	SlackAppToken         Secret               `yaml:"slack_app_token,omitempty" json:"slack_app_token,omitempty"`
-	SlackAppTokenFile     string               `yaml:"slack_app_token_file,omitempty" json:"slack_app_token_file,omitempty"`
-	SlackAppURL           *URL                 `yaml:"slack_app_url,omitempty" json:"slack_app_url,omitempty"`
-	PagerdutyURL          *URL                 `yaml:"pagerduty_url,omitempty" json:"pagerduty_url,omitempty"`
-	OpsGenieAPIURL        *URL                 `yaml:"opsgenie_api_url,omitempty" json:"opsgenie_api_url,omitempty"`
-	OpsGenieAPIKey        Secret               `yaml:"opsgenie_api_key,omitempty" json:"opsgenie_api_key,omitempty"`
-	OpsGenieAPIKeyFile    string               `yaml:"opsgenie_api_key_file,omitempty" json:"opsgenie_api_key_file,omitempty"`
-	WeChatAPIURL          *URL                 `yaml:"wechat_api_url,omitempty" json:"wechat_api_url,omitempty"`
-	WeChatAPISecret       Secret               `yaml:"wechat_api_secret,omitempty" json:"wechat_api_secret,omitempty"`
-	WeChatAPISecretFile   string               `yaml:"wechat_api_secret_file,omitempty" json:"wechat_api_secret_file,omitempty"`
-	WeChatAPICorpID       string               `yaml:"wechat_api_corp_id,omitempty" json:"wechat_api_corp_id,omitempty"`
-	VictorOpsAPIURL       *URL                 `yaml:"victorops_api_url,omitempty" json:"victorops_api_url,omitempty"`
-	VictorOpsAPIKey       Secret               `yaml:"victorops_api_key,omitempty" json:"victorops_api_key,omitempty"`
-	VictorOpsAPIKeyFile   string               `yaml:"victorops_api_key_file,omitempty" json:"victorops_api_key_file,omitempty"`
-	TelegramAPIUrl        *URL                 `yaml:"telegram_api_url,omitempty" json:"telegram_api_url,omitempty"`
-	TelegramBotToken      Secret               `yaml:"telegram_bot_token,omitempty" json:"telegram_bot_token,omitempty"`
-	TelegramBotTokenFile  string               `yaml:"telegram_bot_token_file,omitempty" json:"telegram_bot_token_file,omitempty"`
-	WebexAPIURL           *URL                 `yaml:"webex_api_url,omitempty" json:"webex_api_url,omitempty"`
-	RocketchatAPIURL      *URL                 `yaml:"rocketchat_api_url,omitempty" json:"rocketchat_api_url,omitempty"`
-	RocketchatToken       *Secret              `yaml:"rocketchat_token,omitempty" json:"rocketchat_token,omitempty"`
-	RocketchatTokenFile   string               `yaml:"rocketchat_token_file,omitempty" json:"rocketchat_token_file,omitempty"`
-	RocketchatTokenID     *Secret              `yaml:"rocketchat_token_id,omitempty" json:"rocketchat_token_id,omitempty"`
-	RocketchatTokenIDFile string               `yaml:"rocketchat_token_id_file,omitempty" json:"rocketchat_token_id_file,omitempty"`
+	JiraAPIURL               *amcommoncfg.URL       `yaml:"jira_api_url,omitempty" json:"jira_api_url,omitempty"`
+	SMTPFrom                 string                 `yaml:"smtp_from,omitempty" json:"smtp_from,omitempty"`
+	SMTPHello                string                 `yaml:"smtp_hello,omitempty" json:"smtp_hello,omitempty"`
+	SMTPSmarthost            HostPort               `yaml:"smtp_smarthost,omitempty" json:"smtp_smarthost,omitempty"`
+	SMTPAuthUsername         string                 `yaml:"smtp_auth_username,omitempty" json:"smtp_auth_username,omitempty"`
+	SMTPAuthPassword         commoncfg.Secret       `yaml:"smtp_auth_password,omitempty" json:"smtp_auth_password,omitempty"`
+	SMTPAuthPasswordFile     string                 `yaml:"smtp_auth_password_file,omitempty" json:"smtp_auth_password_file,omitempty"`
+	SMTPAuthSecret           commoncfg.Secret       `yaml:"smtp_auth_secret,omitempty" json:"smtp_auth_secret,omitempty"`
+	SMTPAuthSecretFile       string                 `yaml:"smtp_auth_secret_file,omitempty" json:"smtp_auth_secret_file,omitempty"`
+	SMTPAuthIdentity         string                 `yaml:"smtp_auth_identity,omitempty" json:"smtp_auth_identity,omitempty"`
+	SMTPRequireTLS           bool                   `yaml:"smtp_require_tls" json:"smtp_require_tls,omitempty"`
+	SMTPTLSConfig            *commoncfg.TLSConfig   `yaml:"smtp_tls_config,omitempty" json:"smtp_tls_config,omitempty"`
+	SMTPForceImplicitTLS     *bool                  `yaml:"smtp_force_implicit_tls,omitempty" json:"smtp_force_implicit_tls,omitempty"`
+	SlackAPIURL              *amcommoncfg.SecretURL `yaml:"slack_api_url,omitempty" json:"slack_api_url,omitempty"`
+	SlackAPIURLFile          string                 `yaml:"slack_api_url_file,omitempty" json:"slack_api_url_file,omitempty"`
+	SlackAppToken            commoncfg.Secret       `yaml:"slack_app_token,omitempty" json:"slack_app_token,omitempty"`
+	SlackAppTokenFile        string                 `yaml:"slack_app_token_file,omitempty" json:"slack_app_token_file,omitempty"`
+	SlackAppURL              *amcommoncfg.URL       `yaml:"slack_app_url,omitempty" json:"slack_app_url,omitempty"`
+	PagerdutyURL             *amcommoncfg.URL       `yaml:"pagerduty_url,omitempty" json:"pagerduty_url,omitempty"`
+	OpsGenieAPIURL           *amcommoncfg.URL       `yaml:"opsgenie_api_url,omitempty" json:"opsgenie_api_url,omitempty"`
+	OpsGenieAPIKey           commoncfg.Secret       `yaml:"opsgenie_api_key,omitempty" json:"opsgenie_api_key,omitempty"`
+	OpsGenieAPIKeyFile       string                 `yaml:"opsgenie_api_key_file,omitempty" json:"opsgenie_api_key_file,omitempty"`
+	WeChatAPIURL             *amcommoncfg.URL       `yaml:"wechat_api_url,omitempty" json:"wechat_api_url,omitempty"`
+	WeChatAPISecret          commoncfg.Secret       `yaml:"wechat_api_secret,omitempty" json:"wechat_api_secret,omitempty"`
+	WeChatAPISecretFile      string                 `yaml:"wechat_api_secret_file,omitempty" json:"wechat_api_secret_file,omitempty"`
+	WeChatAPICorpID          string                 `yaml:"wechat_api_corp_id,omitempty" json:"wechat_api_corp_id,omitempty"`
+	VictorOpsAPIURL          *amcommoncfg.URL       `yaml:"victorops_api_url,omitempty" json:"victorops_api_url,omitempty"`
+	VictorOpsAPIKey          commoncfg.Secret       `yaml:"victorops_api_key,omitempty" json:"victorops_api_key,omitempty"`
+	VictorOpsAPIKeyFile      string                 `yaml:"victorops_api_key_file,omitempty" json:"victorops_api_key_file,omitempty"`
+	TelegramAPIUrl           *amcommoncfg.URL       `yaml:"telegram_api_url,omitempty" json:"telegram_api_url,omitempty"`
+	TelegramBotToken         commoncfg.Secret       `yaml:"telegram_bot_token,omitempty" json:"telegram_bot_token,omitempty"`
+	TelegramBotTokenFile     string                 `yaml:"telegram_bot_token_file,omitempty" json:"telegram_bot_token_file,omitempty"`
+	WebexAPIURL              *amcommoncfg.URL       `yaml:"webex_api_url,omitempty" json:"webex_api_url,omitempty"`
+	RocketchatAPIURL         *amcommoncfg.URL       `yaml:"rocketchat_api_url,omitempty" json:"rocketchat_api_url,omitempty"`
+	RocketchatToken          *commoncfg.Secret      `yaml:"rocketchat_token,omitempty" json:"rocketchat_token,omitempty"`
+	RocketchatTokenFile      string                 `yaml:"rocketchat_token_file,omitempty" json:"rocketchat_token_file,omitempty"`
+	RocketchatTokenID        *commoncfg.Secret      `yaml:"rocketchat_token_id,omitempty" json:"rocketchat_token_id,omitempty"`
+	RocketchatTokenIDFile    string                 `yaml:"rocketchat_token_id_file,omitempty" json:"rocketchat_token_id_file,omitempty"`
+	MattermostWebhookURL     *amcommoncfg.SecretURL `yaml:"mattermost_webhook_url,omitempty" json:"mattermost_webhook_url,omitempty"`
+	MattermostWebhookURLFile string                 `yaml:"mattermost_webhook_url_file,omitempty" json:"mattermost_webhook_url_file,omitempty"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface for GlobalConfig.
@@ -978,12 +857,12 @@ type Route struct {
 	// Deprecated. Remove before v1.0 release.
 	Match map[string]string `yaml:"match,omitempty" json:"match,omitempty"`
 	// Deprecated. Remove before v1.0 release.
-	MatchRE             MatchRegexps `yaml:"match_re,omitempty" json:"match_re,omitempty"`
-	Matchers            Matchers     `yaml:"matchers,omitempty" json:"matchers,omitempty"`
-	MuteTimeIntervals   []string     `yaml:"mute_time_intervals,omitempty" json:"mute_time_intervals,omitempty"`
-	ActiveTimeIntervals []string     `yaml:"active_time_intervals,omitempty" json:"active_time_intervals,omitempty"`
-	Continue            bool         `yaml:"continue" json:"continue,omitempty"`
-	Routes              []*Route     `yaml:"routes,omitempty" json:"routes,omitempty"`
+	MatchRE             amcommoncfg.MatchRegexps `yaml:"match_re,omitempty" json:"match_re,omitempty"`
+	Matchers            amcommoncfg.Matchers     `yaml:"matchers,omitempty" json:"matchers,omitempty"`
+	MuteTimeIntervals   []string                 `yaml:"mute_time_intervals,omitempty" json:"mute_time_intervals,omitempty"`
+	ActiveTimeIntervals []string                 `yaml:"active_time_intervals,omitempty" json:"active_time_intervals,omitempty"`
+	Continue            bool                     `yaml:"continue" json:"continue,omitempty"`
+	Routes              []*Route                 `yaml:"routes,omitempty" json:"routes,omitempty"`
 
 	GroupWait      *model.Duration `yaml:"group_wait,omitempty" json:"group_wait,omitempty"`
 	GroupInterval  *model.Duration `yaml:"group_interval,omitempty" json:"group_interval,omitempty"`
@@ -1042,62 +921,6 @@ func (r *Route) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-// InhibitRule defines an inhibition rule that mutes alerts that match the
-// target labels if an alert matching the source labels exists.
-// Both alerts have to have a set of labels being equal.
-type InhibitRule struct {
-	// Name is an optional name for the inhibition rule.
-	Name string `yaml:"name,omitempty" json:"name,omitempty"`
-	// SourceMatch defines a set of labels that have to equal the given
-	// value for source alerts. Deprecated. Remove before v1.0 release.
-	SourceMatch map[string]string `yaml:"source_match,omitempty" json:"source_match,omitempty"`
-	// SourceMatchRE defines pairs like SourceMatch but does regular expression
-	// matching. Deprecated. Remove before v1.0 release.
-	SourceMatchRE MatchRegexps `yaml:"source_match_re,omitempty" json:"source_match_re,omitempty"`
-	// SourceMatchers defines a set of label matchers that have to be fulfilled for source alerts.
-	SourceMatchers Matchers `yaml:"source_matchers,omitempty" json:"source_matchers,omitempty"`
-	// TargetMatch defines a set of labels that have to equal the given
-	// value for target alerts. Deprecated. Remove before v1.0 release.
-	TargetMatch map[string]string `yaml:"target_match,omitempty" json:"target_match,omitempty"`
-	// TargetMatchRE defines pairs like TargetMatch but does regular expression
-	// matching. Deprecated. Remove before v1.0 release.
-	TargetMatchRE MatchRegexps `yaml:"target_match_re,omitempty" json:"target_match_re,omitempty"`
-	// TargetMatchers defines a set of label matchers that have to be fulfilled for target alerts.
-	TargetMatchers Matchers `yaml:"target_matchers,omitempty" json:"target_matchers,omitempty"`
-	// A set of labels that must be equal between the source and target alert
-	// for them to be a match.
-	Equal []string `yaml:"equal,omitempty" json:"equal,omitempty"`
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for InhibitRule.
-func (r *InhibitRule) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain InhibitRule
-	if err := unmarshal((*plain)(r)); err != nil {
-		return err
-	}
-
-	for k := range r.SourceMatch {
-		if !model.LabelNameRE.MatchString(k) {
-			return fmt.Errorf("invalid label name %q", k)
-		}
-	}
-
-	for k := range r.TargetMatch {
-		if !model.LabelNameRE.MatchString(k) {
-			return fmt.Errorf("invalid label name %q", k)
-		}
-	}
-
-	for _, l := range r.Equal {
-		labelName := model.LabelName(l)
-		if !compat.IsValidLabelName(labelName) {
-			return fmt.Errorf("invalid label name %q in equal list", l)
-		}
-	}
-
-	return nil
-}
-
 // Receiver configuration provides configuration on how to contact a receiver.
 type Receiver struct {
 	// A unique identifier for this receiver.
@@ -1133,135 +956,4 @@ func (c *Receiver) UnmarshalYAML(unmarshal func(any) error) error {
 		return errors.New("missing name in receiver")
 	}
 	return nil
-}
-
-// MatchRegexps represents a map of Regexp.
-type MatchRegexps map[string]Regexp
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for MatchRegexps.
-func (m *MatchRegexps) UnmarshalYAML(unmarshal func(any) error) error {
-	type plain MatchRegexps
-	if err := unmarshal((*plain)(m)); err != nil {
-		return err
-	}
-	for k, v := range *m {
-		if !model.LabelNameRE.MatchString(k) {
-			return fmt.Errorf("invalid label name %q", k)
-		}
-		if v.Regexp == nil {
-			return fmt.Errorf("invalid regexp value for %q", k)
-		}
-	}
-	return nil
-}
-
-// Regexp encapsulates a regexp.Regexp and makes it YAML marshalable.
-type Regexp struct {
-	*regexp.Regexp
-	original string
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for Regexp.
-func (re *Regexp) UnmarshalYAML(unmarshal func(any) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-	regex, err := regexp.Compile("^(?:" + s + ")$")
-	if err != nil {
-		return err
-	}
-	re.Regexp = regex
-	re.original = s
-	return nil
-}
-
-// MarshalYAML implements the yaml.Marshaler interface for Regexp.
-func (re Regexp) MarshalYAML() (any, error) {
-	if re.original != "" {
-		return re.original, nil
-	}
-	return nil, nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface for Regexp.
-func (re *Regexp) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	regex, err := regexp.Compile("^(?:" + s + ")$")
-	if err != nil {
-		return err
-	}
-	re.Regexp = regex
-	re.original = s
-	return nil
-}
-
-// MarshalJSON implements the json.Marshaler interface for Regexp.
-func (re Regexp) MarshalJSON() ([]byte, error) {
-	if re.original != "" {
-		return json.Marshal(re.original)
-	}
-	return []byte("null"), nil
-}
-
-// Matchers is label.Matchers with an added UnmarshalYAML method to implement the yaml.Unmarshaler interface
-// and MarshalYAML to implement the yaml.Marshaler interface.
-type Matchers labels.Matchers
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface for Matchers.
-func (m *Matchers) UnmarshalYAML(unmarshal func(any) error) error {
-	var lines []string
-	if err := unmarshal(&lines); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		pm, err := compat.Matchers(line, "config")
-		if err != nil {
-			return err
-		}
-		*m = append(*m, pm...)
-	}
-	sort.Sort(labels.Matchers(*m))
-	return nil
-}
-
-// MarshalYAML implements the yaml.Marshaler interface for Matchers.
-func (m Matchers) MarshalYAML() (any, error) {
-	result := make([]string, len(m))
-	for i, matcher := range m {
-		result[i] = matcher.String()
-	}
-	return result, nil
-}
-
-// UnmarshalJSON implements the json.Unmarshaler interface for Matchers.
-func (m *Matchers) UnmarshalJSON(data []byte) error {
-	var lines []string
-	if err := json.Unmarshal(data, &lines); err != nil {
-		return err
-	}
-	for _, line := range lines {
-		pm, err := compat.Matchers(line, "config")
-		if err != nil {
-			return err
-		}
-		*m = append(*m, pm...)
-	}
-	sort.Sort(labels.Matchers(*m))
-	return nil
-}
-
-// MarshalJSON implements the json.Marshaler interface for Matchers.
-func (m Matchers) MarshalJSON() ([]byte, error) {
-	if len(m) == 0 {
-		return []byte("[]"), nil
-	}
-	result := make([]string, len(m))
-	for i, matcher := range m {
-		result[i] = matcher.String()
-	}
-	return json.Marshal(result)
 }

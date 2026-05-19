@@ -9,14 +9,15 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/silence/silencepb"
-	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/cortexproject/cortex/pkg/util/test"
 )
@@ -43,8 +44,8 @@ func TestSilencesLimits(t *testing.T) {
 		createSilences := func() *silencepb.Silence {
 			return &silencepb.Silence{
 				Matchers: []*silencepb.Matcher{{Name: "name", Pattern: "pattern"}},
-				StartsAt: time.Now(),
-				EndsAt:   time.Now().Add(time.Minute * 30),
+				StartsAt: timestamppb.New(time.Now()),
+				EndsAt:   timestamppb.New(time.Now().Add(time.Minute * 30)),
 			}
 		}
 		ctx := context.Background()
@@ -81,8 +82,8 @@ func TestSilencesLimits(t *testing.T) {
 	t.Run("Test maxSilencesSizeBytes", func(t *testing.T) {
 		bigSilences := &silencepb.Silence{
 			Matchers: []*silencepb.Matcher{{Name: strings.Repeat("a", maxSilencesSizeBytes/2+1), Pattern: strings.Repeat("b", maxSilencesSizeBytes/2+1)}},
-			StartsAt: time.Now(),
-			EndsAt:   time.Now().Add(time.Minute * 30),
+			StartsAt: timestamppb.New(time.Now()),
+			EndsAt:   timestamppb.New(time.Now().Add(time.Minute * 30)),
 		}
 
 		err = am.silences.Set(context.Background(), bigSilences)
@@ -141,7 +142,7 @@ route:
 	for i := range alertGroups {
 		alertName := model.LabelValue(fmt.Sprintf("Alert-%d", i))
 
-		inputAlerts := []*types.Alert{
+		inputAlerts := []*alert.Alert{
 			{
 				Alert: model.Alert{
 					Labels: model.LabelSet{
@@ -206,7 +207,7 @@ var (
 )
 
 type callbackOp struct {
-	alert               *types.Alert
+	alert               *alert.Alert
 	existing            bool
 	delete              bool // true=delete, false=insert.
 	expectedInsertError error
@@ -218,10 +219,10 @@ type callbackOp struct {
 
 func TestAlertsLimiterWithNoLimits(t *testing.T) {
 	ops := []callbackOp{
-		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 2, expectedTotalSize: alert1Size + alert2Size},
-		{alert: &types.Alert{Alert: alert2}, delete: true, expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
+		{alert: &alert.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedCount: 2, expectedTotalSize: alert1Size + alert2Size},
+		{alert: &alert.Alert{Alert: alert2}, delete: true, expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
 	testLimiter(t, &mockAlertManagerLimits{}, ops)
@@ -233,14 +234,14 @@ func TestAlertsLimiterWithCountLimit(t *testing.T) {
 	alert2WithMoreAnnotationsSize := alertSize(alert2WithMoreAnnotations)
 
 	ops := []callbackOp{
-		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errTooManyAlerts, 1, alert2.Name()), expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
+		{alert: &alert.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errTooManyAlerts, 1, alert2.Name()), expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
 		// Update of existing alert works -- doesn't change count.
-		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
-		{alert: &types.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
+		{alert: &alert.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
+		{alert: &alert.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsCount: 1}, ops)
@@ -251,13 +252,13 @@ func TestAlertsLimiterWithSizeLimit(t *testing.T) {
 	alert2WithMoreAnnotations.Annotations = model.LabelSet{"job": "test", "cluster": "prod", "new": "super-long-annotation"}
 
 	ops := []callbackOp{
-		{alert: &types.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
-		{alert: &types.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
+		{alert: &alert.Alert{Alert: alert1}, existing: false, expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert2WithMoreAnnotations}, existing: false, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert1Size},
+		{alert: &alert.Alert{Alert: alert1}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
-		{alert: &types.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2}, delete: true, expectedCount: 0, expectedTotalSize: 0},
 	}
 
 	// Prerequisite for this test. We set size limit to alert2Size, but inserting alert1 first will prevent insertion of alert2.
@@ -273,15 +274,15 @@ func TestAlertsLimiterWithSizeLimitAndAnnotationUpdate(t *testing.T) {
 
 	// Updating alert with larger annotation that goes over the size limit fails.
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2Size}, []callbackOp{
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
-		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedInsertError: fmt.Errorf(errAlertsTooBig, alert2Size), expectedCount: 1, expectedTotalSize: alert2Size},
 	})
 
 	// Updating alert with larger annotations in the limit works fine.
 	testLimiter(t, &mockAlertManagerLimits{maxAlertsSizeBytes: alert2WithMoreAnnotationsSize}, []callbackOp{
-		{alert: &types.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
-		{alert: &types.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
-		{alert: &types.Alert{Alert: alert2}, existing: true, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2}, existing: false, expectedCount: 1, expectedTotalSize: alert2Size},
+		{alert: &alert.Alert{Alert: alert2WithMoreAnnotations}, existing: true, expectedCount: 1, expectedTotalSize: alert2WithMoreAnnotationsSize},
+		{alert: &alert.Alert{Alert: alert2}, existing: true, expectedCount: 1, expectedTotalSize: alert2Size},
 	})
 }
 

@@ -79,7 +79,7 @@ func (o *relabelOperator) loadSeriesForLabelJoin(series []labels.Labels) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
-	if !prommodel.LabelName(labelJoinDst).IsValid() {
+	if !prommodel.UTF8Validation.IsValidLabelName(labelJoinDst) {
 		return errors.Newf("invalid destination label name in label_join: %s", labelJoinDst)
 	}
 
@@ -117,7 +117,7 @@ func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) erro
 	if err != nil {
 		return errors.Wrap(err, "unable to unwrap string argument")
 	}
-	if !prommodel.LabelName(labelReplaceDst).IsValid() {
+	if !prommodel.UTF8Validation.IsValidLabelName(labelReplaceDst) {
 		return errors.Newf("invalid destination label name in label_replace: %s", labelReplaceDst)
 	}
 	labelReplaceRepl, err := logicalplan.UnwrapString(o.funcExpr.Args[2])
@@ -135,10 +135,6 @@ func (o *relabelOperator) loadSeriesForLabelReplace(series []labels.Labels) erro
 	labelReplaceRegex, err := regexp.Compile("^(?:" + labelReplaceRegexVal + ")$")
 	if err != nil {
 		return errors.Newf("invalid regular expression in label_replace(): %s", labelReplaceRegexVal)
-	}
-
-	if !prommodel.LabelNameRE.MatchString(labelReplaceDst) {
-		return errors.Newf("invalid destination label name in label_replace(): %s", labelReplaceDst)
 	}
 
 	for i, s := range series {

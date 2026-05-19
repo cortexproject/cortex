@@ -600,6 +600,71 @@ func TestBlocksCleaner_ShouldRemoveMetricsForTenantsNotBelongingAnymoreToTheShar
 	))
 }
 
+func TestBlocksCleaner_ShouldCleanupBucketIndexMetricOnOwnershipChange(t *testing.T) {
+	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)
+
+	// Create blocks for two users.
+	createTSDBBlock(t, bucketClient, "user-1", 10, 20, nil)
+	createTSDBBlock(t, bucketClient, "user-2", 30, 40, nil)
+
+	cfg := BlocksCleanerConfig{
+		DeletionDelay:      time.Hour,
+		CleanupInterval:    time.Minute,
+		CleanupConcurrency: 1,
+		BlockRanges:        (&tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}).ToMilliseconds(),
+	}
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
+	scanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
+	cfgProvider := newMockConfigProvider()
+	blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		Name: blocksMarkedForDeletionName,
+		Help: blocksMarkedForDeletionHelp,
+	}, append(commonLabels, reasonLabelName))
+	dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
+
+	cleaner := NewBlocksCleaner(cfg, bucketClient, scanner, 60*time.Second, cfgProvider, logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+
+	// First run: both users are owned by this compactor.
+	activeUsers, deleteUsers, err := cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, true))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
+
+	// Verify bucket index last update metric is set for both users.
+	require.NotZero(t, prom_testutil.ToFloat64(cleaner.tenantBucketIndexLastUpdate.WithLabelValues("user-1")))
+	require.NotZero(t, prom_testutil.ToFloat64(cleaner.tenantBucketIndexLastUpdate.WithLabelValues("user-2")))
+
+	// Simulate ring rebalancing: user-2 ownership moves to a different compactor.
+	// The ShardedScanner now only returns user-1.
+	cleaner.usersScanner, err = users.NewScanner(users.UsersScannerConfig{
+		Strategy: users.UserScanStrategyList,
+	}, bucketClient, logger, reg)
+	require.NoError(t, err)
+	cleaner.usersScanner = users.NewShardedScanner(cleaner.usersScanner, func(userID string) (bool, error) {
+		return userID == "user-1", nil
+	}, logger)
+
+	// Second run: user-2 is no longer owned.
+	activeUsers, deleteUsers, err = cleaner.scanUsers(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cleaner.cleanUpActiveUsers(ctx, activeUsers, false))
+	require.NoError(t, cleaner.cleanDeletedUsers(ctx, deleteUsers))
+
+	// Verify: user-1 metric still exists and is non-zero, user-2 metric has been cleaned up.
+	require.NotZero(t, prom_testutil.ToFloat64(cleaner.tenantBucketIndexLastUpdate.WithLabelValues("user-1")))
+	// user-2 metric should have been deleted. Calling WithLabelValues creates a new zero-value gauge,
+	// so we verify by checking the total number of metrics in the GaugeVec.
+	assert.Equal(t, 1, prom_testutil.CollectAndCount(cleaner.tenantBucketIndexLastUpdate),
+		"expected only user-1 metric to remain after ownership change")
+}
+
 func TestBlocksCleaner_ListBlocksOutsideRetentionPeriod(t *testing.T) {
 	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
 	bucketClient = bucketindex.BucketWithGlobalMarkers(bucketClient)

@@ -5,6 +5,7 @@ import (
 	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -133,13 +134,13 @@ func (d *BucketScanBlocksFinder) GetBlocks(_ context.Context, userID string, min
 	// Given we do expect the large majority of queries to have a time range close
 	// to "now", we're going to find matching blocks iterating the list in reverse order.
 	var matchingMetas bucketindex.Blocks
-	for i := len(userMetas) - 1; i >= 0; i-- {
-		if userMetas[i].Within(minT, maxT) {
-			matchingMetas = append(matchingMetas, userMetas[i])
+	for _, userMeta := range slices.Backward(userMetas) {
+		if userMeta.Within(minT, maxT) {
+			matchingMetas = append(matchingMetas, userMeta)
 		}
 
 		// We can safely break the loop because metas are sorted by MaxTime.
-		if userMetas[i].MaxTime <= minT {
+		if userMeta.MaxTime <= minT {
 			break
 		}
 	}

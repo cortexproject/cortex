@@ -21,6 +21,8 @@ const (
 
 	CurrentNoConvertMarkVersion = NoConvertMarkVersion1
 	NoConvertMarkVersion1       = 1
+
+	NoConvertReasonTooManyLabels = "too_many_labels"
 )
 
 type NoConvertMark struct {
@@ -55,7 +57,7 @@ func ReadNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 func WriteNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket, labelNamesCount int, maxBlockLabelNames int) error {
 	noConvertMarker := NoConvertMark{
 		Version:         CurrentNoConvertMarkVersion,
-		Reason:          "too_many_labels",
+		Reason:          NoConvertReasonTooManyLabels,
 		LabelNamesCount: labelNamesCount,
 		Threshold:       maxBlockLabelNames,
 	}

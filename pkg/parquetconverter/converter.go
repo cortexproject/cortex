@@ -460,7 +460,8 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 					}
 					continue
 				}
-				level.Info(logger).Log("msg", "skipping parquet conversion for block with too many label names", "block", b.ULID.String(), "label_names", labelNamesCount, "limit", maxBlockLabelNames)
+				level.Debug(logger).Log("msg", "skipping parquet conversion for block with too many label names", "block", b.ULID.String(), "label_names", labelNamesCount, "limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
 				_ = tsdbBlock.Close()
 				continue
 			}

@@ -2833,6 +2833,64 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestIngester_Push_OutOfOrderLabels_AppenderNotLeaked verifies that when Push
+// returns early because of an out-of-order label set (and on any other early
+// return after the appender is acquired) the appender is released via
+// Rollback. Otherwise the TSDB head leaks series references, mmap'd chunks and
+// pending state on every such request; observable via the
+// cortex_ingester_tsdb_head_active_appenders gauge.
+func TestIngester_Push_OutOfOrderLabels_AppenderNotLeaked(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	r := prometheus.NewRegistry()
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	// Wait until it's ACTIVE.
+	test.Poll(t, time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), "test-user")
+
+	// First push a valid sample to initialise the user TSDB head so that
+	// subsequent Push() calls take the headAppender path.
+	validLabels := labels.FromStrings(labels.MetricName, "test_metric", "a", "1", "b", "2")
+	validReq, _ := mockWriteRequest(t, validLabels, 1, 1)
+	_, err = i.Push(ctx, validReq)
+	require.NoError(t, err)
+
+	// Sanity check: no appenders are currently active.
+	const activeAppendersMetric = "cortex_ingester_tsdb_head_active_appenders"
+	expectedZero := `
+		# HELP cortex_ingester_tsdb_head_active_appenders Number of currently active TSDB appender transactions.
+		# TYPE cortex_ingester_tsdb_head_active_appenders gauge
+		cortex_ingester_tsdb_head_active_appenders 0
+`
+	require.NoError(t, testutil.GatherAndCompare(r, bytes.NewBufferString(expectedZero), activeAppendersMetric))
+
+	// Now push a series of requests with an out-of-order label set. Each
+	// such request creates an appender that, without the leak fix, is never
+	// released, leaving the active-appenders gauge growing.
+	outOfOrderLabels := []cortexpb.LabelAdapter{
+		{Name: labels.MetricName, Value: "test_metric"},
+		{Name: "c", Value: "3"},
+		{Name: "a", Value: "1"},
+	}
+	const numLeakyPushes = 5
+	for n := 0; n < numLeakyPushes; n++ {
+		req, _ := mockWriteRequest(t, cortexpb.FromLabelAdaptersToLabels(outOfOrderLabels), 1, int64(2+n))
+		_, err = i.Push(ctx, req)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "out-of-order label set found")
+	}
+
+	// The active-appenders gauge must still be 0 — every appender created by
+	// the early-returning Push() must have been released.
+	require.NoError(t, testutil.GatherAndCompare(r, bytes.NewBufferString(expectedZero), activeAppendersMetric))
+}
+
 func BenchmarkIngesterPush(b *testing.B) {
 	limits := defaultLimitsTestConfig()
 	benchmarkIngesterPush(b, limits, false)

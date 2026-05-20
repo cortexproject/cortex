@@ -1,7 +1,7 @@
 FROM golang:1.26.2-trixie
 ARG goproxyValue
 ENV GOPROXY=${goproxyValue}
-RUN apt-get update && apt-get install -y curl file gettext jq unzip protobuf-compiler libprotobuf-dev && \
+RUN apt-get update && apt-get install -y curl file gettext jq unzip xz-utils protobuf-compiler libprotobuf-dev && \
 	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 ENV SHFMT_VERSION=3.2.4
@@ -26,6 +26,18 @@ RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/fatih/faillint@v1.15.0 &&\
 	go install github.com/campoy/embedmd@v1.0.0 &&\
 	rm -rf /go/pkg /go/src /root/.cache
+
+# Install OpenTelemetry Weaver for telemetry schema validation and code generation.
+# Note: Only available for x86_64 Linux. arm64 builds will skip Weaver installation.
+ENV WEAVER_VERSION=0.22.1
+RUN GOARCH=$(go env GOARCH) && \
+	if [ "$GOARCH" = "amd64" ]; then \
+	URL="https://github.com/open-telemetry/weaver/releases/download/v${WEAVER_VERSION}/weaver-x86_64-unknown-linux-gnu.tar.xz" && \
+	curl -fsSL "${URL}" | xz -d | tar x --strip-components=1 -C /usr/bin weaver-x86_64-unknown-linux-gnu/weaver && \
+	chmod +x /usr/bin/weaver; \
+	else \
+	echo "Weaver not available for $GOARCH, skipping installation"; \
+	fi
 
 COPY build.sh /
 ENV GOCACHE=/go/cache

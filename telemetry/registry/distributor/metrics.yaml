@@ -1,0 +1,382 @@
+groups:
+  # -- Push path: incoming sample counters --
+
+  - id: metric.cortex.distributor.received_samples
+    type: metric
+    metric_name: cortex_distributor_received_samples_total
+    stability: stable
+    brief: "The total number of received samples, excluding rejected and deduped samples."
+    instrument: counter
+    unit: "{sample}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+      - id: type
+        type:
+          members:
+            - id: float
+              value: "float"
+              stability: stable
+            - id: histogram
+              value: "histogram"
+              stability: stable
+            - id: nhcb
+              value: "nhcb"
+              stability: stable
+        stability: stable
+        brief: "Sample metric type."
+        requirement_level: required
+
+  - id: metric.cortex.distributor.received_samples_per_labelset
+    type: metric
+    metric_name: cortex_distributor_received_samples_per_labelset_total
+    stability: stable
+    brief: "The total number of received samples per label set, excluding rejected and deduped samples."
+    instrument: counter
+    unit: "{sample}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+      - id: type
+        type: string
+        stability: stable
+        brief: "Sample metric type."
+        requirement_level: required
+        examples: ["float", "histogram"]
+      - id: labelset
+        type: string
+        stability: stable
+        brief: "Label set string representation."
+        requirement_level: required
+        examples: ["{job=\"api\"}"]
+
+  - id: metric.cortex.distributor.received_exemplars
+    type: metric
+    metric_name: cortex_distributor_received_exemplars_total
+    stability: stable
+    brief: "The total number of received exemplars, excluding rejected and deduped exemplars."
+    instrument: counter
+    unit: "{exemplar}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  - id: metric.cortex.distributor.received_metadata
+    type: metric
+    metric_name: cortex_distributor_received_metadata_total
+    stability: stable
+    brief: "The total number of received metadata, excluding rejected."
+    instrument: counter
+    unit: "{metadata}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  - id: metric.cortex.distributor.samples_in
+    type: metric
+    metric_name: cortex_distributor_samples_in_total
+    stability: stable
+    brief: "The total number of samples that have come in to the distributor, including rejected or deduped samples."
+    instrument: counter
+    unit: "{sample}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+      - id: type
+        type: string
+        stability: stable
+        brief: "Sample metric type."
+        requirement_level: required
+        examples: ["float", "histogram", "nhcb"]
+
+  - id: metric.cortex.distributor.exemplars_in
+    type: metric
+    metric_name: cortex_distributor_exemplars_in_total
+    stability: stable
+    brief: "The total number of exemplars that have come in to the distributor, including rejected or deduped exemplars."
+    instrument: counter
+    unit: "{exemplar}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  - id: metric.cortex.distributor.metadata_in
+    type: metric
+    metric_name: cortex_distributor_metadata_in_total
+    stability: stable
+    brief: "The total number of metadata that have come in to the distributor, including rejected."
+    instrument: counter
+    unit: "{metadata}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  # -- HA deduplication counters --
+
+  - id: metric.cortex.distributor.non_ha_samples_received
+    type: metric
+    metric_name: cortex_distributor_non_ha_samples_received_total
+    stability: stable
+    brief: "The total number of received samples for a user that has HA tracking turned on, but the sample didn't contain both HA labels."
+    instrument: counter
+    unit: "{sample}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  - id: metric.cortex.distributor.deduped_samples
+    type: metric
+    metric_name: cortex_distributor_deduped_samples_total
+    stability: stable
+    brief: "The total number of deduplicated samples."
+    instrument: counter
+    unit: "{sample}"
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+      - id: cluster
+        type: string
+        stability: stable
+        brief: "HA cluster identifier."
+        requirement_level: required
+        examples: ["cluster-a"]
+
+  # -- Histograms --
+
+  - id: metric.cortex.labels_per_sample
+    type: metric
+    metric_name: cortex_labels_per_sample
+    stability: stable
+    brief: "Number of labels per sample."
+    instrument: histogram
+    unit: "{label}"
+
+  - id: metric.cortex.distributor.query_duration_seconds
+    type: metric
+    metric_name: cortex_distributor_query_duration_seconds
+    stability: stable
+    brief: "Time spent executing expression and exemplar queries."
+    instrument: histogram
+    unit: s
+    attributes:
+      - id: method
+        type: string
+        stability: stable
+        brief: "Query method name."
+        requirement_level: required
+        examples: ["QueryStream", "QueryExemplars"]
+      - id: status_code
+        type: string
+        stability: stable
+        brief: "HTTP status code."
+        requirement_level: required
+        examples: ["200", "500"]
+
+  # -- Ingester interaction counters --
+
+  - id: metric.cortex.distributor.ingester_appends
+    type: metric
+    metric_name: cortex_distributor_ingester_appends_total
+    stability: stable
+    brief: "The total number of batch appends sent to ingesters."
+    instrument: counter
+    unit: "{append}"
+    attributes:
+      - id: ingester
+        type: string
+        stability: stable
+        brief: "Ingester instance identifier."
+        requirement_level: required
+        examples: ["ingester-0"]
+      - id: type
+        type: string
+        stability: stable
+        brief: "Append type: samples or metadata."
+        requirement_level: required
+        examples: ["samples", "metadata"]
+
+  - id: metric.cortex.distributor.ingester_append_failures
+    type: metric
+    metric_name: cortex_distributor_ingester_append_failures_total
+    stability: stable
+    brief: "The total number of failed batch appends sent to ingesters."
+    instrument: counter
+    unit: "{append}"
+    attributes:
+      - id: ingester
+        type: string
+        stability: stable
+        brief: "Ingester instance identifier."
+        requirement_level: required
+        examples: ["ingester-0"]
+      - id: type
+        type: string
+        stability: stable
+        brief: "Append type."
+        requirement_level: required
+        examples: ["samples", "metadata"]
+      - id: status
+        type: string
+        stability: stable
+        brief: "Failure HTTP status class."
+        requirement_level: required
+        examples: ["4xx", "5xx"]
+
+  - id: metric.cortex.distributor.ingester_queries
+    type: metric
+    metric_name: cortex_distributor_ingester_queries_total
+    stability: stable
+    brief: "The total number of queries sent to ingesters."
+    instrument: counter
+    unit: "{query}"
+    attributes:
+      - id: ingester
+        type: string
+        stability: stable
+        brief: "Ingester instance identifier."
+        requirement_level: required
+        examples: ["ingester-0"]
+
+  - id: metric.cortex.distributor.ingester_query_failures
+    type: metric
+    metric_name: cortex_distributor_ingester_query_failures_total
+    stability: stable
+    brief: "The total number of failed queries sent to ingesters."
+    instrument: counter
+    unit: "{query}"
+    attributes:
+      - id: ingester
+        type: string
+        stability: stable
+        brief: "Ingester instance identifier."
+        requirement_level: required
+        examples: ["ingester-0"]
+
+  - id: metric.cortex.distributor.ingester_partial_data_queries
+    type: metric
+    metric_name: cortex_distributor_ingester_partial_data_queries_total
+    stability: stable
+    brief: "The total number of queries sent to ingesters that may have returned partial data."
+    instrument: counter
+    unit: "{query}"
+
+  # -- Gauges --
+
+  - id: metric.cortex.distributor.replication_factor
+    type: metric
+    metric_name: cortex_distributor_replication_factor
+    stability: stable
+    brief: "The configured replication factor."
+    instrument: gauge
+    unit: "{factor}"
+
+  - id: metric.cortex.distributor.latest_seen_sample_timestamp_seconds
+    type: metric
+    metric_name: cortex_distributor_latest_seen_sample_timestamp_seconds
+    stability: stable
+    brief: "Unix timestamp of latest received sample per user."
+    instrument: gauge
+    unit: s
+    attributes:
+      - id: user
+        type: string
+        stability: stable
+        brief: "Tenant ID."
+        requirement_level: required
+        examples: ["tenant-1"]
+
+  - id: metric.cortex.distributor.ingester_push_timeouts
+    type: metric
+    metric_name: cortex_distributor_ingester_push_timeouts_total
+    stability: stable
+    brief: "The total number of push requests to ingesters that were canceled due to timeout."
+    instrument: counter
+    unit: "{timeout}"
+
+  # -- GaugeFunc metrics (registered with callback functions) --
+
+  - id: metric.cortex.distributor.inflight_push_requests
+    type: metric
+    metric_name: cortex_distributor_inflight_push_requests
+    stability: stable
+    brief: "Current number of inflight push requests in distributor."
+    instrument: gauge
+    unit: "{request}"
+
+  - id: metric.cortex.distributor.inflight_client_requests
+    type: metric
+    metric_name: cortex_distributor_inflight_client_requests
+    stability: stable
+    brief: "Current number of inflight client requests in distributor."
+    instrument: gauge
+    unit: "{request}"
+
+  - id: metric.cortex.distributor.ingestion_rate_samples_per_second
+    type: metric
+    metric_name: cortex_distributor_ingestion_rate_samples_per_second
+    stability: stable
+    brief: "Current ingestion rate in samples/sec that distributor is using to limit access."
+    instrument: gauge
+    unit: "{sample}/s"
+
+  # -- Instance limits (registered with ConstLabels, kept hand-written) --
+
+  - id: metric.cortex.distributor.instance_limits
+    type: metric
+    metric_name: cortex_distributor_instance_limits
+    stability: stable
+    brief: "Instance limits used by this distributor."
+    instrument: gauge
+    unit: "{limit}"
+    attributes:
+      - id: limit
+        type:
+          members:
+            - id: max_inflight_push_requests
+              value: "max_inflight_push_requests"
+              stability: stable
+            - id: max_inflight_client_requests
+              value: "max_inflight_client_requests"
+              stability: stable
+            - id: max_ingestion_rate
+              value: "max_ingestion_rate"
+              stability: stable
+        stability: stable
+        brief: "Type of instance limit."
+        requirement_level: required

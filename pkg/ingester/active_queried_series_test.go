@@ -1,14 +1,19 @@
 package ingester
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/util/services"
 )
 
 func TestActiveQueriedSeries_UpdateSeries(t *testing.T) {
@@ -452,4 +457,92 @@ func TestActiveQueriedSeries_EdgeCaseTimes(t *testing.T) {
 	assert.NoError(t, err)
 	// Should handle gracefully
 	assert.GreaterOrEqual(t, active, uint64(0))
+}
+
+// TestActiveQueriedSeriesService_NoSendOnClosedChannelOnShutdown is a regression
+// test for https://github.com/cortexproject/cortex/issues/7531. The service
+// previously closed updateChan in stopping() while concurrent producers were
+// still inside select+default sends, causing a "send on closed channel" panic.
+// We hammer UpdateSeriesBatch concurrently with shutdown and assert no panic.
+//
+// Each producer performs a bounded number of sends so the test always
+// terminates promptly, even when the post-stop channel-full path is exercised
+// heavily (every send takes the `default` branch and logs).
+func TestActiveQueriedSeriesService_NoSendOnClosedChannelOnShutdown(t *testing.T) {
+	const (
+		producers      = 32
+		sendsPerProd   = 5000
+		windowDuration = 1 * time.Minute
+		numWindows     = 3
+	)
+	totalDuration := time.Duration(numWindows) * windowDuration
+
+	svc := NewActiveQueriedSeriesService(log.NewNopLogger(), nil)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), svc))
+
+	a := NewActiveQueriedSeries([]time.Duration{totalDuration}, windowDuration, 1.0, log.NewNopLogger())
+
+	// Pre-compute a hash to keep the producer loop tight and avoid expensive
+	// allocations that would dwarf the actual race window we're trying to hit.
+	hash := labels.FromStrings("a", "1").Hash()
+
+	var (
+		panicked  atomic.Bool
+		panicMsg  atomic.Value // string
+		wg        sync.WaitGroup
+		producing sync.WaitGroup
+		gate      = make(chan struct{}) // released after Stop() returns
+	)
+	wg.Add(producers)
+	producing.Add(producers)
+	for range producers {
+		go func() {
+			defer wg.Done()
+			// Capture any panic (e.g. "send on closed channel") so the test
+			// binary survives and we can fail the test cleanly.
+			defer func() {
+				if r := recover(); r != nil {
+					panicked.Store(true)
+					panicMsg.Store(fmt.Sprintf("%v", r))
+				}
+			}()
+
+			now := time.Now()
+			producing.Done()
+			// First phase: hammer while the service is still running so the
+			// channel and workers are active.
+			for range sendsPerProd {
+				hashes := getQueriedSeriesHashesSlice()
+				hashes = append(hashes, hash)
+				svc.UpdateSeriesBatch(a, hashes, now, "tenant")
+			}
+			// Wait until the test goroutine has stopped the service, then send
+			// a second burst to maximize the race window during/after
+			// shutdown. With the bug, these sends would panic.
+			<-gate
+			for range sendsPerProd {
+				hashes := getQueriedSeriesHashesSlice()
+				hashes = append(hashes, hash)
+				svc.UpdateSeriesBatch(a, hashes, now, "tenant")
+			}
+		}()
+	}
+
+	// Wait for all producers to be actively hammering before initiating
+	// shutdown, so Stop overlaps with concurrent sends.
+	producing.Wait()
+
+	// Stop the service while producers are still in their first burst. With
+	// the bug (close(updateChan) in stopping), the panic can fire here.
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), svc))
+
+	// Release the producers' second burst — these sends target the now-stopped
+	// service and would unambiguously panic against a closed channel.
+	close(gate)
+
+	wg.Wait()
+
+	if panicked.Load() {
+		t.Fatalf("producer goroutine panicked during shutdown: %v", panicMsg.Load())
+	}
 }

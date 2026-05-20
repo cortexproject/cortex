@@ -2879,7 +2879,7 @@ func TestIngester_Push_OutOfOrderLabels_AppenderNotLeaked(t *testing.T) {
 		{Name: "a", Value: "1"},
 	}
 	const numLeakyPushes = 5
-	for n := 0; n < numLeakyPushes; n++ {
+	for n := range numLeakyPushes {
 		req, _ := mockWriteRequest(t, cortexpb.FromLabelAdaptersToLabels(outOfOrderLabels), 1, int64(2+n))
 		_, err = i.Push(ctx, req)
 		require.Error(t, err)

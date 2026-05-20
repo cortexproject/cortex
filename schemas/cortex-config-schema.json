@@ -5647,6 +5647,12 @@
           "x-cli-flag": "memberlist.left-ingesters-timeout",
           "x-format": "duration"
         },
+        "max_concurrent_connections": {
+          "default": 100,
+          "description": "Maximum number of concurrent inbound TCP connections. 0 = no limit.",
+          "type": "number",
+          "x-cli-flag": "memberlist.max-concurrent-connections"
+        },
         "max_join_backoff": {
           "default": "1m0s",
           "description": "Max backoff duration to join other cluster members.",
@@ -5659,6 +5665,12 @@
           "description": "Max number of retries to join other cluster members.",
           "type": "number",
           "x-cli-flag": "memberlist.max-join-retries"
+        },
+        "max_packet_size": {
+          "default": 1048576,
+          "description": "Maximum size in bytes of an inbound gossip packet. 0 = no limit.",
+          "type": "number",
+          "x-cli-flag": "memberlist.max-packet-size"
         },
         "message_history_buffer_bytes": {
           "default": 0,
@@ -5683,6 +5695,13 @@
           "description": "Timeout used when connecting to other nodes to send packet.",
           "type": "string",
           "x-cli-flag": "memberlist.packet-dial-timeout",
+          "x-format": "duration"
+        },
+        "packet_read_timeout": {
+          "default": "5s",
+          "description": "Timeout for reading packet data from inbound connections. 0 = no limit.",
+          "type": "string",
+          "x-cli-flag": "memberlist.packet-read-timeout",
           "x-format": "duration"
         },
         "packet_write_timeout": {

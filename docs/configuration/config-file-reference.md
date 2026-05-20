@@ -4625,6 +4625,18 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
 
+# Timeout for reading packet data from inbound connections. 0 = no limit.
+# CLI flag: -memberlist.packet-read-timeout
+[packet_read_timeout: <duration> | default = 5s]
+
+# Maximum size in bytes of an inbound gossip packet. 0 = no limit.
+# CLI flag: -memberlist.max-packet-size
+[max_packet_size: <int> | default = 1048576]
+
+# Maximum number of concurrent inbound TCP connections. 0 = no limit.
+# CLI flag: -memberlist.max-concurrent-connections
+[max_concurrent_connections: <int> | default = 100]
+
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
 [tls_enabled: <boolean> | default = false]

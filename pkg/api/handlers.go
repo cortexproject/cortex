@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
@@ -255,6 +256,7 @@ func NewQuerierHandler(
 		false,
 		false,
 		nil,
+		features.NewRegistry(),
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()

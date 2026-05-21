@@ -11,6 +11,6 @@ var (
 	Minio      = "minio/minio:RELEASE.2024-05-28T17-19-04Z"
 	Consul     = "consul:1.8.4"
 	ETCD       = "quay.io/coreos/etcd:v3.5.29"
-	Prometheus = "quay.io/prometheus/prometheus:v3.8.1"
+	Prometheus = "quay.io/prometheus/prometheus:v3.9.1"
 	Postgres   = "postgres:9.6.16"
 )

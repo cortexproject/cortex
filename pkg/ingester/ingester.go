@@ -1546,8 +1546,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			var err error
 
 			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
-				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
-				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+				if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
 					startTimestampSampleAppendFailCount++
 					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
 				}
@@ -1605,8 +1604,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				}
 
 				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
-					// TODO(SungJin1212): Change to AppendHistogramSTZeroSample after update the Prometheus v3.9.0+
-					if _, err = app.AppendHistogramCTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+					if _, err = app.AppendHistogramSTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
 						startTimestampHistogramAppendFailCount++
 						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
 					}

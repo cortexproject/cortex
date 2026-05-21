@@ -1833,7 +1833,67 @@ Hard Limits (per-tenant maximum, inclusive)
 &lt;li>&lt;a href="/docs/configuration/arguments/#runtime-configuration-file">Runtime Configuration&lt;/a>&lt;/li>
 &lt;li>&lt;a href="/docs/guides/overrides-exporter/">Overrides Exporter&lt;/a>&lt;/li>
 &lt;li>&lt;a href="/docs/api/#overrides">API Documentation&lt;/a>&lt;/li>
-&lt;/ul></description></item><item><title>Docs: Tenant ID Naming Conventions</title><link>/docs/guides/tenant-id-naming-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tenant-id-naming-conventions/</guid><description>
+&lt;/ul></description></item><item><title>Docs: Supported architectures</title><link>/docs/guides/supported-architectures/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/supported-architectures/</guid><description>
+&lt;p>Cortex release artifacts are built for the operating systems and architectures
+listed below. Use these targets when selecting container images, binary
+artifacts, or OS packages for production deployments.&lt;/p>
+&lt;h2 id="supported-release-targets">Supported release targets&lt;/h2>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Artifact type&lt;/th>
+&lt;th>Operating system&lt;/th>
+&lt;th>Architectures&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Container images&lt;/td>
+&lt;td>Linux&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Cortex binary&lt;/td>
+&lt;td>Linux&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Cortex binary&lt;/td>
+&lt;td>darwin (macOS)&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>query-tee&lt;/code> binary&lt;/td>
+&lt;td>Linux&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>query-tee&lt;/code> binary&lt;/td>
+&lt;td>darwin (macOS)&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Debian package&lt;/td>
+&lt;td>Linux&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>RPM package&lt;/td>
+&lt;td>Linux&lt;/td>
+&lt;td>&lt;code>amd64&lt;/code>, &lt;code>arm64&lt;/code>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>The CI and release pipelines build Cortex with &lt;code>GOOS&lt;/code> and &lt;code>GOARCH&lt;/code> targets
+matching these rows. Automated tests run against Linux &lt;code>amd64&lt;/code> and &lt;code>arm64&lt;/code>
+Cortex images.&lt;/p>
+&lt;h2 id="unsupported-targets">Unsupported targets&lt;/h2>
+&lt;p>Other operating systems or architectures may work when built from source, but
+they are not part of the regular Cortex release artifacts or CI matrix. Treat
+those builds as unsupported unless you validate them in your own environment.&lt;/p>
+&lt;p>Cortex does not require architecture-specific CPU extensions such as AVX in its
+release build configuration. If you use external services or custom base images
+alongside Cortex, verify their architecture and CPU requirements separately.&lt;/p></description></item><item><title>Docs: Tenant ID Naming Conventions</title><link>/docs/guides/tenant-id-naming-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/tenant-id-naming-conventions/</guid><description>
 &lt;h2 id="tenant-id-naming">Tenant ID naming&lt;/h2>
 &lt;p>The tenant ID (also called &amp;ldquo;user ID&amp;rdquo; or &amp;ldquo;org ID&amp;rdquo;) is the unique identifier of a tenant within a Cortex cluster. The tenant ID is opaque information to Cortex, which doesn&amp;rsquo;t make any assumptions on its format/content, but its naming has three limitations:&lt;/p>
 &lt;ol>

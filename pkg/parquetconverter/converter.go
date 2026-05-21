@@ -389,6 +389,8 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 
 		// We don't convert blocks again if they already have a valid converter mark.
 		if cortex_parquet.ValidConverterMarkVersion(marker.Version) {
+			level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
+			c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
 			continue
 		}
 

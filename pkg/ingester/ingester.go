@@ -3058,6 +3058,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
+		BlockReloadInterval:            1 * time.Minute, // use default value
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)

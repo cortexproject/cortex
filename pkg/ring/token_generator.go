@@ -2,6 +2,7 @@ package ring
 
 import (
 	"container/heap"
+	"hash/fnv"
 	"math"
 	"math/rand"
 	"slices"
@@ -63,6 +64,15 @@ func (g *RandomTokenGenerator) GenerateTokens(ring *Desc, _, _ string, numTokens
 	slices.Sort(tokens)
 
 	return tokens
+}
+
+// instanceHash returns a deterministic uint32 derived from the ingester ID and a round counter.
+// Used to select among candidate gaps so that concurrent ingesters pick different gaps.
+func instanceHash(id string, round int) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(id))
+	h.Write([]byte{byte(round >> 24), byte(round >> 16), byte(round >> 8), byte(round)})
+	return h.Sum32()
 }
 
 type MinimizeSpreadTokenGenerator struct {
@@ -160,6 +170,9 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 	distancesHeap := &tokenDistanceHeap{}
 
 	for _, perInstance := range tokensPerInstanceWithDistance {
+		if len(perInstance.tokens) == 0 {
+			continue
+		}
 		sort.Slice(perInstance.tokens, func(i, j int) bool {
 			return perInstance.tokens[i].distance > perInstance.tokens[j].distance
 		})
@@ -182,7 +195,27 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		// Calculating the expected distance per step taking in consideration the tokens already created
 		expectedDistanceStep := (expectedOwnershipDistance - currentInstance.totalDistance) / int64(numTokens-len(r))
 
-		m := heap.Pop(distancesHeap).(*totalTokenPerInstance)
+		// Collect up to 4 candidates from the top of the heap. Two concurrent ingesters
+		// use a per-instance hash to pick different candidates, avoiding splitting the
+		// same instance's gap and causing uneven distribution.
+		const maxCandidates = 4
+		candidates := make([]*totalTokenPerInstance, 0, maxCandidates)
+		for len(*distancesHeap) > 0 && len(candidates) < maxCandidates {
+			candidates = append(candidates, heap.Pop(distancesHeap).(*totalTokenPerInstance))
+		}
+
+		var pick int
+		if len(candidates) > 1 {
+			pick = int(instanceHash(id, len(r))) % len(candidates)
+		}
+		m := candidates[pick]
+
+		// Push back the non-selected candidates.
+		for idx, c := range candidates {
+			if idx != pick {
+				heap.Push(distancesHeap, c)
+			}
+		}
 
 		i := findFirst(len(m.tokens), func(x int) bool {
 			return m.tokens[x].distance > expectedDistanceStep
@@ -199,10 +232,20 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 		}
 
 		var newToken uint32
-		if int64(tokenToSplit.prev)+expectedDistanceStep > maxTokenValue {
-			newToken = uint32(int64(tokenToSplit.prev) + expectedDistanceStep - maxTokenValue)
+		// When only one candidate was available, two concurrent ingesters will pick
+		// the same instance and gap. Apply a small per-instance jitter to differentiate.
+		offset := expectedDistanceStep
+		if len(candidates) <= 1 {
+			h := instanceHash(id, len(r))
+			maxJitter := expectedDistanceStep / 100
+			if maxJitter > 0 {
+				offset += int64(h) % maxJitter
+			}
+		}
+		if int64(tokenToSplit.prev)+offset > maxTokenValue {
+			newToken = uint32(int64(tokenToSplit.prev) + offset - maxTokenValue)
 		} else {
-			newToken = uint32(int64(tokenToSplit.prev) + expectedDistanceStep)
+			newToken = uint32(int64(tokenToSplit.prev) + offset)
 		}
 
 		if _, ok := usedTokens[newToken]; !ok {

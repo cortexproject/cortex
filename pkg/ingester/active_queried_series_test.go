@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -488,7 +488,7 @@ func TestActiveQueriedSeriesService_NoSendOnClosedChannelOnShutdown(t *testing.T
 
 	var (
 		panicked  atomic.Bool
-		panicMsg  atomic.Value // string
+		panicMsg  atomic.String
 		wg        sync.WaitGroup
 		producing sync.WaitGroup
 		gate      = make(chan struct{}) // released after Stop() returns

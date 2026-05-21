@@ -3,6 +3,7 @@ package grpcclient
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	otgrpc "github.com/opentracing-contrib/go-grpc"
@@ -66,12 +67,12 @@ func TestUnwrapErrorStreamClientInterceptor(t *testing.T) {
 
 	// Chain the interceptors
 	chainedStreamer := mockStreamer
-	for i := len(interceptors) - 1; i >= 0; i-- {
+	for _, interceptor := range slices.Backward(interceptors) {
 		chainedStreamer = func(interceptor grpc.StreamClientInterceptor, next grpc.Streamer) grpc.Streamer {
 			return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 				return interceptor(ctx, desc, cc, method, next, opts...)
 			}
-		}(interceptors[i], chainedStreamer)
+		}(interceptor, chainedStreamer)
 	}
 
 	// Call the chained streamer

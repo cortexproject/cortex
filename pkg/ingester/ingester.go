@@ -2515,14 +2515,14 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 		}
 	}
 
-	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
-
 	if i.resourceBasedLimiter != nil {
 		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
 			return nil, limiter.ErrResourceLimitReached
 		}
 	}
+
+	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
 	return func() {
 		i.inflightQueryRequests.Dec()

@@ -39,6 +39,7 @@
 * [BUGFIX] Security: Fix stored XSS vulnerability in Alertmanager and Store Gateway status pages by replacing `text/template` with `html/template`. #7512
 * [BUGFIX] Security: Limit decompressed gzip output in `ParseProtoReader` and OTLP ingestion path. The decompressed body is now capped by `-distributor.otlp-max-recv-msg-size`. #7515
 * [BUGFIX] Tenant Federation: Fix regex resolver clearing known users list when user scan fails. #7534
+* [BUGFIX] Ingester: Fix inflight query counter leak when resource-based query protection rejects a request. #7539
 
 ## 1.21.0 2026-04-24
 

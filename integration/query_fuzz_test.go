@@ -121,7 +121,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -222,7 +222,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -357,7 +357,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -538,7 +538,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		}
 	}
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
@@ -767,7 +767,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -883,7 +883,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -1202,7 +1202,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := t.TempDir()
 	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
@@ -1357,7 +1357,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1590,7 +1590,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -1662,7 +1662,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1816,8 +1816,7 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	_, err = c2.PushV2(symbols, v2Series)
 	require.NoError(t, err)
 
-	seed := now.Unix()
-	rnd := rand.New(rand.NewSource(seed))
+	rnd := newFuzzRand(t)
 
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
@@ -1978,6 +1977,24 @@ func shouldUseSampleNumComparer(query string) bool {
 		return true
 	}
 	return false
+}
+
+// newFuzzRand returns a *rand.Rand whose seed is logged via t.Logf so failing
+// fuzz cases can be reproduced. By default the seed is time.Now().Unix();
+// setting FUZZ_SEED to a base-10 int64 overrides the default and pins the
+// run to a specific seed.
+func newFuzzRand(t *testing.T) *rand.Rand {
+	seed := time.Now().Unix()
+	if v := os.Getenv("FUZZ_SEED"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			t.Logf("integration fuzz random seed: overridden to %d via FUZZ_SEED", parsed)
+			seed = parsed
+		} else {
+			t.Logf("integration fuzz random seed: ignoring invalid FUZZ_SEED=%q: %v", v, err)
+		}
+	}
+	t.Logf("integration fuzz random seed: %d (override with FUZZ_SEED env var)", seed)
+	return rand.New(rand.NewSource(seed))
 }
 
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {

@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -20,6 +21,7 @@ import (
 	"github.com/cortexproject/promqlsmith"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -403,7 +405,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	for i, tc := range cases {
 		qt := "range query"
 		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
+			if !sameErrorClass(tc.err1, tc.err2) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
@@ -639,7 +641,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		failures := 0
 		for i, tc := range cases {
 			if tc.err1 != nil || tc.err2 != nil {
-				if !cmp.Equal(tc.err1, tc.err2) {
+				if !sameErrorClass(tc.err1, tc.err2) {
 					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
 					failures++
 				}
@@ -1954,7 +1956,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 			qt = "range query"
 		}
 		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
+			if !sameErrorClass(tc.err1, tc.err2) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
@@ -1978,6 +1980,163 @@ func shouldUseSampleNumComparer(query string) bool {
 		return true
 	}
 	return false
+}
+
+// errBracketListRE matches a bracketed comma-separated series list embedded in
+// an error message such as `... [{a="1"}, {b="2"}] ...`. Both Cortex and
+// upstream Prometheus emit messages of this shape for vector-matching errors
+// (see vendor/github.com/prometheus/prometheus/promql/engine.go), but the order
+// of entries inside the brackets depends on Go map iteration and can therefore
+// differ between two processes even when the underlying error is identical.
+var errBracketListRE = regexp.MustCompile(`\[[^\[\]]*\]`)
+
+// canonicalizeErrMsg sorts the top-level comma-separated entries inside every
+// `[...]` group of the supplied message, so that two messages that differ only
+// in the order of such a list compare equal. Splitting is brace-depth aware so
+// that commas inside a Prometheus labelset (`{a="1", b="2"}`) are not treated
+// as element separators.
+func canonicalizeErrMsg(msg string) string {
+	return errBracketListRE.ReplaceAllStringFunc(msg, func(group string) string {
+		inner := group[1 : len(group)-1]
+		parts := splitTopLevelCommas(inner)
+		if len(parts) < 2 {
+			return group
+		}
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		sort.Strings(parts)
+		return "[" + strings.Join(parts, ", ") + "]"
+	})
+}
+
+// splitTopLevelCommas splits s on commas that sit at brace depth 0. Commas
+// inside `{...}` (e.g. inside a Prometheus labelset string) are preserved.
+func splitTopLevelCommas(s string) []string {
+	var (
+		parts []string
+		depth int
+		start int
+	)
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				parts = append(parts, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, s[start:])
+	return parts
+}
+
+// sameErrorClass reports whether two errors returned by the Prometheus HTTP
+// query API should be considered equivalent for the purposes of the fuzz
+// tests. The Cortex e2e client uses the upstream `prometheus/client_golang`
+// v1 API, which surfaces typed `*promv1.Error` values with a stable `Type`
+// field (`execution`, `bad_data`, etc.). When both errors are typed, the two
+// must agree on `Type` AND on a canonicalized message: canonicalization sorts
+// the contents of any `[...]` group on top-level commas so the non-
+// deterministic series-list ordering produced by `vendor/github.com/prometheus
+// /prometheus/promql/engine.go` (e.g. the `found duplicate series for the
+// match group ... [X, Y]` path) does not flake the test, but two genuinely
+// different `execution` failures (e.g. division-by-zero vs parse error) still
+// diverge. When either side is not typed, fall back to comparing canonicalized
+// message strings.
+func sameErrorClass(err1, err2 error) bool {
+	if err1 == nil && err2 == nil {
+		return true
+	}
+	if err1 == nil || err2 == nil {
+		return false
+	}
+	var pErr1, pErr2 *promv1.Error
+	ok1 := errors.As(err1, &pErr1)
+	ok2 := errors.As(err2, &pErr2)
+	if ok1 && ok2 {
+		return pErr1.Type == pErr2.Type &&
+			canonicalizeErrMsg(pErr1.Msg) == canonicalizeErrMsg(pErr2.Msg)
+	}
+	return canonicalizeErrMsg(err1.Error()) == canonicalizeErrMsg(err2.Error())
+}
+
+func TestSameErrorClass(t *testing.T) {
+	dupMsg := func(a, b string) string {
+		return fmt.Sprintf("execution: found duplicate series for the match group {series=\"2\"} on the right hand-side of the operation: [%s, %s];many-to-many matching not allowed: matching labels must be unique on one side", a, b)
+	}
+	a := `{__name__="test_series_a", series="2"}`
+	b := `{series="2"}`
+
+	for _, tc := range []struct {
+		name string
+		err1 error
+		err2 error
+		want bool
+	}{
+		{
+			name: "both nil",
+			want: true,
+		},
+		{
+			name: "only err1 nil",
+			err2: errors.New("boom"),
+			want: false,
+		},
+		{
+			name: "only err2 nil",
+			err1: errors.New("boom"),
+			want: false,
+		},
+		{
+			name: "same typed class, different messages (reordered bracket list)",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(a, b)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(b, a)},
+			want: true,
+		},
+		{
+			name: "different typed classes",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "boom"},
+			err2: &promv1.Error{Type: promv1.ErrBadData, Msg: "boom"},
+			want: false,
+		},
+		{
+			name: "same typed class, materially different messages (must not mask)",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: division by zero"},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: parse error: unexpected token"},
+			want: false,
+		},
+		{
+			name: "labelset with internal comma is not split (brace-depth aware)",
+			err1: errors.New(`oops: [{a="1", b="2"}, {c="3"}]`),
+			err2: errors.New(`oops: [{c="3"}, {a="1", b="2"}]`),
+			want: true,
+		},
+		{
+			name: "untyped same message after bracket canonicalization",
+			err1: errors.New(dupMsg(a, b)),
+			err2: errors.New(dupMsg(b, a)),
+			want: true,
+		},
+		{
+			name: "untyped different messages",
+			err1: errors.New("one"),
+			err2: errors.New("two"),
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sameErrorClass(tc.err1, tc.err2); got != tc.want {
+				t.Fatalf("sameErrorClass(%v, %v) = %v, want %v", tc.err1, tc.err2, got, tc.want)
+			}
+		})
+	}
 }
 
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {

@@ -2028,6 +2028,25 @@ blocks_storage:
         # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
         [fetch_timeout: <duration> | default = 0s]
 
+      # Maximum label cardinality for deferring regex matchers on the head
+      # block. When a regex matcher targets a label with more unique values than
+      # this threshold, it is applied lazily during iteration instead of
+      # postings lookup. 0 disables.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality
+      [lazy_matcher_max_cardinality: <int> | default = 0]
+
+      # Cardinality:postings ratio above which a simple regex (prefix-only,
+      # single contains) is deferred to lazy iteration. Lower = more aggressive
+      # deferral. Calibrated empirically; defaults to 6.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio
+      [lazy_matcher_simple_cost_ratio: <int> | default = 6]
+
+      # Cardinality:postings ratio above which a complex regex (multi-substring,
+      # capture groups, character classes) is deferred. Lower = more aggressive
+      # deferral. Calibrated empirically; defaults to 2.
+      # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio
+      [lazy_matcher_complex_cost_ratio: <int> | default = 2]
+
   users_scanner:
     # Strategy to use to scan users. Supported values are: list, user_index.
     # CLI flag: -blocks-storage.users-scanner.strategy

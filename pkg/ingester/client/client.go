@@ -57,11 +57,10 @@ type HealthAndIngesterClient interface {
 }
 
 type streamWriteJob struct {
-	req    *cortexpb.StreamWriteRequest
-	resp   *cortexpb.WriteResponse
-	ctx    context.Context
-	cancel context.CancelFunc
-	err    error
+	req      *cortexpb.StreamWriteRequest
+	resp     *cortexpb.WriteResponse
+	err      error
+	sendDone chan struct{}
 }
 
 type closableHealthAndIngesterClient struct {
@@ -112,16 +111,12 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 			Request:  in,
 		}
 
-		reqCtx, reqCancel := context.WithCancel(ctx)
-		defer reqCancel()
-
 		job := &streamWriteJob{
-			req:    streamReq,
-			ctx:    reqCtx,
-			cancel: reqCancel,
+			req:      streamReq,
+			sendDone: make(chan struct{}),
 		}
 		c.streamPushChan <- job
-		<-reqCtx.Done()
+		<-job.sendDone
 		return job.resp, job.err
 	})
 }
@@ -185,9 +180,11 @@ func (c *closableHealthAndIngesterClient) Close() error {
 				if !ok {
 					break drainingLoop
 				}
-				if job != nil && job.cancel != nil {
+				if job != nil {
 					job.err = errors.New("stream connection ingester client closing")
-					job.cancel()
+					if job.sendDone != nil {
+						close(job.sendDone)
+					}
 				}
 			default:
 				close(c.streamPushChan)
@@ -239,18 +236,18 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 				err = stream.Send(job.req)
 				if err == io.EOF {
 					job.resp = &cortexpb.WriteResponse{}
-					job.cancel()
+					close(job.sendDone)
 					return
 				}
 				if err != nil {
 					job.err = err
-					job.cancel()
+					close(job.sendDone)
 					continue
 				}
 				resp, err := stream.Recv()
 				if err == io.EOF {
 					job.resp = &cortexpb.WriteResponse{}
-					job.cancel()
+					close(job.sendDone)
 					return
 				}
 				job.resp = resp
@@ -258,7 +255,7 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 				if err == nil && job.resp.Code != http.StatusOK {
 					job.err = httpgrpc.Errorf(int(job.resp.Code), "%s", job.resp.Message)
 				}
-				job.cancel()
+				close(job.sendDone)
 			}
 		}
 	}()

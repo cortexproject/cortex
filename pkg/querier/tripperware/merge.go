@@ -25,16 +25,19 @@ func (a byFirstTime) Less(i, j int) bool { return a[i].minTime() < a[j].minTime(
 func (resp *PrometheusResponse) minTime() int64 {
 	data := resp.GetData()
 	res := data.GetResult()
-	// minTime should only be called when the response is fron range query.
+	// minTime should only be called when the response is from range query.
 	matrix := res.GetMatrix()
 	sampleStreams := matrix.GetSampleStreams()
 	if len(sampleStreams) == 0 {
 		return -1
 	}
-	if len(sampleStreams[0].Samples) == 0 {
-		return -1
+	if len(sampleStreams[0].Samples) > 0 {
+		return sampleStreams[0].Samples[0].TimestampMs
 	}
-	return sampleStreams[0].Samples[0].TimestampMs
+	if len(sampleStreams[0].Histograms) > 0 {
+		return sampleStreams[0].Histograms[0].GetTimestampMs()
+	}
+	return -1
 }
 
 // MergeResponse merges multiple Response into one.

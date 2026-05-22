@@ -91,12 +91,9 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	require.Equal(t, mTokenGenerator.called, len(zones))
 
 	// Should Generate tokens based on the ring state
-	// Tolerance is 5% (vs original 2%) because candidate selection among heap entries
-	// trades a small amount of optimality for collision avoidance. The impact is only
-	// visible with very few ingesters; with many ingesters the distribution converges.
 	for i := range 50 {
 		generateTokensForIngesters(t, rindDesc, fmt.Sprintf("minimize-%v", i), zones, minimizeTokenGenerator, dups)
-		assertDistancePerIngester(t, rindDesc, 0.05)
+		assertDistancePerIngester(t, rindDesc, 0.02)
 	}
 	require.Equal(t, mTokenGenerator.called, len(zones))
 
@@ -106,7 +103,7 @@ func TestMinimizeSpreadTokenGenerator(t *testing.T) {
 	rindDesc.AddIngester("partial", "partial", zones[0], rTokens, ACTIVE, time.Now())
 	nTokens := minimizeTokenGenerator.GenerateTokens(rindDesc, "partial", zones[0], 256, true)
 	rindDesc.AddIngester("partial", "partial", zones[0], append(rTokens, nTokens...), ACTIVE, time.Now())
-	assertDistancePerIngester(t, rindDesc, 0.05)
+	assertDistancePerIngester(t, rindDesc, 0.02)
 
 	mTokenGenerator.called = 0
 	// Should fallback to random generator when more than 1 ingester does not have tokens and force flag is set
@@ -206,47 +203,4 @@ func assertDistancePerIngester(t testing.TB, d *Desc, tolerance float64) {
 			return (1 - math.Abs(expectedDistance/realDistance)) < tolerance
 		}, "[%v] expected and real distance error is greater than %v -> %v[%v/%v]", s, tolerance, 1-math.Abs(expectedDistance/realDistance), expectedDistance, realDistance)
 	}
-}
-
-func TestMinimizeSpreadTokenGenerator_NoDuplicatesOnConcurrentJoin(t *testing.T) {
-	// Simulate two ingesters joining concurrently: both see the same ring state
-	// and generate tokens independently. With candidate gap selection, they must
-	// produce different tokens.
-	zones := []string{"zone1", "zone2", "zone3"}
-	tg := NewMinimizeSpreadTokenGenerator()
-
-	// Set up a ring with existing ingesters so MinimizeSpread uses its deterministic path.
-	ringDesc := NewDesc()
-	for i := range 3 {
-		for _, zone := range zones {
-			id := fmt.Sprintf("existing-%d-%s", i, zone)
-			tokens := tg.GenerateTokens(ringDesc, id, zone, 512, true)
-			ringDesc.AddIngester(id, id, zone, tokens, ACTIVE, time.Now())
-		}
-	}
-
-	// Two new ingesters in the same zone read the same ring state.
-	// Register both with no tokens so they both attempt MinimizeSpread.
-	now := time.Now()
-	ringDesc.AddIngester("new-ingester-A", "new-ingester-A", zones[0], []uint32{}, ACTIVE, now)
-	ringDesc.AddIngester("new-ingester-B", "new-ingester-B", zones[0], []uint32{}, ACTIVE, now)
-
-	tokensA := tg.GenerateTokens(ringDesc, "new-ingester-A", zones[0], 512, true)
-	tokensB := tg.GenerateTokens(ringDesc, "new-ingester-B", zones[0], 512, true)
-
-	setA := make(map[uint32]bool, len(tokensA))
-	for _, tok := range tokensA {
-		setA[tok] = true
-	}
-
-	var duplicates []uint32
-	for _, tok := range tokensB {
-		if setA[tok] {
-			duplicates = append(duplicates, tok)
-		}
-	}
-
-	require.Empty(t, duplicates, "ingesters A and B produced %d duplicate tokens from the same ring state", len(duplicates))
-	require.Len(t, tokensA, 512)
-	require.Len(t, tokensB, 512)
 }

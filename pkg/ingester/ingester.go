@@ -1437,6 +1437,22 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
 
+	// Ensure the appender is always released so that we don't leak TSDB head
+	// series references, mmap'd chunks and pending state on early returns.
+	// `committed` is flipped to true immediately before app.Commit() because
+	// Prometheus closes the appender even on Commit failure (it self-rolls
+	// back internally on WAL error), so the deferred Rollback must not run
+	// afterwards.
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if rollbackErr := app.Rollback(); rollbackErr != nil {
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback appender on early return", "user", userID, "err", rollbackErr)
+		}
+	}()
+
 	// Even when OOO is enabled globally, we want to reject OOO samples in some cases.
 	// prometheus implementation: https://github.com/prometheus/prometheus/pull/14710
 	if req.DiscardOutOfOrder {
@@ -1505,11 +1521,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 				continue
 			}
-			// The error looks an issue on our side, so we should rollback
-			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
-			}
-
+			// The error looks an issue on our side, so we should rollback.
+			// The deferred rollback above will close the appender; nothing to do here.
 			return nil, wrapWithUser(err, userID)
 		}
 
@@ -1560,10 +1573,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 					continue
 				}
-				// The error looks an issue on our side, so we should rollback
-				if rollbackErr := app.Rollback(); rollbackErr != nil {
-					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
-				}
+				// The error looks an issue on our side, so we should rollback.
+				// The deferred rollback above will close the appender; nothing to do here.
 				return nil, wrapWithUser(err, userID)
 			}
 		} else {
@@ -1626,6 +1637,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 
 	startCommit := time.Now()
+	// Mark committed before calling Commit: Prometheus closes the appender on
+	// both success and failure of Commit (it self-rolls-back on WAL error), so
+	// the deferred Rollback must not fire afterwards.
+	committed = true
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
 	}

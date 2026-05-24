@@ -40,6 +40,7 @@
 * [BUGFIX] Security: Limit decompressed gzip output in `ParseProtoReader` and OTLP ingestion path. The decompressed body is now capped by `-distributor.otlp-max-recv-msg-size`. #7515
 * [BUGFIX] Tenant Federation: Fix regex resolver clearing known users list when user scan fails. #7534
 * [BUGFIX] Ingester: Fix inflight query counter leak when resource-based query protection rejects a request. #7539
+* [BUGFIX] Ingester: Release the TSDB appender on every early-return path in `Push` (e.g. out-of-order label set) by deferring `Rollback`. Previously such requests leaked TSDB head series references, mmap'd chunks and pending state per request, causing the `cortex_ingester_tsdb_head_active_appenders` gauge to grow unbounded. #7528
 
 ## 1.21.0 2026-04-24
 

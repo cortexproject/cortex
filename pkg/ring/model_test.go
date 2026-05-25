@@ -748,25 +748,25 @@ func TestDesc_FindDifference(t *testing.T) {
 }
 
 func TestDesc_FindDifference_ConcurrentConflictResolutionIsDeterministic(t *testing.T) {
-	// Simulate two ingesters with duplicate tokens both doing CAS at the same time.
-	// Both read the same DDB state (current) and produce the same new state (out).
-	// FindDifference must produce identical toUpdate results so they don't write
-	// conflicting resolutions to DDB.
+	// Simulate two ingesters with duplicate tokens both doing CAS at the same time
+	// during the observe period (JOINING state). Both read the same DDB state (current)
+	// and produce the same new state (out). FindDifference must produce identical
+	// toUpdate results so they don't write conflicting resolutions to DDB.
 	current := &Desc{Ingesters: map[string]InstanceDesc{
-		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: ACTIVE},
-		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: ACTIVE},
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: JOINING},
 	}}
 
 	// ing-A does a heartbeat CAS (only timestamp changes)
 	outA := &Desc{Ingesters: map[string]InstanceDesc{
-		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 110, State: ACTIVE},
-		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: ACTIVE},
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 110, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: JOINING},
 	}}
 
 	// ing-B does a heartbeat CAS (only timestamp changes)
 	outB := &Desc{Ingesters: map[string]InstanceDesc{
-		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: ACTIVE},
-		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 110, State: ACTIVE},
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 110, State: JOINING},
 	}}
 
 	toUpdateA, _, errA := current.FindDifference(outA)

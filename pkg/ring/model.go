@@ -241,6 +241,7 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	otherIngesterMap := other.Ingesters
 
 	var updated []string
+	tokensChanged := false
 
 	maxFutureLimit := now.Add(30 * time.Minute).Unix()
 	for name, oing := range otherIngesterMap {
@@ -251,6 +252,9 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 		ting := thisIngesterMap[name]
 		// ting.Timestamp will be 0, if there was no such ingester in our version
 		if oing.Timestamp > ting.Timestamp {
+			if !tokensEqual(ting.Tokens, oing.Tokens) {
+				tokensChanged = true
+			}
 			oing.Tokens = append([]uint32(nil), oing.Tokens...) // make a copy of tokens
 			thisIngesterMap[name] = oing
 			updated = append(updated, name)
@@ -285,7 +289,17 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	}
 
 	// resolveConflicts allocates lot of memory, so if we can avoid it, do that.
-	if conflictingTokensExist(thisIngesterMap) {
+	// Check when tokens changed or any ingester is in JOINING state (observe period).
+	shouldCheckConflicts := tokensChanged
+	if !shouldCheckConflicts {
+		for _, ing := range thisIngesterMap {
+			if ing.State == JOINING {
+				shouldCheckConflicts = true
+				break
+			}
+		}
+	}
+	if shouldCheckConflicts && conflictingTokensExist(thisIngesterMap) {
 		resolveConflicts(thisIngesterMap)
 	}
 
@@ -734,6 +748,7 @@ func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 
 	toUpdated := NewDesc()
 	toDelete := make([]string, 0)
+	tokensChanged := false
 
 	// If both are null
 	if d == nil && out == nil {
@@ -757,6 +772,7 @@ func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 	//If new added
 	for name, oing := range out.Ingesters {
 		if _, ok := d.Ingesters[name]; !ok {
+			tokensChanged = true
 			toUpdated.Ingesters[name] = oing
 		}
 	}
@@ -769,6 +785,9 @@ func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 		} else if !ing.Equal(oing) {
 			if oing.Timestamp > ing.Timestamp {
 				toUpdated.Ingesters[name] = oing
+				if !tokensEqual(ing.Tokens, oing.Tokens) {
+					tokensChanged = true
+				}
 			} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
 				// we accept LEFT even if timestamp hasn't changed
 				toUpdated.Ingesters[name] = oing
@@ -776,8 +795,21 @@ func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 		}
 	}
 
+	// Check for token conflicts when tokens changed or when any ingester is still
+	// in JOINING state (observe period). During the observe period, concurrent joins
+	// may have produced duplicate tokens that need resolution.
+	shouldCheckConflicts := tokensChanged
+	if !shouldCheckConflicts {
+		for _, ing := range out.Ingesters {
+			if ing.State == JOINING {
+				shouldCheckConflicts = true
+				break
+			}
+		}
+	}
+
 	// resolveConflicts allocates a lot of memory, so if we can avoid it, do that.
-	if conflictingTokensExist(out.Ingesters) {
+	if shouldCheckConflicts && conflictingTokensExist(out.Ingesters) {
 		resolveConflicts(out.Ingesters)
 
 		// Refresh all entries already in toUpdated (their tokens may have changed).

@@ -238,33 +238,39 @@ func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {
 				if !ok {
 					return
 				}
-				err = stream.Send(job.req)
-				if err == io.EOF {
-					job.resp = &cortexpb.WriteResponse{}
-					close(job.sendDone)
+				if done := c.processJob(stream, job); done {
 					return
 				}
-				if err != nil {
-					job.err = err
-					close(job.sendDone)
-					continue
-				}
-				resp, err := stream.Recv()
-				if err == io.EOF {
-					job.resp = &cortexpb.WriteResponse{}
-					close(job.sendDone)
-					return
-				}
-				job.resp = resp
-				job.err = err
-				if err == nil && job.resp.Code != http.StatusOK {
-					job.err = httpgrpc.Errorf(int(job.resp.Code), "%s", job.resp.Message)
-				}
-				close(job.sendDone)
 			}
 		}
 	}()
 	return nil
+}
+
+// processJob handles a single job and returns true if the stream should be closed.
+func (c *closableHealthAndIngesterClient) processJob(stream Ingester_PushStreamClient, job *streamWriteJob) (done bool) {
+	defer close(job.sendDone)
+
+	err := stream.Send(job.req)
+	if err == io.EOF {
+		job.resp = &cortexpb.WriteResponse{}
+		return true
+	}
+	if err != nil {
+		job.err = err
+		return false
+	}
+	resp, err := stream.Recv()
+	if err == io.EOF {
+		job.resp = &cortexpb.WriteResponse{}
+		return true
+	}
+	job.resp = resp
+	job.err = err
+	if err == nil && job.resp.Code != http.StatusOK {
+		job.err = httpgrpc.Errorf(int(job.resp.Code), "%s", job.resp.Message)
+	}
+	return false
 }
 
 // Config is the configuration struct for the ingester client

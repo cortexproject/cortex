@@ -349,7 +349,9 @@ func TestPushStreamConnection_PanicWhenCtxExpiresAndTimeseriesGrows(t *testing.T
 	defer pushCancel()
 
 	// PushStreamConnection blocks until Send()+Recv() complete.
-	client.PushStreamConnection(pushCtx, writeReq) //nolint:errcheck
+	_, pushErr := client.PushStreamConnection(pushCtx, writeReq)
+	require.ErrorIs(t, pushErr, context.DeadlineExceeded,
+		"caller should observe its own context deadline")
 
 	for i := range 100 {
 		ts.Labels = append(ts.Labels, cortexpb.LabelAdapter{

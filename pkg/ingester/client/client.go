@@ -116,8 +116,13 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 			sendDone: make(chan struct{}),
 		}
 		c.streamPushChan <- job
-		<-job.sendDone
-		return job.resp, job.err
+		select {
+		case <-job.sendDone:
+			return job.resp, job.err
+		case <-ctx.Done():
+			<-job.sendDone
+			return nil, ctx.Err()
+		}
 	})
 }
 

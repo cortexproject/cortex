@@ -678,6 +678,7 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			processSeries := func(s *storepb.Series) error {
 				// Detach series data from the gRPC unmarshal buffer so that it can be freed.
 				sCopy := *s
+				sCopy.Labels = append([]labelpb.ZLabel(nil), s.Labels...)
 				detachSeriesFromBuffer(&sCopy)
 				mySeries = append(mySeries, &sCopy)
 

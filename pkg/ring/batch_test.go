@@ -19,7 +19,7 @@ type recoveringExecutor struct{}
 
 func (e *recoveringExecutor) Submit(f func()) {
 	go func() {
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		f()
 	}()
 }

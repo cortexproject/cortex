@@ -677,8 +677,9 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 
 			processSeries := func(s *storepb.Series) error {
 				// Detach series data from the gRPC unmarshal buffer so that it can be freed.
-				detachSeriesFromBuffer(s)
-				mySeries = append(mySeries, s)
+				sCopy := *s
+				detachSeriesFromBuffer(&sCopy)
+				mySeries = append(mySeries, &sCopy)
 
 				// Add series fingerprint to query limiter; will return error if we are over the limit
 				limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))

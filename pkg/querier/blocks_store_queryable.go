@@ -1195,7 +1195,7 @@ func convertBlockHintsToULIDs(hints []hintspb.Block) ([]ulid.ULID, error) {
 // detachSeriesFromBuffer re-allocates label strings and chunk data byte slices
 // so that the series no longer references the gRPC unmarshal buffer.
 func detachSeriesFromBuffer(s *storepb.Series) {
-	labelpb.ReAllocZLabelsStrings(&s.Labels, true)
+	labelpb.ReAllocZLabelsStrings(&s.Labels, false)
 	for i := range s.Chunks {
 		if s.Chunks[i].Raw != nil && len(s.Chunks[i].Raw.Data) > 0 {
 			s.Chunks[i].Raw.Data = append([]byte(nil), s.Chunks[i].Raw.Data...)

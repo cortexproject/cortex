@@ -2965,6 +2965,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
 	err = db.Compact(context.TODO())
 	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			level.Warn(userLogger).Log("msg", "failed to close TSDB after compact failure", "err", closeErr)
+		}
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
 

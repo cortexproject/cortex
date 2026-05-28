@@ -1983,6 +1983,55 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
+// hasOrVectorFallback reports whether expr contains a sub-expression of the
+// shape `<lhs> or vector(<rhs>)`. Such queries diverge between Cortex's
+// sharded and unsharded query paths when the LHS has partial time coverage:
+// the unsharded engine sees the gap and falls through to vector(...), while
+// individual shards may each see (different) coverage and skip the fallback.
+// This is the same class of semantic-divergence bug already known for
+// `absent`/`absent_over_time`/`scalar` (see #5203, #5204, #5205).
+func hasOrVectorFallback(expr parser.Expr) bool {
+	found := false
+	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
+		be, ok := node.(*parser.BinaryExpr)
+		if !ok || be.Op != parser.LOR {
+			return nil
+		}
+		call, ok := be.RHS.(*parser.Call)
+		if !ok || call.Func == nil {
+			return nil
+		}
+		if call.Func.Name == "vector" {
+			found = true
+		}
+		return nil
+	})
+	return found
+}
+
+func TestHasOrVectorFallback(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  bool
+	}{
+		{`up`, false},
+		{`vector(1)`, false},
+		{`up or up`, false},
+		{`up or vector(1)`, true},
+		{`(sum(rate(up[1m])) == bool 0) or vector(0)`, true},
+		// The actual failing case from issue #7547, simplified.
+		{`(sum without (job) (stddev_over_time(up[4m]) == -up)) or vector(2.0099)`, true},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			expr, err := parser.ParseExpr(tc.query)
+			require.NoError(t, err)
+			if got := hasOrVectorFallback(expr); got != tc.want {
+				t.Fatalf("hasOrVectorFallback(%q) = %v, want %v", tc.query, got, tc.want)
+			}
+		})
+	}
+}
+
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 	isValid := true
 	queryStr := generatedQuery.String()
@@ -1999,6 +2048,11 @@ func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 		// The query fuzzer can generate nested unary negation operators (e.g. --0.5)
 		// which are evaluated differently between Cortex versions. Skip these queries
 		// to avoid false positives in backward compatibility tests.
+		return false
+	}
+	if hasOrVectorFallback(generatedQuery) {
+		// `or vector(...)` falls through at different timestamps in sharded vs
+		// unsharded engines when the LHS has partial time coverage; see #7547.
 		return false
 	}
 	if skipBackwardIncompat {

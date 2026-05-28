@@ -335,6 +335,11 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 
 	filtered := ids[:0]
 	for _, id := range ids {
+	        cnt++
+		if cnt%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		}
+	
 		matches := true
 		for i, m := range lazyMs {
 			val, err := ix.LabelValueFor(ctx, id, m.Name)

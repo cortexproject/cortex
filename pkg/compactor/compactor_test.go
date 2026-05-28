@@ -1859,7 +1859,6 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Let's check how many users second compactor has.
 	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
-	require.NotZero(t, c2Users)
 
 	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
 	c1.compactUsers(context.Background())

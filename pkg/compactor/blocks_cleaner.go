@@ -357,9 +357,15 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		var hbWG sync.WaitGroup
+		hbWG.Add(1)
+		go func() {
+			defer hbWG.Done()
+			visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		}()
 		defer func() {
 			errChan <- nil
+			hbWG.Wait()
 		}()
 		return errors.Wrapf(c.cleanUser(ctx, userLogger, userBucket, userID, firstRun), "failed to delete blocks for user: %s", userID)
 	})
@@ -392,9 +398,15 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		var hbWG sync.WaitGroup
+		hbWG.Add(1)
+		go func() {
+			defer hbWG.Done()
+			visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		}()
 		defer func() {
 			errChan <- nil
+			hbWG.Wait()
 		}()
 		return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userLogger, userBucket, userID), "failed to delete user marked for deletion: %s", userID)
 	})

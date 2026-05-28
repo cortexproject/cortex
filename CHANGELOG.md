@@ -12,6 +12,7 @@
 * [FEATURE] Querier: Implement Resource Based Throttling in Querier. #7442
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
+* [ENHANCEMENT] Memberlist: Add `-memberlist.packet-read-timeout`, `-memberlist.max-packet-size`, and `-memberlist.max-concurrent-connections` flags to bound inbound gossip TCP connections, preventing slow-read, OOM, and connection-flood attacks on the gossip port. #7518
 * [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455
 * [ENHANCEMENT] Ingester: Add WAL record metrics to help evaluate the effectiveness of WAL compression type (e.g. snappy, zstd): `cortex_ingester_tsdb_wal_record_part_writes_total`, `cortex_ingester_tsdb_wal_record_parts_bytes_written_total`, and `cortex_ingester_tsdb_wal_record_bytes_saved_total`. #7420
 * [ENHANCEMENT] Distributor: Introduce dynamic `Symbols` slice capacity pooling. #7398 #7401
@@ -26,6 +27,7 @@
 * [ENHANCEMENT] Distributor: Add HMAC-SHA256 stream authentication for `PushStream` via `-distributor.sign-write-requests-keys`. #7475
 * [ENHANCEMENT] Instrument Ingester CPU profile with source for read APIs. #7494
 * [ENHANCEMENT] Ingester: Convert expanded postings cache from FIFO to LRU eviction to retain frequently-queried entries under memory pressure. #7510
+* [ENHANCEMENT] Querier: Detach series label and chunk data from gRPC unmarshal buffers in store-gateway streaming path, allowing the Go GC to reclaim receive buffers. #7519
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
@@ -37,7 +39,10 @@
 * [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7485
 * [BUGFIX] Security: Fix stored XSS vulnerability in Alertmanager and Store Gateway status pages by replacing `text/template` with `html/template`. #7512
 * [BUGFIX] Security: Limit decompressed gzip output in `ParseProtoReader` and OTLP ingestion path. The decompressed body is now capped by `-distributor.otlp-max-recv-msg-size`. #7515
-* [BUGFIX] Ingester: Close TSDB when compaction fails during `createTSDB`, preventing resource leaks (file descriptors, mmap handles) that could lead to ingester instability. #7557
+* [BUGFIX] Ingester: Close TSDB when compaction fails during `createTSDB`, preventing resource leaks (file descriptors, mmap handles) that could lead to ingester instability. #7560
+* [BUGFIX] Tenant Federation: Fix regex resolver clearing known users list when user scan fails. #7534
+* [BUGFIX] Ingester: Release the TSDB appender on every early-return path in `Push` (e.g. out-of-order label set) by deferring `Rollback`. Previously such requests leaked TSDB head series references, mmap'd chunks and pending state per request, causing the `cortex_ingester_tsdb_head_active_appenders` gauge to grow unbounded. #7528
+* [BUGFIX] Ring: Fix ring token conflict resolution only applied to updated instance and make constantly token conflict check during instance observe period.
 
 ## 1.21.0 2026-04-24
 

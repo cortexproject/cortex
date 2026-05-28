@@ -2,11 +2,11 @@ package ring
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/atomic"
 )
 
 var _ ReadRing = (*mockReadRing)(nil)

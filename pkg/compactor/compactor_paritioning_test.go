@@ -1622,12 +1622,14 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	// Wait until c2 has both completed a compaction cycle and observed itself owning
-	// at least one user. CompactionRunsCompleted increments even when no users were
-	// owned during the cycle (a transient ring-view skew at startup), so poll on the
-	// actual condition we depend on rather than the counter.
+	// Wait for at least two completed cycles so we sample after a steady-state
+	// ownership cycle, not mid-cycle following a zero-owned first cycle. The
+	// first cycle's CompactionRunsCompleted can increment with zero owned users
+	// due to transient ring-view skew at startup; sampling then would race with
+	// the second cycle's fetcher.NewBaseFetcher creating meta-sync directories
+	// and return a partial count.
 	cortex_testutil.Poll(t, 30*time.Second, true, func() any {
-		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted) >= 1 &&
+		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted) >= 2 &&
 			len(c2.listTenantsWithMetaSyncDirectories()) > 0
 	})
 

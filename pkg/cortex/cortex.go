@@ -356,6 +356,9 @@ type Cortex struct {
 	StoreGateway     *storegateway.StoreGateway
 	MemberlistKV     *memberlist.KVInitService
 
+	// RegexResolver is set when tenant-federation.regex-matcher-enabled=true.
+	RegexResolver *tenantfederation.RegexResolver
+
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.
 	StoreQueryables []querier.QueryableWithFilter

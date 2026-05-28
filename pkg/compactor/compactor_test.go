@@ -1846,8 +1846,13 @@ func TestCompactor_DeleteLocalSyncFiles(t *testing.T) {
 
 	// Now start second compactor, and wait until it runs compaction.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	cortex_testutil.Poll(t, 10*time.Second, 1.0, func() any {
-		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted)
+	// Wait until c2 has both completed a compaction cycle and observed itself owning
+	// at least one user. CompactionRunsCompleted increments even when no users were
+	// owned during the cycle (a transient ring-view skew at startup), so poll on the
+	// actual condition we depend on rather than the counter.
+	cortex_testutil.Poll(t, 30*time.Second, true, func() any {
+		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted) >= 1 &&
+			len(c2.listTenantsWithMetaSyncDirectories()) > 0
 	})
 
 	// Let's check how many users second compactor has.

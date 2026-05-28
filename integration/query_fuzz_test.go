@@ -550,9 +550,12 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	queries := make([]string, 0, testRun)
 	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
-		expr := ps.WalkRangeQuery()
-		if isValidQuery(expr, true) {
-			break
+		var expr parser.Expr
+		for {
+			expr = ps.WalkRangeQuery()
+			if isValidQuery(expr, true) {
+				break
+			}
 		}
 		queries = append(queries, expr.Pretty(0))
 		matchers = append(matchers, storepb.PromMatchersToString(
@@ -651,7 +654,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 				failures++
-			} else if !cmp.Equal(tc.sres1, tc.sres1, labelSetsComparer) {
+			} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}

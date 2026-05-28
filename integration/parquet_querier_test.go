@@ -172,6 +172,7 @@ func TestParquetFuzz(t *testing.T) {
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
 	}
 	ps := promqlsmith.New(rnd, lbls, opts...)
 

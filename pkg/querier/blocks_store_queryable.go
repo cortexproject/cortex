@@ -29,6 +29,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	thanosquery "github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"go.uber.org/atomic"
@@ -675,7 +676,11 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			myQueriedBlocks := []ulid.ULID(nil)
 
 			processSeries := func(s *storepb.Series) error {
-				mySeries = append(mySeries, s)
+				// Detach series data from the gRPC unmarshal buffer so that it can be freed.
+				sCopy := *s
+				sCopy.Labels = append([]labelpb.ZLabel(nil), s.Labels...)
+				detachSeriesFromBuffer(&sCopy)
+				mySeries = append(mySeries, &sCopy)
 
 				// Add series fingerprint to query limiter; will return error if we are over the limit
 				limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
@@ -1187,6 +1192,17 @@ func convertBlockHintsToULIDs(hints []hintspb.Block) ([]ulid.ULID, error) {
 	}
 
 	return res, nil
+}
+
+// detachSeriesFromBuffer re-allocates label strings and chunk data byte slices
+// so that the series no longer references the gRPC unmarshal buffer.
+func detachSeriesFromBuffer(s *storepb.Series) {
+	labelpb.ReAllocZLabelsStrings(&s.Labels, false)
+	for i := range s.Chunks {
+		if s.Chunks[i].Raw != nil && len(s.Chunks[i].Raw.Data) > 0 {
+			s.Chunks[i].Raw.Data = append([]byte(nil), s.Chunks[i].Raw.Data...)
+		}
+	}
 }
 
 // countChunkBytes returns the size of the chunks making up the provided series in bytes

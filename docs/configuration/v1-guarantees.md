@@ -133,3 +133,4 @@ Currently experimental features are:
 - Ingester: Active Series Tracker
   - Per-tenant `active_series_trackers` configuration in runtime config overrides
   - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric
+- Parquet Converter: `-parquet-converter.max-block-label-names` (int) - If enabled, adds a no-convert mark and skips blocks with too many labels.

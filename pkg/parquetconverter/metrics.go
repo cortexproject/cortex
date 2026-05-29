@@ -8,6 +8,7 @@ import (
 type metrics struct {
 	convertedBlocks          *prometheus.CounterVec
 	convertBlockFailures     *prometheus.CounterVec
+	skippedBlocks            *prometheus.CounterVec
 	convertBlockDuration     *prometheus.GaugeVec
 	convertParquetBlockDelay prometheus.Histogram
 	ownedUsers               prometheus.Gauge
@@ -23,6 +24,10 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Name: "cortex_parquet_converter_block_convert_failures_total",
 			Help: "Total number of failed block conversions per user.",
 		}, []string{"user"}),
+		skippedBlocks: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_parquet_converter_blocks_skipped_total",
+			Help: "Total number of blocks skipped during parquet conversion per user and reason.",
+		}, []string{"user", "reason"}),
 		convertBlockDuration: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_parquet_converter_convert_block_duration_seconds",
 			Help: "Time taken to for the latest block conversion for the user.",

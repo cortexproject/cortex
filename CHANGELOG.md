@@ -40,9 +40,11 @@
 * [BUGFIX] Security: Fix stored XSS vulnerability in Alertmanager and Store Gateway status pages by replacing `text/template` with `html/template`. #7512
 * [BUGFIX] Security: Limit decompressed gzip output in `ParseProtoReader` and OTLP ingestion path. The decompressed body is now capped by `-distributor.otlp-max-recv-msg-size`. #7515
 * [BUGFIX] Compactor: Fix flake in `TestCompactor_DeleteLocalSyncFiles` and `TestPartitionCompactor_DeleteLocalSyncFiles` by polling on user ownership rather than just the `CompactionRunsCompleted` counter, which increments even when the second compactor sees zero owned users due to a transient ring-view skew at startup. #7565
+* [BUGFIX] Ingester: Close TSDB when compaction fails during `createTSDB`, preventing resource leaks (file descriptors, mmap handles) that could lead to ingester instability. #7560
 * [BUGFIX] Tenant Federation: Fix regex resolver clearing known users list when user scan fails. #7534
 * [BUGFIX] Ingester: Release the TSDB appender on every early-return path in `Push` (e.g. out-of-order label set) by deferring `Rollback`. Previously such requests leaked TSDB head series references, mmap'd chunks and pending state per request, causing the `cortex_ingester_tsdb_head_active_appenders` gauge to grow unbounded. #7528
 * [BUGFIX] Ring: Fix ring token conflict resolution only applied to updated instance and make constantly token conflict check during instance observe period.
+* [BUGFIX] Distributor: Fix a panic (`slice bounds out of range`) in the stream push path when the context deadline expires while the worker goroutine is still marshalling a `WriteRequest`. #7541
 
 ## 1.21.0 2026-04-24
 

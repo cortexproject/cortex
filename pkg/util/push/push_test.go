@@ -105,9 +105,9 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 				},
 				Samples:   []cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 				Exemplars: []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 10}},
-				Histograms: []cortexpb.Histogram{
-					cortexpb.HistogramToHistogramProto(10, &testHistogram),
-					cortexpb.FloatHistogramToHistogramProto(20, testHistogram.ToFloat(nil)),
+				Histograms: []cortexpb.WrappedHistogram{
+					cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &testHistogram)),
+					cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(20, testHistogram.ToFloat(nil))),
 				},
 			},
 		})
@@ -519,7 +519,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 	var v2Req cortexpb.PreallocWriteRequestV2
 
 	fh := tsdbutil.GenerateTestFloatHistogram(1)
-	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+	ph := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(4, fh))
 
 	symbols := []string{"", "__name__", "test_metric", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
 	timeseries := []cortexpb.PreallocTimeseriesV2{
@@ -551,7 +551,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 		{
 			TimeSeriesV2: &cortexpb.TimeSeriesV2{
 				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-				Histograms: []cortexpb.Histogram{ph, ph},
+				Histograms: []cortexpb.WrappedHistogram{ph, ph},
 				Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 			},
 		},
@@ -777,6 +777,29 @@ func TestHandler_remoteWrite(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "TimeSeries must contain at least one sample or histogram for series {__name__=\"foo\"}",
+		},
+		{
+			name: "remote write v1 with oversized histogram returns 400",
+			createBody: func() ([]byte, bool) {
+				// Create a histogram that exceeds the default 16KB limit
+				h := cortexpb.Histogram{
+					Schema:         3,
+					NegativeDeltas: make([]int64, 10000),
+					PositiveDeltas: make([]int64, 10000),
+				}
+				ts := cortexpb.TimeSeries{
+					Labels:     []cortexpb.LabelAdapter{{Name: "__name__", Value: "test"}},
+					Histograms: []cortexpb.WrappedHistogram{{Histogram: h}},
+				}
+				wr := cortexpb.WriteRequest{
+					Timeseries: []cortexpb.PreallocTimeseries{{TimeSeries: &ts}},
+				}
+				data, err := wr.Marshal()
+				require.NoError(t, err)
+				return data, false
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "native histogram size",
 		},
 	}
 
@@ -1302,7 +1325,7 @@ func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
 
 func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 	fh := tsdbutil.GenerateTestFloatHistogram(1)
-	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+	ph := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(4, fh))
 
 	v2Req := &cortexpb.PreallocWriteRequestV2{
 		WriteRequestV2: cortexpb.WriteRequestV2{
@@ -1317,7 +1340,7 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 						Exemplars: []cortexpb.ExemplarV2{
 							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
 						},
-						Histograms: []cortexpb.Histogram{
+						Histograms: []cortexpb.WrappedHistogram{
 							ph,
 						},
 					},
@@ -1354,8 +1377,8 @@ func Test_convertV2RequestToV1_PreservesStartTimestamp(t *testing.T) {
 						Samples: []cortexpb.Sample{
 							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
 						},
-						Histograms: []cortexpb.Histogram{
-							{TimestampMs: 2000, StartTimestampMs: 200},
+						Histograms: []cortexpb.WrappedHistogram{
+							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
 						},
 					},
 				},
@@ -1392,7 +1415,7 @@ func Test_convertV2RequestToV1_UsesCreatedTimestampAsFallback(t *testing.T) {
 						LabelsRefs:       []uint32{1, 2},
 						CreatedTimestamp: 777,
 						Samples:          []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
-						Histograms:       []cortexpb.Histogram{{TimestampMs: 2000}},
+						Histograms:       []cortexpb.WrappedHistogram{{Histogram: cortexpb.Histogram{TimestampMs: 2000}}},
 					},
 				},
 			},
@@ -1430,8 +1453,8 @@ func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.
 						Samples: []cortexpb.Sample{
 							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
 						},
-						Histograms: []cortexpb.Histogram{
-							{TimestampMs: 2000, StartTimestampMs: 200},
+						Histograms: []cortexpb.WrappedHistogram{
+							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
 						},
 					},
 				},

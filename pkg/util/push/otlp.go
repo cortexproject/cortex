@@ -246,10 +246,10 @@ func makeExemplars(in []prompb.Exemplar) []cortexpb.Exemplar {
 	return out
 }
 
-func makeHistograms(in []prompb.Histogram) []cortexpb.Histogram {
-	out := make([]cortexpb.Histogram, 0, len(in))
+func makeHistograms(in []prompb.Histogram) []cortexpb.WrappedHistogram {
+	out := make([]cortexpb.WrappedHistogram, 0, len(in))
 	for _, h := range in {
-		out = append(out, cortexpb.HistogramPromProtoToHistogramProto(h))
+		out = append(out, cortexpb.WrappedHistogram{Histogram: cortexpb.HistogramPromProtoToHistogramProto(h)})
 	}
 	return out
 }

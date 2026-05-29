@@ -2610,6 +2610,25 @@ References to undefined variables are replaced by empty strings unless you speci
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[fetch_timeout&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;duration&amp;gt; | default = 0s]&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># [EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># the head block. When a regex matcher targets a label with more unique&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># values than this threshold, it is applied lazily during iteration instead&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># of postings lookup. 0 disables.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[lazy_matcher_max_cardinality&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 0]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># [EXPERIMENTAL] Cardinality:postings ratio above which a simple regex&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># (prefix-only, single contains) is deferred to lazy iteration. Lower = more&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># aggressive deferral. Calibrated empirically; defaults to 6.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[lazy_matcher_simple_cost_ratio&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 6]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># [EXPERIMENTAL] Cardinality:postings ratio above which a complex regex&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># (multi-substring, capture groups, character classes) is deferred. Lower =&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># more aggressive deferral. Calibrated empirically; defaults to 2.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">[lazy_matcher_complex_cost_ratio&lt;/span>: &lt;span style="color:#ae81ff">&amp;lt;int&amp;gt; | default = 2]&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">users_scanner&lt;/span>:
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Strategy to use to scan users. Supported values are: list, user_index.&lt;/span>
 &lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># CLI flag: -blocks-storage.users-scanner.strategy&lt;/span>
@@ -7526,6 +7545,13 @@ the benefits of query parallelisation and caching.&lt;/p>
 &lt;ul>
 &lt;li>Per-tenant &lt;code>active_series_trackers&lt;/code> configuration in runtime config overrides&lt;/li>
 &lt;li>Counts active series matching PromQL label matchers and exposes &lt;code>cortex_ingester_active_series_per_tracker&lt;/code> metric&lt;/li>
+&lt;/ul>
+&lt;/li>
+&lt;li>Ingester: Lazy regex evaluation on head postings cache miss
+&lt;ul>
+&lt;li>&lt;code>-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality&lt;/code> (int) CLI flag&lt;/li>
+&lt;li>&lt;code>-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio&lt;/code> (int) CLI flag&lt;/li>
+&lt;li>&lt;code>-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio&lt;/code> (int) CLI flag&lt;/li>
 &lt;/ul>
 &lt;/li>
 &lt;/ul></description></item></channel></rss>

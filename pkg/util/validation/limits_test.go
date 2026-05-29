@@ -266,6 +266,81 @@ func TestOverridesManager_GetOverrides(t *testing.T) {
 	require.Equal(t, 0, ov.MaxLabelsSizeBytes("user2"))
 }
 
+func TestOverrides_DefaultTenantFallback(t *testing.T) {
+	defaultTenantID := "__default__"
+
+	tenantLimits := map[string]*Limits{}
+
+	cliDefaults := Limits{
+		IngestionRate:          10000,
+		MaxGlobalSeriesPerUser: 100000,
+		MaxLabelNamesPerSeries: 30,
+	}
+
+	// Set up default tenant override with higher ingestion rate
+	defaultTenantOverride := cliDefaults
+	defaultTenantOverride.IngestionRate = 50000
+	defaultTenantOverride.MaxGlobalSeriesPerUser = 500000
+	tenantLimits[defaultTenantID] = &defaultTenantOverride
+
+	ov := NewOverridesWithDefaultTenantID(cliDefaults, newMockTenantLimits(tenantLimits), defaultTenantID)
+
+	// Tenant without override should get default tenant values
+	require.Equal(t, float64(50000), ov.IngestionRate("user1"))
+	require.Equal(t, 500000, ov.MaxGlobalSeriesPerUser("user1"))
+	require.Equal(t, 30, ov.MaxLabelNamesPerSeries("user1"))
+
+	// Add a per-tenant override for user2
+	user2Limits := cliDefaults
+	user2Limits.IngestionRate = 200000
+	tenantLimits["user2"] = &user2Limits
+
+	// user2 should get its own override, not the default tenant
+	require.Equal(t, float64(200000), ov.IngestionRate("user2"))
+	// user2's MaxGlobalSeriesPerUser comes from its own override (which copied cliDefaults)
+	require.Equal(t, 100000, ov.MaxGlobalSeriesPerUser("user2"))
+
+	// The default tenant itself should get its own limits (not recurse)
+	require.Equal(t, float64(50000), ov.IngestionRate(defaultTenantID))
+	require.Equal(t, 500000, ov.MaxGlobalSeriesPerUser(defaultTenantID))
+}
+
+func TestOverrides_DefaultTenantDisabled(t *testing.T) {
+	tenantLimits := map[string]*Limits{}
+
+	cliDefaults := Limits{
+		IngestionRate:          10000,
+		MaxGlobalSeriesPerUser: 100000,
+	}
+
+	// Default tenant override exists in the map but feature is disabled (empty ID)
+	defaultOverride := cliDefaults
+	defaultOverride.IngestionRate = 50000
+	tenantLimits["__default__"] = &defaultOverride
+
+	ov := NewOverridesWithDefaultTenantID(cliDefaults, newMockTenantLimits(tenantLimits), "")
+
+	// With empty defaultTenantID, feature is disabled — should get CLI defaults
+	require.Equal(t, float64(10000), ov.IngestionRate("user1"))
+	require.Equal(t, 100000, ov.MaxGlobalSeriesPerUser("user1"))
+}
+
+func TestOverrides_DefaultTenantNotInMap(t *testing.T) {
+	tenantLimits := map[string]*Limits{}
+
+	cliDefaults := Limits{
+		IngestionRate:          10000,
+		MaxGlobalSeriesPerUser: 100000,
+	}
+
+	// Feature enabled but no __default__ entry in runtime config
+	ov := NewOverridesWithDefaultTenantID(cliDefaults, newMockTenantLimits(tenantLimits), "__default__")
+
+	// Should fall through to CLI defaults
+	require.Equal(t, float64(10000), ov.IngestionRate("user1"))
+	require.Equal(t, 100000, ov.MaxGlobalSeriesPerUser("user1"))
+}
+
 func TestLimitsLoadingFromYaml(t *testing.T) {
 	SetDefaultLimitsForYAMLUnmarshalling(Limits{
 		MaxLabelNameLength: 100,

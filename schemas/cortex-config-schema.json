@@ -7829,6 +7829,11 @@
           "type": "string",
           "x-cli-flag": "runtime-config.backend"
         },
+        "default_tenant_id": {
+          "description": "[Experimental] Synthetic tenant ID used as fallback for runtime config defaults. When set, overrides for this tenant ID apply to all tenants without per-tenant overrides, before falling back to CLI flag defaults.",
+          "type": "string",
+          "x-cli-flag": "runtime-config.default-tenant-id"
+        },
         "file": {
           "description": "File with the configuration that can be updated in runtime.",
           "type": "string",

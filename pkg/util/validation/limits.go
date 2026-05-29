@@ -696,8 +696,9 @@ type TenantLimits interface {
 // Overrides periodically fetch a set of per-user overrides, and provides convenience
 // functions for fetching the correct value.
 type Overrides struct {
-	defaultLimits *Limits
-	tenantLimits  TenantLimits
+	defaultLimits   *Limits
+	tenantLimits    TenantLimits
+	defaultTenantID string
 }
 
 // NewOverrides makes a new Overrides.
@@ -705,6 +706,18 @@ func NewOverrides(defaults Limits, tenantLimits TenantLimits) *Overrides {
 	return &Overrides{
 		tenantLimits:  tenantLimits,
 		defaultLimits: &defaults,
+	}
+}
+
+// NewOverridesWithDefaultTenantID creates Overrides with a synthetic default tenant ID.
+// When a tenant has no per-tenant override and defaultTenantID is non-empty,
+// the overrides for defaultTenantID are used before falling back to CLI flag defaults.
+// This is an experimental feature.
+func NewOverridesWithDefaultTenantID(defaults Limits, tenantLimits TenantLimits, defaultTenantID string) *Overrides {
+	return &Overrides{
+		tenantLimits:    tenantLimits,
+		defaultLimits:   &defaults,
+		defaultTenantID: defaultTenantID,
 	}
 }
 
@@ -1293,6 +1306,12 @@ func (o *Overrides) GetOverridesForUser(userID string) *Limits {
 		l := o.tenantLimits.ByUserID(userID)
 		if l != nil {
 			return l
+		}
+		if o.defaultTenantID != "" && userID != o.defaultTenantID {
+			l = o.tenantLimits.ByUserID(o.defaultTenantID)
+			if l != nil {
+				return l
+			}
 		}
 	}
 	return o.defaultLimits

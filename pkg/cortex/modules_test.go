@@ -311,7 +311,8 @@ func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp,
 	if t.Kind() != reflect.Struct {
 		return
 	}
-	for f := range t.Fields() {
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
 		path := prefix + f.Name
 
 		yamlTag := f.Tag.Get("yaml")
@@ -341,7 +342,8 @@ func setAllSecrets(v reflect.Value, sentinel string) {
 		}
 	case reflect.Struct:
 		secretType := reflect.TypeFor[flagext.Secret]()
-		for _, f := range v.Fields() {
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Field(i)
 			if !f.CanSet() {
 				continue
 			}

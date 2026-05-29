@@ -18,7 +18,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
-) // BenchmarkIngester_LazyPosting exercises the lazy-matcher-max-cardinality
+)
+
+// BenchmarkIngester_LazyPosting exercises the lazy-matcher-max-cardinality
 // optimization on the head block cache miss path.
 //
 // The scenarios are based on the benchmark configurations below:

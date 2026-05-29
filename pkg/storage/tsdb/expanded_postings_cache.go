@@ -3,6 +3,7 @@ package tsdb
 import (
 	"container/list"
 	"context"
+	"errors"
 	"flag"
 	"slices"
 	"strconv"
@@ -114,9 +115,9 @@ type PostingsCacheConfig struct {
 func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Head.RegisterFlagsWithPrefix(prefix, "head", f)
 	cfg.Blocks.RegisterFlagsWithPrefix(prefix, "block", f)
-	f.IntVar(&cfg.LazyMatcherMaxCardinality, prefix+"expanded_postings_cache.head.lazy-matcher-max-cardinality", 0, "Maximum label cardinality for deferring regex matchers on the head block. When a regex matcher targets a label with more unique values than this threshold, it is applied lazily during iteration instead of postings lookup. 0 disables.")
-	f.IntVar(&cfg.LazyMatcherSimpleCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-simple-cost-ratio", defaultSimpleCostRatio, "Cardinality:postings ratio above which a simple regex (prefix-only, single contains) is deferred to lazy iteration. Lower = more aggressive deferral. Calibrated empirically; defaults to 6.")
-	f.IntVar(&cfg.LazyMatcherComplexCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-complex-cost-ratio", defaultComplexCostRatio, "Cardinality:postings ratio above which a complex regex (multi-substring, capture groups, character classes) is deferred. Lower = more aggressive deferral. Calibrated empirically; defaults to 2.")
+	f.IntVar(&cfg.LazyMatcherMaxCardinality, prefix+"expanded_postings_cache.head.lazy-matcher-max-cardinality", 0, "[EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on the head block. When a regex matcher targets a label with more unique values than this threshold, it is applied lazily during iteration instead of postings lookup. 0 disables.")
+	f.IntVar(&cfg.LazyMatcherSimpleCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-simple-cost-ratio", defaultSimpleCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a simple regex (prefix-only, single contains) is deferred to lazy iteration. Lower = more aggressive deferral. Calibrated empirically; defaults to 6.")
+	f.IntVar(&cfg.LazyMatcherComplexCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-complex-cost-ratio", defaultComplexCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a complex regex (multi-substring, capture groups, character classes) is deferred. Lower = more aggressive deferral. Calibrated empirically; defaults to 2.")
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -334,18 +335,19 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 	}
 
 	filtered := ids[:0]
-	for _, id := range ids {
-	        cnt++
-		if cnt%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
+	for cnt, id := range ids {
+		if cnt%128 == 0 && ctx.Err() != nil {
 			return nil, 0, ctx.Err()
 		}
-	
 		matches := true
 		for i, m := range lazyMs {
 			val, err := ix.LabelValueFor(ctx, id, m.Name)
 			if err != nil {
-				// Series doesn't have this label — treat as empty string
-				val = ""
+				if errors.Is(err, storage.ErrNotFound) {
+					val = ""
+				} else {
+					return nil, 0, err
+				}
 			}
 
 			if result, ok := caches[i][val]; ok {

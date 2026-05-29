@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -226,6 +227,56 @@ func TestFetchWithLazyMatchers_FiltersCorrectly(t *testing.T) {
 	refs, _, err := cache.fetchWithLazyMatchers(ctx, ir, selectMs, lazyMs)
 	assert.NoError(t, err)
 	assert.Equal(t, []storage.SeriesRef{1, 3}, refs)
+}
+
+func TestFetchWithLazyMatchers_PropagatesLabelValueForError(t *testing.T) {
+	ctx := context.Background()
+	injectedErr := errors.New("injected disk error")
+
+	ir := &mockIndexReaderWithError{
+		mockIndexReaderWithSeries: mockIndexReaderWithSeries{
+			mockIndexReader: mockIndexReader{
+				labelValues:    map[string][]string{"pod": {"web-0", "web-1", "db-0"}},
+				postingsCounts: map[string]int{"__name__\xffcpu": 3},
+			},
+			series: map[storage.SeriesRef]labels.Labels{
+				1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
+				2: labels.FromStrings("__name__", "cpu", "pod", "db-0"),
+				3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
+			},
+		},
+		errOnRef: 2,
+		err:      injectedErr,
+	}
+
+	cache := &blocksPostingsForMatchersCache{
+		postingsForMatchersFunc: func(_ context.Context, _ prom_tsdb.IndexReader, _ ...*labels.Matcher) (index.Postings, error) {
+			return index.NewListPostings([]storage.SeriesRef{1, 2, 3}), nil
+		},
+	}
+	selectMs := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchEqual, "__name__", "cpu"),
+	}
+	lazyMs := []*labels.Matcher{
+		labels.MustNewMatcher(labels.MatchRegexp, "pod", "web.*"),
+	}
+
+	_, _, err := cache.fetchWithLazyMatchers(ctx, ir, selectMs, lazyMs)
+	assert.ErrorIs(t, err, injectedErr)
+}
+
+// mockIndexReaderWithError returns an error for a specific series ref.
+type mockIndexReaderWithError struct {
+	mockIndexReaderWithSeries
+	errOnRef storage.SeriesRef
+	err      error
+}
+
+func (m *mockIndexReaderWithError) LabelValueFor(ctx context.Context, id storage.SeriesRef, label string) (string, error) {
+	if id == m.errOnRef {
+		return "", m.err
+	}
+	return m.mockIndexReaderWithSeries.LabelValueFor(ctx, id, label)
 }
 
 // --- Mocks ---

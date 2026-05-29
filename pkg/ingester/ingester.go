@@ -1504,9 +1504,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				)
 
 				if hp.GetCountFloat() > 0 {
-					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
+					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
 				} else {
-					h = cortexpb.HistogramProtoToHistogram(hp)
+					h = cortexpb.HistogramProtoToHistogram(hp.Histogram)
 				}
 
 				if ref != 0 {

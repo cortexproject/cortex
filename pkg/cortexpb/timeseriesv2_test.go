@@ -42,7 +42,7 @@ func TestTimeseriesV2FromPool(t *testing.T) {
 		ts.LabelsRefs = []uint32{1, 2}
 		ts.Samples = []Sample{{Value: 1, TimestampMs: 2}}
 		ts.Exemplars = []ExemplarV2{{LabelsRefs: []uint32{1, 2}, Value: 1, Timestamp: 2}}
-		ts.Histograms = []Histogram{{}}
+		ts.Histograms = []WrappedHistogram{{}}
 		ReuseTimeseriesV2(ts)
 
 		reused := TimeseriesV2FromPool()

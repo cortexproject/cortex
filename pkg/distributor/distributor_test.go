@@ -3220,12 +3220,12 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 func mockWriteRequest(lbls []labels.Labels, value int64, timestampMs int64, histogram bool) *cortexpb.WriteRequest {
 	var (
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 	)
 	if histogram {
-		histograms = make([]cortexpb.Histogram, len(lbls))
+		histograms = make([]cortexpb.WrappedHistogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value))
+			histograms[i] = cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value)))
 		}
 	} else {
 		samples = make([]cortexpb.Sample, len(lbls))
@@ -3496,7 +3496,7 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 		},
 	}
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value))))
 	} else {
 		t.Samples = append(t.Samples, cortexpb.Sample{
 			TimestampMs: ts,
@@ -3510,7 +3510,7 @@ func makeWriteRequestTimeseriesNHCB(labels []cortexpb.LabelAdapter, ts, value in
 	return cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
 			Labels:     labels,
-			Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value))},
+			Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value)))},
 		},
 	}
 }
@@ -3530,8 +3530,8 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 			},
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i)))),
 			}
 		} else {
 			ts.Samples = []cortexpb.Sample{
@@ -3627,8 +3627,8 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 			}
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples)))),
 			}
 		} else {
 			var s = make([]cortexpb.Sample, 0)
@@ -4098,7 +4098,7 @@ func TestDistributorValidation(t *testing.T) {
 		metadata   []*cortexpb.MetricMetadata
 		labels     []labels.Labels
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 		err        error
 	}{
 		// Test validation passes.
@@ -4111,8 +4111,8 @@ func TestDistributorValidation(t *testing.T) {
 				TimestampMs: int64(now),
 				Value:       1,
 			}},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 		},
 		// Test validation fails for very old samples.
@@ -4200,8 +4200,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `series has too many labels (actual: 3, limit: 2) series: 'testmetric{foo2="bar2", foo="bar"}'`),
 		},
@@ -4210,8 +4210,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(past), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(past), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past),
 		},
@@ -4220,8 +4220,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too new: %d metric: "testmetric"`, future),
 		},

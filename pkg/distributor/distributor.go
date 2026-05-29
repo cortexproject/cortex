@@ -686,19 +686,19 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		}
 	}
 
-	var histograms []cortexpb.Histogram
+	var histograms []cortexpb.WrappedHistogram
 	if len(ts.Histograms) > 0 {
 		// Only alloc when data present
-		histograms = make([]cortexpb.Histogram, 0, len(ts.Histograms))
+		histograms = make([]cortexpb.WrappedHistogram, 0, len(ts.Histograms))
 		for i, h := range ts.Histograms {
 			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
 				return emptyPreallocSeries, err
 			}
-			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h)
+			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h.Histogram)
 			if err != nil {
 				return emptyPreallocSeries, err
 			}
-			ts.Histograms[i] = convertedHistogram
+			ts.Histograms[i].Histogram = convertedHistogram
 		}
 		histograms = append(histograms, ts.Histograms...)
 	}
@@ -1025,7 +1025,7 @@ type samplesLabelSetEntry struct {
 }
 
 // countNHCB returns the number of native histograms with custom buckets schema in the given slice.
-func countNHCB(histograms []cortexpb.Histogram) int {
+func countNHCB(histograms []cortexpb.WrappedHistogram) int {
 	n := 0
 	for _, h := range histograms {
 		if histogram.IsCustomBucketsSchema(h.GetSchema()) {

@@ -130,3 +130,63 @@ func BenchmarkMarshallWriteRequest(b *testing.B) {
 		})
 	}
 }
+
+func TestWrappedHistogram_Unmarshal_SizeLimit(t *testing.T) {
+	t.Run("rejects oversized histogram", func(t *testing.T) {
+		original := maxWrappedHistogramSizeBytes
+		maxWrappedHistogramSizeBytes = 1024 // 1KB for test
+		defer func() { maxWrappedHistogramSizeBytes = original }()
+
+		// Create a histogram that exceeds 1KB when marshalled
+		h := Histogram{
+			Schema:         3,
+			NegativeDeltas: make([]int64, 600),
+			PositiveDeltas: make([]int64, 600),
+		}
+		data, err := h.Marshal()
+		require.NoError(t, err)
+		require.Greater(t, len(data), 1024) // confirm it's over limit
+
+		p := &WrappedHistogram{}
+		err = p.Unmarshal(data)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds limit")
+	})
+
+	t.Run("allows normal histogram", func(t *testing.T) {
+		original := maxWrappedHistogramSizeBytes
+		maxWrappedHistogramSizeBytes = 16 * 1024
+		defer func() { maxWrappedHistogramSizeBytes = original }()
+
+		h := Histogram{
+			Schema:         3,
+			NegativeDeltas: make([]int64, 50),
+			PositiveDeltas: make([]int64, 50),
+		}
+		data, err := h.Marshal()
+		require.NoError(t, err)
+
+		p := &WrappedHistogram{}
+		err = p.Unmarshal(data)
+		require.NoError(t, err)
+		assert.Equal(t, int32(3), p.Schema)
+		assert.Len(t, p.NegativeDeltas, 50)
+	})
+
+	t.Run("allows when limit disabled", func(t *testing.T) {
+		original := maxWrappedHistogramSizeBytes
+		maxWrappedHistogramSizeBytes = 0 // disabled
+		defer func() { maxWrappedHistogramSizeBytes = original }()
+
+		h := Histogram{
+			NegativeDeltas: make([]int64, 5000),
+			PositiveDeltas: make([]int64, 5000),
+		}
+		data, err := h.Marshal()
+		require.NoError(t, err)
+
+		p := &WrappedHistogram{}
+		err = p.Unmarshal(data)
+		require.NoError(t, err)
+	})
+}

@@ -1527,6 +1527,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 
 		if i.limits.EnableNativeHistograms(userID) {
+			ingestedBucketsObserver := i.metrics.ingestedHistogramBuckets.WithLabelValues(userID)
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1551,7 +1552,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
-						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
 				} else {
@@ -1563,7 +1564,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
-						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
 				}

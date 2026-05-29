@@ -124,6 +124,7 @@ type Distributor struct {
 	incomingMetadata                 *prometheus.CounterVec
 	nonHASamples                     *prometheus.CounterVec
 	dedupedSamples                   *prometheus.CounterVec
+	receivedHistogramBuckets         *prometheus.HistogramVec
 	labelsHistogram                  prometheus.Histogram
 	ingesterAppends                  *prometheus.CounterVec
 	ingesterAppendFailures           *prometheus.CounterVec
@@ -353,6 +354,15 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Name:      "distributor_received_metadata_total",
 			Help:      "The total number of received metadata, excluding rejected.",
 		}, []string{"user"}),
+		receivedHistogramBuckets: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:                       "cortex",
+			Name:                            "distributor_received_histogram_buckets",
+			Help:                            "The number of buckets in received native histogram samples before validation, per user.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
+		}, []string{"user"}),
 		incomingSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
 			Name:      "distributor_samples_in_total",
@@ -530,6 +540,7 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
+	d.receivedHistogramBuckets.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
@@ -691,10 +702,12 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 	if len(ts.Histograms) > 0 {
 		// Only alloc when data present
 		histograms = make([]cortexpb.WrappedHistogram, 0, len(ts.Histograms))
+		receivedBucketsObserver := d.receivedHistogramBuckets.WithLabelValues(userID)
 		for i, h := range ts.Histograms {
 			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
 				return emptyPreallocSeries, err
 			}
+			receivedBucketsObserver.Observe(float64(h.BucketCount()))
 			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h.Histogram)
 			if err != nil {
 				return emptyPreallocSeries, err

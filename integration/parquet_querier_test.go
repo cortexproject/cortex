@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -89,7 +88,7 @@ func TestParquetFuzz(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 	dir := filepath.Join(s.SharedDir(), "data")
 	numSeries := 10
 	numSamples := 60
@@ -241,7 +240,7 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 	dir := filepath.Join(s.SharedDir(), "data")
 	numSeries := 20
 	numSamples := 100

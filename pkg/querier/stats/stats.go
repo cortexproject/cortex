@@ -33,10 +33,10 @@ type QueryStats struct {
 
 	// Phase tracking fields for timeout classification.
 	// Stored as UnixNano int64 for atomic operations.
-	queryStart     int64 // nanosecond timestamp when query began
-	queryEnd       int64 // nanosecond timestamp when query finished
-	queueJoinTime  int64 // nanosecond timestamp when request entered scheduler queue
-	queueLeaveTime int64 // nanosecond timestamp when request left scheduler queue
+	queryStart     atomic.Int64 // nanosecond timestamp when query began
+	queryEnd       atomic.Int64 // nanosecond timestamp when query finished
+	queueJoinTime  atomic.Int64 // nanosecond timestamp when request entered scheduler queue
+	queueLeaveTime atomic.Int64 // nanosecond timestamp when request left scheduler queue
 }
 
 // ContextWithEmptyStats returns a context with empty stats.
@@ -326,7 +326,7 @@ func (s *QueryStats) SetQueryStart(t time.Time) {
 		return
 	}
 
-	atomic.StoreInt64(&s.queryStart, t.UnixNano())
+	s.queryStart.Store(t.UnixNano())
 }
 
 // LoadQueryStart returns the query start time.
@@ -335,7 +335,7 @@ func (s *QueryStats) LoadQueryStart() time.Time {
 		return time.Time{}
 	}
 
-	ns := atomic.LoadInt64(&s.queryStart)
+	ns := s.queryStart.Load()
 	if ns == 0 {
 		return time.Time{}
 	}
@@ -348,7 +348,7 @@ func (s *QueryStats) SetQueryEnd(t time.Time) {
 		return
 	}
 
-	atomic.StoreInt64(&s.queryEnd, t.UnixNano())
+	s.queryEnd.Store(t.UnixNano())
 }
 
 // LoadQueryEnd returns the query end time.
@@ -357,7 +357,7 @@ func (s *QueryStats) LoadQueryEnd() time.Time {
 		return time.Time{}
 	}
 
-	ns := atomic.LoadInt64(&s.queryEnd)
+	ns := s.queryEnd.Load()
 	if ns == 0 {
 		return time.Time{}
 	}
@@ -370,7 +370,7 @@ func (s *QueryStats) SetQueueJoinTime(t time.Time) {
 		return
 	}
 
-	atomic.StoreInt64(&s.queueJoinTime, t.UnixNano())
+	s.queueJoinTime.Store(t.UnixNano())
 }
 
 // LoadQueueJoinTime returns the queue join time.
@@ -379,7 +379,7 @@ func (s *QueryStats) LoadQueueJoinTime() time.Time {
 		return time.Time{}
 	}
 
-	ns := atomic.LoadInt64(&s.queueJoinTime)
+	ns := s.queueJoinTime.Load()
 	if ns == 0 {
 		return time.Time{}
 	}
@@ -392,7 +392,7 @@ func (s *QueryStats) SetQueueLeaveTime(t time.Time) {
 		return
 	}
 
-	atomic.StoreInt64(&s.queueLeaveTime, t.UnixNano())
+	s.queueLeaveTime.Store(t.UnixNano())
 }
 
 // LoadQueueLeaveTime returns the queue leave time.
@@ -401,7 +401,7 @@ func (s *QueryStats) LoadQueueLeaveTime() time.Time {
 		return time.Time{}
 	}
 
-	ns := atomic.LoadInt64(&s.queueLeaveTime)
+	ns := s.queueLeaveTime.Load()
 	if ns == 0 {
 		return time.Time{}
 	}

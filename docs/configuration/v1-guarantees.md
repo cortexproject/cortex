@@ -133,3 +133,7 @@ Currently experimental features are:
 - Ingester: Active Series Tracker
   - Per-tenant `active_series_trackers` configuration in runtime config overrides
   - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric
+- Ingester: Lazy regex evaluation on head postings cache miss
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio` (int) CLI flag

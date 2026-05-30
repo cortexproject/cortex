@@ -125,6 +125,7 @@ func (r *RegexResolver) running(ctx context.Context) error {
 			active, deleting, _, err := r.userScanner.ScanUsers(ctx)
 			if err != nil {
 				level.Error(r.logger).Log("msg", "failed to discover users from bucket", "err", err)
+				continue
 			}
 
 			newUsers := append(active, deleting...)

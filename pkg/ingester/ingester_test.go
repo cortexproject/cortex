@@ -881,9 +881,9 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	// Series
 	labels1 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar")
 	labels3 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "biz")
-	sampleNativeHistogram1 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1))
-	sampleNativeHistogram2 := cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2))
-	sampleNativeHistogram3 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3))
+	sampleNativeHistogram1 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1)))
+	sampleNativeHistogram2 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2)))
+	sampleNativeHistogram3 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3)))
 
 	// Metadata
 	metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
@@ -916,12 +916,12 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, nil, []*cortexpb.MetricMetadata{metadata1}, []cortexpb.Histogram{sampleNativeHistogram1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, nil, []*cortexpb.MetricMetadata{metadata1}, []cortexpb.WrappedHistogram{sampleNativeHistogram1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func(reg prometheus.Gatherer) {
 				// Append to two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.Histogram{sampleNativeHistogram2, sampleNativeHistogram3}, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.WrappedHistogram{sampleNativeHistogram2, sampleNativeHistogram3}, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
@@ -1119,8 +1119,8 @@ func TestIngester_Push(t *testing.T) {
 	}
 	userID := "test"
 
-	testHistogram := cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1))
-	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1))
+	testHistogram := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1)))
+	testFloatHistogram := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1)))
 	tests := map[string]struct {
 		reqs                      []*cortexpb.WriteRequest
 		expectedErr               error
@@ -1142,10 +1142,10 @@ func TestIngester_Push(t *testing.T) {
 					[]*cortexpb.MetricMetadata{
 						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 					},
-					[]cortexpb.Histogram{
-						{
+					[]cortexpb.WrappedHistogram{
+						{Histogram: cortexpb.Histogram{
 							TimestampMs: 10,
-						},
+						}},
 					},
 					cortexpb.API),
 			},
@@ -1426,8 +1426,8 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.WrappedHistogram{
+						cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1))),
 					},
 					cortexpb.API),
 			},
@@ -1498,8 +1498,8 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					nil,
-					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.WrappedHistogram{
+						cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1))),
 					},
 					cortexpb.API),
 			},
@@ -1652,19 +1652,19 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
 			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1718,18 +1718,18 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)), cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))), cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1910,12 +1910,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{testHistogram},
+					[]cortexpb.WrappedHistogram{testHistogram},
 					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testHistogram}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{testHistogram}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1970,12 +1970,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{testFloatHistogram},
+					[]cortexpb.WrappedHistogram{testFloatHistogram},
 					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testFloatHistogram}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{testFloatHistogram}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -2156,13 +2156,13 @@ func TestIngester_Push_StartTimestamp(t *testing.T) {
 			name:       "histogram start timestamp appends zero histogram",
 			metricName: "test_start_timestamp_histogram",
 			req: func() *cortexpb.WriteRequest {
-				h := cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1))
+				h := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1)))
 				h.StartTimestampMs = 100
 				return cortexpb.ToWriteRequest(
 					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_histogram")},
 					nil,
 					nil,
-					[]cortexpb.Histogram{h},
+					[]cortexpb.WrappedHistogram{h},
 					cortexpb.API,
 				)
 			}(),
@@ -2238,13 +2238,13 @@ func TestIngester_Push_StartTimestampAppendFailureMetrics(t *testing.T) {
 		{
 			name: "histogram start timestamp append failure increments histogram metric",
 			req: func() *cortexpb.WriteRequest {
-				h := cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1))
+				h := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1)))
 				h.StartTimestampMs = math.MinInt64
 				return cortexpb.ToWriteRequest(
 					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_failure_histogram")},
 					nil,
 					nil,
-					[]cortexpb.Histogram{h},
+					[]cortexpb.WrappedHistogram{h},
 					cortexpb.API,
 				)
 			}(),
@@ -2287,146 +2287,146 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	for _, tc := range []struct {
 		name        string
-		histograms  []cortexpb.Histogram
+		histograms  []cortexpb.WrappedHistogram
 		expectedErr error
 	}{
 		{
 			name: "rejects histogram with NaN observations that has its Count (2) lower than the actual total of buckets (2 + 1)",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           2,
 					Sum:             math.NaN(),
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountNotBigEnough),
 		},
 		{
 			name: "rejects histogram without NaN observations that has its Count (4) higher than the actual total of buckets (2 + 1)",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           4,
 					Sum:             333,
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 4: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects histogram that has too few negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too few positive buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too many negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too many positive buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative offset",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative offset",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{-1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{-1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
 		},
 		{
 			name: "rejects a histogram that has a lower count than count in buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           0,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("2 observations found in buckets, but the Count field is 0: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects a histogram that doesn't count the zero bucket in its count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           2,
 					ZeroCount:       1,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects an exponential histogram with custom buckets schema",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:         12,
 					ZeroCount:     2,
 					ZeroThreshold: 0.001,
@@ -2442,14 +2442,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 						{Offset: 1, Length: 2},
 					},
 					NegativeBuckets: []int64{1, 1, -1, 0},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: only 0 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
 		},
 		{
 			name: "rejects a custom buckets histogram with exponential schema",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: 0,
@@ -2459,14 +2459,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: histogram.ErrHistogramExpSchemaCustomBounds,
 		},
 		{
 			name: "rejects a custom buckets histogram with zero/negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:         12,
 					ZeroCount:     2,
 					ZeroThreshold: 0.001,
@@ -2483,14 +2483,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					NegativeBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: histogram.ErrHistogramCustomBucketsZeroCount,
 		},
 		{
 			name: "rejects a custom buckets histogram with negative offset in first span",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2500,14 +2500,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: span number 1 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a custom buckets histogram with negative offset in subsequent spans",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2517,14 +2517,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a custom buckets histogram with non-matching bucket counts",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2534,14 +2534,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: spans need 4 buckets, have 3 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects a custom buckets histogram with too few bounds",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2551,55 +2551,55 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: only 3 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
 		},
 		{
 			name: "reject custom buckets histogram with non-increasing bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{0, 0},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: previous bound is 0.000000 and current is 0.000000: %w", histogram.ErrHistogramCustomBucketsInvalid),
 		},
 		{
 			name: "reject custom buckets histogram with explicit +Inf bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{1, math.Inf(1)},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: last +Inf bound must not be explicitly defined: %w", histogram.ErrHistogramCustomBucketsInfinite),
 		},
 		{
 			name: "reject custom buckets histogram with NaN bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{1, math.NaN(), 3},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: %w", histogram.ErrHistogramCustomBucketsNaN),
 		},
 		{
 			name: "schema too high",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema: 10,
-				}),
+				})),
 			},
 			expectedErr: histogram.InvalidSchemaError(10),
 		},
 		{
 			name: "schema too low",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema: -10,
-				}),
+				})),
 			},
 			expectedErr: histogram.InvalidSchemaError(-10),
 		},
@@ -4500,21 +4500,21 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 
 func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, timestampMs int64, float bool) (*cortexpb.WriteRequest, *client.QueryStreamResponse) {
 	var (
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 		h          *histogram.Histogram
 		fh         *histogram.FloatHistogram
 		c          chunkenc.Chunk
 	)
 	if float {
 		fh = tsdbutil.GenerateTestFloatHistogram(value)
-		histograms = []cortexpb.Histogram{
-			cortexpb.FloatHistogramToHistogramProto(timestampMs, fh),
+		histograms = []cortexpb.WrappedHistogram{
+			cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(timestampMs, fh)),
 		}
 		c = chunkenc.NewFloatHistogramChunk()
 	} else {
 		h = tsdbutil.GenerateTestHistogram(value)
-		histograms = []cortexpb.Histogram{
-			cortexpb.HistogramToHistogramProto(timestampMs, h),
+		histograms = []cortexpb.WrappedHistogram{
+			cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(timestampMs, h)),
 		}
 		c = chunkenc.NewHistogramChunk()
 	}

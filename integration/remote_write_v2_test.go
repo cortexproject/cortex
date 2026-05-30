@@ -625,7 +625,7 @@ func TestIngest_CreatedTimestampFallback(t *testing.T) {
 				TimeSeriesV2: &cortexpb.TimeSeriesV2{
 					LabelsRefs:       []uint32{1, 2},
 					CreatedTimestamp: e2e.TimeToMilliseconds(startTs),
-					Histograms:       []cortexpb.Histogram{h},
+					Histograms:       []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(h)},
 				},
 			},
 		},
@@ -778,7 +778,7 @@ func TestIngest_StartAndCreatedTimestampIgnoredWhenDisabled(t *testing.T) {
 				TimeSeriesV2: &cortexpb.TimeSeriesV2{
 					LabelsRefs:       []uint32{1, 2},
 					CreatedTimestamp: e2e.TimeToMilliseconds(startTs),
-					Histograms:       []cortexpb.Histogram{h},
+					Histograms:       []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(h)},
 				},
 			}},
 		}

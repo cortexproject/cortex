@@ -155,7 +155,7 @@ func TestParseProtoReader(t *testing.T) {
 							{Value: 30, TimestampMs: 3},
 						},
 						Exemplars:  []cortexpb.Exemplar{},
-						Histograms: []cortexpb.Histogram{},
+						Histograms: []cortexpb.WrappedHistogram{},
 					},
 				},
 			},

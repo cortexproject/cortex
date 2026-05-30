@@ -118,7 +118,7 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 	for s.Next() {
 		series := s.At()
 		samples := []cortexpb.Sample{}
-		histograms := []cortexpb.Histogram{}
+		histograms := []cortexpb.WrappedHistogram{}
 		it = series.Iterator(it)
 		for valType := it.Next(); valType != chunkenc.ValNone; valType = it.Next() {
 			switch valType {
@@ -130,10 +130,10 @@ func SeriesSetToQueryResponse(s storage.SeriesSet) (*QueryResponse, error) {
 				})
 			case chunkenc.ValHistogram:
 				t, v := it.AtHistogram(nil)
-				histograms = append(histograms, cortexpb.HistogramToHistogramProto(t, v))
+				histograms = append(histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.HistogramToHistogramProto(t, v)})
 			case chunkenc.ValFloatHistogram:
 				t, v := it.AtFloatHistogram(nil)
-				histograms = append(histograms, cortexpb.FloatHistogramToHistogramProto(t, v))
+				histograms = append(histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.FloatHistogramToHistogramProto(t, v)})
 			default:
 				panic("unhandled default case")
 			}

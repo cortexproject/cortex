@@ -1982,74 +1982,56 @@ func shouldUseSampleNumComparer(query string) bool {
 	return false
 }
 
-// errBracketListRE matches a bracketed comma-separated series list embedded in
-// an error message such as `... [{a="1"}, {b="2"}] ...`. Both Cortex and
-// upstream Prometheus emit messages of this shape for vector-matching errors
-// (see vendor/github.com/prometheus/prometheus/promql/engine.go), but the order
-// of entries inside the brackets depends on Go map iteration and can therefore
-// differ between two processes even when the underlying error is identical.
-var errBracketListRE = regexp.MustCompile(`\[[^\[\]]*\]`)
+// duplicateSeriesRE matches the non-deterministic two-element series list emitted
+// by the PromQL "found duplicate series for the match group" many-to-many error.
+// Both the Prometheus engine
+// (vendor/github.com/prometheus/prometheus/promql/engine.go) and the Thanos
+// PromQL engine (vendor/github.com/thanos-io/promql-engine/execution/binary/utils.go)
+// build the two labelsets from Go map iteration, so the pair can appear in either
+// order across two processes even when the underlying error is identical, which
+// flakes a strict string comparison.
+//
+// The pattern is deliberately anchored to this one error: it only fires after the
+// literal "found duplicate series for the match group {...} ... hand-side of the
+// operation: " prefix - the match group and both list entries are matched as
+// whole labelsets ({...}), so a "," inside any labelset is never mistaken for the
+// entry separator and a "[" inside a label value cannot make the pattern fire.
+// The exact two-element [{...}, {...}] shape is hard-coded: if either
+// engine changes the element count, separator, or brackets, this stops matching
+// and the strict comparator fails loudly instead of silently absorbing the change.
+//
+// Remove this workaround (revert sameErrorClass to a direct comparison) once both
+// upstream fixes have landed and been vendored:
+//   - https://github.com/prometheus/prometheus/pull/18810
+//   - https://github.com/thanos-io/promql-engine/pull/711
+var duplicateSeriesRE = regexp.MustCompile(
+	`(found duplicate series for the match group \{(?:[^"{}]|"(?:\\.|[^"\\])*")*\} on the (?:left|right) hand-side of the operation: )` +
+		`\[(\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\}), (\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\})\]`,
+)
 
-// canonicalizeErrMsg sorts the top-level comma-separated entries inside every
-// `[...]` group of the supplied message, so that two messages that differ only
-// in the order of such a list compare equal. Splitting is brace-depth aware so
-// that commas inside a Prometheus labelset (`{a="1", b="2"}`) are not treated
-// as element separators.
-func canonicalizeErrMsg(msg string) string {
-	return errBracketListRE.ReplaceAllStringFunc(msg, func(group string) string {
-		inner := group[1 : len(group)-1]
-		parts := splitTopLevelCommas(inner)
-		if len(parts) < 2 {
-			return group
+// canonicalizeDuplicateSeriesErr rewrites the two-element series list in a
+// "found duplicate series for the match group" error into a deterministic order
+// so the message compares equal across PromQL engines regardless of the upstream
+// map-iteration order. Any other text, including bracketed content elsewhere in
+// the message, is left untouched.
+func canonicalizeDuplicateSeriesErr(msg string) string {
+	return duplicateSeriesRE.ReplaceAllStringFunc(msg, func(m string) string {
+		sub := duplicateSeriesRE.FindStringSubmatch(m)
+		a, b := sub[2], sub[3]
+		if a > b {
+			a, b = b, a
 		}
-		for i, p := range parts {
-			parts[i] = strings.TrimSpace(p)
-		}
-		sort.Strings(parts)
-		return "[" + strings.Join(parts, ", ") + "]"
+		return sub[1] + "[" + a + ", " + b + "]"
 	})
 }
 
-// splitTopLevelCommas splits s on commas that sit at brace depth 0. Commas
-// inside `{...}` (e.g. inside a Prometheus labelset string) are preserved.
-func splitTopLevelCommas(s string) []string {
-	var (
-		parts []string
-		depth int
-		start int
-	)
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '{':
-			depth++
-		case '}':
-			if depth > 0 {
-				depth--
-			}
-		case ',':
-			if depth == 0 {
-				parts = append(parts, s[start:i])
-				start = i + 1
-			}
-		}
-	}
-	parts = append(parts, s[start:])
-	return parts
-}
-
-// sameErrorClass reports whether two errors returned by the Prometheus HTTP
-// query API should be considered equivalent for the purposes of the fuzz
-// tests. The Cortex e2e client uses the upstream `prometheus/client_golang`
-// v1 API, which surfaces typed `*promv1.Error` values with a stable `Type`
-// field (`execution`, `bad_data`, etc.). When both errors are typed, the two
-// must agree on `Type` AND on a canonicalized message: canonicalization sorts
-// the contents of any `[...]` group on top-level commas so the non-
-// deterministic series-list ordering produced by `vendor/github.com/prometheus
-// /prometheus/promql/engine.go` (e.g. the `found duplicate series for the
-// match group ... [X, Y]` path) does not flake the test, but two genuinely
-// different `execution` failures (e.g. division-by-zero vs parse error) still
-// diverge. When either side is not typed, fall back to comparing canonicalized
-// message strings.
+// sameErrorClass reports whether two errors returned by the Prometheus HTTP query
+// API should be treated as equivalent by the fuzz tests. Both-nil is equal;
+// exactly-one-nil is not. When both are typed *promv1.Error values they must agree
+// on Type, on Detail, and on a canonicalized Msg; otherwise the canonicalized
+// Error() strings are compared. Canonicalization only normalizes the known
+// non-deterministic duplicate-series ordering (see canonicalizeDuplicateSeriesErr),
+// so two genuinely different errors of the same Type still diverge.
 func sameErrorClass(err1, err2 error) bool {
 	if err1 == nil && err2 == nil {
 		return true
@@ -2062,17 +2044,16 @@ func sameErrorClass(err1, err2 error) bool {
 	ok2 := errors.As(err2, &pErr2)
 	if ok1 && ok2 {
 		return pErr1.Type == pErr2.Type &&
-			canonicalizeErrMsg(pErr1.Msg) == canonicalizeErrMsg(pErr2.Msg)
+			pErr1.Detail == pErr2.Detail &&
+			canonicalizeDuplicateSeriesErr(pErr1.Msg) == canonicalizeDuplicateSeriesErr(pErr2.Msg)
 	}
-	return canonicalizeErrMsg(err1.Error()) == canonicalizeErrMsg(err2.Error())
+	return canonicalizeDuplicateSeriesErr(err1.Error()) == canonicalizeDuplicateSeriesErr(err2.Error())
 }
 
 func TestSameErrorClass(t *testing.T) {
-	dupMsg := func(a, b string) string {
-		return fmt.Sprintf("execution: found duplicate series for the match group {series=\"2\"} on the right hand-side of the operation: [%s, %s];many-to-many matching not allowed: matching labels must be unique on one side", a, b)
+	dupMsg := func(group, side, a, b string) string {
+		return "execution: found duplicate series for the match group " + group + " on the " + side + " hand-side of the operation: [" + a + ", " + b + "];many-to-many matching not allowed: matching labels must be unique on one side"
 	}
-	a := `{__name__="test_series_a", series="2"}`
-	b := `{series="2"}`
 
 	for _, tc := range []struct {
 		name string
@@ -2086,48 +2067,108 @@ func TestSameErrorClass(t *testing.T) {
 		},
 		{
 			name: "only err1 nil",
-			err2: errors.New("boom"),
+			err2: errors.New("execution: division by zero"),
 			want: false,
 		},
 		{
 			name: "only err2 nil",
-			err1: errors.New("boom"),
+			err1: errors.New("execution: division by zero"),
 			want: false,
 		},
 		{
-			name: "same typed class, different messages (reordered bracket list)",
-			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(a, b)},
-			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(b, a)},
+			name: "typed ErrExec dup-series multi-label labelsets reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="x", series="2"}`, `{__name__="y", series="2"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="y", series="2"}`, `{__name__="x", series="2"}`)},
 			want: true,
 		},
 		{
-			name: "different typed classes",
-			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "boom"},
-			err2: &promv1.Error{Type: promv1.ErrBadData, Msg: "boom"},
+			name: "typed ErrExec dup-series single-label reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="x"}`, `{__name__="y"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="y"}`, `{__name__="x"}`)},
+			want: true,
+		},
+		{
+			name: "typed ErrExec dup-series three labels each reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "left", `{__name__="x", instance="a", series="2"}`, `{__name__="y", instance="b", series="2"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "left", `{__name__="y", instance="b", series="2"}`, `{__name__="x", instance="a", series="2"}`)},
+			want: true,
+		},
+		{
+			name: "typed different Type same Msg",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: division by zero"},
+			err2: &promv1.Error{Type: promv1.ErrBadData, Msg: "execution: division by zero"},
 			want: false,
 		},
 		{
-			name: "same typed class, materially different messages (must not mask)",
+			name: "typed same Type and Msg different Detail",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "boom", Detail: "detail A"},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: "boom", Detail: "detail B"},
+			want: false,
+		},
+		{
+			name: "typed same Type materially different msgs",
 			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: division by zero"},
 			err2: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: parse error: unexpected token"},
 			want: false,
 		},
 		{
-			name: "labelset with internal comma is not split (brace-depth aware)",
-			err1: errors.New(`oops: [{a="1", b="2"}, {c="3"}]`),
-			err2: errors.New(`oops: [{c="3"}, {a="1", b="2"}]`),
-			want: true,
-		},
-		{
-			name: "untyped same message after bracket canonicalization",
-			err1: errors.New(dupMsg(a, b)),
-			err2: errors.New(dupMsg(b, a)),
+			name: "untyped dup-series reordered",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{__name__="x", series="2"}`, `{__name__="y", series="2"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{__name__="y", series="2"}`, `{__name__="x", series="2"}`)),
 			want: true,
 		},
 		{
 			name: "untyped different messages",
 			err1: errors.New("one"),
 			err2: errors.New("two"),
+			want: false,
+		},
+		{
+			name: "dup-series label values contain brackets commas braces",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="[1,2]", b="{x}"}`, `{c="3"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c="3"}`, `{a="[1,2]", b="{x}"}`)),
+			want: true,
+		},
+		{
+			name: "dup-series label value with escaped quote",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="say \"hi\""}`, `{c="3"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c="3"}`, `{a="say \"hi\""}`)),
+			want: true,
+		},
+		{
+			name: "dup-series label value with nested brackets",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="[[1],[2]]"}`, `{z="ok"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{z="ok"}`, `{a="[[1],[2]]"}`)),
+			want: true,
+		},
+		{
+			name: "dup-series same bracket list different surrounding text",
+			err1: errors.New(dupMsg(`{series="2"}`, "left", `{a="1"}`, `{b="2"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{b="2"}`, `{a="1"}`)),
+			want: false,
+		},
+		{
+			name: "unrelated bracket list outside dup prefix",
+			err1: errors.New(`oops: [{a="1", b="2"}, {c="3"}]`),
+			err2: errors.New(`oops: [{c="3"}, {a="1", b="2"}]`),
+			want: false,
+		},
+		{
+			name: "dup-series with third element",
+			err1: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{a}, {b}, {c}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			err2: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{b}, {a}, {c}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			want: false,
+		},
+		{
+			name: "dup-series separator changed is not canonicalized (loud break)",
+			err1: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{a="1"},{b="2"}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			err2: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{b="2"},{a="1"}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			want: false,
+		},
+		{
+			name: "dup-series genuinely different labelset values",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a}`, `{b}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c}`, `{d}`)),
 			want: false,
 		},
 	} {

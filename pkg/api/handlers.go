@@ -402,8 +402,8 @@ type featuresHandler struct {
 }
 
 type featuresResponse struct {
-	Status string                       `json:"status"`
-	Data   map[string]map[string]bool   `json:"data"`
+	Status string                     `json:"status"`
+	Data   map[string]map[string]bool `json:"data"`
 }
 
 func (h *featuresHandler) ServeHTTP(writer http.ResponseWriter, _ *http.Request) {

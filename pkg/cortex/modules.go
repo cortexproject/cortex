@@ -173,8 +173,10 @@ func cortexFeatures(cfg Config) map[string]map[string]bool {
 		"group": true, "stddev": true, "stdvar": true,
 		"topk": true, "bottomk": true, "count_values": true, "quantile": true,
 		"atan2": true,
-		"limitk":      false,
-		"limit_ratio": false,
+		// limitk and limit_ratio are experimental aggregators, gated by the same
+		// flag as experimental PromQL functions.
+		"limitk":      experimentalFunctions,
+		"limit_ratio": experimentalFunctions,
 	}
 
 	// API features relevant to Cortex as a Prometheus-compatible query backend.

@@ -397,7 +397,9 @@ func TestCortexFeatures(t *testing.T) {
 			// Check PromQL Operators
 			require.Contains(t, features, "promql_operators")
 			assert.True(t, features["promql_operators"]["+"])
-			assert.False(t, features["promql_operators"]["limitk"])
+			// limitk/limit_ratio are experimental aggregators gated by the experimental functions flag.
+			assert.Equal(t, tc.experimentalExpected, features["promql_operators"]["limitk"])
+			assert.Equal(t, tc.experimentalExpected, features["promql_operators"]["limit_ratio"])
 
 			// Check PromQL Functions
 			require.Contains(t, features, "promql_functions")
@@ -406,4 +408,3 @@ func TestCortexFeatures(t *testing.T) {
 		})
 	}
 }
-

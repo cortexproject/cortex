@@ -315,7 +315,7 @@ func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp,
 		path := prefix + f.Name
 
 		yamlTag := f.Tag.Get("yaml")
-		yamlName := strings.Split(yamlTag, ",")[0]
+		yamlName, _, _ := strings.Cut(yamlTag, ",")
 
 		if pattern.MatchString(yamlName) && f.Type.Kind() == reflect.String {
 			*violations = append(*violations, path+" (yaml:\""+yamlName+"\")")

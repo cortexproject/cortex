@@ -19,6 +19,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -99,8 +100,8 @@ type roundTripper struct {
 // ie Merge(f,g,h).Wrap(handler) == f.Wrap(g.Wrap(h.Wrap(handler)))
 func MergeMiddlewares(middleware ...Middleware) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
-		for i := len(middleware) - 1; i >= 0; i-- {
-			next = middleware[i].Wrap(next)
+		for _, m := range slices.Backward(middleware) {
+			next = m.Wrap(next)
 		}
 		return next
 	})

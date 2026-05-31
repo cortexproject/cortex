@@ -15,9 +15,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
+	amAlert "github.com/prometheus/alertmanager/alert"
 	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
 	alertConfig "github.com/prometheus/alertmanager/config"
-	"github.com/prometheus/alertmanager/types"
 	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
@@ -1043,7 +1043,7 @@ func (c *Client) DeleteAlertmanagerConfig(ctx context.Context) error {
 func (c *Client) SendAlertToAlermanager(ctx context.Context, alert *model.Alert) error {
 	u := c.alertmanagerClient.URL("/api/prom/api/v2/alerts", nil)
 
-	data, err := json.Marshal([]types.Alert{{Alert: *alert}})
+	data, err := json.Marshal([]amAlert.Alert{{Alert: *alert}})
 	if err != nil {
 		return fmt.Errorf("error marshaling the alert: %v", err)
 	}
@@ -1128,7 +1128,7 @@ func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {
 }
 
 // CreateSilence creates a new silence and returns the unique identifier of the silence.
-func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (string, error) {
+func (c *Client) CreateSilence(ctx context.Context, silence open_api_models.Silence) (string, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
 
 	data, err := json.Marshal(silence)
@@ -1163,7 +1163,7 @@ func (c *Client) CreateSilence(ctx context.Context, silence types.Silence) (stri
 	return decoded.SilenceID, nil
 }
 
-func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
+func (c *Client) GetSilencesV2(ctx context.Context) ([]open_api_models.GettableSilence, error) {
 	u := c.alertmanagerClient.URL("api/prom/api/v2/silences", nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
@@ -1184,7 +1184,7 @@ func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
 		return nil, fmt.Errorf("getting silences failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
-	decoded := []types.Silence{}
+	decoded := []open_api_models.GettableSilence{}
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		return nil, err
 	}
@@ -1192,30 +1192,30 @@ func (c *Client) GetSilencesV2(ctx context.Context) ([]types.Silence, error) {
 	return decoded, nil
 }
 
-func (c *Client) GetSilenceV2(ctx context.Context, id string) (types.Silence, error) {
+func (c *Client) GetSilenceV2(ctx context.Context, id string) (open_api_models.GettableSilence, error) {
 	u := c.alertmanagerClient.URL(fmt.Sprintf("api/prom/api/v2/silence/%s", url.PathEscape(id)), nil)
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
 	if err != nil {
-		return types.Silence{}, fmt.Errorf("error creating request: %v", err)
+		return open_api_models.GettableSilence{}, fmt.Errorf("error creating request: %v", err)
 	}
 
 	resp, body, err := c.alertmanagerClient.Do(ctx, req)
 	if err != nil {
-		return types.Silence{}, err
+		return open_api_models.GettableSilence{}, err
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		return types.Silence{}, ErrNotFound
+		return open_api_models.GettableSilence{}, ErrNotFound
 	}
 
 	if resp.StatusCode/100 != 2 {
-		return types.Silence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
+		return open_api_models.GettableSilence{}, fmt.Errorf("getting silence failed with status %d and error %v", resp.StatusCode, string(body))
 	}
 
-	decoded := types.Silence{}
+	decoded := open_api_models.GettableSilence{}
 	if err := json.Unmarshal(body, &decoded); err != nil {
-		return types.Silence{}, err
+		return open_api_models.GettableSilence{}, err
 	}
 
 	return decoded, nil

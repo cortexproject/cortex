@@ -170,6 +170,7 @@ protos: $(PROTO_GOS)
 lint:
 	misspell -error docs
 
+
 	# Configured via .golangci.yml.
 	golangci-lint run
 
@@ -242,7 +243,7 @@ check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
 modernize:
-	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.21.0 -fix ./...
+	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0 -fix ./...
 
 # Generates the config file documentation.
 doc: clean-doc

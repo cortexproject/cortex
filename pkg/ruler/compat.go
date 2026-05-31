@@ -49,7 +49,7 @@ type PusherAppender struct {
 	labels          []labels.Labels
 	samples         []cortexpb.Sample
 	histogramLabels []labels.Labels
-	histograms      []cortexpb.Histogram
+	histograms      []cortexpb.WrappedHistogram
 	userID          string
 	opts            *storage.AppendOptions
 }
@@ -59,9 +59,9 @@ func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t
 		return 0, errors.New("no histogram")
 	}
 	if h != nil {
-		a.histograms = append(a.histograms, cortexpb.HistogramToHistogramProto(t, h))
+		a.histograms = append(a.histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.HistogramToHistogramProto(t, h)})
 	} else {
-		a.histograms = append(a.histograms, cortexpb.FloatHistogramToHistogramProto(t, fh))
+		a.histograms = append(a.histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.FloatHistogramToHistogramProto(t, fh)})
 	}
 	a.histogramLabels = append(a.histogramLabels, l)
 	return 0, nil

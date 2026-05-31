@@ -1,6 +1,8 @@
 package ingester
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -142,7 +144,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help:                            "The number of ingested native histogram buckets per user.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
 		}, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -317,7 +319,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help:                            "Length (in bytes) of unoptimized regex patterns in queries.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 12), // 1 to 4096 bytes
 		})
 		m.unoptimizedRegexLabelCardinality = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
@@ -325,7 +327,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help:                            "Cardinality of labels queried with unoptimized regex matchers.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 4, 10), // 1 to ~1M
 		})
 		m.unoptimizedRegexTotalValueLength = promauto.With(r).NewHistogram(prometheus.HistogramOpts{
@@ -333,7 +335,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help:                            "Total length (in bytes) of all label values for labels queried with unoptimized regex matchers.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 4, 12), // 1 to ~16M bytes
 		})
 		m.unoptimizedRegexRejectedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{

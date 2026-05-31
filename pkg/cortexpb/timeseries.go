@@ -35,7 +35,7 @@ var (
 				Labels:     make([]LabelAdapter, 0, expectedLabels),
 				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
 				Exemplars:  make([]Exemplar, 0, expectedExemplarsPerSeries),
-				Histograms: make([]Histogram, 0, expectedHistogramsPerSeries),
+				Histograms: make([]WrappedHistogram, 0, expectedHistogramsPerSeries),
 			}
 		},
 	}
@@ -59,6 +59,7 @@ func (PreallocConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&expectedTimeseries, "ingester-client.expected-timeseries", expectedTimeseries, "Expected number of timeseries per request, used for preallocations.")
 	f.IntVar(&expectedLabels, "ingester-client.expected-labels", expectedLabels, "Expected number of labels per timeseries, used for preallocations.")
 	f.IntVar(&expectedSamplesPerSeries, "ingester-client.expected-samples-per-series", expectedSamplesPerSeries, "Expected number of samples per timeseries, used for preallocations.")
+	f.IntVar(&maxWrappedHistogramSizeBytes, "validation.max-native-histogram-size-bytes", maxWrappedHistogramSizeBytes, "Maximum size in bytes of a single native histogram in raw protobuf before unmarshalling. 0 to disable.")
 }
 
 // PreallocWriteRequest is a WriteRequest which preallocs slices on Unmarshal.

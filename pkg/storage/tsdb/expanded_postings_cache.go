@@ -3,6 +3,7 @@ package tsdb
 import (
 	"container/list"
 	"context"
+	"errors"
 	"flag"
 	"slices"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -42,6 +44,7 @@ type ExpandedPostingsCacheMetrics struct {
 	CacheEvicts         *prometheus.CounterVec
 	CacheMiss           *prometheus.CounterVec
 	NonCacheableQueries *prometheus.CounterVec
+	LazyMatcherQueries  prometheus.Counter
 }
 
 func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetrics {
@@ -66,12 +69,35 @@ func NewPostingCacheMetrics(r prometheus.Registerer) *ExpandedPostingsCacheMetri
 			Name: "cortex_ingester_expanded_postings_non_cacheable_queries_total",
 			Help: "Total number of non cacheable queries.",
 		}, []string{"cache"}),
+		LazyMatcherQueries: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "cortex_ingester_expanded_postings_lazy_matcher_queries_total",
+			Help: "Total number of queries that used lazy matcher evaluation on cache miss.",
+		}),
 	}
 }
 
 type TSDBPostingsCacheConfig struct {
 	Head   PostingsCacheConfig `yaml:"head" doc:"description=If enabled, ingesters will cache expanded postings for the head block. Only queries with with an equal matcher for metric __name__ are cached."`
 	Blocks PostingsCacheConfig `yaml:"blocks" doc:"description=If enabled, ingesters will cache expanded postings for the compacted blocks. The cache is shared between all blocks."`
+
+	// LazyMatcherMaxCardinality configures the maximum label cardinality threshold for
+	// deferring regex matchers on the head block. When a regex matcher targets a label with
+	// more unique values than this threshold, the matcher is applied lazily during series
+	// iteration instead of during postings lookup. This avoids expensive regex scans on
+	// high-cardinality labels when the head postings cache misses. 0 disables this optimization.
+	LazyMatcherMaxCardinality int `yaml:"lazy_matcher_max_cardinality"`
+
+	// LazyMatcherSimpleCostRatio is the cardinality:postings ratio above which a
+	// regex matcher with a simple per-call cost (prefix-only, single contains,
+	// single suffix) is deferred to lazy iteration. Tuned empirically — see
+	// regexCostClass for derivation. Defaults to 6 when unset.
+	LazyMatcherSimpleCostRatio int `yaml:"lazy_matcher_simple_cost_ratio"`
+
+	// LazyMatcherComplexCostRatio is the cardinality:postings ratio above which a
+	// regex matcher with a complex per-call cost (multi-substring contains,
+	// capture groups with literals, character classes) is deferred. Defaults to 2
+	// when unset.
+	LazyMatcherComplexCostRatio int `yaml:"lazy_matcher_complex_cost_ratio"`
 
 	// The configurations below are used only for testing purpose
 	PostingsForMatchers func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) `yaml:"-"`
@@ -89,6 +115,9 @@ type PostingsCacheConfig struct {
 func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Head.RegisterFlagsWithPrefix(prefix, "head", f)
 	cfg.Blocks.RegisterFlagsWithPrefix(prefix, "block", f)
+	f.IntVar(&cfg.LazyMatcherMaxCardinality, prefix+"expanded_postings_cache.head.lazy-matcher-max-cardinality", 0, "[EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on the head block. When a regex matcher targets a label with more unique values than this threshold, it is applied lazily during iteration instead of postings lookup. 0 disables.")
+	f.IntVar(&cfg.LazyMatcherSimpleCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-simple-cost-ratio", defaultSimpleCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a simple regex (prefix-only, single contains) is deferred to lazy iteration. Lower = more aggressive deferral. Calibrated empirically; defaults to 6.")
+	f.IntVar(&cfg.LazyMatcherComplexCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-complex-cost-ratio", defaultComplexCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a complex regex (multi-substring, capture groups, character classes) is deferred. Lower = more aggressive deferral. Calibrated empirically; defaults to 2.")
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -134,10 +163,13 @@ type ExpandedPostingsCache interface {
 type blocksPostingsForMatchersCache struct {
 	userId string
 
-	headCache               *fifoCache[[]storage.SeriesRef]
-	blocksCache             *fifoCache[[]storage.SeriesRef]
+	headCache               *lruCache[[]storage.SeriesRef]
+	blocksCache             *lruCache[[]storage.SeriesRef]
 	postingsForMatchersFunc func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error)
 	timeNow                 func() time.Time
+
+	lazyMatcherCfg        lazyMatcherConfig
+	labelCardinalityCache *expirable.LRU[string, int]
 
 	metrics    *ExpandedPostingsCacheMetrics
 	seedByHash *seedByHash
@@ -158,13 +190,19 @@ func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfi
 	}
 
 	return &blocksPostingsForMatchersCache{
-		headCache:               newFifoCache[[]storage.SeriesRef](cfg.Head, "head", metrics, cfg.timeNow),
-		blocksCache:             newFifoCache[[]storage.SeriesRef](cfg.Blocks, "block", metrics, cfg.timeNow),
+		headCache:               newLruCache[[]storage.SeriesRef](cfg.Head, "head", metrics, cfg.timeNow),
+		blocksCache:             newLruCache[[]storage.SeriesRef](cfg.Blocks, "block", metrics, cfg.timeNow),
 		postingsForMatchersFunc: cfg.PostingsForMatchers,
 		timeNow:                 cfg.timeNow,
-		metrics:                 metrics,
-		seedByHash:              seedByHash,
-		userId:                  userId,
+		lazyMatcherCfg: lazyMatcherConfig{
+			MaxCardinality: cfg.LazyMatcherMaxCardinality,
+			SimpleRatio:    cfg.LazyMatcherSimpleCostRatio,
+			ComplexRatio:   cfg.LazyMatcherComplexCostRatio,
+		},
+		labelCardinalityCache: newLabelCardinalityCache(),
+		metrics:               metrics,
+		seedByHash:            seedByHash,
+		userId:                userId,
 	}
 }
 
@@ -232,6 +270,16 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 			defer cancel()
 		}
 
+		// For head blocks, try to avoid expensive regex scans by splitting matchers:
+		// resolve postings with selective matchers only, then filter by regex lazily.
+		if isHeadBlock(blockID) && c.lazyMatcherCfg.MaxCardinality > 0 {
+			selectMs, lazyMs := splitMatchersForHeadWithConfig(fetchCtx, ix, ms, c.lazyMatcherCfg, c.labelCardinalityCache)
+			if len(lazyMs) > 0 {
+				c.metrics.LazyMatcherQueries.Inc()
+				return c.fetchWithLazyMatchers(fetchCtx, ix, selectMs, lazyMs)
+			}
+		}
+
 		postings, err := c.postingsForMatchersFunc(fetchCtx, ix, ms...)
 
 		if err == nil {
@@ -263,6 +311,66 @@ func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.
 			return index.NewListPostings(ce.v), ce.err
 		}
 	}
+}
+
+// fetchWithLazyMatchers resolves postings using only the selective matchers, then
+// filters the results by applying the lazy (regex) matchers per-series using
+// LabelValueFor. A per-value cache avoids running the same regex on the same value
+// more than once.
+func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Context, ix tsdb.IndexReader, selectMs, lazyMs []*labels.Matcher) ([]storage.SeriesRef, int64, error) {
+	postings, err := c.postingsForMatchersFunc(ctx, ix, selectMs...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	ids, err := index.ExpandPostings(postings)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Per-matcher cache: label value -> match result
+	caches := make([]map[string]bool, len(lazyMs))
+	for i := range lazyMs {
+		caches[i] = make(map[string]bool)
+	}
+
+	filtered := ids[:0]
+	for cnt, id := range ids {
+		if cnt%128 == 0 && ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		}
+		matches := true
+		for i, m := range lazyMs {
+			val, err := ix.LabelValueFor(ctx, id, m.Name)
+			if err != nil {
+				if errors.Is(err, storage.ErrNotFound) {
+					val = ""
+				} else {
+					return nil, 0, err
+				}
+			}
+
+			if result, ok := caches[i][val]; ok {
+				if !result {
+					matches = false
+					break
+				}
+				continue
+			}
+
+			result := m.Matches(val)
+			caches[i][val] = result
+			if !result {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			filtered = append(filtered, id)
+		}
+	}
+
+	return filtered, int64(len(filtered) * 8), nil
 }
 
 func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
@@ -352,7 +460,7 @@ func (s *seedByHash) incrementSeed(userId string, v string) {
 	s.seedByHash[i]++
 }
 
-type fifoCache[V any] struct {
+type lruCache[V any] struct {
 	cfg          PostingsCacheConfig
 	cachedValues *sync.Map
 	timeNow      func() time.Time
@@ -365,8 +473,8 @@ type fifoCache[V any] struct {
 	cachedBytes int64
 }
 
-func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *fifoCache[V] {
-	return &fifoCache[V]{
+func newLruCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *lruCache[V] {
+	return &lruCache[V]{
 		cachedValues: new(sync.Map),
 		cached:       list.New(),
 		cfg:          cfg,
@@ -376,7 +484,7 @@ func newFifoCache[V any](cfg PostingsCacheConfig, name string, metrics *Expanded
 	}
 }
 
-func (c *fifoCache[V]) clear() {
+func (c *lruCache[V]) clear() {
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
 	c.cached = list.New()
@@ -384,7 +492,7 @@ func (c *fifoCache[V]) clear() {
 	c.cachedValues = new(sync.Map)
 }
 
-func (c *fifoCache[V]) expire() {
+func (c *lruCache[V]) expire() {
 	if c.cfg.Ttl <= 0 {
 		return
 	}
@@ -402,13 +510,13 @@ func (c *fifoCache[V]) expire() {
 	}
 }
 
-func (c *fifoCache[V]) size() int {
+func (c *lruCache[V]) size() int {
 	c.cachedMtx.RLock()
 	defer c.cachedMtx.RUnlock()
 	return c.cached.Len()
 }
 
-func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
+func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
 	r := &cacheEntryPromise[V]{
 		done: make(chan struct{}),
 	}
@@ -434,14 +542,28 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 		// If the promise is already in the cache, lets wait it to fetch the data.
 		<-loaded.(*cacheEntryPromise[V]).done
 
+		// LRU: move to back on access
+		c.cachedMtx.Lock()
+		if elem := loaded.(*cacheEntryPromise[V]).elem; elem != nil {
+			c.cached.MoveToBack(elem)
+		}
+		c.cachedMtx.Unlock()
+
 		// If is cached but is expired, lets try to replace the cache value.
 		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
 			c.metrics.CacheMiss.WithLabelValues(c.name, "expired").Inc()
 			r.v, r.sizeBytes, r.err = fetch()
 			r.sizeBytes += int64(len(k))
 			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
-			loaded = r
 			r.ts = c.timeNow()
+			// Replace the list element: remove old, push new to back
+			c.cachedMtx.Lock()
+			if oldElem := loaded.(*cacheEntryPromise[V]).elem; oldElem != nil {
+				c.cached.Remove(oldElem)
+			}
+			r.elem = c.cached.PushBack(k)
+			c.cachedMtx.Unlock()
+			loaded = r
 			ok = false
 		}
 	}
@@ -449,12 +571,12 @@ func (c *fifoCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)
 	return loaded.(*cacheEntryPromise[V]), ok
 }
 
-func (c *fifoCache[V]) contains(k string) bool {
+func (c *lruCache[V]) contains(k string) bool {
 	_, ok := c.cachedValues.Load(k)
 	return ok
 }
 
-func (c *fifoCache[V]) shouldEvictHead() (string, bool) {
+func (c *lruCache[V]) shouldEvictHead() (string, bool) {
 	h := c.cached.Front()
 	if h == nil {
 		return "", false
@@ -475,7 +597,7 @@ func (c *fifoCache[V]) shouldEvictHead() (string, bool) {
 	return "", false
 }
 
-func (c *fifoCache[V]) evictHead() {
+func (c *lruCache[V]) evictHead() {
 	front := c.cached.Front()
 	c.cached.Remove(front)
 	oldestKey := front.Value.(string)
@@ -484,18 +606,22 @@ func (c *fifoCache[V]) evictHead() {
 	}
 }
 
-func (c *fifoCache[V]) created(key string, sizeBytes int64) {
+func (c *lruCache[V]) created(key string, sizeBytes int64) {
 	if c.cfg.Ttl <= 0 {
 		c.cachedValues.Delete(key)
 		return
 	}
 	c.cachedMtx.Lock()
 	defer c.cachedMtx.Unlock()
-	c.cached.PushBack(key)
+	elem := c.cached.PushBack(key)
+	// Store the element reference in the promise for O(1) LRU access
+	if p, ok := c.cachedValues.Load(key); ok {
+		p.(*cacheEntryPromise[V]).elem = elem
+	}
 	c.cachedBytes += sizeBytes
 }
 
-func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
+func (c *lruCache[V]) updateSize(oldSize, newSizeBytes int64) {
 	if oldSize == newSizeBytes {
 		return
 	}
@@ -508,6 +634,7 @@ func (c *fifoCache[V]) updateSize(oldSize, newSizeBytes int64) {
 type cacheEntryPromise[V any] struct {
 	ts        time.Time
 	sizeBytes int64
+	elem      *list.Element
 
 	done chan struct{}
 	v    V

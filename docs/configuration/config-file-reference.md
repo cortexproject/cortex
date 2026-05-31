@@ -2650,6 +2650,25 @@ tsdb:
       # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
       [fetch_timeout: <duration> | default = 0s]
 
+    # [EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on
+    # the head block. When a regex matcher targets a label with more unique
+    # values than this threshold, it is applied lazily during iteration instead
+    # of postings lookup. 0 disables.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality
+    [lazy_matcher_max_cardinality: <int> | default = 0]
+
+    # [EXPERIMENTAL] Cardinality:postings ratio above which a simple regex
+    # (prefix-only, single contains) is deferred to lazy iteration. Lower = more
+    # aggressive deferral. Calibrated empirically; defaults to 6.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio
+    [lazy_matcher_simple_cost_ratio: <int> | default = 6]
+
+    # [EXPERIMENTAL] Cardinality:postings ratio above which a complex regex
+    # (multi-substring, capture groups, character classes) is deferred. Lower =
+    # more aggressive deferral. Calibrated empirically; defaults to 2.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio
+    [lazy_matcher_complex_cost_ratio: <int> | default = 2]
+
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.
   # CLI flag: -blocks-storage.users-scanner.strategy
@@ -4409,8 +4428,9 @@ query_rejection:
 
 # Go text/template for alert generator URLs. Available variables: .ExternalURL
 # (resolved external URL) and .Expression (PromQL expression). Built-in
-# functions like urlquery are available. If empty, uses default Prometheus
-# /graph format.
+# functions like urlquery are available. A jsonEscape function is also provided
+# for embedding expressions inside JSON-encoded URL parameters. If empty, uses
+# default Prometheus /graph format.
 [ruler_alert_generator_url_template: <string> | default = ""]
 
 # Enable to allow rules to be evaluated with data from a single zone, if other
@@ -4691,6 +4711,18 @@ The `memberlist_config` configures the Gossip memberlist.
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Timeout for reading packet data from inbound connections. 0 = no limit.
+# CLI flag: -memberlist.packet-read-timeout
+[packet_read_timeout: <duration> | default = 5s]
+
+# Maximum size in bytes of an inbound gossip packet. 0 = no limit.
+# CLI flag: -memberlist.max-packet-size
+[max_packet_size: <int> | default = 1048576]
+
+# Maximum number of concurrent inbound TCP connections. 0 = no limit.
+# CLI flag: -memberlist.max-concurrent-connections
+[max_concurrent_connections: <int> | default = 100]
 
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled

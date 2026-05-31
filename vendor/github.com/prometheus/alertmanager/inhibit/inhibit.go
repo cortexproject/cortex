@@ -27,14 +27,15 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/prometheus/alertmanager/config"
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
 	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/store"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
-var tracer = otel.Tracer("github.com/prometheus/alertmanager/inhibit")
+var tracer = tracing.NewTracer("github.com/prometheus/alertmanager/inhibit")
 
 // An Inhibitor determines whether a given label set is muted based on the
 // currently active alerts and a set of inhibition rules. It implements the
@@ -52,7 +53,7 @@ type Inhibitor struct {
 }
 
 // NewInhibitor returns a new Inhibitor.
-func NewInhibitor(ap provider.Alerts, rs []config.InhibitRule, mk types.AlertMarker, logger *slog.Logger) *Inhibitor {
+func NewInhibitor(ap provider.Alerts, rs []amcommoncfg.InhibitRule, mk types.AlertMarker, logger *slog.Logger) *Inhibitor {
 	ih := &Inhibitor{
 		alerts:     ap,
 		marker:     mk,
@@ -247,7 +248,7 @@ type InhibitRule struct {
 }
 
 // NewInhibitRule returns a new InhibitRule based on a configuration definition.
-func NewInhibitRule(cr config.InhibitRule) *InhibitRule {
+func NewInhibitRule(cr amcommoncfg.InhibitRule) *InhibitRule {
 	var (
 		sourcem labels.Matchers
 		targetm labels.Matchers
@@ -316,7 +317,7 @@ func NewInhibitRule(cr config.InhibitRule) *InhibitRule {
 
 // fingerprintEquals returns the fingerprint of the equal labels of the given label set.
 func (r *InhibitRule) fingerprintEquals(lset model.LabelSet) model.Fingerprint {
-	equalSet := model.LabelSet{}
+	equalSet := make(model.LabelSet, len(r.Equal))
 	for n := range r.Equal {
 		equalSet[n] = lset[n]
 	}
@@ -377,7 +378,7 @@ func (r *InhibitRule) findEqualSourceAlert(lset model.LabelSet, now time.Time) (
 	return nil, false
 }
 
-func (r *InhibitRule) gcCallback(alerts []types.Alert) {
+func (r *InhibitRule) gcCallback(alerts []*types.Alert) {
 	for _, a := range alerts {
 		fp := r.fingerprintEquals(a.Labels)
 		r.sindex.Delete(fp)

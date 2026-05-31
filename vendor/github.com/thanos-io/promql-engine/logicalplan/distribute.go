@@ -102,8 +102,16 @@ func (r RemoteExecution) ReturnType() parser.ValueType { return r.Query.ReturnTy
 
 // Deduplicate is a logical plan which deduplicates samples from multiple RemoteExecutions.
 type Deduplicate struct {
-	LeafNode
 	Expressions RemoteExecutions
+}
+
+func (r Deduplicate) Children() []*Node {
+	children := make([]*Node, len(r.Expressions))
+	for i := range r.Expressions {
+		var n Node = r.Expressions[i]
+		children[i] = &n
+	}
+	return children
 }
 
 func (r Deduplicate) Clone() Node {
@@ -135,20 +143,6 @@ func (r Noop) ReturnType() parser.ValueType { return parser.ValueTypeVector }
 
 func (r Noop) Type() NodeType { return NoopNode }
 
-// distributiveAggregations are all PromQL aggregations which support
-// distributed execution.
-var distributiveAggregations = map[parser.ItemType]struct{}{
-	parser.SUM:         {},
-	parser.MIN:         {},
-	parser.MAX:         {},
-	parser.GROUP:       {},
-	parser.COUNT:       {},
-	parser.BOTTOMK:     {},
-	parser.TOPK:        {},
-	parser.LIMITK:      {},
-	parser.LIMIT_RATIO: {},
-}
-
 // DistributedExecutionOptimizer produces a logical plan suitable for
 // distributed Query execution.
 type DistributedExecutionOptimizer struct {
@@ -177,79 +171,136 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 		}
 	}
 
-	var warns = annotations.New()
+	warns := annotations.New()
 
-	// TODO(fpetkovski): Consider changing TraverseBottomUp to pass in a list of parents in the transform function.
-	parents := make(map[*Node]*Node)
+	parents := computeParents(&plan)
+	distributionPoints := m.computeDistributionPoints(&plan, parents, engineLabels, warns)
+
 	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
-		parents[current] = parent
-		return false
-	})
-	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
-		// Handle avg() specially - it's not distributive but can be distributed as sum/count.
-		if isAvgAggregation(current) {
+		if _, distributeNow := distributionPoints[current]; !distributeNow {
+			return false
+		}
+
+		if isAvgAggregation(current) && !preservesPartitionLabels(*current, engineLabels) {
+			// avg without partition labels: rewrite as sum/count.
 			*current = m.distributeAvg(*current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
 			return true
 		}
 
-		// If the current operation is not distributive, stop the traversal.
-		if !isDistributive(current, m.SkipBinaryPushdown, engineLabels, warns) {
-			return true
-		}
-
-		// Handle absent functions specially
 		if isAbsent(current) {
 			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), m.subqueryOpts(parents, current, opts))
 			return true
 		}
 
-		// If the current node is an aggregation, check if we should distribute here
-		// or continue traversing up.
-		if aggr, ok := (*current).(*Aggregation); ok {
-			// If this aggregation preserves partition labels and there's a
-			// distributive aggregation ancestor, continue up to let it handle distribution.
-			// This enables patterns like:
-			//   - topk(10, sum by (P, instance) (X))
-			//   - sum(metric_a * group by (P) (metric_b))
-			//   - max(sum by (P, instance) (X))
-			// where P is a partition label - we can push the entire expression
-			// to remote engines.
-			//
-			// We need to check ancestors (not just immediate parent) because the
-			// aggregation might be nested inside a binary expression that is itself
-			// inside another aggregation: sum(A * group by (P) (B))
+		if isAggregation(current) {
 			if preservesPartitionLabels(*current, engineLabels) {
-				if hasDistributiveAncestor(parents, current, m.SkipBinaryPushdown, engineLabels, warns) {
-					return false
-				}
-			}
-			localAggregation := aggr.Op
-			if aggr.Op == parser.COUNT {
-				localAggregation = parser.SUM
-			}
-
-			remoteAggregation := newRemoteAggregation(aggr, engines)
-			subQueries := m.distributeQuery(&remoteAggregation, engines, m.subqueryOpts(parents, current, opts), labelRanges)
-			*current = &Aggregation{
-				Op:       localAggregation,
-				Expr:     subQueries,
-				Param:    aggr.Param,
-				Grouping: aggr.Grouping,
-				Without:  aggr.Without,
+				// Partition-preserving aggregation: push as-is since each engine
+				// computes over disjoint partition values.
+				*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
+			} else {
+				// Distributive aggregation that drops partition labels: use a
+				// two-level split with local_agg(remote_agg(X)).
+				*current = m.distributeAggregation((*current).(*Aggregation), engines, m.subqueryOpts(parents, current, opts), labelRanges)
 			}
 			return true
-		}
-
-		// If the parent operation is distributive or is an avg (which we handle specially),
-		// continue the traversal.
-		if isDistributive(parent, m.SkipBinaryPushdown, engineLabels, warns) || isAvgAggregation(parent) {
-			return false
 		}
 
 		*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
 		return true
 	})
 	return plan, *warns
+}
+
+func (m DistributedExecutionOptimizer) distributeAggregation(aggr *Aggregation, engines []api.RemoteEngine, opts *query.Options, labelRanges labelSetRanges) Node {
+	localAggregation := aggr.Op
+	if aggr.Op == parser.COUNT {
+		localAggregation = parser.SUM
+	}
+	remoteAggregation := newRemoteAggregation(aggr, engines)
+	subQueries := m.distributeQuery(&remoteAggregation, engines, opts, labelRanges)
+	return &Aggregation{
+		Op:       localAggregation,
+		Expr:     subQueries,
+		Param:    aggr.Param,
+		Grouping: aggr.Grouping,
+		Without:  aggr.Without,
+	}
+}
+
+func computeParents(plan *Node) map[*Node]*Node {
+	parents := make(map[*Node]*Node)
+	TraverseBottomUp(nil, plan, func(parent, current *Node) (stop bool) {
+		parents[current] = parent
+		return false
+	})
+	return parents
+}
+
+func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, parents map[*Node]*Node, engineLabels map[string]struct{}, warns *annotations.Annotations) map[*Node]struct{} {
+	marks := make(map[*Node]struct{})
+
+	// First pass: mark distribution points (aggregations, absent functions).
+	Traverse(plan, func(current *Node) {
+		if isAbsent(current) {
+			if m.isDistributive(current, engineLabels, warns) {
+				marks[current] = struct{}{}
+			}
+			return
+		}
+		if isAggregation(current) {
+			// Non-distributive aggregations that don't preserve partition labels
+			// cannot be distributed, except for avg which gets rewritten as sum/count.
+			if !m.isDistributive(current, engineLabels, warns) {
+				if isAvgAggregation(current) {
+					marks[current] = struct{}{}
+				}
+				return
+			}
+			// Distributive aggregations (standard or partition-preserving):
+			// defer to ancestor if possible.
+			if preservesPartitionLabels(*current, engineLabels) {
+				if m.hasDistributiveAncestor(parents, current, engineLabels, warns) {
+					return
+				}
+			}
+			marks[current] = struct{}{}
+		}
+	})
+
+	// Second pass: for nodes whose siblings have marks, mark them too so both
+	// sides of a binary expression get distributed.
+	Traverse(plan, func(current *Node) {
+		if _, ok := marks[current]; ok {
+			return
+		}
+		if subtreeHasMark(current, marks) {
+			return
+		}
+		if !m.isDistributive(current, engineLabels, warns) {
+			return
+		}
+		parent := parents[current]
+		if parent != nil && (m.isDistributive(parent, engineLabels, warns) || isAvgAggregation(parent)) {
+			if !subtreeHasMark(parent, marks) {
+				return
+			}
+		}
+		marks[current] = struct{}{}
+	})
+
+	return marks
+}
+
+func subtreeHasMark(node *Node, marks map[*Node]struct{}) bool {
+	for _, child := range (*node).Children() {
+		if _, ok := marks[child]; ok {
+			return true
+		}
+		if subtreeHasMark(child, marks) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m DistributedExecutionOptimizer) subqueryOpts(parents map[*Node]*Node, current *Node, opts *query.Options) *query.Options {
@@ -605,7 +656,7 @@ func preservesPartitionLabels(expr Node, partitionLabels map[string]struct{}) bo
 		return preservesPartitionLabels(e.LHS, partitionLabels) &&
 			preservesPartitionLabels(e.RHS, partitionLabels)
 	case *FunctionCall:
-		if e.Func.Name == "label_replace" {
+		if e.Func.Name == "label_replace" || e.Func.Name == "label_join" {
 			if _, ok := partitionLabels[UnsafeUnwrapString(e.Args[1])]; ok {
 				return false
 			}
@@ -633,7 +684,7 @@ func preservesPartitionLabels(expr Node, partitionLabels map[string]struct{}) bo
 	}
 }
 
-func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
+func (m DistributedExecutionOptimizer) isDistributive(expr *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
 	if expr == nil {
 		return false
 	}
@@ -645,17 +696,28 @@ func isDistributive(expr *Node, skipBinaryPushdown bool, engineLabels map[string
 		if isBinaryExpressionWithOneScalarSide(e) {
 			return true
 		}
-		return !skipBinaryPushdown &&
+		return !m.SkipBinaryPushdown &&
 			isBinaryExpressionWithDistributableMatching(e, engineLabels) &&
-			isDistributive(&e.LHS, skipBinaryPushdown, engineLabels, warns) &&
-			isDistributive(&e.RHS, skipBinaryPushdown, engineLabels, warns)
+			m.isDistributive(&e.LHS, engineLabels, warns) &&
+			m.isDistributive(&e.RHS, engineLabels, warns)
 	case *Aggregation:
-		// Certain aggregations are currently not supported.
-		if _, ok := distributiveAggregations[e.Op]; !ok {
+		switch e.Op {
+		// Mathematically distributive: can be split into local_agg(remote_agg(X))
+		// regardless of partition labels.
+		case parser.SUM, parser.MIN, parser.MAX, parser.GROUP, parser.COUNT,
+			parser.TOPK, parser.BOTTOMK, parser.LIMITK:
+		// Non-distributive: can only be pushed as-is when they preserve
+		// partition labels (each engine computes over disjoint data).
+		case parser.AVG, parser.QUANTILE, parser.STDDEV, parser.STDVAR,
+			parser.COUNT_VALUES, parser.LIMIT_RATIO:
+			if !preservesPartitionLabels(e, engineLabels) {
+				return false
+			}
+		default:
 			return false
 		}
 	case *FunctionCall:
-		if e.Func.Name == "label_replace" {
+		if e.Func.Name == "label_replace" || e.Func.Name == "label_join" {
 			targetLabel := UnsafeUnwrapString(e.Args[1])
 			if _, ok := engineLabels[targetLabel]; ok {
 				warns.Add(RewrittenExternalLabelWarning)
@@ -722,11 +784,10 @@ func isBinaryExpressionWithDistributableMatching(expr *Binary, engineLabels map[
 		// changes match cardinality semantics. Each partition only sees one value for
 		// that label, so what's many-to-many globally may become one-to-one per partition,
 		// producing results instead of errors (or vice versa).
-		return !inInclude && inMatching == expr.VectorMatching.On
+		if inInclude || inMatching != expr.VectorMatching.On {
+			return false
+		}
 	}
-	// At this point, partition labels are in the matching set (either via on() or
-	// by not being in ignoring()). This means or/unless can be safely distributed
-	// because the matching ensures series are paired by partition.
 	return true
 }
 
@@ -832,9 +893,9 @@ func matchesExternalLabels(ms []*labels.Matcher, externalLabels labels.Labels) b
 // parent chain from the current node that can handle distribution.
 // We must have an unbroken chain of distributive nodes to the ancestor for it to
 // be able to handle distribution on our behalf.
-func hasDistributiveAncestor(parents map[*Node]*Node, current *Node, skipBinaryPushdown bool, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
+func (m DistributedExecutionOptimizer) hasDistributiveAncestor(parents map[*Node]*Node, current *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
 	for p := parents[current]; p != nil; p = parents[p] {
-		if !isDistributive(p, skipBinaryPushdown, engineLabels, warns) {
+		if !m.isDistributive(p, engineLabels, warns) {
 			// We hit a non-distributive node, so we can't push through it.
 			// No ancestor can help us distribute.
 			return false

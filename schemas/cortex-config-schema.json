@@ -3045,6 +3045,24 @@
                     }
                   },
                   "type": "object"
+                },
+                "lazy_matcher_complex_cost_ratio": {
+                  "default": 2,
+                  "description": "[EXPERIMENTAL] Cardinality:postings ratio above which a complex regex (multi-substring, capture groups, character classes) is deferred. Lower = more aggressive deferral. Calibrated empirically; defaults to 2.",
+                  "type": "number",
+                  "x-cli-flag": "blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio"
+                },
+                "lazy_matcher_max_cardinality": {
+                  "default": 0,
+                  "description": "[EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on the head block. When a regex matcher targets a label with more unique values than this threshold, it is applied lazily during iteration instead of postings lookup. 0 disables.",
+                  "type": "number",
+                  "x-cli-flag": "blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality"
+                },
+                "lazy_matcher_simple_cost_ratio": {
+                  "default": 6,
+                  "description": "[EXPERIMENTAL] Cardinality:postings ratio above which a simple regex (prefix-only, single contains) is deferred to lazy iteration. Lower = more aggressive deferral. Calibrated empirically; defaults to 6.",
+                  "type": "number",
+                  "x-cli-flag": "blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio"
                 }
               },
               "type": "object"
@@ -5728,6 +5746,12 @@
           "x-cli-flag": "memberlist.left-ingesters-timeout",
           "x-format": "duration"
         },
+        "max_concurrent_connections": {
+          "default": 100,
+          "description": "Maximum number of concurrent inbound TCP connections. 0 = no limit.",
+          "type": "number",
+          "x-cli-flag": "memberlist.max-concurrent-connections"
+        },
         "max_join_backoff": {
           "default": "1m0s",
           "description": "Max backoff duration to join other cluster members.",
@@ -5740,6 +5764,12 @@
           "description": "Max number of retries to join other cluster members.",
           "type": "number",
           "x-cli-flag": "memberlist.max-join-retries"
+        },
+        "max_packet_size": {
+          "default": 1048576,
+          "description": "Maximum size in bytes of an inbound gossip packet. 0 = no limit.",
+          "type": "number",
+          "x-cli-flag": "memberlist.max-packet-size"
         },
         "message_history_buffer_bytes": {
           "default": 0,
@@ -5764,6 +5794,13 @@
           "description": "Timeout used when connecting to other nodes to send packet.",
           "type": "string",
           "x-cli-flag": "memberlist.packet-dial-timeout",
+          "x-format": "duration"
+        },
+        "packet_read_timeout": {
+          "default": "5s",
+          "description": "Timeout for reading packet data from inbound connections. 0 = no limit.",
+          "type": "string",
+          "x-cli-flag": "memberlist.packet-read-timeout",
           "x-format": "duration"
         },
         "packet_write_timeout": {

@@ -121,7 +121,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -222,7 +222,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -357,7 +357,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -538,7 +538,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		}
 	}
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
@@ -550,9 +550,12 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	queries := make([]string, 0, testRun)
 	matchers := make([]string, 0, testRun)
 	for i := 0; i < testRun; i++ {
-		expr := ps.WalkRangeQuery()
-		if isValidQuery(expr, true) {
-			break
+		var expr parser.Expr
+		for {
+			expr = ps.WalkRangeQuery()
+			if isValidQuery(expr, true) {
+				break
+			}
 		}
 		queries = append(queries, expr.Pretty(0))
 		matchers = append(matchers, storepb.PromMatchersToString(
@@ -651,7 +654,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 				failures++
-			} else if !cmp.Equal(tc.sres1, tc.sres1, labelSetsComparer) {
+			} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}
@@ -659,6 +662,280 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		if failures > 0 {
 			require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 		}
+	}
+}
+
+// TestLazyMatchersFuzz fuzzes PromQL queries against two cortex instances with
+// identical data:
+//   - cortex-1: head expanded-postings cache enabled, lazy matcher DISABLED
+//     (the eager path - regex applied during postings lookup).
+//   - cortex-2: head expanded-postings cache enabled, lazy matcher ENABLED
+//     with aggressive thresholds (cardinality=1, both cost ratios=1) so the
+//     optimization fires on every regex matcher.
+//
+// The test verifies:
+//  1. Query results match between the two instances (correctness).
+//  2. The cortex_ingester_expanded_postings_lazy_matcher_queries_total counter
+//     is incremented on cortex-2 (the optimization actually triggers).
+func TestLazyMatchersFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul1 := e2edb.NewConsulWithName("consul1")
+	consul2 := e2edb.NewConsulWithName("consul2")
+	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
+
+	baseFlags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                         blocksStorageEngine,
+			"-blocks-storage.backend":                               "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":         "4m",
+			"-blocks-storage.tsdb.block-ranges-period":              "2h",
+			"-blocks-storage.tsdb.ship-interval":                    "1h",
+			"-blocks-storage.bucket-store.sync-interval":            "15m",
+			"-blocks-storage.tsdb.retention-period":                 "2h",
+			"-blocks-storage.bucket-store.index-cache.backend":      tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled":     "true",
+			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
+			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
+			"-distributor.replication-factor":                       "1",
+			"-store-gateway.sharding-enabled":                       "false",
+			"-alertmanager.web.external-url":                        "http://localhost/alertmanager",
+			// The alertmanager initializes a memberlist gossip ring that auto-
+			// detects a private RFC1918 IP. On Docker networks where containers
+			// get non-private IPs (e.g. the 240.0.0.0/4 reserved range), this
+			// detection hard-fails. Setting an explicit advertise address skips
+			// the autodetection — the value is unused since we don't enable HA
+			// peers, but presence of the flag is enough.
+			"-alertmanager.cluster.advertise-address": "127.0.0.1:9094",
+		},
+	)
+
+	// cortex-1: eager path. Lazy matcher disabled (default).
+	flags1 := mergeFlags(baseFlags, map[string]string{
+		"-ring.store":                        "consul",
+		"-consul.hostname":                   consul1.NetworkHTTPEndpoint(),
+		"-ingester.matchers-cache-max-items": "10000",
+	})
+
+	// cortex-2: lazy path. Aggressive thresholds force the optimization to
+	// fire on essentially every regex matcher, so we exercise the lazy code
+	// path repeatedly for correctness verification.
+	flags2 := mergeFlags(baseFlags, map[string]string{
+		"-ring.store":                        "consul",
+		"-consul.hostname":                   consul2.NetworkHTTPEndpoint(),
+		"-ingester.matchers-cache-max-items": "10000",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality":    "1",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio":  "1",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio": "1",
+	})
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path1 := path.Join(s.SharedDir(), "cortex-1")
+	path2 := path.Join(s.SharedDir(), "cortex-2")
+	flags1 = mergeFlags(flags1, map[string]string{"-blocks-storage.filesystem.dir": path1})
+	flags2 = mergeFlags(flags2, map[string]string{"-blocks-storage.filesystem.dir": path2})
+
+	// Both instances use the local build.
+	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, "")
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
+	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
+
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	start := now.Add(-24 * time.Hour)
+	scrapeInterval := 30 * time.Second
+
+	// Build a fixture with multiple labels, including a high-cardinality
+	// "pod"-style label so regex matchers from promqlsmith actually exercise
+	// the deferral path. With lazy-matcher-max-cardinality=1, any label with
+	// >1 unique value is eligible.
+	numSeries := 10
+	numberOfLabelsPerSeries := 5
+	numSamples := 10
+	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
+	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
+
+	for i := 0; i < numSeries; i++ {
+		for j := 0; j < numberOfLabelsPerSeries; j++ {
+			series := e2e.GenerateSeriesWithSamples(
+				fmt.Sprintf("test_series_%d", i),
+				start,
+				scrapeInterval,
+				i*numSamples,
+				numSamples,
+				prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
+				prompb.Label{Name: "pod", Value: fmt.Sprintf("test_pod_%d_%d", i, j)},
+			)
+			ss[i*numberOfLabelsPerSeries+j] = series
+
+			builder := labels.NewBuilder(labels.EmptyLabels())
+			for _, lbl := range series.Labels {
+				builder.Set(lbl.Name, lbl.Value)
+			}
+			lbls[i*numberOfLabelsPerSeries+j] = builder.Labels()
+		}
+	}
+
+	for _, client := range []*e2ecortex.Client{c1, c2} {
+		res, err := client.Push(ss)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	rnd := rand.New(rand.NewSource(now.Unix()))
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	// Regex patterns that exercise different cost classes in the lazy matcher gate.
+	// Each pattern matches a SUBSET of pods (not all), so both =~ and !~ queries
+	// return non-empty results, verifying correctness with actual data.
+	regexPatterns := []string{
+		".*_0_.*",                    // single contains (simple) — 5/50 pods
+		".*_[0-4]_[0-2]",             // character class (complex) — 15/50 pods
+		"test_pod_[5-9]_.*",          // prefix + class (complex) — 25/50 pods
+		".*pod_3.*",                  // single contains (simple) — 5/50 pods
+		"(test_pod_1|test_pod_2)_.*", // alternation (complex) — 10/50 pods
+	}
+
+	testRun := 300
+	queries := make([]string, 0, testRun*2)
+	matchers := make([]string, 0, testRun)
+	for i := 0; i < testRun; i++ {
+		expr := ps.WalkRangeQuery()
+		if !isValidQuery(expr, true) {
+			continue
+		}
+		queries = append(queries, expr.Pretty(0))
+
+		// Each matcher set includes a __name__= anchor + a regex on pod,
+		// guaranteeing the lazy matcher optimization fires on every cache miss.
+		regex := regexPatterns[i%len(regexPatterns)]
+		matchers = append(matchers, storepb.PromMatchersToString(
+			append(
+				ps.WalkSelectors(),
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
+				labels.MustNewMatcher(labels.MatchRegexp, "pod", regex),
+			)...))
+
+		// Also generate a direct PromQL query with the regex so the instant/range
+		// query path exercises the lazy matcher too. Include iteration index in
+		// a != matcher to force unique cache keys (cache miss on every query).
+		queries = append(queries, fmt.Sprintf(`test_series_%d{pod=~"%s",test_label!="iter_%d"}`, i%numSeries, regex, i))
+		// Also test negative regex (!~) to exercise that code path.
+		queries = append(queries, fmt.Sprintf(`test_series_%d{pod!~"%s",test_label!="iter_%d_neg"}`, i%numSeries, regex, i))
+	}
+
+	type testCase struct {
+		query        string
+		qt           string
+		res1, res2   model.Value
+		sres1, sres2 []model.LabelSet
+		err1, err2   error
+	}
+
+	cases := make([]*testCase, 0, len(queries)*2+len(matchers))
+
+	// Data spans [start, start + (numSamples-1)*scrapeInterval]. Constrain
+	// fuzzed timestamps to this window so queries actually hit the head block.
+	dataEnd := start.Add(scrapeInterval * time.Duration(numSamples-1))
+	dataWindowMs := dataEnd.Sub(start).Milliseconds()
+
+	for _, query := range queries {
+		fuzzyTime := time.Duration(rand.Int63n(dataWindowMs))
+		queryEnd := start.Add(fuzzyTime * time.Millisecond)
+		res1, err1 := c1.Query(query, queryEnd)
+		res2, err2 := c2.Query(query, queryEnd)
+		cases = append(cases, &testCase{
+			query: query, qt: "instant",
+			res1: res1, res2: res2, err1: err1, err2: err2,
+		})
+		res1, err1 = c1.QueryRange(query, start, queryEnd, scrapeInterval)
+		res2, err2 = c2.QueryRange(query, start, queryEnd, scrapeInterval)
+		cases = append(cases, &testCase{
+			query: query, qt: "range query",
+			res1: res1, res2: res2, err1: err1, err2: err2,
+		})
+	}
+
+	for _, m := range matchers {
+		fuzzyTime := time.Duration(rand.Int63n(dataWindowMs))
+		queryEnd := start.Add(fuzzyTime * time.Millisecond)
+		res1, err := c1.Series([]string{m}, start, queryEnd)
+		require.NoError(t, err)
+		res2, err := c2.Series([]string{m}, start, queryEnd)
+		require.NoError(t, err)
+		cases = append(cases, &testCase{
+			query: m, qt: "get series",
+			sres1: res1, sres2: res2,
+		})
+	}
+
+	failures := 0
+	for i, tc := range cases {
+		if tc.err1 != nil || tc.err2 != nil {
+			if !cmp.Equal(tc.err1, tc.err2) {
+				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
+				failures++
+			}
+		} else if shouldUseSampleNumComparer(tc.query) {
+			if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
+				t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			}
+		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
+			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+			failures++
+		} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
+			t.Logf("case %d series results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
+			failures++
+		}
+	}
+	if failures > 0 {
+		require.Failf(t, "finished lazy matcher fuzzing tests", "%d test cases failed", failures)
+	}
+
+	// Verify the lazy-matcher optimization was actually triggered on cortex-2.
+	// If the gate is misconfigured or the test fixture doesn't exercise the
+	// path, this guards against silent regressions where the optimization
+	// becomes a no-op.
+
+	// Diagnostic: print related counters before the assertion so failures
+	// can be debugged from the test output.
+	for _, m := range []string{
+		"cortex_ingester_queries",
+		"cortex_ingester_queried_series",
+		"cortex_ingester_queried_chunks",
+		"cortex_ingester_expanded_postings_cache_requests_total",
+		"cortex_ingester_expanded_postings_cache_hits_total",
+		"cortex_ingester_expanded_postings_non_cacheable_queries_total",
+		"cortex_ingester_expanded_postings_lazy_matcher_queries_total",
+	} {
+		v, _ := cortex2.SumMetrics([]string{m})
+		t.Logf("cortex-2 %s = %v", m, v)
+	}
+
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Greater(0),
+		"cortex_ingester_expanded_postings_lazy_matcher_queries_total"))
+
+	// Sanity check: cortex-1 (eager) should NEVER increment this counter.
+	c1Lazy, err := cortex1.SumMetrics([]string{"cortex_ingester_expanded_postings_lazy_matcher_queries_total"})
+	if err == nil && len(c1Lazy) > 0 {
+		require.Equal(t, float64(0), c1Lazy[0],
+			"cortex-1 has lazy matcher disabled but the metric is non-zero")
 	}
 }
 
@@ -767,7 +1044,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -883,7 +1160,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -1202,7 +1479,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := t.TempDir()
 	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
@@ -1357,7 +1634,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1590,7 +1867,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -1662,7 +1939,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1816,8 +2093,7 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	_, err = c2.PushV2(symbols, v2Series)
 	require.NoError(t, err)
 
-	seed := now.Unix()
-	rnd := rand.New(rand.NewSource(seed))
+	rnd := newFuzzRand(t)
 
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
@@ -1978,6 +2254,24 @@ func shouldUseSampleNumComparer(query string) bool {
 		return true
 	}
 	return false
+}
+
+// newFuzzRand returns a *rand.Rand whose seed is logged via t.Logf so failing
+// fuzz cases can be reproduced. By default the seed is time.Now().Unix();
+// setting FUZZ_SEED to a base-10 int64 overrides the default and pins the
+// run to a specific seed.
+func newFuzzRand(t *testing.T) *rand.Rand {
+	seed := time.Now().Unix()
+	if v := os.Getenv("FUZZ_SEED"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			t.Logf("integration fuzz random seed: overridden to %d via FUZZ_SEED", parsed)
+			seed = parsed
+		} else {
+			t.Logf("integration fuzz random seed: ignoring invalid FUZZ_SEED=%q: %v", v, err)
+		}
+	}
+	t.Logf("integration fuzz random seed: %d (override with FUZZ_SEED env var)", seed)
+	return rand.New(rand.NewSource(seed))
 }
 
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {

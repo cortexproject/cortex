@@ -659,7 +659,14 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			}
 
 			begin := time.Now()
-			stream, err := c.Series(gCtx, req)
+			// Use a dedicated cancellable context per stream so the gRPC Series stream's
+			// context is cancelled (triggering gRPC to tear down the receive side) as soon
+			// as this goroutine returns via any path, instead of lingering until the shared
+			// errgroup context is cancelled when the slowest concurrent request finishes.
+			// See https://github.com/cortexproject/cortex/issues/7575.
+			streamCtx, cancel := context.WithCancel(gCtx)
+			defer cancel()
+			stream, err := c.Series(streamCtx, req)
 			if err != nil {
 				if isRetryableError(err) {
 					level.Warn(spanLog).Log("err", errors.Wrapf(err, "failed to fetch series from %s due to retryable error", c.RemoteAddress()))

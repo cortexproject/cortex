@@ -60,6 +60,7 @@ type ingesterMetrics struct {
 	activeSeriesPerUser        *prometheus.GaugeVec
 	activeNHSeriesPerUser      *prometheus.GaugeVec
 	activeQueriedSeriesPerUser *prometheus.GaugeVec
+	headQueriedSeriesPerUser   *prometheus.GaugeVec
 	limitsPerLabelSet          *prometheus.GaugeVec
 	usagePerLabelSet           *prometheus.GaugeVec
 	activeSeriesPerTracker     *prometheus.GaugeVec
@@ -89,6 +90,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	createMetricsConflictingWithTSDB bool,
 	activeSeriesEnabled bool,
 	activeQueriedSeriesEnabled bool,
+	headQueriedSeriesEnabled bool,
 	instanceLimitsFn func() *InstanceLimits,
 	ingestionRate *util_math.EwmaRate,
 	inflightPushRequests *util_math.MaxTracker,
@@ -311,6 +313,12 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_active_queried_series",
 			Help: "Estimated number of currently active queried series per user (probabilistic count using HyperLogLog).",
 		}, []string{"user", "window"}),
+
+		// Not registered automatically, but only if headQueriedSeriesEnabled is true.
+		headQueriedSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_queried_head_series",
+			Help: "Estimated number of unique series queried from head within the configured time window.",
+		}, []string{"user", "window"}),
 	}
 
 	if regexMatcherLimitsEnabled {
@@ -358,6 +366,10 @@ func newIngesterMetrics(r prometheus.Registerer,
 		r.MustRegister(m.activeQueriedSeriesPerUser)
 	}
 
+	if headQueriedSeriesEnabled && r != nil {
+		r.MustRegister(m.headQueriedSeriesPerUser)
+	}
+
 	if createMetricsConflictingWithTSDB {
 		m.memSeriesCreatedTotal = promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: memSeriesCreatedTotalName,
@@ -384,6 +396,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.activeNHSeriesPerUser.DeleteLabelValues(userID)
 	m.activeSeriesPerTracker.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.activeQueriedSeriesPerUser.DeletePartialMatch(prometheus.Labels{"user": userID})
+	m.headQueriedSeriesPerUser.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.usagePerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})

@@ -4638,6 +4638,34 @@
           "type": "boolean",
           "x-cli-flag": "ingester.enable-regex-matcher-limits"
         },
+        "head_queried_series_metrics_enabled": {
+          "default": false,
+          "description": "Experimental: Enable tracking of series queried from head only and expose them as metrics.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.head-queried-series-metrics-enabled"
+        },
+        "head_queried_series_metrics_sample_rate": {
+          "default": 1,
+          "description": "Sampling rate for head queried series tracking (1.0 = 100%%).",
+          "type": "number",
+          "x-cli-flag": "ingester.head-queried-series-metrics-sample-rate"
+        },
+        "head_queried_series_metrics_window_duration": {
+          "default": "15m0s",
+          "description": "Duration of each sub-window for head queried series tracking.",
+          "type": "string",
+          "x-cli-flag": "ingester.head-queried-series-metrics-window-duration",
+          "x-format": "duration"
+        },
+        "head_queried_series_metrics_windows": {
+          "default": "2h0m0s",
+          "description": "Time windows to expose head queried series metrics. Also controls how long per-metric-name cardinality is reported after last query.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "ingester.head-queried-series-metrics-windows"
+        },
         "ignore_series_limit_for_metric_names": {
           "description": "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.",
           "type": "string",

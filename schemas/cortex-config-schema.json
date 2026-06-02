@@ -4938,6 +4938,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "ingester.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "ingester.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "ingester.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "ingester.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {
@@ -6135,6 +6189,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "querier.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "querier.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {
@@ -8501,6 +8609,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "store-gateway.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "store-gateway.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {

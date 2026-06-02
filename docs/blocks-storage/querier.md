@@ -330,6 +330,48 @@ querier:
         # type. 0 to disable.
         # CLI flag: -querier.query-protection.rejection.threshold.heap-utilization
         [heap_utilization: <float> | default = 0]
+
+    eviction:
+      threshold:
+        # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+        # evicting the heaviest running query (across all tenants) in
+        # percentage, between 0 and 1. monitored_resources config must include
+        # the resource type. 0 to disable.
+        # CLI flag: -querier.query-protection.eviction.threshold.cpu-utilization
+        [cpu_utilization: <float> | default = 0]
+
+        # EXPERIMENTAL: Max heap utilization that this instance can reach before
+        # evicting the heaviest running query (across all tenants) in
+        # percentage, between 0 and 1. monitored_resources config must include
+        # the resource type. 0 to disable.
+        # CLI flag: -querier.query-protection.eviction.threshold.heap-utilization
+        [heap_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: How frequently the evictor checks system resource
+      # utilization.
+      # CLI flag: -querier.query-protection.eviction.check-interval
+      [check_interval: <duration> | default = 1s]
+
+      # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+      # evicting again.
+      # CLI flag: -querier.query-protection.eviction.cooldown-period
+      [cooldown_period: <int> | default = 3]
+
+      # EXPERIMENTAL: The query metric used to determine the heaviest query for
+      # eviction. Supported values: fetched_samples, fetched_series,
+      # fetched_chunks, fetched_chunk_bytes.
+      # CLI flag: -querier.query-protection.eviction.eviction-metric
+      [eviction_metric: <string> | default = "fetched_samples"]
+
+      # EXPERIMENTAL: Minimum time a query must be running before it becomes
+      # eligible for eviction. Queries younger than this are ignored.
+      # CLI flag: -querier.query-protection.eviction.min-query-age
+      [min_query_age: <duration> | default = 10s]
+
+      # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+      # when resource thresholds are breached.
+      # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
+      [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `blocks_storage_config`

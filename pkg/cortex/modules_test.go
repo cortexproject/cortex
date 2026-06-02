@@ -353,3 +353,58 @@ func setAllSecrets(v reflect.Value, sentinel string) {
 		}
 	}
 }
+
+func TestCortexFeatures(t *testing.T) {
+	tests := []struct {
+		name                 string
+		configFn             func(*Config)
+		experimentalExpected bool
+		queryStatsExpected   bool
+	}{
+		{
+			name:                 "default features",
+			configFn:             func(cfg *Config) {},
+			experimentalExpected: false,
+			queryStatsExpected:   false,
+		},
+		{
+			name: "experimental functions and query stats enabled",
+			configFn: func(cfg *Config) {
+				cfg.Querier.EnablePromQLExperimentalFunctions = true
+				cfg.Querier.EnablePerStepStats = true
+			},
+			experimentalExpected: true,
+			queryStatsExpected:   true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{}
+			tc.configFn(&cfg)
+			features := cortexFeatures(cfg)
+
+			// Check API category
+			require.Contains(t, features, "api")
+			assert.Equal(t, tc.queryStatsExpected, features["api"]["query_stats"])
+			assert.True(t, features["api"]["label_values_match"])
+
+			// Check PromQL category
+			require.Contains(t, features, "promql")
+			assert.Equal(t, tc.queryStatsExpected, features["promql"]["per_step_stats"])
+			assert.True(t, features["promql"]["subqueries"])
+
+			// Check PromQL Operators
+			require.Contains(t, features, "promql_operators")
+			assert.True(t, features["promql_operators"]["+"])
+			// limitk/limit_ratio are experimental aggregators gated by the experimental functions flag.
+			assert.Equal(t, tc.experimentalExpected, features["promql_operators"]["limitk"])
+			assert.Equal(t, tc.experimentalExpected, features["promql_operators"]["limit_ratio"])
+
+			// Check PromQL Functions
+			require.Contains(t, features, "promql_functions")
+			assert.True(t, features["promql_functions"]["abs"])
+			assert.Equal(t, tc.experimentalExpected, features["promql_functions"]["info"])
+		})
+	}
+}

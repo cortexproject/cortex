@@ -1613,18 +1613,24 @@ func TestGetRulesFromBackup(t *testing.T) {
 		require.Equal(t, a.Group.Interval, b.Group.Interval)
 		require.Equal(t, a.Group.User, b.Group.User)
 		require.Equal(t, a.Group.Limit, b.Group.Limit)
-		require.Equal(t, a.EvaluationTimestamp, b.EvaluationTimestamp)
-		require.Equal(t, a.EvaluationDuration, b.EvaluationDuration)
+		// Backup groups are never evaluated, so their evaluation state stays at the zero
+		// value, while the live group's EvaluationTimestamp/EvaluationDuration are populated
+		// asynchronously by the Prometheus manager. Comparing the two races with that first
+		// evaluation (see issue #7577); assert the backup side is zero instead.
+		require.True(t, b.EvaluationTimestamp.IsZero())
+		require.Zero(t, b.EvaluationDuration)
 		require.Equal(t, len(a.ActiveRules), len(b.ActiveRules))
 		for i, aRule := range a.ActiveRules {
 			bRule := b.ActiveRules[i]
-			require.Equal(t, aRule.EvaluationTimestamp, bRule.EvaluationTimestamp)
-			require.Equal(t, aRule.EvaluationDuration, bRule.EvaluationDuration)
-			require.Equal(t, aRule.Health, bRule.Health)
-			require.Equal(t, aRule.LastError, bRule.LastError)
+			// Backup rules are never evaluated; assert their runtime state is the zero/default
+			// value rather than racing the live rule's asynchronous first evaluation (#7577).
+			require.True(t, bRule.EvaluationTimestamp.IsZero())
+			require.Zero(t, bRule.EvaluationDuration)
+			require.Equal(t, string(promRules.HealthUnknown), bRule.Health)
+			require.Empty(t, bRule.LastError)
 			require.Equal(t, aRule.Rule.Expr, bRule.Rule.Expr)
 			require.Equal(t, len(aRule.Rule.Labels), len(bRule.Rule.Labels))
-			require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Labels), fmt.Sprintf("%+v", aRule.Rule.Labels))
+			require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Labels), fmt.Sprintf("%+v", bRule.Rule.Labels))
 			if aRule.Rule.Alert != "" {
 				require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Annotations), fmt.Sprintf("%+v", bRule.Rule.Annotations))
 				require.Equal(t, aRule.Rule.Alert, bRule.Rule.Alert)
@@ -1841,18 +1847,24 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			require.Equal(t, a.Group.Interval, b.Group.Interval)
 			require.Equal(t, a.Group.User, b.Group.User)
 			require.Equal(t, a.Group.Limit, b.Group.Limit)
-			require.Equal(t, a.EvaluationTimestamp, b.EvaluationTimestamp)
-			require.Equal(t, a.EvaluationDuration, b.EvaluationDuration)
+			// Backup groups are never evaluated, so their evaluation state stays at the zero
+			// value, while the live group's EvaluationTimestamp/EvaluationDuration are populated
+			// asynchronously by the Prometheus manager. Comparing the two races with that first
+			// evaluation (see issue #7577); assert the backup side is zero instead.
+			require.True(t, b.EvaluationTimestamp.IsZero())
+			require.Zero(t, b.EvaluationDuration)
 			require.Equal(t, len(a.ActiveRules), len(b.ActiveRules))
 			for i, aRule := range a.ActiveRules {
 				bRule := b.ActiveRules[i]
-				require.Equal(t, aRule.EvaluationTimestamp, bRule.EvaluationTimestamp)
-				require.Equal(t, aRule.EvaluationDuration, bRule.EvaluationDuration)
-				require.Equal(t, aRule.Health, bRule.Health)
-				require.Equal(t, aRule.LastError, bRule.LastError)
+				// Backup rules are never evaluated; assert their runtime state is the zero/default
+				// value rather than racing the live rule's asynchronous first evaluation (#7577).
+				require.True(t, bRule.EvaluationTimestamp.IsZero())
+				require.Zero(t, bRule.EvaluationDuration)
+				require.Equal(t, string(promRules.HealthUnknown), bRule.Health)
+				require.Empty(t, bRule.LastError)
 				require.Equal(t, aRule.Rule.Expr, bRule.Rule.Expr)
 				require.Equal(t, len(aRule.Rule.Labels), len(bRule.Rule.Labels))
-				require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Labels), fmt.Sprintf("%+v", aRule.Rule.Labels))
+				require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Labels), fmt.Sprintf("%+v", bRule.Rule.Labels))
 				if aRule.Rule.Alert != "" {
 					require.Equal(t, fmt.Sprintf("%+v", aRule.Rule.Annotations), fmt.Sprintf("%+v", bRule.Rule.Annotations))
 					require.Equal(t, aRule.Rule.Alert, bRule.Rule.Alert)

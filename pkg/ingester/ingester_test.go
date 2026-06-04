@@ -3533,7 +3533,9 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
 	}
 
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
+	cfg := defaultIngesterTestConfig(t)
+	cfg.DefaultLimits.MaxInflightQueryRequests = 1
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3542,7 +3544,8 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		resource.CPU:  0.5,
 		resource.Heap: 0.5,
 	}
-	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil, "ingester")
+	monitor := &mockResourceMonitor{cpu: 0.4, heap: 0.6}
+	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(monitor, limits, nil, "ingester")
 	require.NoError(t, err)
 
 	// Wait until it's ACTIVE
@@ -3566,6 +3569,12 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 
 	// Expected error from isRetryableError in blocks_store_queryable.go
 	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
+	require.Equal(t, int64(0), i.inflightQueryRequests.Load())
+
+	// Verify that a query not blocked by the limiter still succeeds after the rejected request.
+	monitor.heap = 0.4
+	s = &mockQueryStreamServer{ctx: ctx}
+	require.NoError(t, i.QueryStream(rreq, s))
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {

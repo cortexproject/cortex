@@ -315,8 +315,10 @@ func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.
 
 // fetchWithLazyMatchers resolves postings using only the selective matchers, then
 // filters the results by applying the lazy (regex) matchers per-series using
-// LabelValueFor. A per-value cache avoids running the same regex on the same value
-// more than once.
+// Series. We call Series once per series ref to retrieve all labels, then
+// evaluate each lazy matcher against the relevant label value. A per-matcher,
+// per-value cache avoids running the same regex against the same string more
+// than once, which is particularly effective when many series share label values.
 func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Context, ix tsdb.IndexReader, selectMs, lazyMs []*labels.Matcher) ([]storage.SeriesRef, int64, error) {
 	postings, err := c.postingsForMatchersFunc(ctx, ix, selectMs...)
 	if err != nil {
@@ -334,21 +336,24 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 		caches[i] = make(map[string]bool)
 	}
 
+	var builder labels.ScratchBuilder
 	filtered := ids[:0]
 	for cnt, id := range ids {
 		if cnt%128 == 0 && ctx.Err() != nil {
 			return nil, 0, ctx.Err()
 		}
+
+		if err := ix.Series(id, &builder, nil); err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				continue
+			}
+			return nil, 0, err
+		}
+		lbls := builder.Labels()
+
 		matches := true
 		for i, m := range lazyMs {
-			val, err := ix.LabelValueFor(ctx, id, m.Name)
-			if err != nil {
-				if errors.Is(err, storage.ErrNotFound) {
-					val = ""
-				} else {
-					return nil, 0, err
-				}
-			}
+			val := lbls.Get(m.Name)
 
 			if result, ok := caches[i][val]; ok {
 				if !result {

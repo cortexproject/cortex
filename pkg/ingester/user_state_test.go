@@ -369,10 +369,6 @@ func (ir *mockIndexReader) LabelNames(ctx context.Context, matchers ...*labels.M
 	return nil, nil
 }
 
-func (ir *mockIndexReader) LabelValueFor(ctx context.Context, id storage.SeriesRef, label string) (string, error) {
-	return "", nil
-}
-
 func (ir *mockIndexReader) LabelNamesFor(ctx context.Context, postings index.Postings) ([]string, error) {
 	return nil, nil
 }

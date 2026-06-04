@@ -44,6 +44,7 @@
 * [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7485
 * [BUGFIX] Security: Fix stored XSS vulnerability in Alertmanager and Store Gateway status pages by replacing `text/template` with `html/template`. #7512
 * [BUGFIX] Security: Limit decompressed gzip output in `ParseProtoReader` and OTLP ingestion path. The decompressed body is now capped by `-distributor.otlp-max-recv-msg-size`. #7515
+* [BUGFIX] Compactor: Fix flake in `TestCompactor_DeleteLocalSyncFiles` and `TestPartitionCompactor_DeleteLocalSyncFiles` by polling on user ownership rather than just the `CompactionRunsCompleted` counter, which increments even when the second compactor sees zero owned users due to a transient ring-view skew at startup. #7565
 * [BUGFIX] Ingester: Close TSDB when compaction fails during `createTSDB`, preventing resource leaks (file descriptors, mmap handles) that could lead to ingester instability. #7560
 * [BUGFIX] Tenant Federation: Fix result cache returning stale data after a new tenant is added when `-tenant-federation.regex-matcher-enabled=true`. The resolved tenant set is now hashed and included in the cache key so that any change to the matched tenant list automatically invalidates cached entries. Non-regex users are unaffected. #7562
 * [BUGFIX] Tenant Federation: Fix regex resolver clearing known users list when user scan fails. #7534

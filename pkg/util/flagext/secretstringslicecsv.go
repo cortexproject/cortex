@@ -1,7 +1,7 @@
 package flagext
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 )
 
@@ -30,7 +30,9 @@ func (v *SecretStringSliceCSV) Set(s string) error {
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
-			return fmt.Errorf("invalid key list %q: empty entry after trimming", s)
+			// Do not include the original input value in the error message
+			// to avoid accidentally exposing secret values.
+			return errors.New("invalid value: empty entry after trimming")
 		}
 		values = append(values, p)
 	}

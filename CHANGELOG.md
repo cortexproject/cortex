@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.21.1 in progress
+## 1.21.1 2026-06-04
 
 * [BUGFIX] gRPC: Fix panic when `grpc_compression` is set to `snappy` on ingester client or store-gateway client configurations. #7459
 * [BUGFIX] Config: Mask Swift, etcd, Redis, and HTTP basic-auth credentials on the `/config` endpoint. #7473

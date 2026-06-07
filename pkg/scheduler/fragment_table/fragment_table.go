@@ -18,6 +18,8 @@ type FragmentTable struct {
 	mappings   map[distributed_execution.FragmentKey]*fragmentEntry
 	mu         sync.RWMutex
 	expiration time.Duration
+	done       chan struct{}
+	closeOnce  sync.Once
 }
 
 // NewFragmentTable creates a new FragmentTable with the specified expiration duration.
@@ -27,6 +29,7 @@ func NewFragmentTable(expiration time.Duration) *FragmentTable {
 	ft := &FragmentTable{
 		mappings:   make(map[distributed_execution.FragmentKey]*fragmentEntry),
 		expiration: expiration,
+		done:       make(chan struct{}),
 	}
 	go ft.periodicCleanup()
 	return ft
@@ -55,6 +58,14 @@ func (f *FragmentTable) GetAddrByID(queryID uint64, fragmentID uint64) (string, 
 	return "", false
 }
 
+// Close stops the background cleanup goroutine started by NewFragmentTable.
+// It is safe to call more than once.
+func (f *FragmentTable) Close() {
+	f.closeOnce.Do(func() {
+		close(f.done)
+	})
+}
+
 func (f *FragmentTable) cleanupExpired() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -73,7 +84,12 @@ func (f *FragmentTable) cleanupExpired() {
 func (f *FragmentTable) periodicCleanup() {
 	ticker := time.NewTicker(f.expiration / 2)
 	defer ticker.Stop()
-	for range ticker.C {
-		f.cleanupExpired()
+	for {
+		select {
+		case <-ticker.C:
+			f.cleanupExpired()
+		case <-f.done:
+			return
+		}
 	}
 }

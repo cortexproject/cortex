@@ -14,6 +14,7 @@
 * [BUGFIX] Ruler: Stop retrying staleness markers that can never be accepted. A rule moved between rule groups left the original group re-appending staleness markers for its series on every evaluation until the ruler restarted. #7888
 * [BUGFIX] Store Gateway: Fix the Parquet bucket store ignoring query sharding, which made every shard return all series. #7892
 * [BUGFIX] Querier: Fix the querier crashing instead of reporting the error when a blocks store set subservice fails. `blocksStoreReplicationSet` never initialised its `FailureWatcher`, so the failure callback dereferenced a nil pointer on the goroutine the service manager runs listeners on, and the resulting panic's stack trace buried the error logged for the actual cause. #7896
+* [BUGFIX] Query Scheduler: Stop the fragment table's background cleanup goroutine (and its ticker) on shutdown; it previously had no stop mechanism and lived for the process lifetime. #7599
 
 
 ## 1.22.0 in progress

@@ -364,7 +364,7 @@ func TestSyncRuleGroupsCleansUpNotifierOnManagerFactoryError(t *testing.T) {
 	// Its goroutines (started by rulerNotifier.run) must not leak. removeNotifier
 	// -> stop() -> wg.Wait() is synchronous, so they are gone by now; poll back to
 	// the baseline to absorb any scheduling latency.
-	test.Poll(t, 5*time.Second, before, func() interface{} {
+	test.Poll(t, 5*time.Second, before, func() any {
 		return countNotifierRunGoroutines()
 	})
 }
@@ -404,7 +404,7 @@ func TestGetOrCreateNotifierStopsNotifierOnApplyConfigError(t *testing.T) {
 	m.notifiersMtx.Unlock()
 	require.False(t, ok, "notifier must not be registered when applyConfig fails")
 
-	test.Poll(t, 5*time.Second, before, func() interface{} {
+	test.Poll(t, 5*time.Second, before, func() any {
 		return countNotifierRunGoroutines()
 	})
 }
@@ -446,7 +446,7 @@ func TestSyncRuleGroupsRecoversAfterManagerFactoryError(t *testing.T) {
 	_, notifierExists := m.notifiers[user]
 	m.notifiersMtx.Unlock()
 	require.False(t, notifierExists)
-	test.Poll(t, 5*time.Second, before, func() interface{} {
+	test.Poll(t, 5*time.Second, before, func() any {
 		return countNotifierRunGoroutines()
 	})
 
@@ -467,7 +467,7 @@ func countNotifierRunGoroutines() int {
 	var buf bytes.Buffer
 	_ = pprof.Lookup("goroutine").WriteTo(&buf, 2)
 	count := 0
-	for _, stack := range bytes.Split(buf.Bytes(), []byte("\n\n")) {
+	for stack := range bytes.SplitSeq(buf.Bytes(), []byte("\n\n")) {
 		// Matches both the run.funcN frames and the "created by ...run" line; each
 		// stack block is counted at most once, so the count stays accurate even if
 		// the closure frame is ever inlined away.

@@ -562,6 +562,7 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 // Called after distributor is asked to stop via StopAsync.
 func (d *Distributor) stopping(_ error) error {
+	d.asyncExecutor.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 

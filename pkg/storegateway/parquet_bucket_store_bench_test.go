@@ -120,7 +120,95 @@ func BenchmarkParquetBucketStore_SeriesBatch(b *testing.B) {
 	}
 }
 
+func BenchmarkParquetBucketStore_MultiShard(b *testing.B) {
+	const (
+		totalSeries = 10000
+		numSamples  = 100
+		userID      = "user-1"
+	)
+
+	// shardCases defines configurations to convert a block into different numbers of parquet shards.
+	// totalShards = ceil(NumSeries / (NumRowGroups × MaxRowsPerRowGroup))
+	shardCases := []struct {
+		numShards          int
+		numRowGroups       int
+		maxRowsPerRowGroup int
+	}{
+		{numShards: 1, numRowGroups: math.MaxInt32, maxRowsPerRowGroup: 1_000_000}, // default: single shard (no sharding path)
+		{numShards: 2, numRowGroups: 1, maxRowsPerRowGroup: totalSeries / 2},
+		{numShards: 4, numRowGroups: 1, maxRowsPerRowGroup: totalSeries / 4},
+		{numShards: 8, numRowGroups: 1, maxRowsPerRowGroup: totalSeries / 8},
+	}
+
+	for _, tc := range shardCases {
+		b.Run(fmt.Sprintf("shards=%d", tc.numShards), func(b *testing.B) {
+			ctx := context.Background()
+			tmpDir := b.TempDir()
+			storageDir := filepath.Join(tmpDir, "storage")
+			dataDir := filepath.Join(tmpDir, "data")
+
+			storageCfg := cortex_tsdb.BlocksStorageConfig{
+				UsersScanner: users.UsersScannerConfig{
+					Strategy:       users.UserScanStrategyList,
+					UpdateInterval: time.Second,
+				},
+				Bucket: bucket.Config{
+					Backend: "filesystem",
+					Filesystem: filesystem.Config{
+						Directory: storageDir,
+					},
+				},
+				BucketStore: cortex_tsdb.BucketStoreConfig{
+					SyncDir:                filepath.Join(tmpDir, "sync"),
+					BucketStoreType:        "parquet",
+					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+				},
+			}
+			bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, nil, "test", log.NewNopLogger(), prometheus.NewRegistry())
+			require.NoError(b, err)
+
+			blockID := prepareParquetBlockWithShards(
+				b, ctx, storageCfg, bucketClient, dataDir, userID,
+				totalSeries, numSamples, tc.numRowGroups, tc.maxRowsPerRowGroup,
+			)
+
+			stores, err := NewBucketStores(storageCfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucketClient), defaultLimitsOverrides(nil), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewPedanticRegistry())
+			require.NoError(b, err)
+
+			listener, err := net.Listen("tcp", "localhost:0")
+			require.NoError(b, err)
+			gRPCServer := grpc.NewServer(grpc.StreamInterceptor(middleware.StreamServerUserHeaderInterceptor))
+			storepb.RegisterStoreServer(gRPCServer, stores)
+			go func() {
+				if err := gRPCServer.Serve(listener); err != nil && err != grpc.ErrServerStopped {
+					b.Error(err)
+				}
+			}()
+			defer gRPCServer.Stop()
+
+			conn, err := grpc.NewClient(listener.Addr().String(),
+				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(math.MaxInt32)),
+			)
+			require.NoError(b, err)
+			defer conn.Close()
+
+			gRPCClient := storepb.NewStoreClient(conn)
+
+			b.ResetTimer()
+			b.ReportAllocs()
+			for b.Loop() {
+				benchmarkBatchingForParquetBucketStore(b, gRPCClient, userID, 1000, totalSeries, blockID)
+			}
+		})
+	}
+}
+
 func prepareParquetBlock(b *testing.B, ctx context.Context, storageCfg cortex_tsdb.BlocksStorageConfig, bkt objstore.InstrumentedBucket, dataDir, userID string, numSeries, numSamples int) string {
+	return prepareParquetBlockWithShards(b, ctx, storageCfg, bkt, dataDir, userID, numSeries, numSamples, math.MaxInt32, 1_000_000)
+}
+
+func prepareParquetBlockWithShards(b *testing.B, ctx context.Context, storageCfg cortex_tsdb.BlocksStorageConfig, bkt objstore.InstrumentedBucket, dataDir, userID string, numSeries, numSamples, numRowGroups, maxRowsPerRowGroup int) string {
 	logger := log.NewNopLogger()
 	reg := prometheus.NewRegistry()
 
@@ -170,6 +258,8 @@ func prepareParquetBlock(b *testing.B, ctx context.Context, storageCfg cortex_ts
 	flagext.DefaultValues(&convCfg)
 	convCfg.ConversionInterval = time.Second // to convert quickly
 	convCfg.DataDir = filepath.Join(dataDir, "converter-data")
+	convCfg.NumRowGroups = numRowGroups
+	convCfg.MaxRowsPerRowGroup = maxRowsPerRowGroup
 
 	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 	b.Cleanup(func() { assert.NoError(b, closer.Close()) })

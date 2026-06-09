@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid"
+	ulidv2 "github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/promslog"
@@ -26,6 +28,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -355,6 +358,12 @@ func TestParquetBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitI
 }
 
 func convertToParquetBlocksForTesting(userPath string, userBkt objstore.InstrumentedBucket) ([]string, error) {
+	return convertToParquetBlocksWithShardsForTesting(userPath, userBkt, 0, 0)
+}
+
+// convertToParquetBlocksWithShardsForTesting converts all TSDB blocks under userPath to parquet.
+// numRowGroups and maxRowsPerRowGroup control how many shards are produced per block.
+func convertToParquetBlocksWithShardsForTesting(userPath string, userBkt objstore.InstrumentedBucket, numRowGroups, maxRowsPerRowGroup int) ([]string, error) {
 	var blockIDs []string
 
 	pool := chunkenc.NewPool()
@@ -364,7 +373,7 @@ func convertToParquetBlocksForTesting(userPath string, userBkt objstore.Instrume
 	}
 
 	for _, file := range userDir {
-		_, err := ulid.Parse(file.Name())
+		uid, err := ulid.Parse(file.Name())
 		if err != nil {
 			continue
 		}
@@ -375,12 +384,104 @@ func convertToParquetBlocksForTesting(userPath string, userBkt objstore.Instrume
 		if err != nil {
 			return nil, err
 		}
+
 		converterOptions := []convert.ConvertOption{convert.WithName(file.Name())}
-		_, err = convert.ConvertTSDBBlock(context.Background(), userBkt, tsdbBlock.MinTime(), tsdbBlock.MaxTime(), []convert.Convertible{tsdbBlock}, promslog.NewNopLogger(), converterOptions...)
+		if numRowGroups > 0 {
+			converterOptions = append(converterOptions, convert.WithNumRowGroups(numRowGroups))
+		}
+		if maxRowsPerRowGroup > 0 {
+			converterOptions = append(converterOptions, convert.WithRowGroupSize(maxRowsPerRowGroup))
+		}
+
+		numShards, err := convert.ConvertTSDBBlock(context.Background(), userBkt, tsdbBlock.MinTime(), tsdbBlock.MaxTime(), []convert.Convertible{tsdbBlock}, promslog.NewNopLogger(), converterOptions...)
+		_ = tsdbBlock.Close()
 		if err != nil {
 			return nil, err
 		}
-		_ = tsdbBlock.Close()
+
+		// Write converter mark so findParquetBlocks knows the actual shard count.
+		uidV2, err := ulidv2.Parse(uid.String())
+		if err != nil {
+			return nil, err
+		}
+		if err := cortex_parquet.WriteConverterMark(context.Background(), uidV2, userBkt, numShards); err != nil {
+			return nil, err
+		}
 	}
 	return blockIDs, nil
+}
+
+// generateStorageBlockWithMultipleSeries creates a TSDB block with numSeries unique series.
+// Each series has labels {__name__=metricName, series=i}.
+func generateStorageBlockWithMultipleSeries(t *testing.T, storageDir, userID, metricName string, numSeries int, minT, maxT int64, step int) {
+	t.Helper()
+	userDir := filepath.Join(storageDir, userID)
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		require.NoError(t, os.Mkdir(userDir, os.ModePerm))
+	}
+
+	tmpDir := t.TempDir()
+	db, err := tsdb.Open(tmpDir, promslog.NewNopLogger(), nil, tsdb.DefaultOptions(), nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+
+	app := db.Appender(context.Background())
+	for i := range numSeries {
+		lbls := labels.FromStrings(labels.MetricName, metricName, "series", strconv.Itoa(i))
+		for ts := minT; ts < maxT; ts += int64(step) {
+			_, err = app.Append(0, lbls, ts, float64(i))
+			require.NoError(t, err)
+		}
+	}
+	require.NoError(t, app.Commit())
+	require.NoError(t, db.Snapshot(userDir, true))
+}
+
+// TestParquetBucketStores_Series_MultiShard verifies that when a parquet block is split into
+// multiple shards, the Store Gateway reads all shards and returns the complete series set.
+func TestParquetBucketStores_Series_MultiShard(t *testing.T) {
+	const (
+		userID     = "user-1"
+		metricName = "test_metric"
+		numSeries  = 6 // 6 unique series
+		// numRowGroups=1, maxRowsPerRowGroup=2 → ceil(6/1*2) = 3 shards
+		numRowGroups       = 1
+		maxRowsPerRowGroup = 2
+		expectedShards     = 3
+	)
+
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+
+	storageDir := t.TempDir()
+
+	// Create a block with 6 unique series.
+	generateStorageBlockWithMultipleSeries(t, storageDir, userID, metricName, numSeries, 0, 100, 15)
+
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	userPath := filepath.Join(storageDir, userID)
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+	uBucket := bucket.NewUserBucketClient(userID, bkt, overrides)
+
+	// Convert to parquet with 3 shards and write converter mark.
+	blockIDs, err := convertToParquetBlocksWithShardsForTesting(userPath, uBucket, numRowGroups, maxRowsPerRowGroup)
+	require.NoError(t, err)
+	require.Len(t, blockIDs, 1)
+
+	// Verify converter mark shows 3 shards.
+	uidV2, err := ulidv2.Parse(blockIDs[0])
+	require.NoError(t, err)
+	marker, err := cortex_parquet.ReadConverterMark(context.Background(), uidV2, uBucket, log.NewNopLogger())
+	require.NoError(t, err)
+	require.Equal(t, expectedShards, marker.Shards, "converter mark should record 3 shards")
+
+	// Query and verify all 6 series are returned across all 3 shards.
+	series, _, err := querySeries(stores, userID, metricName, 0, 100, blockIDs...)
+	require.NoError(t, err)
+	assert.Equal(t, numSeries, len(series), "all series from all shards must be returned")
 }

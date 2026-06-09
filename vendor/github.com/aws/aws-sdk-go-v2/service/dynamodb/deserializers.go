@@ -18,7 +18,6 @@ import (
 	"github.com/aws/smithy-go/tracing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"io"
-	"io/ioutil"
 	"math"
 	"strings"
 )
@@ -5384,7 +5383,7 @@ func (m *awsAwsjson10_deserializeOpTagResource) HandleDeserialize(ctx context.Co
 	output := &TagResourceOutput{}
 	out.Result = output
 
-	if _, err = io.Copy(ioutil.Discard, response.Body); err != nil {
+	if _, err = io.Copy(io.Discard, response.Body); err != nil {
 		return out, metadata, &smithy.DeserializationError{
 			Err: fmt.Errorf("failed to discard response body, %w", err),
 		}
@@ -5749,7 +5748,7 @@ func (m *awsAwsjson10_deserializeOpUntagResource) HandleDeserialize(ctx context.
 	output := &UntagResourceOutput{}
 	out.Result = output
 
-	if _, err = io.Copy(ioutil.Discard, response.Body); err != nil {
+	if _, err = io.Copy(io.Discard, response.Body); err != nil {
 		return out, metadata, &smithy.DeserializationError{
 			Err: fmt.Errorf("failed to discard response body, %w", err),
 		}
@@ -14387,6 +14386,15 @@ func awsAwsjson10_deserializeDocumentReplicaDescription(v **types.ReplicaDescrip
 				return err
 			}
 
+		case "GlobalTableSettingsReplicationMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected GlobalTableSettingsReplicationMode to be of type string, got %T instead", value)
+				}
+				sv.GlobalTableSettingsReplicationMode = types.GlobalTableSettingsReplicationMode(jtv)
+			}
+
 		case "KMSMasterKeyId":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -14413,6 +14421,15 @@ func awsAwsjson10_deserializeDocumentReplicaDescription(v **types.ReplicaDescrip
 					return fmt.Errorf("expected RegionName to be of type string, got %T instead", value)
 				}
 				sv.RegionName = ptr.String(jtv)
+			}
+
+		case "ReplicaArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected String to be of type string, got %T instead", value)
+				}
+				sv.ReplicaArn = ptr.String(jtv)
 			}
 
 		case "ReplicaInaccessibleDateTime":
@@ -16043,6 +16060,15 @@ func awsAwsjson10_deserializeDocumentTableDescription(v **types.TableDescription
 		case "GlobalSecondaryIndexes":
 			if err := awsAwsjson10_deserializeDocumentGlobalSecondaryIndexDescriptionList(&sv.GlobalSecondaryIndexes, value); err != nil {
 				return err
+			}
+
+		case "GlobalTableSettingsReplicationMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected GlobalTableSettingsReplicationMode to be of type string, got %T instead", value)
+				}
+				sv.GlobalTableSettingsReplicationMode = types.GlobalTableSettingsReplicationMode(jtv)
 			}
 
 		case "GlobalTableVersion":

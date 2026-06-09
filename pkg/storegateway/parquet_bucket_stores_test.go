@@ -221,6 +221,11 @@ func TestParquetBucketStoresWithCaching(t *testing.T) {
 					Backend: "inmemory",
 				},
 			},
+			ParquetRowRangesCache: cortex_tsdb.ParquetRowRangesCacheConfig{
+				BucketCacheBackend: cortex_tsdb.BucketCacheBackend{
+					Backend: "inmemory",
+				},
+			},
 		},
 	}
 
@@ -235,6 +240,12 @@ func TestParquetBucketStoresWithCaching(t *testing.T) {
 	parquetStores, err := newParquetBucketStores(storageCfg, bucketClient, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, parquetStores)
+	require.NotNil(t, parquetStores.rowRangesCache)
+
+	store, err := parquetStores.getOrCreateStore("user-1")
+	require.NoError(t, err)
+	require.NotNil(t, store.rowRangesCache)
+	require.Same(t, parquetStores.rowRangesCache, store.rowRangesCache)
 
 	// Verify that the bucket is a caching bucket (it should be wrapped)
 	// The caching bucket should be different from the original bucket client

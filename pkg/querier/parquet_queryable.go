@@ -142,6 +142,19 @@ func NewParquetQueryable(
 		return nil, err
 	}
 
+	rowRangesCacheBackend, err := cortex_tsdb.CreateParquetRowRangesCache(storageCfg.BucketStore.ParquetRowRangesCache, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	if err != nil {
+		return nil, err
+	}
+	rowRangesCache := parquetutil.NewRowRangesCache(rowRangesCacheBackend, "parquet-row-ranges", storageCfg.BucketStore.ParquetRowRangesCache.TTL, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+
+	var constraintCacheFunc queryable.ConstraintCacheFunction
+	if rowRangesCache != nil {
+		constraintCacheFunc = func(context.Context) (search.RowRangesForConstraintsCache, error) {
+			return rowRangesCache, nil
+		}
+	}
+
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
 
 	parquetQueryableOpts := []queryable.QueryableOpts{
@@ -272,7 +285,7 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	}, nil, cDecoder, parquetQueryableOpts...)
+	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,

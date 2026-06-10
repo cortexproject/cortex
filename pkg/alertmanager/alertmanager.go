@@ -417,8 +417,23 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcherMetrics,
 	)
 
-	go am.dispatcher.Run(time.Now())
+	// Start the inhibitor and dispatcher and wait for each to finish loading
+	// before returning, mirroring upstream cmd/alertmanager (inhibitor first,
+	// so its cache is populated before the dispatcher can notify).
+	// The waits create the happens-before edge between the startup of the
+	// goroutines spawned here and any later Stop(): Dispatcher.Stop() calls
+	// finished.Wait(), and running that concurrently with the WaitGroup's first
+	// Add() inside Dispatcher.Run() is a data race by the Go memory model (what
+	// -race reports in #7603). They likewise prevent Stop() from being silently
+	// ignored - leaking the inhibitor goroutine forever - when it executes
+	// before Run() has installed ih.cancel. ApplyConfig and Stop are serialized
+	// by the callers (MultitenantAlertmanager.alertmanagersMtx), so once this
+	// returns any later Stop() is ordered after dispatcher/inhibitor startup.
 	go am.inhibitor.Run()
+	am.inhibitor.WaitForLoading()
+
+	go am.dispatcher.Run(time.Now())
+	am.dispatcher.WaitForLoading()
 
 	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))
 	return nil

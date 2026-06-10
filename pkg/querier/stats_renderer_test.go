@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/weaveworks/common/user"
@@ -95,6 +96,7 @@ func Test_StatsRenderer(t *testing.T) {
 		false,
 		false,
 		nil,
+		features.NewRegistry(),
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

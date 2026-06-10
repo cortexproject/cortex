@@ -2098,6 +2098,12 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
     [parquet_shard_cache_ttl: <duration> | default = 24h]
 
+    # Maximum number of concurrent goroutines per query applied at each level of
+    # parquet processing: shard querying, row group processing, and column
+    # materialization.
+    # CLI flag: -blocks-storage.bucket-store.parquet-query-concurrency
+    [parquet_query_concurrency: <int> | default = 4]
+
   tsdb:
     # Local directory to store TSDBs in the ingesters.
     # CLI flag: -blocks-storage.tsdb.dir

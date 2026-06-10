@@ -421,12 +421,27 @@ func (m *ActiveQueriedSeriesService) running(ctx context.Context) error {
 }
 
 // stopping waits for all worker goroutines to finish.
+// Note: we intentionally do not close m.updateChan here. Closing it would race
+// with concurrent producers calling UpdateSeriesBatch (a select+default does
+// not prevent panics on send to a closed channel). Workers exit via ctx.Done()
+// which is signaled by the BasicService lifecycle when stopping.
 func (m *ActiveQueriedSeriesService) stopping(_ error) error {
-	// Close the channel to signal workers to stop
-	close(m.updateChan)
-	// Wait for all workers to finish
+	// Wait for all workers to finish. They will exit via ctx.Done().
 	m.workers.Wait()
-	return nil
+	// Drain any remaining updates so pooled slices are returned even if the
+	// channel was non-empty at shutdown. We never close the channel, so use a
+	// non-blocking drain. Sends that arrive after this drain exits are
+	// tolerated: UpdateSeriesBatch uses a non-blocking select+default send so
+	// producers never block, and any entries left in the buffered channel are
+	// reclaimed when the service is garbage-collected.
+	for {
+		select {
+		case update := <-m.updateChan:
+			putQueriedSeriesHashesSlice(update.hashes)
+		default:
+			return nil
+		}
+	}
 }
 
 // processUpdates is a worker goroutine that processes updates from the update channel.
@@ -437,11 +452,7 @@ func (m *ActiveQueriedSeriesService) processUpdates(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case update, ok := <-m.updateChan:
-			if !ok {
-				// Channel closed, exit
-				return
-			}
+		case update := <-m.updateChan:
 			// Process the update synchronously
 			update.activeQueriedSeries.UpdateSeriesBatch(update.hashes, update.now)
 			// Return the slice to the pool after processing

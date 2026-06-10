@@ -40,11 +40,11 @@ sse:
 
 ### Ruler
 
-The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-ruler-storage.` flag prefix (or their respective YAML config options).
+The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable with the `-ruler-storage.` flag prefix (or their respective YAML config options).
 
 ### Alertmanager
 
-The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the `-alertmanager-storage.` flag prefix (or their respective YAML config options).
+The alertmanager S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable with the `-alertmanager-storage.` flag prefix (or their respective YAML config options).
 
 ### Per-tenant config overrides
 
@@ -61,4 +61,3 @@ The following settings can be overridden for each tenant:
 ## Other storages
 
 Other storage backends may support encryption at rest, configuring it directly at the storage level.
-

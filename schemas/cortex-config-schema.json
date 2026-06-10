@@ -2619,6 +2619,12 @@
               },
               "type": "object"
             },
+            "parquet_query_concurrency": {
+              "default": 4,
+              "description": "Maximum number of concurrent goroutines per query applied at each level of parquet processing: shard querying, row group processing, and column materialization.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-query-concurrency"
+            },
             "parquet_row_ranges_cache": {
               "properties": {
                 "backend": {

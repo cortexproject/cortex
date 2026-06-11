@@ -1181,6 +1181,60 @@ receivers:
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+// TestMultitenantAlertmanager_NoFallbackCreateAfterShutdown verifies that a
+// request hitting the fallback lazy-create path after shutdown has begun does
+// not register (and leak) a new per-tenant Alertmanager: stopping() only stops
+// the alertmanagers present in the map when it runs, so one created afterwards
+// would never be stopped. serveRequest is exercised directly because requests
+// can reach it without passing ServeHTTP's service-state check (e.g. via the
+// gRPC HandleRequest path when sharding is enabled), or after passing that
+// check just before the state transition.
+func TestMultitenantAlertmanager_NoFallbackCreateAfterShutdown(t *testing.T) {
+	ctx := context.Background()
+	amConfig := mockAlertmanagerConfig(t)
+
+	// Run this test using a real storage client.
+	store, err := prepareInMemoryAlertStore()
+	require.NoError(t, err)
+
+	externalURL := flagext.URLValue{}
+	err = externalURL.Set("http://localhost:8080/alertmanager")
+	require.NoError(t, err)
+
+	fallbackCfg := `
+global:
+  smtp_smarthost: 'localhost:25'
+  smtp_from: 'youraddress@example.org'
+route:
+  receiver: example-email
+receivers:
+  - name: example-email
+    email_configs:
+    - to: 'youraddress@example.org'
+`
+	amConfig.ExternalURL = externalURL
+
+	// Create the Multitenant Alertmanager.
+	am, err := createMultitenantAlertmanager(amConfig, nil, nil, store, nil, nil, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	am.fallbackConfig = fallbackCfg
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, am))
+
+	// Shut it down. No per-tenant alertmanager was ever created.
+	require.NoError(t, services.StopAndAwaitTerminated(ctx, am))
+
+	// A request for an unconfigured tenant must not lazily create a new
+	// per-tenant Alertmanager anymore.
+	req := httptest.NewRequest("GET", externalURL.String()+"/api/v2/status", nil)
+	w := httptest.NewRecorder()
+	am.serveRequest(w, req.WithContext(user.InjectOrgID(req.Context(), "user1")))
+
+	resp := w.Result()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	require.Empty(t, am.alertmanagers)
+}
+
 func TestMultitenantAlertmanager_InitialSyncWithSharding(t *testing.T) {
 	tg := ring.NewRandomTokenGenerator()
 	tc := []struct {

@@ -135,7 +135,6 @@ route:
 
 	cfg, err := config.Load(cfgRaw)
 	require.NoError(t, err)
-	require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
 
 	now := time.Now()
 
@@ -176,6 +175,15 @@ route:
 		require.NoError(t, am.alerts.Put(context.Background(), inputAlerts...))
 	}
 
+	// Apply the config after the alerts were put: the dispatcher then routes all
+	// of them synchronously, from its initial slurp (a single goroutine), before
+	// ApplyConfig returns. Routing them through the concurrent post-loading
+	// ingestion workers instead would make the aggregation-group limit
+	// accounting - and so the metric asserted below - nondeterministic, because
+	// the vendored dispatcher's limit check reads the group counter without
+	// synchronization with concurrent group creation.
+	require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
+
 	// Give it some time, as alerts are sent to dispatcher asynchronously.
 	test.Poll(t, 3*time.Second, nil, func() any {
 		return testutil.GatherAndCompare(reg, strings.NewReader(fmt.Sprintf(`
@@ -184,6 +192,56 @@ route:
 		alertmanager_dispatcher_aggregation_group_limit_reached_total %d
 	`, expectedFailures)), "alertmanager_dispatcher_aggregation_group_limit_reached_total")
 	})
+}
+
+// TestAlertmanagerStopBeforeDispatcherStart is a regression test for the data
+// race between ApplyConfig and Stop (issue #7603): ApplyConfig used to spawn
+// the dispatcher and inhibitor Run goroutines without waiting for them to
+// start, so a Stop shortly after could run Dispatcher.Stop's finished.Wait()
+// concurrently with the WaitGroup's first Add() inside Dispatcher.Run() - a
+// WaitGroup contract violation reported under -race - and could be silently
+// ignored by an inhibitor whose Run had not yet installed its cancel function.
+// The loop intentionally mirrors the supported, serialized lifecycle contract
+// (callers of ApplyConfig and Stop are serialized by
+// MultitenantAlertmanager.alertmanagersMtx): no concurrency is needed to
+// trigger the race because the racing actor is the spawned Run goroutine
+// itself.
+func TestAlertmanagerStopBeforeDispatcherStart(t *testing.T) {
+	const user = "test"
+
+	cfgRaw := `receivers:
+- name: 'prod'
+
+route:
+  group_by: ['alertname']
+  receiver: 'prod'`
+
+	cfg, err := config.Load(cfgRaw)
+	require.NoError(t, err)
+
+	for i := range 30 {
+		am, err := New(&Config{
+			UserID:          user,
+			Logger:          log.NewNopLogger(),
+			Limits:          &mockAlertManagerLimits{},
+			TenantDataDir:   t.TempDir(),
+			ExternalURL:     &url.URL{Path: "/am"},
+			ShardingEnabled: false,
+			GCInterval:      30 * time.Minute,
+		}, prometheus.NewPedanticRegistry())
+		require.NoError(t, err)
+
+		require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
+
+		// One iteration also exercises the reload path: a second ApplyConfig
+		// stops the previous generation's dispatcher and inhibitor right after
+		// their Run goroutines were spawned.
+		if i == 0 {
+			require.NoError(t, am.ApplyConfig(user, cfg, cfgRaw))
+		}
+
+		am.StopAndWait()
+	}
 }
 
 var (

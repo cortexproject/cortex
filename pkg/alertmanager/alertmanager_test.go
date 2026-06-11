@@ -219,7 +219,7 @@ route:
 	cfg, err := config.Load(cfgRaw)
 	require.NoError(t, err)
 
-	for i := 0; i < 30; i++ {
+	for i := range 30 {
 		am, err := New(&Config{
 			UserID:          user,
 			Logger:          log.NewNopLogger(),

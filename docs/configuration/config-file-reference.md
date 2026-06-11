@@ -186,6 +186,13 @@ parquet_converter:
   # CLI flag: -parquet-converter.max-rows-per-row-group
   [max_rows_per_row_group: <int> | default = 1000000]
 
+  # Maximum number of row groups per parquet shard. Each shard holds at most
+  # num-row-groups * max-rows-per-row-group series, so lowering this value
+  # splits a block into more parquet shards for better read parallelization.
+  # Default is unlimited (single shard).
+  # CLI flag: -parquet-converter.num-row-groups
+  [num_row_groups: <int> | default = 2147483647]
+
   # Enable disk-based write buffering to reduce memory consumption during
   # parquet file generation.
   # CLI flag: -parquet-converter.file-buffer-enabled

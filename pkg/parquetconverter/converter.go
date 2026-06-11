@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"math/rand"
 	"net/http"
 	"os"
@@ -57,6 +58,7 @@ type Config struct {
 	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
 	ConversionInterval  time.Duration `yaml:"conversion_interval"`
 	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
+	NumRowGroups        int           `yaml:"num_row_groups"`
 	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
 
 	DataDir string `yaml:"data_dir"`
@@ -107,6 +109,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Local directory path for caching TSDB blocks during parquet conversion.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Maximum concurrent goroutines for downloading block metadata from object storage.")
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Maximum number of time series per parquet row group. Larger values improve compression but may reduce performance during reads.")
+	f.IntVar(&cfg.NumRowGroups, "parquet-converter.num-row-groups", math.MaxInt32, "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. Default is unlimited (single shard).")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "How often to check for new TSDB blocks to convert to parquet format.")
 	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Enable disk-based write buffering to reduce memory consumption during parquet file generation.")
 }
@@ -126,6 +129,13 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 }
 
 func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, usersScanner users.Scanner) *Converter {
+	// A non-positive number of row groups is invalid and would lead to a division by zero
+	// while sharding the block.
+	numRowGroups := cfg.NumRowGroups
+	if numRowGroups <= 0 {
+		numRowGroups = math.MaxInt32
+	}
+
 	c := &Converter{
 		cfg:            cfg,
 		reg:            registerer,
@@ -141,6 +151,7 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		baseConverterOptions: []convert.ConvertOption{
 			convert.WithColDuration(time.Hour * 8),
 			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
+			convert.WithNumRowGroups(numRowGroups),
 		},
 	}
 

@@ -376,6 +376,15 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
+	// Wait until the querier observes the store-gateway as ACTIVE in its view of the store-gateway
+	// ring: the store-gateway registers as JOINING and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can all pass while queries would still fail with
+	// "at least 1 healthy replica required, could only find 0" (500). Keep after the tokens wait.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"),
+	)))
+
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)

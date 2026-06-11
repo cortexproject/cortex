@@ -103,6 +103,11 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 				// externally observable commit point, so observers synchronized on
 				// the cancellation must already see it in evictionsTotal.
 				e.evictionsTotal.WithLabelValues(string(breachedResource)).Inc()
+				// Retire the victim before cancelling it so later cycles can never
+				// re-pick (and double-count) an already-cancelled query that is
+				// still unwinding. trackedQuery.Exec's own deferred Deregister
+				// remains a safe no-op.
+				e.registry.Deregister(victim.QueryID)
 				victim.Cancel()
 
 				level.Warn(e.logger).Log(

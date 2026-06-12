@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"runtime"
 	"runtime/debug"
@@ -18,9 +19,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
@@ -659,6 +662,11 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 	if t.Cfg.isModuleEnabled(All) && t.Cfg.RulerStorage.IsDefaults() {
 		level.Info(util_log.Logger).Log("msg", "Ruler storage is not configured in single binary mode and will not be started.")
 		return
+	}
+
+	// Register xfunctions (xincrease, xrate, xdelta) in the global parser
+	if t.Cfg.Querier.ThanosEngine.Enabled && t.Cfg.Querier.ThanosEngine.EnableXFunctions {
+		maps.Copy(parser.Functions, parse.XFunctions)
 	}
 
 	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.NameValidationScheme)

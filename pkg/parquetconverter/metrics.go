@@ -47,5 +47,6 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 func (m *metrics) deleteMetricsForTenant(userID string) {
 	m.convertedBlocks.DeleteLabelValues(userID)
 	m.convertBlockFailures.DeleteLabelValues(userID)
+	m.skippedBlocks.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.convertBlockDuration.DeleteLabelValues(userID)
 }

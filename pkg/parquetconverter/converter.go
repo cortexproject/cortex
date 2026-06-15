@@ -49,6 +49,9 @@ const (
 	ringKey = "parquet-converter"
 
 	converterMetaPrefix = "converter-meta-"
+
+	parquetConverterDataColumnDuration = time.Hour * 8
+	parquetConverterSystemColumnCount  = 2 // s_col_indexes and s_series_hash.
 )
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
@@ -139,7 +142,7 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 		metrics:        newMetrics(registerer),
 		bkt:            bkt,
 		baseConverterOptions: []convert.ConvertOption{
-			convert.WithColDuration(time.Hour * 8),
+			convert.WithColDuration(parquetConverterDataColumnDuration),
 			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
 		},
 	}
@@ -388,7 +391,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		}
 
 		// We don't convert blocks again if they already have a valid converter mark.
-		if cortex_parquet.ValidConverterMarkVersion(marker.Version) {
+		if cortex_parquet.ValidNoConvertMarkVersion(marker.Version) {
 			level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
 			c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
 			continue
@@ -398,10 +401,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		maxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
+		configuredMaxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
+		maxBlockLabelNames := effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames, b.MinTime, b.MaxTime)
 
 		// If the threshold is enabled, check for no-convert mark
-		if maxBlockLabelNames > 0 {
+		if configuredMaxBlockLabelNames > 0 {
 
 			noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
 			if err != nil {
@@ -442,7 +446,7 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if maxBlockLabelNames > 0 {
+		if configuredMaxBlockLabelNames > 0 {
 			labelNames, err := tsdbBlock.LabelNames(ctx)
 			if err != nil {
 				_ = tsdbBlock.Close()
@@ -528,6 +532,25 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	}
 
 	return nil
+}
+
+func effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames int, mint, maxt int64) int {
+	if configuredMaxBlockLabelNames <= 0 {
+		return configuredMaxBlockLabelNames
+	}
+
+	dataColumnCount := 0
+	if maxt >= mint {
+		dataColumnCount = int((maxt-mint)/parquetConverterDataColumnDuration.Milliseconds()) + 1
+	}
+
+	// Reserve for s_col_indexes, s_series_hash, and generated s_data_* columns.
+	maxBlockLabelNames := max(parquet.MaxColumnIndex-parquetConverterSystemColumnCount-dataColumnCount, 0)
+
+	if configuredMaxBlockLabelNames > maxBlockLabelNames {
+		return maxBlockLabelNames
+	}
+	return configuredMaxBlockLabelNames
 }
 
 func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {

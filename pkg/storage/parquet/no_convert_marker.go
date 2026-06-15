@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"path"
 
@@ -26,10 +27,8 @@ const (
 )
 
 type NoConvertMark struct {
-	Version         int    `json:"version"`
-	Reason          string `json:"reason"`
-	LabelNamesCount int    `json:"label_names_count"`
-	Threshold       int    `json:"threshold"`
+	Version int    `json:"version"`
+	Reason  string `json:"reason"`
 }
 
 func ReadNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*NoConvertMark, error) {
@@ -56,10 +55,8 @@ func ReadNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 
 func WriteNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket, labelNamesCount int, maxBlockLabelNames int) error {
 	noConvertMarker := NoConvertMark{
-		Version:         CurrentNoConvertMarkVersion,
-		Reason:          NoConvertReasonTooManyLabels,
-		LabelNamesCount: labelNamesCount,
-		Threshold:       maxBlockLabelNames,
+		Version: CurrentNoConvertMarkVersion,
+		Reason:  fmt.Sprintf("%s: label_names_count=%d threshold=%d", NoConvertReasonTooManyLabels, labelNamesCount, maxBlockLabelNames),
 	}
 	noConvertMarkerPath := path.Join(id.String(), NoConvertMarkerFileName)
 	b, err := json.Marshal(noConvertMarker)

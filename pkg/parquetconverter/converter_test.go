@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	parquetgo "github.com/parquet-go/parquet-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -539,9 +540,7 @@ func TestConverter_WriteNoConvertMarkForBlockWithTooManyLabels(t *testing.T) {
 	readNoConvertMark, err := parquet.ReadNoConvertMark(ctx, blockID, userBucket, logger)
 	require.NoError(t, err)
 	require.True(t, parquet.ValidNoConvertMarkVersion(readNoConvertMark.Version))
-	require.Equal(t, parquet.NoConvertReasonTooManyLabels, readNoConvertMark.Reason)
-	require.Equal(t, 1, readNoConvertMark.Threshold)
-	require.Equal(t, 2, readNoConvertMark.LabelNamesCount)
+	require.Equal(t, "too_many_labels: label_names_count=2 threshold=1", readNoConvertMark.Reason)
 
 	// Confirm conversion did not happen
 	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
@@ -584,10 +583,8 @@ func TestConverter_SkipBlockWhenNoConvertMarkAlreadyExists(t *testing.T) {
 	require.NoError(t, err)
 
 	markerV1 := parquet.NoConvertMark{
-		Version:         parquet.CurrentNoConvertMarkVersion,
-		Reason:          parquet.NoConvertReasonTooManyLabels,
-		LabelNamesCount: 2,
-		Threshold:       1,
+		Version: parquet.CurrentNoConvertMarkVersion,
+		Reason:  "manually uploaded",
 	}
 	markerBytes, err := json.Marshal(markerV1)
 	require.NoError(t, err)
@@ -609,7 +606,15 @@ func TestConverter_SkipBlockWhenNoConvertMarkAlreadyExists(t *testing.T) {
 	markerAfter, err := parquet.ReadNoConvertMark(ctx, blockID, userBucket, logger)
 	require.NoError(t, err)
 	require.True(t, parquet.ValidNoConvertMarkVersion(markerAfter.Version))
-	require.Equal(t, parquet.NoConvertReasonTooManyLabels, markerAfter.Reason)
-	require.Equal(t, 1, markerAfter.Threshold)
-	require.Equal(t, 2, markerAfter.LabelNamesCount)
+	require.Equal(t, "manually uploaded", markerAfter.Reason)
+}
+
+func TestEffectiveMaxBlockLabelNamesLeavesRoomForGeneratedColumns(t *testing.T) {
+	mint := int64(0)
+	maxt := 2 * parquetConverterDataColumnDuration.Milliseconds()
+	expectedReservedColumns := parquetConverterSystemColumnCount + 3
+
+	require.Equal(t, 10, effectiveMaxBlockLabelNames(10, mint, maxt))
+	require.Equal(t, parquetgo.MaxColumnIndex-expectedReservedColumns, effectiveMaxBlockLabelNames(parquetgo.MaxColumnIndex, mint, maxt))
+	require.Equal(t, 0, effectiveMaxBlockLabelNames(0, mint, maxt))
 }

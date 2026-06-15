@@ -2737,7 +2737,9 @@ bucket_store:
 
   # Maximum number of concurrent goroutines per query applied at each level of
   # parquet processing: shard querying, row group processing, and column
-  # materialization.
+  # materialization. Note: this limit is applied independently at each level, so
+  # the total goroutines per query can grow multiplicatively (up to N^3 in the
+  # worst case).
   # CLI flag: -blocks-storage.bucket-store.parquet-query-concurrency
   [parquet_query_concurrency: <int> | default = 4]
 

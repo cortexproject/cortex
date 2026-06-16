@@ -3539,4 +3539,3 @@ func TestUpdateMetricsDuplicateTokens(t *testing.T) {
 
 	assert.Equal(t, float64(0), testutil.ToFloat64(ring.duplicateTokensGauge))
 }
-

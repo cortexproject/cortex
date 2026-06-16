@@ -4231,6 +4231,12 @@
           "type": "number",
           "x-cli-flag": "distributor.num-push-workers"
         },
+        "num_query_workers": {
+          "default": 0,
+          "description": "EXPERIMENTAL: Number of go routines to handle query fan-out calls from distributors (queriers and rulers) to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each query request.",
+          "type": "number",
+          "x-cli-flag": "distributor.num-query-workers"
+        },
         "otlp": {
           "properties": {
             "add_metric_suffixes": {

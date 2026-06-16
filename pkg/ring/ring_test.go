@@ -3183,6 +3183,9 @@ func TestUpdateMetrics(t *testing.T) {
 		{
 			DetailedMetricsEnabled: true,
 			Expected: `
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
@@ -3215,6 +3218,9 @@ func TestUpdateMetrics(t *testing.T) {
 		{
 			DetailedMetricsEnabled: false,
 			Expected: `
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone=""} 2
@@ -3291,6 +3297,9 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 	ring.updateRingState(&ringDesc)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
@@ -3329,6 +3338,9 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 	ring.updateRingState(&ringDescNew)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
@@ -3383,6 +3395,9 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 	ring.updateRingState(&ringDesc)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.3333333332557231
@@ -3435,6 +3450,9 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 	ring.updateRingState(&ringDescNew)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
@@ -3475,3 +3493,50 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 	`))
 	assert.NoError(t, err)
 }
+
+func TestUpdateMetricsDuplicateTokens(t *testing.T) {
+	cfg := Config{
+		KVStore:           kv.Config{},
+		HeartbeatTimeout:  0,
+		ReplicationFactor: 3,
+	}
+
+	registry := prometheus.NewRegistry()
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// No duplicate tokens: A owns {1, 2}, B owns {3, 4}.
+	ringDesc1 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 10, Tokens: []uint32{1, 2}},
+			"B": {Addr: "127.0.0.2", Timestamp: 10, Tokens: []uint32{3, 4}},
+		},
+	}
+	ring.updateRingState(&ringDesc1)
+
+	assert.Equal(t, float64(0), testutil.ToFloat64(ring.duplicateTokensGauge))
+
+	// Duplicate tokens: A and B both own token 100, plus one shared token 200.
+	ringDesc2 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 20, Tokens: []uint32{100, 200, 300}},
+			"B": {Addr: "127.0.0.2", Timestamp: 20, Tokens: []uint32{100, 200, 400}},
+		},
+	}
+	ring.updateRingState(&ringDesc2)
+
+	// Total instance tokens = 6, unique tokens = {100, 200, 300, 400} = 4, duplicates = 2.
+	assert.Equal(t, float64(2), testutil.ToFloat64(ring.duplicateTokensGauge))
+
+	// Back to no duplicates.
+	ringDesc3 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 30, Tokens: []uint32{100, 200}},
+			"B": {Addr: "127.0.0.2", Timestamp: 30, Tokens: []uint32{300, 400}},
+		},
+	}
+	ring.updateRingState(&ringDesc3)
+
+	assert.Equal(t, float64(0), testutil.ToFloat64(ring.duplicateTokensGauge))
+}
+

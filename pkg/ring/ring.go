@@ -213,6 +213,7 @@ type Ring struct {
 	totalTokensGauge        prometheus.Gauge
 	numTokensGaugeVec       *prometheus.GaugeVec
 	oldestTimestampGaugeVec *prometheus.GaugeVec
+	duplicateTokensGauge    prometheus.Gauge
 	reportedOwners          map[string]struct{}
 
 	logger log.Logger
@@ -278,6 +279,10 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Help:        "Timestamp of the oldest member in the ring.",
 			ConstLabels: map[string]string{"name": name}},
 			[]string{"state"}),
+		duplicateTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
+			Name:        "ring_duplicate_tokens",
+			Help:        "Number of duplicate tokens in the ring (tokens owned by multiple instances).",
+			ConstLabels: map[string]string{"name": name}}),
 		logger: logger,
 	}
 
@@ -725,6 +730,9 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 	}
 
 	r.totalTokensGauge.Set(float64(len(r.ringTokens)))
+
+	// Count duplicate tokens (same token owned by multiple instances).
+	r.duplicateTokensGauge.Set(float64(len(r.ringTokens) - len(r.ringInstanceByToken)))
 }
 
 // ShuffleShard returns a subring for the provided identifier (eg. a tenant ID)

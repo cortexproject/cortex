@@ -150,3 +150,6 @@ Currently experimental features are:
   - `-ingester.head-queried-series-metrics-windows` time windows to report (default: 2h)
   - `-ingester.head-queried-series-metrics-window-duration` HLL sub-window size
   - `-ingester.head-queried-series-metrics-sample-rate` query sampling rate
+- Parquet Converter: Maximum number of columns per file
+  - `-parquet-converter.max-num-columns` (int) CLI flag
+  - Automatically shards parquet files when the number of columns exceeds the configured limit

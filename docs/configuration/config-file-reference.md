@@ -193,6 +193,12 @@ parquet_converter:
   # CLI flag: -parquet-converter.num-row-groups
   [num_row_groups: <int> | default = 0]
 
+  # Maximum number of columns per Parquet file. When exceeded, conversion will
+  # automatically shard the data into multiple files. 0 uses the library default
+  # (32767).
+  # CLI flag: -parquet-converter.max-num-columns
+  [max_num_columns: <int> | default = 0]
+
   # Enable disk-based write buffering to reduce memory consumption during
   # parquet file generation.
   # CLI flag: -parquet-converter.file-buffer-enabled

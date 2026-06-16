@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"math/rand"
 	"path"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
@@ -626,4 +628,57 @@ func TestNewConverter_NumRowGroupsOption(t *testing.T) {
 			require.Len(t, c.baseConverterOptions, expectedLen)
 		})
 	}
+}
+
+func TestConvertWithMaxNumColumns(t *testing.T) {
+	ctx := context.Background()
+	dbDir := t.TempDir()
+	db, err := tsdb.Open(dbDir, nil, nil, &tsdb.Options{
+		RetentionDuration: int64(24 * time.Hour / time.Millisecond),
+		NoLockfile:        true,
+	}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	// Create series with many unique label names to exceed column limit
+	app := db.Appender(ctx)
+	for i := range 10 {
+		lblBuilder := labels.NewBuilder(labels.EmptyLabels())
+		lblBuilder.Set(labels.MetricName, fmt.Sprintf("metric_%d", i))
+		for j := range 5 {
+			lblBuilder.Set(fmt.Sprintf("label_%d_%d", i, j), fmt.Sprintf("value_%d", j))
+		}
+		_, err := app.Append(0, lblBuilder.Labels(), int64(i)*1000, float64(i))
+		require.NoError(t, err)
+	}
+	require.NoError(t, app.Commit())
+
+	head := db.Head()
+	bkt, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = bkt.Close() })
+
+	// With low column limit, should produce multiple shards
+	shards, err := convert.ConvertTSDBBlock(
+		ctx, bkt, head.MinTime(), head.MaxTime(),
+		[]convert.Convertible{head},
+		slog.Default(),
+		convert.WithMaxNumColumns(20),
+	)
+	require.NoError(t, err)
+	require.Greater(t, shards, 1, "expected multiple shards with low column limit")
+
+	// With high column limit, should produce a single shard
+	bkt2, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = bkt2.Close() })
+
+	shards2, err := convert.ConvertTSDBBlock(
+		ctx, bkt2, head.MinTime(), head.MaxTime(),
+		[]convert.Convertible{head},
+		slog.Default(),
+		convert.WithMaxNumColumns(10000),
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, shards2, "expected single shard with high column limit")
 }

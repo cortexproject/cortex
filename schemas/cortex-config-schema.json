@@ -9432,6 +9432,12 @@
           "type": "boolean",
           "x-cli-flag": "parquet-converter.file-buffer-enabled"
         },
+        "max_num_columns": {
+          "default": 0,
+          "description": "Maximum number of columns per Parquet file. When exceeded, conversion will automatically shard the data into multiple files. 0 uses the library default (32767).",
+          "type": "number",
+          "x-cli-flag": "parquet-converter.max-num-columns"
+        },
         "max_rows_per_row_group": {
           "default": 1000000,
           "description": "Maximum number of time series per parquet row group. Larger values improve compression but may reduce performance during reads.",

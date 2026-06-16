@@ -39,6 +39,9 @@ import (
 	"github.com/prometheus-community/parquet-common/schema"
 )
 
+// 2 system columns: s_col_indexes and s_series_hash
+const systemColumns = 2
+
 var DefaultConvertOpts = convertOpts{
 	name:               "block",
 	rowGroupSize:       1e6,
@@ -52,6 +55,7 @@ var DefaultConvertOpts = convertOpts{
 	readConcurrency:    runtime.GOMAXPROCS(0),
 	writeConcurrency:   1,
 	maxSamplesPerChunk: tsdb.DefaultSamplesPerChunk,
+	maxNumColumns:      parquet.MaxColumnIndex, // max column index supported by parquet-go
 }
 
 type Convertible interface {
@@ -74,6 +78,7 @@ type convertOpts struct {
 	readConcurrency       int
 	writeConcurrency      int
 	maxSamplesPerChunk    int
+	maxNumColumns         int
 	labelsCompressionOpts []schema.CompressionOpts
 	chunksCompressionOpts []schema.CompressionOpts
 }
@@ -277,6 +282,27 @@ func WithMaxSamplesPerChunk(samplesPerChunk int) ConvertOption {
 	}
 }
 
+// WithMaxNumColumns sets the maximum number of columns allowed in a Parquet file.
+// Parquet-go library has a limit of max column index supported. When this limit is exceeded,
+// the conversion will automatically shard the data into multiple files. This option allows
+// users to control the number of columns in the converted parquet file.
+//
+// The limit includes both label columns (one per unique label name) and 2 system columns
+// (s_col_indexes and s_series_hash). For example, if maxColumns is 1000, then at most
+// 998 unique label names can be included in a single shard.
+//
+// Parameters:
+//   - maxColumns: Maximum number of columns per Parquet file, including system columns
+//
+// Example:
+//
+//	WithMaxNumColumns(1000)  // Use a smaller limit for testing
+func WithMaxNumColumns(maxColumns int) ConvertOption {
+	return func(opts *convertOpts) {
+		opts.maxNumColumns = maxColumns
+	}
+}
+
 func WithColumnPageBuffers(buffers parquet.BufferPool) ConvertOption {
 	return func(opts *convertOpts) {
 		opts.columnPageBuffers = buffers
@@ -359,17 +385,16 @@ func ConvertTSDBBlock(
 	}
 
 	var (
-		rr                *TSDBRowReader
 		shardedRowReaders []*TSDBRowReader
 		err               error
 	)
 	// If numRowGroups is not specified, we can use a single row reader.
+	// However, we may still need to shard if column limits are exceeded.
 	if cfg.numRowGroups == math.MaxInt32 {
-		rr, err = singleTSDBRowReader(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
+		shardedRowReaders, err = singleTSDBRowReader(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
 		if err != nil {
 			return 0, errors.Wrap(err, "failed to create TSDB row readers")
 		}
-		shardedRowReaders = []*TSDBRowReader{rr}
 	} else {
 		logger.Info("sharding input series")
 		shardedRowReaders, err = shardedTSDBRowReaders(ctx, mint, maxt, cfg.colDuration.Milliseconds(), blocks, cfg)
@@ -439,21 +464,76 @@ type blockSeries struct {
 	labels    labels.Labels
 }
 
-// singleTSDBRowReader is a shortcut when we know there is only one final shard.
-// This can happen when numRowGroups is not specified.
+// singleTSDBRowReader creates row readers when numRowGroups is not specified.
+// It may create multiple shards if the column limit would be exceeded.
 func singleTSDBRowReader(
 	ctx context.Context,
 	mint, maxt, colDuration int64,
 	blocks []Convertible,
 	opts convertOpts,
-) (*TSDBRowReader, error) {
+) ([]*TSDBRowReader, error) {
+	// First, check if we need to shard based on column limits by getting all unique label names.
+	// This is cheaper than fully initializing indexReaders and postings, so we do this first.
+	allLabelNames := make(map[string]struct{})
+	for _, blk := range blocks {
+		indexr, err := blk.Index()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get label names from index reader")
+		}
+		lblns, err := indexr.LabelNames(ctx)
+		if err != nil {
+			_ = indexr.Close()
+			return nil, errors.Wrap(err, "failed to get label names from index reader")
+		}
+		for _, lbln := range lblns {
+			allLabelNames[lbln] = struct{}{}
+		}
+		_ = indexr.Close()
+	}
+
+	// If total unique label names exceed the limit, we need to shard based only on column limits.
+	// Equality is allowed (exactly maxNumColumns columns is fine).
+	if len(allLabelNames)+systemColumns > opts.maxNumColumns {
+		indexReaders := make([]blockIndexReader, len(blocks))
+		defer func() {
+			for _, indexReader := range indexReaders {
+				if indexReader.reader != nil {
+					_ = indexReader.reader.Close()
+				}
+			}
+		}()
+		for i, blk := range blocks {
+			indexReader, err := blk.Index()
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to get index reader from block")
+			}
+			indexReaders[i] = blockIndexReader{
+				blockID:  blk.Meta().ULID,
+				idx:      i,
+				reader:   indexReader,
+				postings: tsdb.AllSortedPostings(ctx, indexReader),
+			}
+		}
+
+		// Use shardSeries to shard based only on column limits (no row group limits).
+		uniqueSeriesCount, shardedSeries, err := shardSeries(indexReaders, mint, maxt, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to determine unique series count")
+		}
+		if uniqueSeriesCount == 0 {
+			return nil, errors.New("no series found in the specified time range")
+		}
+
+		// Create row readers from sharded series (same logic as shardedTSDBRowReaders).
+		return createShardedRowReaders(ctx, mint, maxt, colDuration, blocks, shardedSeries, opts)
+	}
+
+	// No sharding needed - create a single row reader (original behavior)
 	var (
 		seriesSets = make([]storage.ChunkSeriesSet, 0, len(blocks))
 		closers    = make([]io.Closer, 0, len(blocks))
 		ok         = false
 	)
-	// If we fail to build the row reader, make sure we release resources.
-	// This could be either a controlled error or a panic.
 	defer func() {
 		if !ok {
 			for i := range closers {
@@ -470,7 +550,6 @@ func singleTSDBRowReader(
 				return c
 			}
 		}
-
 		return labels.Compare(a, b)
 	}
 
@@ -510,45 +589,18 @@ func singleTSDBRowReader(
 		return nil, fmt.Errorf("unable to build schema reader from block: %w", err)
 	}
 	ok = true
-	return newTSDBRowReader(ctx, closers, cseriesSet, s, opts), nil
+	return []*TSDBRowReader{newTSDBRowReader(ctx, closers, cseriesSet, s, opts)}, nil
 }
 
-func shardedTSDBRowReaders(
+// createShardedRowReaders creates TSDBRowReader instances from sharded series.
+// This is a shared helper used by both singleTSDBRowReader and shardedTSDBRowReaders.
+func createShardedRowReaders(
 	ctx context.Context,
 	mint, maxt, colDuration int64,
 	blocks []Convertible,
+	shardedSeries []map[int][]blockSeries,
 	opts convertOpts,
 ) ([]*TSDBRowReader, error) {
-	// Blocks can have multiple entries with the same of ULID in the case of head blocks;
-	// track all blocks by their index in the input slice rather than assuming unique ULIDs.
-	indexReaders := make([]blockIndexReader, len(blocks))
-	// Simpler to track and close these readers separate from those used by shard conversion reader/writers.
-	defer func() {
-		for _, indexReader := range indexReaders {
-			_ = indexReader.reader.Close()
-		}
-	}()
-	for i, blk := range blocks {
-		indexReader, err := blk.Index()
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get index reader from block")
-		}
-		indexReaders[i] = blockIndexReader{
-			blockID:  blk.Meta().ULID,
-			idx:      i,
-			reader:   indexReader,
-			postings: tsdb.AllSortedPostings(ctx, indexReader),
-		}
-	}
-
-	uniqueSeriesCount, shardedSeries, err := shardSeries(indexReaders, mint, maxt, opts)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to determine unique series count")
-	}
-	if uniqueSeriesCount == 0 {
-		return nil, errors.Wrap(err, "no series found in the specified time range")
-	}
-
 	shardTSDBRowReaders := make([]*TSDBRowReader, len(shardedSeries))
 
 	// We close everything if any errors or panic occur
@@ -579,7 +631,7 @@ func shardedTSDBRowReaders(
 			blk := blocks[blockSeries[0].blockIdx]
 			// Init all readers for block & add to closers
 
-			// Init separate index readers from above indexReaders to simplify closing logic
+			// Init separate index readers to simplify closing logic
 			indexr, err := blk.Index()
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to get index reader from block")
@@ -628,6 +680,45 @@ func shardedTSDBRowReaders(
 	}
 	ok = true
 	return shardTSDBRowReaders, nil
+}
+
+func shardedTSDBRowReaders(
+	ctx context.Context,
+	mint, maxt, colDuration int64,
+	blocks []Convertible,
+	opts convertOpts,
+) ([]*TSDBRowReader, error) {
+	// Blocks can have multiple entries with the same of ULID in the case of head blocks;
+	// track all blocks by their index in the input slice rather than assuming unique ULIDs.
+	indexReaders := make([]blockIndexReader, len(blocks))
+	// Simpler to track and close these readers separate from those used by shard conversion reader/writers.
+	defer func() {
+		for _, indexReader := range indexReaders {
+			_ = indexReader.reader.Close()
+		}
+	}()
+	for i, blk := range blocks {
+		indexReader, err := blk.Index()
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get index reader from block")
+		}
+		indexReaders[i] = blockIndexReader{
+			blockID:  blk.Meta().ULID,
+			idx:      i,
+			reader:   indexReader,
+			postings: tsdb.AllSortedPostings(ctx, indexReader),
+		}
+	}
+
+	uniqueSeriesCount, shardedSeries, err := shardSeries(indexReaders, mint, maxt, opts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to determine unique series count")
+	}
+	if uniqueSeriesCount == 0 {
+		return nil, errors.Wrap(err, "no series found in the specified time range")
+	}
+
+	return createShardedRowReaders(ctx, mint, maxt, colDuration, blocks, shardedSeries, opts)
 }
 
 func shardSeries(
@@ -681,50 +772,75 @@ func shardSeries(
 		}
 	}
 
-	// Divide rows evenly across shards to avoid one small shard at the end;
-	// Use (a + b - 1) / b equivalence to math.Ceil(a / b)
-	// so integer division does not cut off the remainder series and to avoid floating point issues.
-	totalShards := (uniqueSeriesCount + (opts.numRowGroups * opts.rowGroupSize) - 1) / (opts.numRowGroups * opts.rowGroupSize)
-	rowsPerShard := (uniqueSeriesCount + totalShards - 1) / totalShards
-
-	// For each shard index i, shardSeries[i] is a map of blockIdx -> []series.
-	shardSeries := make([]map[int][]blockSeries, totalShards)
-	for i := range shardSeries {
-		shardSeries[i] = make(map[int][]blockSeries)
+	// Calculate row-based sharding only if numRowGroups is set (not MaxInt32)
+	var targetTotalShards int
+	var rowsPerShard int
+	if opts.numRowGroups != math.MaxInt32 {
+		// Divide rows evenly across shards to avoid one small shard at the end;
+		// Use (a + b - 1) / b equivalence to math.Ceil(a / b)
+		// so integer division does not cut off the remainder series and to avoid floating point issues.
+		targetTotalShards = (uniqueSeriesCount + (opts.numRowGroups * opts.rowGroupSize) - 1) / (opts.numRowGroups * opts.rowGroupSize)
+		rowsPerShard = (uniqueSeriesCount + targetTotalShards - 1) / targetTotalShards
 	}
 
-	shardIdx, allSeriesIdx := 0, 0
-	for shardIdx < totalShards {
-		seriesToShard := allSeries[allSeriesIdx:]
+	// For each shard index i, shardSeries[i] is a map of blockIdx -> []series.
+	// Start with one shard and dynamically create more as needed to avoid column limit.
+	// If row-based sharding is enabled, pre-allocate capacity for expected shards.
+	initialCapacity := 1
+	if opts.numRowGroups != math.MaxInt32 && targetTotalShards > 1 {
+		initialCapacity = targetTotalShards
+	}
+	shardSeries := make([]map[int][]blockSeries, 1, initialCapacity)
+	shardSeries[0] = make(map[int][]blockSeries)
 
-		i, uniqueCount := 0, 0
-		matchLabels := labels.Labels{}
-		for i < len(seriesToShard) {
-			current := seriesToShard[i]
-			if labels.Compare(current.labels, matchLabels) != 0 {
-				// New unique series
-
-				if uniqueCount >= rowsPerShard {
-					// Stop before adding current series if it would exceed the unique series count for the shard.
-					// Do not increment, we will start the next shard with this series.
-					break
+	shardIdx, uniqueCount := 0, 0
+	matchLabels := labels.Labels{}
+	labelColumns := make(map[string]struct{})
+	for _, series := range allSeries {
+		if labels.Compare(series.labels, matchLabels) != 0 {
+			// New unique series
+			// Count how many new label names this series would add
+			newLabelCount := 0
+			series.labels.Range(func(label labels.Label) {
+				if _, exists := labelColumns[label.Name]; !exists {
+					newLabelCount++
 				}
+			})
 
-				// Unique series limit is not hit yet for the shard; add the series.
-				shardSeries[shardIdx][current.blockIdx] = append(shardSeries[shardIdx][current.blockIdx], current)
-				// Increment unique count, update labels to compare against, and move on to next series
-				uniqueCount++
-				matchLabels = current.labels
-				i++
-			} else {
-				// Same labelset as previous series, add it to the shard but do not increment unique count
-				shardSeries[shardIdx][current.blockIdx] = append(shardSeries[shardIdx][current.blockIdx], current)
-				// Move on to next series
-				i++
+			// Create a new shard if:
+			// 1. Row-based sharding is enabled AND the row limit is reached, OR
+			// 2. Adding this series would exceed the column limit (equality is allowed)
+			shouldCreateNewShard := false
+			if opts.numRowGroups != math.MaxInt32 && uniqueCount >= rowsPerShard {
+				shouldCreateNewShard = true
 			}
-			allSeriesIdx++
+			if len(labelColumns)+newLabelCount+systemColumns > opts.maxNumColumns {
+				shouldCreateNewShard = true
+			}
+
+			if shouldCreateNewShard {
+				// Create a new shard and start with this series
+				shardIdx++
+				shardSeries = append(shardSeries, make(map[int][]blockSeries))
+				labelColumns = make(map[string]struct{})
+				uniqueCount = 0
+			}
+
+			// Track unique label names for this shard (after potentially creating a new shard)
+			series.labels.Range(func(label labels.Label) {
+				labelColumns[label.Name] = struct{}{}
+			})
+
+			// Unique series limit is not hit yet for the shard; add the series.
+			shardSeries[shardIdx][series.blockIdx] = append(shardSeries[shardIdx][series.blockIdx], series)
+			// Increment unique count, update labels to compare against, and move on to next series
+			uniqueCount++
+			matchLabels = series.labels
+		} else {
+			// Same labelset as previous series, add it to the shard but do not increment unique count
+			shardSeries[shardIdx][series.blockIdx] = append(shardSeries[shardIdx][series.blockIdx], series)
+			// Move on to next series
 		}
-		shardIdx++
 	}
 
 	return uniqueSeriesCount, shardSeries, nil

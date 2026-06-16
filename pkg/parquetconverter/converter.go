@@ -425,26 +425,23 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 		configuredMaxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
 		maxBlockLabelNames := effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames, b.MinTime, b.MaxTime)
 
-		// If the threshold is enabled, check for no-convert mark
-		if configuredMaxBlockLabelNames > 0 {
-			noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
-			if err != nil {
-				level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
-				continue
-			}
-			if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
-				level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
-				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
-				continue
-			}
+		noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
+			continue
+		}
+		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+			level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
+			c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
+			continue
+		}
 
-			if err := os.RemoveAll(c.compactRootDir()); err != nil {
-				level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
-				if c.checkConvertError(userID, err) {
-					return err
-				}
-				continue
+		if err := os.RemoveAll(c.compactRootDir()); err != nil {
+			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
+			if c.checkConvertError(userID, err) {
+				return err
 			}
+			continue
 		}
 
 		bdir := filepath.Join(c.compactDirForUser(userID), b.ULID.String())

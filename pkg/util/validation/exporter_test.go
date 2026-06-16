@@ -101,6 +101,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="out_of_order_results_cache_ttl",user="tenant-a"} 0
 		cortex_overrides{limit_name="out_of_order_time_window",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_enabled",user="tenant-a"} 0
+		cortex_overrides{limit_name="parquet_converter_max_block_label_names",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_converter_tenant_shard_size",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_chunk_bytes",user="tenant-a"} 0
 		cortex_overrides{limit_name="parquet_max_fetched_data_bytes",user="tenant-a"} 0

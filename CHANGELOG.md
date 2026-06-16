@@ -20,6 +20,7 @@
 * [FEATURE] StoreGateway: Add experimental optional limit `blocks-storage.bucket-store.max-concurrent-data-bytes` on the data bytes (postings, series and chunks) fetched via the Series() API call and processed concurrently across all queries per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
+* [ENHANCEMENT] Parquet Converter: Add `parquet-converter.max-block-label-names` limit to skip conversion of TSDB blocks with too many label names. #7625
 * [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455
 * [ENHANCEMENT] Parquet: Add `-blocks-storage.bucket-store.parquet-query-concurrency` flag to configure the maximum number of concurrent goroutines applied at each level of parquet query processing in store-gateway: shard querying, row group processing, and column materialization. #7613
 * [ENHANCEMENT] Parquet: Add a row ranges cache for parquet query filtering in querier and store-gateway. #7478

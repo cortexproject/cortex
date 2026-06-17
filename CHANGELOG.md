@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [FEATURE] Distributor: Add experimental `-distributor.num-query-workers` flag to use a goroutine worker pool for query fan-out calls to ingesters. Reuses pre-grown goroutine stacks to eliminate the `runtime.copystack` overhead (~8% CPU) observed on rulers with wide ingester fan-out. Falls back to spawning a new goroutine when no worker is available. #7623
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
@@ -56,8 +57,10 @@
 * [BUGFIX] Distributor: Fix a panic (`slice bounds out of range`) in the stream push path when the context deadline expires while the worker goroutine is still marshalling a `WriteRequest`. #7541
 * [BUGFIX] Query Frontend: Fix native histogram responses not being handled correctly in `minTime()` sort ordering for split_by_interval merge. #7555
 * [BUGFIX] Compactor: Ensure visit marker heartbeat goroutine completes before blocks cleaner returns. #7386
-* [BUGFIX] Distributor: Release the push worker pool goroutines on shutdown by stopping the async executor during the stopping phase when `-distributor.num-push-workers` is set. #7602
 * [BUGFIX] Querier: Fix unbounded resource leak in the bucket-scan blocks finder (used when the bucket index is disabled). Per-tenant metadata fetchers, their Prometheus registries, and on-disk meta caches are now evicted once a tenant is no longer active, instead of being retained for the lifetime of the process. #7573
+* [BUGFIX] Distributor: Release the push worker pool goroutines on shutdown by stopping the async executor during the stopping phase when `-distributor.num-push-workers` is set. #7602
+* [BUGFIX] Querier: Fix flake in integration tests TestQuerierWithStoreGatewayDataBytesLimits and TestQuerierWithBlocksStorageLimits by waiting for the querier to see the store-gateway ACTIVE in the ring before querying. #7614
+* [BUGFIX] Ruler: Register xfunctions (xincrease, xrate, xdelta) in the global parser before loading rule files. #7621
 
 ## 1.21.0 2026-04-24
 

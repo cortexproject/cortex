@@ -3572,6 +3572,14 @@ ring:
 # CLI flag: -distributor.num-push-workers
 [num_push_workers: <int> | default = 0]
 
+# EXPERIMENTAL: Number of go routines to handle query fan-out calls from
+# distributors (queriers and rulers) to ingesters. When no workers are
+# available, a new goroutine will be spawned automatically. If set to 0
+# (default), workers are disabled, and a new goroutine will be created for each
+# query request.
+# CLI flag: -distributor.num-query-workers
+[num_query_workers: <int> | default = 0]
+
 instance_limits:
   # Max ingestion rate (samples/sec) that this distributor will accept. This
   # limit is per-distributor, not per-tenant. Additional push requests will be

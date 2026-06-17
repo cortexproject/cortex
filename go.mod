@@ -96,6 +96,7 @@ require (
 	github.com/tjhop/slog-gokit v0.1.4
 	go.opentelemetry.io/collector/pdata v1.45.0
 	go.uber.org/automaxprocs v1.6.0
+	go.uber.org/goleak v1.3.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -283,7 +284,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect

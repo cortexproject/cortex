@@ -62,6 +62,7 @@
 * [BUGFIX] Distributor: Release the push worker pool goroutines on shutdown by stopping the async executor during the stopping phase when `-distributor.num-push-workers` is set. #7602
 * [BUGFIX] Querier: Fix flake in integration tests TestQuerierWithStoreGatewayDataBytesLimits and TestQuerierWithBlocksStorageLimits by waiting for the querier to see the store-gateway ACTIVE in the ring before querying. #7614
 * [BUGFIX] Ruler: Register xfunctions (xincrease, xrate, xdelta) in the global parser before loading rule files. #7621
+* [BUGFIX] Security: Reject empty entries in `-distributor.sign-write-requests-keys` caused by stray or trailing commas (e.g. `newkey,`). Previously these were silently accepted and produced an empty signing key, which downgraded HMAC stream-push authentication to a forgeable signature. Misconfigured flags now fail at process startup; audit your configs before upgrading. #7587
 
 ## 1.21.0 2026-04-24
 

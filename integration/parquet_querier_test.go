@@ -405,9 +405,15 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 func TestParquetMultiShardQuery(t *testing.T) {
 	for name, tc := range map[string]struct {
 		viaStoreGateway bool
+		// replicationFactor is the store-gateway sharding ring replication factor.
+		replicationFactor string
+		// extraStoreGateways is the number of additional store-gateway replicas to
+		// start alongside the one embedded in the single binary (target "all").
+		extraStoreGateways int
 	}{
-		"querier parquet queryable":          {viaStoreGateway: false},
-		"store-gateway parquet bucket store": {viaStoreGateway: true},
+		"querier parquet queryable":                           {viaStoreGateway: false, replicationFactor: "1", extraStoreGateways: 0},
+		"store-gateway parquet bucket store":                  {viaStoreGateway: true, replicationFactor: "1", extraStoreGateways: 0},
+		"store-gateway parquet bucket store with replication": {viaStoreGateway: true, replicationFactor: "2", extraStoreGateways: 1},
 	} {
 		t.Run(name, func(t *testing.T) {
 			s, err := e2e.NewScenario(networkName)
@@ -469,7 +475,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 					"-store-gateway.sharding-enabled":                 "true",
 					"-store-gateway.sharding-ring.store":              "consul",
 					"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
-					"-store-gateway.sharding-ring.replication-factor": "1",
+					"-store-gateway.sharding-ring.replication-factor": tc.replicationFactor,
 					// Disable the embedded parquet queryable so reads go to the store-gateway.
 					"-querier.enable-parquet-queryable": "false",
 				})
@@ -520,6 +526,27 @@ func TestParquetMultiShardQuery(t *testing.T) {
 
 			cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
 			require.NoError(t, s.StartAndWaitReady(cortex))
+
+			// Start additional store-gateway replicas
+			for i := 0; i < tc.extraStoreGateways; i++ {
+				storeGateway := e2ecortex.NewStoreGateway(
+					fmt.Sprintf("store-gateway-%d", i+1),
+					e2ecortex.RingStoreConsul,
+					consul.NetworkHTTPEndpoint(),
+					// Override the target so this instance only runs the store-gateway
+					mergeFlags(flags, map[string]string{"-target": "store-gateway"}),
+					"",
+				)
+				require.NoError(t, s.StartAndWaitReady(storeGateway))
+			}
+
+			// Ensure all store-gateways (embedded + extra replicas) are ACTIVE
+			if tc.extraStoreGateways > 0 {
+				expectedStoreGateways := float64(1 + tc.extraStoreGateways)
+				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(expectedStoreGateways), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+					labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway"),
+					labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+			}
 
 			// Wait until the block is converted to parquet and the bucket index is updated.
 			cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
@@ -591,6 +618,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 
 			if tc.viaStoreGateway {
 				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_querier_storegateway_instances_hit_per_query"}, e2e.WithMetricCount, e2e.SkipMissingMetrics))
+				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_querier_blocks_consistency_checks_total"}, e2e.SkipMissingMetrics))
 			} else {
 				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
 					labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))

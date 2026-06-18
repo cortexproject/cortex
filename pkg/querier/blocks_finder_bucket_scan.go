@@ -91,9 +91,12 @@ func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, usersScanner us
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
 		usersScanner:      usersScanner,
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_blocks_scan_duration_seconds",
-			Help:    "The total time it takes to run a full blocks scan across the storage.",
-			Buckets: []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
+			Name:                            "cortex_querier_blocks_scan_duration_seconds",
+			Help:                            "The total time it takes to run a full blocks scan across the storage.",
+			Buckets:                         []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		scanLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_querier_blocks_last_successful_scan_timestamp_seconds",

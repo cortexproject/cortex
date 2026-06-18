@@ -58,6 +58,9 @@ func newMetricsClient(backend string, c Client, reg prometheus.Registerer) Clien
 				ConstLabels: prometheus.Labels{
 					"type": backend,
 				},
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: time.Hour,
 			}, []string{"operation", "status_code"}),
 		),
 	}

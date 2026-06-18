@@ -19,11 +19,14 @@ import (
 
 func newStoreGatewayClientFactory(clientCfg grpcclient.ConfigWithHealthCheck, reg prometheus.Registerer) client.PoolFactory {
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:   "cortex",
-		Name:        "storegateway_client_request_duration_seconds",
-		Help:        "Time spent executing requests to the store-gateway.",
-		Buckets:     prometheus.ExponentialBuckets(0.008, 4, 7),
-		ConstLabels: prometheus.Labels{"client": "querier"},
+		Namespace:                       "cortex",
+		Name:                            "storegateway_client_request_duration_seconds",
+		Help:                            "Time spent executing requests to the store-gateway.",
+		Buckets:                         prometheus.ExponentialBuckets(0.008, 4, 7),
+		ConstLabels:                     prometheus.Labels{"client": "querier"},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "status_code"})
 
 	return func(addr string) (client.PoolClient, error) {

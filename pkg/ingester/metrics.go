@@ -161,25 +161,37 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Name: "cortex_ingester_queried_samples",
 			Help: "The total number of samples returned from queries.",
 			// Could easily return 10m samples per query - 10*(8^(8-1)) = 20.9m.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 8),
+			Buckets:                         prometheus.ExponentialBuckets(10, 8, 8),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		queriedExemplars: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_exemplars",
 			Help: "The total number of exemplars returned from queries.",
 			// A reasonable upper bound is around 6k - 10*(5^(5-1)) = 6250.
-			Buckets: prometheus.ExponentialBuckets(10, 5, 5),
+			Buckets:                         prometheus.ExponentialBuckets(10, 5, 5),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		queriedSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_series",
 			Help: "The total number of series returned from queries.",
 			// A reasonable upper bound is around 100k - 10*(8^(6-1)) = 327k.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 6),
+			Buckets:                         prometheus.ExponentialBuckets(10, 8, 6),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		queriedChunks: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name: "cortex_ingester_queried_chunks",
 			Help: "The total number of chunks returned from queries.",
 			// A small number of chunks per series - 10*(8^(7-1)) = 2.6m.
-			Buckets: prometheus.ExponentialBuckets(10, 8, 7),
+			Buckets:                         prometheus.ExponentialBuckets(10, 8, 7),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		memSeries: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_ingester_memory_series",

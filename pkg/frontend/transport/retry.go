@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -24,10 +25,13 @@ func NewRetry(maxRetries int, reg prometheus.Registerer) *Retry {
 	return &Retry{
 		maxRetries: maxRetries,
 		retriesCount: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "query_frontend_retries",
-			Help:      "Number of times a request is retried.",
-			Buckets:   []float64{0, 1, 2, 3, 4, 5},
+			Namespace:                       "cortex",
+			Name:                            "query_frontend_retries",
+			Help:                            "Number of times a request is retried.",
+			Buckets:                         []float64{0, 1, 2, 3, 4, 5},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }

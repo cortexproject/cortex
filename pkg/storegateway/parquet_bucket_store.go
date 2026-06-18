@@ -68,6 +68,7 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 
 	// Read converter marks and expand to per-shard (blockID, shardID) lists.
+	// TODO(Sungjin1212): Read the shard count from the bucket index instead of reading the converter mark for each block.
 	var shardBlockIDs []string
 	var shardIDs []int
 	for _, blockID := range blockIDs {

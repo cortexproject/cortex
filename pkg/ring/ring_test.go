@@ -3165,6 +3165,120 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	require.False(t, subring == newSubring)
 }
 
+func TestShuffleShardWithLookbackCaching(t *testing.T) {
+	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+		MaxCasRetries: 20,
+		CasRetryDelay: 100 * time.Millisecond,
+	}, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	cfg := Config{
+		KVStore:              kv.Config{Mock: inmem},
+		HeartbeatTimeout:     1 * time.Minute,
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	ring, err := New(cfg, "test", "test", log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), ring)
+	})
+
+	const numLifecyclers = 6
+	const zones = 3
+
+	lcs := []*Lifecycler(nil)
+	for i := range numLifecyclers {
+		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
+
+		lcs = append(lcs, lc)
+	}
+
+	// Wait until all instances in the ring are ACTIVE.
+	test.Poll(t, 5*time.Second, numLifecyclers, func() any {
+		active := 0
+		rs, _ := ring.GetReplicationSetForOperation(Read)
+		for _, ing := range rs.Instances {
+			if ing.State == ACTIVE {
+				active++
+			}
+		}
+		return active
+	})
+
+	const (
+		shardSize      = zones
+		user           = "user"
+		lookbackPeriod = time.Hour
+	)
+
+	// All instances were registered just now, so with an hour lookback they are all within the
+	// lookback window and the resulting subring carries a non-zero expiry.
+	now := time.Now()
+
+	// This lookback subring should be cached and reused while now is before its expiry.
+	subring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now)
+
+	// Repeated calls with now still before the expiry reuse the cached subring.
+	const iters = 100
+	sleep := (2 * time.Second) / iters
+	for range iters {
+		newSubring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, time.Now())
+		require.True(t, subring == newSubring, "cached lookback subring reused before expiry")
+		time.Sleep(sleep)
+	}
+
+	// On a cache hit the subring still has up-to-date instance timestamps.
+	{
+		rs, err := subring.GetReplicationSetForOperation(Read)
+		require.NoError(t, err)
+
+		nowTs := time.Now()
+		for _, ing := range rs.Instances {
+			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so give it some buffer.
+			assert.InDelta(t, nowTs.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
+		}
+	}
+
+	// Advancing now past the lookback window forces a recompute: instances registered ~now are no
+	// longer within the window, so the subring shrinks and a new one is returned.
+	subringAfterExpiry := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now.Add(lookbackPeriod+time.Minute))
+	require.False(t, subring == subringAfterExpiry, "expired lookback subring is recomputed")
+	require.NotEqual(t, subring.InstancesCount(), subringAfterExpiry.InstancesCount())
+
+	// The recomputed subring has no instances within lookback, so no time-based expiry, and is reused.
+	subring = subringAfterExpiry
+	newSubring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now.Add(lookbackPeriod+2*time.Minute))
+	require.True(t, subring == newSubring, "recomputed lookback subring reused")
+
+	// A plain shuffle shard for the same user and size is cached under a separate key.
+	require.False(t, ring.ShuffleShard(user, shardSize) == newSubring, "plain and lookback subrings are cached separately")
+
+	// Change of instances (topology) invalidates the cache.
+	before := ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now())
+	require.True(t, before == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "cached before topology change")
+
+	// Stop one instance per zone. Subring needs to be recomputed.
+	for i := range zones {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
+	}
+	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() any {
+		return ring.InstancesCount()
+	})
+	require.False(t, before == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "recomputed after topology change")
+
+	// Change of shard size needs a different subring.
+	sizeOne := ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now())
+	require.False(t, sizeOne == ring.ShuffleShardWithLookback(user, 2, lookbackPeriod, time.Now()), "different shard sizes cached separately")
+
+	// Same size reuses the cache, and cleanup invalidates it.
+	require.True(t, sizeOne == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()))
+	ring.CleanupShuffleShardCache(user)
+	require.False(t, sizeOne == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "recomputed after cache cleanup")
+}
+
 // User shuffle shard token.
 func userToken(user, zone string, skip int) uint32 {
 	r := rand.New(rand.NewSource(shard.ShuffleShardSeed(user, zone)))

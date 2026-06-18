@@ -199,6 +199,11 @@ type Ring struct {
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
 
+	// For subrings returned by ShuffleShardWithLookback, the time at which the subring's
+	// membership would next change because an instance falls out of the lookback window.
+	// Zero means the subring has no time-based expiry (membership only changes with topology).
+	shuffleShardExpiry time.Time
+
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
 	ringZones         []string
@@ -224,6 +229,10 @@ type subringCacheKey struct {
 	shardSize  int
 
 	zoneStableSharding bool
+
+	// lookbackPeriod distinguishes subrings built with ShuffleShardWithLookback (>0) from
+	// plain shuffle-shard subrings (0).
+	lookbackPeriod time.Duration
 }
 
 // New creates a new Ring. Being a service, Ring needs to be started to do anything.
@@ -755,11 +764,11 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 // - Shuffling: probabilistically, for a large enough cluster each identifier gets a different
 // set of instances, with a reduced number of overlapping instances between two identifiers.
 func (r *Ring) ShuffleShard(identifier string, size int) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, false)
+	return r.shuffleShardWithCache(identifier, size, 0, time.Now(), false)
 }
 
 func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRing {
-	return r.shuffleShardWithCache(identifier, size, true)
+	return r.shuffleShardWithCache(identifier, size, 0, time.Now(), true)
 }
 
 // ShuffleShardWithLookback is like ShuffleShard() but the returned subring includes all instances
@@ -768,34 +777,35 @@ func (r *Ring) ShuffleShardWithZoneStability(identifier string, size int) ReadRi
 // The returned subring may be unbalanced with regard to zones and should never be used for write
 // operations (read only).
 //
-// This function doesn't support caching.
+// The returned subring is cached and reused until its membership would change: either when an
+// instance ages out of the lookback window (a per-entry expiry) or on a topology change.
 func (r *Ring) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ReadRing {
-	// Nothing to do if the shard size is not smaller than the actual ring.
-	if size <= 0 || r.InstancesCount() <= size {
-		return r
-	}
-
-	return r.shuffleShard(identifier, size, lookbackPeriod, now, false)
+	return r.shuffleShardWithCache(identifier, size, lookbackPeriod, now, false)
 }
 
-func (r *Ring) shuffleShardWithCache(identifier string, size int, zoneStableSharding bool) ReadRing {
+func (r *Ring) shuffleShardWithCache(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) ReadRing {
 	// Nothing to do if the shard size is not smaller than the actual ring.
 	if size <= 0 || r.InstancesCount() <= size {
 		return r
 	}
 
-	if cached := r.getCachedShuffledSubring(identifier, size, zoneStableSharding); cached != nil {
+	if cached := r.getCachedShuffledSubring(identifier, size, lookbackPeriod, now, zoneStableSharding); cached != nil {
 		return cached
 	}
 
-	result := r.shuffleShard(identifier, size, 0, time.Now(), zoneStableSharding)
+	result := r.shuffleShard(identifier, size, lookbackPeriod, now, zoneStableSharding)
 
-	r.setCachedShuffledSubring(identifier, size, zoneStableSharding, result)
+	r.setCachedShuffledSubring(identifier, size, lookbackPeriod, zoneStableSharding, result)
 	return result
 }
 
 func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) *Ring {
 	lookbackUntil := now.Add(-lookbackPeriod).Unix()
+	lookbackInSeconds := int64(lookbackPeriod / time.Second)
+
+	// Earliest time (unix seconds) the subring's membership changes because a lookback-included
+	// instance ages out of the window. Zero means it has no time-based expiry.
+	var minLookbackExpiry int64
 
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
@@ -877,7 +887,15 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 				// then we should include it in the subring but continuing selecting instances.
 				// If an instance is in READONLY we should always extend. The write path will filter it out when GetRing.
 				// The read path should extend to get new ingester used on write
-				if (lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil) || instance.State == READONLY {
+				withinLookback := lookbackPeriod > 0 && instance.RegisteredTimestamp >= lookbackUntil
+				if withinLookback {
+					// Track when this instance will leave the lookback window; that's the earliest
+					// point at which the cached subring's membership would change.
+					if expiry := instance.RegisteredTimestamp + lookbackInSeconds; minLookbackExpiry == 0 || expiry < minLookbackExpiry {
+						minLookbackExpiry = expiry
+					}
+				}
+				if withinLookback || instance.State == READONLY {
 					continue
 				}
 
@@ -898,6 +916,11 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 	shardDesc := &Desc{Ingesters: shard}
 	shardTokensByZone := shardDesc.getTokensByZone()
 
+	var shuffleShardExpiry time.Time
+	if minLookbackExpiry > 0 {
+		shuffleShardExpiry = time.Unix(minLookbackExpiry, 0)
+	}
+
 	return &Ring{
 		cfg:              r.cfg,
 		strategy:         r.strategy,
@@ -914,6 +937,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 		// For caching to work, remember these values.
 		lastTopologyChange: r.lastTopologyChange,
+		shuffleShardExpiry: shuffleShardExpiry,
 	}
 }
 
@@ -951,7 +975,7 @@ func (r *Ring) HasInstance(instanceID string) bool {
 	return ok
 }
 
-func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableSharding bool) *Ring {
+func (r *Ring) getCachedShuffledSubring(identifier string, size int, lookbackPeriod time.Duration, now time.Time, zoneStableSharding bool) *Ring {
 	if r.cfg.SubringCacheDisabled {
 		return nil
 	}
@@ -960,8 +984,15 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableS
 	defer r.mtx.RUnlock()
 
 	// if shuffledSubringCache map is nil, reading it returns default value (nil pointer).
-	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}]
+	cached := r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding, lookbackPeriod: lookbackPeriod}]
 	if cached == nil {
+		return nil
+	}
+
+	// For lookback subrings the cached membership is only valid until the earliest instance
+	// leaves the lookback window. Once "now" reaches that point, treat it as a cache miss so
+	// the caller recomputes.
+	if !cached.shuffleShardExpiry.IsZero() && !now.Before(cached.shuffleShardExpiry) {
 		return nil
 	}
 
@@ -979,7 +1010,7 @@ func (r *Ring) getCachedShuffledSubring(identifier string, size int, zoneStableS
 	return cached
 }
 
-func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableSharding bool, subring *Ring) {
+func (r *Ring) setCachedShuffledSubring(identifier string, size int, lookbackPeriod time.Duration, zoneStableSharding bool, subring *Ring) {
 	if subring == nil || r.cfg.SubringCacheDisabled {
 		return
 	}
@@ -991,7 +1022,7 @@ func (r *Ring) setCachedShuffledSubring(identifier string, size int, zoneStableS
 	// (which can happen between releasing the read lock and getting read-write lock).
 	// Note that shuffledSubringCache can be only nil when set by test.
 	if r.shuffledSubringCache != nil && r.lastTopologyChange.Equal(subring.lastTopologyChange) {
-		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding}] = subring
+		r.shuffledSubringCache[subringCacheKey{identifier: identifier, shardSize: size, zoneStableSharding: zoneStableSharding, lookbackPeriod: lookbackPeriod}] = subring
 	}
 }
 

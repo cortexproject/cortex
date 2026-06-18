@@ -9445,8 +9445,8 @@
           "x-cli-flag": "parquet-converter.meta-sync-concurrency"
         },
         "num_row_groups": {
-          "default": 2147483647,
-          "description": "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. Default is unlimited (single shard).",
+          "default": 0,
+          "description": "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. 0 means unlimited (single shard).",
           "type": "number",
           "x-cli-flag": "parquet-converter.num-row-groups"
         },

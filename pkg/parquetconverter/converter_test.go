@@ -567,3 +567,63 @@ func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
 	// It should be 0 since the block was already converted
 	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
 }
+
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		numRowGroups int
+		expectedErr  error
+	}{
+		"negative num row groups is invalid": {
+			numRowGroups: -1,
+			expectedErr:  errInvalidNumRowGroups,
+		},
+		"zero num row groups is valid (unlimited, single shard)": {
+			numRowGroups: 0,
+			expectedErr:  nil,
+		},
+		"positive num row groups is valid": {
+			numRowGroups: 5,
+			expectedErr:  nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := prepareConfig()
+			cfg.NumRowGroups = tc.numRowGroups
+			require.Equal(t, tc.expectedErr, cfg.Validate())
+		})
+	}
+}
+
+func TestNewConverter_NumRowGroupsOption(t *testing.T) {
+	tests := map[string]struct {
+		numRowGroups          int
+		expectNumRowGroupsOpt bool
+	}{
+		"zero does not pass WithNumRowGroups (library default)": {
+			numRowGroups:          0,
+			expectNumRowGroupsOpt: false,
+		},
+		"positive passes WithNumRowGroups": {
+			numRowGroups:          3,
+			expectNumRowGroupsOpt: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := prepareConfig()
+			cfg.NumRowGroups = tc.numRowGroups
+
+			c := newConverter(cfg, nil, cortex_tsdb.BlocksStorageConfig{}, nil, log.NewNopLogger(), prometheus.NewPedanticRegistry(), nil, nil)
+			// WithColDuration and WithRowGroupSize are always present; WithNumRowGroups
+			// is appended only when NumRowGroups > 0.
+			expectedLen := 2
+			if tc.expectNumRowGroupsOpt {
+				expectedLen = 3
+			}
+			require.Len(t, c.baseConverterOptions, expectedLen)
+		})
+	}
+}

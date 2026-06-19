@@ -2666,7 +2666,8 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					currTime := time.Now().Add(lookbackPeriod).Add(time.Minute)
 
 					// Add the initial shard to the history.
-					rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding).GetReplicationSetForOperation(Read)
+					subRing, _ := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding)
+					rs, err := subRing.GetReplicationSetForOperation(Read)
 					require.NoError(t, err)
 
 					history := map[time.Time]ReplicationSet{
@@ -2732,7 +2733,8 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						}
 
 						// Add the current shard to the history.
-						rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding).GetReplicationSetForOperation(Read)
+						subRing, _ := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding)
+						rs, err = subRing.GetReplicationSetForOperation(Read)
 						require.NoError(t, err)
 						history[currTime] = rs
 
@@ -2808,7 +2810,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},
@@ -2835,7 +2837,7 @@ func BenchmarkRing_Get(b *testing.B) {
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},
@@ -2862,7 +2864,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},

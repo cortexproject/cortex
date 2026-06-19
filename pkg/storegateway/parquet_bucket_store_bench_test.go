@@ -73,6 +73,9 @@ func BenchmarkParquetBucketStore_ProjectionHints(b *testing.B) {
 					SyncDir:                filepath.Join(tmpDir, "sync"),
 					BucketStoreType:        "parquet",
 					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+					// Must be > 0, otherwise the per-query errgroup limit becomes 0
+					// and errGroup.Go blocks forever, hanging the Series handler.
+					ParquetQueryConcurrency: 4,
 				},
 			}
 
@@ -236,6 +239,9 @@ func BenchmarkParquetBucketStore_SeriesBatch(b *testing.B) {
 					SyncDir:                filepath.Join(tmpDir, "sync"),
 					BucketStoreType:        "parquet",
 					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+					// Must be > 0, otherwise the per-query errgroup limit becomes 0
+					// and errGroup.Go blocks forever, hanging the Series handler.
+					ParquetQueryConcurrency: 4,
 				},
 			}
 			bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "test", log.NewNopLogger(), prometheus.NewRegistry())

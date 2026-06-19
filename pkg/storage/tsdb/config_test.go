@@ -145,6 +145,24 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errUnSupportedWALCompressionType,
 		},
+		"should fail on parquet query concurrency set to 0": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = 0
+			},
+			expectedErr: errInvalidParquetQueryConcurrency,
+		},
+		"should fail on negative parquet query concurrency": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = -1
+			},
+			expectedErr: errInvalidParquetQueryConcurrency,
+		},
+		"should pass on valid parquet query concurrency": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = 4
+			},
+			expectedErr: nil,
+		},
 	}
 
 	for testName, testData := range tests {

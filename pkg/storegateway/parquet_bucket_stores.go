@@ -273,7 +273,7 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 		logger:            userLogger,
 		bucket:            userBucket,
 		limits:            u.limits,
-		concurrency:       4, // TODO: make this configurable
+		concurrency:       u.cfg.BucketStore.ParquetQueryConcurrency,
 		chunksDecoder:     u.chunksDecoder,
 		matcherCache:      u.matcherCache,
 		parquetShardCache: u.parquetShardCache,

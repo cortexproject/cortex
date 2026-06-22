@@ -229,6 +229,54 @@ func TestFetchWithLazyMatchers_FiltersCorrectly(t *testing.T) {
 	assert.Equal(t, []storage.SeriesRef{1, 3}, refs)
 }
 
+// TestFetchWithLazyMatchers_BufferReuseSafety guards the per-series label
+// buffer reuse in fetchWithLazyMatchers.
+func TestFetchWithLazyMatchers_BufferReuseSafety(t *testing.T) {
+	ctx := context.Background()
+
+	const totalSeries = 500
+	series := make(map[storage.SeriesRef]labels.Labels, totalSeries)
+	refs := make([]storage.SeriesRef, totalSeries)
+	var wantMatches []storage.SeriesRef
+	for i := range totalSeries {
+		ref := storage.SeriesRef(i + 1)
+		refs[i] = ref
+		// Half the series share a single "web-shared" pod value (exercises the
+		// per-value cache-hit branch across many overwritten buffers); the other
+		// half get distinct values, alternating match/no-match.
+		var pod string
+		switch {
+		case i%2 == 0:
+			pod = "web-shared" // matches web.*
+		case i%4 == 1:
+			pod = "web-" + string('a'+i%26) // distinct, matches web.*
+		default:
+			pod = "db-" + string('a'+i%26) // distinct, does not match
+		}
+		series[ref] = labels.FromStrings("__name__", "cpu", "pod", pod)
+		if pod == "web-shared" || (len(pod) >= 4 && pod[:4] == "web-") {
+			wantMatches = append(wantMatches, ref)
+		}
+	}
+
+	ir := &mockIndexReaderWithSeries{
+		mockIndexReader: mockIndexReader{},
+		series:          series,
+	}
+	cache := &blocksPostingsForMatchersCache{
+		postingsForMatchersFunc: func(_ context.Context, _ prom_tsdb.IndexReader, _ ...*labels.Matcher) (index.Postings, error) {
+			return index.NewListPostings(append([]storage.SeriesRef(nil), refs...)), nil
+		},
+	}
+
+	got, _, err := cache.fetchWithLazyMatchers(ctx, ir,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "cpu")},
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "pod", "web.*")},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, wantMatches, got, "buffer reuse must not corrupt cached label values")
+}
+
 func TestFetchWithLazyMatchers_SkipsGCdSeries(t *testing.T) {
 	ctx := context.Background()
 

@@ -397,7 +397,10 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 
 	n.run()
 
-	// This should never fail, unless there's a programming mistake.
+	// r.notifierCfg is built once at startup (buildNotifierConfig) and applied
+	// unchanged to every tenant's notifier, so applyConfig does not depend on
+	// per-tenant or user input and is not expected to fail here. Handle the
+	// error defensively anyway:
 	if err := n.applyConfig(r.notifierCfg); err != nil {
 		// n.run() already started the notifier's discovery and notification
 		// goroutines, but n has not been added to r.notifiers yet, so neither

@@ -249,9 +249,9 @@ func TestFetchWithLazyMatchers_BufferReuseSafety(t *testing.T) {
 		case i%2 == 0:
 			pod = "web-shared" // matches web.*
 		case i%4 == 1:
-			pod = "web-" + string('a'+i%26) // distinct, matches web.*
+			pod = "web-" + string(rune('a'+i%26)) // distinct, matches web.*
 		default:
-			pod = "db-" + string('a'+i%26) // distinct, does not match
+			pod = "db-" + string(rune('a'+i%26)) // distinct, does not match
 		}
 		series[ref] = labels.FromStrings("__name__", "cpu", "pod", pod)
 		if pod == "web-shared" || (len(pod) >= 4 && pod[:4] == "web-") {

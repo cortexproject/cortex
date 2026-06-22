@@ -337,6 +337,9 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 	}
 
 	var builder labels.ScratchBuilder
+	// reusedLabels is only used by the slicelabels build, where Overwrite reuses
+	// its backing slice to avoid a per-series allocation. Other builds ignore it.
+	var reusedLabels labels.Labels
 	filtered := ids[:0]
 	for cnt, id := range ids {
 		if cnt%128 == 0 && ctx.Err() != nil {
@@ -349,7 +352,7 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 			}
 			return nil, 0, err
 		}
-		lbls := builder.Labels()
+		lbls := seriesLabelsForLazyMatch(&builder, &reusedLabels)
 
 		matches := true
 		for i, m := range lazyMs {

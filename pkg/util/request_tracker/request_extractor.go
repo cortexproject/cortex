@@ -80,6 +80,9 @@ func generateJSONEntryWithTruncatedField(entryMap map[string]any, fieldName, fie
 }
 
 func trimStringByBytes(str string, size int) string {
+	if size <= 0 {
+		return ""
+	}
 	bytesStr := []byte(str)
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {

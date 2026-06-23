@@ -71,6 +71,7 @@
 * [BUGFIX] Security: Reject empty entries in `-distributor.sign-write-requests-keys` caused by stray or trailing commas (e.g. `newkey,`). Previously these were silently accepted and produced an empty signing key, which downgraded HMAC stream-push authentication to a forgeable signature. Misconfigured flags now fail at process startup; audit your configs before upgrading. #7587
 * [BUGFIX] Querier: Fix panic due to request tracker truncating multi-byte UTF-8 character #7640
 * [BUGFIX] Ingester: Fix panic (`HistogramProtoToHistogram called with a float histogram`) when ingesting a float native histogram with a zero count (e.g. a staleness marker or empty histogram). The decoder is now selected by histogram type via `IsFloatHistogram()` instead of by count value. #7645
+* [BUGFIX] Querier: Fix parquet queryable fallback returning a nil error instead of the actual query error in `LabelValues` and `LabelNames`. #7638
 
 ## 1.21.0 2026-04-24
 

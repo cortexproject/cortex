@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -126,4 +127,67 @@ func TestAPITrackerAboveMaxConcurrency(t *testing.T) {
 
 	tracker.Delete(index2)
 	tracker.Delete(index3)
+}
+
+// TestTrimForJsonMarshalMultiByteUTF8 ensures that truncating a string made of
+// multi-byte UTF-8 characters never panics, even when the requested size is
+// zero, negative, or lands in the middle of a multi-byte rune.
+func TestTrimForJsonMarshalMultiByteUTF8(t *testing.T) {
+	// "世" is a 3-byte UTF-8 character.
+	multiByte := strings.Repeat("世", 10)
+
+	tests := []struct {
+		name string
+		str  string
+		size int
+	}{
+		{name: "negative size", str: multiByte, size: -5},
+		{name: "zero size", str: multiByte, size: 0},
+		{name: "size one (mid-rune)", str: multiByte, size: 1},
+		{name: "size two (mid-rune)", str: multiByte, size: 2},
+		{name: "size in middle of a rune", str: multiByte, size: 4},
+		{name: "size larger than string", str: multiByte, size: 1000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				out := trimForJsonMarshal(tc.str, tc.size)
+				// Result must always be valid UTF-8 (no partial runes).
+				assert.True(t, utf8.ValidString(out), "result should be valid UTF-8")
+				assert.LessOrEqual(t, len(out), len(tc.str))
+			})
+		})
+	}
+}
+
+// TestGenerateJSONEntryWithTruncatedFieldNegativeSize reproduces the request
+// tracker panic where a multi-byte UTF-8 field had to be truncated to a
+// negative remaining size because the rest of the entry already consumed the
+// available budget. This must not panic and must still produce valid JSON.
+func TestGenerateJSONEntryWithTruncatedFieldNegativeSize(t *testing.T) {
+	// Fill the base entry so the remaining budget for the field is <= 0.
+	entryMap := make(map[string]any)
+	entryMap["filler"] = strings.Repeat("a", maxEntrySize)
+
+	require.NotPanics(t, func() {
+		out := generateJSONEntryWithTruncatedField(entryMap, "query", strings.Repeat("世", 100))
+		assert.NotNil(t, out)
+	})
+}
+
+// TestRangedQueryExtractorMultiByteTruncation exercises the full extraction
+// path with a large multi-byte UTF-8 query and oversized headers, forcing the
+// query field to be truncated to a very small (potentially negative) budget.
+func TestRangedQueryExtractorMultiByteTruncation(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/v1/query_range?query="+strings.Repeat("世", 500), nil)
+	// Large header value inflates the base entry, shrinking the budget left
+	// for the multi-byte query field.
+	req.Header.Set("User-Agent", strings.Repeat("x", maxEntrySize))
+
+	extractor := &RangedQueryExtractor{}
+	require.NotPanics(t, func() {
+		entry := extractor.Extract(req)
+		assert.True(t, utf8.Valid(entry), "entry should be valid UTF-8")
+	})
 }

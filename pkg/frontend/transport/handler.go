@@ -322,7 +322,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		queryString = f.parseRequestQueryString(r, buf)
 	}
 	if shouldReportSlowQuery {
-		f.reportSlowQuery(r, queryString, queryResponseTime)
+		f.reportSlowQuery(r, queryString, queryResponseTime, source, stats)
 		if f.cfg.QueryStatsEnabled {
 			f.getOrCreateSlowQueryMetric().WithLabelValues(source, userID).Inc()
 		}
@@ -423,18 +423,58 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 }
 
 // reportSlowQuery reports slow queries.
-func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
+func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration, source string, stats *querier_stats.QueryStats) {
 	logMessage := []any{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
 		"path", r.URL.Path,
+		"source", source,
 		"time_taken", queryResponseTime.String(),
 	}
+
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+
+	if userAgent := r.Header.Get("User-Agent"); len(userAgent) > 0 {
+		logMessage = append(logMessage, "user_agent", userAgent)
+	}
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
+	}
+	if wallTime := stats.LoadWallTime(); wallTime > 0 {
+		logMessage = append(logMessage, "query_wall_time_seconds", wallTime.Seconds())
+	}
+	if storageWallTime := stats.LoadQueryStorageWallTime(); storageWallTime > 0 {
+		logMessage = append(logMessage, "query_storage_wall_time_seconds", storageWallTime.Seconds())
+	}
+	if n := stats.LoadFetchedSeries(); n > 0 {
+		logMessage = append(logMessage, "fetched_series_count", n)
+	}
+	if n := stats.LoadFetchedChunks(); n > 0 {
+		logMessage = append(logMessage, "fetched_chunks_count", n)
+	}
+	if n := stats.LoadFetchedSamples(); n > 0 {
+		logMessage = append(logMessage, "fetched_samples_count", n)
+	}
+	if n := stats.LoadScannedSamples(); n > 0 {
+		logMessage = append(logMessage, "samples_scanned", n)
+	}
+	if n := stats.LoadFetchedChunkBytes(); n > 0 {
+		logMessage = append(logMessage, "fetched_chunks_bytes", n)
+	}
+	if n := stats.LoadFetchedDataBytes(); n > 0 {
+		logMessage = append(logMessage, "fetched_data_bytes", n)
+	}
+	if n := stats.LoadSplitQueries(); n > 0 {
+		logMessage = append(logMessage, "split_queries", n)
+	}
+
 	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)

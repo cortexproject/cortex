@@ -474,6 +474,14 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
+	// Wait until the store-gateway is ACTIVE in the querier's view of the store-gateway ring. The
+	// store-gateway registers JOINING (with tokens) and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can pass while the querier would still fail queries with
+	// "at least 1 healthy replica required, could only find 0" (HTTP 500) instead of the expected 422.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
@@ -570,6 +578,14 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+
+	// Wait until the store-gateway is ACTIVE in the querier's view of the store-gateway ring. The
+	// store-gateway registers JOINING (with tokens) and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can pass while the querier would still fail queries with
+	// "at least 1 healthy replica required, could only find 0" (HTTP 500) instead of the expected 422.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")

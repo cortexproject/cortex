@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1588,10 +1589,27 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
+		cfg.CompactionInterval = 10 * time.Minute // We will only call compaction manually.
+
+		// Pin deterministic ring tokens so that each compactor owns exactly half of
+		// the test users (compactor-1: user-1,3,5,7,9; compactor-2: user-2,4,6,8,10).
+		// With random tokens there is a ~1-in-1000 chance per run that the second
+		// compactor owns zero users, which made the previous wait condition
+		// permanently unsatisfiable (#7565, #7608).
+		cfg.ShardingRing.TokensFilePath = filepath.Join(t.TempDir(), "tokens")
+		require.NoError(t, ring.TokenFile{PreviousState: ring.ACTIVE, Tokens: pinnedTokens(t, userIDs, i)}.StoreToFile(cfg.ShardingRing.TokensFilePath))
+
 		// Each compactor will get its own temp dir for storing local files.
 		c, _, tsdbPlanner, _, _ := prepareForPartitioning(t, cfg, inmem, nil, nil)
 		t.Cleanup(func() {
-			require.NoError(t, services.StopAndAwaitTerminated(context.Background(), c))
+			// With the long compaction interval the compactor is usually still
+			// waiting for its initial jittered compaction run when the test ends.
+			// Stopping it at that point makes running() return the context
+			// cancellation, which is reported as a service failure: tolerate it
+			// (and only it).
+			if err := services.StopAndAwaitTerminated(context.Background(), c); err != nil {
+				require.ErrorIs(t, err, context.Canceled)
+			}
 		})
 
 		compactors = append(compactors, c)
@@ -1610,38 +1628,51 @@ func TestPartitionCompactor_DeleteLocalSyncFiles(t *testing.T) {
 	// Start first compactor
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c1))
 
-	// Wait until a run has been completed on first compactor. This happens as soon as compactor starts.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
-		return prom_testutil.ToFloat64(c1.CompactionRunsCompleted) >= 1
-	})
+	// Run a compaction cycle on the first compactor: it is alone in the ring, so
+	// it owns (and syncs) all the users.
+	c1.compactUsers(context.Background())
+	require.Equal(t, numUsers, len(c1.listTenantsWithMetaSyncDirectories()))
 
 	require.NoError(t, os.Mkdir(c1.metaSyncDirForUser("new-user"), 0600))
 
 	// Verify that first compactor has synced all the users, plus there is one extra we have just created.
 	require.Equal(t, numUsers+1, len(c1.listTenantsWithMetaSyncDirectories()))
 
-	// Now start second compactor, and wait until it runs compaction.
+	// Now start second compactor.
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c2))
-	// Wait for at least two completed cycles so we sample after a steady-state
-	// ownership cycle, not mid-cycle following a zero-owned first cycle. The
-	// first cycle's CompactionRunsCompleted can increment with zero owned users
-	// due to transient ring-view skew at startup; sampling then would race with
-	// the second cycle's fetcher.NewBaseFetcher creating meta-sync directories
-	// and return a partial count.
-	cortex_testutil.Poll(t, 30*time.Second, true, func() any {
-		return prom_testutil.ToFloat64(c2.CompactionRunsCompleted) >= 2 &&
-			len(c2.listTenantsWithMetaSyncDirectories()) > 0
+
+	// Before driving ownership-dependent compaction cycles, wait until BOTH
+	// compactors' ring views see two healthy ACTIVE instances (RingOp is the
+	// operation ownUser itself queries). c2's own view is already barriered by
+	// starting() — it waits until c2 is ACTIVE in its own view, and every KV
+	// snapshot containing c2 also contains the earlier-registered c1 — but c1's
+	// ring watcher ingests c2's registration asynchronously, and the final
+	// c1.compactUsers() cleanup below depends on c1's view.
+	cortex_testutil.Poll(t, 10*time.Second, true, func() any {
+		for _, c := range compactors {
+			rs, err := c.ring.GetAllHealthy(RingOp)
+			if err != nil || len(rs.Instances) != 2 {
+				return false
+			}
+		}
+		return true
 	})
+
+	// Run a compaction cycle on the second compactor: with pinned tokens it owns
+	// exactly half of the users and creates a meta-sync directory for each of them.
+	c2.compactUsers(context.Background())
 
 	// Let's check how many users second compactor has.
 	c2Users := len(c2.listTenantsWithMetaSyncDirectories())
+	require.Equal(t, numUsers/2, c2Users)
 
 	// Force new compaction cycle on first compactor. It will run the cleanup of un-owned users at the end of compaction cycle.
 	c1.compactUsers(context.Background())
 	c1Users := len(c1.listTenantsWithMetaSyncDirectories())
 
-	// Now compactor 1 should have cleaned old sync files.
-	require.NotEqual(t, numUsers, c1Users)
+	// Now compactor 1 should have cleaned the sync files of the users it no longer
+	// owns (including "new-user"), keeping exactly its own half.
+	require.Equal(t, numUsers-numUsers/2, c1Users)
 	require.Equal(t, numUsers, c1Users+c2Users)
 }
 

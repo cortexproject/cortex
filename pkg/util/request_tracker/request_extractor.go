@@ -101,6 +101,9 @@ func trimForJsonMarshalRecursive(field string, size int, repeatCount int, repeat
 	if repeatCount > 1 {
 		return ""
 	}
+	if repeatSize <= 0 {
+		return ""
+	}
 
 	fieldTrimmed := trimStringByBytes(field, repeatSize)
 	fieldEncoded, err := json.Marshal(fieldTrimmed)

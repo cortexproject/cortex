@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -27,7 +28,22 @@ type ReplicationSet struct {
 // Do function f in parallel for all replicas in the set, erroring is we exceed
 // MaxErrors and returning early otherwise. zoneResultsQuorum allows only include
 // results from zones that already reach quorum to improve performance.
+//
+// A new goroutine is spawned for each instance. Callers that issue a high
+// volume of small requests (e.g. the ruler/querier fanning out to many
+// ingesters) should prefer DoWithExecutor with a shared worker pool to avoid
+// the per-call cost of creating and growing goroutine stacks.
 func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, *InstanceDesc) (any, error)) ([]any, error) {
+	return r.DoWithExecutor(ctx, delay, zoneResultsQuorum, partialDataEnabled, noOpExecutor, f)
+}
+
+// DoWithExecutor is like Do but runs the per-instance work using the provided
+// AsyncExecutor. Passing a goroutine worker pool lets callers reuse goroutines
+// (with already-grown stacks) across calls, avoiding the runtime.newstack /
+// runtime.copystack cost of spawning a fresh goroutine per instance on every
+// request. When the executor has no worker available it falls back to spawning
+// a goroutine, so behavior matches Do under saturation.
+func (r ReplicationSet) DoWithExecutor(ctx context.Context, delay time.Duration, zoneResultsQuorum bool, partialDataEnabled bool, executor util.AsyncExecutor, f func(context.Context, *InstanceDesc) (any, error)) ([]any, error) {
 	type instanceResult struct {
 		res      any
 		err      error
@@ -49,9 +65,11 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Spawn a goroutine for each instance.
+	// Run f for each instance. The executor may pool goroutines to amortize
+	// stack growth; the default (no-op) executor spawns a goroutine per call.
 	for i := range r.Instances {
-		go func(i int, ing *InstanceDesc) {
+		i, ing := i, &r.Instances[i]
+		executor.Submit(func() {
 			// Wait to send extra requests. Works only when zone-awareness is disabled.
 			if delay > 0 && r.MaxUnavailableZones == 0 && i >= len(r.Instances)-r.MaxErrors {
 				after := time.NewTimer(delay)
@@ -69,7 +87,7 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, zoneResults
 				err:      err,
 				instance: ing,
 			}
-		}(i, &r.Instances[i])
+		})
 	}
 
 	for !tracker.succeeded() && !tracker.finished() {

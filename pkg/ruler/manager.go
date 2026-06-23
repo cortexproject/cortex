@@ -300,12 +300,37 @@ func (r *DefaultMultiTenantManager) newManager(ctx context.Context, userID strin
 	reg := prometheus.NewRegistry()
 	r.userManagerMetrics.AddUserRegistry(userID, reg)
 
+	// getOrCreateNotifier starts the per-user notifier (and its discovery and
+	// notification goroutines) and registers it in r.notifiers before the rule
+	// manager is created. If anything below fails, this user is never added to
+	// r.userManagers, so the removal loop in SyncRuleGroups would never stop the
+	// notifier, leaking it and its goroutines until the process exits (issue
+	// #7595). Tear the partially-initialized state down on any early return; the
+	// cleanup is disarmed once a manager is successfully returned. removeNotifier
+	// takes r.notifiersMtx while this method runs under r.userManagerMtx; those two
+	// locks are always acquired in that order (userManagerMtx, then notifiersMtx)
+	// and never the reverse, so this cannot deadlock. removeNotifier is a no-op
+	// when no notifier was registered.
+	success := false
+	defer func() {
+		if !success {
+			r.removeNotifier(userID)
+			r.userManagerMetrics.RemoveUserRegistry(userID)
+		}
+	}()
+
 	notifier, err := r.getOrCreateNotifier(userID, reg)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.managerFactory(ctx, userID, notifier, r.logger, r.frontendPool, reg)
+	manager, err := r.managerFactory(ctx, userID, notifier, r.logger, r.frontendPool, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	success = true
+	return manager, nil
 }
 
 func (r *DefaultMultiTenantManager) removeNotifier(userID string) {
@@ -372,8 +397,17 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 
 	n.run()
 
-	// This should never fail, unless there's a programming mistake.
+	// r.notifierCfg is built once at startup (buildNotifierConfig) and applied
+	// unchanged to every tenant's notifier, so applyConfig does not depend on
+	// per-tenant or user input and is not expected to fail here. Handle the
+	// error defensively anyway:
 	if err := n.applyConfig(r.notifierCfg); err != nil {
+		// n.run() already started the notifier's discovery and notification
+		// goroutines, but n has not been added to r.notifiers yet, so neither
+		// removeNotifier nor Stop would ever stop it. Stop it directly to avoid
+		// leaking those goroutines. We must not call removeNotifier here because
+		// we already hold r.notifiersMtx, which it would try to re-acquire.
+		n.stop()
 		return nil, err
 	}
 

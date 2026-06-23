@@ -1887,3 +1887,57 @@ func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {
 		},
 	}
 }
+
+func TestRulerXFunctionsWithThanosEngine(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			"-querier.thanos-engine":           "true",
+			"-querier.enable-x-functions":      "true",
+			"-ruler.evaluation-interval":       "2s",
+			"-ruler.poll-interval":             "2s",
+			"-ruler.evaluation-delay-duration": "0",
+			"-distributor.replication-factor":  "1",
+		},
+	)
+
+	const namespace = "test"
+	const user = "user-1"
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler))
+
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	series, _ := generateSeries("metric_total", time.Now(), prompb.Label{Name: "job", Value: "test"})
+	res, err := c.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	ruleGroup := ruleGroupWithRule("xfunctions_group", "xincrease_rule", `xincrease(metric_total{job="test"}[5m])`)
+	require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+	m := ruleGroupMatcher(user, namespace, "xfunctions_group")
+
+	// Wait until ruler has loaded the rule group.
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+}

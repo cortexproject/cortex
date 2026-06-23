@@ -435,8 +435,8 @@ github.com/felixge/httpsnoop
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/go-chi/chi/v5 v5.2.2
-## explicit; go 1.20
+# github.com/go-chi/chi/v5 v5.2.4
+## explicit; go 1.22
 github.com/go-chi/chi/v5
 # github.com/go-jose/go-jose/v4 v4.1.4
 ## explicit; go 1.24.0

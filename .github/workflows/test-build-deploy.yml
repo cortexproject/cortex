@@ -199,6 +199,7 @@ jobs:
       - name: Generate Run-Pattern Manifest
         # For each build tag, derive a -test.run regex listing every TestX function in source files
         # gated by that tag. The integration job will read these to select which tests to run.
+        shell: bash
         run: |
           TAGS=(requires_docker integration_alertmanager integration_backward_compatibility \
                 integration_memberlist integration_overrides integration_querier \

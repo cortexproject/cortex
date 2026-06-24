@@ -3774,4 +3774,158 @@ Limits like &lt;code>shard_size&lt;/code> should only be modified by the admin.&
 &lt;li>Matching runs once per update period (default 1min), not on every sample ingestion.&lt;/li>
 &lt;li>The number of trackers is expected to be small (&amp;lt; 10).&lt;/li>
 &lt;li>Compiled matchers are cached in the parsed Limits and only recompiled on config change.&lt;/li>
-&lt;/ul></description></item></channel></rss>
+&lt;/ul></description></item><item><title>Docs:</title><link>/docs/proposals/native-histograms/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/native-histograms/</guid><description>
+&lt;h1 id="native-histogram-support-for-all-production-metrics">Native Histogram Support for All Production Metrics&lt;/h1>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Cortex exposes ~56 histogram metrics across its components. Native histograms (introduced in Prometheus 2.40) offer significant advantages over classic histograms:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Higher resolution&lt;/strong> — Exponential bucket boundaries adapt to observed values, eliminating the need to pre-define bucket ranges.&lt;/li>
+&lt;li>&lt;strong>Lower storage cost&lt;/strong> — Native histograms typically use fewer time series than classic histograms with many buckets.&lt;/li>
+&lt;li>&lt;strong>Better aggregation&lt;/strong> — Native histograms can be merged across instances without information loss from mismatched bucket boundaries.&lt;/li>
+&lt;/ol>
+&lt;p>Previously, ~11 histograms were converted to dual-format (classic + native). The remaining ~45 production histograms were still classic-only, providing an inconsistent experience for operators who want to adopt native histograms.&lt;/p>
+&lt;h2 id="design">Design&lt;/h2>
+&lt;h3 id="dual-format-histograms">Dual-Format Histograms&lt;/h3>
+&lt;p>All production histograms are configured as dual-format by adding three fields to each &lt;code>prometheus.HistogramOpts&lt;/code>:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-go" data-lang="go">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a6e22e">NativeHistogramBucketFactor&lt;/span>: &lt;span style="color:#ae81ff">1.1&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a6e22e">NativeHistogramMaxBucketNumber&lt;/span>: &lt;span style="color:#ae81ff">100&lt;/span>,
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#a6e22e">NativeHistogramMinResetDuration&lt;/span>: &lt;span style="color:#a6e22e">time&lt;/span>.&lt;span style="color:#a6e22e">Hour&lt;/span>,
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>This means:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Classic scrapes&lt;/strong> continue to work unchanged — the histogram exposes classic buckets as before.&lt;/li>
+&lt;li>&lt;strong>Native-aware scrapes&lt;/strong> (using &lt;code>Accept: application/vnd.google.protobuf&lt;/code>) receive native histogram data instead.&lt;/li>
+&lt;li>No behavioral change for existing deployments until they opt in to native histogram scraping.&lt;/li>
+&lt;/ul>
+&lt;h3 id="configuration-values">Configuration Values&lt;/h3>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Field&lt;/th>
+&lt;th>Value&lt;/th>
+&lt;th>Rationale&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>&lt;code>NativeHistogramBucketFactor&lt;/code>&lt;/td>
+&lt;td>1.1&lt;/td>
+&lt;td>~10% relative resolution per bucket, providing good precision without excessive bucket count. Matches the pattern already established in the codebase.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>NativeHistogramMaxBucketNumber&lt;/code>&lt;/td>
+&lt;td>100&lt;/td>
+&lt;td>Upper bound on bucket count to prevent cardinality explosion from pathological distributions.&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>&lt;code>NativeHistogramMinResetDuration&lt;/code>&lt;/td>
+&lt;td>&lt;code>time.Hour&lt;/code>&lt;/td>
+&lt;td>Prevents premature schema resets during transient spikes, reducing unnecessary churn.&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>These values match the existing pattern used by the ~11 histograms already converted (e.g., in &lt;code>pkg/distributor&lt;/code>, &lt;code>pkg/ingester&lt;/code>).&lt;/p>
+&lt;h3 id="affected-components">Affected Components&lt;/h3>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Component&lt;/th>
+&lt;th>Histograms&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>Ingester&lt;/td>
+&lt;td>8 (WAL replay, appender add/commit, queried samples/exemplars/series/chunks)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Querier&lt;/td>
+&lt;td>7 (store gateway client, instances hit, refetches, blocks scan, tenant federation)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Cache&lt;/td>
+&lt;td>4 (instrumented cache value size/duration, memcached, redis)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>API&lt;/td>
+&lt;td>3 (request duration, message sizes)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Distributor&lt;/td>
+&lt;td>2 (query duration, labels per sample)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Compactor&lt;/td>
+&lt;td>2 (meta sync duration, garbage collection duration)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Storage/TSDB&lt;/td>
+&lt;td>5 (bucket index load, multilevel cache fetch/backfill)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Store Gateway&lt;/td>
+&lt;td>1 (blocks sync)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Frontend&lt;/td>
+&lt;td>2 (queue duration, retries)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Scheduler&lt;/td>
+&lt;td>1 (queue duration)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Alertmanager&lt;/td>
+&lt;td>2 (client request duration, initial sync duration)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Ring/KV&lt;/td>
+&lt;td>4 (KV request duration, consul, dynamodb, lifecycler shutdown)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Ruler&lt;/td>
+&lt;td>2 (client pool request duration, frontend client pool)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>HA Tracker&lt;/td>
+&lt;td>1 (change propagation time)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Configs&lt;/td>
+&lt;td>2 (client request duration, database request duration)&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>Parquet Converter&lt;/td>
+&lt;td>1 (block conversion delay)&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h3 id="backward-compatibility">Backward Compatibility&lt;/h3>
+&lt;p>This change is fully backward compatible:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>No metric name changes&lt;/strong> — all existing metric names, labels, and bucket boundaries are preserved.&lt;/li>
+&lt;li>&lt;strong>No scrape format change&lt;/strong> — classic format is served unless the scraper explicitly requests native histograms via content negotiation.&lt;/li>
+&lt;li>&lt;strong>No configuration required&lt;/strong> — dual-format is enabled automatically; operators opt in to native scraping at the Prometheus/agent level.&lt;/li>
+&lt;/ul>
+&lt;h2 id="migration-path">Migration Path&lt;/h2>
+&lt;ol>
+&lt;li>
+&lt;p>&lt;strong>Deploy updated Cortex&lt;/strong> — histograms begin emitting dual-format data. No observable change for classic scrapers.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Enable native histogram ingestion&lt;/strong> in Prometheus (or compatible agents) by configuring &lt;code>scrape_protocols&lt;/code> to include &lt;code>PrometheusProto&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;li>
+&lt;p>&lt;strong>Update dashboards/alerts&lt;/strong> — native histograms use the base metric name (without &lt;code>_bucket&lt;/code>/&lt;code>_sum&lt;/code>/&lt;code>_count&lt;/code> suffixes). For example:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-promql" data-lang="promql">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Classic histogram query:&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">histogram_quantile&lt;/span>&lt;span style="color:#f92672">(&lt;/span>&lt;span style="color:#ae81ff">0.99&lt;/span>, &lt;span style="color:#66d9ef">rate&lt;/span>&lt;span style="color:#f92672">(&lt;/span>cortex_ingester_tsdb_appender_commit_duration_seconds_bucket[&lt;span style="color:#e6db74">5m&lt;/span>]&lt;span style="color:#f92672">))&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Native histogram query (uses base name directly):&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#66d9ef">histogram_quantile&lt;/span>&lt;span style="color:#f92672">(&lt;/span>&lt;span style="color:#ae81ff">0.99&lt;/span>, &lt;span style="color:#66d9ef">rate&lt;/span>&lt;span style="color:#f92672">(&lt;/span>cortex_ingester_tsdb_appender_commit_duration_seconds[&lt;span style="color:#e6db74">5m&lt;/span>]&lt;span style="color:#f92672">))&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Native histograms also enable new PromQL functions not available with classic histograms: &lt;code>histogram_avg()&lt;/code>, &lt;code>histogram_fraction()&lt;/code>, &lt;code>histogram_stddev()&lt;/code>, and &lt;code>histogram_stdvar()&lt;/code>.&lt;/p>
+&lt;/li>
+&lt;/ol>
+&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
+&lt;h3 id="native-only-no-classic-buckets">Native-only (no classic buckets)&lt;/h3>
+&lt;p>Rejected because it would break existing dashboards and alerts that rely on classic bucket boundaries. Dual-format ensures zero disruption.&lt;/p>
+&lt;h3 id="per-histogram-configuration">Per-histogram configuration&lt;/h3>
+&lt;p>Rejected because uniform settings simplify operations and the chosen values (1.1 factor, 100 max buckets, 1h min reset) are broadly suitable for all Cortex histograms. Operators who need different settings can override at the scrape level.&lt;/p></description></item></channel></rss>

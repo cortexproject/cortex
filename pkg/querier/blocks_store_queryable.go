@@ -116,16 +116,22 @@ type blocksStoreQueryableMetrics struct {
 func newBlocksStoreQueryableMetrics(reg prometheus.Registerer) *blocksStoreQueryableMetrics {
 	return &blocksStoreQueryableMetrics{
 		storesHit: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_storegateway_instances_hit_per_query",
-			Help:      "Number of store-gateway instances hit for a single query.",
-			Buckets:   []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			Namespace:                       "cortex",
+			Name:                            "querier_storegateway_instances_hit_per_query",
+			Help:                            "Number of store-gateway instances hit for a single query.",
+			Buckets:                         []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		refetches: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_storegateway_refetches_per_query",
-			Help:      "Number of re-fetches attempted while querying store-gateway instances due to missing blocks.",
-			Buckets:   []float64{0, 1, 2, 4, 8},
+			Namespace:                       "cortex",
+			Name:                            "querier_storegateway_refetches_per_query",
+			Help:                            "Number of re-fetches attempted while querying store-gateway instances due to missing blocks.",
+			Buckets:                         []float64{0, 1, 2, 4, 8},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }

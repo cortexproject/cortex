@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
@@ -26,10 +27,13 @@ import (
 )
 
 var ingesterClientRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "ingester_client_request_duration_seconds",
-	Help:      "Time spent doing Ingester requests.",
-	Buckets:   prometheus.ExponentialBuckets(0.001, 4, 7),
+	Namespace:                       "cortex",
+	Name:                            "ingester_client_request_duration_seconds",
+	Help:                            "Time spent doing Ingester requests.",
+	Buckets:                         prometheus.ExponentialBuckets(0.001, 4, 7),
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
 }, []string{"operation", "status_code"})
 var ingesterClientInflightPushRequests = promauto.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "cortex",

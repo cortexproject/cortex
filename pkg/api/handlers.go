@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -171,24 +172,33 @@ func NewQuerierHandler(
 ) http.Handler {
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
-		Buckets:   instrument.DefBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_request_duration_seconds",
+		Help:                            "Time (in seconds) spent serving HTTP requests to the querier.",
+		Buckets:                         instrument.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route", "status_code", "ws"})
 
 	receivedMessageSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_message_bytes",
-		Help:      "Size (in bytes) of messages received in the request to the querier.",
-		Buckets:   middleware.BodySizeBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_request_message_bytes",
+		Help:                            "Size (in bytes) of messages received in the request to the querier.",
+		Buckets:                         middleware.BodySizeBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route"})
 
 	sentMessageSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_response_message_bytes",
-		Help:      "Size (in bytes) of messages sent in response by the querier.",
-		Buckets:   middleware.BodySizeBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_response_message_bytes",
+		Help:                            "Size (in bytes) of messages sent in response by the querier.",
+		Buckets:                         middleware.BodySizeBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route"})
 
 	inflightRequests := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{

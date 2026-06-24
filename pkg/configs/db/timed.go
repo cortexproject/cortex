@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/instrument"
@@ -11,10 +12,13 @@ import (
 
 var (
 	databaseRequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "database_request_duration_seconds",
-		Help:      "Time spent (in seconds) doing database requests.",
-		Buckets:   prometheus.DefBuckets,
+		Namespace:                       "cortex",
+		Name:                            "database_request_duration_seconds",
+		Help:                            "Time spent (in seconds) doing database requests.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "status_code"}))
 )
 

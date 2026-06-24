@@ -3,6 +3,7 @@ package dynamodb
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -25,9 +26,12 @@ type dynamodbMetrics struct {
 
 func newDynamoDbMetrics(registerer prometheus.Registerer) *dynamodbMetrics {
 	dynamodbRequestDurationCollector := instrument.NewHistogramCollector(promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "dynamodb_kv_request_duration_seconds",
-		Help:    "Time spent on dynamodb requests.",
-		Buckets: prometheus.DefBuckets,
+		Name:                            "dynamodb_kv_request_duration_seconds",
+		Help:                            "Time spent on dynamodb requests.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "status_code"}))
 
 	dynamodbUsageMetrics := promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{

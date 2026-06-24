@@ -20,8 +20,11 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 		// Cached chunks are generally in the KBs, but cached index can
 		// get big.  Histogram goes from 1KB to 4MB.
 		// 1024 * 4^(7-1) = 4MB
-		Buckets:     prometheus.ExponentialBuckets(1024, 4, 7),
-		ConstLabels: prometheus.Labels{"name": name},
+		Buckets:                         prometheus.ExponentialBuckets(1024, 4, 7),
+		ConstLabels:                     prometheus.Labels{"name": name},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method"})
 
 	return &instrumentedCache{
@@ -33,8 +36,11 @@ func Instrument(name string, cache Cache, reg prometheus.Registerer) Cache {
 			Name:      "cache_request_duration_seconds",
 			Help:      "Total time spent in seconds doing cache requests.",
 			// Cache requests are very quick: smallest bucket is 16us, biggest is 1s.
-			Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
-			ConstLabels: prometheus.Labels{"name": name},
+			Buckets:                         prometheus.ExponentialBuckets(0.000016, 4, 8),
+			ConstLabels:                     prometheus.Labels{"name": name},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "status_code"})),
 
 		fetchedKeys: promauto.With(reg).NewCounter(prometheus.CounterOpts{

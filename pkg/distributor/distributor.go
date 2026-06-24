@@ -336,10 +336,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRate:                       util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression and exemplar queries.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
+			Namespace:                       "cortex",
+			Name:                            "distributor_query_duration_seconds",
+			Help:                            "Time spent executing expression and exemplar queries.",
+			Buckets:                         []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "status_code"})),
 		receivedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -396,10 +399,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Help:      "The total number of deduplicated samples.",
 		}, []string{"user", "cluster"}),
 		labelsHistogram: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "labels_per_sample",
-			Help:      "Number of labels per sample.",
-			Buckets:   []float64{5, 10, 15, 20, 25},
+			Namespace:                       "cortex",
+			Name:                            "labels_per_sample",
+			Help:                            "Number of labels per sample.",
+			Buckets:                         []float64{5, 10, 15, 20, 25},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",

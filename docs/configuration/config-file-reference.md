@@ -2735,6 +2735,12 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
   [parquet_shard_cache_ttl: <duration> | default = 24h]
 
+  # [Experimental] If enabled, Store Gateway will honor projection hints and
+  # only materialize requested labels. It only takes effect when
+  # `-blocks-storage.bucket-store.bucket-store-type` is parquet.
+  # CLI flag: -blocks-storage.bucket-store.honor-projection-hints
+  [honor_projection_hints: <boolean> | default = false]
+
   # Maximum number of concurrent goroutines per query applied at each level of
   # parquet processing: shard querying, row group processing, and column
   # materialization. Note: this limit is applied independently at each level, so

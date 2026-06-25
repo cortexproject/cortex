@@ -1598,7 +1598,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				// value-based check (hp.GetCountFloat() > 0) would misroute it
 				// to the integer decoder, which panics. This mirrors the
 				// discriminator used everywhere else (e.g. util/validation).
-				if hp.Histogram.IsFloatHistogram() {
+				if hp.IsFloatHistogram() {
 					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
 				} else {
 					h = cortexpb.HistogramProtoToHistogram(hp.Histogram)

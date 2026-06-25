@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -2631,6 +2632,64 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
 
 			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedHistogramsFail), float64(1))
+		})
+	}
+}
+
+func TestIngester_Push_FloatHistogramWithZeroCount(t *testing.T) {
+	// Regression test: a float histogram with a count of 0 (e.g. a staleness
+	// marker or an empty histogram) has the CountFloat oneof set, so it IS a
+	// float histogram. A value-based discriminator (hp.GetCountFloat() > 0)
+	// misroutes it to the integer decoder cortexpb.HistogramProtoToHistogram,
+	// which panics with "HistogramProtoToHistogram called with a float
+	// histogram" and crashes the ingester. The decoder must be selected by the
+	// proto type via IsFloatHistogram() instead.
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+	userID := "test"
+
+	for _, tc := range []struct {
+		name      string
+		histogram cortexpb.WrappedHistogram
+	}{
+		{
+			name:      "staleness marker float histogram with zero count",
+			histogram: cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(10, &histogram.FloatHistogram{Sum: math.Float64frombits(value.StaleNaN)})),
+		},
+		{
+			name:      "empty float histogram with zero count",
+			histogram: cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(10, &histogram.FloatHistogram{})),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+
+			// Create a mocked ingester
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			ctx := user.InjectOrgID(context.Background(), userID)
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return i.lifecycler.GetState()
+			})
+
+			req := cortexpb.ToWriteRequest([]labels.Labels{metricLabels}, nil, nil, []cortexpb.WrappedHistogram{tc.histogram}, cortexpb.API)
+			// Before the fix this panics inside Push; after the fix it must be
+			// ingested without error.
+			_, err = i.Push(ctx, req)
+			require.NoError(t, err)
+
+			require.Equal(t, float64(0), testutil.ToFloat64(i.metrics.ingestedHistogramsFail))
+			require.Equal(t, float64(1), testutil.ToFloat64(i.metrics.ingestedHistograms))
 		})
 	}
 }

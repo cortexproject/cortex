@@ -1591,7 +1591,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					fh  *histogram.FloatHistogram
 				)
 
-				if hp.GetCountFloat() > 0 {
+				// Choose the decoder based on the histogram's proto type (the
+				// CountInt/CountFloat oneof), not the count value. A float
+				// histogram with a count of 0 (e.g. a staleness marker or an
+				// empty histogram) still has the CountFloat oneof set, so a
+				// value-based check (hp.GetCountFloat() > 0) would misroute it
+				// to the integer decoder, which panics. This mirrors the
+				// discriminator used everywhere else (e.g. util/validation).
+				if hp.IsFloatHistogram() {
 					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
 				} else {
 					h = cortexpb.HistogramProtoToHistogram(hp.Histogram)

@@ -84,14 +84,14 @@ func BuildArgs(flags map[string]string) []string {
 }
 
 func GetRequest(url string) (*http.Response, error) {
-	const timeout = 1 * time.Second
+	const timeout = 5 * time.Second
 
 	client := &http.Client{Timeout: timeout}
 	return client.Get(url)
 }
 
 func PostRequest(url string) (*http.Response, error) {
-	const timeout = 1 * time.Second
+	const timeout = 5 * time.Second
 
 	client := &http.Client{Timeout: timeout}
 	return client.Post(url, "", strings.NewReader(""))

@@ -122,6 +122,43 @@ jobs:
         uses: github/codeql-action/analyze@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v3.29.5
 
   
+  discover-tags:
+    # Single source of truth for the integration build tags. Greps //go:build headers under
+    # ./integration/ and emits both a CSV (for go test -c tag list) and the matrix JSON
+    # (cross-product of arches × tags) consumed by `integration` below.
+    runs-on: ubuntu-24.04
+    outputs:
+      tags_csv: ${{ steps.discover.outputs.tags_csv }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - id: discover
+        shell: bash
+        run: |
+          TAGS=()
+          while IFS= read -r line; do
+            TAGS+=("$line")
+          done < <(grep -hE "^//go:build " integration/*.go \
+                   | sed -E 's|^//go:build ||' \
+                   | sort -u | grep -v '^integration$')
+          if [ "${#TAGS[@]}" -eq 0 ]; then
+            echo "ERROR: no //go:build tags found under integration/" >&2
+            exit 1
+          fi
+          TAGS_CSV=$(IFS=,; echo "${TAGS[*]}")
+          echo "tags_csv=${TAGS_CSV}" >> "$GITHUB_OUTPUT"
+          # Build matrix JSON: every tag runs on both amd64 and arm64.
+          TAGS_JSON=$(printf '%s\n' "${TAGS[@]}" | jq -R . | jq -s .)
+          MATRIX=$(jq -c -n --argjson tags "$TAGS_JSON" '{
+            include: [
+              ($tags[] | {runner: "ubuntu-24.04",     arch: "amd64", tags: .}),
+              ($tags[] | {runner: "ubuntu-24.04-arm", arch: "arm64", tags: .})
+            ]
+          }')
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Discovered tags: ${TAGS_CSV}"
+
   build:
     runs-on: ubuntu-24.04
     container:
@@ -166,6 +203,7 @@ jobs:
           path: ./images.tar
 
   build-integration-tests:
+    needs: [discover-tags]
     strategy:
       fail-fast: false
       matrix:
@@ -189,11 +227,9 @@ jobs:
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
       - name: Compile Integration Test Binary
-        # All 11 integration build tags are baked into one binary. Per-tag selection happens at run time
-        # via -test.run patterns (see "Generate Run-Pattern Manifest" below). Keep ALL_TAGS in sync with
-        # the matrix in the `integration` job below — they are the same canonical list.
+        # Tag list comes from the discover-tags job — single source of truth.
         run: |
-          ALL_TAGS="slicelabels,integration,requires_docker,integration_alertmanager,integration_backward_compatibility,integration_memberlist,integration_overrides,integration_querier,integration_querier_microservices_mode,integration_ruler,integration_query_fuzz,integration_remote_write_v2,integration_grpc"
+          ALL_TAGS="slicelabels,integration,${{ needs.discover-tags.outputs.tags_csv }}"
           mkdir -p out/bin
           go test -c -tags="${ALL_TAGS}" -o out/bin/integration.test ./integration/
       - name: Generate Run-Pattern Manifest
@@ -201,10 +237,7 @@ jobs:
         # gated by that tag. The integration job will read these to select which tests to run.
         shell: bash
         run: |
-          TAGS=(requires_docker integration_alertmanager integration_backward_compatibility \
-                integration_memberlist integration_overrides integration_querier \
-                integration_querier_microservices_mode integration_ruler integration_query_fuzz \
-                integration_remote_write_v2 integration_grpc)
+          IFS=',' read -ra TAGS <<< "${{ needs.discover-tags.outputs.tags_csv }}"
           for tag in "${TAGS[@]}"; do
             names=$(grep -lE "^//go:build.*\b${tag}\b" integration/*.go 2>/dev/null \
                     | xargs -r grep -hE "^func Test[A-Z]" \
@@ -231,79 +264,12 @@ jobs:
           path: ./integration-tests-${{ matrix.arch }}.tar.gz
 
   integration:
-    needs: [build, build-integration-tests, lint]
+    needs: [discover-tags, build, build-integration-tests, lint]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: requires_docker
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_alertmanager
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_backward_compatibility
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_memberlist
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_overrides
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_querier
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_querier_microservices_mode
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_ruler
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_query_fuzz
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_remote_write_v2
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_grpc
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: requires_docker
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_alertmanager
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_memberlist
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_overrides
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_ruler
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_remote_write_v2
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_query_fuzz
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_backward_compatibility
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_querier
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_querier_microservices_mode
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_grpc
+      matrix: ${{ fromJSON(needs.discover-tags.outputs.matrix) }}
     steps:
       - name: Download Docker Images Artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0

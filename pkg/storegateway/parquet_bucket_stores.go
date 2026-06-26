@@ -307,7 +307,7 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, s
 			name,
 			labelsFileOpener,
 			chunksFileOpener,
-			0, // we always only have 1 shard - shard 0
+			shardID,
 			parquet_storage.WithFileOptions(
 				parquet.SkipMagicBytes(true),
 				parquet.ReadBufferSize(100*1024),

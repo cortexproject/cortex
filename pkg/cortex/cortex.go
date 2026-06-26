@@ -265,6 +265,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid tracing config")
 	}
 
+	if err := c.ParquetConverter.Validate(); err != nil {
+		return errors.Wrap(err, "invalid parquet-converter config")
+	}
+
 	return nil
 }
 

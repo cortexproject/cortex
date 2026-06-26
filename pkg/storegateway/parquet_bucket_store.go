@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus-community/parquet-common/schema"
@@ -25,6 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -32,7 +34,7 @@ import (
 
 type parquetBucketStore struct {
 	logger      log.Logger
-	bucket      objstore.Bucket
+	bucket      objstore.InstrumentedBucket
 	limits      *validation.Overrides
 	concurrency int
 
@@ -62,19 +64,52 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	}
 
 	blockIDs := strings.Split(blockMatchers[0].Value, "|")
-	blocks := make([]*parquetBlock, 0, len(blockIDs))
 	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
+
+	// Read converter marks and expand to per-shard (blockID, shardID) lists.
+	// TODO(Sungjin1212): Read the shard count from the bucket index instead of reading the converter mark for each block.
+	var shardBlockIDs []string
+	var shardIDs []int
 	for _, blockID := range blockIDs {
-		// TODO: support shard ID > 0 later.
-		block, err := p.newParquetBlock(ctx, blockID, 0, bucketOpener, bucketOpener, p.chunksDecoder, p.rowRangesCache, noopQuota, noopQuota, noopQuota)
+		uid, err := ulid.Parse(blockID)
 		if err != nil {
-			return nil, err
+			return nil, errors.Wrapf(err, "failed to parse block ID %s", blockID)
 		}
-		blocks = append(blocks, block)
+		marker, err := cortex_parquet.ReadConverterMark(ctx, uid, p.bucket, p.logger)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read converter mark for block %s", blockID)
+		}
+		numShards := marker.Shards
+		if numShards <= 0 {
+			// backward compatibility: blocks without a shard count have one shard
+			numShards = 1
+		}
+		for shardID := 0; shardID < numShards; shardID++ {
+			shardBlockIDs = append(shardBlockIDs, blockID)
+			shardIDs = append(shardIDs, shardID)
+		}
 	}
 
-	return blocks, nil
+	// Open all shards in parallel.
+	parquetBlocks := make([]*parquetBlock, len(shardBlockIDs))
+	errGroup, egCtx := errgroup.WithContext(ctx)
+	errGroup.SetLimit(p.concurrency)
+	for i := range shardBlockIDs {
+		errGroup.Go(func() error {
+			blk, err := p.newParquetBlock(egCtx, shardBlockIDs[i], shardIDs[i], bucketOpener, bucketOpener, p.chunksDecoder, p.rowRangesCache, noopQuota, noopQuota, noopQuota)
+			if err != nil {
+				return err
+			}
+			parquetBlocks[i] = blk
+			return nil
+		})
+	}
+	if err := errGroup.Wait(); err != nil {
+		return nil, err
+	}
+
+	return parquetBlocks, nil
 }
 
 // Series implements the store interface for a single parquet bucket store
@@ -112,10 +147,14 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 	errGroup, ctx := errgroup.WithContext(srv.Context())
 	errGroup.SetLimit(p.concurrency)
 
+	seenBlocks := make(map[string]struct{}, len(shards))
 	for i, shard := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: shard.name,
-		})
+		if _, seen := seenBlocks[shard.name]; !seen {
+			seenBlocks[shard.name] = struct{}{}
+			resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
+				Id: shard.name,
+			})
+		}
 		errGroup.Go(func() error {
 			ss, err := shard.Query(ctx, req.MinTime, req.MaxTime, req.SkipChunks, matchers)
 			seriesSet[i] = ss
@@ -197,10 +236,14 @@ func (p *parquetBucketStore) LabelNames(ctx context.Context, req *storepb.LabelN
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(p.concurrency)
 
+	seenBlocks := make(map[string]struct{}, len(shards))
 	for i, s := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: s.name,
-		})
+		if _, seen := seenBlocks[s.name]; !seen {
+			seenBlocks[s.name] = struct{}{}
+			resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
+				Id: s.name,
+			})
+		}
 		errGroup.Go(func() error {
 			r, err := s.LabelNames(ctx, req.Limit, matchers)
 			resNameSets[i] = r
@@ -254,10 +297,14 @@ func (p *parquetBucketStore) LabelValues(ctx context.Context, req *storepb.Label
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(p.concurrency)
 
+	seenBlocks := make(map[string]struct{}, len(shards))
 	for i, s := range shards {
-		resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
-			Id: s.name,
-		})
+		if _, seen := seenBlocks[s.name]; !seen {
+			seenBlocks[s.name] = struct{}{}
+			resHints.QueriedBlocks = append(resHints.QueriedBlocks, hintspb.Block{
+				Id: s.name,
+			})
+		}
 		errGroup.Go(func() error {
 			r, err := s.LabelValues(ctx, req.Label, req.Limit, matchers)
 			resNameValues[i] = r

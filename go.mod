@@ -26,16 +26,16 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/hashicorp/consul/api v1.34.3
 	github.com/hashicorp/go-cleanhttp v0.5.2
-	github.com/hashicorp/go-metrics v0.5.4
+	github.com/hashicorp/go-metrics v0.6.0
 	github.com/hashicorp/go-sockaddr v1.0.7
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.18.6
 	github.com/lib/pq v1.11.2 // indirect
-	github.com/minio/minio-go/v7 v7.2.0
+	github.com/minio/minio-go/v7 v7.2.1
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/oklog/ulid v1.3.1
-	github.com/opentracing-contrib/go-grpc v0.1.3
+	github.com/opentracing-contrib/go-grpc v0.1.4
 	github.com/opentracing-contrib/go-stdlib v1.1.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pkg/errors v0.9.1
@@ -65,7 +65,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/atomic v1.11.0
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
@@ -94,7 +94,7 @@ require (
 	github.com/prometheus/procfs v0.20.1
 	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/tjhop/slog-gokit v0.2.0
-	go.opentelemetry.io/collector/pdata v1.60.0
+	go.opentelemetry.io/collector/pdata v1.61.0
 	go.uber.org/automaxprocs v1.6.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -267,7 +267,7 @@ require (
 	go.opentelemetry.io/collector/confmap v1.45.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.139.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.45.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.60.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.61.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.45.0 // indirect
 	go.opentelemetry.io/collector/processor v1.45.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.128.0 // indirect
@@ -290,13 +290,13 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go4.org/intern v0.0.0-20230525184215-6c62f75575cb // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20231121144256-b99613f794b6 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/tools v0.44.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/tools v0.45.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 	google.golang.org/api v0.252.0 // indirect
 	google.golang.org/genproto v0.0.0-20250603155806-513f23925822 // indirect

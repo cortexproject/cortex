@@ -15,7 +15,7 @@ Cortex in production.
 
 In order to send traces, you will need to set up a Jaeger deployment. A
 deployment includes either the Jaeger all-in-one binary or else a distributed
-system of agents, collectors, and queriers.  If running on Kubernetes, [Jaeger
+system of agents, collectors, and queriers. If running on Kubernetes, [Jaeger
 Kubernetes](https://github.com/jaegertracing/jaeger-kubernetes) is an excellent
 resource.
 
@@ -49,8 +49,8 @@ even if you plan to use the default values.
 In order to send traces, you will need to set up an OpenTelemetry Collector. The collector will be able to send traces to
 multiple destinations such as [AWS X-Ray](https://aws-otel.github.io/docs/getting-started/x-ray),
 [Google Cloud](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter),
-[Dash0](https://www.dash0.com/hub/integrations/int_opentelemetry-collector/overview)
-[DataDog](https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/) and
+[Dash0](https://www.dash0.com/hub/integrations/int_opentelemetry-collector/overview),
+[DataDog](https://docs.datadoghq.com/tracing/trace_collection/open_standards/otel_collector_datadog_exporter/), and
 [others](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter). OpenTelemetry Collector
 provides a [helm chart](https://github.com/open-telemetry/opentelemetry-helm-charts/tree/main/charts/opentelemetry-collector/examples/deployment-otlp-traces)
 to set up the environment.

@@ -430,7 +430,7 @@ func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, query
 		"host", r.Host,
 		"path", r.URL.Path,
 		"source", source,
-		"time_taken", queryResponseTime.String(),
+		"time_taken_ms", queryResponseTime.Milliseconds(),
 	}
 
 	grafanaFields := formatGrafanaStatsFields(r)

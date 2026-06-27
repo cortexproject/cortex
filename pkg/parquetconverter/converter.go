@@ -430,7 +430,9 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
 			continue
 		}
-		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+
+		// Retry conversion if the current limit has increased beyond the label count stored in the old no-convert mark
+		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) && noConvertMark.ShouldSkipBlock(maxBlockLabelNames) {
 			level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
 			c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
 			continue

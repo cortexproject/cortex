@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"path"
 
@@ -28,8 +27,10 @@ const (
 )
 
 type NoConvertMark struct {
-	Version int    `json:"version"`
-	Reason  string `json:"reason"`
+	Version            int    `json:"version"`
+	Reason             string `json:"reason"`
+	LabelNamesCount    int    `json:"label_names_count,omitempty"`
+	MaxBlockLabelNames int    `json:"max_block_label_names,omitempty"`
 }
 
 func ReadNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*NoConvertMark, error) {
@@ -56,8 +57,10 @@ func ReadNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Instr
 
 func WriteNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Bucket, labelNamesCount int, maxBlockLabelNames int) error {
 	noConvertMarker := NoConvertMark{
-		Version: CurrentNoConvertMarkVersion,
-		Reason:  fmt.Sprintf("%s: label_names_count=%d threshold=%d", NoConvertReasonTooManyLabels, labelNamesCount, maxBlockLabelNames),
+		Version:            CurrentNoConvertMarkVersion,
+		Reason:             NoConvertReasonTooManyLabels,
+		LabelNamesCount:    labelNamesCount,
+		MaxBlockLabelNames: maxBlockLabelNames,
 	}
 	noConvertMarkerPath := path.Join(id.String(), NoConvertMarkerFileName)
 	b, err := json.Marshal(noConvertMarker)
@@ -69,4 +72,19 @@ func WriteNoConvertMark(ctx context.Context, id ulid.ULID, userBkt objstore.Buck
 
 func ValidNoConvertMarkVersion(version int) bool {
 	return version == NoConvertMarkVersion1
+}
+
+func (m NoConvertMark) ShouldSkipBlock(currentMaxBlockLabelNamesLimit int) bool {
+	// Manual no-convert marks are not tied to the label-name limit
+	if m.Reason != NoConvertReasonTooManyLabels {
+		return true
+	}
+
+	// limit=0 means the label-name guard is disabled,
+	if currentMaxBlockLabelNamesLimit <= 0 {
+		return false
+	}
+
+	// m.LabelNamesCount is recorded when the old no-convert marker was written
+	return currentMaxBlockLabelNamesLimit < m.LabelNamesCount
 }

@@ -265,6 +265,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return errors.Wrap(err, "invalid tracing config")
 	}
 
+	if err := c.ParquetConverter.Validate(); err != nil {
+		return errors.Wrap(err, "invalid parquet-converter config")
+	}
+
 	return nil
 }
 
@@ -355,6 +359,9 @@ type Cortex struct {
 	Parquetconverter *parquetconverter.Converter
 	StoreGateway     *storegateway.StoreGateway
 	MemberlistKV     *memberlist.KVInitService
+
+	// RegexResolver is set when tenant-federation.regex-matcher-enabled=true.
+	RegexResolver *tenantfederation.RegexResolver
 
 	// Queryables that the querier should use to query the long
 	// term storage. It depends on the storage engine used.

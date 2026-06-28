@@ -143,9 +143,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer promethe
 	s.requestQueue = queue.NewRequestQueue(cfg.QuerierForgetDelay, s.queueLength, s.discardedRequests, s.limits, registerer)
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-		Name:    "cortex_query_scheduler_queue_duration_seconds",
-		Help:    "Time spend by requests in queue before getting picked up by a querier.",
-		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60},
+		Name:                            "cortex_query_scheduler_queue_duration_seconds",
+		Help:                            "Time spend by requests in queue before getting picked up by a querier.",
+		Buckets:                         []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30, 60},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	})
 	s.connectedQuerierClients = promauto.With(registerer).NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "cortex_query_scheduler_connected_querier_clients",

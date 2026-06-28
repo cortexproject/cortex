@@ -2619,6 +2619,332 @@
               },
               "type": "object"
             },
+            "parquet_query_concurrency": {
+              "default": 4,
+              "description": "Maximum number of concurrent goroutines per query applied at each level of parquet processing: shard querying, row group processing, and column materialization. Note: this limit is applied independently at each level, so the total goroutines per query can grow multiplicatively (up to N^3 in the worst case).",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.bucket-store.parquet-query-concurrency"
+            },
+            "parquet_row_ranges_cache": {
+              "properties": {
+                "backend": {
+                  "description": "The parquet row ranges cache backend type. Single or Multiple cache backend can be provided. Supported values in single cache: memcached, redis, inmemory, and '' (disable). Supported values in multi level cache: a comma-separated list of (inmemory, memcached, redis)",
+                  "type": "string",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.backend"
+                },
+                "inmemory": {
+                  "properties": {
+                    "max_size_bytes": {
+                      "default": 1073741824,
+                      "description": "Maximum size in bytes of in-memory parquet-row-ranges cache used (shared between all tenants).",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.inmemory.max-size-bytes"
+                    }
+                  },
+                  "type": "object"
+                },
+                "memcached": {
+                  "properties": {
+                    "addresses": {
+                      "description": "Comma separated list of memcached addresses. Supported prefixes are: dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after that).",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.addresses"
+                    },
+                    "auto_discovery": {
+                      "default": false,
+                      "description": "Use memcached auto-discovery mechanism provided by some cloud provider like GCP and AWS",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.auto-discovery"
+                    },
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-concurrency"
+                    },
+                    "max_get_multi_batch_size": {
+                      "default": 0,
+                      "description": "The maximum number of keys a single underlying get operation should run. If more keys are specified, internally keys are split into multiple batches and fetched concurrently, honoring the max concurrency. If set to 0, the max batch size is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-batch-size"
+                    },
+                    "max_get_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent connections running get operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-concurrency"
+                    },
+                    "max_idle_connections": {
+                      "default": 16,
+                      "description": "The maximum number of idle connections that will be maintained per address.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-idle-connections"
+                    },
+                    "max_item_size": {
+                      "default": 1048576,
+                      "description": "The maximum size of an item stored in memcached. Bigger items are not stored. If set to 0, no maximum size is enforced.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-item-size"
+                    },
+                    "set_async_circuit_breaker_config": {
+                      "properties": {
+                        "consecutive_failures": {
+                          "default": 5,
+                          "description": "Consecutive failures to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.consecutive-failures"
+                        },
+                        "enabled": {
+                          "default": false,
+                          "description": "If true, enable circuit breaker.",
+                          "type": "boolean",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.enabled"
+                        },
+                        "failure_percent": {
+                          "default": 0.05,
+                          "description": "Failure percentage to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.failure-percent"
+                        },
+                        "half_open_max_requests": {
+                          "default": 10,
+                          "description": "Maximum number of requests allowed to pass through when the circuit breaker is half-open. If set to 0, by default it allows 1 request.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.half-open-max-requests"
+                        },
+                        "min_requests": {
+                          "default": 50,
+                          "description": "Minimal requests to trigger the circuit breaker.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.min-requests"
+                        },
+                        "open_duration": {
+                          "default": "5s",
+                          "description": "Period of the open state after which the state of the circuit breaker becomes half-open. If set to 0, by default open duration is 60 seconds.",
+                          "type": "string",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.open-duration",
+                          "x-format": "duration"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "timeout": {
+                      "default": "100ms",
+                      "description": "The socket read/write timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.timeout",
+                      "x-format": "duration"
+                    }
+                  },
+                  "type": "object"
+                },
+                "multilevel": {
+                  "properties": {
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed when backfilling cache items.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur when backfilling cache items.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-concurrency"
+                    },
+                    "max_backfill_items": {
+                      "default": 10000,
+                      "description": "The maximum number of items to backfill per asynchronous operation.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-backfill-items"
+                    }
+                  },
+                  "type": "object"
+                },
+                "redis": {
+                  "properties": {
+                    "addresses": {
+                      "description": "Comma separated list of redis addresses. Supported prefixes are: dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query, dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after that).",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.addresses"
+                    },
+                    "cache_size": {
+                      "default": 0,
+                      "description": "If not zero then client-side caching is enabled. Client-side caching is when data is stored in memory instead of fetching data each time. See https://redis.io/docs/manual/client-side-caching/ for more info.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.cache-size"
+                    },
+                    "db": {
+                      "default": 0,
+                      "description": "Database to be selected after connecting to the server.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.db"
+                    },
+                    "dial_timeout": {
+                      "default": "5s",
+                      "description": "Client dial timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.dial-timeout",
+                      "x-format": "duration"
+                    },
+                    "get_multi_batch_size": {
+                      "default": 100,
+                      "description": "The maximum size per batch for mget.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.get-multi-batch-size"
+                    },
+                    "master_name": {
+                      "description": "Specifies the master's name. Must be not empty for Redis Sentinel.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.master-name"
+                    },
+                    "max_async_buffer_size": {
+                      "default": 10000,
+                      "description": "The maximum number of enqueued asynchronous operations allowed.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-buffer-size"
+                    },
+                    "max_async_concurrency": {
+                      "default": 3,
+                      "description": "The maximum number of concurrent asynchronous operations can occur.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-concurrency"
+                    },
+                    "max_get_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent GetMulti() operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-get-multi-concurrency"
+                    },
+                    "max_set_multi_concurrency": {
+                      "default": 100,
+                      "description": "The maximum number of concurrent SetMulti() operations. If set to 0, concurrency is unlimited.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-set-multi-concurrency"
+                    },
+                    "password": {
+                      "description": "Redis password.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.password"
+                    },
+                    "read_timeout": {
+                      "default": "3s",
+                      "description": "Client read timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.read-timeout",
+                      "x-format": "duration"
+                    },
+                    "set_async_circuit_breaker_config": {
+                      "properties": {
+                        "consecutive_failures": {
+                          "default": 5,
+                          "description": "Consecutive failures to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.consecutive-failures"
+                        },
+                        "enabled": {
+                          "default": false,
+                          "description": "If true, enable circuit breaker.",
+                          "type": "boolean",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.enabled"
+                        },
+                        "failure_percent": {
+                          "default": 0.05,
+                          "description": "Failure percentage to determine if the circuit breaker should open.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.failure-percent"
+                        },
+                        "half_open_max_requests": {
+                          "default": 10,
+                          "description": "Maximum number of requests allowed to pass through when the circuit breaker is half-open. If set to 0, by default it allows 1 request.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.half-open-max-requests"
+                        },
+                        "min_requests": {
+                          "default": 50,
+                          "description": "Minimal requests to trigger the circuit breaker.",
+                          "type": "number",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.min-requests"
+                        },
+                        "open_duration": {
+                          "default": "5s",
+                          "description": "Period of the open state after which the state of the circuit breaker becomes half-open. If set to 0, by default open duration is 60 seconds.",
+                          "type": "string",
+                          "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.open-duration",
+                          "x-format": "duration"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "set_multi_batch_size": {
+                      "default": 100,
+                      "description": "The maximum size per batch for pipeline set.",
+                      "type": "number",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-multi-batch-size"
+                    },
+                    "tls_ca_path": {
+                      "description": "Path to the CA certificates file to validate server certificate against. If not set, the host's root CA certificates are used.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-ca-path"
+                    },
+                    "tls_cert_path": {
+                      "description": "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-cert-path"
+                    },
+                    "tls_enabled": {
+                      "default": false,
+                      "description": "Whether to enable tls for redis connection.",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-enabled"
+                    },
+                    "tls_insecure_skip_verify": {
+                      "default": false,
+                      "description": "Skip validating server certificate.",
+                      "type": "boolean",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-insecure-skip-verify"
+                    },
+                    "tls_key_path": {
+                      "description": "Path to the key file for the client certificate. Also requires the client certificate to be configured.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-key-path"
+                    },
+                    "tls_server_name": {
+                      "description": "Override the expected name on the server certificate.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-server-name"
+                    },
+                    "username": {
+                      "description": "Redis username.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.username"
+                    },
+                    "write_timeout": {
+                      "default": "3s",
+                      "description": "Client write timeout.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.redis.write-timeout",
+                      "x-format": "duration"
+                    }
+                  },
+                  "type": "object"
+                },
+                "ttl": {
+                  "default": "10m0s",
+                  "description": "TTL for caching parquet row ranges.",
+                  "type": "string",
+                  "x-cli-flag": "blocks-storage.bucket-store.parquet-row-ranges-cache.ttl",
+                  "x-format": "duration"
+                }
+              },
+              "type": "object"
+            },
             "parquet_shard_cache_size": {
               "default": 512,
               "description": "[Experimental] Maximum size of the Parquet shard cache. 0 to disable.",
@@ -3911,6 +4237,12 @@
           "type": "number",
           "x-cli-flag": "distributor.num-push-workers"
         },
+        "num_query_workers": {
+          "default": 0,
+          "description": "EXPERIMENTAL: Number of go routines to handle query fan-out calls from distributors (queriers and rulers) to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each query request.",
+          "type": "number",
+          "x-cli-flag": "distributor.num-query-workers"
+        },
         "otlp": {
           "properties": {
             "add_metric_suffixes": {
@@ -4638,6 +4970,34 @@
           "type": "boolean",
           "x-cli-flag": "ingester.enable-regex-matcher-limits"
         },
+        "head_queried_series_metrics_enabled": {
+          "default": false,
+          "description": "Experimental: Enable tracking of series queried from head only and expose them as metrics.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.head-queried-series-metrics-enabled"
+        },
+        "head_queried_series_metrics_sample_rate": {
+          "default": 1,
+          "description": "Sampling rate for head queried series tracking (1.0 = 100%%).",
+          "type": "number",
+          "x-cli-flag": "ingester.head-queried-series-metrics-sample-rate"
+        },
+        "head_queried_series_metrics_window_duration": {
+          "default": "15m0s",
+          "description": "Duration of each sub-window for head queried series tracking.",
+          "type": "string",
+          "x-cli-flag": "ingester.head-queried-series-metrics-window-duration",
+          "x-format": "duration"
+        },
+        "head_queried_series_metrics_windows": {
+          "default": "2h0m0s",
+          "description": "Time windows to expose head queried series metrics. Also controls how long per-metric-name cardinality is reported after last query.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "ingester.head-queried-series-metrics-windows"
+        },
         "ignore_series_limit_for_metric_names": {
           "description": "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.",
           "type": "string",
@@ -4910,6 +5270,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "ingester.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "ingester.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "ingester.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "ingester.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "ingester.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {
@@ -6107,6 +6521,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "querier.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "querier.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "querier.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "querier.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {
@@ -8473,6 +8941,60 @@
         },
         "query_protection": {
           "properties": {
+            "eviction": {
+              "properties": {
+                "check_interval": {
+                  "default": "1s",
+                  "description": "EXPERIMENTAL: How frequently the evictor checks system resource utilization.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.check-interval",
+                  "x-format": "duration"
+                },
+                "cooldown_period": {
+                  "default": 3,
+                  "description": "EXPERIMENTAL: Number of check intervals to wait after an eviction before evicting again.",
+                  "type": "number",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.cooldown-period"
+                },
+                "eviction_metric": {
+                  "default": "fetched_samples",
+                  "description": "EXPERIMENTAL: The query metric used to determine the heaviest query for eviction. Supported values: fetched_samples, fetched_series, fetched_chunks, fetched_chunk_bytes.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.eviction-metric"
+                },
+                "max_evictions_per_cycle": {
+                  "default": 1,
+                  "description": "EXPERIMENTAL: Maximum number of queries to evict in a single check cycle when resource thresholds are breached.",
+                  "type": "number",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.max-evictions-per-cycle"
+                },
+                "min_query_age": {
+                  "default": "10s",
+                  "description": "EXPERIMENTAL: Minimum time a query must be running before it becomes eligible for eviction. Queries younger than this are ignored.",
+                  "type": "string",
+                  "x-cli-flag": "store-gateway.query-protection.eviction.min-query-age",
+                  "x-format": "duration"
+                },
+                "threshold": {
+                  "properties": {
+                    "cpu_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max CPU utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "store-gateway.query-protection.eviction.threshold.cpu-utilization"
+                    },
+                    "heap_utilization": {
+                      "default": 0,
+                      "description": "EXPERIMENTAL: Max heap utilization that this instance can reach before evicting the heaviest running query (across all tenants) in percentage, between 0 and 1. monitored_resources config must include the resource type. 0 to disable.",
+                      "type": "number",
+                      "x-cli-flag": "store-gateway.query-protection.eviction.threshold.heap-utilization"
+                    }
+                  },
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
             "rejection": {
               "properties": {
                 "threshold": {
@@ -8921,6 +9443,12 @@
           "description": "Maximum concurrent goroutines for downloading block metadata from object storage.",
           "type": "number",
           "x-cli-flag": "parquet-converter.meta-sync-concurrency"
+        },
+        "num_row_groups": {
+          "default": 0,
+          "description": "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. 0 means unlimited (single shard).",
+          "type": "number",
+          "x-cli-flag": "parquet-converter.num-row-groups"
         },
         "ring": {
           "properties": {

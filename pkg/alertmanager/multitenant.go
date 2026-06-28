@@ -58,6 +58,9 @@ var (
 	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
 	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
+	// errAlertmanagerShuttingDown is returned when a per-tenant alertmanager cannot be
+	// created or reconfigured because the MultitenantAlertmanager is shutting down.
+	errAlertmanagerShuttingDown = errors.New("alertmanager is shutting down")
 )
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
@@ -273,6 +276,10 @@ type MultitenantAlertmanager struct {
 	// Stores the current set of configurations we're running in each tenant's Alertmanager.
 	// Used for comparing configurations as we synchronize them.
 	cfgs map[string]alertspb.AlertConfigDesc
+	// shuttingDown is set by stopping() before it stops the per-tenant alertmanagers, and
+	// prevents new per-tenant alertmanagers from being created or reconfigured afterwards
+	// (they would never be stopped). Guarded by alertmanagersMtx.
+	shuttingDown bool
 
 	logger              log.Logger
 	alertmanagerMetrics *alertmanagerMetrics
@@ -656,6 +663,10 @@ func (am *MultitenantAlertmanager) waitInitialStateSync(ctx context.Context) err
 // stopping runs when MultitenantAlertmanager transitions to Stopping state.
 func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
+	// Reject any further per-tenant alertmanager creation (e.g. the fallback
+	// lazy-create path of an in-flight request): only the alertmanagers present
+	// in the map right now get stopped below.
+	am.shuttingDown = true
 	for _, am := range am.alertmanagers {
 		am.StopAndWait()
 	}
@@ -820,6 +831,13 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 
 	am.alertmanagersMtx.Lock()
 	defer am.alertmanagersMtx.Unlock()
+
+	// Once shutdown has begun, don't create a new per-tenant alertmanager (it would
+	// never be stopped) nor restart the dispatcher/inhibitor of an already stopped one.
+	if am.shuttingDown {
+		return errAlertmanagerShuttingDown
+	}
+
 	existing, hasExisting := am.alertmanagers[cfg.User]
 
 	rawCfg := cfg.RawConfig
@@ -999,6 +1017,10 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 
 	if am.fallbackConfig != "" {
 		userAM, err = am.alertmanagerFromFallbackConfig(userID)
+		if errors.Is(err, errAlertmanagerShuttingDown) {
+			http.Error(w, "Alertmanager is shutting down", http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			level.Error(am.logger).Log("msg", "unable to initialize the Alertmanager with a fallback configuration", "user", userID, "err", err)
 			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
@@ -1014,6 +1036,15 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 }
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
+	// Avoid the config upload below if shutdown has already begun. This check is
+	// best-effort (the authoritative one is in setConfig, under the same lock).
+	am.alertmanagersMtx.Lock()
+	shuttingDown := am.shuttingDown
+	am.alertmanagersMtx.Unlock()
+	if shuttingDown {
+		return nil, errAlertmanagerShuttingDown
+	}
+
 	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
 	cfgDesc := alertspb.ToProto("", nil, userID)
 	err := am.store.SetAlertConfig(context.Background(), cfgDesc)

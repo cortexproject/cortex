@@ -3,7 +3,10 @@
 package integration
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,12 +16,138 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
+
+// extractTenantIDsFromMatrix returns the unique __tenant_id__ label values
+// present across all streams in a query range result matrix.
+func extractTenantIDsFromMatrix(m model.Matrix) []string {
+	seen := map[string]struct{}{}
+	for _, stream := range m {
+		if tid, ok := stream.Metric[model.LabelName("__tenant_id__")]; ok {
+			seen[string(tid)] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for tid := range seen {
+		result = append(result, tid)
+	}
+	return result
+}
+
+// TestRegexResolver_ResultCacheStale verifies the behavior of
+// query result caching with dynamic tenant discovery.
+func TestRegexResolver_ResultCacheStale(t *testing.T) {
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		// Enable result cache with memcached.
+		"-querier.cache-results":             "true",
+		"-querier.split-queries-by-interval": "24h",
+		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+
+		// Regex tenant federation with fast discovery.
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "5s",
+
+		// Disable bucket index so the store-gateway picks up new blocks via
+		// direct bucket scan
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+		"-blocks-storage.bucket-store.sync-interval":        "2s",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+
+	// entire range is cached on the first query
+	blockStart := time.Now().Add(-20 * time.Minute)
+	blockEnd := time.Now().Add(-10 * time.Minute)
+	seriesLabels := []labels.Labels{labels.FromStrings(labels.MetricName, "series_1")}
+	dir := t.TempDir()
+
+	// Upload blocks for user-0 and user-1.
+	for _, tenantID := range []string{"user-0", "user-1"} {
+		bkt := bucket.NewUserBucketClient(tenantID, storage.GetBucket(), nil)
+		id, err := e2e.CreateBlock(ctx, rnd, dir, seriesLabels, 10,
+			blockStart.UnixMilli(), blockEnd.UnixMilli(), 30_000, 1)
+		require.NoError(t, err)
+		require.NoError(t, block.Upload(ctx, log.Logger, bkt,
+			filepath.Join(dir, id.String()), metadata.NoneFunc))
+	}
+
+	// Start all services.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, distributor, storeGateway))
+	require.NoError(t, s.Start(queryFrontend))
+
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait for the store-gateway to load the 2 initial blocks.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(
+		e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+
+	// Wait for the regex resolver to discover user-0 and user-1.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_regex_resolver_discovered_users"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-.+")
+	require.NoError(t, err)
+
+	result1, err := c.QueryRange("series_1", blockStart, blockEnd, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result1.Type())
+	require.ElementsMatch(t, []string{"user-0", "user-1"},
+		extractTenantIDsFromMatrix(result1.(model.Matrix)),
+		"first query must return data for exactly the initial two tenants")
+
+	bkt2 := bucket.NewUserBucketClient("user-2", storage.GetBucket(), nil)
+	id2, err := e2e.CreateBlock(ctx, rnd, dir, seriesLabels, 10,
+		blockStart.UnixMilli(), blockEnd.UnixMilli(), 30_000, 1)
+	require.NoError(t, err)
+	require.NoError(t, block.Upload(ctx, log.Logger, bkt2,
+		filepath.Join(dir, id2.String()), metadata.NoneFunc))
+
+	// Wait for user-2's block to be picked up by the store-gateway.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(
+		e2e.Equals(3), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+
+	// Wait for the regex resolver to discover user-2.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(3), "cortex_regex_resolver_discovered_users"))
+
+	result2, err := c.QueryRange("series_1", blockStart, blockEnd, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result2.Type())
+	require.ElementsMatch(t, []string{"user-0", "user-1", "user-2"},
+		extractTenantIDsFromMatrix(result2.(model.Matrix)),
+		"second query must include newly discovered user-2")
+}
 
 type querierTenantFederationConfig struct {
 	querySchedulerEnabled  bool

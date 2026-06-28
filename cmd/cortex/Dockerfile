@@ -1,7 +1,7 @@
-FROM       alpine:3.23
+ARG        BASEIMG=gcr.io/distroless/static-debian12:latest
+FROM       ${BASEIMG}
 ARG TARGETARCH
 
-RUN        apk add --no-cache ca-certificates
 COPY       migrations /migrations/
 COPY       cortex-$TARGETARCH /bin/cortex
 EXPOSE     80

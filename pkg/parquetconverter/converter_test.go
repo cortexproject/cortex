@@ -173,6 +173,85 @@ func prepareConfig() Config {
 	return cfg
 }
 
+func TestConverter_SplitsBlockIntoMultipleShards(t *testing.T) {
+	cfg := prepareConfig()
+	// Configure the converter so that each parquet shard holds at most
+	// numRowGroups * maxRowsPerRowGroup = 1 * 2 = 2 series.
+	cfg.NumRowGroups = 1
+	cfg.MaxRowsPerRowGroup = 2
+
+	user := "user-1"
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+	dir := t.TempDir()
+
+	cfg.Ring.InstanceID = "parquet-converter-1"
+	cfg.Ring.InstanceAddr = "1.2.3.4"
+	cfg.Ring.KVStore.Mock = ringStore
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
+
+	ctx := context.Background()
+
+	// Create 5 unique series so that the block is split into
+	// ceil(5 / 2) = 3 parquet shards.
+	const numSeries = 5
+	const expectedShards = 3
+	series := make([]labels.Labels, 0, numSeries)
+	for i := range numSeries {
+		series = append(series, labels.FromStrings("__name__", "test", "series", fmt.Sprintf("%d", i)))
+	}
+
+	// Create and upload a 24h block. It must be larger than the first configured
+	// block range (2h) so that the converter does not skip it as a raw TSDB block.
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	blockID, err := e2e.CreateBlock(ctx, rnd, dir, series, 2, 0, 24*time.Hour.Milliseconds(), time.Minute.Milliseconds(), 10)
+	require.NoError(t, err)
+	blockDir := fmt.Sprintf("%s/%s", dir, blockID.String())
+	b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
+	require.NoError(t, err)
+	err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	// Start the converter.
+	err = services.StartAndAwaitRunning(context.Background(), c)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
+
+	// Wait until the block is converted and assert it was split into multiple shards.
+	test.Poll(t, 3*time.Minute, expectedShards, func() any {
+		m, err := parquet.ReadConverterMark(ctx, blockID, userBucket, logger)
+		require.NoError(t, err)
+		if m.Version != parquet.CurrentVersion {
+			return -1
+		}
+		return m.Shards
+	})
+
+	// Verify that one labels/chunks parquet file exists per shard.
+	for shard := range expectedShards {
+		for _, file := range []string{
+			fmt.Sprintf("%s/%d.chunks.parquet", blockID.String(), shard),
+			fmt.Sprintf("%s/%d.labels.parquet", blockID.String(), shard),
+		} {
+			ok, err := userBucket.Exists(ctx, file)
+			require.NoError(t, err)
+			require.True(t, ok, "expected shard file %s to exist", file)
+		}
+	}
+
+	// Verify there is no extra shard beyond the expected count.
+	ok, err := userBucket.Exists(ctx, fmt.Sprintf("%s/%d.chunks.parquet", blockID.String(), expectedShards))
+	require.NoError(t, err)
+	require.False(t, ok, "expected no shard file at index %d", expectedShards)
+}
+
 func prepare(t *testing.T, cfg Config, bucketClient objstore.InstrumentedBucket, limits *validation.Limits, tenantLimits validation.TenantLimits) (*Converter, log.Logger, prometheus.Gatherer) {
 	storageCfg := cortex_tsdb.BlocksStorageConfig{}
 	blockRanges := cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
@@ -487,4 +566,64 @@ func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
 	// Verify that no conversion happened by checking the convertedBlocks metric
 	// It should be 0 since the block was already converted
 	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := map[string]struct {
+		numRowGroups int
+		expectedErr  error
+	}{
+		"negative num row groups is invalid": {
+			numRowGroups: -1,
+			expectedErr:  errInvalidNumRowGroups,
+		},
+		"zero num row groups is valid (unlimited, single shard)": {
+			numRowGroups: 0,
+			expectedErr:  nil,
+		},
+		"positive num row groups is valid": {
+			numRowGroups: 5,
+			expectedErr:  nil,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := prepareConfig()
+			cfg.NumRowGroups = tc.numRowGroups
+			require.Equal(t, tc.expectedErr, cfg.Validate())
+		})
+	}
+}
+
+func TestNewConverter_NumRowGroupsOption(t *testing.T) {
+	tests := map[string]struct {
+		numRowGroups          int
+		expectNumRowGroupsOpt bool
+	}{
+		"zero does not pass WithNumRowGroups (library default)": {
+			numRowGroups:          0,
+			expectNumRowGroupsOpt: false,
+		},
+		"positive passes WithNumRowGroups": {
+			numRowGroups:          3,
+			expectNumRowGroupsOpt: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			cfg := prepareConfig()
+			cfg.NumRowGroups = tc.numRowGroups
+
+			c := newConverter(cfg, nil, cortex_tsdb.BlocksStorageConfig{}, nil, log.NewNopLogger(), prometheus.NewPedanticRegistry(), nil, nil)
+			// WithColDuration and WithRowGroupSize are always present; WithNumRowGroups
+			// is appended only when NumRowGroups > 0.
+			expectedLen := 2
+			if tc.expectNumRowGroupsOpt {
+				expectedLen = 3
+			}
+			require.Len(t, c.baseConverterOptions, expectedLen)
+		})
+	}
 }

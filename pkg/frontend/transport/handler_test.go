@@ -600,6 +600,97 @@ func TestReportQueryStatsFormat(t *testing.T) {
 	}
 }
 
+func TestReportSlowQueryFormat(t *testing.T) {
+	responseTime := time.Second
+
+	type testCase struct {
+		queryString url.Values
+		queryStats  *querier_stats.QueryStats
+		header      http.Header
+		source      string
+		expectedLog string
+	}
+
+	tests := map[string]testCase{
+		"should log only base fields when stats and headers are empty": {
+			source:      requestmeta.SourceAPI,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s`,
+		},
+		"should log only base fields when stats is nil": {
+			source:      requestmeta.SourceAPI,
+			queryStats:  nil,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s`,
+		},
+		"should include the query string at the end": {
+			source:      requestmeta.SourceAPI,
+			queryString: url.Values(map[string][]string{"query": {"up"}}),
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s param_query=up`,
+		},
+		"should include grafana dashboard and panel id": {
+			source: requestmeta.SourceAPI,
+			header: http.Header{
+				"X-Dashboard-Uid": []string{"dashboard-1"},
+				"X-Panel-Id":      []string{"panel-1"},
+			},
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s X-Dashboard-Uid=dashboard-1 X-Panel-Id=panel-1`,
+		},
+		"should include user agent, engine type and block store type headers": {
+			source: requestmeta.SourceAPI,
+			header: http.Header{
+				"User-Agent": []string{"Grafana"},
+				http.CanonicalHeaderKey(engine.TypeHeader):            []string{string(engine.Thanos)},
+				http.CanonicalHeaderKey(querier.BlockStoreTypeHeader): []string{"parquet"},
+			},
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s user_agent=Grafana engine_type=thanos block_store_type=parquet`,
+		},
+		"should include query stats fields when set": {
+			source: requestmeta.SourceAPI,
+			queryStats: &querier_stats.QueryStats{
+				Stats: querier_stats.Stats{
+					WallTime:             3 * time.Second,
+					QueryStorageWallTime: 100 * time.Minute,
+					FetchedSeriesCount:   100,
+					FetchedChunksCount:   200,
+					FetchedSamplesCount:  300,
+					ScannedSamples:       400,
+					FetchedChunkBytes:    1024,
+					FetchedDataBytes:     2048,
+					SplitQueries:         10,
+				},
+			},
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s query_wall_time_seconds=3 query_storage_wall_time_seconds=6000 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 samples_scanned=400 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10`,
+		},
+		"should not include query stats fields that are zero": {
+			source: requestmeta.SourceAPI,
+			queryStats: &querier_stats.QueryStats{
+				Stats: querier_stats.Stats{
+					WallTime:           3 * time.Second,
+					FetchedSeriesCount: 100,
+				},
+			},
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s query_wall_time_seconds=3 fetched_series_count=100`,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			outputBuf := bytes.NewBuffer(nil)
+			logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
+
+			req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
+			req.Header = testData.header
+			req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), testData.source))
+
+			handler.reportSlowQuery(req, testData.queryString, responseTime, testData.source, testData.queryStats)
+
+			data, err := io.ReadAll(outputBuf)
+			require.NoError(t, err)
+			require.Equal(t, testData.expectedLog+"\n", string(data))
+		})
+	}
+}
+
 func TestReportQueryStatsRejectionReason(t *testing.T) {
 	outputBuf := bytes.NewBuffer(nil)
 	logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))

@@ -357,9 +357,14 @@ func (c *BlocksCleaner) cleanUpActiveUsers(ctx context.Context, users []string, 
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		doneChan := make(chan struct{})
+		go func() {
+			visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+			close(doneChan)
+		}()
 		defer func() {
 			errChan <- nil
+			<-doneChan
 		}()
 		return errors.Wrapf(c.cleanUser(ctx, userLogger, userBucket, userID, firstRun), "failed to delete blocks for user: %s", userID)
 	})
@@ -392,9 +397,14 @@ func (c *BlocksCleaner) cleanDeletedUsers(ctx context.Context, users []string) e
 			return nil
 		}
 		errChan := make(chan error, 1)
-		go visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+		doneChan := make(chan struct{})
+		go func() {
+			visitMarkerManager.HeartBeat(ctx, errChan, c.cleanerVisitMarkerFileUpdateInterval, true)
+			close(doneChan)
+		}()
 		defer func() {
 			errChan <- nil
+			<-doneChan
 		}()
 		return errors.Wrapf(c.deleteUserMarkedForDeletion(ctx, userLogger, userBucket, userID), "failed to delete user marked for deletion: %s", userID)
 	})

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"runtime"
 	"runtime/debug"
@@ -22,6 +23,7 @@ import (
 	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
@@ -99,6 +101,7 @@ const (
 	Purger                   string = "purger"
 	QueryScheduler           string = "query-scheduler"
 	TenantFederation         string = "tenant-federation"
+	RegexResolverService     string = "regex-resolver"
 	ResourceMonitor          string = "resource-monitor"
 	All                      string = "all"
 )
@@ -355,7 +358,8 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	querierRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, prometheus.DefaultRegisterer)
 
 	// Create a querier queryable and PromQL engine
-	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
+	var evictorService services.Service
+	t.QuerierQueryable, t.ExemplarQueryable, t.QuerierEngine, evictorService = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, querierRegisterer, util_log.Logger, t.OverridesConfig.QueryPartialData, t.ResourceMonitor)
 
 	// Use distributor as default MetadataQuerier
 	t.MetadataQuerier = t.Distributor
@@ -363,7 +367,29 @@ func (t *Cortex) initQueryable() (serv services.Service, err error) {
 	// Register the default endpoints that are always enabled for the querier module
 	t.API.RegisterQueryable(t.QuerierQueryable, t.Distributor)
 
-	return nil, nil
+	return evictorService, nil
+}
+
+func (t *Cortex) initRegexResolverService() (serv services.Service, err error) {
+	if !t.Cfg.TenantFederation.Enabled || !t.Cfg.TenantFederation.RegexMatcherEnabled {
+		return nil, nil
+	}
+
+	util_log.WarnExperimentalUse("tenant-federation.regex-matcher-enabled")
+
+	reg := prometheus.DefaultRegisterer
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, reg)
+	}
+
+	regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, reg, bucketClientFactory, util_log.Logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
+	}
+	users.WithDefaultResolver(regexResolver)
+	t.RegexResolver = regexResolver
+
+	return regexResolver, nil
 }
 
 // Enable merge querier if multi tenant query federation is enabled
@@ -378,24 +404,6 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg))
 		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation, reg)
 		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg)
-
-		if t.Cfg.TenantFederation.RegexMatcherEnabled {
-			util_log.WarnExperimentalUse("tenant-federation.regex-matcher-enabled")
-
-			bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
-				return bucket.NewClient(ctx, t.Cfg.BlocksStorage.Bucket, nil, "regex-resolver", util_log.Logger, reg)
-			}
-
-			regexResolver, err := tenantfederation.NewRegexResolver(t.Cfg.BlocksStorage.UsersScanner, t.Cfg.TenantFederation, reg, bucketClientFactory, util_log.Logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
-			}
-			users.WithDefaultResolver(regexResolver)
-
-			return regexResolver, nil
-		}
-
-		return nil, nil
 	}
 
 	return nil, nil
@@ -621,6 +629,14 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
 
+	// Build a lazy resolver function for the result cache.
+	var tenantResolverFn func() users.Resolver
+	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+		tenantResolverFn = func() users.Resolver {
+			return t.RegexResolver
+		}
+	}
+
 	queryRangeMiddlewares, cache, err := queryrange.Middlewares(
 		t.Cfg.QueryRange,
 		util_log.Logger,
@@ -634,6 +650,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 		t.Cfg.Querier.DefaultEvaluationInterval,
 		t.Cfg.Querier.DistributedExecEnabled,
 		t.Cfg.Querier.ThanosEngine.LogicalOptimizers,
+		tenantResolverFn,
 	)
 	if err != nil {
 		return nil, err
@@ -712,6 +729,11 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		return
 	}
 
+	// Register xfunctions (xincrease, xrate, xdelta) in the global parser
+	if t.Cfg.Querier.ThanosEngine.Enabled && t.Cfg.Querier.ThanosEngine.EnableXFunctions {
+		maps.Copy(parser.Functions, parse.XFunctions)
+	}
+
 	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.NameValidationScheme)
 	return
 }
@@ -772,7 +794,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		queryEngine = engine.New(opts, t.Cfg.Ruler.ThanosEngine, rulerRegisterer)
 	} else {
 		// TODO: Consider wrapping logger to differentiate from querier module logger
-		queryable, _, queryEngine = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
+		queryable, _, queryEngine, _ = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
@@ -1011,6 +1033,7 @@ func (t *Cortex) setupModuleManager() error {
 	mm.RegisterModule(Purger, nil)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(TenantFederation, t.initTenantFederation, modules.UserInvisibleModule)
+	mm.RegisterModule(RegexResolverService, t.initRegexResolverService, modules.UserInvisibleModule)
 	mm.RegisterModule(All, nil)
 
 	// Add dependencies
@@ -1030,7 +1053,7 @@ func (t *Cortex) setupModuleManager() error {
 		Queryable:                {OverridesConfig, DistributorService, OverridesConfig, Ring, API, StoreQueryable, MemberlistKV, ResourceMonitor},
 		Querier:                  {TenantFederation},
 		StoreQueryable:           {OverridesConfig, OverridesConfig, MemberlistKV, GrpcClientService},
-		QueryFrontendTripperware: {API, OverridesConfig},
+		QueryFrontendTripperware: {API, OverridesConfig, RegexResolverService},
 		QueryFrontend:            {QueryFrontendTripperware},
 		QueryScheduler:           {API, OverridesConfig},
 		Ruler:                    {DistributorService, OverridesConfig, StoreQueryable, RulerStorage},
@@ -1042,7 +1065,8 @@ func (t *Cortex) setupModuleManager() error {
 		StoreGateway:             {API, OverridesConfig, MemberlistKV, ResourceMonitor},
 		TenantDeletion:           {API, OverridesConfig},
 		Purger:                   {TenantDeletion},
-		TenantFederation:         {Queryable},
+		TenantFederation:         {Queryable, RegexResolverService},
+		RegexResolverService:     {},
 		All:                      {QueryFrontend, Querier, Ingester, Distributor, Purger, StoreGateway, Ruler, Compactor, AlertManager},
 	}
 	if t.Cfg.ExternalPusher != nil && t.Cfg.ExternalQueryable != nil {

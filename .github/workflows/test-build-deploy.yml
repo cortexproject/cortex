@@ -122,10 +122,49 @@ jobs:
         uses: github/codeql-action/analyze@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v3.29.5
 
   
+  discover-tags:
+    # Single source of truth for the integration build tags. Greps //go:build headers under
+    # ./integration/ and emits both a CSV (for go test -c tag list) and the matrix JSON
+    # (cross-product of arches × tags) consumed by `integration` below.
+    runs-on: ubuntu-24.04
+    outputs:
+      tags_csv: ${{ steps.discover.outputs.tags_csv }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - id: discover
+        shell: bash
+        run: |
+          TAGS=()
+          while IFS= read -r line; do
+            TAGS+=("$line")
+          done < <(grep -hE "^//go:build " integration/*.go \
+                   | sed -E 's|^//go:build ||' \
+                   | sort -u | grep -v '^integration$')
+          if [ "${#TAGS[@]}" -eq 0 ]; then
+            echo "ERROR: no //go:build tags found under integration/" >&2
+            exit 1
+          fi
+          TAGS_CSV=$(IFS=,; echo "${TAGS[*]}")
+          echo "tags_csv=${TAGS_CSV}" >> "$GITHUB_OUTPUT"
+          # Build matrix JSON: every tag runs on both amd64 and arm64.
+          TAGS_JSON=$(printf '%s\n' "${TAGS[@]}" | jq -R . | jq -s .)
+          MATRIX=$(jq -c -n --argjson tags "$TAGS_JSON" '{
+            include: [
+              ($tags[] | {runner: "ubuntu-24.04",     arch: "amd64", tags: .}),
+              ($tags[] | {runner: "ubuntu-24.04-arm", arch: "arm64", tags: .})
+            ]
+          }')
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "Discovered tags: ${TAGS_CSV}"
+
   build:
     runs-on: ubuntu-24.04
     container:
       image: quay.io/cortexproject/build-image:master-5f643d518c
+    outputs:
+      image_tag: ${{ steps.image-tag.outputs.image_tag }}
     steps:
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -143,6 +182,9 @@ jobs:
         run: |
           mkdir -p /go/src/github.com/cortexproject/cortex
           ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Compute Image Tag
+        id: image-tag
+        run: echo "image_tag=$(make image-tag)" >> "$GITHUB_OUTPUT"
       - name: Build Image
         run: |
           touch build-image/.uptodate
@@ -160,91 +202,75 @@ jobs:
           name: Docker Images
           path: ./images.tar
 
-  integration:
-    needs: [build, lint]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 50
+  build-integration-tests:
+    needs: [discover-tags]
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-24.04
             arch: amd64
-            tags: requires_docker
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_alertmanager
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_backward_compatibility
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_memberlist
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_overrides
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_querier
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_querier_microservices_mode
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_ruler
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_query_fuzz
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_remote_write_v2
-          - runner: ubuntu-24.04
-            arch: amd64
-            tags: integration_grpc
           - runner: ubuntu-24.04-arm
             arch: arm64
-            tags: requires_docker
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_alertmanager
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_memberlist
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_overrides
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_ruler
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_remote_write_v2
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_query_fuzz
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_backward_compatibility
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_querier
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_querier_microservices_mode
-          - runner: ubuntu-24.04-arm
-            arch: arm64
-            tags: integration_grpc
+    name: build-integration-tests (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: quay.io/cortexproject/build-image:master-5f643d518c
     steps:
-      - name: Upgrade golang
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
-        with:
-          go-version: 1.26.2
       - name: Checkout Repo
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - name: Setup Git safe.directory
+        run: |
+          git config --system --add safe.directory $GITHUB_WORKSPACE
       - name: Sym Link Expected Path to Workspace
         run: |
-          sudo mkdir -p /go/src/github.com/cortexproject/cortex
-          sudo ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+          mkdir -p /go/src/github.com/cortexproject/cortex
+          ln -s $GITHUB_WORKSPACE/* /go/src/github.com/cortexproject/cortex
+      - name: Compile Integration Test Binary
+        # Tag list comes from the discover-tags job — single source of truth.
+        run: |
+          ALL_TAGS="slicelabels,integration,${{ needs.discover-tags.outputs.tags_csv }}"
+          mkdir -p out/bin
+          go test -c -tags="${ALL_TAGS}" -o out/bin/integration.test ./integration/
+      - name: Generate Run-Pattern Manifest
+        # For each build tag, derive a -test.run regex listing every TestX function in source files
+        # gated by that tag. The integration job will read these to select which tests to run.
+        shell: bash
+        run: |
+          IFS=',' read -ra TAGS <<< "${{ needs.discover-tags.outputs.tags_csv }}"
+          for tag in "${TAGS[@]}"; do
+            names=$(grep -lE "^//go:build.*\b${tag}\b" integration/*.go 2>/dev/null \
+                    | xargs -r grep -hE "^func Test[A-Z]" \
+                    | sed -E 's/func (Test[A-Za-z0-9_]+).*/\1/' | sort -u | tr '\n' '|' | sed 's/|$//')
+            if [ -z "$names" ]; then
+              echo "ERROR: no tests found for tag ${tag}" >&2
+              exit 1
+            fi
+            printf '^(%s)$\n' "$names" > "out/bin/run-pattern-${tag}.txt"
+            echo "tag=${tag} tests=$(echo "$names" | tr '|' '\n' | wc -l)"
+          done
+      - name: Stage Test Data
+        # The integration tests read docs/configuration/*.yaml at runtime via getCortexProjectDir()
+        # in integration/util.go. Bundling these so the integration job doesn't need a checkout.
+        run: |
+          mkdir -p out/testdata/docs
+          cp -r docs/configuration out/testdata/docs/
+      - name: Create Integration Tests Archive
+        run: tar -C out -czvf integration-tests-${{ matrix.arch }}.tar.gz bin testdata
+      - name: Upload Integration Tests Artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: integration-tests-${{ matrix.arch }}
+          path: ./integration-tests-${{ matrix.arch }}.tar.gz
+
+  integration:
+    needs: [discover-tags, build, build-integration-tests, lint]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover-tags.outputs.matrix) }}
+    steps:
       - name: Download Docker Images Artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -252,41 +278,71 @@ jobs:
       - name: Extract Docker Images Archive
         run: tar -xvf images.tar -C /
       - name: Load Docker Images
+        # Load every saved docker image tar into the runner's docker daemon. Each tar in /tmp/images
+        # was produced by `make save-images` in the build job (one file per image:tag-arch).
         run: |
-          ln -s /tmp/images ./docker-images
-          make BUILD_IN_CONTAINER=false load-images
+          for img in /tmp/images/*; do
+            [ -f "$img" ] || continue
+            docker load -i "$img"
+          done
+      - name: Download Integration Tests Artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: integration-tests-${{ matrix.arch }}
+      - name: Extract Integration Tests Archive
+        run: tar -xzvf integration-tests-${{ matrix.arch }}.tar.gz
       - name: Preload Images
         # We download docker images used by integration tests so that all images are available
         # locally and the download time doesn't account in the test execution time, which is subject
-        # to a timeout
+        # to a timeout. Each pull is wrapped in a small retry helper so a transient Docker Hub /
+        # quay.io registry hiccup (e.g. "context deadline exceeded") doesn't fail the whole job.
         run: |
-          docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
-          docker pull consul:1.8.4
-          docker pull quay.io/coreos/etcd:v3.5.29
+          # Retry a command up to 3 times with exponential backoff (5s, then 10s). A transient
+          # docker pull failure is retried; a genuine, persistent failure still fails the step
+          # because the final `return 1` propagates under `bash -e`.
+          retry() {
+            local max_attempts=3 attempt=1 delay=5
+            until "$@"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "ERROR: '$*' failed after ${max_attempts} attempts." >&2
+                return 1
+              fi
+              echo "WARNING: '$*' failed (attempt ${attempt}/${max_attempts}); retrying in ${delay}s..." >&2
+              sleep "$delay"
+              attempt=$((attempt + 1))
+              delay=$((delay * 2))
+            done
+          }
+
+          retry docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
+          retry docker pull consul:1.8.4
+          retry docker pull quay.io/coreos/etcd:v3.5.29
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.16.1
-            docker pull quay.io/cortexproject/cortex:v1.17.2
-            docker pull quay.io/cortexproject/cortex:v1.18.1
-            docker pull quay.io/cortexproject/cortex:v1.19.1
-            docker pull quay.io/cortexproject/cortex:v1.20.1
-            docker pull quay.io/cortexproject/cortex:v1.21.0
+            retry docker pull quay.io/cortexproject/cortex:v1.16.1
+            retry docker pull quay.io/cortexproject/cortex:v1.17.2
+            retry docker pull quay.io/cortexproject/cortex:v1.18.1
+            retry docker pull quay.io/cortexproject/cortex:v1.19.1
+            retry docker pull quay.io/cortexproject/cortex:v1.20.1
+            retry docker pull quay.io/cortexproject/cortex:v1.21.0
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            docker pull quay.io/cortexproject/cortex:v1.20.1
-            docker pull quay.io/prometheus/prometheus:v3.8.1
+            retry docker pull quay.io/cortexproject/cortex:v1.20.1
+            retry docker pull quay.io/prometheus/prometheus:v3.8.1
           fi
-          docker pull memcached:1.6.1
-          docker pull redis:7.0.4-alpine
+          retry docker pull memcached:1.6.1
+          retry docker pull redis:7.0.4-alpine
         env:
           TEST_TAGS: ${{ matrix.tags }}
       - name: Integration Tests
         timeout-minutes: 45
         run: |
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
-          export IMAGE_TAG=$(make image-tag)
+          export IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
           export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${IMAGE_TAG}-${{ matrix.arch }}"
-          export CORTEX_CHECKOUT_DIR="/go/src/github.com/cortexproject/cortex"
+          export CORTEX_CHECKOUT_DIR="$PWD/testdata"
+          PATTERN="$(cat bin/run-pattern-${{ matrix.tags }}.txt)"
           echo "Running integration tests on ${{ matrix.arch }} with image: ${CORTEX_IMAGE}"
-          go test -tags=slicelabels,integration,${{ matrix.tags }} -timeout 2400s -v -count=1 ./integration/...
+          echo "Selecting tests via -test.run=${PATTERN}"
+          ./bin/integration.test -test.timeout=2400s -test.v -test.count=1 -test.run="${PATTERN}"
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
 
@@ -361,7 +417,7 @@ jobs:
           if [ -n "$QUAY_REGISTRY_PASSWORD" ]; then
             docker login -u "$QUAY_REGISTRY_USER" -p "$QUAY_REGISTRY_PASSWORD" quay.io;
           fi
-          export IMAGE_TAG=$(make image-tag)
+          export IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
           ./push-images $NOQUAY
         env:
           DOCKER_REGISTRY_USER: ${{secrets.DOCKER_REGISTRY_USER}}

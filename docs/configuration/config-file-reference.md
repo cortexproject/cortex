@@ -186,6 +186,13 @@ parquet_converter:
   # CLI flag: -parquet-converter.max-rows-per-row-group
   [max_rows_per_row_group: <int> | default = 1000000]
 
+  # Maximum number of row groups per parquet shard. Each shard holds at most
+  # num-row-groups * max-rows-per-row-group series, so lowering this value
+  # splits a block into more parquet shards for better read parallelization. 0
+  # means unlimited (single shard).
+  # CLI flag: -parquet-converter.num-row-groups
+  [num_row_groups: <int> | default = 0]
+
   # Enable disk-based write buffering to reduce memory consumption during
   # parquet file generation.
   # CLI flag: -parquet-converter.file-buffer-enabled
@@ -2376,6 +2383,238 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.subrange-ttl
     [subrange_ttl: <duration> | default = 24h]
 
+  parquet_row_ranges_cache:
+    # The parquet row ranges cache backend type. Single or Multiple cache
+    # backend can be provided. Supported values in single cache: memcached,
+    # redis, inmemory, and '' (disable). Supported values in multi level cache:
+    # a comma-separated list of (inmemory, memcached, redis)
+    # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.backend
+    [backend: <string> | default = ""]
+
+    inmemory:
+      # Maximum size in bytes of in-memory parquet-row-ranges cache used (shared
+      # between all tenants).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.inmemory.max-size-bytes
+      [max_size_bytes: <int> | default = 1073741824]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are split into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
+    redis:
+      # Comma separated list of redis addresses. Supported prefixes are: dns+
+      # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.addresses
+      [addresses: <string> | default = ""]
+
+      # Redis username.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.username
+      [username: <string> | default = ""]
+
+      # Redis password.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.password
+      [password: <string> | default = ""]
+
+      # Database to be selected after connecting to the server.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.db
+      [db: <int> | default = 0]
+
+      # Specifies the master's name. Must be not empty for Redis Sentinel.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.master-name
+      [master_name: <string> | default = ""]
+
+      # The maximum number of concurrent GetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for mget.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.get-multi-batch-size
+      [get_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent SetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-set-multi-concurrency
+      [max_set_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for pipeline set.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-multi-batch-size
+      [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # Client dial timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.dial-timeout
+      [dial_timeout: <duration> | default = 5s]
+
+      # Client read timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.read-timeout
+      [read_timeout: <duration> | default = 3s]
+
+      # Client write timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.write-timeout
+      [write_timeout: <duration> | default = 3s]
+
+      # Whether to enable tls for redis connection.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-enabled
+      [tls_enabled: <boolean> | default = false]
+
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-cert-path
+      [tls_cert_path: <string> | default = ""]
+
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-key-path
+      [tls_key_path: <string> | default = ""]
+
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
+
+      # If not zero then client-side caching is enabled. Client-side caching is
+      # when data is stored in memory instead of fetching data each time. See
+      # https://redis.io/docs/manual/client-side-caching/ for more info.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.cache-size
+      [cache_size: <int> | default = 0]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
+    multilevel:
+      # The maximum number of concurrent asynchronous operations can occur when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of items to backfill per asynchronous operation.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-backfill-items
+      [max_backfill_items: <int> | default = 10000]
+
+    # TTL for caching parquet row ranges.
+    # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.ttl
+    [ttl: <duration> | default = 10m]
+
   # Maximum number of entries in the regex matchers cache. 0 to disable.
   # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
   [matchers_cache_max_items: <int> | default = 0]
@@ -2502,6 +2741,14 @@ bucket_store:
   # [Experimental] TTL of the Parquet shard cache. 0 to no TTL.
   # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
   [parquet_shard_cache_ttl: <duration> | default = 24h]
+
+  # Maximum number of concurrent goroutines per query applied at each level of
+  # parquet processing: shard querying, row group processing, and column
+  # materialization. Note: this limit is applied independently at each level, so
+  # the total goroutines per query can grow multiplicatively (up to N^3 in the
+  # worst case).
+  # CLI flag: -blocks-storage.bucket-store.parquet-query-concurrency
+  [parquet_query_concurrency: <int> | default = 4]
 
 tsdb:
   # Local directory to store TSDBs in the ingesters.
@@ -3340,6 +3587,14 @@ ring:
 # CLI flag: -distributor.num-push-workers
 [num_push_workers: <int> | default = 0]
 
+# EXPERIMENTAL: Number of go routines to handle query fan-out calls from
+# distributors (queriers and rulers) to ingesters. When no workers are
+# available, a new goroutine will be spawned automatically. If set to 0
+# (default), workers are disabled, and a new goroutine will be created for each
+# query request.
+# CLI flag: -distributor.num-query-workers
+[num_query_workers: <int> | default = 0]
+
 instance_limits:
   # Max ingestion rate (samples/sec) that this distributor will accept. This
   # limit is per-distributor, not per-tenant. Additional push requests will be
@@ -3804,6 +4059,24 @@ lifecycler:
 # CLI flag: -ingester.active-queried-series-metrics-windows
 [active_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
+# Experimental: Enable tracking of series queried from head only and expose them
+# as metrics.
+# CLI flag: -ingester.head-queried-series-metrics-enabled
+[head_queried_series_metrics_enabled: <boolean> | default = false]
+
+# Duration of each sub-window for head queried series tracking.
+# CLI flag: -ingester.head-queried-series-metrics-window-duration
+[head_queried_series_metrics_window_duration: <duration> | default = 15m]
+
+# Sampling rate for head queried series tracking (1.0 = 100%%).
+# CLI flag: -ingester.head-queried-series-metrics-sample-rate
+[head_queried_series_metrics_sample_rate: <float> | default = 1]
+
+# Time windows to expose head queried series metrics. Also controls how long
+# per-metric-name cardinality is reported after last query.
+# CLI flag: -ingester.head-queried-series-metrics-windows
+[head_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]
@@ -3896,6 +4169,48 @@ query_protection:
       # disable.
       # CLI flag: -ingester.query-protection.rejection.threshold.heap-utilization
       [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -ingester.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -ingester.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -ingester.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -ingester.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -ingester.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -ingester.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -ingester.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `ingester_client_config`
@@ -5063,6 +5378,48 @@ query_protection:
       # disable.
       # CLI flag: -querier.query-protection.rejection.threshold.heap-utilization
       [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -querier.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -querier.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -querier.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -querier.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -querier.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -querier.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `query_frontend_config`
@@ -6831,6 +7188,48 @@ query_protection:
       # disable.
       # CLI flag: -store-gateway.query-protection.rejection.threshold.heap-utilization
       [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -store-gateway.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -store-gateway.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -store-gateway.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -store-gateway.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -store-gateway.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -store-gateway.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -store-gateway.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with

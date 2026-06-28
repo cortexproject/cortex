@@ -81,7 +81,8 @@ func TestValidateMetricName(t *testing.T) {
 		expectErr error
 		reason    string
 	}{
-		{map[model.LabelName]model.LabelValue{}, newNoMetricNameError(), missingMetricName},
+		{map[model.LabelName]model.LabelValue{}, newNoMetricNameError(cortexpb.FromMetricsToLabelAdapters(model.Metric{})), missingMetricName},
+		{map[model.LabelName]model.LabelValue{"foo": "bar"}, newNoMetricNameError(cortexpb.FromMetricsToLabelAdapters(model.Metric{"foo": "bar"})), missingMetricName},
 		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: ""}, newInvalidMetricNameError(""), invalidMetricName},
 		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: " "}, newInvalidMetricNameError(" "), invalidMetricName},
 		{map[model.LabelName]model.LabelValue{model.MetricNameLabel: "test.\xc5.metric"}, newInvalidMetricNameError("test.\xc5.metric"), invalidMetricName},
@@ -100,6 +101,17 @@ func TestValidateMetricName(t *testing.T) {
 	err, reason := ValidateMetricName(cfg, cortexpb.FromMetricsToLabelAdapters(map[model.LabelName]model.LabelValue{}), model.LegacyValidation)
 	assert.Nil(t, err)
 	assert.Empty(t, reason)
+}
+
+func TestNoMetricNameError_ReportsOffendingSeries(t *testing.T) {
+	cfg := new(Limits)
+	cfg.EnforceMetricName = true
+
+	err, reason := ValidateMetricName(cfg, cortexpb.FromMetricsToLabelAdapters(model.Metric{"foo": "bar"}), model.LegacyValidation)
+	require.Error(t, err)
+	assert.Equal(t, missingMetricName, reason)
+	// The error must surface the offending series so operators can identify it (see issue #5802).
+	assert.Equal(t, `sample missing metric name metric: "{foo=\"bar\"}"`, err.Error())
 }
 
 func TestValidateLabels(t *testing.T) {

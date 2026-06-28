@@ -86,7 +86,17 @@ func (c *ConfigsClient) PostAlertmanagerConfig(ctx context.Context, cfg userconf
 // GetAllRulesConfigs hits the admin endpoint that returns every tenant's newest
 // rules config keyed by tenant ID.
 func (c *ConfigsClient) GetAllRulesConfigs(ctx context.Context) (map[string]userconfig.View, int, error) {
-	resp, body, err := c.do(ctx, http.MethodGet, "/private/api/prom/configs/rules", nil)
+	return c.getAllRulesConfigs(ctx, "/private/api/prom/configs/rules")
+}
+
+// GetAllRulesConfigsSince hits the admin endpoint with a ?since=<id> filter,
+// returning only configs whose version ID is greater than since.
+func (c *ConfigsClient) GetAllRulesConfigsSince(ctx context.Context, since userconfig.ID) (map[string]userconfig.View, int, error) {
+	return c.getAllRulesConfigs(ctx, fmt.Sprintf("/private/api/prom/configs/rules?since=%d", since))
+}
+
+func (c *ConfigsClient) getAllRulesConfigs(ctx context.Context, path string) (map[string]userconfig.View, int, error) {
+	resp, body, err := c.do(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return nil, 0, err
 	}

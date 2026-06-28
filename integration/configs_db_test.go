@@ -182,3 +182,65 @@ func TestConfigsDB_GetAllConfigsReturnsLatest(t *testing.T) {
 	require.True(t, ok, "tenant %q not present in admin response", tenant)
 	assert.Equal(t, newer.RulesConfig.Files, view.Config.RulesConfig.Files)
 }
+
+// TestConfigsDB_GetAllConfigsEmpty proves the admin GetAllConfigs SQL returns an
+// empty result set (not an error) against a freshly-migrated, empty database.
+func TestConfigsDB_GetAllConfigsEmpty(t *testing.T) {
+	_, configs := configsDBSetup(t)
+
+	admin := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "")
+	all, code, err := admin.GetAllRulesConfigs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, all)
+}
+
+// TestConfigsDB_PostAnonymousReturns401 covers the write path's tenant-auth check,
+// mirroring the read-path check in TestConfigsDB_AnonymousReturns401.
+func TestConfigsDB_PostAnonymousReturns401(t *testing.T) {
+	_, configs := configsDBSetup(t)
+
+	client := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "")
+	code, err := client.PostRulesConfig(context.Background(), makeRulesConfig("groups: []"))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, code)
+}
+
+// TestConfigsDB_GetConfigsSince proves the GetConfigs(since) SQL filter returns
+// only configs whose version ID is greater than the supplied cursor. This is the
+// one Postgres-specific query path not exercised by the other tests.
+func TestConfigsDB_GetConfigsSince(t *testing.T) {
+	_, configs := configsDBSetup(t)
+	ctx := context.Background()
+	endpoint := configs.HTTPEndpoint()
+
+	// Post one config per tenant, in order, capturing each assigned version ID.
+	post := func(tenant, payload string) userconfig.ID {
+		c := e2ecortex.NewConfigsClient(endpoint, tenant)
+		code, err := c.PostRulesConfig(ctx, makeRulesConfig(payload))
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, code)
+		view, code, err := c.GetRulesConfig(ctx)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, code)
+		return view.ID
+	}
+
+	user1, user2, user3 := makeUserID("since", 1), makeUserID("since", 2), makeUserID("since", 3)
+	post(user1, "groups: [{name: first}]")
+	id2 := post(user2, "groups: [{name: second}]")
+	post(user3, "groups: [{name: third}]")
+
+	// since=id2 must exclude user1 and user2 (IDs <= id2) and include only user3.
+	admin := e2ecortex.NewConfigsClient(endpoint, "")
+	all, code, err := admin.GetAllRulesConfigsSince(ctx, id2)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, code)
+
+	_, has1 := all[user1]
+	_, has2 := all[user2]
+	_, has3 := all[user3]
+	assert.False(t, has1, "user1 (ID < since) should be excluded")
+	assert.False(t, has2, "user2 (ID == since) should be excluded")
+	assert.True(t, has3, "user3 (ID > since) should be included")
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/cortexproject/cortex/pkg/configs/userconfig"
 )
@@ -18,6 +19,7 @@ import (
 type ConfigsClient struct {
 	endpoint   string // host:port of the configs service HTTP API
 	orgID      string
+	timeout    time.Duration
 	httpClient *http.Client
 }
 
@@ -28,6 +30,7 @@ func NewConfigsClient(endpoint, orgID string) *ConfigsClient {
 	return &ConfigsClient{
 		endpoint:   endpoint,
 		orgID:      orgID,
+		timeout:    30 * time.Second,
 		httpClient: &http.Client{},
 	}
 }
@@ -39,6 +42,9 @@ type ConfigsView struct {
 }
 
 func (c *ConfigsClient) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, method, fmt.Sprintf("http://%s%s", c.endpoint, path), body)
 	if err != nil {
 		return nil, nil, err
@@ -67,7 +73,9 @@ func (c *ConfigsClient) GetRulesConfig(ctx context.Context) (*userconfig.View, i
 }
 
 // PostRulesConfig stores a new version of the rules config for the client's tenant.
-func (c *ConfigsClient) PostRulesConfig(ctx context.Context, cfg userconfig.Config) (int, error) {
+// It returns the HTTP status code and response body so callers can assert on the
+// status and surface the body for debugging on unexpected responses.
+func (c *ConfigsClient) PostRulesConfig(ctx context.Context, cfg userconfig.Config) (int, []byte, error) {
 	return c.postConfig(ctx, "/api/prom/configs/rules", cfg)
 }
 
@@ -79,7 +87,8 @@ func (c *ConfigsClient) GetAlertmanagerConfig(ctx context.Context) (*userconfig.
 }
 
 // PostAlertmanagerConfig stores a new version of the alertmanager config for the client's tenant.
-func (c *ConfigsClient) PostAlertmanagerConfig(ctx context.Context, cfg userconfig.Config) (int, error) {
+// It returns the HTTP status code and response body (see PostRulesConfig).
+func (c *ConfigsClient) PostAlertmanagerConfig(ctx context.Context, cfg userconfig.Config) (int, []byte, error) {
 	return c.postConfig(ctx, "/api/prom/configs/alertmanager", cfg)
 }
 
@@ -125,14 +134,14 @@ func (c *ConfigsClient) getConfig(ctx context.Context, path string) (*userconfig
 	return &view, resp.StatusCode, nil
 }
 
-func (c *ConfigsClient) postConfig(ctx context.Context, path string, cfg userconfig.Config) (int, error) {
+func (c *ConfigsClient) postConfig(ctx context.Context, path string, cfg userconfig.Config) (int, []byte, error) {
 	buf, err := json.Marshal(cfg)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	resp, _, err := c.do(ctx, http.MethodPost, path, bytes.NewReader(buf))
+	resp, body, err := c.do(ctx, http.MethodPost, path, bytes.NewReader(buf))
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	return resp.StatusCode, nil
+	return resp.StatusCode, body, nil
 }

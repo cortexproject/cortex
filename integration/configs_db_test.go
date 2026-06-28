@@ -102,9 +102,9 @@ func TestConfigsDB_PostAndGetRulesConfig(t *testing.T) {
 	client := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "tenant-rules")
 	cfg := makeRulesConfig("groups: []")
 
-	code, err := client.PostRulesConfig(context.Background(), cfg)
+	code, body, err := client.PostRulesConfig(context.Background(), cfg)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, code)
+	require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 
 	view, code, err := client.GetRulesConfig(context.Background())
 	require.NoError(t, err)
@@ -119,9 +119,9 @@ func TestConfigsDB_PostAndGetAlertmanagerConfig(t *testing.T) {
 	client := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "tenant-am")
 	cfg := makeAlertmanagerConfig("dummy")
 
-	code, err := client.PostAlertmanagerConfig(context.Background(), cfg)
+	code, body, err := client.PostAlertmanagerConfig(context.Background(), cfg)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, code)
+	require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 
 	view, code, err := client.GetAlertmanagerConfig(context.Background())
 	require.NoError(t, err)
@@ -140,13 +140,13 @@ func TestConfigsDB_MultiTenantIsolation(t *testing.T) {
 	c1 := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), tenants[0])
 	c2 := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), tenants[1])
 
-	code, err := c1.PostRulesConfig(context.Background(), configs1)
+	code, body, err := c1.PostRulesConfig(context.Background(), configs1)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, code)
+	require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 
-	code, err = c2.PostRulesConfig(context.Background(), configs2)
+	code, body, err = c2.PostRulesConfig(context.Background(), configs2)
 	require.NoError(t, err)
-	require.Equal(t, http.StatusNoContent, code)
+	require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 
 	view1, code, err := c1.GetRulesConfig(context.Background())
 	require.NoError(t, err)
@@ -168,9 +168,9 @@ func TestConfigsDB_GetAllConfigsReturnsLatest(t *testing.T) {
 	older := makeRulesConfig("groups: [{name: older}]")
 	newer := makeRulesConfig("groups: [{name: newer}]")
 	for _, cfg := range []userconfig.Config{older, older, newer} {
-		code, err := client.PostRulesConfig(context.Background(), cfg)
+		code, body, err := client.PostRulesConfig(context.Background(), cfg)
 		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, code)
+		require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 	}
 
 	admin := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "")
@@ -201,7 +201,7 @@ func TestConfigsDB_PostAnonymousReturns401(t *testing.T) {
 	_, configs := configsDBSetup(t)
 
 	client := e2ecortex.NewConfigsClient(configs.HTTPEndpoint(), "")
-	code, err := client.PostRulesConfig(context.Background(), makeRulesConfig("groups: []"))
+	code, _, err := client.PostRulesConfig(context.Background(), makeRulesConfig("groups: []"))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, code)
 }
@@ -217,9 +217,9 @@ func TestConfigsDB_GetConfigsSince(t *testing.T) {
 	// Post one config per tenant, in order, capturing each assigned version ID.
 	post := func(tenant, payload string) userconfig.ID {
 		c := e2ecortex.NewConfigsClient(endpoint, tenant)
-		code, err := c.PostRulesConfig(ctx, makeRulesConfig(payload))
+		code, body, err := c.PostRulesConfig(ctx, makeRulesConfig(payload))
 		require.NoError(t, err)
-		require.Equal(t, http.StatusNoContent, code)
+		require.Equalf(t, http.StatusNoContent, code, "unexpected status, body: %s", body)
 		view, code, err := c.GetRulesConfig(ctx)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, code)

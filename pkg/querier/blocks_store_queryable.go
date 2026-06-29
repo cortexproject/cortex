@@ -210,7 +210,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
-		}, bucketClient, limits, logger, reg)
+		}, bucketClient, limits, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-queryable"}, reg))
 	} else {
 		usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 		if err != nil {

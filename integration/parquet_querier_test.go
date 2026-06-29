@@ -619,9 +619,20 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			if tc.viaStoreGateway {
 				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_querier_storegateway_instances_hit_per_query"}, e2e.WithMetricCount, e2e.SkipMissingMetrics))
 				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_querier_blocks_consistency_checks_total"}, e2e.SkipMissingMetrics))
+				// The store-gateway parquet bucket store resolves the shard count via the
+				// bucket index loader, which is tagged with component="store-gateway".
+				if tc.extraStoreGateways == 0 {
+					// Only assert on the single binary when there are no extra replicas, since
+					// with replication the query may be served by another store-gateway.
+					require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_bucket_index_loads_total"}, e2e.WithLabelMatchers(
+						labels.MustNewMatcher(labels.MatchEqual, "component", "store-gateway"))))
+				}
 			} else {
 				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_queryable_blocks_queried_total"}, e2e.WithLabelMatchers(
 					labels.MustNewMatcher(labels.MatchEqual, "type", "parquet"))))
+				// The querier's bucket index loader is tagged with component="store-queryable".
+				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_bucket_index_loads_total"}, e2e.WithLabelMatchers(
+					labels.MustNewMatcher(labels.MatchEqual, "component", "store-queryable"))))
 			}
 		})
 	}

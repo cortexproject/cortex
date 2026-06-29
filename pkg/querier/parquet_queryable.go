@@ -408,7 +408,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelValues(InjectBlocksIntoContext(ctx, parquet...), name, hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 		result = res
 		rAnnotations = ann
@@ -417,7 +417,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	if len(remaining) > 0 {
 		res, ann, qErr := q.blocksStoreQuerier.LabelValues(InjectBlocksIntoContext(ctx, remaining...), name, hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 
 		if len(result) == 0 {
@@ -462,7 +462,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelNames(InjectBlocksIntoContext(ctx, parquet...), hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 		result = res
 		rAnnotations = ann
@@ -471,7 +471,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	if len(remaining) > 0 {
 		res, ann, qErr := q.blocksStoreQuerier.LabelNames(InjectBlocksIntoContext(ctx, remaining...), hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 
 		if len(result) == 0 {

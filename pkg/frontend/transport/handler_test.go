@@ -614,17 +614,17 @@ func TestReportSlowQueryFormat(t *testing.T) {
 	tests := map[string]testCase{
 		"should log only base fields when stats and headers are empty": {
 			source:      requestmeta.SourceAPI,
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000`,
 		},
 		"should log only base fields when stats is nil": {
 			source:      requestmeta.SourceAPI,
 			queryStats:  nil,
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000`,
 		},
 		"should include the query string at the end": {
 			source:      requestmeta.SourceAPI,
 			queryString: url.Values(map[string][]string{"query": {"up"}}),
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s param_query=up`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 param_query=up`,
 		},
 		"should include grafana dashboard and panel id": {
 			source: requestmeta.SourceAPI,
@@ -632,7 +632,7 @@ func TestReportSlowQueryFormat(t *testing.T) {
 				"X-Dashboard-Uid": []string{"dashboard-1"},
 				"X-Panel-Id":      []string{"panel-1"},
 			},
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s X-Dashboard-Uid=dashboard-1 X-Panel-Id=panel-1`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 X-Dashboard-Uid=dashboard-1 X-Panel-Id=panel-1`,
 		},
 		"should include user agent, engine type and block store type headers": {
 			source: requestmeta.SourceAPI,
@@ -641,7 +641,7 @@ func TestReportSlowQueryFormat(t *testing.T) {
 				http.CanonicalHeaderKey(engine.TypeHeader):            []string{string(engine.Thanos)},
 				http.CanonicalHeaderKey(querier.BlockStoreTypeHeader): []string{"parquet"},
 			},
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s user_agent=Grafana engine_type=thanos block_store_type=parquet`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 user_agent=Grafana engine_type=thanos block_store_type=parquet`,
 		},
 		"should include query stats fields when set": {
 			source: requestmeta.SourceAPI,
@@ -658,7 +658,7 @@ func TestReportSlowQueryFormat(t *testing.T) {
 					SplitQueries:         10,
 				},
 			},
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s query_wall_time_seconds=3 query_storage_wall_time_seconds=6000 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 samples_scanned=400 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 query_wall_time_seconds=3 query_storage_wall_time_seconds=6000 fetched_series_count=100 fetched_chunks_count=200 fetched_samples_count=300 samples_scanned=400 fetched_chunks_bytes=1024 fetched_data_bytes=2048 split_queries=10`,
 		},
 		"should not include query stats fields that are zero": {
 			source: requestmeta.SourceAPI,
@@ -668,7 +668,7 @@ func TestReportSlowQueryFormat(t *testing.T) {
 					FetchedSeriesCount: 100,
 				},
 			},
-			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken=1s query_wall_time_seconds=3 fetched_series_count=100`,
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 query_wall_time_seconds=3 fetched_series_count=100`,
 		},
 	}
 

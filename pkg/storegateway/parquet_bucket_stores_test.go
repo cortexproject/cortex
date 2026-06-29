@@ -1,6 +1,7 @@
 package storegateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	cortex_tsdb "github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -484,4 +486,68 @@ func TestParquetBucketStores_Series_MultiShard(t *testing.T) {
 	series, _, err := querySeries(stores, userID, metricName, 0, 100, blockIDs...)
 	require.NoError(t, err)
 	assert.Equal(t, numSeries, len(series), "all series from all shards must be returned")
+}
+
+// TestParquetBucketStores_Series_MultiShard_BucketIndex verifies that, when the bucket
+// index is enabled, the Store Gateway resolves the parquet shard count from the bucket
+// index instead of reading the per-block converter mark.
+func TestParquetBucketStores_Series_MultiShard_BucketIndex(t *testing.T) {
+	const (
+		userID     = "user-1"
+		metricName = "test_metric"
+		numSeries  = 6 // 6 unique series
+		// numRowGroups=1, maxRowsPerRowGroup=2 → ceil(6/1*2) = 3 shards
+		numRowGroups       = 1
+		maxRowsPerRowGroup = 2
+		expectedShards     = 3
+	)
+
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.BucketIndex.Enabled = true
+
+	storageDir := t.TempDir()
+
+	// Create a block with 6 unique series.
+	generateStorageBlockWithMultipleSeries(t, storageDir, userID, metricName, numSeries, 0, 100, 15)
+
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+	uBucket := bucket.NewUserBucketClient(userID, bkt, overrides)
+
+	// Convert to parquet with 3 shards and write the (correct) converter mark.
+	userPath := filepath.Join(storageDir, userID)
+	blockIDs, err := convertToParquetBlocksWithShardsForTesting(userPath, uBucket, numRowGroups, maxRowsPerRowGroup)
+	require.NoError(t, err)
+	require.Len(t, blockIDs, 1)
+
+	uidV2, err := ulidv2.Parse(blockIDs[0])
+	require.NoError(t, err)
+
+	// The bucket index discovers parquet blocks via the global markers location
+	// (parquet-markers/<blockID>-parquet-converter-mark.json), so upload it there too.
+	require.NoError(t, uBucket.Upload(context.Background(), bucketindex.ConverterMarkFilePath(uidV2), bytes.NewReader([]byte("{}"))))
+
+	// Build the bucket index (with parquet info) so the shard count is recorded there.
+	idx, _, _, err := bucketindex.NewUpdater(bkt, userID, nil, log.NewNopLogger()).EnableParquet().UpdateIndex(context.Background(), nil)
+	require.NoError(t, err)
+	require.NoError(t, bucketindex.WriteIndex(context.Background(), bkt, userID, nil, idx))
+
+	// The bucket index must record the actual number of shards (3).
+	require.Len(t, idx.Blocks, 1)
+	require.NotNil(t, idx.Blocks[0].Parquet)
+	require.Equal(t, expectedShards, idx.Blocks[0].Parquet.Shards, "bucket index should record 3 shards")
+
+	// Overwrite the converter mark with a wrong shard count (1). If the Store Gateway
+	// used the converter mark instead of the bucket index, it would only read 1 shard.
+	require.NoError(t, cortex_parquet.WriteConverterMark(context.Background(), uidV2, uBucket, 1))
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	series, _, err := querySeries(stores, userID, metricName, 0, 100, blockIDs...)
+	require.NoError(t, err)
+	assert.Equal(t, numSeries, len(series), "all series must be returned using the bucket index shard count")
 }

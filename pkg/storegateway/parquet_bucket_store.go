@@ -27,16 +27,20 @@ import (
 	"google.golang.org/grpc/status"
 
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 type parquetBucketStore struct {
-	logger      log.Logger
-	bucket      objstore.InstrumentedBucket
-	limits      *validation.Overrides
-	concurrency int
+	logger             log.Logger
+	bucket             objstore.InstrumentedBucket
+	indexLoader        *bucketindex.Loader // nil when bucket index disabled
+	limits             *validation.Overrides
+	userID             string
+	bucketIndexEnabled bool
+	concurrency        int
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
@@ -67,20 +71,15 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	bucketOpener := parquet_storage.NewParquetBucketOpener(p.bucket)
 	noopQuota := search.NewQuota(search.NoopQuotaLimitFunc(ctx))
 
-	// Read converter marks and expand to per-shard (blockID, shardID) lists.
-	// TODO(Sungjin1212): Read the shard count from the bucket index instead of reading the converter mark for each block.
+	shardCounts, err := p.resolveShardCounts(ctx, blockIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	var shardBlockIDs []string
 	var shardIDs []int
 	for _, blockID := range blockIDs {
-		uid, err := ulid.Parse(blockID)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse block ID %s", blockID)
-		}
-		marker, err := cortex_parquet.ReadConverterMark(ctx, uid, p.bucket, p.logger)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read converter mark for block %s", blockID)
-		}
-		numShards := marker.Shards
+		numShards := shardCounts[blockID]
 		if numShards <= 0 {
 			// backward compatibility: blocks without a shard count have one shard
 			numShards = 1
@@ -110,6 +109,44 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	}
 
 	return parquetBlocks, nil
+}
+
+// resolveShardCounts returns the number of parquet shards for each requested block ID.
+//
+// When the bucket index is enabled, the shard count is read from the bucket index.
+// When the bucket index is disabled, it falls back to reading the converter mark
+// for each block.
+func (p *parquetBucketStore) resolveShardCounts(ctx context.Context, blockIDs []string) (map[string]int, error) {
+	shardCounts := make(map[string]int, len(blockIDs))
+
+	if p.bucketIndexEnabled && p.indexLoader != nil {
+		idx, _, err := p.indexLoader.GetIndex(ctx, p.userID)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to get bucket index")
+		}
+		for _, b := range idx.Blocks {
+			numShards := 1
+			if b.Parquet != nil && b.Parquet.Shards > 0 {
+				numShards = b.Parquet.Shards
+			}
+			shardCounts[b.ID.String()] = numShards
+		}
+		return shardCounts, nil
+	}
+
+	// Fallback: read the converter mark for each block.
+	for _, blockID := range blockIDs {
+		uid, err := ulid.Parse(blockID)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to parse block ID %s", blockID)
+		}
+		marker, err := cortex_parquet.ReadConverterMark(ctx, uid, p.bucket, p.logger)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read converter mark for block %s", blockID)
+		}
+		shardCounts[blockID] = marker.Shards
+	}
+	return shardCounts, nil
 }
 
 // Series implements the store interface for a single parquet bucket store

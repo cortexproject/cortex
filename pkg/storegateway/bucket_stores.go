@@ -49,6 +49,7 @@ type BucketStores interface {
 	storepb.StoreServer
 	SyncBlocks(ctx context.Context) error
 	InitialSync(ctx context.Context) error
+	Stop() error
 }
 
 // ThanosBucketStores is a multi-tenant wrapper of Thanos BucketStore.
@@ -229,6 +230,9 @@ func (u *ThanosBucketStores) SyncBlocks(ctx context.Context) error {
 		return s.SyncBlocks(ctx)
 	})
 }
+
+// Stop implements BucketStores. ThanosBucketStores has no background services to stop.
+func (u *ThanosBucketStores) Stop() error { return nil }
 
 func (u *ThanosBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{

@@ -2650,13 +2650,14 @@ bucket_store:
     [enabled: <boolean> | default = true]
 
     # How frequently a bucket index, which previously failed to load, should be
-    # tried to load again. This option is used only by querier.
+    # tried to load again. This option is used by querier and store-gateway
+    # parquet mode.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
     [update_on_error_interval: <duration> | default = 1m]
 
     # How long a unused bucket index should be cached. Once this timeout
     # expires, the unused bucket index is removed from the in-memory cache. This
-    # option is used only by querier.
+    # option is used by querier and store-gateway parquet mode.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
     [idle_timeout: <duration> | default = 1h]
 

@@ -16,8 +16,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
-	"github.com/prometheus-community/parquet-common/convert"
 	parquetgo "github.com/parquet-go/parquet-go"
+	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"

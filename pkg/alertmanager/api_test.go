@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
+	"github.com/prometheus/alertmanager/notify/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/stretchr/testify/assert"
@@ -1326,7 +1327,7 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 			input: config.Config{
 				Receivers: []config.Receiver{{
 					Name: "test",
-					WebhookConfigs: []*config.WebhookConfig{{
+					WebhookConfigs: []*webhook.WebhookConfig{{
 						HTTPConfig: &commoncfg.HTTPClientConfig{
 							BasicAuth: &commoncfg.BasicAuth{
 								PasswordFile: "/secrets",

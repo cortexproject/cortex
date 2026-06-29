@@ -75,10 +75,6 @@ func ValidNoConvertMarkVersion(version int) bool {
 }
 
 func (m NoConvertMark) ShouldSkipBlock(currentMaxBlockLabelNamesLimit int) bool {
-	// Manual no-convert marks are not tied to the label-name limit
-	if m.Reason != NoConvertReasonTooManyLabels {
-		return true
-	}
 
 	// limit=0 means the label-name guard is disabled,
 	if currentMaxBlockLabelNamesLimit <= 0 {

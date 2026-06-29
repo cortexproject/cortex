@@ -431,11 +431,18 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		// Retry conversion if the current limit has increased beyond the label count stored in the old no-convert mark
-		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) && noConvertMark.ShouldSkipBlock(maxBlockLabelNames) {
-			level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
-			c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
-			continue
+		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+			if noConvertMark.Reason != cortex_parquet.NoConvertReasonTooManyLabels {
+				level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
+				continue
+			}
+
+			if noConvertMark.ShouldSkipBlock(maxBlockLabelNames) {
+				level.Debug(logger).Log("msg", "skipping block because label count still exceeds current limit", "block", b.ULID.String(), "label_names_count", noConvertMark.LabelNamesCount, "current_limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
+				continue
+			}
 		}
 
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {

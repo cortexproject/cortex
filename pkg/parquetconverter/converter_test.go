@@ -785,6 +785,7 @@ func TestConverter_NoConvertMarkHandling(t *testing.T) {
 
 	manuallyMarkedBlockID := createAndUploadBlock(0, 4*time.Hour.Milliseconds())
 	limitIncreasedBlockID := createAndUploadBlock(4*time.Hour.Milliseconds(), 8*time.Hour.Milliseconds())
+	stillTooManyLabelsBlockID := createAndUploadBlock(8*time.Hour.Milliseconds(), 12*time.Hour.Milliseconds())
 
 	writeNoConvertMark := func(blockID ulid.ULID, noConvertMark parquet.NoConvertMark) {
 		t.Helper()
@@ -806,6 +807,12 @@ func TestConverter_NoConvertMarkHandling(t *testing.T) {
 		LabelNamesCount:    2,
 		MaxBlockLabelNames: 1,
 	})
+	writeNoConvertMark(stillTooManyLabelsBlockID, parquet.NoConvertMark{
+		Version:            parquet.CurrentNoConvertMarkVersion,
+		Reason:             parquet.NoConvertReasonTooManyLabels,
+		LabelNamesCount:    4,
+		MaxBlockLabelNames: 1,
+	})
 
 	err = services.StartAndAwaitRunning(context.Background(), c)
 	require.NoError(t, err)
@@ -816,7 +823,7 @@ func TestConverter_NoConvertMarkHandling(t *testing.T) {
 
 	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
 	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonMarkerExists)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonTooManyLabels)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonTooManyLabels)))
 
 	markerAfter, err := parquet.ReadNoConvertMark(ctx, manuallyMarkedBlockID, userBucket, logger)
 	require.NoError(t, err)
@@ -830,6 +837,10 @@ func TestConverter_NoConvertMarkHandling(t *testing.T) {
 	converterMark, err = parquet.ReadConverterMark(ctx, limitIncreasedBlockID, userBucket, logger)
 	require.NoError(t, err)
 	require.True(t, parquet.ValidConverterMarkVersion(converterMark.Version))
+
+	converterMark, err = parquet.ReadConverterMark(ctx, stillTooManyLabelsBlockID, userBucket, logger)
+	require.NoError(t, err)
+	require.False(t, parquet.ValidConverterMarkVersion(converterMark.Version))
 }
 
 func TestEffectiveMaxBlockLabelNamesLeavesRoomForGeneratedColumns(t *testing.T) {

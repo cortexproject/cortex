@@ -21,8 +21,10 @@ import (
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/eventrecorder"
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
+	"github.com/prometheus/alertmanager/marker"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
@@ -47,7 +49,6 @@ import (
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/timeinterval"
-	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	commoncfg "github.com/prometheus/common/config"
@@ -106,8 +107,7 @@ type Alertmanager struct {
 	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
-	alertMarker     types.AlertMarker
-	groupMarker     types.GroupMarker
+	groupMarker     marker.GroupMarker
 	alerts          *mem.Alerts
 	dispatcher      *dispatch.Dispatcher
 	inhibitor       *inhibit.Inhibitor
@@ -223,9 +223,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am.wg.Go(func() {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
 	})
-	memMarker := types.NewMarker(reg)
-	am.alertMarker = memMarker
-	am.groupMarker = memMarker
+	am.groupMarker = marker.NewGroupMarker()
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 
@@ -264,7 +262,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		return nil, errors.Wrap(err, "error parsing the feature flag list")
 	}
 
-	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig, eventrecorder.NopRecorder())
 
 	am.wg.Go(func() {
 		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop, nil)
@@ -274,16 +272,15 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), am.registry, nil)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder(), am.registry, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
 	am.api, err = api.New(api.Options{
-		Alerts:          am.alerts,
-		Silences:        am.silences,
-		AlertStatusFunc: am.alertMarker.Status,
-		GroupMutedFunc:  am.groupMarker.Muted,
+		Alerts:         am.alerts,
+		Silences:       am.silences,
+		GroupMutedFunc: am.groupMarker.Muted,
 		// Cortex should not expose cluster information back to its tenants.
 		Peer:     &NilPeer{},
 		Registry: am.registry,
@@ -302,7 +299,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	ui.Register(router)
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry, nil)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
@@ -355,7 +352,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcher.Stop()
 	}
 
-	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.alertMarker, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")))
+	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")), eventrecorder.NopRecorder())
 
 	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
 
@@ -398,7 +395,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		silence.NewSilencer(am.silences, am.alertMarker, util_log.GoKitLogToSlog(am.logger)),
+		silence.NewSilencer(am.silences, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder()),
 		timeinterval.NewIntervener(timeIntervals),
 		am.groupMarker,
 		am.nflog,
@@ -414,6 +411,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		defaultMaintenanceInterval, // TODO: add to config
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
+		eventrecorder.NopRecorder(),
 		am.dispatcherMetrics,
 	)
 

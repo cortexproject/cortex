@@ -270,7 +270,7 @@ require (
 	go.opentelemetry.io/collector/confmap v1.48.0 // indirect
 	go.opentelemetry.io/collector/confmap/xconfmap v0.142.0 // indirect
 	go.opentelemetry.io/collector/consumer v1.48.0 // indirect
-	go.opentelemetry.io/collector/featuregate v1.60.0 // indirect
+	go.opentelemetry.io/collector/featuregate v1.61.0 // indirect
 	go.opentelemetry.io/collector/pipeline v1.48.0 // indirect
 	go.opentelemetry.io/collector/processor v1.48.0 // indirect
 	go.opentelemetry.io/collector/semconv v0.128.0 // indirect

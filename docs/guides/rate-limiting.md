@@ -73,7 +73,8 @@ Native histogram samples are gated by a **separate** token-bucket limiter that r
 
 The same `ingestion_rate_strategy` value is also used by this limiter, with the same local-vs-global semantics. Dropped histogram samples are counted under `cortex_discarded_samples_total{reason="native_histogram_rate_limited"}`.
 
-If you do not ingest native histograms you can leave both values at their defaults — the limiter is effectively disabled.
+If both values are left at their defaults, native histogram ingestion works as unlimited.
+`native_histogram_ingestion_rate` defaults to `rate.Inf`, which always allows the limiter and causes the zero burst to be ignored.
 
 ## Per-instance ingestion limits
 

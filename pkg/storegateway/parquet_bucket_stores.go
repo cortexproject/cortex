@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -31,9 +32,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -60,6 +63,10 @@ type ParquetBucketStores struct {
 	rowRangesCache    search.RowRangesForConstraintsCache
 
 	inflightRequests *cortex_util.InflightRequestTracker
+
+	// indexLoader lazily loads and caches the per-tenant bucket index in memory
+	// It is non-nil only when BucketIndex.Enabled.
+	indexLoader *bucketindex.Loader
 }
 
 // newParquetBucketStores creates a new multi-tenant parquet bucket stores
@@ -106,6 +113,15 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		}
 	} else {
 		u.matcherCache = storecache.NoopMatchersCache
+	}
+
+	if cfg.BucketStore.BucketIndex.Enabled {
+		u.indexLoader = bucketindex.NewLoader(bucketindex.LoaderConfig{
+			CheckInterval:         time.Minute,
+			UpdateOnStaleInterval: cfg.BucketStore.SyncInterval,
+			UpdateOnErrorInterval: cfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
+			IdleTimeout:           cfg.BucketStore.BucketIndex.IdleTimeout,
+		}, bucketClient, limits, logger, reg)
 	}
 
 	return u, nil
@@ -218,6 +234,18 @@ func (u *ParquetBucketStores) SyncBlocks(ctx context.Context) error {
 
 // InitialSync implements BucketStores
 func (u *ParquetBucketStores) InitialSync(ctx context.Context) error {
+	if u.indexLoader != nil {
+		// Start indexLoader
+		return services.StartAndAwaitRunning(ctx, u.indexLoader)
+	}
+	return nil
+}
+
+// Stop implements BucketStores
+func (u *ParquetBucketStores) Stop() error {
+	if u.indexLoader != nil {
+		return services.StopAndAwaitTerminated(context.Background(), u.indexLoader)
+	}
 	return nil
 }
 
@@ -270,14 +298,17 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 	userBucket := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 
 	store := &parquetBucketStore{
-		logger:            userLogger,
-		bucket:            userBucket,
-		limits:            u.limits,
-		concurrency:       u.cfg.BucketStore.ParquetQueryConcurrency,
-		chunksDecoder:     u.chunksDecoder,
-		matcherCache:      u.matcherCache,
-		parquetShardCache: u.parquetShardCache,
-		rowRangesCache:    u.rowRangesCache,
+		logger:             userLogger,
+		bucket:             userBucket,
+		indexLoader:        u.indexLoader,
+		limits:             u.limits,
+		userID:             userID,
+		bucketIndexEnabled: u.cfg.BucketStore.BucketIndex.Enabled,
+		concurrency:        u.cfg.BucketStore.ParquetQueryConcurrency,
+		chunksDecoder:      u.chunksDecoder,
+		matcherCache:       u.matcherCache,
+		parquetShardCache:  u.parquetShardCache,
+		rowRangesCache:     u.rowRangesCache,
 	}
 
 	return store, nil

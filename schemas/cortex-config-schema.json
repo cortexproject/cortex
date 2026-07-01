@@ -1094,7 +1094,7 @@
                 },
                 "idle_timeout": {
                   "default": "1h0m0s",
-                  "description": "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used only by querier.",
+                  "description": "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used by querier and store-gateway parquet mode.",
                   "type": "string",
                   "x-cli-flag": "blocks-storage.bucket-store.bucket-index.idle-timeout",
                   "x-format": "duration"
@@ -1108,7 +1108,7 @@
                 },
                 "update_on_error_interval": {
                   "default": "1m0s",
-                  "description": "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used only by querier.",
+                  "description": "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used by querier and store-gateway parquet mode.",
                   "type": "string",
                   "x-cli-flag": "blocks-storage.bucket-store.bucket-index.update-on-error-interval",
                   "x-format": "duration"

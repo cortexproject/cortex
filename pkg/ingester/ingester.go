@@ -1517,6 +1517,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	var newSeries []labels.Labels
 
+	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
+	nowMs := time.Now().UnixMilli()
+	observeDelay := func(timestampMs int64) {
+		if delayMs := nowMs - timestampMs; delayMs >= 0 {
+			delayObserver.Observe(float64(delayMs) / 1000.0)
+		}
+	}
+
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
@@ -1557,6 +1565,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
+					observeDelay(s.TimestampMs)
 					continue
 				}
 
@@ -1568,6 +1577,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 						newSeries = append(newSeries, copiedLabels)
 					}
 					succeededSamplesCount++
+					observeDelay(s.TimestampMs)
 					continue
 				}
 			}
@@ -1615,6 +1625,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
+						observeDelay(hp.TimestampMs)
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
@@ -1627,6 +1638,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
+						observeDelay(hp.TimestampMs)
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}

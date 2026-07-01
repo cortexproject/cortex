@@ -27,6 +27,10 @@ If you configure ingesters with `-blocks-storage.tsdb.retention-period=24h`, a r
 
 For example, if you have 20M active series replicated 3 ways, this gives approx 1.7TB.  Divide by the number of ingesters and allow some margin for growth, e.g. if you have 20 ingesters then 100GB each should work, or 150GB each to be more comfortable.
 
+### Understand WAL truncation cadence
+
+Ingester WAL size on disk is driven by head compaction: the WAL only shrinks when a head block is written. If a tenant's head does not span more than 1.5 × `-blocks-storage.tsdb.block-ranges-period` (default `2h` → `3h` of head data), regular compaction will not fire and the WAL will only be truncated when `-blocks-storage.tsdb.head-compaction-idle-timeout` (default `1h`) elapses. See [Ingester WAL](./ingester-wal.md) for the full mechanics and the list of flags that affect truncation cadence.
+
 ## Querier
 
 ### Ensure caching is enabled

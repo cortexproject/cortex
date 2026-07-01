@@ -2186,7 +2186,36 @@ func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) 
 	req := mockWriteRequest([]labels.Labels{tc.inputSeries}, 1, 1, false)
 	_, err = ds[0].Push(ctx, req)
 	require.Error(t, err)
-	assert.Equal(t, "rpc error: code = Code(400) desc = sample missing metric name", err.Error())
+	assert.Equal(t, `rpc error: code = Code(400) desc = sample missing metric name metric: "{cluster=\"one\"}"`, err.Error())
+}
+
+// TestDistributor_Push_NoMetricNameShardingErrorReportsSeries covers the path that
+// the original bug report hit (issue #5802): with metric name enforcement disabled
+// and shard_by_all_labels=false, a series without a metric name fails while computing
+// its sharding token. The resulting error must name the offending series so operators
+// can identify it instead of only seeing "no metric name label".
+func TestDistributor_Push_NoMetricNameShardingErrorReportsSeries(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "user")
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.EnforceMetricName = false
+
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     2,
+		happyIngesters:   2,
+		numDistributors:  1,
+		shardByAllLabels: false,
+		limits:           &limits,
+	})
+
+	inputSeries := labels.FromStrings("foo", "bar", "team", "a")
+	req := mockWriteRequest([]labels.Labels{inputSeries}, 1, 1, false)
+	_, err := ds[0].Push(ctx, req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no metric name label")
+	assert.Contains(t, err.Error(), `{foo="bar", team="a"}`)
 }
 
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {

@@ -1208,7 +1208,7 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		// label and dropped labels (if any)
 		key, err := d.tokenForLabels(userID, ts.Labels)
 		if err != nil {
-			return nil, nil, nil, nil, 0, 0, 0, 0, nil, err
+			return nil, nil, nil, nil, 0, 0, 0, 0, nil, errors.Wrapf(err, "failed to compute sharding token for series %s", cortexpb.FromLabelAdaptersToMetric(ts.Labels).String())
 		}
 		validatedSeries, validationErr := d.validateSeries(*ts, userID, skipLabelNameValidation, limits)
 

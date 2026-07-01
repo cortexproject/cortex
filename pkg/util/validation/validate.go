@@ -285,7 +285,7 @@ func ValidateMetricName(limits *Limits, ls []cortexpb.LabelAdapter, nameValidati
 	}
 	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(ls)
 	if err != nil {
-		return newNoMetricNameError(), missingMetricName
+		return newNoMetricNameError(ls), missingMetricName
 	}
 	if !nameValidationScheme.IsValidMetricName(unsafeMetricName) {
 		return newInvalidMetricNameError(unsafeMetricName), invalidMetricName

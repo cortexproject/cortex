@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	parquetgo "github.com/parquet-go/parquet-go"
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -516,6 +517,7 @@ func TestConverter_SkipBlocksWithExistingValidMarker(t *testing.T) {
 	limits := &validation.Limits{}
 	flagext.DefaultValues(limits)
 	limits.ParquetConverterEnabled = true
+	limits.ParquetConverterMaxBlockLabelNames = 1
 
 	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
 
@@ -681,4 +683,172 @@ func TestConvertWithMaxNumColumns(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, 1, shards2, "expected single shard with high column limit")
+}
+
+func TestConverter_WriteNoConvertMarkForBlockWithTooManyLabels(t *testing.T) {
+	cfg := prepareConfig()
+	user := "user"
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+	dir := t.TempDir()
+
+	cfg.Ring.InstanceID = "parquet-converter-1"
+	cfg.Ring.InstanceAddr = "1.2.3.4"
+	cfg.Ring.KVStore.Mock = ringStore
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+	limits.ParquetConverterMaxBlockLabelNames = 1
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
+
+	ctx := context.Background()
+
+	lbls := labels.FromStrings("__name__", "test", "job", "foo")
+
+	// Create a block
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	// 2h blocks are skipped by ShouldConvertBlockToParquet
+	blockID, err := e2e.CreateBlock(ctx, rnd, dir, []labels.Labels{lbls}, 2, 0, 4*time.Hour.Milliseconds(), time.Minute.Milliseconds(), 10)
+	require.NoError(t, err)
+
+	// Upload the block to the bucket
+	blockDir := fmt.Sprintf("%s/%s", dir, blockID.String())
+	b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
+	require.NoError(t, err)
+	err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
+	require.NoError(t, err)
+
+	err = services.StartAndAwaitRunning(context.Background(), c)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
+
+	// Start the converter
+	err = c.convertUser(ctx, logger, c.ring, user)
+	require.NoError(t, err)
+
+	// Verify the marker was written correctly
+	readNoConvertMark, err := parquet.ReadNoConvertMark(ctx, blockID, userBucket, logger)
+	require.NoError(t, err)
+	require.True(t, parquet.ValidNoConvertMarkVersion(readNoConvertMark.Version))
+	require.Equal(t, parquet.NoConvertReasonTooManyLabels, readNoConvertMark.Reason)
+	require.Equal(t, 2, readNoConvertMark.LabelNamesCount)
+	require.Equal(t, 1, readNoConvertMark.MaxBlockLabelNames)
+
+	// Confirm conversion did not happen
+	assert.Equal(t, 0.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonTooManyLabels)))
+}
+
+func TestConverter_NoConvertMarkHandling(t *testing.T) {
+	cfg := prepareConfig()
+	user := "user"
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+	dir := t.TempDir()
+
+	cfg.Ring.InstanceID = "parquet-converter-1"
+	cfg.Ring.InstanceAddr = "1.2.3.4"
+	cfg.Ring.KVStore.Mock = ringStore
+	bucketClient, err := filesystem.NewBucket(t.TempDir())
+	require.NoError(t, err)
+	userBucket := bucket.NewPrefixedBucketClient(bucketClient, user)
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+	limits.ParquetConverterMaxBlockLabelNames = 3
+
+	c, logger, _ := prepare(t, cfg, objstore.WithNoopInstr(bucketClient), limits, nil)
+
+	ctx := context.Background()
+	lbls := labels.FromStrings("__name__", "test", "job", "foo")
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	createAndUploadBlock := func(mint, maxt int64) ulid.ULID {
+		t.Helper()
+
+		blockID, err := e2e.CreateBlock(ctx, rnd, dir, []labels.Labels{lbls}, 2, mint, maxt, time.Minute.Milliseconds(), 10)
+		require.NoError(t, err)
+
+		blockDir := fmt.Sprintf("%s/%s", dir, blockID.String())
+		b, err := tsdb.OpenBlock(nil, blockDir, nil, nil)
+		require.NoError(t, err)
+		err = block.Upload(ctx, logger, userBucket, b.Dir(), metadata.NoneFunc)
+		require.NoError(t, err)
+
+		return blockID
+	}
+
+	manuallyMarkedBlockID := createAndUploadBlock(0, 4*time.Hour.Milliseconds())
+	limitIncreasedBlockID := createAndUploadBlock(4*time.Hour.Milliseconds(), 8*time.Hour.Milliseconds())
+	stillTooManyLabelsBlockID := createAndUploadBlock(8*time.Hour.Milliseconds(), 12*time.Hour.Milliseconds())
+
+	writeNoConvertMark := func(blockID ulid.ULID, noConvertMark parquet.NoConvertMark) {
+		t.Helper()
+
+		markerBytes, err := json.Marshal(noConvertMark)
+		require.NoError(t, err)
+		markerPath := path.Join(blockID.String(), parquet.NoConvertMarkerFileName)
+		err = userBucket.Upload(ctx, markerPath, bytes.NewReader(markerBytes))
+		require.NoError(t, err)
+	}
+
+	writeNoConvertMark(manuallyMarkedBlockID, parquet.NoConvertMark{
+		Version: parquet.CurrentNoConvertMarkVersion,
+		Reason:  "manually uploaded",
+	})
+	writeNoConvertMark(limitIncreasedBlockID, parquet.NoConvertMark{
+		Version:            parquet.CurrentNoConvertMarkVersion,
+		Reason:             parquet.NoConvertReasonTooManyLabels,
+		LabelNamesCount:    2,
+		MaxBlockLabelNames: 1,
+	})
+	writeNoConvertMark(stillTooManyLabelsBlockID, parquet.NoConvertMark{
+		Version:            parquet.CurrentNoConvertMarkVersion,
+		Reason:             parquet.NoConvertReasonTooManyLabels,
+		LabelNamesCount:    4,
+		MaxBlockLabelNames: 1,
+	})
+
+	err = services.StartAndAwaitRunning(context.Background(), c)
+	require.NoError(t, err)
+	defer services.StopAndAwaitTerminated(ctx, c) // nolint:errcheck
+
+	err = c.convertUser(ctx, logger, c.ring, user)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.convertedBlocks.WithLabelValues(user)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonMarkerExists)))
+	assert.Equal(t, 1.0, testutil.ToFloat64(c.metrics.skippedBlocks.WithLabelValues(user, parquet.NoConvertReasonTooManyLabels)))
+
+	markerAfter, err := parquet.ReadNoConvertMark(ctx, manuallyMarkedBlockID, userBucket, logger)
+	require.NoError(t, err)
+	require.True(t, parquet.ValidNoConvertMarkVersion(markerAfter.Version))
+	require.Equal(t, "manually uploaded", markerAfter.Reason)
+
+	converterMark, err := parquet.ReadConverterMark(ctx, manuallyMarkedBlockID, userBucket, logger)
+	require.NoError(t, err)
+	require.False(t, parquet.ValidConverterMarkVersion(converterMark.Version))
+
+	converterMark, err = parquet.ReadConverterMark(ctx, limitIncreasedBlockID, userBucket, logger)
+	require.NoError(t, err)
+	require.True(t, parquet.ValidConverterMarkVersion(converterMark.Version))
+
+	converterMark, err = parquet.ReadConverterMark(ctx, stillTooManyLabelsBlockID, userBucket, logger)
+	require.NoError(t, err)
+	require.False(t, parquet.ValidConverterMarkVersion(converterMark.Version))
+}
+
+func TestEffectiveMaxBlockLabelNamesLeavesRoomForGeneratedColumns(t *testing.T) {
+	mint := int64(0)
+	maxt := 2 * parquetConverterDataColumnDuration.Milliseconds()
+	expectedReservedColumns := parquetConverterSystemColumnCount + 3
+
+	require.Equal(t, 10, effectiveMaxBlockLabelNames(10, mint, maxt))
+	require.Equal(t, parquetgo.MaxColumnIndex-expectedReservedColumns, effectiveMaxBlockLabelNames(parquetgo.MaxColumnIndex, mint, maxt))
+	require.Equal(t, 0, effectiveMaxBlockLabelNames(0, mint, maxt))
 }

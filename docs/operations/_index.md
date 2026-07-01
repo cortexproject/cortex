@@ -27,7 +27,6 @@ running Cortex in production.
   side-by-side.
 - [Requests Mirroring with Envoy]({{< relref
   "./requests-mirroring-to-secondary-cluster.md" >}})
-- [CI Modernization]({{< relref "./ci-modernization.md" >}})
 
 For component-level operational guidance (HA pairs, shuffle sharding, zone
 replication, capacity planning, encryption), see the [Guides]({{< relref

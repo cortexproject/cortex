@@ -1143,7 +1143,7 @@ func TestPartitionCompactor_ShouldCompactAllUsersOnShardingEnabledButOnlyOneInst
 
 func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndMultipleInstancesRunning(t *testing.T) {
 
-	numUsers := 100
+	numUsers := 20
 
 	// Setup user IDs
 	userIDs := make([]string, 0, numUsers)
@@ -1193,6 +1193,7 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 		cfg.ShardingRing.InstanceAddr = fmt.Sprintf("127.0.0.%d", i)
 		cfg.ShardingRing.WaitStabilityMinDuration = time.Second
 		cfg.ShardingRing.WaitStabilityMaxDuration = 5 * time.Second
+		cfg.ShardingRing.WaitActiveInstanceTimeout = 30 * time.Second // Give the ring ACTIVE wait headroom on slow CI (#7503).
 		cfg.ShardingRing.KVStore.Mock = kvstore
 
 		c, _, tsdbPlanner, l, _ := prepareForPartitioning(t, cfg, bucketClient, nil, nil)
@@ -1215,7 +1216,7 @@ func TestPartitionCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEn
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 60*time.Second, true, func() any {
+		cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}

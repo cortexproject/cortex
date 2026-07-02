@@ -1553,6 +1553,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		for _, s := range ts.Samples {
 			var err error
 
+			// Observe ingestion delay for all samples (accepted and rejected)
+			observeDelay(s.TimestampMs)
+
 			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
 				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
 				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
@@ -1565,7 +1568,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
 					succeededSamplesCount++
-					observeDelay(s.TimestampMs)
 					continue
 				}
 
@@ -1577,7 +1579,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 						newSeries = append(newSeries, copiedLabels)
 					}
 					succeededSamplesCount++
-					observeDelay(s.TimestampMs)
 					continue
 				}
 			}
@@ -1600,6 +1601,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					h   *histogram.Histogram
 					fh  *histogram.FloatHistogram
 				)
+
+				// Observe ingestion delay for all histograms (accepted and rejected)
+				observeDelay(hp.TimestampMs)
 
 				// Choose the decoder based on the histogram's proto type (the
 				// CountInt/CountFloat oneof), not the count value. A float
@@ -1625,7 +1629,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
-						observeDelay(hp.TimestampMs)
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
@@ -1638,7 +1641,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
-						observeDelay(hp.TimestampMs)
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}

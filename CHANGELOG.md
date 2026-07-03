@@ -81,6 +81,7 @@
 * [BUGFIX] Ingester: Fix panic (`HistogramProtoToHistogram called with a float histogram`) when ingesting a float native histogram with a zero count (e.g. a staleness marker or empty histogram). The decoder is now selected by histogram type via `IsFloatHistogram()` instead of by count value. #7645
 * [BUGFIX] Querier: Fix parquet queryable fallback returning a nil error instead of the actual query error in `LabelValues` and `LabelNames`. #7638
 * [BUGFIX] Store Gateway: Fix misleading "no index cache backend addresses" validation error being reported for chunks-cache, metadata-cache, and parquet caches when their memcached or redis backend is configured without addresses. The message is now the cache-type-agnostic "no cache backend addresses". #7675
+* [BUGFIX] Querier: Close the per-query `storage.Querier` in the remote read handler once each sub-query completes. The handler was the only `storage.Querier` call site that did not call `Close()`, so it did not honor the interface contract and would leak any resources a querier releases in `Close()`. #7672
 
 ## 1.21.0 2026-04-24
 

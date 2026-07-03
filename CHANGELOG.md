@@ -88,6 +88,7 @@
 * [BUGFIX] Compactor: Fix spurious `bucket operation fail after retries` error logs emitted during partial block cleanup. #7749
 * [BUGFIX] Alertmanager: Fix panic in `validateAlertmanagerConfig` when receiver config traversal encounters nil interface values. #7751
 * [BUGFIX] Parquet Converter: Fix `auto_forget_delay` having no effect. The ring lifecycler was created without the auto-forget delegate, so unhealthy instances were never automatically removed from the ring. #7752
+* [BUGFIX] Querier: Close the per-query `storage.Querier` in the remote read handler once each sub-query completes. The handler was the only `storage.Querier` call site that did not call `Close()`, so it did not honor the interface contract and would leak any resources a querier releases in `Close()`. #7672
 
 ## 1.21.1 2026-06-04
 

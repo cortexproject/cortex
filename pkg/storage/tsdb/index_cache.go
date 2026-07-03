@@ -41,7 +41,7 @@ var (
 
 	errUnsupportedIndexCacheBackend = errors.New("unsupported index cache backend")
 	errDuplicatedIndexCacheBackend  = errors.New("duplicated index cache backend")
-	errNoIndexCacheAddresses        = errors.New("no index cache backend addresses")
+	errNoCacheAddresses             = errors.New("no cache backend addresses")
 	errInvalidMaxAsyncConcurrency   = errors.New("invalid max_async_concurrency, must greater than 0")
 	errInvalidMaxAsyncBufferSize    = errors.New("invalid max_async_buffer_size, must greater than 0")
 	errInvalidMaxBackfillItems      = errors.New("invalid max_backfill_items, must greater than 0")

@@ -75,6 +75,18 @@ func Test_BucketCacheBackendValidation(t *testing.T) {
 			},
 			expectedErr: errUnsupportedBucketCacheBackend,
 		},
+		"memcached backend without addresses": {
+			cfg: BucketCacheBackend{
+				Backend: CacheBackendMemcached,
+			},
+			expectedErr: errNoCacheAddresses,
+		},
+		"redis backend without addresses": {
+			cfg: BucketCacheBackend{
+				Backend: CacheBackendRedis,
+			},
+			expectedErr: errNoCacheAddresses,
+		},
 		"valid multi bucket cache type": {
 			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s,%s", CacheBackendInMemory, CacheBackendMemcached, CacheBackendRedis),
@@ -152,6 +164,19 @@ func Test_BucketCacheBackendValidation(t *testing.T) {
 			err := tc.cfg.Validate()
 			assert.Equal(t, tc.expectedErr, err)
 		})
+	}
+}
+
+func Test_BucketCacheBackendValidation_MissingAddressesErrorIsGeneric(t *testing.T) {
+	// A bucket cache (e.g. chunks-cache) is not an index cache, so the missing
+	// addresses error must not mention "index cache". See issue #6804.
+	for _, cfg := range []BucketCacheBackend{
+		{Backend: CacheBackendMemcached},
+		{Backend: CacheBackendRedis},
+	} {
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Equal(t, "no cache backend addresses", err.Error())
 	}
 }
 

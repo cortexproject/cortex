@@ -62,6 +62,41 @@ func TestIndexPageContent(t *testing.T) {
 	require.True(t, strings.Contains(resp.Body.String(), "Store Gateway Ring"))
 	require.True(t, strings.Contains(resp.Body.String(), "/shutdown"))
 	require.False(t, strings.Contains(resp.Body.String(), "/compactor/ring"))
+
+	// Non-dangerous links should render as anchors.
+	require.True(t, strings.Contains(resp.Body.String(), `<a href="/ingester/ring">`))
+	// Dangerous links should render as POST form buttons, not anchors.
+	require.True(t, strings.Contains(resp.Body.String(), `action="/shutdown"`))
+	require.True(t, strings.Contains(resp.Body.String(), `method="POST"`))
+	require.False(t, strings.Contains(resp.Body.String(), `<a href="/shutdown">`))
+}
+
+func TestIndexHandlerDangerousLinksUsePostForms(t *testing.T) {
+	c := newIndexPageContent()
+	c.AddLink(SectionDangerous, "/ingester/flush", "Flush")
+	c.AddLink(SectionDangerous, "/ingester/shutdown", "Shutdown")
+
+	for _, tc := range []struct {
+		prefix         string
+		expectedAction string
+	}{
+		{prefix: "", expectedAction: `action="/ingester/flush"`},
+		{prefix: "/test", expectedAction: `action="/test/ingester/flush"`},
+	} {
+		h := indexHandler(tc.prefix, c)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		resp := httptest.NewRecorder()
+
+		h.ServeHTTP(resp, req)
+
+		require.Equal(t, 200, resp.Code)
+		body := resp.Body.String()
+		// Should render as a POST form, not an anchor.
+		require.True(t, strings.Contains(body, tc.expectedAction), "expected form action %q in body", tc.expectedAction)
+		require.True(t, strings.Contains(body, `method="POST"`))
+		require.False(t, strings.Contains(body, `<a href="`))
+	}
 }
 
 type diffConfigMock struct {

@@ -189,9 +189,7 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 		// Detach label and chunk data from gRPC unmarshal buffers so the Go GC
 		// can reclaim receive buffers and reduce heap usage.
 		ls := cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
-		detachChunksFromBuffer(result.Chunks)
-
-		chunks, err := chunkcompat.FromChunks(ls, result.Chunks)
+		chunks, err := chunkcompat.FromChunks(ls, detachChunksFromBuffer(result.Chunks))
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
@@ -453,13 +451,16 @@ func labelHintsToSelectHints(hints *storage.LabelHints) *storage.SelectHints {
 	}
 }
 
-// detachChunksFromBuffer re-allocates chunk data byte slices so that
-// the series no longer references the gRPC unmarshal buffer, allowing
-// the Go GC to reclaim receive buffers and reduce heap usage.
-func detachChunksFromBuffer(chunks []client.Chunk) {
-	for i := range chunks {
-		if len(chunks[i].Data) > 0 {
-			chunks[i].Data = append([]byte(nil), chunks[i].Data...)
+// detachChunksFromBuffer returns a copy of the chunks slice with data byte
+// slices re-allocated so that the series no longer references the gRPC
+// unmarshal buffer, allowing the Go GC to reclaim receive buffers.
+func detachChunksFromBuffer(chunks []client.Chunk) []client.Chunk {
+	copied := make([]client.Chunk, len(chunks))
+	for i, c := range chunks {
+		copied[i] = c
+		if len(c.Data) > 0 {
+			copied[i].Data = append([]byte(nil), c.Data...)
 		}
 	}
+	return copied
 }

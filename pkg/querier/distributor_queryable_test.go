@@ -695,7 +695,7 @@ func BenchmarkIngesterStreamingSelect(b *testing.B) {
 			resp := buildResponse()
 			for _, result := range resp.Chunkseries {
 				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
-				detachChunksFromBuffer(result.Chunks)
+				_ = detachChunksFromBuffer(result.Chunks)
 			}
 		}
 	})

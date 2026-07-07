@@ -6,15 +6,16 @@ import (
 	"errors"
 	"flag"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -31,11 +32,8 @@ var (
 )
 
 const (
-	// size of the seed array. Each seed is a 64bits int (8 bytes)
-	// totaling 16mb
-	seedArraySize = 2 * 1024 * 1024
-
-	numOfSeedsStripes = 512
+	// size of the label-count array. Each count is a uint32 (4 bytes) totaling 16MB.
+	labelCounterArraySize = 4_000_000
 )
 
 type ExpandedPostingsCacheMetrics struct {
@@ -99,9 +97,13 @@ type TSDBPostingsCacheConfig struct {
 	// when unset.
 	LazyMatcherComplexCostRatio int `yaml:"lazy_matcher_complex_cost_ratio"`
 
+	// LabelCounterSize is the number of counts stored in the label counter used
+	// for head cache invalidation. Note one label counter is shared by all tenants.
+	// defaults to 4_000_000 when unset.
+	LabelCounterSize uint `yaml:"label_counter_size"`
+
 	// The configurations below are used only for testing purpose
 	PostingsForMatchers func(ctx context.Context, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) `yaml:"-"`
-	SeedSize            int                                                                                           `yaml:"-"`
 	timeNow             func() time.Time                                                                              `yaml:"-"`
 }
 
@@ -118,6 +120,7 @@ func (cfg *TSDBPostingsCacheConfig) RegisterFlagsWithPrefix(prefix string, f *fl
 	f.IntVar(&cfg.LazyMatcherMaxCardinality, prefix+"expanded_postings_cache.head.lazy-matcher-max-cardinality", 0, "[EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on the head block. When a regex matcher targets a label with more unique values than this threshold, it is applied lazily during iteration instead of postings lookup. 0 disables.")
 	f.IntVar(&cfg.LazyMatcherSimpleCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-simple-cost-ratio", defaultSimpleCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a simple regex (prefix-only, single contains) is deferred to lazy iteration. Lower = more aggressive deferral. Calibrated empirically; defaults to 6.")
 	f.IntVar(&cfg.LazyMatcherComplexCostRatio, prefix+"expanded_postings_cache.head.lazy-matcher-complex-cost-ratio", defaultComplexCostRatio, "[EXPERIMENTAL] Cardinality:postings ratio above which a complex regex (multi-substring, capture groups, character classes) is deferred. Lower = more aggressive deferral. Calibrated empirically; defaults to 2.")
+	f.UintVar(&cfg.LabelCounterSize, prefix+"expanded_postings_cache.head.label-counter-size", labelCounterArraySize, "The number of counts stored in the label counter used for head cache invalidation. Note one label counter is shared by all tenants. 0 sets to the default of 4_000_000.")
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -129,19 +132,19 @@ func (cfg *PostingsCacheConfig) RegisterFlagsWithPrefix(prefix, block string, f 
 }
 
 type ExpandedPostingsCacheFactory struct {
-	seedByHash *seedByHash
-	cfg        TSDBPostingsCacheConfig
+	labelCounter *labelCounter
+	cfg          TSDBPostingsCacheConfig
 }
 
 func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPostingsCacheFactory {
 	if cfg.Head.Enabled || cfg.Blocks.Enabled {
-		if cfg.SeedSize == 0 {
-			cfg.SeedSize = seedArraySize
+		if cfg.LabelCounterSize == 0 {
+			cfg.LabelCounterSize = labelCounterArraySize
 		}
 		logutil.WarnExperimentalUse("expanded postings cache")
 		return &ExpandedPostingsCacheFactory{
-			cfg:        cfg,
-			seedByHash: newSeedByHash(cfg.SeedSize),
+			cfg:          cfg,
+			labelCounter: newLabelCounter(cfg.LabelCounterSize),
 		}
 	}
 
@@ -149,7 +152,7 @@ func NewExpandedPostingsCacheFactory(cfg TSDBPostingsCacheConfig) *ExpandedPosti
 }
 
 func (f *ExpandedPostingsCacheFactory) NewExpandedPostingsCache(userId string, metrics *ExpandedPostingsCacheMetrics) ExpandedPostingsCache {
-	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.seedByHash)
+	return newBlocksPostingsForMatchersCache(userId, f.cfg, metrics, f.labelCounter)
 }
 
 type ExpandedPostingsCache interface {
@@ -171,8 +174,8 @@ type blocksPostingsForMatchersCache struct {
 	lazyMatcherCfg        lazyMatcherConfig
 	labelCardinalityCache *expirable.LRU[string, int]
 
-	metrics    *ExpandedPostingsCacheMetrics
-	seedByHash *seedByHash
+	metrics      *ExpandedPostingsCacheMetrics
+	labelCounter *labelCounter
 }
 
 func (c *blocksPostingsForMatchersCache) Clear() {
@@ -180,7 +183,7 @@ func (c *blocksPostingsForMatchersCache) Clear() {
 	c.blocksCache.clear()
 }
 
-func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, seedByHash *seedByHash) ExpandedPostingsCache {
+func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfig, metrics *ExpandedPostingsCacheMetrics, labelCounter *labelCounter) ExpandedPostingsCache {
 	if cfg.PostingsForMatchers == nil {
 		cfg.PostingsForMatchers = tsdb.PostingsForMatchers
 	}
@@ -201,7 +204,7 @@ func newBlocksPostingsForMatchersCache(userId string, cfg TSDBPostingsCacheConfi
 		},
 		labelCardinalityCache: newLabelCardinalityCache(),
 		metrics:               metrics,
-		seedByHash:            seedByHash,
+		labelCounter:          labelCounter,
 		userId:                userId,
 	}
 }
@@ -211,7 +214,14 @@ func (c *blocksPostingsForMatchersCache) ExpireSeries(metric labels.Labels) {
 	if err != nil {
 		return
 	}
-	c.seedByHash.incrementSeed(c.userId, metricName)
+
+	metric.Range(func(label labels.Label) {
+		if label.Name == model.MetricNameLabel {
+			c.labelCounter.increment(c.userId, label.Value)
+		} else {
+			c.labelCounter.increment(c.userId, metricName, label.Name)
+		}
+	})
 }
 
 func (c *blocksPostingsForMatchersCache) PurgeExpiredItems() {
@@ -228,15 +238,17 @@ func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context
 }
 
 func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) func(context.Context) (index.Postings, error) {
-	var seed string
 	cache := c.blocksCache
+	isHead := isHeadBlock(blockID)
+	var metricName string
 
-	// If is a head block, lets add the seed on the cache key so we can
-	// invalidate the cache when new series are created for this metric name
-	if isHeadBlock(blockID) {
+	// If is a head block, we snapshot the per-label write counts so we can invalidate
+	// the cache when new series are created for this metric name.
+	if isHead {
 		cache = c.headCache
 		if cache.cfg.Enabled {
-			metricName, ok := metricNameFromMatcher(ms)
+			var ok bool
+			metricName, ok = metricNameFromMatcher(ms)
 			// Lets not cache head if we don;t find an equal matcher for the label __name__
 			if !ok {
 				c.metrics.NonCacheableQueries.WithLabelValues(cache.name).Inc()
@@ -244,8 +256,6 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 					return tsdb.PostingsForMatchers(ctx, ix, ms...)
 				}
 			}
-
-			seed = c.getSeedForMetricName(metricName)
 		}
 	}
 
@@ -258,7 +268,7 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 
 	c.metrics.CacheRequests.WithLabelValues(cache.name).Inc()
 
-	fetch := func() ([]storage.SeriesRef, int64, error) {
+	fetch := func() ([]storage.SeriesRef, int64, func() bool, error) {
 		// Use a context with timeout instead of context.Background() to prevent runaway queries.
 		// This promise is maybe shared across calls, so we can't use any single caller's context.
 		// However, we need a timeout to prevent the fetch from running indefinitely when all
@@ -270,13 +280,23 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 			defer cancel()
 		}
 
+		// Count-based invalidation only applies to the head cache: series are created
+		// there and bump the per-label counts. Block entries are immutable, so they
+		// get a nil validator and rely solely on TTL expiry.
+		var stillValid func() bool
+		var snapshotSize int64
+		if isHead {
+			stillValid, snapshotSize = c.snapshotCounts(metricName, ms...)
+		}
+
 		// For head blocks, try to avoid expensive regex scans by splitting matchers:
 		// resolve postings with selective matchers only, then filter by regex lazily.
-		if isHeadBlock(blockID) && c.lazyMatcherCfg.MaxCardinality > 0 {
+		if isHead && c.lazyMatcherCfg.MaxCardinality > 0 {
 			selectMs, lazyMs := splitMatchersForHeadWithConfig(fetchCtx, ix, ms, c.lazyMatcherCfg, c.labelCardinalityCache)
 			if len(lazyMs) > 0 {
 				c.metrics.LazyMatcherQueries.Inc()
-				return c.fetchWithLazyMatchers(fetchCtx, ix, selectMs, lazyMs)
+				series, size, err := c.fetchWithLazyMatchers(fetchCtx, ix, selectMs, lazyMs)
+				return series, size + snapshotSize, stillValid, err
 			}
 		}
 
@@ -284,19 +304,67 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 
 		if err == nil {
 			ids, err := index.ExpandPostings(postings)
-			return ids, int64(len(ids) * 8), err
+			return ids, int64(len(ids)*8) + snapshotSize, stillValid, err
 		}
 
-		return nil, 0, err
+		return nil, 0, stillValid, err
 	}
 
-	key := cacheKey(seed, blockID, ms...)
+	key := cacheKey(blockID, ms...)
 	promise, loaded := cache.getPromiseForKey(key, fetch)
 	if loaded {
 		c.metrics.CacheHits.WithLabelValues(cache.name).Inc()
 	}
 
 	return c.result(promise)
+}
+
+// snapshotCounts records the current per-label write counts for the matchers so the
+// cached entry can later be validated. The slot for each matcher MUST be keyed
+// identically to ExpireSeries' increment: __name__ by its value, every other label by
+// (metricName, labelName). A mismatch would read a slot that never moves and keep stale
+// entries alive forever.
+//
+// The returned stillValid closure reports whether the entry is still complete: it holds
+// as long as ANY tracked count is unchanged, because a series matching all matchers bumps
+// every tracked slot, so all-counts-changed is the only proof of a possibly-missed series.
+//
+// Empty-matching matchers (e.g. foo!="x", foo=~".*") match series that lack the label, and
+// such a series bumps __name__ but not (metric, foo). Their count could stay frozen while a
+// matching series was created, so they cannot vouch for the entry and are skipped. The
+// __name__ equal matcher never matches "", so at least one snapshot always remains.
+func (c *blocksPostingsForMatchersCache) snapshotCounts(metricName string, ms ...*labels.Matcher) (func() bool, int64) {
+	snapshots := make([]countSnapshot, 0, len(ms))
+	for _, matcher := range ms {
+		// Matchers that can match an absent label cannot vouch for the entry.
+		if matcher.Matches("") {
+			continue
+		}
+
+		var slot uint32
+		if matcher.Name == model.MetricNameLabel {
+			slot = c.labelCounter.slotIndex(c.userId, matcher.Value)
+		} else {
+			slot = c.labelCounter.slotIndex(c.userId, metricName, matcher.Name)
+		}
+		snapshots = append(snapshots, countSnapshot{
+			index: slot,
+			count: c.labelCounter.readSlot(slot),
+		})
+	}
+	stillValid := func() bool {
+		for _, snapshot := range snapshots {
+			newCount := c.labelCounter.readSlot(snapshot.index)
+			if newCount == snapshot.count {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	// countSnapshot is two uint32s (8 bytes total)
+	return stillValid, int64(len(snapshots) * 8)
 }
 
 func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
@@ -381,11 +449,7 @@ func (c *blocksPostingsForMatchersCache) fetchWithLazyMatchers(ctx context.Conte
 	return filtered, int64(len(filtered) * 8), nil
 }
 
-func (c *blocksPostingsForMatchersCache) getSeedForMetricName(metricName string) string {
-	return c.seedByHash.getSeed(c.userId, metricName)
-}
-
-func cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
+func cacheKey(blockID ulid.ULID, ms ...*labels.Matcher) string {
 	slices.SortFunc(ms, func(i, j *labels.Matcher) int {
 		if i.Type != j.Type {
 			return int(i.Type - j.Type)
@@ -404,14 +468,12 @@ func cacheKey(seed string, blockID ulid.ULID, ms ...*labels.Matcher) string {
 		sepLen  = 1
 	)
 
-	size := len(seed) + len(blockID.String()) + 2*sepLen
+	size := len(blockID.String()) + sepLen
 	for _, m := range ms {
 		size += len(m.Name) + len(m.Value) + typeLen + sepLen
 	}
 	sb := strings.Builder{}
 	sb.Grow(size)
-	sb.WriteString(seed)
-	sb.WriteByte('|')
 	sb.WriteString(blockID.String())
 	sb.WriteByte('|')
 	for _, m := range ms {
@@ -430,7 +492,7 @@ func isHeadBlock(blockID ulid.ULID) bool {
 
 func metricNameFromMatcher(ms []*labels.Matcher) (string, bool) {
 	for _, m := range ms {
-		if m.Name == labels.MetricName && m.Type == labels.MatchEqual {
+		if m.Name == model.MetricNameLabel && m.Type == labels.MatchEqual {
 			return m.Value, true
 		}
 	}
@@ -438,34 +500,32 @@ func metricNameFromMatcher(ms []*labels.Matcher) (string, bool) {
 	return "", false
 }
 
-type seedByHash struct {
-	strippedLock []sync.RWMutex
-	seedByHash   []int
+// labelCounter tracks, per (tenant, label) hash slot, how many times a series carrying that
+// label has been created or deleted. Cache entries snapshot these counts to detect when a
+// matching series may have been added since the entry was stored. Collisions are safe: two
+// distinct labels sharing a slot only cause extra (never missed) invalidations.
+type labelCounter struct {
+	counts []atomic.Uint32
 }
 
-func newSeedByHash(size int) *seedByHash {
-	return &seedByHash{
-		seedByHash:   make([]int, size),
-		strippedLock: make([]sync.RWMutex, numOfSeedsStripes),
+func newLabelCounter(size uint) *labelCounter {
+	return &labelCounter{
+		counts: make([]atomic.Uint32, size),
 	}
 }
 
-func (s *seedByHash) getSeed(userId string, v string) string {
-	h := memHashString(userId, v)
-	i := h % uint64(len(s.seedByHash))
-	l := i % uint64(len(s.strippedLock))
-	s.strippedLock[l].RLock()
-	defer s.strippedLock[l].RUnlock()
-	return strconv.Itoa(s.seedByHash[i])
+func (s *labelCounter) slotIndex(userId string, dimensions ...string) uint32 {
+	hash := memHashStrings(userId, dimensions...)
+	return hash % uint32(len(s.counts))
 }
 
-func (s *seedByHash) incrementSeed(userId string, v string) {
-	h := memHashString(userId, v)
-	i := h % uint64(len(s.seedByHash))
-	l := i % uint64(len(s.strippedLock))
-	s.strippedLock[l].Lock()
-	defer s.strippedLock[l].Unlock()
-	s.seedByHash[i]++
+func (s *labelCounter) readSlot(index uint32) uint32 {
+	return s.counts[index].Load()
+}
+
+func (s *labelCounter) increment(userId string, dimensions ...string) {
+	i := s.slotIndex(userId, dimensions...)
+	s.counts[i].Add(1)
 }
 
 type lruCache[V any] struct {
@@ -524,14 +584,14 @@ func (c *lruCache[V]) size() int {
 	return c.cached.Len()
 }
 
-func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
+func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, func() bool, error)) (*cacheEntryPromise[V], bool) {
 	r := &cacheEntryPromise[V]{
 		done: make(chan struct{}),
 	}
 	defer close(r.done)
 
 	if !c.cfg.Enabled {
-		r.v, _, r.err = fetch()
+		r.v, _, _, r.err = fetch()
 		return r, false
 	}
 
@@ -539,7 +599,7 @@ func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error))
 
 	if !ok {
 		c.metrics.CacheMiss.WithLabelValues(c.name, "miss").Inc()
-		r.v, r.sizeBytes, r.err = fetch()
+		r.v, r.sizeBytes, r.stillValid, r.err = fetch()
 		r.sizeBytes += int64(len(k))
 		r.ts = c.timeNow()
 		c.created(k, r.sizeBytes)
@@ -547,20 +607,29 @@ func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error))
 	}
 
 	if ok {
+		entry := loaded.(*cacheEntryPromise[V])
 		// If the promise is already in the cache, lets wait it to fetch the data.
-		<-loaded.(*cacheEntryPromise[V]).done
+		<-entry.done
 
 		// LRU: move to back on access
 		c.cachedMtx.Lock()
-		if elem := loaded.(*cacheEntryPromise[V]).elem; elem != nil {
-			c.cached.MoveToBack(elem)
+		if entry.elem != nil {
+			c.cached.MoveToBack(entry.elem)
 		}
 		c.cachedMtx.Unlock()
 
-		// If is cached but is expired, lets try to replace the cache value.
-		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
-			c.metrics.CacheMiss.WithLabelValues(c.name, "expired").Inc()
-			r.v, r.sizeBytes, r.err = fetch()
+		// A nil stillValid means the entry has no count-based invalidation (blocks
+		// cache, or callers that don't snapshot counts); only time expiry applies.
+		invalidated := entry.stillValid != nil && !entry.stillValid()
+
+		// If is cached but is expired or invalidated, lets try to replace the cache value.
+		if (invalidated || entry.isExpired(c.cfg.Ttl, c.timeNow())) && c.cachedValues.CompareAndSwap(k, loaded, r) {
+			if invalidated {
+				c.metrics.CacheMiss.WithLabelValues(c.name, "invalidated").Inc()
+			} else {
+				c.metrics.CacheMiss.WithLabelValues(c.name, "expired").Inc()
+			}
+			r.v, r.sizeBytes, r.stillValid, r.err = fetch()
 			r.sizeBytes += int64(len(k))
 			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
 			r.ts = c.timeNow()
@@ -644,6 +713,8 @@ type cacheEntryPromise[V any] struct {
 	sizeBytes int64
 	elem      *list.Element
 
+	stillValid func() bool
+
 	done chan struct{}
 	v    V
 	err  error
@@ -655,7 +726,15 @@ func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool
 	return r >= ttl
 }
 
-func memHashString(userId, v string) uint64 {
-	h := fnv1a.HashString64(userId)
-	return fnv1a.AddString64(h, v)
+func memHashStrings(userId string, dimensions ...string) uint32 {
+	h := fnv1a.HashString32(userId)
+	for _, d := range dimensions {
+		h = fnv1a.AddString32(h, d)
+	}
+	return h
+}
+
+type countSnapshot struct {
+	index uint32 // slot in labelCounter
+	count uint32 // value at store time
 }

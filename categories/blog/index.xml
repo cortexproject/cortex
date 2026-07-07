@@ -1,4 +1,168 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/categories/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Fri, 17 Oct 2025 00:00:00 +0000</lastBuildDate><atom:link href="/categories/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Introducing READONLY State: Gradual and Safe Ingester Scaling</title><link>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</link><pubDate>Fri, 17 Oct 2025 00:00:00 +0000</pubDate><guid>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</guid><description>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – blog</title><link>/categories/blog/</link><description>Recent content in blog on Cortex</description><generator>Hugo -- gohugo.io</generator><lastBuildDate>Tue, 07 Jul 2026 00:00:00 +0000</lastBuildDate><atom:link href="/categories/blog/index.xml" rel="self" type="application/rss+xml"/><item><title>Blog: Cortex Security Audit Results</title><link>/blog/2026/07/07/cortex-security-audit-results/</link><pubDate>Tue, 07 Jul 2026 00:00:00 +0000</pubDate><guid>/blog/2026/07/07/cortex-security-audit-results/</guid><description>
+&lt;h2 id="introduction">Introduction&lt;/h2>
+&lt;p>The Cortex maintainer team is publishing the results of a third-party security audit of the Cortex codebase, completed on April 20, 2026.&lt;/p>
+&lt;p>Cortex is a horizontally scalable, multi-tenant, long-term storage backend for Prometheus. Multi-tenancy is enforced at the application layer via the &lt;code>X-Scope-OrgID&lt;/code> header — every read and write path uses this tenant identifier to scope access to time-series data, rules, and alertmanager configurations. The integrity of this boundary is a critical security property.&lt;/p>
+&lt;p>Given the project&amp;rsquo;s role as the storage layer for multiple managed Prometheus offerings and large-scale self-hosted deployments, the maintainers requested a dedicated security engagement through the CNCF.&lt;/p>
+&lt;h2 id="engagement-details">Engagement Details&lt;/h2>
+&lt;ul>
+&lt;li>&lt;strong>Auditor:&lt;/strong> &lt;a href="https://www.quarkslab.com/">Quarkslab&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Coordinator:&lt;/strong> &lt;a href="https://ostif.org/">OSTIF&lt;/a>&lt;/li>
+&lt;li>&lt;strong>Assessed commit:&lt;/strong> &lt;code>b4f5cfc37d83719040de7ca997ec125304a6b766&lt;/code>&lt;/li>
+&lt;li>&lt;strong>Methodology:&lt;/strong> Whitebox code review, static analysis, dynamic testing&lt;/li>
+&lt;/ul>
+&lt;h2 id="scope">Scope&lt;/h2>
+&lt;p>The auditors operated from a threat model agreed upon with the maintainers prior to the engagement. The focus areas were:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Tenant boundary integrity&lt;/strong> — Can a tenant read, write, or delete another tenant&amp;rsquo;s series, rules, or alertmanager state? Are there code paths where &lt;code>X-Scope-OrgID&lt;/code> propagation is missing or bypassable?&lt;/li>
+&lt;li>&lt;strong>Cluster operations&lt;/strong> — Can an internal component (ingester, compactor, store-gateway) be induced into serving cross-tenant data? Are gossip/memberlist communications authenticated and integrity-checked?&lt;/li>
+&lt;li>&lt;strong>Ingestion path&lt;/strong> — Remote write, PushStream gRPC, distributor validation, ingester replication.&lt;/li>
+&lt;li>&lt;strong>Query path&lt;/strong> — Query frontend, querier, store-gateway block loading and filtering.&lt;/li>
+&lt;li>&lt;strong>Configuration and secrets exposure&lt;/strong> — Runtime config endpoints, debug endpoints.&lt;/li>
+&lt;/ol>
+&lt;h2 id="findings">Findings&lt;/h2>
+&lt;p>7 vulnerabilities identified — 6 Medium, 1 Low. No Critical or High severity issues.&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>ID&lt;/th>
+&lt;th>Title&lt;/th>
+&lt;th>Risk&lt;/th>
+&lt;th>Impact&lt;/th>
+&lt;th>Attack Vector&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>V01&lt;/td>
+&lt;td>Tenant impersonation via PushStream gRPC&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>High (cross-tenant write)&lt;/td>
+&lt;td>Authenticated tenant sending crafted gRPC stream with overridden org ID&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V02&lt;/td>
+&lt;td>Stored XSS&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>Marginal&lt;/td>
+&lt;td>Malicious metric label values rendered in UI contexts&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V03&lt;/td>
+&lt;td>Sensitive information leakage&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>Marginal&lt;/td>
+&lt;td>&lt;code>/config&lt;/code> endpoint exposing storage credentials in plaintext&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V04&lt;/td>
+&lt;td>Unbound Gzip decompression&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>Marginal (DoS)&lt;/td>
+&lt;td>Crafted compressed payload causing excessive memory allocation on distributor&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V05&lt;/td>
+&lt;td>Uncontrolled memory allocation via protobuf histogram&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>Marginal (DoS)&lt;/td>
+&lt;td>Malformed histogram sample with extreme bucket count&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V06&lt;/td>
+&lt;td>Unbounded read on gossip connections&lt;/td>
+&lt;td>Medium&lt;/td>
+&lt;td>Marginal (DoS)&lt;/td>
+&lt;td>Oversized gossip packet causing unbounded memory read in memberlist&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V07&lt;/td>
+&lt;td>Gossip packet integrity check not enforced&lt;/td>
+&lt;td>Low&lt;/td>
+&lt;td>Negligible&lt;/td>
+&lt;td>Unauthenticated gossip messages accepted without HMAC validation&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;h2 id="fix-status">Fix Status&lt;/h2>
+&lt;p>All 7 findings have verified fixes merged to &lt;code>master&lt;/code> and shipped in &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.21.1">&lt;strong>Cortex v1.21.1&lt;/strong>&lt;/a> (released 2026-06-04).&lt;/p>
+&lt;table>
+&lt;thead>
+&lt;tr>
+&lt;th>Finding&lt;/th>
+&lt;th>Fix&lt;/th>
+&lt;th>PR&lt;/th>
+&lt;/tr>
+&lt;/thead>
+&lt;tbody>
+&lt;tr>
+&lt;td>V01 — Tenant impersonation via PushStream gRPC&lt;/td>
+&lt;td>Reject &lt;code>PushStream&lt;/code> requests where per-message &lt;code>TenantID&lt;/code> diverges from authenticated caller; add HMAC-SHA256 stream auth via &lt;code>-distributor.sign-write-requests-keys&lt;/code>&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7475">#7475&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V02 — Stored XSS&lt;/td>
+&lt;td>Replace &lt;code>text/template&lt;/code> with &lt;code>html/template&lt;/code> in Alertmanager and Store Gateway status pages&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7512">#7512&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V03 — Sensitive information leakage&lt;/td>
+&lt;td>Mask Swift, etcd, Redis, and HTTP basic-auth credentials on &lt;code>/config&lt;/code> endpoint&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7473">#7473&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V04 — Unbound Gzip decompression&lt;/td>
+&lt;td>Cap decompressed body via &lt;code>-distributor.otlp-max-recv-msg-size&lt;/code> in &lt;code>ParseProtoReader&lt;/code> and OTLP path&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7515">#7515&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V05 — Uncontrolled memory allocation via protobuf histogram&lt;/td>
+&lt;td>Add &lt;code>WrappedHistogram&lt;/code> with configurable size limit (&lt;code>-validation.max-native-histogram-size-bytes&lt;/code>, default 16 KB)&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7570">#7570&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V06 — Unbounded read on gossip connections&lt;/td>
+&lt;td>Add &lt;code>-memberlist.packet-read-timeout&lt;/code>, &lt;code>-memberlist.max-packet-size&lt;/code>, &lt;code>-memberlist.max-concurrent-connections&lt;/code>&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7518">#7518&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;tr>
+&lt;td>V07 — Gossip packet integrity check not enforced&lt;/td>
+&lt;td>Drop incoming TCP transport packets when digest verification fails&lt;/td>
+&lt;td>&lt;a href="https://github.com/cortexproject/cortex/pull/7474">#7474&lt;/a>&lt;/td>
+&lt;/tr>
+&lt;/tbody>
+&lt;/table>
+&lt;p>&lt;strong>Upgrade to &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.21.1">v1.21.1&lt;/a> or later to include all security fixes.&lt;/strong>&lt;/p>
+&lt;h2 id="auditor-assessment">Auditor Assessment&lt;/h2>
+&lt;p>From the report:&lt;/p>
+&lt;blockquote>
+&lt;p>&amp;ldquo;Cortex benefits from a solid engineering foundation. The project shows good code quality, extensive test coverage, and strong observability features, all of which contribute to its maintainability and resilience.&amp;rdquo;&lt;/p>
+&lt;/blockquote>
+&lt;p>The report also recommended:&lt;/p>
+&lt;ul>
+&lt;li>Tightening default configurations (e.g., enabling gossip encryption by default)&lt;/li>
+&lt;li>Centralizing input validation at ingestion boundaries rather than relying on per-component checks&lt;/li>
+&lt;li>Establishing a dependency update cadence for indirect transitive dependencies&lt;/li>
+&lt;/ul>
+&lt;h2 id="operator-action-required">Operator Action Required&lt;/h2>
+&lt;p>If you operate a multi-tenant Cortex cluster:&lt;/p>
+&lt;ol>
+&lt;li>&lt;strong>Update to the &lt;a href="https://github.com/cortexproject/cortex/releases/tag/v1.21.1">v1.21.1&lt;/a> or later release.&lt;/strong> All fixes are included.&lt;/li>
+&lt;li>&lt;strong>Review your &lt;code>/config&lt;/code> endpoint exposure.&lt;/strong> If you expose Cortex&amp;rsquo;s HTTP API without authentication, V03 may have been exploitable in your environment.&lt;/li>
+&lt;li>&lt;strong>Consider enabling memberlist encryption&lt;/strong> (&lt;code>-memberlist.encryption-enabled=true&lt;/code>) if your gossip traffic traverses untrusted networks. V07 makes this particularly relevant.&lt;/li>
+&lt;li>&lt;strong>Audit PushStream gRPC access.&lt;/strong> If you expose the distributor gRPC port to tenants directly (not behind an auth gateway), V01 was exploitable prior to the fix.&lt;/li>
+&lt;/ol>
+&lt;h2 id="resources">Resources&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://ostif.org/cortex-audit-complete/">OSTIF Announcement&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://blog.quarkslab.com/cortex-security-audit.html">Quarkslab Blog Post&lt;/a>&lt;/li>
+&lt;/ul>
+&lt;h2 id="acknowledgments">Acknowledgments&lt;/h2>
+&lt;ul>
+&lt;li>&lt;a href="https://www.quarkslab.com/">Quarkslab&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://ostif.org/">OSTIF&lt;/a>&lt;/li>
+&lt;li>&lt;a href="https://cncf.io">CNCF&lt;/a>&lt;/li>
+&lt;li>Cortex maintainers and community&lt;/li>
+&lt;/ul></description></item><item><title>Blog: Introducing READONLY State: Gradual and Safe Ingester Scaling</title><link>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</link><pubDate>Fri, 17 Oct 2025 00:00:00 +0000</pubDate><guid>/blog/2025/10/17/introducing-readonly-state-gradual-and-safe-ingester-scaling/</guid><description>
 &lt;h2 id="introduction">Introduction&lt;/h2>
 &lt;p>Scaling down ingesters in Cortex has traditionally been a complex and risky operation. The conventional approach required setting &lt;code>querier.query-store-after=0s&lt;/code>, which forces all queries to hit storage directly, significantly impacting performance. With Cortex 1.19.0, we introduced a new &lt;strong>READONLY state&lt;/strong> for ingesters that changes how you can safely scale down your Cortex clusters.&lt;/p>
 &lt;h2 id="why-traditional-scaling-falls-short">Why Traditional Scaling Falls Short&lt;/h2>

@@ -1184,6 +1184,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
+		i.metrics.headMetricNamesPerUser.WithLabelValues(userID).Set(float64(userDB.seriesInMetric.ActiveMetricNames()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
@@ -3150,6 +3151,7 @@ func (i *Ingester) closeAllTSDB() {
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.headMetricNamesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 

@@ -374,3 +374,36 @@ func (ir *mockIndexReader) LabelNamesFor(ctx context.Context, postings index.Pos
 }
 
 func (ir *mockIndexReader) Close() error { return nil }
+
+func TestMetricCounter_ActiveMetricNames(t *testing.T) {
+	limits := validation.Limits{MaxLocalSeriesPerMetric: 100}
+	overrides := validation.NewOverrides(limits, nil)
+	limiter := NewLimiter(overrides, nil, util.ShardingStrategyDefault, true, 3, false, "")
+	mc := newMetricCounter(limiter, nil)
+
+	// Initially zero.
+	assert.Equal(t, 0, mc.ActiveMetricNames())
+
+	// Add series for 3 different metrics.
+	mc.increaseSeriesForMetric("metric_a")
+	mc.increaseSeriesForMetric("metric_a")
+	mc.increaseSeriesForMetric("metric_b")
+	mc.increaseSeriesForMetric("metric_c")
+	assert.Equal(t, 3, mc.ActiveMetricNames())
+
+	// Remove all series for metric_b.
+	mc.decreaseSeriesForMetric("metric_b")
+	assert.Equal(t, 2, mc.ActiveMetricNames())
+
+	// Remove one series for metric_a (still has one left).
+	mc.decreaseSeriesForMetric("metric_a")
+	assert.Equal(t, 2, mc.ActiveMetricNames())
+
+	// Remove last series for metric_a.
+	mc.decreaseSeriesForMetric("metric_a")
+	assert.Equal(t, 1, mc.ActiveMetricNames())
+
+	// Remove last series for metric_c.
+	mc.decreaseSeriesForMetric("metric_c")
+	assert.Equal(t, 0, mc.ActiveMetricNames())
+}

@@ -12,7 +12,7 @@ author: Daniel Blando ([@danielblando](https://github.com/danielblando))
 
 ## Introduction
 
-The Cortex maintainer team is publishing the results of a third-party security audit of the Cortex codebase, completed in Q2 2026.
+The Cortex maintainer team is publishing the results of a third-party security audit of the Cortex codebase, completed on April 20, 2026.
 
 Cortex is a horizontally scalable, multi-tenant, long-term storage backend for Prometheus. Multi-tenancy is enforced at the application layer via the `X-Scope-OrgID` header — every read and write path uses this tenant identifier to scope access to time-series data, rules, and alertmanager configurations. The integrity of this boundary is a critical security property.
 

@@ -81,7 +81,7 @@ The report also recommended:
 
 If you operate a multi-tenant Cortex cluster:
 
-1. **Update to the latest release.** All fixes are included.
+1. **Update to the [v1.21.1](https://github.com/cortexproject/cortex/releases/tag/v1.21.1) or later release.** All fixes are included.
 2. **Review your `/config` endpoint exposure.** If you expose Cortex's HTTP API without authentication, V03 may have been exploitable in your environment.
 3. **Consider enabling memberlist encryption** (`-memberlist.encryption-enabled=true`) if your gossip traffic traverses untrusted networks. V07 makes this particularly relevant.
 4. **Audit PushStream gRPC access.** If you expose the distributor gRPC port to tenants directly (not behind an auth gateway), V01 was exploitable prior to the fix.

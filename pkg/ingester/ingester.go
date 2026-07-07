@@ -1518,6 +1518,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	var newSeries []labels.Labels
 
+	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
+	nowMs := time.Now().UnixMilli()
+	observeDelay := func(timestampMs int64) {
+		if delayMs := nowMs - timestampMs; delayMs >= 0 {
+			delayObserver.Observe(float64(delayMs) / 1000.0)
+		}
+	}
+
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
@@ -1545,6 +1553,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 		for _, s := range ts.Samples {
 			var err error
+
+			// Observe ingestion delay for all samples (accepted and rejected)
+			observeDelay(s.TimestampMs)
 
 			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
 				if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
@@ -1590,6 +1601,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					h   *histogram.Histogram
 					fh  *histogram.FloatHistogram
 				)
+
+				// Observe ingestion delay for all histograms (accepted and rejected)
+				observeDelay(hp.TimestampMs)
 
 				// Choose the decoder based on the histogram's proto type (the
 				// CountInt/CountFloat oneof), not the count value. A float

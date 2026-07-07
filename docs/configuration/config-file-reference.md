@@ -2923,6 +2923,12 @@ tsdb:
     # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio
     [lazy_matcher_complex_cost_ratio: <int> | default = 2]
 
+    # The number of counts stored in the label counter used for head cache
+    # invalidation. Note one label counter is shared by all tenants. 0 sets to
+    # the default of 4_000_000.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.label-counter-size
+    [label_counter_size: <int> | default = 4000000]
+
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.
   # CLI flag: -blocks-storage.users-scanner.strategy

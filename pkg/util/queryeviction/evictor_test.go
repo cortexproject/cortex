@@ -207,7 +207,13 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 		waitEvicted(t, evicted)
 	}
 
-	assert.Equal(t, float64(3), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))))
+	// The eviction signal (closing `evicted`) and the evictionsTotal increment
+	// both happen in the evictor's background loop, but the signal fires first
+	// (see running() in evictor.go: Cancel() is called before Inc()). Waiting on
+	// the signal alone races with the metric write, so poll for the metric too.
+	require.Eventually(t, func() bool {
+		return promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))) == float64(3)
+	}, 500*time.Millisecond, 5*time.Millisecond, "expected evictionsTotal to reach 3")
 }
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {

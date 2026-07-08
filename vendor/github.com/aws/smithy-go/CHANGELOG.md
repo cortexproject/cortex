@@ -1,3 +1,21 @@
+# Release (2026-06-26)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.3
+  * **Bug Fix**: Fix bug in JSON doc encoder and endpoint host label format validation
+
+# Release (2026-06-05)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.27.2
+  * **Bug Fix**: Fix incorrect serialization of unions in CBOR-based protocols.
+
 # Release (2026-06-04)
 
 ## General Highlights

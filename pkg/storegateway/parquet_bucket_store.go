@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
@@ -47,6 +48,12 @@ type parquetBucketStore struct {
 	matcherCache      storecache.MatchersCache
 	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	rowRangesCache    search.RowRangesForConstraintsCache
+
+	shardCountsMu sync.Mutex
+	// cachedShardCounts maps a block ID to its parquet shard count. The map is rebuilt
+	// only when the bucket index is refreshed (detected via cachedIndexUpdatedAt).
+	cachedShardCounts    map[string]int
+	cachedIndexUpdatedAt int64
 }
 
 func (p *parquetBucketStore) Close() error {
@@ -124,14 +131,7 @@ func (p *parquetBucketStore) resolveShardCounts(ctx context.Context, blockIDs []
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to get bucket index")
 		}
-		for _, b := range idx.Blocks {
-			numShards := 1
-			if b.Parquet != nil && b.Parquet.Shards > 0 {
-				numShards = b.Parquet.Shards
-			}
-			shardCounts[b.ID.String()] = numShards
-		}
-		return shardCounts, nil
+		return p.shardCountsFromIndex(idx), nil
 	}
 
 	// Fallback: read the converter mark for each block.
@@ -147,6 +147,37 @@ func (p *parquetBucketStore) resolveShardCounts(ctx context.Context, blockIDs []
 		shardCounts[blockID] = marker.Shards
 	}
 	return shardCounts, nil
+}
+
+// shardCountsFromIndex returns a block ID to shard count map built from the bucket index.
+//
+// The parquet shard count of a block is immutable once the block is converted, so the map
+// is rebuilt only when the bucket index has been refreshed (detected via UpdatedAt). In
+// between refreshes the previously built map is reused, avoiding a full iteration over all
+// blocks in the index on every request.
+func (p *parquetBucketStore) shardCountsFromIndex(idx *bucketindex.Index) map[string]int {
+	p.shardCountsMu.Lock()
+	defer p.shardCountsMu.Unlock()
+
+	if p.cachedShardCounts != nil && p.cachedIndexUpdatedAt == idx.UpdatedAt {
+		return p.cachedShardCounts
+	}
+
+	shardCounts := make(map[string]int, len(idx.Blocks))
+	for _, b := range idx.Blocks {
+		if b.Parquet == nil {
+			continue
+		}
+		numShards := b.Parquet.Shards
+		if numShards <= 0 {
+			numShards = 1
+		}
+		shardCounts[b.ID.String()] = numShards
+	}
+
+	p.cachedShardCounts = shardCounts
+	p.cachedIndexUpdatedAt = idx.UpdatedAt
+	return shardCounts
 }
 
 // Series implements the store interface for a single parquet bucket store

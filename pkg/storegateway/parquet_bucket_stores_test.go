@@ -164,6 +164,40 @@ func TestParquetBucketStore_FindParquetBlocks_InvalidMatchers(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, s.Code())
 }
 
+func TestParquetBucketStore_ShardCountsFromIndex_Memoized(t *testing.T) {
+	uid1 := ulidv2.MustNew(1, nil)
+	uid2 := ulidv2.MustNew(2, nil)
+	uid3 := ulidv2.MustNew(3, nil)
+	idx := &bucketindex.Index{
+		UpdatedAt: 100,
+		Blocks: bucketindex.Blocks{
+			{ID: uid1, Parquet: &cortex_parquet.ConverterMarkMeta{Shards: 3}},
+			{ID: uid2}, // Non-parquet block -> excluded from the map.
+			{ID: uid3, Parquet: &cortex_parquet.ConverterMarkMeta{Shards: 0}}, // Old parquet block without recorded shards -> 1.
+		},
+	}
+
+	store := &parquetBucketStore{logger: log.NewNopLogger()}
+
+	got := store.shardCountsFromIndex(idx)
+	assert.Equal(t, 3, got[uid1.String()])
+	_, ok := got[uid2.String()]
+	assert.False(t, ok, "non-parquet blocks must not be tracked in the shard count map")
+	assert.Equal(t, 1, got[uid3.String()], "parquet block without recorded shards defaults to 1")
+	assert.Equal(t, int64(100), store.cachedIndexUpdatedAt)
+
+	// Same UpdatedAt -> the map is reused rather than rebuilt.
+	store.cachedShardCounts[uid1.String()] = 999
+	reused := store.shardCountsFromIndex(idx)
+	assert.Equal(t, 999, reused[uid1.String()], "map should be reused when UpdatedAt is unchanged")
+
+	// A new UpdatedAt -> the map is rebuilt from the index.
+	idx.UpdatedAt = 200
+	rebuilt := store.shardCountsFromIndex(idx)
+	assert.Equal(t, 3, rebuilt[uid1.String()], "map should be rebuilt when UpdatedAt changes")
+	assert.Equal(t, int64(200), store.cachedIndexUpdatedAt)
+}
+
 func TestChunkToStoreEncoding(t *testing.T) {
 	tests := []struct {
 		name     string

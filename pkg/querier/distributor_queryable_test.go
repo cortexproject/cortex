@@ -642,3 +642,71 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 		})
 	}
 }
+
+func BenchmarkIngesterStreamingSelect(b *testing.B) {
+	// Simulate a realistic ingester response: 100 series, each with labels and chunk data
+	// that reference a shared backing buffer (mimicking gRPC unmarshal behavior).
+	// This benchmark measures the allocations in the streamingSelect hot path.
+	const numSeries = 100
+	const chunkDataSize = 1024
+
+	// Build a single large buffer to simulate the gRPC receive buffer.
+	// All label strings and chunk data will be slices into this buffer.
+	bufSize := numSeries * (chunkDataSize + 200) // 200 bytes for label strings per series
+	buf := make([]byte, bufSize)
+	for i := range buf {
+		buf[i] = byte(i % 256)
+	}
+
+	buildResponse := func() *client.QueryStreamResponse {
+		offset := 0
+		series := make([]client.TimeSeriesChunk, numSeries)
+		for i := range series {
+			// Labels that reference the shared buffer (simulating protobuf unmarshal)
+			nameStr := string(buf[offset : offset+10])
+			offset += 10
+			valueStr := string(buf[offset : offset+20])
+			offset += 20
+
+			// Chunk data that references the shared buffer
+			chunkData := buf[offset : offset+chunkDataSize]
+			offset += chunkDataSize
+
+			series[i] = client.TimeSeriesChunk{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "__name__", Value: nameStr},
+					{Name: "instance", Value: valueStr},
+				},
+				Chunks: []client.Chunk{
+					{
+						StartTimestampMs: 0,
+						EndTimestampMs:   1000,
+						Data:             chunkData,
+					},
+				},
+			}
+		}
+		return &client.QueryStreamResponse{Chunkseries: series}
+	}
+
+	b.Run("with_detach", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			resp := buildResponse()
+			for _, result := range resp.Chunkseries {
+				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
+				_ = detachChunksFromBuffer(result.Chunks)
+			}
+		}
+	})
+
+	b.Run("without_detach", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			resp := buildResponse()
+			for _, result := range resp.Chunkseries {
+				_ = cortexpb.FromLabelAdaptersToLabels(result.Labels)
+			}
+		}
+	})
+}

@@ -585,3 +585,53 @@ func TestParquetBucketStores_Series_MultiShard_BucketIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, numSeries, len(series), "all series must be returned using the bucket index shard count")
 }
+
+// TestParquetBucketStores_Series_MultiShard_BucketIndexStale_FallbackToConverterMark
+// verifies that, when the bucket index is enabled but doesn't yet carry the parquet shard
+// info for a block, the Store Gateway falls back to reading the converter mark instead of
+// defaulting to a single shard.
+func TestParquetBucketStores_Series_MultiShard_BucketIndexStale_FallbackToConverterMark(t *testing.T) {
+	const (
+		userID     = "user-1"
+		metricName = "test_metric"
+		numSeries  = 6 // 6 unique series
+		// numRowGroups=1, maxRowsPerRowGroup=2 → ceil(6/1*2) = 3 shards
+		numRowGroups       = 1
+		maxRowsPerRowGroup = 2
+	)
+
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.BucketIndex.Enabled = true
+
+	storageDir := t.TempDir()
+
+	generateStorageBlockWithMultipleSeries(t, storageDir, userID, metricName, numSeries, 0, 100, 15)
+
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+
+	overrides := validation.NewOverrides(validation.Limits{}, nil)
+	uBucket := bucket.NewUserBucketClient(userID, bkt, overrides)
+
+	// Build the bucket index before converting to parquet, without parquet info. This models
+	// a stale index that knows about the block but doesn't record its shard count yet.
+	idx, _, _, err := bucketindex.NewUpdater(bkt, userID, nil, log.NewNopLogger()).UpdateIndex(context.Background(), nil)
+	require.NoError(t, err)
+	require.NoError(t, bucketindex.WriteIndex(context.Background(), bkt, userID, nil, idx))
+	require.Len(t, idx.Blocks, 1)
+	require.Nil(t, idx.Blocks[0].Parquet, "bucket index must not carry parquet shard info yet")
+
+	// Convert to parquet with 3 shards and write the correct converter mark.
+	userPath := filepath.Join(storageDir, userID)
+	blockIDs, err := convertToParquetBlocksWithShardsForTesting(userPath, uBucket, numRowGroups, maxRowsPerRowGroup)
+	require.NoError(t, err)
+	require.Len(t, blockIDs, 1)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	series, _, err := querySeries(stores, userID, metricName, 0, 100, blockIDs...)
+	require.NoError(t, err)
+	assert.Equal(t, numSeries, len(series), "all series from all shards must be returned via the converter mark fallback")
+}

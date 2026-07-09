@@ -86,7 +86,17 @@ func (p *parquetBucketStore) findParquetBlocks(ctx context.Context, blockMatcher
 	var shardBlockIDs []string
 	var shardIDs []int
 	for _, blockID := range blockIDs {
-		numShards := shardCounts[blockID]
+		numShards, ok := shardCounts[blockID]
+		if !ok {
+			// The bucket index may not carry this block's shard count yet, for example
+			// right after the block has been converted but before the index has been
+			// refreshed. In that case, read the converter mark directly to get the
+			// actual shard count instead of assuming a single shard.
+			numShards, err = p.shardCountFromConverterMark(ctx, blockID)
+			if err != nil {
+				return nil, err
+			}
+		}
 		if numShards <= 0 {
 			// backward compatibility: blocks without a shard count have one shard
 			numShards = 1
@@ -136,17 +146,27 @@ func (p *parquetBucketStore) resolveShardCounts(ctx context.Context, blockIDs []
 
 	// Fallback: read the converter mark for each block.
 	for _, blockID := range blockIDs {
-		uid, err := ulid.Parse(blockID)
+		numShards, err := p.shardCountFromConverterMark(ctx, blockID)
 		if err != nil {
-			return nil, errors.Wrapf(err, "failed to parse block ID %s", blockID)
+			return nil, err
 		}
-		marker, err := cortex_parquet.ReadConverterMark(ctx, uid, p.bucket, p.logger)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to read converter mark for block %s", blockID)
-		}
-		shardCounts[blockID] = marker.Shards
+		shardCounts[blockID] = numShards
 	}
 	return shardCounts, nil
+}
+
+// shardCountFromConverterMark reads the parquet converter mark for the given block and
+// returns the number of shards recorded in it.
+func (p *parquetBucketStore) shardCountFromConverterMark(ctx context.Context, blockID string) (int, error) {
+	uid, err := ulid.Parse(blockID)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to parse block ID %s", blockID)
+	}
+	marker, err := cortex_parquet.ReadConverterMark(ctx, uid, p.bucket, p.logger)
+	if err != nil {
+		return 0, errors.Wrapf(err, "failed to read converter mark for block %s", blockID)
+	}
+	return marker.Shards, nil
 }
 
 // shardCountsFromIndex returns a block ID to shard count map built from the bucket index.

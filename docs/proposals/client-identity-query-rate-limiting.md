@@ -131,7 +131,7 @@ Query request arrives at query-frontend
 Continue (queued locally, or forwarded to the scheduler, depending on deployment topology)
 ```
 
-A new rate limiter instance, reusing the same local rate-limiting mechanism as the write-path
+A new rate limiter instance, reusing the same global rate-limiting mechanism as the write-path
 proposal, is added at the query-frontend, keyed by tenant and client identity together. This reuses
 the query-frontend's existing rejected-request counter and discard-reason pattern, so a rejection
 under this feature is observable the same way existing query-frontend rejections already are.
@@ -145,10 +145,10 @@ limits interface pattern already used elsewhere for query-side limits.
 Cortex's query-frontend can run with or without a separate query-scheduler. The query-frontend's
 request handler runs in the query-frontend process in both configurations: it is the entrypoint
 before a request is either queued locally or forwarded to the scheduler, so enforcing here, rather
-than inside the scheduler's own queueing logic, covers both deployment topologies with one check and
-avoids needing per-scheduler-replica state coordination for something that is already a
-per-frontend-replica local rate limit, the same "local" semantics the write-path proposal's default
-strategy already has.
+than inside the scheduler's own queueing logic, covers both deployment topologies with one check.
+Using global counters (shared across all query-frontend replicas via the same mechanism as the
+write-path proposal) means a client cannot route around the limit by landing on a less-loaded
+frontend replica.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
@@ -159,16 +159,13 @@ unbounded map, exactly as described in the write-path proposal's equivalent sect
 are configured independently (see Configuration above) since the query-frontend and distributor are
 separate processes with independent memory budgets, but the mechanism and rationale are identical.
 
-### Local enforcement precision, and interaction with the results cache
+### Global enforcement and interaction with the results cache
 
-The query-frontend, like the distributor, typically runs multiple replicas behind a load balancer,
-so the same local-enforcement precision caveat raised in the write-path proposal applies here too:
-one client's query traffic is a smaller, lumpier stream than a tenant's aggregate traffic, so
-which replica a given request lands on matters more than it does for tenant-wide limits. The same
-resolution applies: ship local-only first, treat a global variant as a near-term follow-up based on
-operational experience, not indefinitely deferred work.
+This proposal uses global counters, consistent with the write-path proposal. The same enforcement
+precision that global counters provide on the write path applies here: a client cannot route around
+the limit by spreading requests across frontend replicas.
 
-A second, read-path-specific question: the query-frontend serves some requests entirely from its
+A read-path-specific question remains: the query-frontend serves some requests entirely from its
 results cache, without ever reaching a querier or store-gateway. Enforcing the per-client check
 before knowing whether a request will be a cache hit means a client issuing frequent but cheap,
 repeated, cacheable queries (for example, an auto-refreshing dashboard hitting the same query
@@ -203,11 +200,10 @@ silently deferred.
 
 ## Rollout Plan
 
-Same phased approach as the write-path proposal: introduced as an **experimental** feature, local
-enforcement only, disabled by default (`client_identity_query_rate_limit: 0`). A global variant and
-graduation out of experimental status follow once operational experience from Phase 1 shows how
-much the local-only imprecision, and the cache-interaction question raised above, matter in
-practice.
+Same phased approach as the write-path proposal: introduced as an **experimental** feature with
+global enforcement, disabled by default (`client_identity_query_rate_limit: 0`). Graduation out of
+experimental status follows once operational experience from Phase 1, including resolution of the
+cache-interaction question above, confirms the design is sound.
 
 ## Alternatives Considered
 
@@ -233,8 +229,7 @@ practice.
   capacity, similar to how Cortex's existing max-queriers-per-tenant limit supports
   fractional/percentage values, rather than an absolute queries/second number? Left as a fast-follow
   refinement rather than blocking the initial absolute-number implementation.
-- Should the per-client check run before or after results-cache eligibility is known (see "Local
-  enforcement precision, and interaction with the results cache" above)? Checking after would avoid
+- Should the per-client check run before or after results-cache eligibility is known (see "Global enforcement and interaction with the results cache" above)? Checking after would avoid
   throttling cheap, cache-served requests, at the cost of being a slightly more invasive change to
   the request handling order; checking before (as currently proposed) is simpler but risks
   throttling based on request *count* rather than actual resource consumption. This should be

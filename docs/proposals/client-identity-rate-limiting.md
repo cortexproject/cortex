@@ -160,9 +160,8 @@ Push request
 Continue to ingestion
 ```
 
-A second rate limiter instance, reusing Cortex's existing local rate-limiting mechanism unmodified,
-is added to the distributor, keyed by tenant and client identity together rather than by tenant
-alone. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
+A second rate limiter instance, reusing Cortex's existing global rate-limiting mechanism, is added
+to the distributor, keyed by tenant and client identity together rather than by tenant alone. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
 limiter: a request must pass both. A tenant's aggregate throughput is still capped by the existing
 tenant-level rate limit; this only prevents one client from consuming the entire budget.
 
@@ -171,29 +170,25 @@ enforcement point resolves the tenant from the combined key and reads the config
 that tenant's overrides. The *limit value* is still a single per-tenant number, same as every other
 Cortex limit; only the token bucket enforcing it is split per client.
 
-### Local enforcement is less precise here than at the tenant level
+### Global enforcement
 
 Cortex's existing tenant-level rate limiter supports both a "local" mode (each distributor enforces
 its share of the limit independently) and a "global" mode (the limit is divided evenly across
 healthy distributors, trading a little coordination overhead for much tighter enforcement).
-"Local" is imprecise by design: which distributor a given request lands on is effectively random,
-so a client's traffic isn't evenly spread across replicas in the short term, and a burst can land
-disproportionately on one distributor.
 
-That imprecision matters less at the tenant level, where traffic volume is usually large enough
-relative to distributor count for the law of large numbers to smooth it out. At the per-client
-granularity this proposal adds, that assumption is weaker: one client's traffic is a smaller,
-lumpier stream, so local-only enforcement is more likely to either erroneously throttle a
-well-behaved client (bad luck concentrates its requests on an already-busy distributor) or let a
-misbehaving client through for longer than intended (its requests happen to spread across
-distributors, each individually staying under its local share). This is a real precision gap in a
-local-only first version, not merely a style choice inherited from the tenant-level limiter.
+At the per-client granularity this proposal adds, local enforcement is more likely to either
+erroneously throttle a well-behaved client (bad luck concentrates its requests on an already-busy
+distributor) or let a misbehaving client through for longer than intended (its requests happen to
+spread across distributors, each individually staying under its local share). One client's traffic
+is a smaller, lumpier stream than a tenant's aggregate traffic, so the law-of-large-numbers
+smoothing that makes local enforcement tolerable at the tenant level is weaker here.
 
-Given that, this proposal's initial version still ships local-only, matching how Cortex introduces
-most new limits, but a global variant (dividing the per-client limit across healthy distributors,
-mirroring the existing global tenant-level strategy) should be treated as a near-term follow-up
-once operational experience shows how much the imprecision matters in practice, not as indefinitely
-deferred future work.
+This proposal therefore ships with **global enforcement by default**, mirroring Cortex's existing
+`ingestion_rate_strategy: global` option for tenant-level limits. The per-client limit is divided
+evenly across healthy distributor replicas using the same ring membership and distributor count
+already tracked for global tenant-level enforcement. This ensures a client cannot route around the
+limit by having its requests spread across replicas, and avoids the erroneous-throttle / bypass
+risks that a local-only strategy would introduce at this granularity.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
@@ -265,13 +260,12 @@ Introduced as an **experimental** feature, consistent with how Cortex introduces
 (disabled by default, documented as experimental, graduated to stable after operational
 experience). Rollout in two phases:
 
-**Phase 1**: Ship local-only enforcement (see "Local enforcement is less precise" above) behind the
+**Phase 1**: Ship with global enforcement (see "Global enforcement" above) behind the
 `client_identity_ingestion_rate_limit` per-tenant override, defaulting to `0` (disabled) so existing
 deployments see no change. Validate with a small number of opted-in tenants.
 
-**Phase 2**: Based on operational feedback on how much the local-only imprecision matters in
-practice, add the global variant (dividing the per-client limit across healthy distributors) and
-consider graduating the feature out of experimental status.
+**Phase 2**: Based on operational feedback, consider graduating the feature out of experimental
+status.
 
 ## Alternatives Considered
 

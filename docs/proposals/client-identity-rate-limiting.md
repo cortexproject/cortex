@@ -160,8 +160,10 @@ Push request
 Continue to ingestion
 ```
 
-A second rate limiter instance, reusing Cortex's existing global rate-limiting mechanism, is added
-to the distributor, keyed by tenant and client identity together rather than by tenant alone. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
+A second rate limiter instance is added to the distributor, keyed by tenant and client identity
+together rather than by tenant alone. It tracks a local per-client counter, gossips it to peers
+via memberlist, and enforces against the cluster-wide sum — see "Global enforcement via gossip"
+above. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
 limiter: a request must pass both. A tenant's aggregate throughput is still capped by the existing
 tenant-level rate limit; this only prevents one client from consuming the entire budget.
 
@@ -170,25 +172,36 @@ enforcement point resolves the tenant from the combined key and reads the config
 that tenant's overrides. The *limit value* is still a single per-tenant number, same as every other
 Cortex limit; only the token bucket enforcing it is split per client.
 
-### Global enforcement
+### Global enforcement via gossip
 
 Cortex's existing tenant-level rate limiter supports both a "local" mode (each distributor enforces
 its share of the limit independently) and a "global" mode (the limit is divided evenly across
-healthy distributors, trading a little coordination overhead for much tighter enforcement).
+healthy distributors by replica count). Neither is quite right for per-client enforcement.
 
 At the per-client granularity this proposal adds, local enforcement is more likely to either
 erroneously throttle a well-behaved client (bad luck concentrates its requests on an already-busy
 distributor) or let a misbehaving client through for longer than intended (its requests happen to
 spread across distributors, each individually staying under its local share). One client's traffic
-is a smaller, lumpier stream than a tenant's aggregate traffic, so the law-of-large-numbers
-smoothing that makes local enforcement tolerable at the tenant level is weaker here.
+is a smaller, lumpier stream than a tenant's aggregate, so the law-of-large-numbers smoothing that
+makes local enforcement tolerable at the tenant level is weaker here.
 
-This proposal therefore ships with **global enforcement by default**, mirroring Cortex's existing
-`ingestion_rate_strategy: global` option for tenant-level limits. The per-client limit is divided
-evenly across healthy distributor replicas using the same ring membership and distributor count
-already tracked for global tenant-level enforcement. This ensures a client cannot route around the
-limit by having its requests spread across replicas, and avoids the erroneous-throttle / bypass
-risks that a local-only strategy would introduce at this granularity.
+The existing "global" divide-by-N mode improves on this but still assumes even load distribution:
+when a client's traffic lands disproportionately on one replica, that replica's share of the budget
+is exhausted faster than others and enforcement becomes uneven again.
+
+This proposal therefore uses **gossip-based global counters**. Each distributor maintains a local
+per-client counter, gossips it to peers via the existing memberlist transport (the same mechanism
+already used for the distributor ring), and enforces against the **cluster-wide sum** of all
+replicas' local counts. This means:
+
+- A client's rate is enforced against its true cluster-wide arrival rate, not an approximation
+  derived from assuming even distribution across replicas.
+- Enforcement remains accurate as replicas are added, removed, or experience uneven load — no
+  reconfiguration of per-replica shares is needed.
+- The gossip convergence window introduces a small lag (on the order of the memberlist gossip
+  interval), during which a burst can transiently exceed the limit before all replicas see the
+  updated sum. This is an inherent property of eventual consistency and is acceptable for a
+  best-effort rate limit of this kind.
 
 ### Bounding memory: capped tracking, not an unbounded map
 

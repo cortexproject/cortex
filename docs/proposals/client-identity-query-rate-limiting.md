@@ -131,8 +131,8 @@ Query request arrives at query-frontend
 Continue (queued locally, or forwarded to the scheduler, depending on deployment topology)
 ```
 
-A new rate limiter instance, reusing the same global rate-limiting mechanism as the write-path
-proposal, is added at the query-frontend, keyed by tenant and client identity together. This reuses
+A new rate limiter instance, using the same gossip-based global counter mechanism as the
+write-path proposal, is added at the query-frontend, keyed by tenant and client identity together. This reuses
 the query-frontend's existing rejected-request counter and discard-reason pattern, so a rejection
 under this feature is observable the same way existing query-frontend rejections already are.
 
@@ -146,9 +146,12 @@ Cortex's query-frontend can run with or without a separate query-scheduler. The 
 request handler runs in the query-frontend process in both configurations: it is the entrypoint
 before a request is either queued locally or forwarded to the scheduler, so enforcing here, rather
 than inside the scheduler's own queueing logic, covers both deployment topologies with one check.
-Using global counters (shared across all query-frontend replicas via the same mechanism as the
-write-path proposal) means a client cannot route around the limit by landing on a less-loaded
-frontend replica.
+
+Each query-frontend replica maintains a local per-client counter, gossips it to peers via the
+existing memberlist transport (the same mechanism as the write-path proposal), and enforces against
+the cluster-wide sum. A client cannot route around the limit by landing on a less-loaded frontend
+replica, and enforcement stays accurate as replicas scale up or down without any reconfiguration of
+per-replica shares.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
@@ -159,11 +162,13 @@ unbounded map, exactly as described in the write-path proposal's equivalent sect
 are configured independently (see Configuration above) since the query-frontend and distributor are
 separate processes with independent memory budgets, but the mechanism and rationale are identical.
 
-### Global enforcement and interaction with the results cache
+### Global enforcement via gossip and interaction with the results cache
 
-This proposal uses global counters, consistent with the write-path proposal. The same enforcement
-precision that global counters provide on the write path applies here: a client cannot route around
-the limit by spreading requests across frontend replicas.
+This proposal uses the same gossip-based global counters as the write-path proposal: each
+query-frontend replica maintains a local per-client counter, gossips it to peers via memberlist,
+and enforces against the cluster-wide sum. A client cannot route around the limit by spreading
+requests across frontend replicas, and the gossip convergence lag (on the order of the memberlist
+gossip interval) is acceptable for a best-effort rate limit, the same as on the write path.
 
 A read-path-specific question remains: the query-frontend serves some requests entirely from its
 results cache, without ever reaching a querier or store-gateway. Enforcing the per-client check
@@ -229,7 +234,7 @@ cache-interaction question above, confirms the design is sound.
   capacity, similar to how Cortex's existing max-queriers-per-tenant limit supports
   fractional/percentage values, rather than an absolute queries/second number? Left as a fast-follow
   refinement rather than blocking the initial absolute-number implementation.
-- Should the per-client check run before or after results-cache eligibility is known (see "Global enforcement and interaction with the results cache" above)? Checking after would avoid
+- Should the per-client check run before or after results-cache eligibility is known (see "Global enforcement via gossip and interaction with the results cache" above)? Checking after would avoid
   throttling cheap, cache-served requests, at the cost of being a slightly more invasive change to
   the request handling order; checking before (as currently proposed) is simpler but risks
   throttling based on request *count* rather than actual resource consumption. This should be

@@ -90,15 +90,16 @@ New limits, following the same pattern as the write-path proposal:
 frontend:
   client_identity_query_rate_limit: 0        # 0 = disabled (default; no behavior change)
   client_identity_query_burst_size: 0
-  # Same bounded-tracking cap as the write-path proposal, sized independently since the
-  # frontend and distributor are separate processes with separate memory budgets.
-  client_identity_query_tracked_clients_limit: 10000
 
 # Per-tenant override via runtime config
 overrides:
   tenant-123:
     client_identity_query_rate_limit: 50
     client_identity_query_burst_size: 100
+    # Per-tenant cap on how many distinct tracked client entries the per-client rate limiter
+    # keeps in memory for this tenant; oldest-used entries are evicted once this is reached.
+    # See "Bounding memory" in the write-path proposal for eviction semantics.
+    client_identity_query_tracked_clients_limit: 1000
 ```
 
 Units are queries per second (matching how Cortex's existing outstanding-requests limit is already
@@ -131,7 +132,7 @@ Query request arrives at query-frontend
 Continue (queued locally, or forwarded to the scheduler, depending on deployment topology)
 ```
 
-A new rate limiter instance, using the same gossip-based global counter mechanism as the
+A new rate limiter instance, using the same ring-based distributed enforcement as the
 write-path proposal, is added at the query-frontend, keyed by tenant and client identity together. This reuses
 the query-frontend's existing rejected-request counter and discard-reason pattern, so a rejection
 under this feature is observable the same way existing query-frontend rejections already are.
@@ -147,28 +148,29 @@ request handler runs in the query-frontend process in both configurations: it is
 before a request is either queued locally or forwarded to the scheduler, so enforcing here, rather
 than inside the scheduler's own queueing logic, covers both deployment topologies with one check.
 
-Each query-frontend replica maintains a local per-client counter, gossips it to peers via the
-existing memberlist transport (the same mechanism as the write-path proposal), and enforces against
-the cluster-wide sum. A client cannot route around the limit by landing on a less-loaded frontend
-replica, and enforcement stays accurate as replicas scale up or down without any reconfiguration of
-per-replica shares.
+Each query-frontend replica uses the same ring-based distributed enforcement as the write-path
+proposal: the `(tenant, client)` key is hashed onto the existing ring, and the owning replica
+maintains the authoritative per-tenant, per-client counter. A client cannot route around the limit
+by landing on a less-loaded frontend replica, and enforcement stays accurate as replicas scale up
+or down without any reconfiguration of per-replica shares.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
 Same concern as the write-path proposal, and the same fix: the number of distinct tenant+client
 keys here is bounded only by how many distinct `X-User-ID` values are presented to the
-query-frontend, so tracking is capped with least-recently-used eviction rather than kept in a plain
-unbounded map, exactly as described in the write-path proposal's equivalent section. The two caps
-are configured independently (see Configuration above) since the query-frontend and distributor are
+query-frontend, so tracking is capped per tenant with least-recently-used eviction rather than kept
+in a plain unbounded map, exactly as described in the write-path proposal's equivalent section
+(including its discussion of the enforcement consequence of eviction). The two caps are configured
+independently per tenant (see Configuration above) since the query-frontend and distributor are
 separate processes with independent memory budgets, but the mechanism and rationale are identical.
 
-### Global enforcement via gossip and interaction with the results cache
+### Distributed enforcement and interaction with the results cache
 
-This proposal uses the same gossip-based global counters as the write-path proposal: each
-query-frontend replica maintains a local per-client counter, gossips it to peers via memberlist,
-and enforces against the cluster-wide sum. A client cannot route around the limit by spreading
-requests across frontend replicas, and the gossip convergence lag (on the order of the memberlist
-gossip interval) is acceptable for a best-effort rate limit, the same as on the write path.
+This proposal uses the same ring-based distributed enforcement as the write-path proposal: each
+`(tenant, client)` key is sharded onto the existing ring, and the owning query-frontend replica
+maintains the authoritative per-tenant, per-client counter. A client cannot route around the
+per-tenant limit by spreading requests across frontend replicas, and enforcement stays accurate as
+replicas scale without any per-replica reconfiguration.
 
 A read-path-specific question remains: the query-frontend serves some requests entirely from its
 results cache, without ever reaching a querier or store-gateway. Enforcing the per-client check
@@ -203,6 +205,26 @@ silently deferred.
 - **Consistent with the write-path proposal's philosophy**: purely additive, off by default,
   identical two-gate opt-in structure, same underlying rate-limiting mechanism.
 
+## Value of the Identity Header Beyond Rate Limiting
+
+The same `X-User-ID` header established on the write path (see the companion proposal) carries
+equivalent value on the read path once it is available:
+
+- **Query resource consumption per client.** Query execution time, querier CPU, and store-gateway
+  reads can all be attributed per client in logs, enabling identification of expensive query
+  sources — runaway alert rules, auto-refreshing dashboards, ad hoc exploration — without manual
+  log correlation.
+- **Per-client slow query attribution.** The query-frontend already logs slow queries; with
+  `X-User-ID` present, slow query log lines carry the client identity directly, making it
+  straightforward to identify which client or dashboard is responsible without cross-referencing
+  external systems.
+- **Future per-client query cost quotas.** Once client identity is a reliable, trusted dimension on
+  the read path, per-client cost controls — for example, a cap on total querier time or
+  store-gateway bytes scanned per client per interval — become implementable without any additional
+  identity plumbing.
+
+These are downstream opportunities enabled by this proposal's identity header, not in scope here.
+
 ## Rollout Plan
 
 Same phased approach as the write-path proposal: introduced as an **experimental** feature with
@@ -230,6 +252,11 @@ cache-interaction question above, confirms the design is sound.
   touch different components and teams (distributor vs. query-frontend) might review them
   separately? Leaning towards shipping independently, sharing only the small identity-extraction
   logic, given the review benefits of keeping them as separate changes discussed above.
+- What's the right default for the per-tenant tracked-clients cap? The cap is configurable per
+  tenant via `client_identity_query_tracked_clients_limit` in the overrides; evictions caused by
+  hitting the cap are observable via a dedicated eviction counter, letting operators distinguish
+  "cap is properly sized" from "we're actively being hit with identity churn" without needing to
+  inspect memory profiles.
 - Should the per-client query limit be expressible as a percentage of the tenant's overall query
   capacity, similar to how Cortex's existing max-queriers-per-tenant limit supports
   fractional/percentage values, rather than an absolute queries/second number? Left as a fast-follow

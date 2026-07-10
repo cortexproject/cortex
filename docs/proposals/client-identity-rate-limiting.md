@@ -108,16 +108,16 @@ limit:
 distributor:
   client_identity_ingestion_rate_limit: 0        # 0 = disabled (default; no behavior change)
   client_identity_ingestion_burst_size: 0
-  # Global cap (not per-tenant) on how many distinct tracked tenant+client entries the
-  # per-client rate limiter keeps in memory at once; oldest-used entries are evicted once
-  # this is reached. See "Bounding memory" below.
-  client_identity_ingestion_tracked_clients_limit: 10000
 
 # Per-tenant override via runtime config
 overrides:
   tenant-123:
     client_identity_ingestion_rate_limit: 5000
     client_identity_ingestion_burst_size: 10000
+    # Per-tenant cap on how many distinct tracked client entries the per-client rate limiter
+    # keeps in memory for this tenant; oldest-used entries are evicted once this is reached.
+    # See "Bounding memory" below.
+    client_identity_ingestion_tracked_clients_limit: 1000
 ```
 
 `client_identity_ingestion_rate_limit: 0` is the default and means "disabled", the same convention
@@ -161,9 +161,9 @@ Continue to ingestion
 ```
 
 A second rate limiter instance is added to the distributor, keyed by tenant and client identity
-together rather than by tenant alone. It tracks a local per-client counter, gossips it to peers
-via memberlist, and enforces against the cluster-wide sum — see "Global enforcement via gossip"
-above. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
+together rather than by tenant alone. It enforces against the authoritative per-tenant, per-client
+counter via ring-based sharding — see "Distributed enforcement via the distributor ring"
+below. This check runs as an *additional* step alongside, not instead of, the existing tenant-level
 limiter: a request must pass both. A tenant's aggregate throughput is still capped by the existing
 tenant-level rate limit; this only prevents one client from consuming the entire budget.
 
@@ -172,36 +172,34 @@ enforcement point resolves the tenant from the combined key and reads the config
 that tenant's overrides. The *limit value* is still a single per-tenant number, same as every other
 Cortex limit; only the token bucket enforcing it is split per client.
 
-### Global enforcement via gossip
+### Distributed enforcement via the distributor ring
 
-Cortex's existing tenant-level rate limiter supports both a "local" mode (each distributor enforces
-its share of the limit independently) and a "global" mode (the limit is divided evenly across
-healthy distributors by replica count). Neither is quite right for per-client enforcement.
+Per-client limits are enforced using the existing distributor ring rather than gossip-based counter
+aggregation. Each `(tenant, client)` key is sharded onto the ring: the distributor instance that
+owns the shard for that key maintains the authoritative rate-limit counter for it.
 
-At the per-client granularity this proposal adds, local enforcement is more likely to either
-erroneously throttle a well-behaved client (bad luck concentrates its requests on an already-busy
-distributor) or let a misbehaving client through for longer than intended (its requests happen to
-spread across distributors, each individually staying under its local share). One client's traffic
-is a smaller, lumpier stream than a tenant's aggregate, so the law-of-large-numbers smoothing that
-makes local enforcement tolerable at the tenant level is weaker here.
+When a distributor receives a write request carrying an `X-User-ID` value, it hashes
+`(tenant_id, client_id)` to determine the owning ring member, then:
 
-The existing "global" divide-by-N mode improves on this but still assumes even load distribution:
-when a client's traffic lands disproportionately on one replica, that replica's share of the budget
-is exhausted faster than others and enforcement becomes uneven again.
+- If it owns that shard, it increments and enforces the counter locally.
+- If another replica owns the shard, it forwards the rate-limit check to that replica via an
+  internal RPC before accepting or rejecting the request.
 
-This proposal therefore uses **gossip-based global counters**. Each distributor maintains a local
-per-client counter, gossips it to peers via the existing memberlist transport (the same mechanism
-already used for the distributor ring), and enforces against the **cluster-wide sum** of all
-replicas' local counts. This means:
+This approach:
 
-- A client's rate is enforced against its true cluster-wide arrival rate, not an approximation
-  derived from assuming even distribution across replicas.
-- Enforcement remains accurate as replicas are added, removed, or experience uneven load — no
-  reconfiguration of per-replica shares is needed.
-- The gossip convergence window introduces a small lag (on the order of the memberlist gossip
-  interval), during which a burst can transiently exceed the limit before all replicas see the
-  updated sum. This is an inherent property of eventual consistency and is acceptable for a
-  best-effort rate limit of this kind.
+- **Works on any ring backend** (Consul, Etcd, memberlist) — not memberlist-only — because the
+  ring is used only for key ownership, not as a gossip transport.
+- **Eliminates convergence lag**: the owning replica holds the single authoritative counter; there
+  is no eventual-consistency window during which a burst can transiently exceed the configured
+  per-tenant limit before all replicas converge.
+- **Stays accurate under uneven load**: a client's requests landing on different distributors always
+  count against the same shard owner, regardless of which replica physically received each request.
+
+The tradeoff is a potential per-request remote call to the shard owner when the receiving
+distributor does not own the relevant shard. For deployments with random load balancing in front of
+distributors, a majority of checks will require this hop. Whether the added latency is acceptable
+depends on the intra-cluster RPC latency for a given deployment; this is a known cost and worth
+calling out explicitly in the implementation phase.
 
 ### Bounding memory: capped tracking, not an unbounded map
 
@@ -216,13 +214,25 @@ without limit simply by rotating identities.
 Cortex already solves an analogous problem elsewhere: the tenant-federation regex resolver bounds
 a similar per-key cache with a fixed-size, least-recently-used eviction cache rather than a plain
 map, sized by an operator-configurable limit. This proposal adopts the same approach: the per-client
-rate limiter tracking is capped by a new limit (default sized generously enough for typical
-deployments, e.g. on the order of 10,000 tracked clients) using least-recently-used eviction once
-the cap is reached. This bounds worst-case memory regardless of how many distinct identities are
-ever presented, at the cost of possible churn (an idle client's tracked state being evicted to make
-room for an active one) under sustained high-cardinality abuse, a fairness tradeoff, not a resource
-leak, and one already covered by the existing guidance to keep the identity header behind a trusted
-gateway.
+tracking for each tenant is capped by a new per-tenant limit (configurable via
+`client_identity_ingestion_tracked_clients_limit` in the tenant's overrides, with a sensible default
+on the order of 1,000 tracked clients per tenant) using least-recently-used eviction once the cap
+is reached.
+
+Unlike the federation regex resolver, where eviction only affects latency (a cache miss means a
+slower regex rebuild), eviction here has an enforcement consequence: an evicted client's counter is
+discarded, so if it reappears it starts from zero and can issue a fresh burst before its token
+bucket fills and enforcement kicks in again. This is a deliberate tradeoff — the alternative
+(refusing new clients once the cap is full) risks denying service to legitimate new clients when a
+tenant has many active writers. The LRU approach bounds memory and preserves fairness under normal
+cardinality, at the cost of a brief enforcement gap when a previously-evicted client resumes. Under
+sustained high-cardinality abuse (an attacker rotating identities to flood the LRU), the failure
+mode is bounded churn (evictions) rather than unbounded memory growth, which is acceptable given
+the existing guidance to keep `X-User-ID` behind a trusted gateway.
+
+Operators can tune the per-tenant cap upward for tenants with many legitimate concurrent writers,
+or observe the eviction counter (a dedicated counter incremented in the LRU eviction callback) to
+distinguish "cap is properly sized" from "we are actively seeing identity churn."
 
 ### Header trust boundary
 
@@ -267,15 +277,41 @@ This is purely additive:
 - If a tenant has no client-identity limit configured (the default), or the request has no
   `X-User-ID` header, the new check is a no-op and behavior is identical to today.
 
+## Value of the Identity Header Beyond Rate Limiting
+
+Establishing `X-User-ID` as a first-class header in the write path opens up a broader set of
+per-client observability and control capabilities that are not in scope for this proposal but
+become straightforward extensions once the identity is available:
+
+- **Resource consumption attribution.** Samples ingested, bytes written, and active series can all
+  be broken down per client in logs and metrics, enabling capacity planning and chargeback at the
+  client level rather than only at the tenant level.
+- **Out-of-order sample detection per client.** The distributor already detects and discards
+  out-of-order samples; with `X-User-ID` present, those rejections can be attributed to the
+  specific client sending them, making it straightforward to identify a misconfigured or misbehaving
+  writer without manual log correlation across requests.
+- **Per-client cardinality tracking.** Today cardinality can only be attributed to a tenant as a
+  whole. With client identity available on the write path, high-cardinality contributors can be
+  identified by source, not just by label patterns.
+- **Audit and debugging.** A client identity on every write request makes it possible to answer
+  questions like "which client started sending this metric series?" or "which client's deployment
+  caused this ingestion spike?" directly from logs, without cross-referencing external systems.
+- **Future per-client quota enforcement.** Once client identity is a reliable, trusted dimension,
+  per-client quotas (not just rate limits) — for example, a cap on active series or total samples
+  per day per client — become implementable without any additional identity plumbing.
+
+None of these require changes to this proposal; they are downstream opportunities that justify
+establishing a clean, trusted identity header now rather than bolting it on later.
+
 ## Rollout Plan
 
 Introduced as an **experimental** feature, consistent with how Cortex introduces most new limits
 (disabled by default, documented as experimental, graduated to stable after operational
 experience). Rollout in two phases:
 
-**Phase 1**: Ship with global enforcement (see "Global enforcement" above) behind the
-`client_identity_ingestion_rate_limit` per-tenant override, defaulting to `0` (disabled) so existing
-deployments see no change. Validate with a small number of opted-in tenants.
+**Phase 1**: Ship with distributed enforcement (see "Distributed enforcement via the distributor ring"
+above) behind the `client_identity_ingestion_rate_limit` per-tenant override, defaulting to `0`
+(disabled) so existing deployments see no change. Validate with a small number of opted-in tenants.
 
 **Phase 2**: Based on operational feedback, consider graduating the feature out of experimental
 status.
@@ -315,8 +351,8 @@ status.
   same `X-User-ID` header)? **Yes: see the companion proposal,
   [Client-Identity Query Rate Limiting](./client-identity-query-rate-limiting.md),** filed alongside
   this one and deliberately kept separate rather than expanding this proposal's scope.
-- What's the right default for the tracked-clients cap, and should evictions under sustained
-  pressure be observable (e.g. a counter for evictions caused by hitting the cap, distinct from
-  normal idle-entry turnover)? A visible eviction-rate metric would let operators tell "the cap is
-  properly sized" apart from "we're actively being hit with identity churn," which matters for
-  diagnosing the tradeoff described above.
+- What's the right default for the per-tenant tracked-clients cap? The cap is configurable per
+  tenant via `client_identity_ingestion_tracked_clients_limit` in the overrides; evictions caused
+  by hitting the cap are observable via a dedicated eviction counter, letting operators distinguish
+  "cap is properly sized" from "we're actively being hit with identity churn" without needing to
+  inspect memory profiles.

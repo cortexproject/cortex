@@ -90,6 +90,15 @@ func (s *SpanLogger) Log(kvps ...any) error {
 		return err
 	}
 	s.LogFields(fields...)
+	// Mirror level=error onto the span's error tag so tracing UIs surface it.
+	for i := 0; i+1 < len(kvps); i += 2 {
+		if k, ok := kvps[i].(string); ok && k == "level" {
+			if v, ok := kvps[i+1].(string); ok && v == "error" {
+				ext.Error.Set(s.Span, true)
+			}
+			break
+		}
+	}
 	return nil
 }
 

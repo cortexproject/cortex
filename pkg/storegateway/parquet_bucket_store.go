@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
@@ -138,10 +139,10 @@ func (p *parquetBucketStore) resolveShardCounts(ctx context.Context, blockIDs []
 
 	if p.bucketIndexEnabled && p.indexLoader != nil {
 		idx, _, err := p.indexLoader.GetIndex(ctx, p.userID)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to get bucket index")
+		if err == nil {
+			return p.shardCountsFromIndex(idx), nil
 		}
-		return p.shardCountsFromIndex(idx), nil
+		level.Warn(p.logger).Log("msg", "failed to get bucket index, falling back to converter marks for parquet shard count", "err", err)
 	}
 
 	// Fallback: read the converter mark for each block.

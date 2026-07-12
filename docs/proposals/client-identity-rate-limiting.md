@@ -20,9 +20,9 @@ teams, or clusters frequently share one `X-Scope-OrgID` (splitting tenants furth
 operational cost: more ring shards, more per-tenant limits to tune, more override entries to
 maintain). When that happens, today's rate limiter cannot distinguish a well-behaved writer from a
 noisy or misbehaving one sharing the same tenant. A single client scaling up unexpectedly (bad
-config, retry storm, new deployment) can exhaust the *entire tenant's* ingestion budget and start
-throttling every other legitimate writer sharing that org ID, even though none of the throttled
-traffic was the cause.
+config, retry storm, new deployment, or many parallel agent instances fanning out under one shared
+tenant) can exhaust the *entire tenant's* ingestion budget and start throttling every other
+legitimate writer sharing that org ID, even though none of the throttled traffic was the cause.
 
 Cortex's trust model already has precedent for exactly this shape of problem at the tenant level:
 `X-Scope-OrgID` itself is a plain, unauthenticated-by-Cortex header. Cortex trusts it entirely

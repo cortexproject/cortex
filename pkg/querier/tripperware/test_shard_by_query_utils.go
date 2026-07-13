@@ -507,6 +507,10 @@ func (m mockLimits) QueryVerticalShardSize(userID string) int {
 	return m.shardSize
 }
 
+func (m mockLimits) GetMetricNameShardSize(userID string) int {
+	return m.shardSize
+}
+
 func (m mockLimits) QueryPriority(userID string) validation.QueryPriority {
 	return m.queryPriority
 }

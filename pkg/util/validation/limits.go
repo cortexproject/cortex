@@ -199,6 +199,7 @@ type Limits struct {
 	OutOfOrderResultsCacheTTL    model.Duration `yaml:"out_of_order_results_cache_ttl" json:"out_of_order_results_cache_ttl"`
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
+	MetricNameShardSize          int            `yaml:"metric_name_shard_size" json:"metric_name_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 	QueryIngestersWithin         model.Duration `yaml:"query_ingesters_within" json:"query_ingesters_within"`
 
@@ -348,6 +349,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.OutOfOrderResultsCacheTTL, "frontend.out-of-order-results-cache-ttl", "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.")
 	f.Float64Var(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. If the value is < 1, it will be treated as a percentage and the gets a percentage of the total queriers. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryVerticalShardSize, "frontend.query-vertical-shard-size", 0, "[Experimental] Number of shards to use when distributing shardable PromQL queries.")
+	f.IntVar(&l.MetricNameShardSize, "compactor.metric-name-shard-size", 0, "Shard by metric name shard size.")
 	f.BoolVar(&l.QueryPriority.Enabled, "frontend.query-priority.enabled", false, "Whether queries are assigned with priorities.")
 	f.Int64Var(&l.QueryPriority.DefaultPriority, "frontend.query-priority.default-priority", 0, "Priority assigned to all queries by default. Must be a unique value. Use this as a baseline to make certain queries higher/lower priority.")
 	f.BoolVar(&l.QueryRejection.Enabled, "frontend.query-rejection.enabled", false, "Whether query rejection is enabled.")
@@ -929,6 +931,11 @@ func (o *Overrides) MaxQueriersPerUser(userID string) float64 {
 // QueryVerticalShardSize returns the number of shards to use when distributing shardable PromQL queries.
 func (o *Overrides) QueryVerticalShardSize(userID string) int {
 	return o.GetOverridesForUser(userID).QueryVerticalShardSize
+}
+
+// GetMetricNameShardSize returns the number of metric-name shards configured for this user.
+func (o *Overrides) GetMetricNameShardSize(userID string) int {
+	return o.GetOverridesForUser(userID).MetricNameShardSize
 }
 
 // QueryPartialData returns whether query may be evaluated with data from a single zone, if other zones are not available.

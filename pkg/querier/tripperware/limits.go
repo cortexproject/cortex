@@ -42,6 +42,10 @@ type Limits interface {
 	// QueryVerticalShardSize returns the maximum number of queriers that can handle requests for this user.
 	QueryVerticalShardSize(userID string) int
 
+	// GetMetricNameShardSize returns the number of metric-name shards configured
+	// for this user (matches the compactor's metric-name-shard-size).
+	GetMetricNameShardSize(userID string) int
+
 	// QueryPriority returns the query priority config for the tenant, including different priorities and their attributes.
 	QueryPriority(userID string) validation.QueryPriority
 

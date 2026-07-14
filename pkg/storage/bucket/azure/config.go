@@ -33,7 +33,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.StorageAccountKey, prefix+"azure.account-key", "Azure storage account key")
 	f.Var(&cfg.StorageConnectionString, prefix+"azure.connection-string", "The values of `account-name` and `endpoint-suffix` values will not be ignored if `connection-string` is set. Use this method over `account-key` if you need to authenticate via a SAS token or if you use the Azurite emulator.")
 	f.StringVar(&cfg.ContainerName, prefix+"azure.container-name", "", "Azure storage container name")
-	f.StringVar(&cfg.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
+	f.StringVar(&cfg.Endpoint, prefix+"azure.endpoint-suffix", "blob.core.windows.net", "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN")
 	f.IntVar(&cfg.MaxRetries, prefix+"azure.max-retries", 20, "Number of retries for recoverable errors")
 	f.StringVar(&cfg.MSIResource, prefix+"azure.msi-resource", "", "Deprecated: Azure storage MSI resource. It will be set automatically by Azure SDK.")
 	f.StringVar(&cfg.UserAssignedID, prefix+"azure.user-assigned-id", "", "Azure storage MSI resource managed identity client Id. If not supplied default Azure credential will be used. Set it to empty if you need to authenticate via Azure Workload Identity.")

@@ -31,7 +31,7 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 			cfg: IndexCacheConfig{
 				Backend: "memcached",
 			},
-			expected: errNoIndexCacheAddresses,
+			expected: errNoCacheAddresses,
 		},
 		"one memcached address should pass": {
 			cfg: IndexCacheConfig{

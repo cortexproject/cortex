@@ -18,7 +18,7 @@ func TestRedisIndexCacheConfigValidate(t *testing.T) {
 		{
 			name: "empty address",
 			conf: &RedisClientConfig{},
-			err:  errNoIndexCacheAddresses,
+			err:  errNoCacheAddresses,
 		},
 		{
 			name: "provide TLS cert path but not key path",

@@ -377,6 +377,7 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 type userTSDB struct {
 	db                  *tsdb.DB
 	userID              string
+	logger              log.Logger
 	activeSeries        *ActiveSeries
 	activeQueriedSeries *ActiveQueriedSeries
 	headQueriedSeries   *ActiveQueriedSeries
@@ -455,7 +456,7 @@ func (u *userTSDB) Blocks() []*tsdb.Block {
 func (u *userTSDB) Close() error {
 	if u.shipper != nil {
 		if err := u.shipper.Close(); err != nil {
-			level.Warn(logutil.WithUserID(u.userID, logutil.Logger)).Log("msg", "failed to close shipper", "err", err)
+			level.Warn(u.logger).Log("msg", "failed to close shipper", "err", err)
 		}
 	}
 	return u.db.Close()
@@ -3028,6 +3029,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	userDB := &userTSDB{
 		userID:              userID,
+		logger:              userLogger,
 		activeSeries:        NewActiveSeries(),
 		activeQueriedSeries: activeQueriedSeries,
 		headQueriedSeries:   headQueriedSeries,

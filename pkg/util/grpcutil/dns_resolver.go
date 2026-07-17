@@ -267,7 +267,7 @@ func (w *dnsWatcher) Next() ([]*Update, error) {
 		result := w.lookup()
 		// Next lookup should happen after an interval defined by w.r.freq.
 		w.t.Reset(w.r.freq)
-		if result != nil && len(result) > 0 {
+		if len(result) > 0 {
 			return result, nil
 		}
 	}

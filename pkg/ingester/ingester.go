@@ -1418,6 +1418,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		perMetricSeriesLimitCount              = 0
 		discardedNativeHistogramCount          = 0
 
+		// headMaxTime is snapshotted right after the appender is created. The appender
+		// derives its lower time bound checks (e.g. out of bounds) from the head max
+		// time at creation time. We cannot access the appender's internal bound
+		// directly, so we snapshot the head max time once here instead of fetching it
+		// again for every failed sample.
+		headMaxTime int64
+
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
 				firstPartialErr = errFn()
@@ -1434,7 +1441,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				sampleOutOfBoundsCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
-					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(db.Head().MaxTime()), lbls)
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
 				})
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
@@ -1451,7 +1458,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				sampleTooOldCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
-					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(db.Head().MaxTime()), lbls)
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
 				})
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
@@ -1498,6 +1505,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
+	headMaxTime = db.Head().MaxTime()
 
 	// Ensure the appender is always released so that we don't leak TSDB head
 	// series references, mmap'd chunks and pending state on early returns.

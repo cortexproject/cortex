@@ -81,6 +81,7 @@ const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 	errTSDBIngestWithTimestamp     = "err: %v. series=%s"               // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
+	errTSDBIngestWithHeadMaxTime   = "err: %v. timestamp=%s, tsdbHeadMaxTimestamp=%s, series=%s"
 	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
@@ -1432,7 +1433,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(db.Head().MaxTime()), lbls)
+				})
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
@@ -1447,7 +1450,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(db.Head().MaxTime()), lbls)
+				})
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
@@ -3945,6 +3950,23 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	default:
 		return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 	}
+}
+
+// wrappedTSDBIngestErrWithHeadMaxTime is like wrappedTSDBIngestErr, but it also includes the
+// TSDB head max time in the error message. This helps users understand how far behind the
+// accepted time range a rejected sample is, e.g. for out of bounds or too old sample errors.
+func wrappedTSDBIngestErrWithHeadMaxTime(ingestErr error, timestamp, headMaxTime model.Time, labels []cortexpb.LabelAdapter) error {
+	if ingestErr == nil {
+		return nil
+	}
+
+	// The TSDB head max time is unset when the head is empty (e.g. no sample ingested yet
+	// after startup). Fall back to the error message without the head max time in that case.
+	if int64(headMaxTime) == math.MinInt64 {
+		return wrappedTSDBIngestErr(ingestErr, timestamp, labels)
+	}
+
+	return fmt.Errorf(errTSDBIngestWithHeadMaxTime, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), headMaxTime.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 }
 
 func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {

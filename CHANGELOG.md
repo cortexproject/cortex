@@ -82,6 +82,7 @@
 * [BUGFIX] Querier: Fix parquet queryable fallback returning a nil error instead of the actual query error in `LabelValues` and `LabelNames`. #7638
 * [BUGFIX] Storage: Default the Azure `endpoint_suffix` to `blob.core.windows.net` instead of empty. Cortex builds the Thanos Azure config directly and bypasses Thanos' default, so an unset suffix produced an invalid FQDN (`<account>.`) and components hung on startup with DNS errors. #5449
 * [BUGFIX] Store Gateway: Fix misleading "no index cache backend addresses" validation error being reported for chunks-cache, metadata-cache, and parquet caches when their memcached or redis backend is configured without addresses. The message is now the cache-type-agnostic "no cache backend addresses". #7675
+* [BUGFIX] DNS: Fix DNS watcher from dropping resolved addresses on transient lookup failures. #7698
 
 ## 1.21.0 2026-04-24
 

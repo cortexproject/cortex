@@ -4412,11 +4412,11 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -validation.max-metadata-length
 [max_metadata_length: <int> | default = 1024]
 
-# Reject old samples.
+# Reject old samples at the distributor before forwarding them to ingesters.
 # CLI flag: -validation.reject-old-samples
 [reject_old_samples: <boolean> | default = false]
 
-# Maximum accepted sample age before rejecting.
+# Maximum accepted sample age before rejecting at the distributor.
 # CLI flag: -validation.reject-old-samples.max-age
 [reject_old_samples_max_age: <duration> | default = 2w]
 
@@ -4550,8 +4550,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -ingester.max-global-metadata-per-metric
 [max_global_metadata_per_metric: <int> | default = 0]
 
-# [Experimental] Configures the allowed time window for ingestion of
-# out-of-order samples. Disabled (0s) by default.
+# [Experimental] Configures the ingester TSDB window for out-of-order samples.
+# Use this to tolerate late samples that are older than the TSDB head minimum
+# time. Disabled (0s) by default.
 # CLI flag: -ingester.out-of-order-time-window
 [out_of_order_time_window: <duration> | default = 0s]
 

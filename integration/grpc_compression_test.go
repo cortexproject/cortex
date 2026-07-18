@@ -119,12 +119,16 @@ func TestGRPCCompression(t *testing.T) {
 			// Wait until the TSDB head is shipped to storage and the store-gateway picks it up.
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_ingester_shipper_uploads_total"))
 			require.NoError(t, storeGateway.WaitSumMetrics(e2e.Greater(0), "cortex_storegateway_bucket_sync_total"))
+			require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 
-			// Query the first series — this goes through the store-gateway with snappy compression.
+			// Query the first series and assert the querier used the store-gateway client configured with compression.
 			result, err := c.Query("series_1", series1Timestamp)
 			require.NoError(t, err)
 			require.Equal(t, model.ValVector, result.Type())
 			assert.Equal(t, expectedVector1, result.(model.Vector))
+			require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_storegateway_client_request_duration_seconds"}, e2e.WithMetricCount, e2e.WithLabelMatchers(
+				labels.MustNewMatcher(labels.MatchEqual, "operation", "/gatewaypb.StoreGateway/Series"),
+			)))
 		})
 	}
 }

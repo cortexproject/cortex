@@ -98,6 +98,7 @@ type Config struct {
 	PrintConfig          bool                   `yaml:"-"`
 	HTTPPrefix           string                 `yaml:"http_prefix"`
 	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme"`
+	yamlRootNodeStates   map[string]yamlRootNodeState
 
 	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
 
@@ -133,6 +134,54 @@ type Config struct {
 	QueryScheduler      scheduler.Config                           `yaml:"query_scheduler"`
 
 	Tracing tracing.Config `yaml:"tracing"`
+}
+
+type yamlRootNodeState int
+
+const (
+	yamlRootNodeEmpty yamlRootNodeState = iota
+	yamlRootNodeNonEmpty
+)
+
+// SetYAMLRootNodeStates records whether root-level YAML config keys were empty.
+// This lets validation distinguish "querier:" from explicit zero values such
+// as "flusher: { exit_after_flush: false }" after unmarshalling.
+func (c *Config) SetYAMLRootNodeStates(buf []byte) error {
+	var root map[interface{}]interface{}
+	if err := yaml.Unmarshal(buf, &root); err != nil {
+		return err
+	}
+
+	c.yamlRootNodeStates = map[string]yamlRootNodeState{}
+	for key, value := range root {
+		name, ok := key.(string)
+		if !ok {
+			continue
+		}
+
+		if isEmptyYAMLRootNode(value) {
+			c.yamlRootNodeStates[name] = yamlRootNodeEmpty
+		} else {
+			c.yamlRootNodeStates[name] = yamlRootNodeNonEmpty
+		}
+	}
+
+	return nil
+}
+
+func isEmptyYAMLRootNode(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+
+	switch typed := value.(type) {
+	case map[interface{}]interface{}:
+		return len(typed) == 0
+	case []interface{}:
+		return len(typed) == 0
+	default:
+		return false
+	}
 }
 
 // RegisterFlags registers flag.
@@ -296,11 +345,23 @@ func (c *Config) validateYAMLEmptyNodes() error {
 		// If the struct has been reset due to empty YAML value and the zero struct value
 		// doesn't match the default one, then we should warn the user about the issue.
 		if cfgStruct.Field(i).Kind() == reflect.Struct && cfgStruct.Field(i).IsZero() && !defStruct.Field(i).IsZero() {
+			if c.yamlRootNodeStates != nil {
+				yamlName := yamlFieldName(cfgStruct.Type().Field(i))
+				if c.yamlRootNodeStates[yamlName] == yamlRootNodeNonEmpty {
+					continue
+				}
+			}
 			return fmt.Errorf("the %s configuration in YAML has been specified as an empty YAML node", cfgStruct.Type().Field(i).Name)
 		}
 	}
 
 	return nil
+}
+
+func yamlFieldName(field reflect.StructField) string {
+	tag := field.Tag.Get("yaml")
+	name, _, _ := strings.Cut(tag, ",")
+	return name
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {

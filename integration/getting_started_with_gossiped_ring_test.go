@@ -119,7 +119,7 @@ func TestGettingStartedWithGossipedRing(t *testing.T) {
 
 	// Flush blocks from ingesters to the store.
 	for _, instance := range []*e2ecortex.CortexService{cortex1, cortex2} {
-		res, err = e2e.GetRequest("http://" + instance.HTTPEndpoint() + "/flush")
+		res, err = e2e.PostRequest("http://" + instance.HTTPEndpoint() + "/flush")
 		require.NoError(t, err)
 		require.Equal(t, 204, res.StatusCode)
 	}

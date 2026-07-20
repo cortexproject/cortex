@@ -557,6 +557,7 @@
               "x-cli-flag": "alertmanager-storage.azure.container-name"
             },
             "endpoint_suffix": {
+              "default": "blob.core.windows.net",
               "description": "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.azure.endpoint-suffix"
@@ -983,6 +984,7 @@
               "x-cli-flag": "blocks-storage.azure.container-name"
             },
             "endpoint_suffix": {
+              "default": "blob.core.windows.net",
               "description": "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN",
               "type": "string",
               "x-cli-flag": "blocks-storage.azure.endpoint-suffix"
@@ -7803,6 +7805,7 @@
               "x-cli-flag": "ruler-storage.azure.container-name"
             },
             "endpoint_suffix": {
+              "default": "blob.core.windows.net",
               "description": "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN",
               "type": "string",
               "x-cli-flag": "ruler-storage.azure.endpoint-suffix"
@@ -8229,6 +8232,7 @@
               "x-cli-flag": "runtime-config.azure.container-name"
             },
             "endpoint_suffix": {
+              "default": "blob.core.windows.net",
               "description": "Azure storage endpoint suffix without schema. The account name will be prefixed to this value to create the FQDN",
               "type": "string",
               "x-cli-flag": "runtime-config.azure.endpoint-suffix"

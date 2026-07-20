@@ -515,7 +515,7 @@ blocks_storage:
     # Azure storage endpoint suffix without schema. The account name will be
     # prefixed to this value to create the FQDN
     # CLI flag: -blocks-storage.azure.endpoint-suffix
-    [endpoint_suffix: <string> | default = ""]
+    [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
     # Number of retries for recoverable errors
     # CLI flag: -blocks-storage.azure.max-retries

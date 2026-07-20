@@ -3,6 +3,7 @@ package ingester
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -544,5 +545,32 @@ func TestActiveQueriedSeriesService_NoSendOnClosedChannelOnShutdown(t *testing.T
 
 	if panicked.Load() {
 		t.Fatalf("producer goroutine panicked during shutdown: %v", panicMsg.Load())
+	}
+}
+
+func TestActiveQueriedSeriesService_NumWorkersFollowsGOMAXPROCS(t *testing.T) {
+	// The worker pool must be sized from GOMAXPROCS (which automaxprocs derives
+	// from the CPU cgroup quota) and not from runtime.NumCPU (host cores, which
+	// ignores cgroup limits). Save and restore GOMAXPROCS around the test.
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(1))
+
+	for _, tc := range []struct {
+		gomaxprocs      int
+		expectedWorkers int
+	}{
+		// GOMAXPROCS(1)/2 == 0, floored to the minimum of 1 worker. Against the
+		// buggy runtime.NumCPU() this yields min(NumCPU/2, 4) on a multi-core
+		// host and fails.
+		{gomaxprocs: 1, expectedWorkers: 1},
+		{gomaxprocs: 2, expectedWorkers: 1},
+		{gomaxprocs: 4, expectedWorkers: 2},
+		// Capped at 4 workers regardless of how many CPUs are available.
+		{gomaxprocs: 16, expectedWorkers: 4},
+	} {
+		t.Run(fmt.Sprintf("gomaxprocs=%d", tc.gomaxprocs), func(t *testing.T) {
+			runtime.GOMAXPROCS(tc.gomaxprocs)
+			svc := NewActiveQueriedSeriesService(log.NewNopLogger(), nil)
+			assert.Equal(t, tc.expectedWorkers, svc.numWorkers)
+		})
 	}
 }

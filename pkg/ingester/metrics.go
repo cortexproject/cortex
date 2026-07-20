@@ -472,6 +472,7 @@ type tsdbMetrics struct {
 	tsdbHeadTruncateTotal              *prometheus.Desc
 	tsdbHeadGcDuration                 *prometheus.Desc
 	tsdbHeadStaleSeries                *prometheus.Desc
+	tsdbHeadMaxTimestamp               *prometheus.Desc
 	tsdbActiveAppenders                *prometheus.Desc
 	tsdbSeriesNotFound                 *prometheus.Desc
 	tsdbChunks                         *prometheus.Desc
@@ -608,6 +609,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbHeadStaleSeries: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_stale_series",
 			"Total number of stale series in the head block.",
+			[]string{"user"}, nil),
+		tsdbHeadMaxTimestamp: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_max_timestamp",
+			"Maximum timestamp of the head block, in milliseconds since epoch.",
 			[]string{"user"}, nil),
 		tsdbActiveAppenders: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_active_appenders",
@@ -775,6 +780,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
 	out <- sm.tsdbHeadStaleSeries
+	out <- sm.tsdbHeadMaxTimestamp
 	out <- sm.tsdbHeadGcDuration
 	out <- sm.tsdbActiveAppenders
 	out <- sm.tsdbSeriesNotFound
@@ -841,6 +847,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbHeadGcDuration, "prometheus_tsdb_head_gc_duration_seconds")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbHeadStaleSeries, "prometheus_tsdb_head_stale_series")
+	data.SendMaxOfGaugesPerUser(out, sm.tsdbHeadMaxTimestamp, "prometheus_tsdb_head_max_time")
 	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
 	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
 	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")

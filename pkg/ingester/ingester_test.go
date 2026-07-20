@@ -1504,7 +1504,7 @@ func TestIngester_Push(t *testing.T) {
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1561,7 +1561,7 @@ func TestIngester_Push(t *testing.T) {
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1663,7 +1663,7 @@ func TestIngester_Push(t *testing.T) {
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))}},
 			},
@@ -8358,4 +8358,26 @@ func TestIngester_DiscardOutOfOrderFlagIntegration(t *testing.T) {
 	}
 	require.NoError(t, iter.Err())
 	require.Equal(t, 1, sampleCount, "Should have exactly one sample stored")
+}
+
+func TestWrappedTSDBIngestErrWithHeadMaxTime(t *testing.T) {
+	lbls := cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(labels.MetricName, "test"))
+
+	// The error message should include both the sample timestamp and the TSDB head max time.
+	err := wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969), model.Time(1575043969+60000), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: out of bounds. timestamp=1970-01-19T05:30:43.969Z, tsdbHeadMaxTimestamp=1970-01-19T05:31:43.969Z, series={__name__="test"}`, err.Error())
+
+	err = wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969), model.Time(1575043969+60000), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: too old sample. timestamp=1970-01-19T05:30:43.969Z, tsdbHeadMaxTimestamp=1970-01-19T05:31:43.969Z, series={__name__="test"}`, err.Error())
+
+	// When the TSDB head max time is unset (empty head), fall back to the error message
+	// without the head max time.
+	err = wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969), model.Time(math.MinInt64), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: out of bounds. timestamp=1970-01-19T05:30:43.969Z, series={__name__="test"}`, err.Error())
+
+	// A nil ingest error returns nil.
+	require.NoError(t, wrappedTSDBIngestErrWithHeadMaxTime(nil, model.Time(1575043969), model.Time(1575043969), lbls))
 }

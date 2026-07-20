@@ -293,13 +293,11 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 // TransactionConflict cancellation reasons (another transaction is in progress
 // on the same item) are equally transient and also treated as retryable.
 func isConditionalCheckFailure(err error) bool {
-	var checkFailed *types.ConditionalCheckFailedException
-	if errors.As(err, &checkFailed) {
+	if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
 		return true
 	}
 
-	var txnCanceled *types.TransactionCanceledException
-	if errors.As(err, &txnCanceled) {
+	if txnCanceled, ok := errors.AsType[*types.TransactionCanceledException](err); ok {
 		for _, reason := range txnCanceled.CancellationReasons {
 			if reason.Code == nil {
 				continue

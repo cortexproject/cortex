@@ -12,7 +12,7 @@ slug: client-identity-query-rate-limiting
 ## Background
 
 This is a follow-on to
-[Client-Identity Rate Limiting](./client-identity-rate-limiting.md) (write path), applying the same
+[Client-Identity Ingestion Rate Limiting](./client-identity-rate-limiting.md) (write path), applying the same
 idea to queries.
 
 Cortex has no per-request-rate limiter on the read path today. What exists is a different kind of
@@ -55,7 +55,7 @@ Requirements (mirroring the write-path proposal):
 ## Out of Scope
 
 - The write (ingestion) path: covered by the companion proposal,
-  [Client-Identity Rate Limiting](./client-identity-rate-limiting.md). The two share a design
+  [Client-Identity Ingestion Rate Limiting](./client-identity-rate-limiting.md). The two share a design
   philosophy (trusted, gateway-forwarded identity header, opt-in, additive to existing limits) and,
   as of this revision, the *same* identity header. They are kept as separate proposals because they
   have different enforcement points (distributor vs. query-frontend), not because of any difference

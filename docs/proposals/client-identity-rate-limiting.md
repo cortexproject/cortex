@@ -1,6 +1,6 @@
 ---
-title: "Client-Identity Rate Limiting"
-linkTitle: "Client-Identity Rate Limiting"
+title: "Client-Identity Ingestion Rate Limiting"
+linkTitle: "Client-Identity Ingestion Rate Limiting"
 weight: 1
 slug: client-identity-rate-limiting
 ---

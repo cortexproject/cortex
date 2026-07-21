@@ -68,7 +68,7 @@ Requirements:
 - Read-path (query) rate limiting by client identity is covered by a **separate, companion
   proposal**, [Client-Identity Query Rate Limiting](./client-identity-query-rate-limiting.md), kept
   independent of this one because it has a different enforcement point (query-frontend, not
-  distributor); it reuses the same `X-User-ID` header and identity-extraction approach introduced
+  distributor); it reuses the same `X-Scope-ClientID` header and identity-extraction approach introduced
   here. Filed alongside this proposal rather than folded into it, so each can be reviewed and
   merged on its own timeline.
 - Defining *how* an operator's gateway derives the identity value (API key ID, service account,
@@ -80,19 +80,22 @@ Requirements:
 
 ### Identity extraction
 
-Add a new trusted header, `X-User-ID`, read once when a write request enters Cortex. This mirrors
-the existing `X-Scope-OrgID` header handling: like `X-Scope-OrgID`, `X-User-ID` is trusted as-is,
-because Cortex assumes it is set by a trusted gateway/proxy in front of it, not supplied directly by
-an untrusted caller. If the header is absent, the request is unaffected by anything in this
-proposal.
+Add a new trusted header, `X-Scope-ClientID`, read once when a write request enters Cortex. This
+mirrors the existing `X-Scope-OrgID` header handling: like `X-Scope-OrgID`, `X-Scope-ClientID` is
+trusted as-is, because Cortex assumes it is set by a trusted gateway/proxy in front of it, not
+supplied directly by an untrusted caller. If the header is absent, the request is unaffected by
+anything in this proposal. The `X-Scope-` prefix is deliberately reused from `X-Scope-OrgID` so the
+two headers read as an obviously related pair to an operator, rather than as two unrelated naming
+schemes.
 
-Cortex's HTTP library dependency already defines an `X-Scope-UserID` header, distinct from the
-`X-User-ID` proposed here, but it is unused anywhere in Cortex today and its original intent isn't
-documented. Reusing it was considered and rejected: adopting an existing-but-dormant header with no
-clear record of its intended semantics risks silently changing behavior for any deployment that
-happens to already send that header for an unrelated reason, whereas a new, clearly-scoped header
-name carries no such risk. The similarity in naming is coincidental and worth calling out explicitly
-so it doesn't read as an oversight during review.
+Cortex's HTTP library dependency already defines an `X-Scope-UserID` header, but it is unused
+anywhere in Cortex today and its original intent isn't documented. Reusing it was considered and
+rejected: adopting an existing-but-dormant header with no clear record of its intended semantics
+risks silently changing behavior for any deployment that happens to already send that header for an
+unrelated reason, whereas a new, clearly-scoped header name carries no such risk. `ClientID` is used
+instead of `UserID` both to sidestep that collision and because "client" is the term used throughout
+this proposal for the identity being rate-limited, whereas "user" risks being read as an end human
+user rather than the service/team-level identity this is meant to represent.
 
 The extracted identity is threaded through the request the same way source IPs are today (already
 carried from the HTTP entrypoint through to the distributor for logging purposes), so it survives
@@ -129,7 +132,7 @@ This guarantees zero behavior change for any tenant that doesn't explicitly opt 
 Enforcement is gated on **two independent conditions**, both of which must hold:
 
 1. The tenant has a non-zero `client_identity_ingestion_rate_limit` configured.
-2. The request carries a non-empty `X-User-ID` value.
+2. The request carries a non-empty `X-Scope-ClientID` value.
 
 If either is false, the request is subject only to the existing tenant-level ingestion rate check,
 exactly as today: a missing header is not an error, and a tenant that hasn't opted in never pays
@@ -139,22 +142,22 @@ any cost for this feature.
 Push request
      │
      v
-┌─────────────────────┐      fail       ┌──────────────────┐
-│ Tenant IngestionRate │────────────────>│ 429 Too Many      │
-│ check (existing)     │                 │ Requests          │
-└─────────────────────┘                 └──────────────────┘
+┌──────────────────────┐          fail          ┌──────────────┐
+│ Tenant IngestionRate │───────────────────────>│ 429 Too Many │
+│ check (existing)     │                        │ Requests     │
+└──────────────────────┘                        └──────────────┘
      │ pass
      v
-┌───────────────────────────┐   no (either gate)   ┌───────────────┐
-│ X-User-ID present AND     │──────────────────────>│ Continue to   │
-│ tenant limit configured?  │                        │ ingestion     │
-└───────────────────────────┘                        └───────────────┘
+┌──────────────────────────────┐    no (either gate)    ┌─────────────┐
+│ X-Scope-ClientID present AND │───────────────────────>│ Continue to │
+│ tenant limit configured?     │                        │ ingestion   │
+└──────────────────────────────┘                        └─────────────┘
      │ yes
      v
-┌────────────────────────────┐      fail       ┌──────────────────┐
-│ Per-(tenant, client) rate  │────────────────>│ 429 Too Many      │
-│ limit check (new)          │                 │ Requests          │
-└────────────────────────────┘                 └──────────────────┘
+┌───────────────────────────┐          fail          ┌──────────────┐
+│ Per-(tenant, client) rate │───────────────────────>│ 429 Too Many │
+│ limit check (new)         │                        │ Requests     │
+└───────────────────────────┘                        └──────────────┘
      │ pass
      v
 Continue to ingestion
@@ -178,7 +181,7 @@ Per-client limits are enforced using the existing distributor ring rather than g
 aggregation. Each `(tenant, client)` key is sharded onto the ring: the distributor instance that
 owns the shard for that key maintains the authoritative rate-limit counter for it.
 
-When a distributor receives a write request carrying an `X-User-ID` value, it hashes
+When a distributor receives a write request carrying an `X-Scope-ClientID` value, it hashes
 `(tenant_id, client_id)` to determine the owning ring member, then:
 
 - If it owns that shard, it increments and enforces the counter locally.
@@ -205,10 +208,10 @@ calling out explicitly in the implementation phase.
 
 Unlike the existing tenant-level limiter, whose per-tenant map stays small because the number of
 tenants is small and operator-controlled, the number of distinct tenant+client keys here is
-bounded only by how many distinct `X-User-ID` values a gateway ever sends. Left as a plain
+bounded only by how many distinct `X-Scope-ClientID` values a gateway ever sends. Left as a plain
 unbounded map, this becomes both a slow memory leak under normal churn (clients renamed, rotated,
 or retired over time never get cleaned up) and, combined with the header trust boundary above, a
-denial-of-service vector: a caller able to set arbitrary `X-User-ID` values could grow that map
+denial-of-service vector: a caller able to set arbitrary `X-Scope-ClientID` values could grow that map
 without limit simply by rotating identities.
 
 Cortex already solves an analogous problem elsewhere: the tenant-federation regex resolver bounds
@@ -228,7 +231,7 @@ tenant has many active writers. The LRU approach bounds memory and preserves fai
 cardinality, at the cost of a brief enforcement gap when a previously-evicted client resumes. Under
 sustained high-cardinality abuse (an attacker rotating identities to flood the LRU), the failure
 mode is bounded churn (evictions) rather than unbounded memory growth, which is acceptable given
-the existing guidance to keep `X-User-ID` behind a trusted gateway.
+the existing guidance to keep `X-Scope-ClientID` behind a trusted gateway.
 
 Operators can tune the per-tenant cap upward for tenants with many legitimate concurrent writers,
 or observe the eviction counter (a dedicated counter incremented in the LRU eviction callback) to
@@ -236,7 +239,7 @@ distinguish "cap is properly sized" from "we are actively seeing identity churn.
 
 ### Header trust boundary
 
-Because `X-User-ID` is trusted the same way `X-Scope-OrgID` is, deployments that expose Cortex's
+Because `X-Scope-ClientID` is trusted the same way `X-Scope-OrgID` is, deployments that expose Cortex's
 HTTP endpoints directly to untrusted clients (rather than through a gateway/proxy that strips and
 re-sets both headers) would let a malicious caller set an arbitrary identity, for example to evade
 throttling by rotating identity values, or to frame another client. This is not a new risk specific
@@ -275,11 +278,11 @@ This is purely additive:
 - **Per-labelset limits** partition by data content (label matchers); this proposal partitions by
   data origin (who sent it). They are orthogonal and can be used together.
 - If a tenant has no client-identity limit configured (the default), or the request has no
-  `X-User-ID` header, the new check is a no-op and behavior is identical to today.
+  `X-Scope-ClientID` header, the new check is a no-op and behavior is identical to today.
 
 ## Value of the Identity Header Beyond Rate Limiting
 
-Establishing `X-User-ID` as a first-class header in the write path opens up a broader set of
+Establishing `X-Scope-ClientID` as a first-class header in the write path opens up a broader set of
 per-client observability and control capabilities that are not in scope for this proposal but
 become straightforward extensions once the identity is available:
 
@@ -287,7 +290,7 @@ become straightforward extensions once the identity is available:
   be broken down per client in logs and metrics, enabling capacity planning and chargeback at the
   client level rather than only at the tenant level.
 - **Out-of-order sample detection per client.** The distributor already detects and discards
-  out-of-order samples; with `X-User-ID` present, those rejections can be attributed to the
+  out-of-order samples; with `X-Scope-ClientID` present, those rejections can be attributed to the
   specific client sending them, making it straightforward to identify a misconfigured or misbehaving
   writer without manual log correlation across requests.
 - **Per-client cardinality tracking.** Today cardinality can only be attributed to a tenant as a
@@ -334,7 +337,7 @@ status.
 - **Basic Auth username.** Only applicable if a deployment terminates HTTP Basic Auth at Cortex
   itself, which is uncommon for the write path in practice (most Cortex deployments put
   authentication at a gateway/proxy in front of Cortex, per the Authentication Gateway proposal),
-  the same gateway that would set `X-User-ID` under this proposal, making a separate Basic Auth
+  the same gateway that would set `X-Scope-ClientID` under this proposal, making a separate Basic Auth
   path redundant.
 
 ## Open Questions
@@ -345,10 +348,10 @@ status.
   upgrade, consistent with how most new Cortex limits are introduced as disabled-by-default
   experimental features.
 - Should the header name be configurable, the way Cortex already allows configuring the header used
-  for source-IP logging, rather than a hardcoded `X-User-ID`? Leaning toward configurable, to avoid
+  for source-IP logging, rather than a hardcoded `X-Scope-ClientID`? Leaning toward configurable, to avoid
   collisions with header names deployments may already use for a similar purpose.
 - Should this eventually extend to the query path (read-side per-client throttling, reusing this
-  same `X-User-ID` header)? **Yes: see the companion proposal,
+  same `X-Scope-ClientID` header)? **Yes: see the companion proposal,
   [Client-Identity Query Rate Limiting](./client-identity-query-rate-limiting.md),** filed alongside
   this one and deliberately kept separate rather than expanding this proposal's scope.
 - What's the right default for the per-tenant tracked-clients cap? The cap is configurable per

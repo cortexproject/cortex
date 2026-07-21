@@ -47,7 +47,7 @@ Requirements (mirroring the write-path proposal):
   simply not subject to the additional per-identity check, and counts only toward whatever
   tenant-level behavior already exists today (which, notably, currently has no *rate* limit to fall
   back to on the read path, see Interaction with Existing Limits).
-- **Same generic, gateway-set identity header as the write-path proposal (`X-User-ID`), not a
+- **Same generic, gateway-set identity header as the write-path proposal (`X-Scope-ClientID`), not a
   per-client-application-specific one.** Consistent with the write-path proposal's principle:
   Cortex trusts one opaque identity value, set by whatever sits in front of it, the same way it
   already trusts `X-Scope-OrgID`. It does not special-case any particular client application.
@@ -74,10 +74,10 @@ Requirements (mirroring the write-path proposal):
 
 ### Identity extraction
 
-The same generic, trusted header as the write-path proposal, `X-User-ID`, read once when a query
+The same generic, trusted header as the write-path proposal, `X-Scope-ClientID`, read once when a query
 request enters the query-frontend, alongside the existing Grafana dashboard/panel header reads.
 Using the exact same header and identity-extraction approach as the write-path proposal means a
-deployment that sets `X-User-ID` once, at its gateway, for all Cortex-bound traffic gets consistent
+deployment that sets `X-Scope-ClientID` once, at its gateway, for all Cortex-bound traffic gets consistent
 per-client identity across both ingestion and queries with no additional configuration: one
 identity mechanism, reused at both enforcement points, rather than two different ones.
 
@@ -111,22 +111,22 @@ query cost).
 Same two-gate structure as the write-path proposal:
 
 1. The tenant has a non-zero `client_identity_query_rate_limit` configured.
-2. The request carries a non-empty `X-User-ID` value.
+2. The request carries a non-empty `X-Scope-ClientID` value.
 
 ```
 Query request arrives at query-frontend
      │
      v
-┌───────────────────────────┐   no (either gate)   ┌───────────────┐
-│ X-User-ID present AND     │──────────────────────>│ Continue        │
-│ tenant limit configured?  │                        │ (queue/forward) │
-└───────────────────────────┘                        └───────────────┘
+┌──────────────────────────────┐    no (either gate)    ┌─────────────────┐
+│ X-Scope-ClientID present AND │───────────────────────>│ Continue        │
+│ tenant limit configured?     │                        │ (queue/forward) │
+└──────────────────────────────┘                        └─────────────────┘
      │ yes
      v
-┌────────────────────────────┐      fail       ┌──────────────────┐
-│ Per-(tenant, client) rate  │────────────────>│ 429 Too Many      │
-│ limit check (new)          │                 │ Requests          │
-└────────────────────────────┘                 └──────────────────┘
+┌───────────────────────────┐          fail          ┌──────────────┐
+│ Per-(tenant, client) rate │───────────────────────>│ 429 Too Many │
+│ limit check (new)         │                        │ Requests     │
+└───────────────────────────┘                        └──────────────┘
      │ pass
      v
 Continue (queued locally, or forwarded to the scheduler, depending on deployment topology)
@@ -157,7 +157,7 @@ or down without any reconfiguration of per-replica shares.
 ### Bounding memory: capped tracking, not an unbounded map
 
 Same concern as the write-path proposal, and the same fix: the number of distinct tenant+client
-keys here is bounded only by how many distinct `X-User-ID` values are presented to the
+keys here is bounded only by how many distinct `X-Scope-ClientID` values are presented to the
 query-frontend, so tracking is capped per tenant with least-recently-used eviction rather than kept
 in a plain unbounded map, exactly as described in the write-path proposal's equivalent section
 (including its discussion of the enforcement consequence of eviction). The two caps are configured
@@ -207,7 +207,7 @@ silently deferred.
 
 ## Value of the Identity Header Beyond Rate Limiting
 
-The same `X-User-ID` header established on the write path (see the companion proposal) carries
+The same `X-Scope-ClientID` header established on the write path (see the companion proposal) carries
 equivalent value on the read path once it is available:
 
 - **Query resource consumption per client.** Query execution time, querier CPU, and store-gateway
@@ -215,7 +215,7 @@ equivalent value on the read path once it is available:
   sources — runaway alert rules, auto-refreshing dashboards, ad hoc exploration — without manual
   log correlation.
 - **Per-client slow query attribution.** The query-frontend already logs slow queries; with
-  `X-User-ID` present, slow query log lines carry the client identity directly, making it
+  `X-Scope-ClientID` present, slow query log lines carry the client identity directly, making it
   straightforward to identify which client or dashboard is responsible without cross-referencing
   external systems.
 - **Future per-client query cost quotas.** Once client identity is a reliable, trusted dimension on
@@ -261,7 +261,7 @@ cache-interaction question above, confirms the design is sound.
   capacity, similar to how Cortex's existing max-queriers-per-tenant limit supports
   fractional/percentage values, rather than an absolute queries/second number? Left as a fast-follow
   refinement rather than blocking the initial absolute-number implementation.
-- Should the per-client check run before or after results-cache eligibility is known (see "Global enforcement via gossip and interaction with the results cache" above)? Checking after would avoid
+- Should the per-client check run before or after results-cache eligibility is known (see "Distributed enforcement and interaction with the results cache" above)? Checking after would avoid
   throttling cheap, cache-served requests, at the cost of being a slightly more invasive change to
   the request handling order; checking before (as currently proposed) is simpler but risks
   throttling based on request *count* rather than actual resource consumption. This should be

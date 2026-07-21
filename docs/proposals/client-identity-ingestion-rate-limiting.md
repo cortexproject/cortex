@@ -2,7 +2,7 @@
 title: "Client-Identity Ingestion Rate Limiting"
 linkTitle: "Client-Identity Ingestion Rate Limiting"
 weight: 1
-slug: client-identity-rate-limiting
+slug: client-identity-ingestion-rate-limiting
 ---
 
 - Author: Krunal Jain

@@ -41,23 +41,40 @@ func (s *bucketStoreSeriesServer) Send(r *storepb.SeriesResponse) error {
 	}
 
 	if recvSeries := r.GetSeries(); recvSeries != nil {
-		// Thanos uses a pool for the chunks and may use other pools in the future.
-		// Given we need to retain the reference after the pooled slices are recycled,
-		// we need to do a copy here. We prefer to stay on the safest side at this stage
-		// so we do a marshal+unmarshal to copy the whole series.
-		recvSeriesData, err := recvSeries.Marshal()
-		if err != nil {
-			return errors.Wrap(err, "marshal received series")
+		if err := s.appendSeries(recvSeries); err != nil {
+			return err
 		}
-
-		copiedSeries := &storepb.Series{}
-		if err = copiedSeries.Unmarshal(recvSeriesData); err != nil {
-			return errors.Wrap(err, "unmarshal received series")
-		}
-
-		s.SeriesSet = append(s.SeriesSet, copiedSeries)
 	}
 
+	// When the request's ResponseBatchSize is >= 2, series are delivered as a Batch response
+	// instead of individual Series responses.
+	if recvBatch := r.GetBatch(); recvBatch != nil {
+		for _, recvSeries := range recvBatch.Series {
+			if err := s.appendSeries(recvSeries); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (s *bucketStoreSeriesServer) appendSeries(recvSeries *storepb.Series) error {
+	// Thanos uses a pool for the chunks and may use other pools in the future.
+	// Given we need to retain the reference after the pooled slices are recycled,
+	// we need to do a copy here. We prefer to stay on the safest side at this stage
+	// so we do a marshal+unmarshal to copy the whole series.
+	recvSeriesData, err := recvSeries.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "marshal received series")
+	}
+
+	copiedSeries := &storepb.Series{}
+	if err = copiedSeries.Unmarshal(recvSeriesData); err != nil {
+		return errors.Wrap(err, "unmarshal received series")
+	}
+
+	s.SeriesSet = append(s.SeriesSet, copiedSeries)
 	return nil
 }
 

@@ -33,7 +33,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
-	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -62,19 +61,24 @@ type ParquetBucketStores struct {
 	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	rowRangesCache    search.RowRangesForConstraintsCache
 
-	inflightRequests *cortex_util.InflightRequestTracker
-
 	// indexLoader lazily loads and caches the per-tenant bucket index in memory
 	// It is non-nil only when BucketIndex.Enabled.
 	indexLoader *bucketindex.Loader
 }
 
-// newParquetBucketStores creates a new multi-tenant parquet bucket stores
-func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
-	// Create caching bucket client for parquet bucket stores
-	cachingBucket, err := createCachingBucketClientForParquet(cfg, bucketClient, "parquet-storegateway", logger, reg)
-	if err != nil {
-		return nil, err
+// newParquetBucketStores creates a new multi-tenant parquet bucket stores.
+func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, cachingBucket objstore.InstrumentedBucket, matcherCache storecache.MatchersCache, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
+	var err error
+	if cachingBucket == nil {
+		// Create caching bucket client for parquet bucket stores
+		if cachingBucket, err = createCachingBucketClientForParquet(cfg, bucketClient, "parquet-storegateway", logger, reg); err != nil {
+			return nil, err
+		}
+	}
+	if matcherCache == nil {
+		if matcherCache, err = newMatchersCache(cfg, logger, reg); err != nil {
+			return nil, err
+		}
 	}
 
 	parquetShardCache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&cfg.BucketStore.ParquetShardCache, "parquet-shards", reg)
@@ -99,20 +103,9 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		stores:            map[string]*parquetBucketStore{},
 		storesErrors:      map[string]error{},
 		chunksDecoder:     schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
-		inflightRequests:  cortex_util.NewInflightRequestTracker(),
 		parquetShardCache: parquetShardCache,
 		rowRangesCache:    rowRangesCache,
-	}
-
-	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
-		r := prometheus.NewRegistry()
-		reg.MustRegister(tsdb.NewMatchCacheMetrics("cortex_storegateway", r, logger))
-		u.matcherCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		u.matcherCache = storecache.NoopMatchersCache
+		matcherCache:      matcherCache,
 	}
 
 	if cfg.BucketStore.BucketIndex.Enabled {
@@ -153,20 +146,12 @@ func (u *ParquetBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Sto
 		return status.Error(codes.Internal, err.Error())
 	}
 
-	maxInflightRequests := u.cfg.BucketStore.MaxInflightRequests
-	if maxInflightRequests > 0 {
-		if u.inflightRequests.Count() >= maxInflightRequests {
-			return ErrTooManyInflightRequests
-		}
-
-		u.inflightRequests.Inc()
-		defer u.inflightRequests.Dec()
-	}
-
-	return store.Series(req, spanSeriesServer{
+	wrappedSrv := spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
-	})
+	}
+
+	return store.Series(req, wrappedSrv)
 }
 
 // LabelNames implements BucketStores
@@ -601,7 +586,7 @@ func chunkToStoreEncoding(in chunkenc.Encoding) storepb.Chunk_Encoding {
 }
 
 // createCachingBucketClientForParquet creates a caching bucket client for parquet bucket stores
-func createCachingBucketClientForParquet(storageCfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, name string, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
+func createCachingBucketClientForParquet(storageCfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, name string, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	// Create caching bucket using the existing infrastructure
 	matchers := tsdb.NewMatchers()
 	cachingBucket, err := tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, storageCfg.BucketStore.ParquetLabelsCache, matchers, bucketClient, logger, reg)

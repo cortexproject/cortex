@@ -153,3 +153,4 @@ Currently experimental features are:
 - Parquet Converter: Maximum number of columns per file
   - `-parquet-converter.max-num-columns` (int) CLI flag
   - Automatically shards parquet files when the number of columns exceeds the configured limit
+- Parquet Converter: `-parquet-converter.max-block-label-names` (int) - If enabled, adds a no-convert mark and skips blocks with too many labels.

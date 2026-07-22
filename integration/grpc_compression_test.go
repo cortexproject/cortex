@@ -118,6 +118,15 @@ func TestGRPCCompression(t *testing.T) {
 
 			// Wait until the TSDB head is shipped to storage and the store-gateway picks it up.
 			require.NoError(t, ingester.WaitSumMetrics(e2e.Greater(0), "cortex_ingester_shipper_uploads_total"))
+			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(2), "cortex_ingester_memory_series_created_total"))
+			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series_removed_total"))
+			require.NoError(t, ingester.WaitSumMetrics(e2e.Equals(1), "cortex_ingester_memory_series"))
+
+			// Start the compactor to create the bucket index before the store-gateway loads the shipped block.
+			compactor := e2ecortex.NewCompactor("compactor", consul.NetworkHTTPEndpoint(), flags, "")
+			require.NoError(t, s.StartAndWaitReady(compactor))
+			require.NoError(t, compactor.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_compactor_block_cleanup_completed_total"}, e2e.WaitMissingMetrics))
+
 			require.NoError(t, storeGateway.WaitSumMetrics(e2e.Greater(0), "cortex_storegateway_bucket_sync_total"))
 			require.NoError(t, storeGateway.WaitSumMetricsWithOptions(e2e.Equals(float64(1)), []string{"cortex_bucket_store_blocks_loaded"}, e2e.WaitMissingMetrics))
 

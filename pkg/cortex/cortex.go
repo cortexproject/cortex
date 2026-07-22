@@ -147,7 +147,7 @@ const (
 // This lets validation distinguish "querier:" from explicit zero values such
 // as "flusher: { exit_after_flush: false }" after unmarshalling.
 func (c *Config) SetYAMLRootNodeStates(buf []byte) error {
-	var root map[interface{}]interface{}
+	var root map[any]any
 	if err := yaml.Unmarshal(buf, &root); err != nil {
 		return err
 	}
@@ -169,15 +169,15 @@ func (c *Config) SetYAMLRootNodeStates(buf []byte) error {
 	return nil
 }
 
-func isEmptyYAMLRootNode(value interface{}) bool {
+func isEmptyYAMLRootNode(value any) bool {
 	if value == nil {
 		return true
 	}
 
 	switch typed := value.(type) {
-	case map[interface{}]interface{}:
+	case map[any]any:
 		return len(typed) == 0
-	case []interface{}:
+	case []any:
 		return len(typed) == 0
 	default:
 		return false

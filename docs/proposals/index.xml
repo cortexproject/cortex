@@ -198,6 +198,550 @@ b. The store-gateway has offloaded blocks &amp;ldquo;marked for deletion&amp;rdq
 &lt;li>A querier is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code>meta.json&lt;/code> file of every block&lt;/li>
 &lt;li>A store-gateway is not ready until it has completed an initial full scan of the bucket, downloading the &lt;code>meta.json&lt;/code> and index header of each block matching its shard&lt;/li>
 &lt;li>If a querier hits 2+ store-gateways it may receive duplicated series if the 2+ store-gateways share some blocks due to the replication factor&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Client-Identity Ingestion Rate Limiting</title><link>/docs/proposals/client-identity-ingestion-rate-limiting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/client-identity-ingestion-rate-limiting/</guid><description>
+&lt;ul>
+&lt;li>Author: Krunal Jain&lt;/li>
+&lt;li>Date: July 2026&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>Cortex enforces ingestion rate limits at the tenant level only. Every request is identified solely
+by the &lt;code>X-Scope-OrgID&lt;/code> header value, and the distributor&amp;rsquo;s rate limiter applies a single shared
+budget, local or global, across everything sent under that tenant.&lt;/p>
+&lt;p>In practice, a single tenant is very often not a single writer. Multiple independent services,
+teams, or clusters frequently share one &lt;code>X-Scope-OrgID&lt;/code> (splitting tenants further has real
+operational cost: more ring shards, more per-tenant limits to tune, more override entries to
+maintain). When that happens, today&amp;rsquo;s rate limiter cannot distinguish a well-behaved writer from a
+noisy or misbehaving one sharing the same tenant. A single client scaling up unexpectedly (bad
+config, retry storm, new deployment, or many parallel agent instances fanning out under one shared
+tenant) can exhaust the &lt;em>entire tenant&amp;rsquo;s&lt;/em> ingestion budget and start throttling every other
+legitimate writer sharing that org ID, even though none of the throttled traffic was the cause.&lt;/p>
+&lt;p>Cortex&amp;rsquo;s trust model already has precedent for exactly this shape of problem at the tenant level:
+&lt;code>X-Scope-OrgID&lt;/code> itself is a plain, unauthenticated-by-Cortex header. Cortex trusts it entirely
+because it assumes something in front of it (a reverse proxy, an auth gateway such as the one
+described in the &lt;a href="/docs/proposals/auth-gateway/">Authentication Gateway&lt;/a> proposal) authenticates the caller and
+sets the header correctly, and that untrusted clients can never reach Cortex directly. There is no
+equivalent mechanism today for identifying &lt;em>who, within a tenant,&lt;/em> sent a given write.&lt;/p>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Provide a second, optional rate-limiting dimension &lt;em>below&lt;/em> the tenant: throttle by client identity,
+where identity is an opaque string supplied by the same trusted gateway/proxy layer that already
+sets &lt;code>X-Scope-OrgID&lt;/code>, so that one noisy client cannot exhaust a shared tenant&amp;rsquo;s ingestion budget for
+everyone else.&lt;/p>
+&lt;p>Requirements:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Opt-in and backward compatible.&lt;/strong> Deployments that don&amp;rsquo;t set the identity header, or don&amp;rsquo;t
+enable this feature, see no behavior change; the tenant-level limiter continues to work exactly
+as it does today.&lt;/li>
+&lt;li>&lt;strong>Per-tenant configurable&lt;/strong>, following the same default-plus-per-tenant-override pattern as every
+other Cortex limit.&lt;/li>
+&lt;li>&lt;strong>Consistent trust model with the rest of Cortex.&lt;/strong> The identity header is trusted the same way
+&lt;code>X-Scope-OrgID&lt;/code> already is: because it arrives from a trusted network path, not because Cortex
+independently verifies it. This proposal does not attempt to add a stronger guarantee than
+Cortex&amp;rsquo;s existing multi-tenancy model provides; it reuses the same assumption rather than
+introducing a new one.&lt;/li>
+&lt;li>&lt;strong>Presence-gated, not mandatory.&lt;/strong> A request without the identity header is not rejected or
+treated as suspicious; it simply isn&amp;rsquo;t subject to the additional per-identity check, and its
+usage counts only toward the tenant&amp;rsquo;s existing aggregate budget, unchanged from today.&lt;/li>
+&lt;/ul>
+&lt;h2 id="out-of-scope">Out of Scope&lt;/h2>
+&lt;ul>
+&lt;li>Any form of authentication Cortex does not already support (JWT validation, OAuth, SSO, mTLS
+client-cert identity). An earlier draft of this proposal considered deriving identity from a
+verified TLS client certificate; that was dropped because it only works when Cortex itself
+terminates client TLS, which excludes the common case of a service mesh (Istio, Linkerd) or
+gateway terminating mTLS in front of Cortex, a real gap given Cortex&amp;rsquo;s own case studies document
+exactly this kind of mesh-fronted deployment. Reusing the existing &lt;code>X-Scope-OrgID&lt;/code> trust model
+avoids that gap entirely.&lt;/li>
+&lt;li>Cross-tenant limiting or identity: this is purely a sub-division of the existing per-tenant
+ingestion rate limit.&lt;/li>
+&lt;li>Read-path (query) rate limiting by client identity is covered by a &lt;strong>separate, companion
+proposal&lt;/strong>, &lt;a href="/docs/proposals/client-identity-query-rate-limiting/">Client-Identity Query Rate Limiting&lt;/a>, kept
+independent of this one because it has a different enforcement point (query-frontend, not
+distributor); it reuses the same &lt;code>X-Scope-ClientID&lt;/code> header and identity-extraction approach introduced
+here. Filed alongside this proposal rather than folded into it, so each can be reviewed and
+merged on its own timeline.&lt;/li>
+&lt;li>Defining &lt;em>how&lt;/em> an operator&amp;rsquo;s gateway derives the identity value (API key ID, service account,
+mesh workload identity, job name, etc.). Exactly like Cortex never defines what a &amp;ldquo;tenant&amp;rdquo; is
+organizationally, this proposal treats the identity as an opaque string the gateway is trusted to
+set consistently, which is out of scope for Cortex itself to prescribe.&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposed-design">Proposed Design&lt;/h2>
+&lt;h3 id="identity-extraction">Identity extraction&lt;/h3>
+&lt;p>Add a new trusted header, &lt;code>X-Scope-ClientID&lt;/code>, read once when a write request enters Cortex. This
+mirrors the existing &lt;code>X-Scope-OrgID&lt;/code> header handling: like &lt;code>X-Scope-OrgID&lt;/code>, &lt;code>X-Scope-ClientID&lt;/code> is
+trusted as-is, because Cortex assumes it is set by a trusted gateway/proxy in front of it, not
+supplied directly by an untrusted caller. If the header is absent, the request is unaffected by
+anything in this proposal. The &lt;code>X-Scope-&lt;/code> prefix is deliberately reused from &lt;code>X-Scope-OrgID&lt;/code> so the
+two headers read as an obviously related pair to an operator, rather than as two unrelated naming
+schemes.&lt;/p>
+&lt;p>Cortex&amp;rsquo;s HTTP library dependency already defines an &lt;code>X-Scope-UserID&lt;/code> header, but it is unused
+anywhere in Cortex today and its original intent isn&amp;rsquo;t documented. Reusing it was considered and
+rejected: adopting an existing-but-dormant header with no clear record of its intended semantics
+risks silently changing behavior for any deployment that happens to already send that header for an
+unrelated reason, whereas a new, clearly-scoped header name carries no such risk. &lt;code>ClientID&lt;/code> is used
+instead of &lt;code>UserID&lt;/code> both to sidestep that collision and because &amp;ldquo;client&amp;rdquo; is the term used throughout
+this proposal for the identity being rate-limited, whereas &amp;ldquo;user&amp;rdquo; risks being read as an end human
+user rather than the service/team-level identity this is meant to represent.&lt;/p>
+&lt;p>The extracted identity is threaded through the request the same way source IPs are today (already
+carried from the HTTP entrypoint through to the distributor for logging purposes), so it survives
+the handoff into the write path without changing any internal request/response shapes.&lt;/p>
+&lt;h3 id="configuration">Configuration&lt;/h3>
+&lt;p>New limits, following the same default-plus-per-tenant-override pattern as every other Cortex
+limit:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Default (flags), applied to all tenants without an override&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">distributor&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_ingestion_rate_limit&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span> &lt;span style="color:#75715e"># 0 = disabled (default; no behavior change)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_ingestion_burst_size&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Per-tenant override via runtime config&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-123&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_ingestion_rate_limit&lt;/span>: &lt;span style="color:#ae81ff">5000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_ingestion_burst_size&lt;/span>: &lt;span style="color:#ae81ff">10000&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Per-tenant cap on how many distinct tracked client entries the per-client rate limiter&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># keeps in memory for this tenant; oldest-used entries are evicted once this is reached.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># See &amp;#34;Bounding memory&amp;#34; below.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_ingestion_tracked_clients_limit&lt;/span>: &lt;span style="color:#ae81ff">1000&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>&lt;code>client_identity_ingestion_rate_limit: 0&lt;/code> is the default and means &amp;ldquo;disabled&amp;rdquo;, the same convention
+Cortex already uses elsewhere for a limit that should only take effect once explicitly configured.
+This guarantees zero behavior change for any tenant that doesn&amp;rsquo;t explicitly opt in.&lt;/p>
+&lt;h3 id="enforcement">Enforcement&lt;/h3>
+&lt;p>Enforcement is gated on &lt;strong>two independent conditions&lt;/strong>, both of which must hold:&lt;/p>
+&lt;ol>
+&lt;li>The tenant has a non-zero &lt;code>client_identity_ingestion_rate_limit&lt;/code> configured.&lt;/li>
+&lt;li>The request carries a non-empty &lt;code>X-Scope-ClientID&lt;/code> value.&lt;/li>
+&lt;/ol>
+&lt;p>If either is false, the request is subject only to the existing tenant-level ingestion rate check,
+exactly as today: a missing header is not an error, and a tenant that hasn&amp;rsquo;t opted in never pays
+any cost for this feature.&lt;/p>
+&lt;pre tabindex="0">&lt;code>Push request
+│
+v
+┌──────────────────────┐ fail ┌──────────────┐
+│ Tenant IngestionRate │───────────────────────&amp;gt;│ 429 Too Many │
+│ check (existing) │ │ Requests │
+└──────────────────────┘ └──────────────┘
+│ pass
+v
+┌──────────────────────────────┐ no (either gate) ┌─────────────┐
+│ X-Scope-ClientID present AND │───────────────────────&amp;gt;│ Continue to │
+│ tenant limit configured? │ │ ingestion │
+└──────────────────────────────┘ └─────────────┘
+│ yes
+v
+┌───────────────────────────┐ fail ┌──────────────┐
+│ Per-(tenant, client) rate │───────────────────────&amp;gt;│ 429 Too Many │
+│ limit check (new) │ │ Requests │
+└───────────────────────────┘ └──────────────┘
+│ pass
+v
+Continue to ingestion
+&lt;/code>&lt;/pre>&lt;p>A second rate limiter instance is added to the distributor, keyed by tenant and client identity
+together rather than by tenant alone. It enforces against the authoritative per-tenant, per-client
+counter via ring-based sharding — see &amp;ldquo;Distributed enforcement via the distributor ring&amp;rdquo;
+below. This check runs as an &lt;em>additional&lt;/em> step alongside, not instead of, the existing tenant-level
+limiter: a request must pass both. A tenant&amp;rsquo;s aggregate throughput is still capped by the existing
+tenant-level rate limit; this only prevents one client from consuming the entire budget.&lt;/p>
+&lt;p>The per-tenant limit and burst are looked up the same way every other tenant limit is: the
+enforcement point resolves the tenant from the combined key and reads the configured value from
+that tenant&amp;rsquo;s overrides. The &lt;em>limit value&lt;/em> is still a single per-tenant number, same as every other
+Cortex limit; only the token bucket enforcing it is split per client.&lt;/p>
+&lt;h3 id="distributed-enforcement-via-the-distributor-ring">Distributed enforcement via the distributor ring&lt;/h3>
+&lt;p>Per-client limits are enforced using the existing distributor ring rather than gossip-based counter
+aggregation. Each &lt;code>(tenant, client)&lt;/code> key is sharded onto the ring: the distributor instance that
+owns the shard for that key maintains the authoritative rate-limit counter for it.&lt;/p>
+&lt;p>When a distributor receives a write request carrying an &lt;code>X-Scope-ClientID&lt;/code> value, it hashes
+&lt;code>(tenant_id, client_id)&lt;/code> to determine the owning ring member, then:&lt;/p>
+&lt;ul>
+&lt;li>If it owns that shard, it increments and enforces the counter locally.&lt;/li>
+&lt;li>If another replica owns the shard, it forwards the rate-limit check to that replica via an
+internal RPC before accepting or rejecting the request.&lt;/li>
+&lt;/ul>
+&lt;p>This approach:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Works on any ring backend&lt;/strong> (Consul, Etcd, memberlist) — not memberlist-only — because the
+ring is used only for key ownership, not as a gossip transport.&lt;/li>
+&lt;li>&lt;strong>Eliminates convergence lag&lt;/strong>: the owning replica holds the single authoritative counter; there
+is no eventual-consistency window during which a burst can transiently exceed the configured
+per-tenant limit before all replicas converge.&lt;/li>
+&lt;li>&lt;strong>Stays accurate under uneven load&lt;/strong>: a client&amp;rsquo;s requests landing on different distributors always
+count against the same shard owner, regardless of which replica physically received each request.&lt;/li>
+&lt;/ul>
+&lt;p>The tradeoff is a potential per-request remote call to the shard owner when the receiving
+distributor does not own the relevant shard. For deployments with random load balancing in front of
+distributors, a majority of checks will require this hop. Whether the added latency is acceptable
+depends on the intra-cluster RPC latency for a given deployment; this is a known cost and worth
+calling out explicitly in the implementation phase.&lt;/p>
+&lt;h3 id="bounding-memory-capped-tracking-not-an-unbounded-map">Bounding memory: capped tracking, not an unbounded map&lt;/h3>
+&lt;p>Unlike the existing tenant-level limiter, whose per-tenant map stays small because the number of
+tenants is small and operator-controlled, the number of distinct tenant+client keys here is
+bounded only by how many distinct &lt;code>X-Scope-ClientID&lt;/code> values a gateway ever sends. Left as a plain
+unbounded map, this becomes both a slow memory leak under normal churn (clients renamed, rotated,
+or retired over time never get cleaned up) and, combined with the header trust boundary above, a
+denial-of-service vector: a caller able to set arbitrary &lt;code>X-Scope-ClientID&lt;/code> values could grow that map
+without limit simply by rotating identities.&lt;/p>
+&lt;p>Cortex already solves an analogous problem elsewhere: the tenant-federation regex resolver bounds
+a similar per-key cache with a fixed-size, least-recently-used eviction cache rather than a plain
+map, sized by an operator-configurable limit. This proposal adopts the same approach: the per-client
+tracking for each tenant is capped by a new per-tenant limit (configurable via
+&lt;code>client_identity_ingestion_tracked_clients_limit&lt;/code> in the tenant&amp;rsquo;s overrides, with a sensible default
+on the order of 1,000 tracked clients per tenant) using least-recently-used eviction once the cap
+is reached.&lt;/p>
+&lt;p>Unlike the federation regex resolver, where eviction only affects latency (a cache miss means a
+slower regex rebuild), eviction here has an enforcement consequence: an evicted client&amp;rsquo;s counter is
+discarded, so if it reappears it starts from zero and can issue a fresh burst before its token
+bucket fills and enforcement kicks in again. This is a deliberate tradeoff — the alternative
+(refusing new clients once the cap is full) risks denying service to legitimate new clients when a
+tenant has many active writers. The LRU approach bounds memory and preserves fairness under normal
+cardinality, at the cost of a brief enforcement gap when a previously-evicted client resumes. Under
+sustained high-cardinality abuse (an attacker rotating identities to flood the LRU), the failure
+mode is bounded churn (evictions) rather than unbounded memory growth, which is acceptable given
+the existing guidance to keep &lt;code>X-Scope-ClientID&lt;/code> behind a trusted gateway.&lt;/p>
+&lt;p>Operators can tune the per-tenant cap upward for tenants with many legitimate concurrent writers,
+or observe the eviction counter (a dedicated counter incremented in the LRU eviction callback) to
+distinguish &amp;ldquo;cap is properly sized&amp;rdquo; from &amp;ldquo;we are actively seeing identity churn.&amp;rdquo;&lt;/p>
+&lt;h3 id="header-trust-boundary">Header trust boundary&lt;/h3>
+&lt;p>Because &lt;code>X-Scope-ClientID&lt;/code> is trusted the same way &lt;code>X-Scope-OrgID&lt;/code> is, deployments that expose Cortex&amp;rsquo;s
+HTTP endpoints directly to untrusted clients (rather than through a gateway/proxy that strips and
+re-sets both headers) would let a malicious caller set an arbitrary identity, for example to evade
+throttling by rotating identity values, or to frame another client. This is not a new risk specific
+to this feature: it is the exact risk profile &lt;code>X-Scope-OrgID&lt;/code> already carries today, and Cortex&amp;rsquo;s
+existing guidance (run behind a reverse proxy/gateway that authenticates callers and controls these
+headers) applies unchanged. This should be stated explicitly in the docs for this feature, the same
+way multi-tenancy setup docs already caution about &lt;code>X-Scope-OrgID&lt;/code> exposure. The bounded tracking
+above ensures that even under this threat model, the failure mode is bounded churn, not unbounded
+memory growth.&lt;/p>
+&lt;h3 id="metrics">Metrics&lt;/h3>
+&lt;ul>
+&lt;li>The existing discarded-samples metric gains a new discard reason for this rate limit, following
+the same reason-labeling convention already used for the tenant-level rate limiter, so it&amp;rsquo;s
+observable per tenant the same way tenant-level rate limiting already is.&lt;/li>
+&lt;li>Per-client rejection visibility (which specific client tripped the limit) is available from
+request logs rather than a dedicated per-client metric label. Adding a client label directly to
+the discarded-samples metric would multiply its existing cardinality (already keyed by discard
+reason and tenant) by the number of distinct tracked clients; logs are the better fit for a
+dimension that&amp;rsquo;s expected to have many more distinct values than tenants do. This mirrors the
+same choice made in the companion query-path proposal, for consistency between the two.&lt;/li>
+&lt;/ul>
+&lt;p>A cardinality caveat on tracking itself, separate from the metrics question above: client identity
+values are gateway-controlled, but a deployment that sets a distinct identity per end user (rather
+than per service/team) could still produce many distinct tracked clients. The bounded-tracking cap
+described above already limits the worst case; this is called out here because it&amp;rsquo;s the same
+underlying cardinality concern Cortex&amp;rsquo;s existing per-labelset limits feature already warns about,
+just showing up in a different place (limiter memory) rather than metrics.&lt;/p>
+&lt;h3 id="interaction-with-existing-limits">Interaction with existing limits&lt;/h3>
+&lt;p>This is purely additive:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>The tenant-level ingestion rate limit is unaffected&lt;/strong> and remains the hard ceiling for the
+tenant as a whole.&lt;/li>
+&lt;li>&lt;strong>Per-labelset limits&lt;/strong> partition by data content (label matchers); this proposal partitions by
+data origin (who sent it). They are orthogonal and can be used together.&lt;/li>
+&lt;li>If a tenant has no client-identity limit configured (the default), or the request has no
+&lt;code>X-Scope-ClientID&lt;/code> header, the new check is a no-op and behavior is identical to today.&lt;/li>
+&lt;/ul>
+&lt;h2 id="value-of-the-identity-header-beyond-rate-limiting">Value of the Identity Header Beyond Rate Limiting&lt;/h2>
+&lt;p>Establishing &lt;code>X-Scope-ClientID&lt;/code> as a first-class header in the write path opens up a broader set of
+per-client observability and control capabilities that are not in scope for this proposal but
+become straightforward extensions once the identity is available:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Resource consumption attribution.&lt;/strong> Samples ingested, bytes written, and active series can all
+be broken down per client in logs and metrics, enabling capacity planning and chargeback at the
+client level rather than only at the tenant level.&lt;/li>
+&lt;li>&lt;strong>Out-of-order sample detection per client.&lt;/strong> The distributor already detects and discards
+out-of-order samples; with &lt;code>X-Scope-ClientID&lt;/code> present, those rejections can be attributed to the
+specific client sending them, making it straightforward to identify a misconfigured or misbehaving
+writer without manual log correlation across requests.&lt;/li>
+&lt;li>&lt;strong>Per-client cardinality tracking.&lt;/strong> Today cardinality can only be attributed to a tenant as a
+whole. With client identity available on the write path, high-cardinality contributors can be
+identified by source, not just by label patterns.&lt;/li>
+&lt;li>&lt;strong>Audit and debugging.&lt;/strong> A client identity on every write request makes it possible to answer
+questions like &amp;ldquo;which client started sending this metric series?&amp;rdquo; or &amp;ldquo;which client&amp;rsquo;s deployment
+caused this ingestion spike?&amp;rdquo; directly from logs, without cross-referencing external systems.&lt;/li>
+&lt;li>&lt;strong>Future per-client quota enforcement.&lt;/strong> Once client identity is a reliable, trusted dimension,
+per-client quotas (not just rate limits) — for example, a cap on active series or total samples
+per day per client — become implementable without any additional identity plumbing.&lt;/li>
+&lt;/ul>
+&lt;p>None of these require changes to this proposal; they are downstream opportunities that justify
+establishing a clean, trusted identity header now rather than bolting it on later.&lt;/p>
+&lt;h2 id="rollout-plan">Rollout Plan&lt;/h2>
+&lt;p>Introduced as an &lt;strong>experimental&lt;/strong> feature, consistent with how Cortex introduces most new limits
+(disabled by default, documented as experimental, graduated to stable after operational
+experience). Rollout in two phases:&lt;/p>
+&lt;p>&lt;strong>Phase 1&lt;/strong>: Ship with distributed enforcement (see &amp;ldquo;Distributed enforcement via the distributor ring&amp;rdquo;
+above) behind the &lt;code>client_identity_ingestion_rate_limit&lt;/code> per-tenant override, defaulting to &lt;code>0&lt;/code>
+(disabled) so existing deployments see no change. Validate with a small number of opted-in tenants.&lt;/p>
+&lt;p>&lt;strong>Phase 2&lt;/strong>: Based on operational feedback, consider graduating the feature out of experimental
+status.&lt;/p>
+&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
+&lt;ul>
+&lt;li>&lt;strong>mTLS client certificate identity.&lt;/strong> Cryptographically stronger than a trusted header, and
+Cortex&amp;rsquo;s server already supports client-cert authentication. Rejected as the primary mechanism
+because it only works when Cortex itself terminates client TLS: a common deployment pattern is a
+service mesh or gateway terminating mTLS &lt;em>before&lt;/em> Cortex, in which case the certificate Cortex
+sees reflects the mesh sidecar, not the original caller. It would also reopen an unresolved
+Common-Name-vs-Subject-Alternative-Name identity question. The header-based approach sidesteps
+both problems and matches Cortex&amp;rsquo;s existing &lt;code>X-Scope-OrgID&lt;/code> trust model rather than introducing a
+second, different one. Could still be revisited later as an alternate identity &lt;em>source&lt;/em> feeding
+the same enforcement path, for deployments that do terminate TLS at Cortex.&lt;/li>
+&lt;li>&lt;strong>JWT claim-based identity.&lt;/strong> Would require Cortex to parse and validate bearer tokens itself,
+which is a meaningfully larger surface (token validation, key rotation, clock skew) than reading a
+header the same way &lt;code>X-Scope-OrgID&lt;/code> already is. Left as potential future work if operators need
+cryptographic identity guarantees stronger than the trusted-header model provides.&lt;/li>
+&lt;li>&lt;strong>Basic Auth username.&lt;/strong> Only applicable if a deployment terminates HTTP Basic Auth at Cortex
+itself, which is uncommon for the write path in practice (most Cortex deployments put
+authentication at a gateway/proxy in front of Cortex, per the Authentication Gateway proposal),
+the same gateway that would set &lt;code>X-Scope-ClientID&lt;/code> under this proposal, making a separate Basic Auth
+path redundant.&lt;/li>
+&lt;/ul>
+&lt;h2 id="open-questions">Open Questions&lt;/h2>
+&lt;ul>
+&lt;li>Should the client-identity limiter default to enabled with a very high limit (encouraging
+visibility/metrics even for tenants that don&amp;rsquo;t want enforcement), or fully opt-in (0 = off, as
+described above)? This proposal defaults to fully opt-in to guarantee zero behavior change on
+upgrade, consistent with how most new Cortex limits are introduced as disabled-by-default
+experimental features.&lt;/li>
+&lt;li>Should the header name be configurable, the way Cortex already allows configuring the header used
+for source-IP logging, rather than a hardcoded &lt;code>X-Scope-ClientID&lt;/code>? Leaning toward configurable, to avoid
+collisions with header names deployments may already use for a similar purpose.&lt;/li>
+&lt;li>Should this eventually extend to the query path (read-side per-client throttling, reusing this
+same &lt;code>X-Scope-ClientID&lt;/code> header)? &lt;strong>Yes: see the companion proposal,
+&lt;a href="/docs/proposals/client-identity-query-rate-limiting/">Client-Identity Query Rate Limiting&lt;/a>,&lt;/strong> filed alongside
+this one and deliberately kept separate rather than expanding this proposal&amp;rsquo;s scope.&lt;/li>
+&lt;li>What&amp;rsquo;s the right default for the per-tenant tracked-clients cap? The cap is configurable per
+tenant via &lt;code>client_identity_ingestion_tracked_clients_limit&lt;/code> in the overrides; evictions caused
+by hitting the cap are observable via a dedicated eviction counter, letting operators distinguish
+&amp;ldquo;cap is properly sized&amp;rdquo; from &amp;ldquo;we&amp;rsquo;re actively being hit with identity churn&amp;rdquo; without needing to
+inspect memory profiles.&lt;/li>
+&lt;/ul></description></item><item><title>Docs: Client-Identity Query Rate Limiting</title><link>/docs/proposals/client-identity-query-rate-limiting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/client-identity-query-rate-limiting/</guid><description>
+&lt;ul>
+&lt;li>Author: Krunal Jain&lt;/li>
+&lt;li>Date: July 2026&lt;/li>
+&lt;li>Status: Proposed&lt;/li>
+&lt;/ul>
+&lt;h2 id="background">Background&lt;/h2>
+&lt;p>This is a follow-on to
+&lt;a href="/docs/proposals/client-identity-ingestion-rate-limiting/">Client-Identity Ingestion Rate Limiting&lt;/a> (write path), applying the same
+idea to queries.&lt;/p>
+&lt;p>Cortex has no per-request-rate limiter on the read path today. What exists is a different kind of
+control: a per-tenant limit on how many requests can be &lt;em>queued at once&lt;/em>, and a family of per-query
+cost limits that bound how &lt;em>expensive&lt;/em> a single query can be. Neither bounds &lt;em>how many queries per
+second&lt;/em> a tenant&amp;rsquo;s traffic issues, and, same as the write path, neither can distinguish one query
+source from another within a shared tenant.&lt;/p>
+&lt;p>The query-frontend already reads and logs a couple of per-request identifying headers today, purely
+for observability (Grafana&amp;rsquo;s dashboard and panel identifiers, included in slow-query log lines).
+These headers are not used for enforcement today, only logging, and this proposal does not use them
+for identity either; it uses a new, generic header instead (see Proposed Design).&lt;/p>
+&lt;p>A single noisy dashboard, a runaway alert rule evaluating too frequently, or one team&amp;rsquo;s ad hoc
+Explore usage can all generate a query load that consumes a shared tenant&amp;rsquo;s query-processing
+capacity (queriers, store-gateways) at the expense of every other user/dashboard under that same
+&lt;code>X-Scope-OrgID&lt;/code>, mirroring exactly the ingestion-side problem the write-path proposal addresses,
+just on reads.&lt;/p>
+&lt;h2 id="problem">Problem&lt;/h2>
+&lt;p>Provide a query-rate-limiting dimension &lt;em>below&lt;/em> the tenant, at the query-frontend, so that one noisy
+query source cannot degrade query performance for every other user sharing a tenant.&lt;/p>
+&lt;p>Requirements (mirroring the write-path proposal):&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Opt-in and backward compatible.&lt;/strong> Deployments that don&amp;rsquo;t set the identity header, or don&amp;rsquo;t
+enable this feature, see no behavior change.&lt;/li>
+&lt;li>&lt;strong>Per-tenant configurable&lt;/strong>, following the same default-plus-per-tenant-override pattern used
+throughout Cortex.&lt;/li>
+&lt;li>&lt;strong>Presence-gated, not mandatory.&lt;/strong> A request without the identity header is not rejected; it is
+simply not subject to the additional per-identity check, and counts only toward whatever
+tenant-level behavior already exists today (which, notably, currently has no &lt;em>rate&lt;/em> limit to fall
+back to on the read path, see Interaction with Existing Limits).&lt;/li>
+&lt;li>&lt;strong>Same generic, gateway-set identity header as the write-path proposal (&lt;code>X-Scope-ClientID&lt;/code>), not a
+per-client-application-specific one.&lt;/strong> Consistent with the write-path proposal&amp;rsquo;s principle:
+Cortex trusts one opaque identity value, set by whatever sits in front of it, the same way it
+already trusts &lt;code>X-Scope-OrgID&lt;/code>. It does not special-case any particular client application.&lt;/li>
+&lt;/ul>
+&lt;h2 id="out-of-scope">Out of Scope&lt;/h2>
+&lt;ul>
+&lt;li>The write (ingestion) path: covered by the companion proposal,
+&lt;a href="/docs/proposals/client-identity-ingestion-rate-limiting/">Client-Identity Ingestion Rate Limiting&lt;/a>. The two share a design
+philosophy (trusted, gateway-forwarded identity header, opt-in, additive to existing limits) and,
+as of this revision, the &lt;em>same&lt;/em> identity header. They are kept as separate proposals because they
+have different enforcement points (distributor vs. query-frontend), not because of any difference
+in identity source.&lt;/li>
+&lt;li>Per-query cost limiting: unaffected and orthogonal; this proposal bounds &lt;em>frequency&lt;/em>, those bound
+&lt;em>cost per query&lt;/em>.&lt;/li>
+&lt;li>Any new authentication mechanism, and any client-application-specific identity header. Exactly
+like the write-path proposal, this reuses a header trusted the same way &lt;code>X-Scope-OrgID&lt;/code> already
+is; it does not add token validation, a new identity protocol, or special-cased handling for any
+particular upstream client.&lt;/li>
+&lt;li>Enforcement in the querier itself (as opposed to the query-frontend/scheduler). The query-frontend
+is the natural analog to the distributor here: it is the first internal component every query
+passes through, exactly as the distributor is for writes.&lt;/li>
+&lt;/ul>
+&lt;h2 id="proposed-design">Proposed Design&lt;/h2>
+&lt;h3 id="identity-extraction">Identity extraction&lt;/h3>
+&lt;p>The same generic, trusted header as the write-path proposal, &lt;code>X-Scope-ClientID&lt;/code>, read once when a query
+request enters the query-frontend, alongside the existing Grafana dashboard/panel header reads.
+Using the exact same header and identity-extraction approach as the write-path proposal means a
+deployment that sets &lt;code>X-Scope-ClientID&lt;/code> once, at its gateway, for all Cortex-bound traffic gets consistent
+per-client identity across both ingestion and queries with no additional configuration: one
+identity mechanism, reused at both enforcement points, rather than two different ones.&lt;/p>
+&lt;h3 id="configuration">Configuration&lt;/h3>
+&lt;p>New limits, following the same pattern as the write-path proposal:&lt;/p>
+&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-yaml" data-lang="yaml">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Default (flags), applied to all tenants without an override&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">frontend&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_query_rate_limit&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span> &lt;span style="color:#75715e"># 0 = disabled (default; no behavior change)&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_query_burst_size&lt;/span>: &lt;span style="color:#ae81ff">0&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Per-tenant override via runtime config&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>&lt;span style="color:#f92672">overrides&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">tenant-123&lt;/span>:
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_query_rate_limit&lt;/span>: &lt;span style="color:#ae81ff">50&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_query_burst_size&lt;/span>: &lt;span style="color:#ae81ff">100&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># Per-tenant cap on how many distinct tracked client entries the per-client rate limiter&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># keeps in memory for this tenant; oldest-used entries are evicted once this is reached.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#75715e"># See &amp;#34;Bounding memory&amp;#34; in the write-path proposal for eviction semantics.&lt;/span>
+&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span> &lt;span style="color:#f92672">client_identity_query_tracked_clients_limit&lt;/span>: &lt;span style="color:#ae81ff">1000&lt;/span>
+&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Units are queries per second (matching how Cortex&amp;rsquo;s existing outstanding-requests limit is already
+a count, not a byte/sample rate; this is a request-frequency limit, deliberately independent of
+query cost).&lt;/p>
+&lt;h3 id="enforcement">Enforcement&lt;/h3>
+&lt;p>Same two-gate structure as the write-path proposal:&lt;/p>
+&lt;ol>
+&lt;li>The tenant has a non-zero &lt;code>client_identity_query_rate_limit&lt;/code> configured.&lt;/li>
+&lt;li>The request carries a non-empty &lt;code>X-Scope-ClientID&lt;/code> value.&lt;/li>
+&lt;/ol>
+&lt;pre tabindex="0">&lt;code>Query request arrives at query-frontend
+│
+v
+┌──────────────────────────────┐ no (either gate) ┌─────────────────┐
+│ X-Scope-ClientID present AND │───────────────────────&amp;gt;│ Continue │
+│ tenant limit configured? │ │ (queue/forward) │
+└──────────────────────────────┘ └─────────────────┘
+│ yes
+v
+┌───────────────────────────┐ fail ┌──────────────┐
+│ Per-(tenant, client) rate │───────────────────────&amp;gt;│ 429 Too Many │
+│ limit check (new) │ │ Requests │
+└───────────────────────────┘ └──────────────┘
+│ pass
+v
+Continue (queued locally, or forwarded to the scheduler, depending on deployment topology)
+&lt;/code>&lt;/pre>&lt;p>A new rate limiter instance, using the same ring-based distributed enforcement as the
+write-path proposal, is added at the query-frontend, keyed by tenant and client identity together. This reuses
+the query-frontend&amp;rsquo;s existing rejected-request counter and discard-reason pattern, so a rejection
+under this feature is observable the same way existing query-frontend rejections already are.&lt;/p>
+&lt;p>The rate-limiter strategy backing it mirrors the write-path proposal&amp;rsquo;s approach exactly: it splits
+the combined tenant/client key and looks up the per-tenant configured limit, the same per-tenant
+limits interface pattern already used elsewhere for query-side limits.&lt;/p>
+&lt;h3 id="where-this-runs-relative-to-the-frontendscheduler-split">Where this runs relative to the frontend/scheduler split&lt;/h3>
+&lt;p>Cortex&amp;rsquo;s query-frontend can run with or without a separate query-scheduler. The query-frontend&amp;rsquo;s
+request handler runs in the query-frontend process in both configurations: it is the entrypoint
+before a request is either queued locally or forwarded to the scheduler, so enforcing here, rather
+than inside the scheduler&amp;rsquo;s own queueing logic, covers both deployment topologies with one check.&lt;/p>
+&lt;p>Each query-frontend replica uses the same ring-based distributed enforcement as the write-path
+proposal: the &lt;code>(tenant, client)&lt;/code> key is hashed onto the existing ring, and the owning replica
+maintains the authoritative per-tenant, per-client counter. A client cannot route around the limit
+by landing on a less-loaded frontend replica, and enforcement stays accurate as replicas scale up
+or down without any reconfiguration of per-replica shares.&lt;/p>
+&lt;h3 id="bounding-memory-capped-tracking-not-an-unbounded-map">Bounding memory: capped tracking, not an unbounded map&lt;/h3>
+&lt;p>Same concern as the write-path proposal, and the same fix: the number of distinct tenant+client
+keys here is bounded only by how many distinct &lt;code>X-Scope-ClientID&lt;/code> values are presented to the
+query-frontend, so tracking is capped per tenant with least-recently-used eviction rather than kept
+in a plain unbounded map, exactly as described in the write-path proposal&amp;rsquo;s equivalent section
+(including its discussion of the enforcement consequence of eviction). The two caps are configured
+independently per tenant (see Configuration above) since the query-frontend and distributor are
+separate processes with independent memory budgets, but the mechanism and rationale are identical.&lt;/p>
+&lt;h3 id="distributed-enforcement-and-interaction-with-the-results-cache">Distributed enforcement and interaction with the results cache&lt;/h3>
+&lt;p>This proposal uses the same ring-based distributed enforcement as the write-path proposal: each
+&lt;code>(tenant, client)&lt;/code> key is sharded onto the existing ring, and the owning query-frontend replica
+maintains the authoritative per-tenant, per-client counter. A client cannot route around the
+per-tenant limit by spreading requests across frontend replicas, and enforcement stays accurate as
+replicas scale without any per-replica reconfiguration.&lt;/p>
+&lt;p>A read-path-specific question remains: the query-frontend serves some requests entirely from its
+results cache, without ever reaching a querier or store-gateway. Enforcing the per-client check
+before knowing whether a request will be a cache hit means a client issuing frequent but cheap,
+repeated, cacheable queries (for example, an auto-refreshing dashboard hitting the same query
+window) could be throttled even though those requests would have cost negligible querier/store
+gateway capacity. Given this feature&amp;rsquo;s stated goal is protecting shared query-processing capacity,
+not query volume for its own sake, this is worth resolving before this feature is considered
+complete: either check cache-eligibility first and only rate-limit the cache-miss path, or accept
+the imprecision in a first version and document it clearly as a known limitation. This proposal
+does not resolve that choice; it is called out explicitly as an open question below rather than
+silently deferred.&lt;/p>
+&lt;h3 id="metrics">Metrics&lt;/h3>
+&lt;ul>
+&lt;li>Reuses the query-frontend&amp;rsquo;s existing rejected-query counter with a new discard reason for this
+limit; no new metric family needed, consistent with how other query-frontend rejections are
+already tracked.&lt;/li>
+&lt;li>Per-client rejection visibility is obtained from query-frontend logs rather than a dedicated
+metric label, the same way dashboard/panel identifiers already are, and for the same reason as
+the write-path proposal: adding a client label to an existing metric that already carries several
+labels would multiply its cardinality by however many distinct clients are tracked.&lt;/li>
+&lt;/ul>
+&lt;h3 id="interaction-with-existing-limits">Interaction with existing limits&lt;/h3>
+&lt;ul>
+&lt;li>&lt;strong>Orthogonal to per-query cost limits&lt;/strong>: those bound how expensive one query is; this bounds how
+many queries per second one client issues.&lt;/li>
+&lt;li>&lt;strong>Orthogonal to the existing per-tenant outstanding-requests limit&lt;/strong>: that bounds queue depth (how
+many requests can be waiting at once); this bounds arrival rate. A client could stay under the
+queue depth limit while still issuing queries fast enough to starve other queue occupants of
+querier time; this closes that gap.&lt;/li>
+&lt;li>&lt;strong>Consistent with the write-path proposal&amp;rsquo;s philosophy&lt;/strong>: purely additive, off by default,
+identical two-gate opt-in structure, same underlying rate-limiting mechanism.&lt;/li>
+&lt;/ul>
+&lt;h2 id="value-of-the-identity-header-beyond-rate-limiting">Value of the Identity Header Beyond Rate Limiting&lt;/h2>
+&lt;p>The same &lt;code>X-Scope-ClientID&lt;/code> header established on the write path (see the companion proposal) carries
+equivalent value on the read path once it is available:&lt;/p>
+&lt;ul>
+&lt;li>&lt;strong>Query resource consumption per client.&lt;/strong> Query execution time, querier CPU, and store-gateway
+reads can all be attributed per client in logs, enabling identification of expensive query
+sources — runaway alert rules, auto-refreshing dashboards, ad hoc exploration — without manual
+log correlation.&lt;/li>
+&lt;li>&lt;strong>Per-client slow query attribution.&lt;/strong> The query-frontend already logs slow queries; with
+&lt;code>X-Scope-ClientID&lt;/code> present, slow query log lines carry the client identity directly, making it
+straightforward to identify which client or dashboard is responsible without cross-referencing
+external systems.&lt;/li>
+&lt;li>&lt;strong>Future per-client query cost quotas.&lt;/strong> Once client identity is a reliable, trusted dimension on
+the read path, per-client cost controls — for example, a cap on total querier time or
+store-gateway bytes scanned per client per interval — become implementable without any additional
+identity plumbing.&lt;/li>
+&lt;/ul>
+&lt;p>These are downstream opportunities enabled by this proposal&amp;rsquo;s identity header, not in scope here.&lt;/p>
+&lt;h2 id="rollout-plan">Rollout Plan&lt;/h2>
+&lt;p>Same phased approach as the write-path proposal: introduced as an &lt;strong>experimental&lt;/strong> feature with
+global enforcement, disabled by default (&lt;code>client_identity_query_rate_limit: 0&lt;/code>). Graduation out of
+experimental status follows once operational experience from Phase 1, including resolution of the
+cache-interaction question above, confirms the design is sound.&lt;/p>
+&lt;h2 id="alternatives-considered">Alternatives Considered&lt;/h2>
+&lt;ul>
+&lt;li>&lt;strong>Enforce in the scheduler instead of the frontend.&lt;/strong> Would require either scheduler-side rate
+limiting to be per-scheduler-replica (fine, but then it needs its own identical mechanism since
+the scheduler is a separate component from the frontend) or shared/global state across scheduler
+replicas, a much larger change mirroring the local-vs-global split the write-path proposal already
+has to consider. Enforcing once in the frontend, before a request is ever queued or forwarded, is
+simpler and sufficient for a first version; a global variant could be considered later exactly as
+it was for the write path.&lt;/li>
+&lt;li>&lt;strong>A single combined proposal covering both ingestion and query paths.&lt;/strong> Considered and explicitly
+rejected; see the write-path proposal&amp;rsquo;s cross-reference to this one. Different enforcement
+points and independent review/merge risk argue for two focused proposals over one broad one, even
+though both now share the same identity mechanism.&lt;/li>
+&lt;/ul>
+&lt;h2 id="open-questions">Open Questions&lt;/h2>
+&lt;ul>
+&lt;li>Should this feature ship together with the write-path proposal, or fully independently, given they
+touch different components and teams (distributor vs. query-frontend) might review them
+separately? Leaning towards shipping independently, sharing only the small identity-extraction
+logic, given the review benefits of keeping them as separate changes discussed above.&lt;/li>
+&lt;li>What&amp;rsquo;s the right default for the per-tenant tracked-clients cap? The cap is configurable per
+tenant via &lt;code>client_identity_query_tracked_clients_limit&lt;/code> in the overrides; evictions caused by
+hitting the cap are observable via a dedicated eviction counter, letting operators distinguish
+&amp;ldquo;cap is properly sized&amp;rdquo; from &amp;ldquo;we&amp;rsquo;re actively being hit with identity churn&amp;rdquo; without needing to
+inspect memory profiles.&lt;/li>
+&lt;li>Should the per-client query limit be expressible as a percentage of the tenant&amp;rsquo;s overall query
+capacity, similar to how Cortex&amp;rsquo;s existing max-queriers-per-tenant limit supports
+fractional/percentage values, rather than an absolute queries/second number? Left as a fast-follow
+refinement rather than blocking the initial absolute-number implementation.&lt;/li>
+&lt;li>Should the per-client check run before or after results-cache eligibility is known (see &amp;ldquo;Distributed enforcement and interaction with the results cache&amp;rdquo; above)? Checking after would avoid
+throttling cheap, cache-served requests, at the cost of being a slightly more invasive change to
+the request handling order; checking before (as currently proposed) is simpler but risks
+throttling based on request &lt;em>count&lt;/em> rather than actual resource consumption. This should be
+resolved before the feature is considered ready to implement, not left as a known limitation by
+default.&lt;/li>
 &lt;/ul></description></item><item><title>Docs: Cross-Tenant Query Federation</title><link>/docs/proposals/cross-tenant-query-federation/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/cross-tenant-query-federation/</guid><description>
 &lt;ul>
 &lt;li>Author: &lt;a href="https://github.com/simonswine">Christian Simon&lt;/a>&lt;/li>

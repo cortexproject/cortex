@@ -87,6 +87,7 @@
 * [BUGFIX] Store Gateway: Fix misleading "no index cache backend addresses" validation error being reported for chunks-cache, metadata-cache, and parquet caches when their memcached or redis backend is configured without addresses. The message is now the cache-type-agnostic "no cache backend addresses". #7675
 * [BUGFIX] Querier/Query Frontend: Fix DNS watcher dropping all query-frontend/scheduler worker connections on a transient DNS lookup failure. #7698
 * [BUGFIX] Ring: Fix DynamoDB KV CAS not retrying on transactional conditional check failures. `TransactWriteItems` reports condition failures as `TransactionCanceledException` with a `ConditionalCheckFailed` cancellation reason, which was not recognized as retryable, so any concurrent ring update conflict (e.g. many ingesters joining during a rolling update) failed immediately instead of re-reading and retrying. `TransactionConflict` cancellation reasons are also treated as retryable. #7706
+* [BUGFIX] Config: Fix CSV-list flags/YAML fields (e.g. `-compactor.enabled-tenants`, `-compactor.disabled-tenants`) treating an explicitly empty string (`""`) as a one-element list containing an empty tenant name instead of an empty list. This caused every tenant to be skipped when `enabled_tenants: ""` was set in config, since only the (nonexistent) empty-string tenant matched the allow-list. #6581
 
 ## 1.21.0 2026-04-24
 

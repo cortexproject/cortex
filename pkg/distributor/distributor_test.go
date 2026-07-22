@@ -4982,7 +4982,6 @@ func TestDistributor_ReceivedHistogramBucketsMetric(t *testing.T) {
 	require.Equal(t, float64(9), m.GetHistogram().GetSampleSum())
 }
 
-
 // TestUserStats_ToleratesLeavingIngester verifies that UserStats succeeds
 // when one of the ring ingesters fails (e.g. because it is LEAVING).
 // Before the fix, MaxErrors was set to 0, causing the endpoint to return an
@@ -4994,9 +4993,9 @@ func TestUserStats_ToleratesLeavingIngester(t *testing.T) {
 	// returning an error.
 	ctx := user.InjectOrgID(context.Background(), "user1")
 	distributors, _, _, _ := prepare(t, prepConfig{
-		numIngesters:    3,
-		happyIngesters:  2,
-		numDistributors: 1,
+		numIngesters:      3,
+		happyIngesters:    2,
+		numDistributors:   1,
 		replicationFactor: 3,
 	})
 

@@ -698,6 +698,7 @@ func (s *Scheduler) running(ctx context.Context) error {
 
 // Close the Scheduler.
 func (s *Scheduler) stopping(_ error) error {
+	s.fragmentTable.Close()
 	// This will also stop the requests queue, which stop accepting new requests and errors out any tracked requests.
 	return services.StopManagerAndAwaitStopped(context.Background(), s.subservices)
 }

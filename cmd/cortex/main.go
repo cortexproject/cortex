@@ -20,7 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	collectorversion "github.com/prometheus/client_golang/prometheus/collectors/version"
 	"github.com/prometheus/common/version"
-	_ "go.uber.org/automaxprocs"
+	"go.uber.org/automaxprocs/maxprocs"
 	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/cortex"
@@ -170,6 +170,9 @@ func main() {
 	}
 
 	util_log.InitLogger(&cfg.Server)
+	if _, err := maxprocs.Set(maxprocs.Logger(util_log.AutomaxprocsLogger(util_log.Logger))); err != nil {
+		level.Warn(util_log.Logger).Log("msg", "failed to set GOMAXPROCS from CPU quota", "err", err)
+	}
 	util.InitEvents(eventSampleRate)
 
 	ctx, cancelFn := context.WithCancel(context.Background())

@@ -10,7 +10,9 @@ import (
 )
 
 var defaultConfig = Config{
-	Provider: "default",
+	Provider:             "default",
+	MaxRequestRetries:    3,
+	RequestRetryInterval: 10,
 }
 
 func TestConfig(t *testing.T) {

@@ -39,6 +39,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.PrivateKey, prefix+"oci.private-key", "The API signing private key in PEM format. Required when the provider is 'raw'.")
 	f.Var(&cfg.Passphrase, prefix+"oci.private-key-passphrase", "The passphrase for the API signing private key, if the key is encrypted.")
 	f.Int64Var(&cfg.PartSize, prefix+"oci.part-size", 0, "The part size in bytes used for multipart uploads. 0 uses the provider default.")
-	f.IntVar(&cfg.MaxRequestRetries, prefix+"oci.max-request-retries", 0, "The maximum number of retries for recoverable errors. 0 uses the provider default.")
-	f.IntVar(&cfg.RequestRetryInterval, prefix+"oci.request-retry-interval", 0, "The interval in seconds between request retries. 0 uses the provider default.")
+	f.IntVar(&cfg.MaxRequestRetries, prefix+"oci.max-request-retries", 3, "The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.")
+	f.IntVar(&cfg.RequestRetryInterval, prefix+"oci.request-retry-interval", 10, "The fixed interval in seconds to wait between request retry attempts.")
 }

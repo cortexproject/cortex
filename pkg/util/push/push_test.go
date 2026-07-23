@@ -855,6 +855,53 @@ func TestHandler_remoteWrite(t *testing.T) {
 		assert.Equal(t, "1", respHeader[rw20WrittenExemplarsHeader][0])
 		assert.Contains(t, resp.Body.String(), "HA deduplication")
 	})
+
+	// A client-canceled push (bare or wrapped context.Canceled) should return 499
+	// (Client Closed Request) instead of 500, matching the query-frontend convention.
+	cancellationTests := []struct {
+		name string
+		err  error
+		isV2 bool
+	}{
+		{name: "remote write v1 client cancellation", err: context.Canceled, isV2: false},
+		{name: "remote write v2 client cancellation", err: context.Canceled, isV2: true},
+		{name: "remote write v1 wrapped client cancellation", err: fmt.Errorf("send failed: %w", context.Canceled), isV2: false},
+		{name: "remote write v2 wrapped client cancellation", err: fmt.Errorf("send failed: %w", context.Canceled), isV2: true},
+	}
+
+	for _, test := range cancellationTests {
+		t.Run(test.name, func(t *testing.T) {
+			pushErr := test.err
+			pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				return nil, pushErr
+			}
+
+			ctx := context.Background()
+			ctx = user.InjectOrgID(ctx, "user-1")
+			handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+
+			var body []byte
+			if test.isV2 {
+				body = createPrometheusRemoteWriteV2Protobuf(t)
+			} else {
+				body = createPrometheusRemoteWriteProtobuf(t)
+			}
+			req := createRequest(t, body, test.isV2)
+			req = req.WithContext(ctx)
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+
+			assert.Equal(t, 499, resp.Code)
+
+			if test.isV2 {
+				// Written-stats headers should still be set (to zero) on the error path.
+				respHeader := resp.Header()
+				assert.Equal(t, "0", respHeader[rw20WrittenSamplesHeader][0])
+				assert.Equal(t, "0", respHeader[rw20WrittenHistogramsHeader][0])
+				assert.Equal(t, "0", respHeader[rw20WrittenExemplarsHeader][0])
+			}
+		})
+	}
 }
 
 func TestHandler_ContentTypeAndEncoding(t *testing.T) {

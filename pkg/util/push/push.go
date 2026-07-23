@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -73,6 +75,9 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 			}
 
 			if _, err := push(ctx, &req.WriteRequest); err != nil {
+				if errors.Is(err, context.Canceled) {
+					err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
+				}
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
 				if !ok {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -80,7 +85,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
-				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
@@ -123,6 +128,9 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 			}
 
 			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+				if errors.Is(err, context.Canceled) {
+					err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
+				}
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
 				if !ok {
 					setPRW2RespHeader(w, 0, 0, 0)
@@ -137,7 +145,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
-				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))

@@ -32,6 +32,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
@@ -925,6 +926,18 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 				{samples: 4, nhSamples: 4, metadata: 4, expectedError: nil},
 				{samples: 4, nhSamples: 4, metadata: 4, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 8 samples and 4 metadata")},
 				{samples: 3, nhSamples: 3, metadata: 2, expectedError: nil},
+			},
+		},
+		"local strategy: unlimited native histogram rate (Inf) with zero burst should always accept NH samples": {
+			distributors:                      1,
+			ingestionRateStrategy:             validation.LocalIngestionRateStrategy,
+			ingestionRate:                     100000,
+			ingestionBurstSize:                100000,
+			nativeHistogramIngestionRate:      float64(rate.Inf),
+			nativeHistogramIngestionBurstSize: 0,
+			pushes: []testPush{
+				{nhSamples: 1000, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
+				{nhSamples: 5000, expectedError: nil, expectedNHDiscardedSampleMetricValue: 0},
 			},
 		},
 	}

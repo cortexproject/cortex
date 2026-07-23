@@ -5838,7 +5838,7 @@
         },
         "out_of_order_time_window": {
           "default": "0s",
-          "description": "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.",
+          "description": "[Experimental] Configures the ingester TSDB window for out-of-order samples. Use this to tolerate late samples that are older than the TSDB head minimum time. Disabled (0s) by default.",
           "type": "string",
           "x-cli-flag": "ingester.out-of-order-time-window",
           "x-format": "duration"
@@ -5963,13 +5963,13 @@
         },
         "reject_old_samples": {
           "default": false,
-          "description": "Reject old samples.",
+          "description": "Reject old samples at the distributor before forwarding them to ingesters.",
           "type": "boolean",
           "x-cli-flag": "validation.reject-old-samples"
         },
         "reject_old_samples_max_age": {
           "default": "2w",
-          "description": "Maximum accepted sample age before rejecting.",
+          "description": "Maximum accepted sample age before rejecting at the distributor.",
           "type": "string",
           "x-cli-flag": "validation.reject-old-samples.max-age",
           "x-format": "duration"

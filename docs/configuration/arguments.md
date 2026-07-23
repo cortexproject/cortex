@@ -377,7 +377,7 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 - `reject_old_samples_max_age` / `-validation.reject-old-samples.max-age`
 - `creation_grace_period` / `-validation.create-grace-period`
 
-  Also enforced by the distributor; limits on how far in the past (and future) timestamps that we accept can be.
+  Enforced by the distributor before samples are forwarded to ingesters; limits on how far in the past (and future) accepted timestamps can be. If ingesters reject late samples because they are older than the TSDB head minimum time, configure `out_of_order_time_window` / `-ingester.out-of-order-time-window` on ingesters.
 
 - `max_series_per_user` / `-ingester.max-series-per-user`
 - `max_series_per_metric` / `-ingester.max-series-per-metric`

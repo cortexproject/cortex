@@ -6675,7 +6675,7 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
-		SeedSize: 3, // lets make sure all metric names collide
+		LabelCounterSize: 3, // lets make sure all metric names collide
 		Head: cortex_tsdb.PostingsCacheConfig{
 			Enabled:  true,
 			Ttl:      time.Hour,
@@ -7176,9 +7176,9 @@ func TestExpendedPostingsCache(t *testing.T) {
 			// Query block and head
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall+c.expectedHeadPostingCall))
 
-			// Adding a metric for the first metric name so we expire all caches for that metric name
+			// Adding a series with the queried label "a" to expire the caches for that metric name and label
 			_, err = i.Push(ctx, cortexpb.ToWriteRequest(
-				[]labels.Labels{labels.FromStrings(labels.MetricName, metricNames[0], "extra", "1")}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+				[]labels.Labels{labels.FromStrings(labels.MetricName, metricNames[0], "a", "new", "extra", "1")}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
 			require.NoError(t, err)
 
 			for in, name := range metricNames {

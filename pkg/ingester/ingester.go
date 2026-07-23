@@ -341,6 +341,7 @@ type Ingester struct {
 // Shipper interface is used to have an easy way to mock it in tests.
 type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
+	Close() error
 }
 
 type tsdbState int
@@ -377,6 +378,7 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 type userTSDB struct {
 	db                  *tsdb.DB
 	userID              string
+	logger              log.Logger
 	activeSeries        *ActiveSeries
 	activeQueriedSeries *ActiveQueriedSeries
 	headQueriedSeries   *ActiveQueriedSeries
@@ -453,6 +455,11 @@ func (u *userTSDB) Blocks() []*tsdb.Block {
 }
 
 func (u *userTSDB) Close() error {
+	if u.shipper != nil {
+		if err := u.shipper.Close(); err != nil {
+			level.Warn(u.logger).Log("msg", "failed to close shipper", "err", err)
+		}
+	}
 	return u.db.Close()
 }
 
@@ -3035,6 +3042,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	userDB := &userTSDB{
 		userID:              userID,
+		logger:              userLogger,
 		activeSeries:        NewActiveSeries(),
 		activeQueriedSeries: activeQueriedSeries,
 		headQueriedSeries:   headQueriedSeries,
@@ -3126,9 +3134,14 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
+		udirRoot, err := os.OpenRoot(udir)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to open root dir for shipper: %s", udir)
+		}
+
 		userDB.shipper = shipper.New(
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
-			udir,
+			udirRoot,
 			shipper.WithLogger(userLogger),
 			shipper.WithRegisterer(tsdbPromReg),
 			shipper.WithLabels(func() labels.Labels { return l }),

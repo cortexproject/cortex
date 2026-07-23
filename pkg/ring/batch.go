@@ -162,8 +162,8 @@ func (b *batchTracker) record(instance instance, err error) {
 			// Track the number of errors by error family, and if it exceeds maxFailures
 			// shortcut the waiting rpc.
 			errCount := instance.itemTrackers[i].recordError(err)
-			// We should return an error if we reach the maxFailure (quorum) on a given error family OR
-			// we dont have any remaining ingesters to try
+			// We should return an error if enough replicas have returned the same error
+			// family to make quorum impossible, or if we don't have any remaining ingesters to try.
 			// Ex: 2xx, 4xx, 5xx -> return 4xx
 			// Ex: 2xx, 5xx, 4xx -> return 4xx
 			// Ex: 4xx, 4xx, _ -> return 4xx
@@ -171,7 +171,7 @@ func (b *batchTracker) record(instance instance, err error) {
 			if errCount > int32(sampleTrackers[i].maxFailures) {
 				if b.rpcsFailed.Inc() == 1 {
 					b.err <- httpgrpcutil.WrapHTTPGrpcError(
-						sampleTrackers[i].getError(), "maxFailure (quorum) on a given error family, addr=%s state=%s zone=%s",
+						sampleTrackers[i].getError(), "write failed because replicas reached quorum on the same error family, addr=%s state=%s zone=%s",
 						instance.desc.Addr, instance.desc.State, instance.desc.Zone)
 				}
 				continue

@@ -724,7 +724,7 @@ alertmanager_client:
 The `alertmanager_storage_config` configures the Cortex alertmanager storage backend.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem, configdb, local.
 # CLI flag: -alertmanager-storage.backend
 [backend: <string> | default = "s3"]
@@ -1002,6 +1002,59 @@ swift:
   # CLI flag: -alertmanager-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
 
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -alertmanager-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -alertmanager-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -alertmanager-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -alertmanager-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -alertmanager-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
+  # CLI flag: -alertmanager-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
+  # CLI flag: -alertmanager-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -alertmanager-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -alertmanager-storage.filesystem.dir
@@ -1043,7 +1096,7 @@ users_scanner:
 The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem.
 # CLI flag: -blocks-storage.backend
 [backend: <string> | default = "s3"]
@@ -1320,6 +1373,55 @@ swift:
   # data is received on a request.
   # CLI flag: -blocks-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
+
+oci:
+  # The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.
+  # CLI flag: -blocks-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -blocks-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -blocks-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -blocks-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # CLI flag: -blocks-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # CLI flag: -blocks-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -blocks-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
 
 filesystem:
   # Local filesystem storage directory.
@@ -6169,7 +6271,7 @@ thanos_engine:
 The `ruler_storage_config` configures the Cortex ruler storage backend.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem, configdb, local.
 # CLI flag: -ruler-storage.backend
 [backend: <string> | default = "s3"]
@@ -6447,6 +6549,56 @@ swift:
   # CLI flag: -ruler-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
 
+oci:
+  # The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.
+  # CLI flag: -ruler-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -ruler-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -ruler-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -ruler-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -ruler-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # CLI flag: -ruler-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # CLI flag: -ruler-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -ruler-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -ruler-storage.filesystem.dir
@@ -6496,7 +6648,7 @@ The `runtime_configuration_storage_config` configures the storage backend for th
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem.
 # CLI flag: -runtime-config.backend
 [backend: <string> | default = "filesystem"]
@@ -6773,6 +6925,56 @@ swift:
   # data is received on a request.
   # CLI flag: -runtime-config.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
+
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -runtime-config.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -runtime-config.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -runtime-config.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -runtime-config.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # CLI flag: -runtime-config.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # CLI flag: -runtime-config.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -runtime-config.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
 
 filesystem:
   # Local filesystem storage directory.

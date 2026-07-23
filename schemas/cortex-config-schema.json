@@ -640,7 +640,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "alertmanager-storage.backend"
         },
@@ -678,6 +678,75 @@
               "description": "Path at which alertmanager configurations are stored.",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.local.path"
+            }
+          },
+          "type": "object"
+        },
+        "oci": {
+          "properties": {
+            "bucket": {
+              "description": "The OCI bucket name.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.bucket"
+            },
+            "compartment_ocid": {
+              "description": "The OCID of the compartment that contains the bucket.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.compartment-ocid"
+            },
+            "fingerprint": {
+              "description": "The fingerprint of the API signing key. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.fingerprint"
+            },
+            "max_request_retries": {
+              "default": 3,
+              "description": "The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.",
+              "type": "number",
+              "x-cli-flag": "alertmanager-storage.oci.max-request-retries"
+            },
+            "part_size": {
+              "default": 0,
+              "description": "The part size in bytes used for multipart uploads. 0 uses the provider default.",
+              "type": "number",
+              "x-cli-flag": "alertmanager-storage.oci.part-size"
+            },
+            "passphrase": {
+              "description": "The passphrase for the API signing private key, if the key is encrypted.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.private-key-passphrase"
+            },
+            "privatekey": {
+              "description": "The API signing private key in PEM format. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.private-key"
+            },
+            "provider": {
+              "default": "default",
+              "description": "The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.provider"
+            },
+            "region": {
+              "description": "The OCI region. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.region"
+            },
+            "request_retry_interval": {
+              "default": 10,
+              "description": "The fixed interval in seconds to wait between request retry attempts.",
+              "type": "number",
+              "x-cli-flag": "alertmanager-storage.oci.request-retry-interval"
+            },
+            "tenancy_ocid": {
+              "description": "The OCID of the tenancy. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.tenancy-ocid"
+            },
+            "user_ocid": {
+              "description": "The OCID of the user. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oci.user-ocid"
             }
           },
           "type": "object"
@@ -1067,7 +1136,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
           "type": "string",
           "x-cli-flag": "blocks-storage.backend"
         },
@@ -3038,6 +3107,75 @@
               "description": "JSON representing either a Google Developers Console client_credentials.json file or a Google Developers service account key file. If empty, fallback to Google default logic.",
               "type": "string",
               "x-cli-flag": "blocks-storage.gcs.service-account"
+            }
+          },
+          "type": "object"
+        },
+        "oci": {
+          "properties": {
+            "bucket": {
+              "description": "The OCI bucket name.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.bucket"
+            },
+            "compartment_ocid": {
+              "description": "The OCID of the compartment that contains the bucket.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.compartment-ocid"
+            },
+            "fingerprint": {
+              "description": "The fingerprint of the API signing key. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.fingerprint"
+            },
+            "max_request_retries": {
+              "default": 3,
+              "description": "The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.oci.max-request-retries"
+            },
+            "part_size": {
+              "default": 0,
+              "description": "The part size in bytes used for multipart uploads. 0 uses the provider default.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.oci.part-size"
+            },
+            "passphrase": {
+              "description": "The passphrase for the API signing private key, if the key is encrypted.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.private-key-passphrase"
+            },
+            "privatekey": {
+              "description": "The API signing private key in PEM format. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.private-key"
+            },
+            "provider": {
+              "default": "default",
+              "description": "The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.provider"
+            },
+            "region": {
+              "description": "The OCI region. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.region"
+            },
+            "request_retry_interval": {
+              "default": 10,
+              "description": "The fixed interval in seconds to wait between request retry attempts.",
+              "type": "number",
+              "x-cli-flag": "blocks-storage.oci.request-retry-interval"
+            },
+            "tenancy_ocid": {
+              "description": "The OCID of the tenancy. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.tenancy-ocid"
+            },
+            "user_ocid": {
+              "description": "The OCID of the user. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oci.user-ocid"
             }
           },
           "type": "object"
@@ -7888,7 +8026,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "ruler-storage.backend"
         },
@@ -7926,6 +8064,75 @@
               "description": "Directory to scan for rules",
               "type": "string",
               "x-cli-flag": "ruler-storage.local.directory"
+            }
+          },
+          "type": "object"
+        },
+        "oci": {
+          "properties": {
+            "bucket": {
+              "description": "The OCI bucket name.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.bucket"
+            },
+            "compartment_ocid": {
+              "description": "The OCID of the compartment that contains the bucket.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.compartment-ocid"
+            },
+            "fingerprint": {
+              "description": "The fingerprint of the API signing key. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.fingerprint"
+            },
+            "max_request_retries": {
+              "default": 3,
+              "description": "The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.",
+              "type": "number",
+              "x-cli-flag": "ruler-storage.oci.max-request-retries"
+            },
+            "part_size": {
+              "default": 0,
+              "description": "The part size in bytes used for multipart uploads. 0 uses the provider default.",
+              "type": "number",
+              "x-cli-flag": "ruler-storage.oci.part-size"
+            },
+            "passphrase": {
+              "description": "The passphrase for the API signing private key, if the key is encrypted.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.private-key-passphrase"
+            },
+            "privatekey": {
+              "description": "The API signing private key in PEM format. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.private-key"
+            },
+            "provider": {
+              "default": "default",
+              "description": "The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.provider"
+            },
+            "region": {
+              "description": "The OCI region. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.region"
+            },
+            "request_retry_interval": {
+              "default": 10,
+              "description": "The fixed interval in seconds to wait between request retry attempts.",
+              "type": "number",
+              "x-cli-flag": "ruler-storage.oci.request-retry-interval"
+            },
+            "tenancy_ocid": {
+              "description": "The OCID of the tenancy. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.tenancy-ocid"
+            },
+            "user_ocid": {
+              "description": "The OCID of the user. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oci.user-ocid"
             }
           },
           "type": "object"
@@ -8315,7 +8522,7 @@
         },
         "backend": {
           "default": "filesystem",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
           "type": "string",
           "x-cli-flag": "runtime-config.backend"
         },
@@ -8345,6 +8552,75 @@
               "description": "JSON representing either a Google Developers Console client_credentials.json file or a Google Developers service account key file. If empty, fallback to Google default logic.",
               "type": "string",
               "x-cli-flag": "runtime-config.gcs.service-account"
+            }
+          },
+          "type": "object"
+        },
+        "oci": {
+          "properties": {
+            "bucket": {
+              "description": "The OCI bucket name.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.bucket"
+            },
+            "compartment_ocid": {
+              "description": "The OCID of the compartment that contains the bucket.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.compartment-ocid"
+            },
+            "fingerprint": {
+              "description": "The fingerprint of the API signing key. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.fingerprint"
+            },
+            "max_request_retries": {
+              "default": 3,
+              "description": "The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.",
+              "type": "number",
+              "x-cli-flag": "runtime-config.oci.max-request-retries"
+            },
+            "part_size": {
+              "default": 0,
+              "description": "The part size in bytes used for multipart uploads. 0 uses the provider default.",
+              "type": "number",
+              "x-cli-flag": "runtime-config.oci.part-size"
+            },
+            "passphrase": {
+              "description": "The passphrase for the API signing private key, if the key is encrypted.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.private-key-passphrase"
+            },
+            "privatekey": {
+              "description": "The API signing private key in PEM format. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.private-key"
+            },
+            "provider": {
+              "default": "default",
+              "description": "The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.provider"
+            },
+            "region": {
+              "description": "The OCI region. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.region"
+            },
+            "request_retry_interval": {
+              "default": 10,
+              "description": "The fixed interval in seconds to wait between request retry attempts.",
+              "type": "number",
+              "x-cli-flag": "runtime-config.oci.request-retry-interval"
+            },
+            "tenancy_ocid": {
+              "description": "The OCID of the tenancy. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.tenancy-ocid"
+            },
+            "user_ocid": {
+              "description": "The OCID of the user. Required when the provider is 'raw'.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oci.user-ocid"
             }
           },
           "type": "object"

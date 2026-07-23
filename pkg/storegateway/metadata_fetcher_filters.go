@@ -2,6 +2,7 @@ package storegateway
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -75,6 +76,60 @@ func (f *IgnoreDeletionMarkFilter) FilterWithBucketIndex(_ context.Context, meta
 	}
 
 	return nil
+}
+
+// IgnoreParquetBlocksFilter drops Parquet-converted blocks from the TSDB store
+// sync so they are served by the Parquet store instead.
+//
+// It records the dropped blocks and exposes them via DroppedBlocks. The hybrid
+// bucket store routes a block to the Parquet store iff it was dropped here, so the
+// drop and routing decisions always use the same bucket index snapshot.
+type IgnoreParquetBlocksFilter struct {
+	logger log.Logger
+
+	// dropped is the set of block IDs dropped on the last sync (served by Parquet).
+	droppedMu sync.RWMutex
+	dropped   map[string]struct{}
+}
+
+func NewIgnoreParquetBlocksFilter(logger log.Logger) *IgnoreParquetBlocksFilter {
+	return &IgnoreParquetBlocksFilter{logger: logger}
+}
+
+// Filter implements block.MetadataFilter.
+//
+// Without the bucket index we cannot tell whether a block has been converted to
+// Parquet, so this is intentionally a no-op.
+func (f *IgnoreParquetBlocksFilter) Filter(_ context.Context, _ map[ulid.ULID]*metadata.Meta, _ block.GaugeVec, _ block.GaugeVec) error {
+	return nil
+}
+
+// FilterWithBucketIndex implements MetadataFilterWithBucketIndex.
+func (f *IgnoreParquetBlocksFilter) FilterWithBucketIndex(_ context.Context, metas map[ulid.ULID]*metadata.Meta, idx *bucketindex.Index, synced block.GaugeVec) error {
+	dropped := make(map[string]struct{})
+	for _, b := range idx.ParquetBlocks() {
+		if _, ok := metas[b.ID]; ok {
+			level.Debug(f.logger).Log("msg", "ignoring block because it has been converted to parquet", "block", b.ID)
+			synced.WithLabelValues(parquetConvertedMeta).Inc()
+			delete(metas, b.ID)
+		}
+
+		// Record every Parquet block for routing.
+		dropped[b.ID.String()] = struct{}{}
+	}
+
+	f.droppedMu.Lock()
+	f.dropped = dropped
+	f.droppedMu.Unlock()
+
+	return nil
+}
+
+// DroppedBlocks returns the block IDs served by the Parquet store as of the last sync.
+func (f *IgnoreParquetBlocksFilter) DroppedBlocks() map[string]struct{} {
+	f.droppedMu.RLock()
+	defer f.droppedMu.RUnlock()
+	return f.dropped
 }
 
 func NewIgnoreNonQueryableBlocksFilter(logger log.Logger, ignoreWithin time.Duration) *IgnoreNonQueryableBlocksFilter {

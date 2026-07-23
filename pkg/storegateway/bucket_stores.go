@@ -63,6 +63,10 @@ type ThanosBucketStores struct {
 	metaFetcherMetrics *MetadataFetcherMetrics
 	shardingStrategy   ShardingStrategy
 
+	// ignoreParquetBlocks when true, excludes Parquet-converted blocks from
+	// syncing so they are not loaded by this TSDB store.
+	ignoreParquetBlocks bool
+
 	// Index cache shared across all tenants.
 	indexCache storecache.IndexCache
 
@@ -85,6 +89,11 @@ type ThanosBucketStores struct {
 	// Keeps the last sync error for the bucket store for each tenant.
 	storesErrorsMu sync.RWMutex
 	storesErrors   map[string]error
+
+	// Per-tenant Parquet filter (set only when ignoreParquetBlocks). Exposes the
+	// blocks dropped from the TSDB store, used for hybrid routing.
+	parquetFiltersMu sync.RWMutex
+	parquetFilters   map[string]*IgnoreParquetBlocksFilter
 
 	instanceTokenBucket *util.TokenBucket
 
@@ -109,20 +118,37 @@ var ErrTooManyInflightRequests = status.Error(codes.ResourceExhausted, "too many
 func NewBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (BucketStores, error) {
 	switch cfg.BucketStore.BucketStoreType {
 	case string(tsdb.ParquetBucketStore):
-		return newParquetBucketStores(cfg, bucketClient, limits, logger, reg)
+		return newHybridBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg)
 	case string(tsdb.TSDBBucketStore):
-		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, limits, logLevel, logger, reg)
+		return newThanosBucketStores(cfg, shardingStrategy, bucketClient, nil, nil, false, limits, logLevel, logger, reg)
 	default:
 		return nil, fmt.Errorf("unsupported bucket store type: %s", cfg.BucketStore.BucketStoreType)
 	}
 }
 
+func newMatchersCache(cfg tsdb.BlocksStorageConfig, logger log.Logger, reg prometheus.Registerer) (storecache.MatchersCache, error) {
+	if cfg.BucketStore.MatchersCacheMaxItems <= 0 {
+		return storecache.NoopMatchersCache, nil
+	}
+	r := prometheus.NewRegistry()
+	reg.MustRegister(tsdb.NewMatchCacheMetrics("cortex_storegateway", r, logger))
+	return storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
+}
+
 // newThanosBucketStores creates a new TSDB-based bucket stores
-func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*ThanosBucketStores, error) {
-	matchers := tsdb.NewMatchers()
-	cachingBucket, err := tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, tsdb.ParquetLabelsCacheConfig{}, matchers, bucketClient, logger, reg)
-	if err != nil {
-		return nil, errors.Wrapf(err, "create caching bucket")
+func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, cachingBucket objstore.InstrumentedBucket, matcherCache storecache.MatchersCache, ignoreParquetBlocks bool, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*ThanosBucketStores, error) {
+	var err error
+	if cachingBucket == nil {
+		matchers := tsdb.NewMatchers()
+		cachingBucket, err = tsdb.CreateCachingBucket(cfg.BucketStore.ChunksCache, cfg.BucketStore.MetadataCache, tsdb.ParquetLabelsCacheConfig{}, matchers, bucketClient, logger, reg)
+		if err != nil {
+			return nil, errors.Wrapf(err, "create caching bucket")
+		}
+	}
+	if matcherCache == nil {
+		if matcherCache, err = newMatchersCache(cfg, logger, reg); err != nil {
+			return nil, err
+		}
 	}
 
 	// The number of concurrent queries against the tenants BucketStores are limited.
@@ -134,20 +160,22 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 	}).Set(float64(cfg.BucketStore.MaxConcurrent))
 
 	u := &ThanosBucketStores{
-		logger:             logger,
-		cfg:                cfg,
-		limits:             limits,
-		bucket:             cachingBucket,
-		shardingStrategy:   shardingStrategy,
-		stores:             map[string]*store.BucketStore{},
-		storesErrors:       map[string]error{},
-		logLevel:           logLevel,
-		bucketStoreMetrics: NewBucketStoreMetrics(),
-		metaFetcherMetrics: NewMetadataFetcherMetrics(),
-		queryGate:          queryGate,
-		partitioner:        newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		userTokenBuckets:   make(map[string]*util.TokenBucket),
-		inflightRequests:   util.NewInflightRequestTracker(),
+		logger:              logger,
+		cfg:                 cfg,
+		limits:              limits,
+		bucket:              cachingBucket,
+		shardingStrategy:    shardingStrategy,
+		ignoreParquetBlocks: ignoreParquetBlocks,
+		stores:              map[string]*store.BucketStore{},
+		storesErrors:        map[string]error{},
+		parquetFilters:      map[string]*IgnoreParquetBlocksFilter{},
+		logLevel:            logLevel,
+		bucketStoreMetrics:  NewBucketStoreMetrics(),
+		metaFetcherMetrics:  NewMetadataFetcherMetrics(),
+		queryGate:           queryGate,
+		partitioner:         newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		userTokenBuckets:    make(map[string]*util.TokenBucket),
+		inflightRequests:    util.NewInflightRequestTracker(),
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
 			Name:                            "cortex_bucket_stores_blocks_sync_seconds",
 			Help:                            "The total time it takes to perform a sync stores",
@@ -174,16 +202,7 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 		return nil, errors.Wrap(err, "failed to create users scanner")
 	}
 
-	u.matcherCache = storecache.NoopMatchersCache
-
-	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
-		r := prometheus.NewRegistry()
-		reg.MustRegister(tsdb.NewMatchCacheMetrics("cortex_storegateway", r, logger))
-		u.matcherCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
-		if err != nil {
-			return nil, err
-		}
-	}
+	u.matcherCache = matcherCache
 
 	// Init the index cache.
 	if u.indexCache, err = tsdb.NewIndexCache(cfg.BucketStore.IndexCache, logger, reg); err != nil {
@@ -495,6 +514,22 @@ func (u *ThanosBucketStores) getStoreError(userID string) error {
 	return u.storesErrors[userID]
 }
 
+// droppedParquetBlocks returns the block IDs dropped from the TSDB store for the
+// user (served by Parquet). ok is false when no drop set is available.
+func (u *ThanosBucketStores) droppedParquetBlocks(userID string) (map[string]struct{}, bool) {
+	u.parquetFiltersMu.RLock()
+	f := u.parquetFilters[userID]
+	u.parquetFiltersMu.RUnlock()
+	if f == nil {
+		return nil, false
+	}
+	dropped := f.DroppedBlocks()
+	if dropped == nil {
+		return nil, false
+	}
+	return dropped, true
+}
+
 var (
 	errBucketStoreNotEmpty = errors.New("bucket store not empty")
 	errBucketStoreNotFound = errors.New("bucket store not found")
@@ -532,6 +567,10 @@ func (u *ThanosBucketStores) closeEmptyBucketStore(userID string) error {
 		delete(u.userTokenBuckets, userID)
 		u.userTokenBucketsMu.Unlock()
 	}
+
+	u.parquetFiltersMu.Lock()
+	delete(u.parquetFilters, userID)
+	u.parquetFiltersMu.Unlock()
 
 	u.metaFetcherMetrics.RemoveUserRegistry(userID)
 	u.bucketStoreMetrics.RemoveUserRegistry(userID)
@@ -602,6 +641,12 @@ func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore
 	if u.cfg.BucketStore.IgnoreBlocksWithin > 0 {
 		// Filter out blocks that are too new to be queried.
 		filters = append(filters, NewIgnoreNonQueryableBlocksFilter(userLogger, u.cfg.BucketStore.IgnoreBlocksWithin))
+	}
+
+	var parquetFilter *IgnoreParquetBlocksFilter
+	if u.ignoreParquetBlocks {
+		parquetFilter = NewIgnoreParquetBlocksFilter(userLogger)
+		filters = append(filters, parquetFilter)
 	}
 
 	// Instantiate a different blocks metadata fetcher based on whether bucket index is enabled or not.
@@ -718,6 +763,12 @@ func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore
 	}
 
 	u.stores[userID] = bs
+	// Register the Parquet filter only after the store is successfully created.
+	if parquetFilter != nil {
+		u.parquetFiltersMu.Lock()
+		u.parquetFilters[userID] = parquetFilter
+		u.parquetFiltersMu.Unlock()
+	}
 	u.metaFetcherMetrics.AddUserRegistry(userID, fetcherReg)
 	u.bucketStoreMetrics.AddUserRegistry(userID, bucketStoreReg)
 

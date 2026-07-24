@@ -66,6 +66,7 @@
 * [BUGFIX] Query Frontend: Fix native histogram responses not being handled correctly in `minTime()` sort ordering for split_by_interval merge. #7555
 * [BUGFIX] Compactor: Ensure visit marker heartbeat goroutine completes before blocks cleaner returns. #7386
 * [BUGFIX] Querier: Fix unbounded resource leak in the bucket-scan blocks finder (used when the bucket index is disabled). Per-tenant metadata fetchers, their Prometheus registries, and on-disk meta caches are now evicted once a tenant is no longer active, instead of being retained for the lifetime of the process. #7573
+* [BUGFIX] Querier: Increment `cortex_query_evictions_total` and deregister the victim before cancelling it in the query evictor, fixing flaky `TestPrometheusMetrics_IncrementedCorrectly` and double-counted evictions of still-unwinding queries. #7616
 * [BUGFIX] Alertmanager: Fix data race between ApplyConfig's dispatcher/inhibitor startup and Stop during config reload and shutdown, and reject lazy tenant creation after shutdown begins. #7618
 * [BUGFIX] Distributor: Release the push worker pool goroutines on shutdown by stopping the async executor during the stopping phase when `-distributor.num-push-workers` is set. #7602
 * [BUGFIX] Querier: Fix flake in integration tests TestQuerierWithStoreGatewayDataBytesLimits and TestQuerierWithBlocksStorageLimits by waiting for the querier to see the store-gateway ACTIVE in the ring before querying. #7614

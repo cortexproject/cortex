@@ -18,9 +18,6 @@ import (
 const QueryRejectErrorMessage = "This query does not perform well and has been rejected by the service operator."
 
 func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time.Duration, limits Limits, userStr string, rejectedQueriesPerTenant *prometheus.CounterVec) error {
-	if limits == nil || (!limits.QueryPriority(userStr).Enabled && !limits.QueryRejection(userStr).Enabled) {
-		return nil
-	}
 	op := getOperation(r)
 	reqStats := stats.FromContext(r.Context())
 
@@ -32,6 +29,15 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 		}
 		minTime, maxTime := util.FindMinMaxTime(r, expr, lookbackDelta, now)
 
+		// Track data selection time range for query stats purpose. It should
+		// be tracked regardless of query priority and query rejection being enabled.
+		reqStats.SetDataSelectMaxTime(maxTime)
+		reqStats.SetDataSelectMinTime(minTime)
+
+		if limits == nil || (!limits.QueryPriority(userStr).Enabled && !limits.QueryRejection(userStr).Enabled) {
+			return nil
+		}
+
 		if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && query != "" {
 			for _, attribute := range queryReject.QueryAttributes {
 				if matchAttributeForExpressionQuery(attribute, op, r, query, now, minTime, maxTime) {
@@ -40,9 +46,6 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 				}
 			}
 		}
-
-		reqStats.SetDataSelectMaxTime(maxTime)
-		reqStats.SetDataSelectMinTime(minTime)
 
 		if queryPriority := limits.QueryPriority(userStr); queryPriority.Enabled && len(queryPriority.Priorities) != 0 && query != "" {
 			for _, priority := range queryPriority.Priorities {
@@ -56,6 +59,10 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 			reqStats.SetPriority(queryPriority.DefaultPriority)
 		}
 	} else {
+		if limits == nil || (!limits.QueryPriority(userStr).Enabled && !limits.QueryRejection(userStr).Enabled) {
+			return nil
+		}
+
 		if queryReject := limits.QueryRejection(userStr); queryReject.Enabled && (op == "series" || op == "labels" || op == "label_values") {
 			for _, attribute := range queryReject.QueryAttributes {
 				if matchAttributeForMetadataQuery(attribute, op, r, now) {

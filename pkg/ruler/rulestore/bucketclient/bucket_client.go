@@ -8,12 +8,14 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
 	"golang.org/x/sync/errgroup"
@@ -24,6 +26,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
+
+type cachedRuleGroup struct {
+	downloadedAt time.Time
+	ruleGroup    *rulespb.RuleGroupDesc
+}
 
 const (
 	// The bucket prefix under which all tenants rule groups are stored.
@@ -48,6 +55,10 @@ type BucketRuleStore struct {
 
 	usersScanner     users.Scanner
 	userIndexUpdater *users.UserIndexUpdater
+
+	ruleGroupCache   map[string]*cachedRuleGroup
+	ruleGroupCacheMu sync.RWMutex
+	cacheOps         *prometheus.CounterVec
 }
 
 func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg users.UsersScannerConfig, cfgProvider bucket.TenantConfigProvider, logger log.Logger, reg prometheus.Registerer) (*BucketRuleStore, error) {
@@ -74,6 +85,11 @@ func NewBucketRuleStore(bkt objstore.Bucket, userScannerCfg users.UsersScannerCo
 		logger:           logger,
 		usersScanner:     usersScanner,
 		userIndexUpdater: userIndexUpdater,
+		ruleGroupCache:   make(map[string]*cachedRuleGroup),
+		cacheOps: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "cortex_ruler_rule_group_load_cache_operations_total",
+			Help: "Total number of rule group load operations by cache result (hit=skipped GET, miss=full GET).",
+		}, []string{"result"}),
 	}, nil
 }
 
@@ -82,21 +98,40 @@ func (b *BucketRuleStore) GetUserIndexUpdater() *users.UserIndexUpdater {
 }
 
 // getRuleGroup loads and return a rules group. If existing rule group is supplied, it is Reset and reused. If nil, new RuleGroupDesc is allocated.
-func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, rg *rulespb.RuleGroupDesc) (*rulespb.RuleGroupDesc, error) {
+// Uses conditional download: checks LastModified via HEAD before doing a full GET to avoid
+// redundant downloads for unchanged rule groups.
+func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, groupName string, _ *rulespb.RuleGroupDesc) (*rulespb.RuleGroupDesc, error) {
 	userBucket := bucket.NewUserBucketClient(userID, b.bucket, b.cfgProvider)
 	objectKey := getRuleGroupObjectKey(namespace, groupName)
+	cacheKey := userID + "/" + objectKey
+
+	// Only check S3 HEAD if we have a cached version to compare against.
+	b.ruleGroupCacheMu.RLock()
+	cached, hasCached := b.ruleGroupCache[cacheKey]
+	b.ruleGroupCacheMu.RUnlock()
+
+	if hasCached {
+		attrs, err := userBucket.Attributes(ctx, objectKey)
+		if err == nil && cached.downloadedAt.After(attrs.LastModified) {
+			b.cacheOps.WithLabelValues("hit").Inc()
+			return cached.ruleGroup, nil
+		}
+		// HEAD failed or file changed — fall through to full GET.
+	}
+
+	// Full GET: cold cache or file has changed.
+	b.cacheOps.WithLabelValues("miss").Inc()
 
 	reader, err := userBucket.Get(ctx, objectKey)
 	if userBucket.IsObjNotFoundErr(err) {
+		b.evictFromCache(cacheKey)
 		level.Debug(b.logger).Log("msg", "rule group does not exist", "user", userID, "key", objectKey)
 		return nil, rulestore.ErrGroupNotFound
 	}
-
 	if userBucket.IsAccessDeniedErr(err) {
 		level.Debug(b.logger).Log("msg", "permission denied when loading group", "user", userID, "key", objectKey)
 		return nil, rulestore.ErrAccessDenied
 	}
-
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get rule group %s", objectKey)
 	}
@@ -107,18 +142,51 @@ func (b *BucketRuleStore) getRuleGroup(ctx context.Context, userID, namespace, g
 		return nil, errors.Wrapf(err, "failed to read rule group %s", objectKey)
 	}
 
-	if rg == nil {
-		rg = &rulespb.RuleGroupDesc{}
-	} else {
-		rg.Reset()
-	}
-
-	err = proto.Unmarshal(buf, rg)
-	if err != nil {
+	rg := &rulespb.RuleGroupDesc{}
+	if err = proto.Unmarshal(buf, rg); err != nil {
 		return nil, errors.Wrapf(err, "failed to unmarshal rule group %s", objectKey)
 	}
 
+	b.ruleGroupCacheMu.Lock()
+	b.ruleGroupCache[cacheKey] = &cachedRuleGroup{
+		downloadedAt: time.Now(),
+		ruleGroup:    rg,
+	}
+	b.ruleGroupCacheMu.Unlock()
+
 	return rg, nil
+}
+
+// evictFromCache removes a rule group from the cache (e.g., when deleted).
+func (b *BucketRuleStore) evictFromCache(cacheKey string) {
+	b.ruleGroupCacheMu.Lock()
+	delete(b.ruleGroupCache, cacheKey)
+	b.ruleGroupCacheMu.Unlock()
+}
+
+// ClearCache removes all cached rule groups. Exposed for testing.
+func (b *BucketRuleStore) ClearCache() {
+	b.ruleGroupCacheMu.Lock()
+	b.ruleGroupCache = make(map[string]*cachedRuleGroup)
+	b.ruleGroupCacheMu.Unlock()
+}
+
+// pruneCache removes cache entries for rule groups not in the current groupsToLoad set.
+func (b *BucketRuleStore) pruneCache(groupsToLoad map[string]rulespb.RuleGroupList) {
+	validKeys := make(map[string]struct{}, len(groupsToLoad))
+	for user, groups := range groupsToLoad {
+		for _, g := range groups {
+			validKeys[user+"/"+getRuleGroupObjectKey(g.Namespace, g.Name)] = struct{}{}
+		}
+	}
+
+	b.ruleGroupCacheMu.Lock()
+	for key := range b.ruleGroupCache {
+		if _, ok := validKeys[key]; !ok {
+			delete(b.ruleGroupCache, key)
+		}
+	}
+	b.ruleGroupCacheMu.Unlock()
 }
 
 // ListAllUsers implements rules.RuleStore.
@@ -267,6 +335,9 @@ outer:
 	if e := g.Wait(); e != nil {
 		return loadedGroups, e
 	}
+
+	// Prune cache entries for rule groups no longer owned by this pod (e.g., after ring rebalance).
+	b.pruneCache(groupsToLoad)
 
 	return loadedGroups, errs.Err()
 }

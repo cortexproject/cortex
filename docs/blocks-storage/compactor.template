@@ -73,6 +73,49 @@ min_disk_space_required = compactor.compaction-concurrency * max_compaction_rang
 
 Alternatively, assuming the largest `-compactor.block-ranges` is `24h` (default), you could consider 150GB of disk space every 10M active series owned by the largest tenant. For example, if your largest tenant has 30M active series and `-compactor.compaction-concurrency=1` we would recommend having a disk with at least 450GB available.
 
+## Blocks retention
+
+The compactor is responsible for enforcing data retention at the block level. Retention defines how long blocks containing samples older than the specified period are kept in object storage before being permanently deleted.
+
+### Global retention
+
+Global retention is configured via the `-compactor.blocks-retention-period` flag (or the `compactor.blocks_retention_period` YAML option). When set to a non-zero value, the compactor will mark for deletion any block whose maximum time is older than `now - retention_period`. A value of `0` (the default) disables retention and blocks are kept indefinitely.
+
+**Example**: to retain data for 30 days globally:
+
+```yaml
+compactor:
+  blocks_retention_period: 720h
+```
+
+### Per-tenant retention
+
+Cortex supports configuring a different retention period per tenant via the runtime configuration overrides. The per-tenant setting is controlled by the `compactor_blocks_retention_period` field under each tenant's override entry.
+
+When per-tenant retention is set, it takes precedence over the global `-compactor.blocks-retention-period` for that tenant. A value of `0` in the per-tenant override means "no retention" (blocks are kept indefinitely for that tenant), not "inherit the global default".
+
+**Example runtime configuration**:
+
+```yaml
+overrides:
+  tenant1:
+    # Keep tenant1's data for 90 days.
+    compactor_blocks_retention_period: 2160h
+  tenant2:
+    # Keep tenant2's data for 7 days.
+    compactor_blocks_retention_period: 168h
+```
+
+### Retention and querying
+
+When enabling retention, it is recommended to also set `-querier.max-query-lookback` to a value equal to or slightly greater than the longest retention period in use. This prevents the querier from attempting to fetch blocks that the compactor has already deleted, avoiding spurious errors.
+
+**Example**: for a 30-day retention, set:
+
+```
+-querier.max-query-lookback=720h
+```
+
 ## Compactor HTTP endpoints
 
 - `GET /compactor/ring`<br />

@@ -197,7 +197,7 @@ Result:
 }
 ```
 
-**Response (200 OK):**
+**Response (202 Accepted):**
 Returns success with no body.
 
 **Response (400 Bad Request):**

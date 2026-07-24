@@ -49,6 +49,7 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_max_timestamp` metric that re-exports the TSDB head max timestamp (`prometheus_tsdb_head_max_time`) per user, to help investigate ingestion issues like out-of-bounds (too old sample) errors. #7694
 * [ENHANCEMENT] Ingester: Include the TSDB head max time in the `out of bounds` and `too old sample` error messages, so that users can see how far behind the accepted time range a rejected sample is. #7695
 * [ENHANCEMENT] Compactor: Reduce object storage GET calls when updating the bucket index by skipping re-reading parquet converter markers for blocks that already have a valid-version parquet entry in the previous index. #7669
+* [BUGFIX] Compactor: Correct misleading help text for `cortex_compactor_garbage_collected_blocks_total` metric; it counted blocks garbage collected by the syncer, not all blocks marked for deletion. #3610
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389

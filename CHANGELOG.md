@@ -15,6 +15,7 @@
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
 * [FEATURE] Querier: Implement Resource Based Throttling in Querier. #7442
 * [FEATURE] Querier: Add resource-based query eviction that automatically cancels the heaviest running query when CPU or heap utilization exceeds configured thresholds. #7488
+* [ENHANCEMENT] Alertmanager: Document the `-alertmanager.cluster.*` flags in the arguments guide, including listen address, advertise address, peers, peer timeout, gossip interval, and push-pull interval. #7723
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
 * [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455

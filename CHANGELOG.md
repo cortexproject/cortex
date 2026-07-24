@@ -14,6 +14,7 @@
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
 * [FEATURE] Querier: Implement Resource Based Throttling in Querier. #7442
+* [FEATURE] API: Add Prometheus-compatible `GET <prometheus-http-prefix>/api/v1/features` endpoint to let clients discover which PromQL functions, operators, and API capabilities are supported. #7507
 * [FEATURE] Querier: Add resource-based query eviction that automatically cancels the heaviest running query when CPU or heap utilization exceeds configured thresholds. #7488
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489

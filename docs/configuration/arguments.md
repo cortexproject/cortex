@@ -460,6 +460,43 @@ If **no prefix** is provided, the provided IP or hostname will be used directly 
 
 If you are using a managed memcached service from [Google Cloud](https://cloud.google.com/memorystore/docs/memcached/auto-discovery-overview), or [AWS](https://docs.aws.amazon.com/AmazonElastiCache/latest/mem-ug/AutoDiscovery.HowAutoDiscoveryWorks.html), use the [auto-discovery](./config-file-reference.md#memcached-client-config) flag instead of DNS discovery, then use the discovery/configuration endpoint as the domain name without any prefix.
 
+## Alertmanager
+
+### Alertmanager cluster (High Availability)
+
+When running more than one Alertmanager replica, the replicas must form a gossip cluster so they can deduplicate alerts and coordinate silences. The cluster is configured via the `-alertmanager.cluster.*` flags.
+
+> **Note**: Clustering is enabled by setting `-alertmanager.cluster.listen-address`. Leaving it at the default value (`0.0.0.0:9094`) enables clustering; set it to an empty string to disable it.
+
+- `-alertmanager.cluster.listen-address`
+
+   The address and port on which each Alertmanager instance listens for gossip traffic from other cluster members. Defaults to `0.0.0.0:9094`. Set to an empty string to disable HA clustering entirely.
+
+- `-alertmanager.cluster.advertise-address`
+
+   The address that this Alertmanager instance advertises to peers. Useful when the listen address is not directly reachable by other replicas (e.g. when running behind NAT or inside a Kubernetes pod). If unset, the listen address is advertised.
+
+- `-alertmanager.cluster.peers`
+
+   Comma-separated list of initial peers to contact when joining the cluster. Each entry should be a `host:port` pair pointing to another Alertmanager's cluster listen port. At least one peer is required for replicas to discover each other at startup.
+
+   **Example** (three-replica Kubernetes StatefulSet):
+   ```
+   -alertmanager.cluster.peers=alertmanager-0.alertmanager:9094,alertmanager-1.alertmanager:9094,alertmanager-2.alertmanager:9094
+   ```
+
+- `-alertmanager.cluster.peer-timeout`
+
+   How long to wait for a response from a peer before considering the notification delivery to that peer as failed. Default: `15s`.
+
+- `-alertmanager.cluster.gossip-interval`
+
+   The interval between gossip messages sent to a random peer. Lowering this value spreads cluster state changes more quickly at the cost of additional network traffic. Default: `200ms`.
+
+- `-alertmanager.cluster.push-pull-interval`
+
+   The interval between full state sync operations between two peers. Full syncs converge the cluster faster than gossip alone, especially across larger clusters, but use more bandwidth. Default: `60s`.
+
 ## Logging of IP of reverse proxy
 
 If a reverse proxy is used in front of Cortex, it might be difficult to troubleshoot errors. The following 3 settings can be used to log the IP address passed along by the reverse proxy in headers like X-Forwarded-For.

@@ -45,6 +45,7 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - OpenStack Swift storage support.
+- Oracle Cloud Infrastructure (OCI) Object Storage support.
 - Metric relabeling in the distributor.
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor:

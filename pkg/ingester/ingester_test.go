@@ -5420,6 +5420,11 @@ func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	return args.Int(0), args.Error(1)
 }
 
+// Close mocks Shipper.Close()
+func (m *shipperMock) Close() error {
+	return nil
+}
+
 func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0

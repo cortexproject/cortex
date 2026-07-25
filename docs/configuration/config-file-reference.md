@@ -1375,7 +1375,8 @@ swift:
   [request_timeout: <duration> | default = 5s]
 
 oci:
-  # The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
   # CLI flag: -blocks-storage.oci.provider
   [provider: <string> | default = "default"]
 
@@ -1403,7 +1404,8 @@ oci:
   # CLI flag: -blocks-storage.oci.fingerprint
   [fingerprint: <string> | default = ""]
 
-  # The API signing private key in PEM format. Required when the provider is 'raw'.
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
   # CLI flag: -blocks-storage.oci.private-key
   [privatekey: <string> | default = ""]
 
@@ -1411,11 +1413,13 @@ oci:
   # CLI flag: -blocks-storage.oci.private-key-passphrase
   [passphrase: <string> | default = ""]
 
-  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
   # CLI flag: -blocks-storage.oci.part-size
   [part_size: <int> | default = 0]
 
-  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
   # CLI flag: -blocks-storage.oci.max-request-retries
   [max_request_retries: <int> | default = 3]
 
@@ -6550,7 +6554,8 @@ swift:
   [request_timeout: <duration> | default = 5s]
 
 oci:
-  # The OCI configuration provider to use. Supported values are: default, instance-principal, raw, oke-workload-identity.
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
   # CLI flag: -ruler-storage.oci.provider
   [provider: <string> | default = "default"]
 
@@ -6587,11 +6592,13 @@ oci:
   # CLI flag: -ruler-storage.oci.private-key-passphrase
   [passphrase: <string> | default = ""]
 
-  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
   # CLI flag: -ruler-storage.oci.part-size
   [part_size: <int> | default = 0]
 
-  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
   # CLI flag: -ruler-storage.oci.max-request-retries
   [max_request_retries: <int> | default = 3]
 
@@ -6956,7 +6963,8 @@ oci:
   # CLI flag: -runtime-config.oci.fingerprint
   [fingerprint: <string> | default = ""]
 
-  # The API signing private key in PEM format. Required when the provider is 'raw'.
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
   # CLI flag: -runtime-config.oci.private-key
   [privatekey: <string> | default = ""]
 
@@ -6964,11 +6972,13 @@ oci:
   # CLI flag: -runtime-config.oci.private-key-passphrase
   [passphrase: <string> | default = ""]
 
-  # The part size in bytes used for multipart uploads. 0 uses the provider default.
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
   # CLI flag: -runtime-config.oci.part-size
   [part_size: <int> | default = 0]
 
-  # The maximum number of request attempts when encountering recoverable errors. Values of 0 or 1 disable retries.
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
   # CLI flag: -runtime-config.oci.max-request-retries
   [max_request_retries: <int> | default = 3]
 

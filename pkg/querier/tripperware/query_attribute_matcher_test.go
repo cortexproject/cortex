@@ -88,6 +88,61 @@ func Test_rejectQueryOrSetPriorityShouldReturnDefaultPriorityIfNotEnabledOrInval
 	}
 }
 
+func Test_rejectQueryOrSetPriorityShouldTrackDataSelectTimeRangeIndependentOfQueryPriorityAndRejection(t *testing.T) {
+	disabledLimits := mockLimits{
+		queryPriority:  validation.QueryPriority{Enabled: false},
+		queryRejection: validation.QueryRejection{Enabled: false},
+	}
+	lookbackDelta := 5 * time.Minute
+
+	type testCase struct {
+		limits          Limits
+		path            string
+		expectedMinTime int64
+		expectedMaxTime int64
+	}
+
+	tests := map[string]testCase{
+		"should track data select time range for instant query when query priority and rejection are disabled": {
+			limits: disabledLimits,
+			path:   "/api/v1/query?time=1536716898&query=sum%28container_memory_rss%29+by+%28namespace%29",
+			// min time is (time - lookbackDelta) exclusive.
+			expectedMinTime: 1536716898000 - lookbackDelta.Milliseconds() + 1,
+			expectedMaxTime: 1536716898000,
+		},
+		"should track data select time range for range query when query priority and rejection are disabled": {
+			limits:          disabledLimits,
+			path:            "/api/v1/query_range?start=1536716898&end=1536720498&step=15&query=sum%28container_memory_rss%29+by+%28namespace%29",
+			expectedMinTime: 1536716898000 - lookbackDelta.Milliseconds() + 1,
+			expectedMaxTime: 1536720498000,
+		},
+		"should track data select time range when limits is nil": {
+			limits:          nil,
+			path:            "/api/v1/query?time=1536716898&query=up",
+			expectedMinTime: 1536716898000 - lookbackDelta.Milliseconds() + 1,
+			expectedMaxTime: 1536716898000,
+		},
+		"should not track data select time range for metadata query": {
+			limits:          disabledLimits,
+			path:            "/api/v1/labels?match[]=up",
+			expectedMinTime: 0,
+			expectedMaxTime: 0,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			req, err := http.NewRequest("GET", testData.path, http.NoBody)
+			require.NoError(t, err)
+			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
+			req = req.WithContext(ctx)
+			require.NoError(t, rejectQueryOrSetPriority(req, time.Now(), lookbackDelta, testData.limits, "", rejectedQueriesPerTenant))
+			assert.Equal(t, testData.expectedMinTime, reqStats.LoadDataSelectMinTime())
+			assert.Equal(t, testData.expectedMaxTime, reqStats.LoadDataSelectMaxTime())
+		})
+	}
+}
+
 func Test_rejectQueryOrSetPriorityShouldRejectIfMatches(t *testing.T) {
 	now := time.Now()
 	limits := mockLimits{

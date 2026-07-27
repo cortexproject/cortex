@@ -1239,9 +1239,9 @@ func isRetryableError(err error) bool {
 	case codes.Canceled:
 		return strings.Contains(err.Error(), "grpc: the client connection is closing")
 	case codes.Unknown:
-		// Catch chunks pool exhaustion error or concurrent bytes limit exceeded error.
+		// Catch chunks pool exhaustion error or concurrent data bytes limit exceeded error.
 		return strings.Contains(err.Error(), pool.ErrPoolExhausted.Error()) ||
-			strings.Contains(err.Error(), storegateway.ErrMaxConcurrentBytesLimitExceeded.Error())
+			strings.Contains(err.Error(), storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error())
 	default:
 		return false
 	}

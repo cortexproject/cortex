@@ -55,7 +55,7 @@ func TestNoRetryOnChunkPoolExhaustion(t *testing.T) {
 	require.Equal(t, int32(500), res.Code)
 }
 
-func TestNoRetryOnMaxConcurrentBytesLimitExceeded(t *testing.T) {
+func TestNoRetryOnMaxConcurrentDataBytesLimitExceeded(t *testing.T) {
 	tries := atomic.NewInt64(3)
 	r := NewRetry(3, nil)
 	ctx := context.Background()
@@ -64,7 +64,7 @@ func TestNoRetryOnMaxConcurrentBytesLimitExceeded(t *testing.T) {
 		if try > 1 {
 			return &httpgrpc.HTTPResponse{
 				Code: 500,
-				Body: []byte(storegateway.ErrMaxConcurrentBytesLimitExceeded.Error()),
+				Body: []byte(storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error()),
 			}, nil
 		}
 		return &httpgrpc.HTTPResponse{

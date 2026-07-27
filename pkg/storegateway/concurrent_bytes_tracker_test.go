@@ -12,9 +12,9 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 )
 
-func TestConcurrentBytesTracker_Basic(t *testing.T) {
+func TestConcurrentDataBytesTracker_Basic(t *testing.T) {
 	t.Run("add increments counter", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(1000, nil)
+		tracker := NewConcurrentDataBytesTracker(1000, nil)
 		assert.Equal(t, uint64(0), tracker.Current())
 
 		require.NoError(t, tracker.Add(100))
@@ -25,16 +25,16 @@ func TestConcurrentBytesTracker_Basic(t *testing.T) {
 	})
 
 	t.Run("add rejects when would exceed limit", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(100, nil)
+		tracker := NewConcurrentDataBytesTracker(100, nil)
 		require.NoError(t, tracker.Add(100))
 
 		err := tracker.Add(1)
-		assert.ErrorIs(t, err, ErrMaxConcurrentBytesLimitExceeded)
+		assert.ErrorIs(t, err, ErrMaxConcurrentDataBytesLimitExceeded)
 		assert.Equal(t, uint64(100), tracker.Current())
 	})
 
 	t.Run("add allows when at exactly limit", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(100, nil)
+		tracker := NewConcurrentDataBytesTracker(100, nil)
 		require.NoError(t, tracker.Add(50))
 		require.NoError(t, tracker.Add(50))
 		assert.Equal(t, uint64(100), tracker.Current())
@@ -43,7 +43,7 @@ func TestConcurrentBytesTracker_Basic(t *testing.T) {
 
 func TestTrackerWithLimitingDisabled(t *testing.T) {
 	t.Run("add always succeeds", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(0, nil)
+		tracker := NewConcurrentDataBytesTracker(0, nil)
 		require.NoError(t, tracker.Add(1000))
 		assert.Equal(t, uint64(1000), tracker.Current())
 		tracker.Release(1000)
@@ -51,14 +51,14 @@ func TestTrackerWithLimitingDisabled(t *testing.T) {
 	})
 
 	t.Run("add succeeds even with very high byte count", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(0, nil)
+		tracker := NewConcurrentDataBytesTracker(0, nil)
 		assert.NoError(t, tracker.Add(uint64(100)*1024*1024*1024))
 	})
 }
 
-func TestConcurrentBytesTracker_Metrics(t *testing.T) {
+func TestConcurrentDataBytesTracker_Metrics(t *testing.T) {
 	reg := prometheus.NewRegistry()
-	tracker := NewConcurrentBytesTracker(1000, reg)
+	tracker := NewConcurrentDataBytesTracker(1000, reg)
 	require.NoError(t, tracker.Add(500))
 
 	metricFamilies, err := reg.Gather()
@@ -69,9 +69,9 @@ func TestConcurrentBytesTracker_Metrics(t *testing.T) {
 		metricNames[mf.GetName()] = true
 	}
 
-	assert.True(t, metricNames["cortex_storegateway_concurrent_bytes_peak"])
-	assert.True(t, metricNames["cortex_storegateway_concurrent_bytes_max"])
-	assert.True(t, metricNames["cortex_storegateway_bytes_limiter_rejected_requests_total"])
+	assert.True(t, metricNames["cortex_storegateway_concurrent_data_bytes_peak"])
+	assert.True(t, metricNames["cortex_storegateway_concurrent_data_bytes_max"])
+	assert.True(t, metricNames["cortex_storegateway_concurrent_data_bytes_rejected_requests_total"])
 
 	tracker.Release(500)
 }
@@ -79,7 +79,7 @@ func TestConcurrentBytesTracker_Metrics(t *testing.T) {
 func TestProperty_AddIncrementsCounter(t *testing.T) {
 	f := func(bytes uint64) bool {
 		bytes = (bytes % (1024 * 1024 * 1024)) + 1
-		tracker := NewConcurrentBytesTracker(uint64(10)*1024*1024*1024, nil)
+		tracker := NewConcurrentDataBytesTracker(uint64(10)*1024*1024*1024, nil)
 
 		err := tracker.Add(bytes)
 		if err != nil {
@@ -93,7 +93,7 @@ func TestProperty_AddIncrementsCounter(t *testing.T) {
 func TestProperty_ReleaseRoundTrip(t *testing.T) {
 	f := func(bytes uint64) bool {
 		bytes = (bytes % (1024 * 1024 * 1024)) + 1
-		tracker := NewConcurrentBytesTracker(uint64(10)*1024*1024*1024, nil)
+		tracker := NewConcurrentDataBytesTracker(uint64(10)*1024*1024*1024, nil)
 
 		_ = tracker.Add(bytes)
 		tracker.Release(bytes)
@@ -108,7 +108,7 @@ func TestProperty_ThreadSafeCounterUpdates(t *testing.T) {
 		numOps := rng.Intn(100) + 1
 		bytesPerOp := uint64(rng.Intn(1024*1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(uint64(100)*1024*1024*1024, nil)
+		tracker := NewConcurrentDataBytesTracker(uint64(100)*1024*1024*1024, nil)
 
 		var wg sync.WaitGroup
 		for range numOps {
@@ -140,7 +140,7 @@ func TestProperty_PeakBytesMetricTracksPeak(t *testing.T) {
 		numOps := rng.Intn(50) + 1
 
 		reg := prometheus.NewRegistry()
-		tracker := NewConcurrentBytesTracker(uint64(100)*1024*1024*1024, reg).(*concurrentBytesTracker)
+		tracker := NewConcurrentDataBytesTracker(uint64(100)*1024*1024*1024, reg).(*concurrentDataBytesTracker)
 
 		var totalBytes uint64
 		var maxSeen uint64
@@ -178,7 +178,7 @@ func TestProperty_PositiveLimitEnforcement(t *testing.T) {
 		limit = (limit % (10 * 1024 * 1024 * 1024)) + 1
 		bytesToAdd = limit + (bytesToAdd % (1024 * 1024 * 1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
 		err := tracker.Add(bytesToAdd)
 		return err != nil
 	}
@@ -190,7 +190,7 @@ func TestProperty_BelowLimitAccepts(t *testing.T) {
 		limit = (limit % (10 * 1024 * 1024 * 1024)) + 1024
 		bytesToAdd = bytesToAdd % (limit + 1)
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
 		return tracker.Add(bytesToAdd) == nil
 	}
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
@@ -201,7 +201,7 @@ func TestProperty_RejectionDoesNotCountBytes(t *testing.T) {
 		limit = (limit % (1024 * 1024 * 1024)) + 1024
 		numRejections = (numRejections % 10) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
 		if err := tracker.Add(limit); err != nil {
 			return false
 		}
@@ -222,8 +222,8 @@ func TestProperty_RejectionReturnsPoolExhausted(t *testing.T) {
 		limit = (limit % (1024 * 1024 * 1024)) + 1
 		bytesToAdd = limit + (bytesToAdd % (1024 * 1024 * 1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
-		return tracker.Add(bytesToAdd) == ErrMaxConcurrentBytesLimitExceeded
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
+		return tracker.Add(bytesToAdd) == ErrMaxConcurrentDataBytesLimitExceeded
 	}
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }
@@ -233,7 +233,7 @@ func TestProperty_RecoveryAfterRelease(t *testing.T) {
 		limit = (limit % (1024 * 1024 * 1024)) + 1024
 		bytesToAdd = (bytesToAdd % limit) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
 		if err := tracker.Add(limit); err != nil {
 			return false
 		}
@@ -252,7 +252,7 @@ func TestProperty_ConcurrentDecrementsCorrectness(t *testing.T) {
 		rng := rand.New(rand.NewSource(seed))
 		numOps := rng.Intn(100) + 10
 
-		tracker := NewConcurrentBytesTracker(uint64(100)*1024*1024*1024, nil)
+		tracker := NewConcurrentDataBytesTracker(uint64(100)*1024*1024*1024, nil)
 
 		var totalBytes uint64
 		bytesPerOp := make([]uint64, numOps)
@@ -288,7 +288,7 @@ func TestProperty_PanicRecoveryCleanup(t *testing.T) {
 		bytesLimit := uint64(rng.Intn(1024*1024*1024)) + 1024
 		bytesToTrack := uint64(rng.Intn(1024*1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(bytesLimit, nil)
+		tracker := NewConcurrentDataBytesTracker(bytesLimit, nil)
 
 		func() {
 			defer func() { _ = recover() }()
@@ -312,8 +312,8 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 		bytesLimit := uint64(rng.Intn(1024*1024*1024)) + 1024
 		numLimiters := rng.Intn(10) + 1
 
-		tracker := NewConcurrentBytesTracker(bytesLimit, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(bytesLimit, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		func() {
 			defer func() { _ = recover() }()
@@ -321,7 +321,7 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 
 			for range numLimiters {
 				inner := newMockBytesLimiter(bytesLimit)
-				limiter := newTrackingBytesLimiter(inner, reqTracker)
+				limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 				bytes := uint64(rng.Intn(1024*1024)) + 1
 				_ = limiter.ReserveWithType(bytes, store.PostingsFetched)
@@ -335,12 +335,12 @@ func TestProperty_PanicRecoveryWithRequestTracker(t *testing.T) {
 	require.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }
 
-func TestPropertyAddReturnsErrMaxConcurrentBytesLimitExceededIffOverLimit(t *testing.T) {
+func TestPropertyAddReturnsErrMaxConcurrentDataBytesLimitExceededIffOverLimit(t *testing.T) {
 	f := func(seed int64) bool {
 		rng := rand.New(rand.NewSource(seed))
 		limit := uint64(rng.Intn(10*1024*1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
 		defer tracker.Stop()
 
 		numAdds := rng.Intn(20) + 1
@@ -351,7 +351,7 @@ func TestPropertyAddReturnsErrMaxConcurrentBytesLimitExceededIffOverLimit(t *tes
 			err := tracker.Add(bytes)
 
 			if cumulativeBytes+bytes > limit {
-				if err != ErrMaxConcurrentBytesLimitExceeded {
+				if err != ErrMaxConcurrentDataBytesLimitExceeded {
 					return false
 				}
 			} else {
@@ -370,7 +370,7 @@ func TestPropertyAddReturnsErrMaxConcurrentBytesLimitExceededIffOverLimit(t *tes
 func TestPropertyAddReturnsNilErrorWhenLimitingDisabled(t *testing.T) {
 	f := func(bytes uint64) bool {
 		bytes = (bytes % (1024 * 1024 * 1024)) + 1
-		tracker := NewConcurrentBytesTracker(0, nil)
+		tracker := NewConcurrentDataBytesTracker(0, nil)
 		defer tracker.Stop()
 		return tracker.Add(bytes) == nil
 	}

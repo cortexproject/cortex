@@ -1860,11 +1860,11 @@
               "type": "number",
               "x-cli-flag": "blocks-storage.bucket-store.max-concurrent"
             },
-            "max_concurrent_bytes": {
+            "max_concurrent_data_bytes": {
               "default": 0,
-              "description": "Max number of bytes being processed concurrently across all queries. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.",
+              "description": "[Experimental] Max number of data bytes (postings, series and chunks) fetched from object storage via the Series() API call and processed concurrently across all queries. The limit is shared across all tenants. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.",
               "type": "number",
-              "x-cli-flag": "blocks-storage.bucket-store.max-concurrent-bytes"
+              "x-cli-flag": "blocks-storage.bucket-store.max-concurrent-data-bytes"
             },
             "max_inflight_requests": {
               "default": 0,

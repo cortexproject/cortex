@@ -11,19 +11,19 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 )
 
-type requestBytesTracker struct {
-	tracker  ConcurrentBytesTracker
+type requestDataBytesTracker struct {
+	tracker  ConcurrentDataBytesTracker
 	total    atomic.Uint64
 	released atomic.Bool
 }
 
-func newRequestBytesTracker(tracker ConcurrentBytesTracker) *requestBytesTracker {
-	return &requestBytesTracker{
+func newRequestDataBytesTracker(tracker ConcurrentDataBytesTracker) *requestDataBytesTracker {
+	return &requestDataBytesTracker{
 		tracker: tracker,
 	}
 }
 
-func (r *requestBytesTracker) Add(bytes uint64) error {
+func (r *requestDataBytesTracker) Add(bytes uint64) error {
 	if err := r.tracker.Add(bytes); err != nil {
 		return err
 	}
@@ -31,7 +31,7 @@ func (r *requestBytesTracker) Add(bytes uint64) error {
 	return nil
 }
 
-func (r *requestBytesTracker) ReleaseAll() {
+func (r *requestDataBytesTracker) ReleaseAll() {
 	if !r.released.CompareAndSwap(false, true) {
 		return
 	}
@@ -41,46 +41,46 @@ func (r *requestBytesTracker) ReleaseAll() {
 	}
 }
 
-func (r *requestBytesTracker) Total() uint64 {
+func (r *requestDataBytesTracker) Total() uint64 {
 	return r.total.Load()
 }
 
-type trackingBytesLimiter struct {
+type trackingDataBytesLimiter struct {
 	inner          store.BytesLimiter
-	requestTracker *requestBytesTracker
+	requestTracker *requestDataBytesTracker
 }
 
-func newTrackingBytesLimiter(inner store.BytesLimiter, requestTracker *requestBytesTracker) *trackingBytesLimiter {
-	return &trackingBytesLimiter{
+func newTrackingDataBytesLimiter(inner store.BytesLimiter, requestTracker *requestDataBytesTracker) *trackingDataBytesLimiter {
+	return &trackingDataBytesLimiter{
 		inner:          inner,
 		requestTracker: requestTracker,
 	}
 }
 
-func (t *trackingBytesLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
+func (t *trackingDataBytesLimiter) ReserveWithType(num uint64, dataType store.StoreDataType) error {
 	if err := t.inner.ReserveWithType(num, dataType); err != nil {
 		return err
 	}
 	return t.requestTracker.Add(num)
 }
 
-type requestBytesTrackerHolder struct {
+type requestDataBytesTrackerHolder struct {
 	trackers sync.Map
 }
 
-func (h *requestBytesTrackerHolder) Set(tracker *requestBytesTracker) {
+func (h *requestDataBytesTrackerHolder) Set(tracker *requestDataBytesTracker) {
 	h.trackers.Store(getGoroutineID(), tracker)
 }
 
-func (h *requestBytesTrackerHolder) Get() *requestBytesTracker {
+func (h *requestDataBytesTrackerHolder) Get() *requestDataBytesTracker {
 	val, ok := h.trackers.Load(getGoroutineID())
 	if !ok {
 		return nil
 	}
-	return val.(*requestBytesTracker)
+	return val.(*requestDataBytesTracker)
 }
 
-func (h *requestBytesTrackerHolder) Clear() {
+func (h *requestDataBytesTrackerHolder) Clear() {
 	h.trackers.Delete(getGoroutineID())
 }
 

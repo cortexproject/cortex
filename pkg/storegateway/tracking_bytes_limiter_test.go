@@ -28,10 +28,10 @@ func (m *mockBytesLimiter) Reserved() uint64 {
 	return m.reservedBytes
 }
 
-func TestRequestBytesTracker_Basic(t *testing.T) {
+func TestRequestDataBytesTracker_Basic(t *testing.T) {
 	t.Run("add delegates to underlying tracker", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
 		assert.Equal(t, uint64(100), tracker.Current())
@@ -39,8 +39,8 @@ func TestRequestBytesTracker_Basic(t *testing.T) {
 	})
 
 	t.Run("multiple adds accumulate", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
 		require.NoError(t, reqTracker.Add(200))
@@ -50,8 +50,8 @@ func TestRequestBytesTracker_Basic(t *testing.T) {
 	})
 
 	t.Run("release all decrements tracker", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
 		require.NoError(t, reqTracker.Add(200))
@@ -60,8 +60,8 @@ func TestRequestBytesTracker_Basic(t *testing.T) {
 	})
 
 	t.Run("release all is idempotent", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(100))
 		reqTracker.ReleaseAll()
@@ -73,8 +73,8 @@ func TestRequestBytesTracker_Basic(t *testing.T) {
 	})
 
 	t.Run("propagates add error from tracker", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(50, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(50, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
 		require.NoError(t, reqTracker.Add(30))
 		require.Error(t, reqTracker.Add(30)) // would exceed 50
@@ -83,12 +83,12 @@ func TestRequestBytesTracker_Basic(t *testing.T) {
 	})
 }
 
-func TestTrackingBytesLimiter_Basic(t *testing.T) {
+func TestTrackingDataBytesLimiter_Basic(t *testing.T) {
 	t.Run("reserves bytes through inner limiter", func(t *testing.T) {
 		inner := newMockBytesLimiter(1000)
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
-		limiter := newTrackingBytesLimiter(inner, reqTracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
+		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 		require.NoError(t, limiter.ReserveWithType(100, store.PostingsFetched))
 		assert.Equal(t, uint64(100), inner.Reserved())
@@ -96,9 +96,9 @@ func TestTrackingBytesLimiter_Basic(t *testing.T) {
 
 	t.Run("tracks bytes in request tracker", func(t *testing.T) {
 		inner := newMockBytesLimiter(1000)
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
-		limiter := newTrackingBytesLimiter(inner, reqTracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
+		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 		require.NoError(t, limiter.ReserveWithType(100, store.PostingsFetched))
 		assert.Equal(t, uint64(100), tracker.Current())
@@ -106,12 +106,12 @@ func TestTrackingBytesLimiter_Basic(t *testing.T) {
 	})
 
 	t.Run("multiple limiters share request tracker", func(t *testing.T) {
-		tracker := NewConcurrentBytesTracker(10000, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(10000, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 
-		limiter1 := newTrackingBytesLimiter(newMockBytesLimiter(1000), reqTracker)
-		limiter2 := newTrackingBytesLimiter(newMockBytesLimiter(1000), reqTracker)
-		limiter3 := newTrackingBytesLimiter(newMockBytesLimiter(1000), reqTracker)
+		limiter1 := newTrackingDataBytesLimiter(newMockBytesLimiter(1000), reqTracker)
+		limiter2 := newTrackingDataBytesLimiter(newMockBytesLimiter(1000), reqTracker)
+		limiter3 := newTrackingDataBytesLimiter(newMockBytesLimiter(1000), reqTracker)
 
 		require.NoError(t, limiter1.ReserveWithType(100, store.PostingsFetched))
 		require.NoError(t, limiter2.ReserveWithType(200, store.SeriesFetched))
@@ -124,11 +124,11 @@ func TestTrackingBytesLimiter_Basic(t *testing.T) {
 	})
 }
 
-func TestRequestBytesTracker_PanicRecovery(t *testing.T) {
-	tracker := NewConcurrentBytesTracker(10000, nil)
+func TestRequestDataBytesTracker_PanicRecovery(t *testing.T) {
+	tracker := NewConcurrentDataBytesTracker(10000, nil)
 
 	func() {
-		reqTracker := newRequestBytesTracker(tracker)
+		reqTracker := newRequestDataBytesTracker(tracker)
 		defer func() { _ = recover() }()
 		defer reqTracker.ReleaseAll()
 
@@ -145,9 +145,9 @@ func TestProperty_BytesLimiterIntegration(t *testing.T) {
 		numReserves := rng.Intn(50) + 1
 
 		inner := newMockBytesLimiter(uint64(100) * 1024 * 1024 * 1024)
-		tracker := NewConcurrentBytesTracker(uint64(100)*1024*1024*1024, nil)
-		reqTracker := newRequestBytesTracker(tracker)
-		limiter := newTrackingBytesLimiter(inner, reqTracker)
+		tracker := NewConcurrentDataBytesTracker(uint64(100)*1024*1024*1024, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
+		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 		var totalBytes uint64
 		for range numReserves {
@@ -173,10 +173,10 @@ func TestPropertyReserveWithTypePropagatesAddError(t *testing.T) {
 		rng := rand.New(rand.NewSource(seed))
 		limit := uint64(rng.Intn(10*1024*1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 		inner := newMockBytesLimiter(^uint64(0))
-		limiter := newTrackingBytesLimiter(inner, reqTracker)
+		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 		numReserves := rng.Intn(20) + 1
 		var trackedBytes uint64
@@ -207,10 +207,10 @@ func TestPropertyReleaseWorksCorrectlyAfterAddError(t *testing.T) {
 		rng := rand.New(rand.NewSource(seed))
 		limit := uint64(rng.Intn(1024)) + 1
 
-		tracker := NewConcurrentBytesTracker(limit, nil)
-		reqTracker := newRequestBytesTracker(tracker)
+		tracker := NewConcurrentDataBytesTracker(limit, nil)
+		reqTracker := newRequestDataBytesTracker(tracker)
 		inner := newMockBytesLimiter(^uint64(0))
-		limiter := newTrackingBytesLimiter(inner, reqTracker)
+		limiter := newTrackingDataBytesLimiter(inner, reqTracker)
 
 		numReserves := rng.Intn(10) + 1
 		sawError := false

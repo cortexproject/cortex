@@ -1404,7 +1404,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				},
 			},
 		},
-		"multiple store-gateways has the block, but one of them fails to return due to max concurrent bytes limit exceeded": {
+		"multiple store-gateways has the block, but one of them fails to return due to max concurrent data bytes limit exceeded": {
 			finderResult: bucketindex.Blocks{
 				&bucketindex.Block{ID: block1},
 			},
@@ -1412,7 +1412,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 				map[BlocksStoreClient][]ulid.ULID{
 					&storeGatewayClientMock{
 						remoteAddr:      "1.1.1.1",
-						mockedSeriesErr: status.Error(codes.Unknown, storegateway.ErrMaxConcurrentBytesLimitExceeded.Error()),
+						mockedSeriesErr: status.Error(codes.Unknown, storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error()),
 					}: {block1},
 				},
 				map[BlocksStoreClient][]ulid.ULID{
@@ -2632,7 +2632,7 @@ func TestBlocksStoreQuerier_isRetryableError(t *testing.T) {
 	require.True(t, isRetryableError(limiter.ErrResourceLimitReached))
 	require.True(t, isRetryableError(status.Error(codes.Canceled, "grpc: the client connection is closing")))
 	require.True(t, isRetryableError(errors.New("pool exhausted")))
-	require.True(t, isRetryableError(errors.New("max concurrent bytes limit exceeded")))
+	require.True(t, isRetryableError(errors.New("max concurrent data bytes limit exceeded")))
 
 	require.False(t, isRetryableError(status.Error(codes.ResourceExhausted, "some other error")))
 	require.False(t, isRetryableError(status.Error(codes.Canceled, "some other error")))

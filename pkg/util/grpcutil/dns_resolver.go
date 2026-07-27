@@ -244,6 +244,12 @@ func (w *dnsWatcher) lookup() []*Update {
 		// return any A record info available.
 		newAddrs = w.lookupHost()
 	}
+	if newAddrs == nil {
+		// Both the SRV and A record lookups failed. Keep the previously
+		// resolved addresses cached instead of removing them, so a transient
+		// DNS failure doesn't drop all currently known endpoints.
+		return nil
+	}
 	result := w.compileUpdate(newAddrs)
 	w.curAddrs = newAddrs
 	return result

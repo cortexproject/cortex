@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -40,6 +41,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/limiter"
+	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -296,7 +299,12 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 		}
 
 		distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&unorderedResponse, nil)
-		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+
+		// Create limits with default QueryIngestersWithin
+		limits := DefaultLimitsConfig()
+		testOverrides := validation.NewOverrides(limits, nil)
+
+		distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -332,7 +340,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					for _, queryable := range tc.storeQueriables {
 						wQueriables = append(wQueriables, &wrappedSampleAndChunkQueryable{QueryableWithFilter: queryable})
 					}
-					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
+					queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger(), nil)
 					opts := promql.EngineOpts{
 						Logger:     promslog.NewNopLogger(),
 						MaxSamples: 1e6,
@@ -356,7 +364,7 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 
 					for _, queryable := range append(wQueriables, wDistributorQueriable) {
 						var wQueryable = queryable.(*wrappedSampleAndChunkQueryable)
-						if wQueryable.UseQueryable(time.Now(), start.Unix()*1000, end.Unix()*1000) {
+						if wQueryable.UseQueryable(time.Now(), "0", start.Unix()*1000, end.Unix()*1000) {
 							require.Equal(t, tc.sorted, wQueryable.queriers[0].selectCallsArgs[0][0])
 						}
 					}
@@ -441,7 +449,11 @@ func TestLimits(t *testing.T) {
 			response: &streamResponse,
 		}
 
-		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+		// Create limits with default QueryIngestersWithin
+		limits := DefaultLimitsConfig()
+		testOverrides := validation.NewOverrides(limits, nil)
+
+		distributorQueryableStreaming := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 
 		tCases := []struct {
 			name                 string
@@ -519,7 +531,7 @@ func TestLimits(t *testing.T) {
 				}
 				overrides := validation.NewOverrides(DefaultLimitsConfig(), tc.tenantLimit)
 
-				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides)
+				queryable := NewQueryable(wDistributorQueriable, wQueriables, cfg, overrides, nil, log.NewNopLogger(), nil)
 				opts := promql.EngineOpts{
 					Logger:     promslog.NewNopLogger(),
 					MaxSamples: 1e6,
@@ -575,7 +587,7 @@ func TestQuerier(t *testing.T) {
 					overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
 
 					queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 					testRangeQuery(t, queryable, queryEngine, through, query, enc)
 				})
 			}
@@ -596,7 +608,7 @@ func TestQuerierMetric(t *testing.T) {
 	queryables := []QueryableWithFilter{}
 	r := prometheus.NewRegistry()
 	reg := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "querier"}, r)
-	New(cfg, overrides, distributor, queryables, reg, log.NewNopLogger(), nil)
+	New(cfg, overrides, distributor, queryables, reg, log.NewNopLogger(), nil, nil)
 	assert.NoError(t, promutil.GatherAndCompare(r, strings.NewReader(`
 		# HELP cortex_max_concurrent_queries The maximum number of concurrent queries.
 		# TYPE cortex_max_concurrent_queries gauge
@@ -659,7 +671,6 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 	for _, thanosEngine := range []bool{true, false} {
 		for _, encoding := range encodings {
 			for _, c := range testCases {
-				cfg.QueryIngestersWithin = c.queryIngestersWithin
 				t.Run(fmt.Sprintf("thanosEngine=%t,encoding=%s,queryIngestersWithin=%v, test=%s", thanosEngine, encoding.String(), c.queryIngestersWithin, c.name), func(t *testing.T) {
 					var queryEngine promql.QueryEngine
 					if thanosEngine {
@@ -674,10 +685,13 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					chunkStore, _ := makeMockChunkStore(t, 24, encoding)
 					distributor := &errDistributor{}
 
-					overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+					// Create limits with QueryIngestersWithin from test case
+					limits := DefaultLimitsConfig()
+					limits.QueryIngestersWithin = model.Duration(c.queryIngestersWithin)
+					overrides := validation.NewOverrides(limits, nil)
 
 					ctx := user.InjectOrgID(context.Background(), "0")
-					queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil, nil)
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 					require.NoError(t, err)
 
@@ -770,7 +784,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryIntoFuture(t *testing.T) {
 
 			ctx := user.InjectOrgID(context.Background(), "0")
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+			queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 			query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, "dummy", c.queryStartTime, c.queryEndTime, time.Minute)
 			require.NoError(t, err)
 
@@ -862,7 +876,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength(t *testing.T) {
 			distributor := &emptyDistributor{}
 
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+			queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 
 			queryEngine := promql.NewEngine(opts)
 			ctx := user.InjectOrgID(context.Background(), "test")
@@ -900,7 +914,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Series(t *testing.T) {
 	distributor := &emptyDistributor{}
 
 	queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-	queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+	queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
 	now := time.Now()
@@ -958,7 +972,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLength_Labels(t *testing.T) {
 			distributor := &emptyDistributor{}
 
 			queryables := []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}
-			queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+			queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 
 			ctx := user.InjectOrgID(context.Background(), "test")
 
@@ -1108,7 +1122,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor := &MockDistributor{}
 					distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 
 					query, err := queryEngine.NewRangeQuery(ctx, queryable, nil, testData.query, testData.queryStartTime, testData.queryEndTime, time.Minute)
 					require.NoError(t, err)
@@ -1136,7 +1150,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1177,7 +1191,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1205,7 +1219,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, matchers).Return([]labels.Labels{}, nil)
 					distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, matchers).Return([]labels.Labels{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1232,7 +1246,7 @@ func TestQuerier_ValidateQueryTimeRange_MaxQueryLookback(t *testing.T) {
 					distributor.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 					distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
 
-					queryable, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil)
+					queryable, _, _, _ := New(cfg, overrides, distributor, queryables, nil, log.NewNopLogger(), nil, nil)
 					q, err := queryable.Querier(util.TimeToMillis(testData.queryStartTime), util.TimeToMillis(testData.queryEndTime))
 					require.NoError(t, err)
 
@@ -1558,16 +1572,18 @@ func TestShortTermQueryToLTS(t *testing.T) {
 	cfg.ActiveQueryTrackerDir = ""
 
 	for _, c := range testCases {
-		cfg.QueryIngestersWithin = c.queryIngestersWithin
-		cfg.QueryStoreAfter = c.queryStoreAfter
 		t.Run(c.name, func(t *testing.T) {
 			//parallel testing causes data race
 			chunkStore := &emptyChunkStore{}
 			distributor := &errDistributor{}
 
-			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			// Create limits with QueryIngestersWithin and QueryStoreAfter from test case
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(c.queryIngestersWithin)
+			limits.QueryStoreAfter = model.Duration(c.queryStoreAfter)
+			overrides := validation.NewOverrides(limits, nil)
 
-			queryable, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil)
+			queryable, _, _, _ := New(cfg, overrides, distributor, []QueryableWithFilter{UseAlwaysQueryable(NewMockStoreQueryable(chunkStore))}, nil, log.NewNopLogger(), nil, nil)
 			ctx := user.InjectOrgID(context.Background(), "0")
 			query, err := engine.NewRangeQuery(ctx, queryable, nil, "dummy", c.mint, c.maxt, 1*time.Minute)
 			require.NoError(t, err)
@@ -1597,7 +1613,7 @@ func TestUseAlwaysQueryable(t *testing.T) {
 	m := &mockQueryableWithFilter{}
 	qwf := UseAlwaysQueryable(m)
 
-	require.True(t, qwf.UseQueryable(time.Now(), 0, 0))
+	require.True(t, qwf.UseQueryable(time.Now(), "test", 0, 0))
 	require.False(t, m.useQueryableCalled)
 }
 
@@ -1607,13 +1623,13 @@ func TestUseBeforeTimestamp(t *testing.T) {
 	now := time.Now()
 	qwf := UseBeforeTimestampQueryable(m, now.Add(-1*time.Hour))
 
-	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	require.False(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.False(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.False(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.True(t, qwf.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
+	require.True(t, qwf.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour).Add(-time.Millisecond)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled) // UseBeforeTimestampQueryable wraps Queryable, and not QueryableWithFilter.
 }
 
@@ -1621,15 +1637,21 @@ func TestStoreQueryable(t *testing.T) {
 	t.Parallel()
 	m := &mockQueryableWithFilter{}
 	now := time.Now()
-	sq := storeQueryable{m, time.Hour}
 
-	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
+	// Create limits with QueryStoreAfter set to 1 hour
+	limits := DefaultLimitsConfig()
+	limits.QueryStoreAfter = model.Duration(time.Hour)
+	overrides := validation.NewOverrides(limits, nil)
+
+	sq := storeQueryable{m, overrides}
+
+	require.False(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-5*time.Minute)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.False(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
+	require.False(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour).Add(time.Millisecond)), util.TimeToMillis(now)))
 	require.False(t, m.useQueryableCalled)
 
-	require.True(t, sq.UseQueryable(now, util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
+	require.True(t, sq.UseQueryable(now, "test", util.TimeToMillis(now.Add(-1*time.Hour)), util.TimeToMillis(now)))
 	require.True(t, m.useQueryableCalled) // storeQueryable wraps QueryableWithFilter, so it must call its UseQueryable method.
 }
 
@@ -1641,24 +1663,6 @@ func TestConfig_Validate(t *testing.T) {
 	}{
 		"should pass with default config": {
 			setup: func(cfg *Config) {},
-		},
-		"should pass if 'query store after' is enabled and shuffle-sharding is disabled": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-			},
-		},
-		"should pass if 'query store after' is enabled and shuffle-sharding is enabled with greater value": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-				cfg.ShuffleShardingIngestersLookbackPeriod = 2 * time.Hour
-			},
-		},
-		"should fail if 'query store after' is enabled and shuffle-sharding is enabled with lesser value": {
-			setup: func(cfg *Config) {
-				cfg.QueryStoreAfter = time.Hour
-				cfg.ShuffleShardingIngestersLookbackPeriod = time.Minute
-			},
-			expected: errShuffleShardingLookbackLessThanQueryStoreAfter,
 		},
 		"should fail if invalid parquet queryable default block store": {
 			setup: func(cfg *Config) {
@@ -1679,6 +1683,71 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expected: nil,
 		},
+		"should pass with valid timeout classification config": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail with zero timeout classification deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationDeadlineNotPositive,
+		},
+		"should fail with negative timeout classification eval threshold": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 58 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdNotPositive,
+		},
+		"should fail when eval threshold exceeds deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 30 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+			},
+			expected: errTimeoutClassificationEvalThresholdExceedsDeadline,
+		},
+		"should pass when eval threshold equals deadline": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 45 * time.Second
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+		},
+		"should fail when deadline equals engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 2 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should fail when deadline exceeds engine timeout": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = true
+				cfg.TimeoutClassificationDeadline = 3 * time.Minute
+				cfg.TimeoutClassificationEvalThreshold = 45 * time.Second
+				cfg.Timeout = 2 * time.Minute
+			},
+			expected: errTimeoutClassificationDeadlineExceedsTimeout,
+		},
+		"should pass with timeout classification disabled even with invalid values": {
+			setup: func(cfg *Config) {
+				cfg.TimeoutClassificationEnabled = false
+				cfg.TimeoutClassificationDeadline = 0
+				cfg.TimeoutClassificationEvalThreshold = -1 * time.Second
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1688,7 +1757,7 @@ func TestConfig_Validate(t *testing.T) {
 			flagext.DefaultValues(cfg)
 			testData.setup(cfg)
 
-			assert.Equal(t, testData.expected, cfg.Validate())
+			assert.Equal(t, testData.expected, cfg.Validate(nil))
 		})
 	}
 }
@@ -1734,7 +1803,7 @@ func (m *mockQueryableWithFilter) Querier(_, _ int64) (storage.Querier, error) {
 	return nil, nil
 }
 
-func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _, _ int64) bool {
+func (m *mockQueryableWithFilter) UseQueryable(_ time.Time, _ string, _, _ int64) bool {
 	m.useQueryableCalled = true
 	return true
 }
@@ -1815,22 +1884,26 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			distributor := &MockDistributor{}
 			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
 
+			// Create limits with default QueryIngestersWithin
+			limits := DefaultLimitsConfig()
+			testOverrides := validation.NewOverrides(limits, nil)
+
 			// Create distributor queryable that can be controlled to be used or not
 			var distributorQueryable QueryableWithFilter
 			if testData.queryIngesters {
 				// Ingesters will be queried
-				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1)
+				distributorQueryable = newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil)
 			} else {
 				// Ingesters will not be queried (time range is too old)
 				distributorQueryable = UseBeforeTimestampQueryable(
-					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, cfg.QueryIngestersWithin, nil, 1),
+					newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, testOverrides, nil),
 					start.Add(-1*time.Hour),
 				)
 			}
 
 			wDistributorQueryable := &wrappedSampleAndChunkQueryable{QueryableWithFilter: distributorQueryable}
 
-			queryable := NewQueryable(wDistributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides)
+			queryable := NewQueryable(wDistributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides, nil, log.NewNopLogger(), nil)
 			q, err := queryable.Querier(util.TimeToMillis(start), util.TimeToMillis(end))
 			require.NoError(t, err)
 
@@ -1851,7 +1924,7 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			var receivedHints *storage.SelectHints
 			for _, queryable := range append([]QueryableWithFilter{storeQueryable}, wDistributorQueryable) {
 				wQueryable := queryable.(*wrappedSampleAndChunkQueryable)
-				if wQueryable.UseQueryable(time.Now(), util.TimeToMillis(start), util.TimeToMillis(end)) {
+				if wQueryable.UseQueryable(time.Now(), "0", util.TimeToMillis(start), util.TimeToMillis(end)) {
 					require.Len(t, wQueryable.queriers, 1)
 					require.Len(t, wQueryable.queriers[0].selectCallsArgs, 1)
 					receivedHints = wQueryable.queriers[0].selectCallsArgs[0][1].(*storage.SelectHints)
@@ -1864,4 +1937,91 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			assert.Equal(t, testData.expectedProjectionLabels, receivedHints.ProjectionLabels, "ProjectionLabels mismatch")
 		})
 	}
+}
+
+func TestQuerier_ResourceBasedLimiter(t *testing.T) {
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.MaxQueryIntoFuture = 0
+
+	limits := DefaultLimitsConfig()
+	overrides := validation.NewOverrides(limits, nil)
+
+	mockMonitor := &limiter.MockMonitor{
+		CpuUtilization:  0.9,
+		HeapUtilization: 0.9,
+	}
+
+	resourceLimits := map[resource.Type]float64{
+		resource.CPU:  0.8,
+		resource.Heap: 0.8,
+	}
+
+	resourceBasedLimiter, err := limiter.NewResourceBasedLimiter(mockMonitor, resourceLimits, nil, "querier")
+	require.NoError(t, err)
+
+	chunkStore := &errDistributor{}
+	distributorQueryable := newDistributorQueryable(chunkStore, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, overrides, nil)
+
+	reg := prometheus.NewPedanticRegistry()
+	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, resourceBasedLimiter, log.NewNopLogger(), reg)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	q, err := queryable.Querier(util.TimeToMillis(time.Now().Add(-1*time.Hour)), util.TimeToMillis(time.Now()))
+	require.NoError(t, err)
+
+	// Select should fail due to resource limit.
+	ss := q.Select(ctx, true, &storage.SelectHints{Start: util.TimeToMillis(time.Now().Add(-1 * time.Hour)), End: util.TimeToMillis(time.Now())})
+	require.Error(t, ss.Err())
+	require.ErrorIs(t, ss.Err(), limiter.ErrResourceLimitReached)
+
+	// LabelValues should fail due to resource limit.
+	_, _, err = q.LabelValues(ctx, "__name__", nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
+
+	// LabelNames should fail due to resource limit.
+	_, _, err = q.LabelNames(ctx, nil)
+	require.Error(t, err)
+	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
+
+	// Verify the rejected requests metric was incremented for all 3 rejected queries.
+	err = promutil.GatherAndCompare(reg, bytes.NewBufferString(`
+		# HELP cortex_querier_rejected_requests_total Total number of queries rejected by resource based throttling.
+		# TYPE cortex_querier_rejected_requests_total counter
+		cortex_querier_rejected_requests_total{reason="resource_utilization"} 3
+	`), "cortex_querier_rejected_requests_total")
+	require.NoError(t, err)
+}
+
+func TestQuerier_ResourceBasedLimiter_Nil(t *testing.T) {
+	cfg := Config{}
+	flagext.DefaultValues(&cfg)
+	cfg.MaxQueryIntoFuture = 0
+
+	limits := DefaultLimitsConfig()
+	overrides := validation.NewOverrides(limits, nil)
+
+	distributor := &MockDistributor{}
+	distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+	distributor.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+	distributor.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{}, nil)
+
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, overrides, nil)
+
+	// nil resourceBasedLimiter should not block queries.
+	queryable := NewQueryable(distributorQueryable, nil, cfg, overrides, nil, log.NewNopLogger(), nil)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	q, err := queryable.Querier(util.TimeToMillis(time.Now().Add(-1*time.Hour)), util.TimeToMillis(time.Now()))
+	require.NoError(t, err)
+
+	ss := q.Select(ctx, true, &storage.SelectHints{Start: util.TimeToMillis(time.Now().Add(-1 * time.Hour)), End: util.TimeToMillis(time.Now())})
+	require.NoError(t, ss.Err())
+
+	_, _, err = q.LabelValues(ctx, "__name__", nil)
+	require.NoError(t, err)
+
+	_, _, err = q.LabelNames(ctx, nil)
+	require.NoError(t, err)
 }

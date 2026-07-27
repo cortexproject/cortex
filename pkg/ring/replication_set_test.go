@@ -384,3 +384,47 @@ func TestHasReplicationSetChangedWithoutState_IgnoresTimeStampAndState(t *testin
 		})
 	}
 }
+
+func TestReplicationSet_DoWithExecutor(t *testing.T) {
+	instances := []InstanceDesc{
+		{Addr: "ingester-0"},
+		{Addr: "ingester-1"},
+		{Addr: "ingester-2"},
+	}
+
+	t.Run("uses executor for goroutine dispatch", func(t *testing.T) {
+		var submits atomic.Int32
+		executor := &countingExecutor{submits: &submits}
+
+		rs := ReplicationSet{Instances: instances, MaxErrors: 0}
+		results, err := rs.DoWithExecutor(context.Background(), 0, false, false, executor, func(ctx context.Context, inst *InstanceDesc) (any, error) {
+			return inst.Addr, nil
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(results))
+		assert.Equal(t, int32(3), submits.Load(), "expected 3 submits to executor")
+	})
+
+	t.Run("Do delegates to DoWithExecutor with noOpExecutor", func(t *testing.T) {
+		rs := ReplicationSet{Instances: instances, MaxErrors: 0}
+		results, err := rs.Do(context.Background(), 0, false, false, func(ctx context.Context, inst *InstanceDesc) (any, error) {
+			return inst.Addr, nil
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, 3, len(results))
+	})
+}
+
+// countingExecutor tracks how many times Submit is called.
+type countingExecutor struct {
+	submits *atomic.Int32
+}
+
+func (e *countingExecutor) Submit(f func()) {
+	e.submits.Add(1)
+	go f()
+}
+
+func (e *countingExecutor) Stop() {}

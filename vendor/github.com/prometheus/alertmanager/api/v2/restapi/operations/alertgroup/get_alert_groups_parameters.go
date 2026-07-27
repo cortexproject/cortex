@@ -60,7 +60,6 @@ func NewGetAlertGroupsParams() GetAlertGroupsParams {
 //
 // swagger:parameters getAlertGroups
 type GetAlertGroupsParams struct {
-
 	// HTTP Request Object
 	HTTPRequest *http.Request `json:"-"`
 
@@ -69,25 +68,36 @@ type GetAlertGroupsParams struct {
 	  Default: true
 	*/
 	Active *bool
+
 	/*A matcher expression to filter alert groups. For example `alertname="MyAlert"`. It can be repeated to apply multiple matchers.
 	  In: query
 	  Collection Format: multi
 	*/
 	Filter []string
+
 	/*Include inhibited alerts within the returned groups. If false, excludes inhibited alerts from groups. Note that true (default) shows both inhibited and non-inhibited alerts.
 	  In: query
 	  Default: true
 	*/
 	Inhibited *bool
+
 	/*Include muted (silenced or inhibited) alert groups in results. If false, excludes entire groups where all alerts are muted.
 	  In: query
 	  Default: true
 	*/
 	Muted *bool
+
 	/*A regex matching receivers to filter alerts by
 	  In: query
 	*/
 	Receiver *string
+
+	/*A matcher expression to filter by receiver labels. For example `owner="my-team"`. Can be repeated to apply multiple matchers.
+	  In: query
+	  Collection Format: multi
+	*/
+	ReceiverMatchers []string
+
 	/*Include silenced alerts within the returned groups. If false, excludes silenced alerts from groups. Note that true (default) shows both silenced and non-silenced alerts.
 	  In: query
 	  Default: true
@@ -103,7 +113,6 @@ func (o *GetAlertGroupsParams) BindRequest(r *http.Request, route *middleware.Ma
 	var res []error
 
 	o.HTTPRequest = r
-
 	qs := runtime.Values(r.URL.Query())
 
 	qActive, qhkActive, _ := qs.GetOK("active")
@@ -128,6 +137,11 @@ func (o *GetAlertGroupsParams) BindRequest(r *http.Request, route *middleware.Ma
 
 	qReceiver, qhkReceiver, _ := qs.GetOK("receiver")
 	if err := o.bindReceiver(qReceiver, qhkReceiver, route.Formats); err != nil {
+		res = append(res, err)
+	}
+
+	qReceiverMatchers, qhkReceiverMatchers, _ := qs.GetOK("receiver_matchers")
+	if err := o.bindReceiverMatchers(qReceiverMatchers, qhkReceiverMatchers, route.Formats); err != nil {
 		res = append(res, err)
 	}
 
@@ -249,6 +263,28 @@ func (o *GetAlertGroupsParams) bindReceiver(rawData []string, hasKey bool, forma
 		return nil
 	}
 	o.Receiver = &raw
+
+	return nil
+}
+
+// bindReceiverMatchers binds and validates array parameter ReceiverMatchers from query.
+//
+// Arrays are parsed according to CollectionFormat: "multi" (defaults to "csv" when empty).
+func (o *GetAlertGroupsParams) bindReceiverMatchers(rawData []string, hasKey bool, formats strfmt.Registry) error {
+	// CollectionFormat: multi
+	receiverMatchersIC := rawData
+	if len(receiverMatchersIC) == 0 {
+		return nil
+	}
+
+	var receiverMatchersIR []string
+	for _, receiverMatchersIV := range receiverMatchersIC {
+		receiverMatchersI := receiverMatchersIV
+
+		receiverMatchersIR = append(receiverMatchersIR, receiverMatchersI)
+	}
+
+	o.ReceiverMatchers = receiverMatchersIR
 
 	return nil
 }

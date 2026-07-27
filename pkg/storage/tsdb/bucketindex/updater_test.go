@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path"
 	"strings"
 	"testing"
@@ -182,6 +183,39 @@ func TestUpdater_UpdateIndex_ShouldNotIncreaseOperationFailureMetricCustomerKey(
             thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="iter"} 0
             thanos_objstore_bucket_operation_failures_total{bucket="test-bucket",operation="upload"} 0
 		`), "thanos_objstore_bucket_operation_failures_total"))
+}
+
+func TestUpdater_UpdateIndex_ShouldSkipBlockWithMetaAttributesNotFound(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	// Mock some blocks in the storage.
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+
+	// Simulate a race condition where Get() on meta.json succeeds but Attributes() returns not-found.
+	// This can happen in object stores like S3 when meta.json is deleted between the Get and Attributes calls.
+	bkt = &testutil.MockBucketFailure{
+		Bucket: bkt,
+		AttributesFailures: map[string]error{
+			path.Join(userID, block2.ULID.String(), "meta.json"): os.ErrNotExist,
+		},
+	}
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, partials, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1},
+		[]*metadata.DeletionMark{})
+
+	assert.Len(t, partials, 1)
+	assert.True(t, errors.Is(partials[block2.ULID], ErrBlockMetaNotFound))
 }
 
 func TestUpdater_UpdateIndex_ShouldSkipBlocksWithCorruptedMeta(t *testing.T) {
@@ -461,6 +495,83 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdater_UpdateParquetBlocks_SkipsReadingExistingMarker(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	fsBkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	// Generate the initial index with a block that has a valid parquet marker.
+	gBkt := BucketWithGlobalMarkers(fsBkt)
+	block1 := testutil.MockStorageBlock(t, gBkt, userID, 10, 20)
+	block1Mark := testutil.MockStorageParquetConverterMark(t, gBkt, userID, block1, 3)
+
+	w := NewUpdater(gBkt, userID, nil, logger).EnableParquet()
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+
+	// Wrap the bucket so that any GET on the block's parquet marker fails. Since
+	// the marker is already present and valid in the previous index, the updater
+	// must skip re-reading it and therefore must not perform any GET.
+	markerPath := path.Join(userID, block1.ULID.String(), parquet.ConverterMarkerFileName)
+	mock := &testutil.MockBucketFailure{
+		Bucket:      fsBkt,
+		GetFailures: map[string]error{markerPath: errors.New("unexpected GET on parquet marker")},
+	}
+	iMock := objstore.WrapWithMetrics(mock, nil, "")
+	wFail := NewUpdater(BucketWithGlobalMarkers(iMock), userID, nil, logger).EnableParquet()
+
+	idx, _, _, err = wFail.UpdateIndex(ctx, idx)
+	require.NoError(t, err)
+	// No GET should have been performed since the marker read was skipped.
+	assert.Equal(t, int32(0), mock.GetCalls.Load())
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+}
+
+func TestUpdater_UpdateParquetBlocks_ResetsFieldWhenMarkerRemoved(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	fsBkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	// Generate the initial index with a block that has a valid parquet marker.
+	gBkt := BucketWithGlobalMarkers(fsBkt)
+	block1 := testutil.MockStorageBlock(t, gBkt, userID, 10, 20)
+	block1Mark := testutil.MockStorageParquetConverterMark(t, gBkt, userID, block1, 3)
+
+	w := NewUpdater(gBkt, userID, nil, logger).EnableParquet()
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+
+	// Remove the parquet marker (both the per-block and global location) and
+	// update the index. The parquet field must be reset to nil.
+	require.NoError(t, gBkt.Delete(ctx, path.Join(userID, block1.ULID.String(), parquet.ConverterMarkerFileName)))
+
+	idx, _, _, err = w.UpdateIndex(ctx, idx)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{})
 }
 
 func getBlockUploadedAt(t testing.TB, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {

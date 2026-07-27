@@ -10,6 +10,27 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+// OperatorIDer is an optional interface for operators that carry a
+// deterministic fingerprint derived from their logical plan subtree.
+// Only data-fetching operators implement this; pure-computation operators
+// do not.
+type OperatorIDer interface {
+	OperatorID() uint64
+}
+
+type operatorIDKey struct{}
+
+// ContextWithOperatorID returns a copy of ctx carrying the given operator ID.
+func ContextWithOperatorID(ctx context.Context, id uint64) context.Context {
+	return context.WithValue(ctx, operatorIDKey{}, id)
+}
+
+// OperatorIDFromContext returns the operator ID stored in ctx, if any.
+func OperatorIDFromContext(ctx context.Context) (uint64, bool) {
+	id, ok := ctx.Value(operatorIDKey{}).(uint64)
+	return id, ok
+}
+
 // VectorOperator performs operations on series in step by step fashion.
 type VectorOperator interface {
 	// Next yields vectors of samples from all series for one or more execution steps.

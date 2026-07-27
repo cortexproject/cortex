@@ -37,6 +37,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/extract"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
@@ -123,6 +124,7 @@ type Distributor struct {
 	incomingMetadata                 *prometheus.CounterVec
 	nonHASamples                     *prometheus.CounterVec
 	dedupedSamples                   *prometheus.CounterVec
+	receivedHistogramBuckets         *prometheus.HistogramVec
 	labelsHistogram                  prometheus.Histogram
 	ingesterAppends                  *prometheus.CounterVec
 	ingesterAppendFailures           *prometheus.CounterVec
@@ -136,6 +138,7 @@ type Distributor struct {
 	validateMetrics *validation.ValidateMetrics
 
 	asyncExecutor util.AsyncExecutor
+	queryWorkers  util.AsyncExecutor
 
 	// Map to track label sets from user.
 	labelSetTracker *labelset.LabelSetTracker
@@ -153,13 +156,14 @@ type Config struct {
 	RemoteTimeout      time.Duration `yaml:"remote_timeout"`
 	ExtraQueryDelay    time.Duration `yaml:"extra_queue_delay"`
 
-	ShardingStrategy                    string `yaml:"sharding_strategy"`
-	ShardByAllLabels                    bool   `yaml:"shard_by_all_labels"`
-	ExtendWrites                        bool   `yaml:"extend_writes"`
-	SignWriteRequestsEnabled            bool   `yaml:"sign_write_requests"`
-	UseStreamPush                       bool   `yaml:"use_stream_push"`
-	RemoteWriteV2Enabled                bool   `yaml:"remote_writev2_enabled"`
-	AcceptUnknownRemoteWriteContentType bool   `yaml:"accept_unknown_remote_write_content_type"`
+	ShardingStrategy                    string                       `yaml:"sharding_strategy"`
+	ShardByAllLabels                    bool                         `yaml:"shard_by_all_labels"`
+	ExtendWrites                        bool                         `yaml:"extend_writes"`
+	SignWriteRequestsEnabled            bool                         `yaml:"sign_write_requests"`
+	SignWriteRequestsKeys               flagext.SecretStringSliceCSV `yaml:"sign_write_requests_keys"`
+	UseStreamPush                       bool                         `yaml:"use_stream_push"`
+	RemoteWriteV2Enabled                bool                         `yaml:"remote_writev2_enabled"`
+	AcceptUnknownRemoteWriteContentType bool                         `yaml:"accept_unknown_remote_write_content_type"`
 
 	// Distributors ring
 	DistributorRing RingConfig `yaml:"ring"`
@@ -171,9 +175,6 @@ type Config struct {
 	// this (and should never use it) but this feature is used by other projects built on top of it
 	SkipLabelNameValidation bool `yaml:"-"`
 
-	// This config is dynamically injected because defined in the querier config.
-	ShuffleShardingLookbackPeriod time.Duration `yaml:"-"`
-
 	// ZoneResultsQuorumMetadata enables zone results quorum when querying ingester replication set
 	// with metadata APIs (labels names and values for now). When zone awareness is enabled, only results
 	// from quorum number of zones will be included to reduce data merged and improve performance.
@@ -183,6 +184,11 @@ type Config struct {
 	// If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.
 	// When no workers are available, a new goroutine will be spawned automatically.
 	NumPushWorkers int `yaml:"num_push_workers"`
+
+	// Number of go routines to handle query fan-out calls from distributors (queriers/rulers) to ingesters.
+	// If set to 0 (default), workers are disabled, and a new goroutine will be created for each instance call.
+	// When no workers are available, a new goroutine will be spawned automatically.
+	NumQueryWorkers int `yaml:"num_query_workers"`
 
 	// Limits for distributor
 	InstanceLimits InstanceLimits `yaml:"instance_limits"`
@@ -220,11 +226,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, "distributor.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.BoolVar(&cfg.ShardByAllLabels, "distributor.shard-by-all-labels", false, "Distribute samples based on all labels, as opposed to solely by user and metric name.")
 	f.BoolVar(&cfg.SignWriteRequestsEnabled, "distributor.sign-write-requests", false, "EXPERIMENTAL: If enabled, sign the write request between distributors and ingesters.")
+	f.Var(&cfg.SignWriteRequestsKeys, "distributor.sign-write-requests-keys", "EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating PushStream connections between distributors and ingesters. The first key is used by the distributor to sign; all keys are accepted by the ingester. It only takes effect when the -distributor.sign-write-requests is true. The key change procedure for zero downtime is: (1) redeploy ingesters first with 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy both with 'newkey' to drop the old key.")
 	f.BoolVar(&cfg.UseStreamPush, "distributor.use-stream-push", false, "EXPERIMENTAL: If enabled, distributor would use stream connection to send requests to ingesters.")
 	f.StringVar(&cfg.ShardingStrategy, "distributor.sharding-strategy", util.ShardingStrategyDefault, fmt.Sprintf("The sharding strategy to use. Supported values are: %s.", strings.Join(supportedShardingStrategies, ", ")))
 	f.BoolVar(&cfg.ExtendWrites, "distributor.extend-writes", true, "Try writing to an additional ingester in the presence of an ingester not in the ACTIVE state. It is useful to disable this along with -ingester.unregister-on-shutdown=false in order to not spread samples to extra ingesters during rolling restarts with consistent naming.")
 	f.BoolVar(&cfg.ZoneResultsQuorumMetadata, "distributor.zone-results-quorum-metadata", false, "Experimental, this flag may change in the future. If zone awareness and this both enabled, when querying metadata APIs (labels names and values for now), only results from quorum number of zones will be included.")
 	f.IntVar(&cfg.NumPushWorkers, "distributor.num-push-workers", 0, "EXPERIMENTAL: Number of go routines to handle push calls from distributors to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each push request.")
+	f.IntVar(&cfg.NumQueryWorkers, "distributor.num-query-workers", 0, "EXPERIMENTAL: Number of go routines to handle query fan-out calls from distributors (queriers and rulers) to ingesters. When no workers are available, a new goroutine will be spawned automatically. If set to 0 (default), workers are disabled, and a new goroutine will be created for each query request.")
 	f.BoolVar(&cfg.RemoteWriteV2Enabled, "distributor.remote-writev2-enabled", false, "EXPERIMENTAL: If true, accept prometheus remote write v2 protocol push request.")
 	f.BoolVar(&cfg.AcceptUnknownRemoteWriteContentType, "distributor.accept-unknown-remote-write-content-type", false, "If true, treat requests with unknown or invalid Content-Type header as remote write v1 (legacy behavior). If false, return 415 Unsupported Media Type for non-standard content types.")
 
@@ -249,7 +257,11 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 		return errInvalidTenantShardSize
 	}
 
-	return cfg.HATrackerConfig.Validate()
+	if err := cfg.HATrackerConfig.Validate(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 const (
@@ -324,10 +336,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingestionRate:                       util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval),
 
 		queryDuration: instrument.NewHistogramCollector(promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "distributor_query_duration_seconds",
-			Help:      "Time spent executing expression and exemplar queries.",
-			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
+			Namespace:                       "cortex",
+			Name:                            "distributor_query_duration_seconds",
+			Help:                            "Time spent executing expression and exemplar queries.",
+			Buckets:                         []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 20, 30},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"method", "status_code"})),
 		receivedSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -348,6 +363,15 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Namespace: "cortex",
 			Name:      "distributor_received_metadata_total",
 			Help:      "The total number of received metadata, excluding rejected.",
+		}, []string{"user"}),
+		receivedHistogramBuckets: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:                       "cortex",
+			Name:                            "distributor_received_histogram_buckets",
+			Help:                            "The number of buckets in received native histogram samples before validation, per user.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
+			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
 		}, []string{"user"}),
 		incomingSamples: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -375,10 +399,13 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 			Help:      "The total number of deduplicated samples.",
 		}, []string{"user", "cluster"}),
 		labelsHistogram: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "labels_per_sample",
-			Help:      "Number of labels per sample.",
-			Buckets:   []float64{5, 10, 15, 20, 25},
+			Namespace:                       "cortex",
+			Name:                            "labels_per_sample",
+			Help:                            "Number of labels per sample.",
+			Buckets:                         []float64{5, 10, 15, 20, 25},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		ingesterAppends: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "cortex",
@@ -421,6 +448,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 
 		validateMetrics: validation.NewValidateMetrics(reg),
 		asyncExecutor:   util.NewNoOpExecutor(),
+		queryWorkers:    util.NewNoOpExecutor(),
 	}
 
 	d.labelSetTracker = labelset.NewLabelSetTracker()
@@ -428,6 +456,11 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 	if cfg.NumPushWorkers > 0 {
 		util_log.WarnExperimentalUse("Distributor: using goroutine worker pool")
 		d.asyncExecutor = util.NewWorkerPool("distributor", cfg.NumPushWorkers, reg)
+	}
+
+	if cfg.NumQueryWorkers > 0 {
+		util_log.WarnExperimentalUse("Distributor: using goroutine worker pool for query fan-out")
+		d.queryWorkers = util.NewWorkerPool("distributor-query", cfg.NumQueryWorkers, reg)
 	}
 
 	promauto.With(reg).NewGauge(prometheus.GaugeOpts{
@@ -526,6 +559,7 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 	d.receivedSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
 	d.receivedExemplars.DeleteLabelValues(userID)
 	d.receivedMetadata.DeleteLabelValues(userID)
+	d.receivedHistogramBuckets.DeleteLabelValues(userID)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeFloat)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogram)
 	d.incomingSamples.DeleteLabelValues(userID, sampleMetricTypeHistogramNHCB)
@@ -547,6 +581,8 @@ func (d *Distributor) cleanupInactiveUser(userID string) {
 
 // Called after distributor is asked to stop via StopAsync.
 func (d *Distributor) stopping(_ error) error {
+	d.asyncExecutor.Stop()
+	d.queryWorkers.Stop()
 	return services.StopManagerAndAwaitStopped(context.Background(), d.subservices)
 }
 
@@ -683,19 +719,21 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		}
 	}
 
-	var histograms []cortexpb.Histogram
+	var histograms []cortexpb.WrappedHistogram
 	if len(ts.Histograms) > 0 {
 		// Only alloc when data present
-		histograms = make([]cortexpb.Histogram, 0, len(ts.Histograms))
+		histograms = make([]cortexpb.WrappedHistogram, 0, len(ts.Histograms))
+		receivedBucketsObserver := d.receivedHistogramBuckets.WithLabelValues(userID)
 		for i, h := range ts.Histograms {
 			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
 				return emptyPreallocSeries, err
 			}
-			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h)
+			receivedBucketsObserver.Observe(float64(h.BucketCount()))
+			convertedHistogram, err := validation.ValidateNativeHistogram(d.validateMetrics, limits, userID, ts.Labels, h.Histogram)
 			if err != nil {
 				return emptyPreallocSeries, err
 			}
-			ts.Histograms[i] = convertedHistogram
+			ts.Histograms[i].Histogram = convertedHistogram
 		}
 		histograms = append(histograms, ts.Histograms...)
 	}
@@ -1022,7 +1060,7 @@ type samplesLabelSetEntry struct {
 }
 
 // countNHCB returns the number of native histograms with custom buckets schema in the given slice.
-func countNHCB(histograms []cortexpb.Histogram) int {
+func countNHCB(histograms []cortexpb.WrappedHistogram) int {
 	n := 0
 	for _, h := range histograms {
 		if histogram.IsCustomBucketsSchema(h.GetSchema()) {
@@ -1322,7 +1360,7 @@ func getErrorStatus(err error) string {
 
 // ForReplicationSet runs f, in parallel, for all ingesters in the input replication set.
 func (d *Distributor) ForReplicationSet(ctx context.Context, replicationSet ring.ReplicationSet, zoneResultsQuorum bool, partialDataEnabled bool, f func(context.Context, ingester_client.IngesterClient) (any, error)) ([]any, error) {
-	return replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, zoneResultsQuorum, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
+	return replicationSet.DoWithExecutor(ctx, d.cfg.ExtraQueryDelay, zoneResultsQuorum, partialDataEnabled, d.queryWorkers, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err

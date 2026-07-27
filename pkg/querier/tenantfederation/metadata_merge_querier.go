@@ -3,6 +3,7 @@ package tenantfederation
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -27,10 +28,13 @@ func NewMetadataQuerier(upstream querier.MetadataQuerier, cfg Config, reg promet
 		allowPartialData: cfg.AllowPartialData,
 
 		tenantsPerMetadataQuery: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_federated_tenants_per_metadata_query",
-			Help:      "Number of tenants per metadata query.",
-			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64},
+			Namespace:                       "cortex",
+			Name:                            "querier_federated_tenants_per_metadata_query",
+			Help:                            "Number of tenants per metadata query.",
+			Buckets:                         []float64{1, 2, 4, 8, 16, 32, 64},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }
@@ -61,7 +65,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	m.tenantsPerMetadataQuery.Observe(float64(len(tenantIds)))
 
 	if len(tenantIds) == 1 {
-		return m.upstream.MetricsMetadata(ctx, req)
+		return m.upstream.MetricsMetadata(user.InjectOrgID(ctx, tenantIds[0]), req)
 	}
 
 	jobs := make([]any, len(tenantIds))

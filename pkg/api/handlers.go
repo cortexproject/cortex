@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -21,6 +22,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/util/features"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/weaveworks/common/instrument"
 	"github.com/weaveworks/common/middleware"
@@ -171,24 +173,33 @@ func NewQuerierHandler(
 ) http.Handler {
 	// Prometheus histograms for requests to the querier.
 	querierRequestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving HTTP requests to the querier.",
-		Buckets:   instrument.DefBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_request_duration_seconds",
+		Help:                            "Time (in seconds) spent serving HTTP requests to the querier.",
+		Buckets:                         instrument.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route", "status_code", "ws"})
 
 	receivedMessageSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_request_message_bytes",
-		Help:      "Size (in bytes) of messages received in the request to the querier.",
-		Buckets:   middleware.BodySizeBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_request_message_bytes",
+		Help:                            "Size (in bytes) of messages received in the request to the querier.",
+		Buckets:                         middleware.BodySizeBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route"})
 
 	sentMessageSize := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "cortex",
-		Name:      "querier_response_message_bytes",
-		Help:      "Size (in bytes) of messages sent in response by the querier.",
-		Buckets:   middleware.BodySizeBuckets,
+		Namespace:                       "cortex",
+		Name:                            "querier_response_message_bytes",
+		Help:                            "Size (in bytes) of messages sent in response by the querier.",
+		Buckets:                         middleware.BodySizeBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"method", "route"})
 
 	inflightRequests := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
@@ -245,6 +256,7 @@ func NewQuerierHandler(
 		false,
 		false,
 		nil,
+		features.NewRegistry(),
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()
@@ -286,7 +298,11 @@ func NewQuerierHandler(
 	legacyPromRouter := route.New().WithPrefix(path.Join(legacyPrefix, "/api/v1"))
 	api.Register(legacyPromRouter)
 
-	queryAPI := queryapi.NewQueryAPI(engine, translateSampleAndChunkQueryable, statsRenderer, logger, codecs, corsOrigin)
+	queryAPI := queryapi.NewQueryAPI(engine, translateSampleAndChunkQueryable, statsRenderer, logger, codecs, corsOrigin, stats.PhaseTrackerConfig{
+		TotalTimeout:      querierCfg.TimeoutClassificationDeadline,
+		EvalTimeThreshold: querierCfg.TimeoutClassificationEvalThreshold,
+		Enabled:           querierCfg.TimeoutClassificationEnabled,
+	})
 
 	requestTracker := request_tracker.NewRequestTracker(querierCfg.ActiveQueryTrackerDir, "apis.active", querierCfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
 	var apiHandler http.Handler

@@ -1,6 +1,8 @@
 package parquetconverter
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -28,9 +30,12 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 			Help: "Time taken to for the latest block conversion for the user.",
 		}, []string{"user"}),
 		convertParquetBlockDelay: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_parquet_converter_convert_block_delay_minutes",
-			Help:    "Delay in minutes of Parquet block to be converted from the TSDB block being uploaded to object store",
-			Buckets: []float64{5, 10, 15, 20, 30, 45, 60, 80, 100, 120, 150, 180, 210, 240, 270, 300},
+			Name:                            "cortex_parquet_converter_convert_block_delay_minutes",
+			Help:                            "Delay in minutes of Parquet block to be converted from the TSDB block being uploaded to object store",
+			Buckets:                         []float64{5, 10, 15, 20, 30, 45, 60, 80, 100, 120, 150, 180, 210, 240, 270, 300},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		ownedUsers: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_parquet_converter_users_owned",

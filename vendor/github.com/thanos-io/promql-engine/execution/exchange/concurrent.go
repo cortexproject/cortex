@@ -12,6 +12,7 @@ import (
 	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
@@ -118,7 +119,12 @@ func (c *concurrencyOperator) Next(ctx context.Context, buf []model.StepVector) 
 }
 
 func (c *concurrencyOperator) pull(ctx context.Context) {
-	defer close(c.buffer)
+	defer func() {
+		if r := recover(); r != nil {
+			c.buffer <- maybeStepVector{err: errors.Newf("unexpected panic: %v", r)}
+		}
+		close(c.buffer)
+	}()
 
 	for {
 		select {

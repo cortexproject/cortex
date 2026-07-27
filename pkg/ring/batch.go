@@ -125,9 +125,9 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, e util.AsyncExecutor
 	wg.Add(len(instances))
 	for _, i := range instances {
 		e.Submit(func() {
+			defer wg.Done()
 			err := callback(i.desc, i.indexes)
 			tracker.record(i, err)
-			wg.Done()
 		})
 	}
 

@@ -282,3 +282,96 @@ func checkExtraFields(t *testing.T, expected, actual []any) {
 
 	assert.Equal(t, expectedMap, actualMap)
 }
+
+func TestStats_QueryStart(t *testing.T) {
+	t.Run("set and load query start", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		now := time.Now()
+		stats.SetQueryStart(now)
+
+		loaded := stats.LoadQueryStart()
+		assert.Equal(t, now.UnixNano(), loaded.UnixNano())
+	})
+
+	t.Run("nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.SetQueryStart(time.Now())
+
+		assert.True(t, stats.LoadQueryStart().IsZero())
+	})
+
+	t.Run("zero value when unset", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+
+		assert.True(t, stats.LoadQueryStart().IsZero())
+	})
+}
+
+func TestStats_QueueJoinTime(t *testing.T) {
+	t.Run("set and load queue join time", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		now := time.Now()
+		stats.SetQueueJoinTime(now)
+
+		loaded := stats.LoadQueueJoinTime()
+		assert.Equal(t, now.UnixNano(), loaded.UnixNano())
+	})
+
+	t.Run("nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.SetQueueJoinTime(time.Now())
+
+		assert.True(t, stats.LoadQueueJoinTime().IsZero())
+	})
+
+	t.Run("zero value when unset", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+
+		assert.True(t, stats.LoadQueueJoinTime().IsZero())
+	})
+}
+
+func TestStats_QueueLeaveTime(t *testing.T) {
+	t.Run("set and load queue leave time", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+		now := time.Now()
+		stats.SetQueueLeaveTime(now)
+
+		loaded := stats.LoadQueueLeaveTime()
+		assert.Equal(t, now.UnixNano(), loaded.UnixNano())
+	})
+
+	t.Run("nil receiver", func(t *testing.T) {
+		var stats *QueryStats
+		stats.SetQueueLeaveTime(time.Now())
+
+		assert.True(t, stats.LoadQueueLeaveTime().IsZero())
+	})
+
+	t.Run("zero value when unset", func(t *testing.T) {
+		stats, _ := ContextWithEmptyStats(context.Background())
+
+		assert.True(t, stats.LoadQueueLeaveTime().IsZero())
+	})
+}
+
+func TestStats_Merge_DoesNotCopyPhaseTrackingFields(t *testing.T) {
+	t.Run("merge does not copy phase tracking fields", func(t *testing.T) {
+		source := &QueryStats{}
+		source.SetQueryStart(time.Now())
+		source.SetQueueJoinTime(time.Now())
+		source.SetQueueLeaveTime(time.Now())
+		source.AddWallTime(time.Second)
+
+		target := &QueryStats{}
+		target.Merge(source)
+
+		// Phase tracking fields should NOT be copied
+		assert.True(t, target.LoadQueryStart().IsZero())
+		assert.True(t, target.LoadQueueJoinTime().IsZero())
+		assert.True(t, target.LoadQueueLeaveTime().IsZero())
+
+		// Regular fields should still be merged
+		assert.Equal(t, time.Second, target.LoadWallTime())
+	})
+}

@@ -2,10 +2,19 @@ package cortexpb
 
 import (
 	"sync"
+
+	"go.uber.org/atomic"
 )
 
+var dynamicSymbolsCapacity atomic.Int64
+
+func init() {
+	dynamicSymbolsCapacity.Store(int64(initialSymbolsCapacity))
+}
+
 var (
-	expectedSymbols = 20
+	initialSymbolsCapacity = 128
+	maxSymbolsCapacity     = int64(8192)
 
 	slicePoolV2 = sync.Pool{
 		New: func() any {
@@ -18,7 +27,7 @@ var (
 			return &TimeSeriesV2{
 				LabelsRefs: make([]uint32, 0, expectedLabels),
 				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
-				Histograms: make([]Histogram, 0, expectedHistogramsPerSeries),
+				Histograms: make([]WrappedHistogram, 0, expectedHistogramsPerSeries),
 				Exemplars:  make([]ExemplarV2, 0, expectedExemplarsPerSeries),
 				Metadata:   MetadataV2{},
 			}
@@ -29,7 +38,7 @@ var (
 		New: func() any {
 			return &PreallocWriteRequestV2{
 				WriteRequestV2: WriteRequestV2{
-					Symbols: make([]string, 0, expectedSymbols),
+					Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
 				},
 			}
 		},
@@ -77,6 +86,38 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 		req.data = nil
 	}
 	req.Source = 0
+
+	// If the underlying array has grown beyond our acceptable maximum capacity,
+	// we discard this object instead of putting it back into the pool to let GC
+	// reclaim it.
+	symbolsCap := int64(cap(req.Symbols))
+	if symbolsCap > maxSymbolsCapacity {
+		if req.Timeseries != nil {
+			ReuseSliceV2(req.Timeseries)
+			req.Timeseries = nil
+		}
+		return
+	}
+
+	// Update the dynamic symbol capacity.
+	for {
+		current := dynamicSymbolsCapacity.Load()
+		// We use an EMA to update the capacity.
+		newAvg := max((current*9+symbolsCap*1)/10, int64(initialSymbolsCapacity))
+
+		if current == newAvg {
+			// nothing to change
+			break
+		}
+
+		if dynamicSymbolsCapacity.CompareAndSwap(current, newAvg) {
+			break
+		}
+	}
+
+	for i := range req.Symbols {
+		req.Symbols[i] = ""
+	}
 	req.Symbols = req.Symbols[:0]
 	if req.Timeseries != nil {
 		ReuseSliceV2(req.Timeseries)
@@ -87,6 +128,14 @@ func ReuseWriteRequestV2(req *PreallocWriteRequestV2) {
 
 func PreallocWriteRequestV2FromPool() *PreallocWriteRequestV2 {
 	return writeRequestPoolV2.Get().(*PreallocWriteRequestV2)
+}
+
+// Reset implements proto.Message and preserves the capacity of the Symbols slice.
+func (p *PreallocWriteRequestV2) Reset() {
+	savedSymbols := p.Symbols
+	p.WriteRequestV2.Reset()
+	p.Symbols = savedSymbols[:0]
+	p.data = nil
 }
 
 // PreallocTimeseriesV2SliceFromPool retrieves a slice of PreallocTimeseriesV2 from a sync.Pool.
@@ -120,6 +169,8 @@ func ReuseTimeseriesV2(ts *TimeSeriesV2) {
 	ts.Metadata.Type = 0
 	ts.Metadata.UnitRef = 0
 	ts.Metadata.HelpRef = 0
+	// Clear CT
+	ts.CreatedTimestamp = 0
 
 	// clear exemplar label refs
 	for i := range ts.Exemplars {

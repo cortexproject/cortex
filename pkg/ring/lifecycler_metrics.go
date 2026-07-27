@@ -1,6 +1,8 @@
 package ring
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
@@ -30,10 +32,13 @@ func NewLifecyclerMetrics(ringName string, reg prometheus.Registerer) *Lifecycle
 			ConstLabels: prometheus.Labels{"name": ringName},
 		}),
 		shutdownDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:        "shutdown_duration_seconds",
-			Help:        "Duration (in seconds) of shutdown procedure (ie transfer or flush).",
-			Buckets:     prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
-			ConstLabels: prometheus.Labels{"name": ringName},
+			Name:                            "shutdown_duration_seconds",
+			Help:                            "Duration (in seconds) of shutdown procedure (ie transfer or flush).",
+			Buckets:                         prometheus.ExponentialBuckets(10, 2, 8), // Biggest bucket is 10*2^(9-1) = 2560, or 42 mins.
+			ConstLabels:                     prometheus.Labels{"name": ringName},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"op", "status"}),
 	}
 

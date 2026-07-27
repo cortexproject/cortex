@@ -90,7 +90,11 @@ func newVectorSelector(ctx context.Context, e *logicalplan.VectorSelector, scann
 	start, end := getTimeRangesForVectorSelector(e, opts, 0)
 	hints.Start = start
 	hints.End = end
-	return scanners.NewVectorSelector(ctx, opts, hints, *e)
+	op, err := scanners.NewVectorSelector(ctx, opts, hints, *e)
+	if err != nil {
+		return nil, err
+	}
+	return model.WithID(op, logicalplan.NodeFingerprint(e)), nil
 }
 
 func newCall(ctx context.Context, e *logicalplan.FunctionCall, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -186,7 +190,11 @@ func newRangeVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, t 
 	hints.Start = start
 	hints.End = end
 	hints.Range = milliSecondRange
-	return scanners.NewMatrixSelector(ctx, opts, hints, *t, *e)
+	op, err := scanners.NewMatrixSelector(ctx, opts, hints, *t, *e)
+	if err != nil {
+		return nil, err
+	}
+	return model.WithID(op, logicalplan.NodeFingerprint(t)), nil
 }
 
 func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *logicalplan.Subquery, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -390,7 +398,7 @@ func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts
 	selectorOpts := *opts
 	selectorOpts.LookbackDelta = 0
 	remoteExec := remote.NewExecution(qry, e.QueryRangeStart, e.QueryRangeEnd, e.Engine.LabelSets(), &selectorOpts, hints)
-	return exchange.NewConcurrent(remoteExec, 2, opts), nil
+	return exchange.NewConcurrent(model.WithID(remoteExec, logicalplan.NodeFingerprint(e)), 2, opts), nil
 }
 
 func newDuplicateLabelCheck(ctx context.Context, e *logicalplan.CheckDuplicateLabels, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

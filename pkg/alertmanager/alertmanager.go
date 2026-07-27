@@ -8,22 +8,23 @@ import (
 
 	"net/http"
 	"net/url"
-	"path"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/api"
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/eventrecorder"
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/inhibit"
+	"github.com/prometheus/alertmanager/marker"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/notify/discord"
@@ -48,8 +49,6 @@ import (
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/timeinterval"
-	"github.com/prometheus/alertmanager/types"
-	"github.com/prometheus/alertmanager/ui"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	commoncfg "github.com/prometheus/common/config"
@@ -58,8 +57,10 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
+	"github.com/cortexproject/cortex/pkg/alertmanager/ui"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 	util_net "github.com/cortexproject/cortex/pkg/util/net"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -106,8 +107,7 @@ type Alertmanager struct {
 	persister       *statePersister
 	nflog           *nflog.Log
 	silences        *silence.Silences
-	alertMarker     types.AlertMarker
-	groupMarker     types.GroupMarker
+	groupMarker     marker.GroupMarker
 	alerts          *mem.Alerts
 	dispatcher      *dispatch.Dispatcher
 	inhibitor       *inhibit.Inhibitor
@@ -132,20 +132,6 @@ type Alertmanager struct {
 	rateLimitedNotifications *prometheus.CounterVec
 
 	requestDuration *prometheus.HistogramVec
-}
-
-var (
-	webReload = make(chan chan error)
-)
-
-func init() {
-	go func() {
-		// Since this is not a "normal" Alertmanager which reads its config
-		// from disk, we just accept and ignore web-based reload signals. Config
-		// updates are only applied externally via ApplyConfig().
-		for range webReload {
-		}
-	}()
 }
 
 // State helps with replication and synchronization of notifications and silences across several alertmanager replicas.
@@ -237,9 +223,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	am.wg.Go(func() {
 		am.nflog.Maintenance(maintenancePeriod, notificationFile, am.stop, nil)
 	})
-	memMarker := types.NewMarker(reg)
-	am.alertMarker = memMarker
-	am.groupMarker = memMarker
+	am.groupMarker = marker.NewGroupMarker()
 
 	silencesFile := filepath.Join(cfg.TenantDataDir, silencesSnapshot)
 
@@ -278,7 +262,7 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 		return nil, errors.Wrap(err, "error parsing the feature flag list")
 	}
 
-	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig)
+	am.pipelineBuilder = notify.NewPipelineBuilder(am.registry, featureConfig, eventrecorder.NopRecorder())
 
 	am.wg.Go(func() {
 		am.silences.Maintenance(maintenancePeriod, silencesFile, am.stop, nil)
@@ -288,21 +272,20 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 	if am.cfg.Limits != nil {
 		callback = newAlertsLimiter(am.cfg.UserID, am.cfg.Limits, reg)
 	}
-	am.alerts, err = mem.NewAlerts(context.Background(), am.alertMarker, am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), am.registry, nil)
+	am.alerts, err = mem.NewAlerts(context.Background(), am.cfg.GCInterval, 0, callback, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder(), am.registry, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create alerts: %v", err)
 	}
 
 	am.api, err = api.New(api.Options{
-		Alerts:          am.alerts,
-		Silences:        am.silences,
-		AlertStatusFunc: am.alertMarker.Status,
-		GroupMutedFunc:  am.groupMarker.Muted,
+		Alerts:         am.alerts,
+		Silences:       am.silences,
+		GroupMutedFunc: am.groupMarker.Muted,
 		// Cortex should not expose cluster information back to its tenants.
 		Peer:     &NilPeer{},
 		Registry: am.registry,
 		Logger:   util_log.GoKitLogToSlog(log.With(am.logger, "component", "api")),
-		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
+		GroupFunc: func(ctx context.Context, f1 func(*dispatch.Route) bool, f2 func(*alert.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string, error) {
 			return am.dispatcher.Groups(ctx, f1, f2)
 		},
 		Concurrency:     am.cfg.APIConcurrency,
@@ -314,21 +297,9 @@ func New(cfg *Config, reg *prometheus.Registry) (*Alertmanager, error) {
 
 	router := route.New().WithPrefix(am.cfg.ExternalURL.Path)
 
-	ui.Register(router, webReload, util_log.GoKitLogToSlog(log.With(am.logger, "component", "ui")))
+	ui.Register(router)
 	am.mux = am.api.Register(router, am.cfg.ExternalURL.Path)
-
-	// Override some extra paths registered in the router (eg. /metrics which by default exposes prometheus.DefaultRegisterer).
-	// Entire router is registered in Mux to "/" path, so there is no conflict with overwriting specific paths.
-	for _, p := range []string{"/metrics", "/-/reload", "/debug/"} {
-		a := path.Join(am.cfg.ExternalURL.Path, p)
-		// Preserve end slash, as for Mux it means entire subtree.
-		if strings.HasSuffix(p, "/") {
-			a = a + "/"
-		}
-		am.mux.Handle(a, http.NotFoundHandler())
-	}
-
-	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry)
+	am.dispatcherMetrics = dispatch.NewDispatcherMetrics(true, am.registry, nil)
 
 	//TODO: From this point onward, the alertmanager _might_ receive requests - we need to make sure we've settled and are ready.
 	return am, nil
@@ -381,7 +352,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		am.dispatcher.Stop()
 	}
 
-	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, am.alertMarker, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")))
+	am.inhibitor = inhibit.NewInhibitor(am.alerts, conf.InhibitRules, util_log.GoKitLogToSlog(log.With(am.logger, "component", "inhibitor")), eventrecorder.NopRecorder())
 
 	waitFunc := clusterWait(am.state.Position, am.cfg.PeerTimeout)
 
@@ -424,7 +395,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		integrationsMap,
 		waitFunc,
 		am.inhibitor,
-		silence.NewSilencer(am.silences, am.alertMarker, util_log.GoKitLogToSlog(am.logger)),
+		silence.NewSilencer(am.silences, util_log.GoKitLogToSlog(am.logger), eventrecorder.NopRecorder()),
 		timeinterval.NewIntervener(timeIntervals),
 		am.groupMarker,
 		am.nflog,
@@ -440,11 +411,27 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		defaultMaintenanceInterval, // TODO: add to config
 		&dispatcherLimits{tenant: am.cfg.UserID, limits: am.cfg.Limits},
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
+		eventrecorder.NopRecorder(),
 		am.dispatcherMetrics,
 	)
 
-	go am.dispatcher.Run(time.Now())
+	// Start the inhibitor and dispatcher and wait for each to finish loading
+	// before returning, mirroring upstream cmd/alertmanager (inhibitor first,
+	// so its cache is populated before the dispatcher can notify).
+	// The waits create the happens-before edge between the startup of the
+	// goroutines spawned here and any later Stop(): Dispatcher.Stop() calls
+	// finished.Wait(), and running that concurrently with the WaitGroup's first
+	// Add() inside Dispatcher.Run() is a data race by the Go memory model (what
+	// -race reports in #7603). They likewise prevent Stop() from being silently
+	// ignored - leaking the inhibitor goroutine forever - when it executes
+	// before Run() has installed ih.cancel. ApplyConfig and Stop are serialized
+	// by the callers (MultitenantAlertmanager.alertmanagersMtx), so once this
+	// returns any later Stop() is ordered after dispatcher/inhibitor startup.
 	go am.inhibitor.Run()
+	am.inhibitor.WaitForLoading()
+
+	go am.dispatcher.Run(time.Now())
+	am.dispatcher.WaitForLoading()
 
 	am.configHashMetric.Set(md5HashAsMetricValue([]byte(rawCfg)))
 	return nil
@@ -523,7 +510,7 @@ func buildIntegrationsMap(nc []config.Receiver, tmpl *template.Template, firewal
 // Taken from https://github.com/prometheus/alertmanager/blob/d7b4f0c7322e7151d6e3b1e31cbc15361e295d8d/cmd/alertmanager/main.go#L135-L193.
 func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, firewallDialer *util_net.FirewallDialer, logger log.Logger, wrapper func(string, notify.Notifier) notify.Notifier) ([]notify.Integration, error) {
 	var (
-		errs         types.MultiError
+		errs         multierror.MultiError
 		integrations []notify.Integration
 		add          = func(name string, i int, rs notify.ResolvedSender, f func(l log.Logger) (notify.Notifier, error)) {
 			n, err := f(log.With(logger, "integration", name))
@@ -633,8 +620,8 @@ func buildReceiverIntegrations(nc config.Receiver, tmpl *template.Template, fire
 	}
 
 	// If we add support for more integrations, we need to add them to validation as well. See validation.allowedIntegrationNames field.
-	if errs.Len() > 0 {
-		return nil, &errs
+	if len(errs) > 0 {
+		return nil, errs.Err()
 	}
 	return integrations, nil
 }
@@ -758,7 +745,7 @@ func newAlertsLimiter(tenant string, limits Limits, reg prometheus.Registerer) *
 	return limiter
 }
 
-func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
+func (a *alertsLimiter) PreStore(alert *alert.Alert, existing bool) error {
 	if alert == nil {
 		return nil
 	}
@@ -790,7 +777,7 @@ func (a *alertsLimiter) PreStore(alert *types.Alert, existing bool) error {
 	return nil
 }
 
-func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
+func (a *alertsLimiter) PostStore(alert *alert.Alert, existing bool) {
 	if alert == nil {
 		return
 	}
@@ -810,7 +797,7 @@ func (a *alertsLimiter) PostStore(alert *types.Alert, existing bool) {
 	a.totalSize += newSize
 }
 
-func (a *alertsLimiter) PostDelete(alert *types.Alert) {
+func (a *alertsLimiter) PostDelete(alert *alert.Alert) {
 	if alert == nil {
 		return
 	}
@@ -824,6 +811,11 @@ func (a *alertsLimiter) PostDelete(alert *types.Alert) {
 	delete(a.sizes, fp)
 	a.count--
 }
+
+// PostGC is a no-op because alertsLimiter already cleans up per-alert state
+// (count, totalSize, and sizes map) in PostDelete, which is called individually
+// for each alert before PostGC is invoked. There is nothing left to do here.
+func (a *alertsLimiter) PostGC(_ model.Fingerprints) {}
 
 func (a *alertsLimiter) currentStats() (count, totalSize int) {
 	a.mx.Lock()

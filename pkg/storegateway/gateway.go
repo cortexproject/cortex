@@ -391,6 +391,11 @@ func (g *StoreGateway) running(ctx context.Context) error {
 }
 
 func (g *StoreGateway) stopping(_ error) error {
+	if g.stores != nil {
+		if err := g.stores.Stop(); err != nil {
+			level.Warn(g.logger).Log("msg", "failed to stop bucket stores", "err", err)
+		}
+	}
 	if g.subservices != nil {
 		return services.StopManagerAndAwaitStopped(context.Background(), g.subservices)
 	}

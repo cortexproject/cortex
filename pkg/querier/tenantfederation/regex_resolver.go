@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -124,15 +125,17 @@ func (r *RegexResolver) running(ctx context.Context) error {
 			active, deleting, _, err := r.userScanner.ScanUsers(ctx)
 			if err != nil {
 				level.Error(r.logger).Log("msg", "failed to discover users from bucket", "err", err)
+				continue
 			}
 
-			r.Lock()
-			r.knownUsers = append(active, deleting...)
-			// We keep it sort
-			sort.Strings(r.knownUsers)
+			newUsers := append(active, deleting...)
+			sort.Strings(newUsers)
 
-			// Reset the cache because the set of available users has changed.
-			if r.matchedCache != nil {
+			r.Lock()
+			changed := !slices.Equal(r.knownUsers, newUsers)
+			r.knownUsers = newUsers
+			if changed && r.matchedCache != nil {
+				// Reset the cache when the set of available users has changed.
 				r.matchedCache.Purge()
 				r.matchedCacheSize.Set(0)
 			}
@@ -210,7 +213,7 @@ func (r *RegexResolver) validateAndReturnMatched(orgID string, matched []string)
 			// when querying for a newly created orgID, the query may not
 			// work because it has not been uploaded to object storage.
 			// To make the query work (not breaking existing behavior),
-			// paas the orgID if it is valid.
+			// pass the orgID if it is valid.
 			return []string{orgID}, nil
 		}
 

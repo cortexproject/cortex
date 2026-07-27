@@ -133,10 +133,11 @@ func DefaultServerOptions() *ServerOptions {
 // altsTC is the credentials required for authenticating a connection using ALTS.
 // It implements credentials.TransportCredentials interface.
 type altsTC struct {
-	info      *credentials.ProtocolInfo
-	side      core.Side
-	accounts  []string
-	hsAddress string
+	info             *credentials.ProtocolInfo
+	side             core.Side
+	accounts         []string
+	hsAddress        string
+	boundAccessToken string
 }
 
 // NewClientCreds constructs a client-side ALTS TransportCredentials object.
@@ -180,16 +181,9 @@ func (g *altsTC) ClientHandshake(ctx context.Context, addr string, rawConn net.C
 	}
 	// Do not close hsConn since it is shared with other handshakes.
 
-	// Possible context leak:
-	// The cancel function for the child context we create will only be
-	// called a non-nil error is returned.
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
-	defer func() {
-		if err != nil {
-			cancel()
-		}
-	}()
+	defer cancel()
 
 	opts := handshaker.DefaultClientHandshakerOptions()
 	opts.TargetName = addr
@@ -198,15 +192,13 @@ func (g *altsTC) ClientHandshake(ctx context.Context, addr string, rawConn net.C
 		MaxRpcVersion: maxRPCVersion,
 		MinRpcVersion: minRPCVersion,
 	}
+	opts.BoundAccessToken = g.boundAccessToken
 	chs, err := handshaker.NewClientHandshaker(ctx, hsConn, rawConn, opts)
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() {
-		if err != nil {
-			chs.Close()
-		}
-	}()
+	// Close the handshaker since we have obtained a connection.
+	defer chs.Close()
 	secConn, authInfo, err := chs.ClientHandshake(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -245,15 +237,12 @@ func (g *altsTC) ServerHandshake(rawConn net.Conn) (_ net.Conn, _ credentials.Au
 	if err != nil {
 		return nil, nil, err
 	}
-	defer func() {
-		if err != nil {
-			shs.Close()
-		}
-	}()
 	secConn, authInfo, err := shs.ServerHandshake(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
+	// Close the handshaker since we have obtained a connection.
+	defer shs.Close()
 	altsAuthInfo, ok := authInfo.(AuthInfo)
 	if !ok {
 		return nil, nil, errors.New("server-side auth info is not of type alts.AuthInfo")

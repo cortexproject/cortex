@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -52,10 +53,14 @@ const (
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
+var errInvalidNumRowGroups = errors.New("invalid -parquet-converter.num-row-groups: must be greater than or equal to 0")
+
 type Config struct {
 	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
 	ConversionInterval  time.Duration `yaml:"conversion_interval"`
 	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
+	NumRowGroups        int           `yaml:"num_row_groups"`
+	MaxNumColumns       int           `yaml:"max_num_columns"`
 	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
 
 	DataDir string `yaml:"data_dir"`
@@ -106,8 +111,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Local directory path for caching TSDB blocks during parquet conversion.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Maximum concurrent goroutines for downloading block metadata from object storage.")
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Maximum number of time series per parquet row group. Larger values improve compression but may reduce performance during reads.")
+	f.IntVar(&cfg.NumRowGroups, "parquet-converter.num-row-groups", 0, "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. 0 means unlimited (single shard).")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "How often to check for new TSDB blocks to convert to parquet format.")
+	f.IntVar(&cfg.MaxNumColumns, "parquet-converter.max-num-columns", 0, "Maximum number of columns per Parquet file. When exceeded, conversion will automatically shard the data into multiple files. 0 uses the library default (32767).")
 	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Enable disk-based write buffering to reduce memory consumption during parquet file generation.")
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.NumRowGroups < 0 {
+		return errInvalidNumRowGroups
+	}
+	return nil
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -125,22 +139,32 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 }
 
 func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, usersScanner users.Scanner) *Converter {
+	baseConverterOptions := []convert.ConvertOption{
+		convert.WithColDuration(time.Hour * 8),
+		convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
+	}
+
+	if cfg.NumRowGroups > 0 {
+		baseConverterOptions = append(baseConverterOptions, convert.WithNumRowGroups(cfg.NumRowGroups))
+	}
+
 	c := &Converter{
-		cfg:            cfg,
-		reg:            registerer,
-		storageCfg:     storageCfg,
-		logger:         logger,
-		limits:         limits,
-		usersScanner:   usersScanner,
-		pool:           chunkenc.NewPool(),
-		blockRanges:    blockRanges,
-		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
-		metrics:        newMetrics(registerer),
-		bkt:            bkt,
-		baseConverterOptions: []convert.ConvertOption{
-			convert.WithColDuration(time.Hour * 8),
-			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
-		},
+		cfg:                  cfg,
+		reg:                  registerer,
+		storageCfg:           storageCfg,
+		logger:               logger,
+		limits:               limits,
+		usersScanner:         usersScanner,
+		pool:                 chunkenc.NewPool(),
+		blockRanges:          blockRanges,
+		fetcherMetrics:       block.NewFetcherMetrics(registerer, nil, nil),
+		metrics:              newMetrics(registerer),
+		bkt:                  bkt,
+		baseConverterOptions: baseConverterOptions,
+	}
+
+	if cfg.MaxNumColumns > 0 {
+		c.baseConverterOptions = append(c.baseConverterOptions, convert.WithMaxNumColumns(cfg.MaxNumColumns))
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -543,6 +567,17 @@ func (c *Converter) ownBlock(ring ring.ReadRing, blockId string) (bool, error) {
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil
+}
+
+// RingHandler is an HTTP handler that returns the ring status page.
+func (c *Converter) RingHandler(w http.ResponseWriter, req *http.Request) {
+	if c.State() != services.Running {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Parquet Converter is not running yet."))
+		return
+	}
+
+	c.ring.ServeHTTP(w, req)
 }
 
 func (c *Converter) cleanupMetricsForNotOwnedUser(userID string) {

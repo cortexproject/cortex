@@ -42,10 +42,13 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 var configsRequestDuration = instrument.NewHistogramCollector(promauto.NewHistogramVec(prometheus.HistogramOpts{
-	Namespace: "cortex",
-	Name:      "configs_request_duration_seconds",
-	Help:      "Time spent requesting userconfig.",
-	Buckets:   prometheus.DefBuckets,
+	Namespace:                       "cortex",
+	Name:                            "configs_request_duration_seconds",
+	Help:                            "Time spent requesting userconfig.",
+	Buckets:                         prometheus.DefBuckets,
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: time.Hour,
 }, []string{"operation", "status_code"}))
 
 // Client is what the ruler and altermanger needs from a config store to process rules.

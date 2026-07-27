@@ -1,4 +1,4 @@
-FROM debian:10
+FROM debian:12
 ENV container docker
 ENV LC_ALL C
 ENV DEBIAN_FRONTEND noninteractive

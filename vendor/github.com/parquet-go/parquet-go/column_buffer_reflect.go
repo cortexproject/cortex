@@ -1,10 +1,14 @@
 package parquet
 
 import (
+	"bytes"
 	"cmp"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"maps"
+	"math"
+	"math/big"
 	"math/bits"
 	"reflect"
 	"sort"
@@ -18,6 +22,7 @@ import (
 	"github.com/parquet-go/parquet-go/deprecated"
 	"github.com/parquet-go/parquet-go/internal/memory"
 	"github.com/parquet-go/parquet-go/sparse"
+	"github.com/twpayne/go-geom"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -33,14 +38,13 @@ import (
 // - Nil pointers/interfaces/slices/maps
 // - json.RawMessage containing "null"
 // - *jsonlite.Value with Kind == jsonlite.Null
-// - nil *structpb.Struct, *structpb.ListValue, *structpb.Value
-// - Zero values for value types
+// - *structpb.Value with NullValue kind
+// - Zero values for value types (bool, int, float, string, struct, etc.)
 func isNullValue(value reflect.Value) bool {
-	if !value.IsValid() {
-		return true
-	}
-
 	switch value.Kind() {
+	case reflect.Invalid:
+		return true
+
 	case reflect.Pointer, reflect.Interface:
 		if value.IsNil() {
 			return true
@@ -316,22 +320,24 @@ func writeDuration(col ColumnBuffer, levels columnLevels, d time.Duration, node 
 // writeValueFuncOf constructs a function that writes reflect.Values to column buffers.
 // It follows the deconstructFuncOf pattern, recursively building functions for the schema tree.
 // Returns (nextColumnIndex, writeFunc).
-func writeValueFuncOf(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOf(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	switch {
 	case node.Optional():
 		return writeValueFuncOfOptional(columnIndex, node)
 	case node.Repeated():
-		return writeValueFuncOfRepeated(columnIndex, node)
+		return writeValueFuncOfRepeated(columnIndex, Required(node))
 	case isList(node):
 		return writeValueFuncOfList(columnIndex, node)
 	case isMap(node):
 		return writeValueFuncOfMap(columnIndex, node)
+	case isVariant(node):
+		return writeValueFuncOfVariant(columnIndex, node)
 	default:
 		return writeValueFuncOfRequired(columnIndex, node)
 	}
 }
 
-func writeValueFuncOfOptional(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfOptional(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, Required(node))
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		if isNullValue(value) {
@@ -343,8 +349,8 @@ func writeValueFuncOfOptional(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfRepeated(columnIndex int16, node Node) (int16, writeValueFunc) {
-	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, Required(node))
+func writeValueFuncOfRepeated(columnIndex uint16, node Node) (uint16, writeValueFunc) {
+	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, node)
 	return nextColumnIndex, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 	writeRepatedValue:
 		if !value.IsValid() {
@@ -472,7 +478,7 @@ func writeValueFuncOfRepeated(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfRequired(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfRequired(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	switch {
 	case node.Leaf():
 		return writeValueFuncOfLeaf(columnIndex, node)
@@ -481,16 +487,19 @@ func writeValueFuncOfRequired(columnIndex int16, node Node) (int16, writeValueFu
 	}
 }
 
-func writeValueFuncOfList(columnIndex int16, node Node) (int16, writeValueFunc) {
-	return writeValueFuncOf(columnIndex, Repeated(listElementOf(node)))
+func writeValueFuncOfList(columnIndex uint16, node Node) (uint16, writeValueFunc) {
+	elem := listElementOf(node)
+	// Preserve optionality of list elements when writing via reflection paths.
+	if elem.Optional() {
+		return writeValueFuncOfRepeated(columnIndex, elem)
+	}
+	return writeValueFuncOf(columnIndex, Repeated(elem))
 }
 
-func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfMap(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	keyValue := mapKeyValueOf(node)
 	keyValueType := keyValue.GoType()
 	keyValueElem := keyValueType.Elem()
-	keyType := keyValueElem.Field(0).Type
-	valueType := keyValueElem.Field(1).Type
 	nextColumnIndex, writeValue := writeValueFuncOf(columnIndex, schemaOf(keyValueElem))
 	zeroKeyValue := reflect.Zero(keyValueElem)
 
@@ -521,13 +530,24 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 			levels.repetitionDepth++
 			levels.definitionLevel++
 
-			elem := reflect.New(keyValueElem).Elem()
+			// Determine the key-value struct type once, using the first
+			// element to discover the actual key/value Go types.
+			var kvType reflect.Type
+			for mapKey, mapVal := range m.Range {
+				kvType = makeKeyValueType(keyValueElem, reflect.TypeOf(mapKey.Interface()), reflect.TypeOf(mapVal.Interface()))
+				break
+			}
+			if kvType == nil {
+				kvType = keyValueElem
+			}
+
+			elem := reflect.New(kvType).Elem()
 			k := elem.Field(0)
 			v := elem.Field(1)
 
 			for mapKey, mapVal := range m.Range {
-				k.Set(reflect.ValueOf(mapKey.Interface()).Convert(keyType))
-				v.Set(reflect.ValueOf(mapVal.Interface()).Convert(valueType))
+				k.Set(reflect.ValueOf(mapKey.Interface()).Convert(k.Type()))
+				v.Set(reflect.ValueOf(mapVal.Interface()).Convert(v.Type()))
 				writeValue(columns, levels, elem)
 				levels.repetitionLevel = levels.repetitionDepth
 			}
@@ -546,15 +566,15 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 		mapKey := reflect.New(mapType.Key()).Elem()
 		mapElem := reflect.New(mapType.Elem()).Elem()
 
-		elem := reflect.New(keyValueElem).Elem()
+		elem := reflect.New(makeKeyValueType(keyValueElem, mapType.Key(), mapType.Elem())).Elem()
 		k := elem.Field(0)
 		v := elem.Field(1)
 
 		for it := mapValue.MapRange(); it.Next(); {
 			mapKey.SetIterKey(it)
 			mapElem.SetIterValue(it)
-			k.Set(mapKey.Convert(keyType))
-			v.Set(mapElem.Convert(valueType))
+			k.Set(mapKey.Convert(k.Type()))
+			v.Set(mapElem.Convert(v.Type()))
 			writeValue(columns, levels, elem)
 			levels.repetitionLevel = levels.repetitionDepth
 		}
@@ -563,7 +583,7 @@ func writeValueFuncOfMap(columnIndex int16, node Node) (int16, writeValueFunc) {
 
 var structFieldsCache atomic.Value // map[reflect.Type]map[string][]int
 
-func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc) {
+func writeValueFuncOfGroup(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	fields := node.Fields()
 	writers := make([]fieldWriter, len(fields))
 	for i, field := range fields {
@@ -694,22 +714,18 @@ func writeValueFuncOfGroup(columnIndex int16, node Node) (int16, writeValueFunc)
 	}
 }
 
-func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) {
-	if columnIndex < 0 {
-		panic("writeValueFuncOfLeaf called with invalid columnIndex -1 (empty group)")
-	}
+func writeValueFuncOfLeaf(columnIndex uint16, node Node) (uint16, writeValueFunc) {
 	if columnIndex > MaxColumnIndex {
-		panic("row cannot be written because it has more than 127 columns")
+		panic("row cannot be written because it has too many columns")
 	}
 	return columnIndex + 1, func(columns []ColumnBuffer, levels columnLevels, value reflect.Value) {
 		col := columns[columnIndex]
 	writeValue:
-		if !value.IsValid() {
+		switch value.Kind() {
+		case reflect.Invalid:
 			col.writeNull(levels)
 			return
-		}
 
-		switch value.Kind() {
 		case reflect.Pointer, reflect.Interface:
 			if value.IsNil() {
 				col.writeNull(levels)
@@ -752,6 +768,10 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				writeProtoList(col, levels, msg, node)
 			case *anypb.Any:
 				writeProtoAny(col, levels, msg, node)
+			case geom.T:
+				writeGeometry(col, levels, msg, node)
+			case *big.Float:
+				writeBigFloat(col, levels, msg, node)
 			default:
 				value = value.Elem()
 				goto writeValue
@@ -787,10 +807,23 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 			return
 
 		case reflect.Float32:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
 			col.writeFloat(levels, float32(value.Float()))
 			return
 
 		case reflect.Float64:
+			typ := node.Type()
+			logicalType := typ.LogicalType()
+			if logicalType != nil && logicalType.Decimal != nil {
+				decimalValue(col, levels, typ, value, logicalType.Decimal.Scale)
+				return
+			}
+
 			col.writeDouble(levels, value.Float())
 			return
 
@@ -836,6 +869,9 @@ func writeValueFuncOfLeaf(columnIndex int16, node Node) (int16, writeValueFunc) 
 				return
 			case deprecated.Int96:
 				col.writeInt96(levels, v)
+				return
+			case Interval:
+				writeInterval(col, levels, v)
 				return
 			}
 		}
@@ -903,4 +939,117 @@ func writeUUID(col ColumnBuffer, levels columnLevels, str string, typ Type) {
 	buf.Append(parsedUUID[:]...)
 	col.writeByteArray(levels, buf.Slice())
 	buf.Reset()
+}
+
+func writeInterval(col ColumnBuffer, levels columnLevels, iv Interval) {
+	var buf [12]byte
+	binary.LittleEndian.PutUint32(buf[0:4], iv.Months)
+	binary.LittleEndian.PutUint32(buf[4:8], iv.Days)
+	binary.LittleEndian.PutUint32(buf[8:12], iv.Milliseconds)
+	col.writeByteArray(levels, buf[:])
+}
+
+func decimalValue(col ColumnBuffer, levels columnLevels, typ Type, value reflect.Value, scale int32) {
+	val := int64(math.Round(value.Float() * math.Pow10(int(scale))))
+	switch typ.Kind() {
+	case Int32:
+		col.writeInt32(levels, int32(val))
+	case Int64:
+		col.writeInt64(levels, val)
+	case ByteArray:
+		col.writeByteArray(levels, numberToByteArray(val))
+	}
+}
+
+func numberToByteArray(data any) []byte {
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, data)
+	if err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}
+
+func writeBigFloat(col ColumnBuffer, levels columnLevels, f *big.Float, node Node) {
+	typ := node.Type()
+	logicalType := typ.LogicalType()
+	if logicalType == nil || logicalType.Decimal == nil {
+		panic("writeBigFloat requires a decimal logical type")
+	}
+
+	scale := int(logicalType.Decimal.Scale)
+	// Compute minimum precision needed: decimal precision * log2(10) ≈ precision * 3.32
+	// We use precision * 4 + 64 for safety margin
+	minPrec := uint(logicalType.Decimal.Precision)*4 + 64
+	prec := max(f.Prec(), minPrec)
+	scaleFactor := new(big.Float).SetPrec(prec)
+	scaleFactor.SetInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil))
+	scaled := new(big.Float).SetPrec(prec).Mul(f, scaleFactor)
+	// Round to nearest integer (add 0.5 and truncate for positive, subtract 0.5 for negative)
+	half := new(big.Float).SetPrec(prec).SetFloat64(0.5)
+	if scaled.Sign() >= 0 {
+		scaled.Add(scaled, half)
+	} else {
+		scaled.Sub(scaled, half)
+	}
+	unscaled, _ := scaled.Int(nil)
+
+	b := bigIntToByteArray(unscaled)
+	if typ.Kind() == FixedLenByteArray {
+		b = padToFixedLen(b, typ.Length(), unscaled.Sign() < 0)
+	}
+	col.writeByteArray(levels, b)
+}
+
+func bigIntToByteArray(i *big.Int) []byte {
+	if i.Sign() >= 0 {
+		b := i.Bytes()
+		// Add leading zero byte if high bit is set to avoid being interpreted as negative
+		if len(b) > 0 && b[0]&0x80 != 0 {
+			b = append([]byte{0}, b...)
+		}
+		return b
+	}
+	// Negative: convert to two's complement
+	// Get the absolute value bytes
+	abs := new(big.Int).Abs(i)
+	b := abs.Bytes()
+	// Add a leading zero byte to ensure we have room for sign
+	if len(b) == 0 || b[0]&0x80 != 0 {
+		b = append([]byte{0}, b...)
+	}
+	// Invert all bits
+	for j := range b {
+		b[j] = ^b[j]
+	}
+	// Add 1
+	carry := byte(1)
+	for j := len(b) - 1; j >= 0 && carry > 0; j-- {
+		sum := b[j] + carry
+		b[j] = sum
+		if sum != 0 {
+			carry = 0
+		}
+	}
+	return b
+}
+
+func padToFixedLen(b []byte, length int, negative bool) []byte {
+	if len(b) == length {
+		return b
+	}
+	if len(b) > length {
+		panic(fmt.Sprintf("decimal value requires %d bytes but fixed length is %d", len(b), length))
+	}
+	padByte := byte(0x00)
+	if negative {
+		padByte = 0xFF
+	}
+	result := make([]byte, length)
+	padding := length - len(b)
+	for i := range padding {
+		result[i] = padByte
+	}
+	copy(result[padding:], b)
+	return result
 }

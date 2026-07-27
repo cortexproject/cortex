@@ -88,30 +88,6 @@ func TestHATrackerConfig_Validate(t *testing.T) {
 			}(),
 			expectedErr: errNegativeUpdateTimeoutJitterMax,
 		},
-		"should fail if failover timeout is < update timeout + jitter + 1 sec": {
-			cfg: func() HATrackerConfig {
-				cfg := HATrackerConfig{}
-				flagext.DefaultValues(&cfg)
-				cfg.FailoverTimeout = 5 * time.Second
-				cfg.UpdateTimeout = 4 * time.Second
-				cfg.UpdateTimeoutJitterMax = 2 * time.Second
-
-				return cfg
-			}(),
-			expectedErr: fmt.Errorf(errInvalidFailoverTimeout, 5*time.Second, 7*time.Second),
-		},
-		"should pass if failover timeout is >= update timeout + jitter + 1 sec": {
-			cfg: func() HATrackerConfig {
-				cfg := HATrackerConfig{}
-				flagext.DefaultValues(&cfg)
-				cfg.FailoverTimeout = 7 * time.Second
-				cfg.UpdateTimeout = 4 * time.Second
-				cfg.UpdateTimeoutJitterMax = 2 * time.Second
-
-				return cfg
-			}(),
-			expectedErr: nil,
-		},
 		"should pass with memberlist kv store": {
 			cfg: func() HATrackerConfig {
 				cfg := HATrackerConfig{}
@@ -180,7 +156,7 @@ func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
 			Store: "memberlist",
 		},
 	}
-	tracker, err := NewHATracker(trackerCfg, nil, HATrackerStatusConfig{}, reg, "", logger)
+	tracker, err := NewHATracker(trackerCfg, trackerLimits{failoverTimeout: 2 * time.Second}, HATrackerStatusConfig{}, reg, "", logger)
 	require.NoError(t, err)
 
 	// Inject our test memberlist client into the tracker
@@ -223,6 +199,71 @@ func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
 	require.NotEmpty(t, broadcasts, "Cleanup Delete should generate a broadcast for tombstone propagation")
 }
 
+// TestWatchPrefixNilPanicWithMemberlist reproduces the panic at ha_tracker.go:437:
+// With memberlist, WatchPrefix delivers a nil value when a key is deleted
+// (memberlist KV.get() returns nil for deleted/tombstone keys).
+func TestWatchPrefixNilPanicWithMemberlist(t *testing.T) {
+	ctx := t.Context()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewRegistry()
+
+	var kvCfg memberlist.KVConfig
+	flagext.DefaultValues(&kvCfg)
+	replicaDescCodec := GetReplicaDescCodec()
+	kvCfg.Codecs = []codec.Codec{replicaDescCodec}
+
+	mkv := memberlist.NewKV(kvCfg, logger, &dnsProviderMock{}, reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, mkv))
+	defer services.StopAndAwaitTerminated(ctx, mkv) //nolint:errcheck
+
+	client, err := memberlist.NewClient(mkv, replicaDescCodec)
+	require.NoError(t, err)
+
+	trackerCfg := HATrackerConfig{
+		EnableHATracker:        false, // to inject our client before starting the tracker
+		UpdateTimeout:          time.Second,
+		UpdateTimeoutJitterMax: 0,
+		KVStore:                kv.Config{Store: "memberlist"},
+	}
+
+	tracker, err := NewHATracker(trackerCfg, trackerLimits{failoverTimeout: 2 * time.Second}, HATrackerStatusConfig{}, reg, "test", logger)
+	require.NoError(t, err)
+	tracker.cfg.EnableHATracker = true
+	tracker.client = client
+
+	// Start the tracker — this starts the WatchPrefix loop in loop().
+	require.NoError(t, services.StartAndAwaitRunning(ctx, tracker))
+	defer services.StopAndAwaitTerminated(ctx, tracker) //nolint:errcheck
+
+	userID := "user1"
+	cluster := "cluster1"
+	replica := "replica0"
+	key := userID + "/" + cluster
+
+	// Give the WatchPrefix goroutine in loop() time to register its watcher
+	// channel in the memberlist KV before we write. Without this, the CAS
+	// notification can fire before the watcher is registered, causing the
+	// key to never appear in the elected cache.
+	time.Sleep(100 * time.Millisecond)
+
+	now := time.Now()
+	require.NoError(t, tracker.CheckReplica(ctx, userID, cluster, replica, now))
+
+	test.Poll(t, 5*time.Second, nil, func() any {
+		tracker.electedLock.RLock()
+		defer tracker.electedLock.RUnlock()
+		if _, ok := tracker.elected[key]; !ok {
+			return fmt.Errorf("waiting for key to appear in elected cache")
+		}
+		return nil
+	})
+
+	require.NoError(t, client.Delete(ctx, key))
+
+	time.Sleep(500 * time.Millisecond)
+	require.Equal(t, services.Running, tracker.State(), "HATracker should still be running after receiving nil value from memberlist WatchPrefix")
+}
+
 // Test that values are set in the HATracker after WatchPrefix has found it in the KVStore.
 func TestWatchPrefixAssignment(t *testing.T) {
 	t.Parallel()
@@ -239,8 +280,7 @@ func TestWatchPrefixAssignment(t *testing.T) {
 		KVStore:                kv.Config{Mock: mock},
 		UpdateTimeout:          time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Millisecond * 2,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -265,8 +305,7 @@ func TestCheckReplicaOverwriteTimeout(t *testing.T) {
 		KVStore:                kv.Config{Store: "inmemory"},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: 2 * time.Millisecond}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -305,8 +344,7 @@ func TestCheckReplicaMultiCluster(t *testing.T) {
 		KVStore:                kv.Config{Store: "inmemory"},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -357,8 +395,7 @@ func TestCheckReplicaMultiClusterTimeout(t *testing.T) {
 		KVStore:                kv.Config{Store: "inmemory"},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -432,8 +469,7 @@ func TestCheckReplicaUpdateTimeout(t *testing.T) {
 		KVStore:                kv.Config{Mock: mock},
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -482,8 +518,7 @@ func TestCheckReplicaMultiUser(t *testing.T) {
 		KVStore:                kv.Config{Mock: mock},
 		UpdateTimeout:          100 * time.Millisecond,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -563,8 +598,7 @@ func TestCheckReplicaUpdateTimeoutJitter(t *testing.T) {
 				KVStore:                kv.Config{Mock: mock},
 				UpdateTimeout:          testData.updateTimeout,
 				UpdateTimeoutJitterMax: 0,
-				FailoverTimeout:        time.Second,
-			}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
+			}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 			require.NoError(t, err)
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 			defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -612,14 +646,13 @@ func TestHAClustersLimit(t *testing.T) {
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	mock := kv.PrefixClient(kvStore, "prefix")
-	limits := trackerLimits{maxReplicaGroups: 2}
+	limits := trackerLimits{maxReplicaGroups: 2, failoverTimeout: time.Second}
 
 	t1, err := NewHATracker(HATrackerConfig{
 		EnableHATracker:        true,
 		KVStore:                kv.Config{Mock: mock},
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
 	}, limits, haTrackerStatusConfig, nil, "test-ha-tracker", log.NewNopLogger())
 
 	require.NoError(t, err)
@@ -707,10 +740,15 @@ func TestReplicasNotMatchError(t *testing.T) {
 
 type trackerLimits struct {
 	maxReplicaGroups int
+	failoverTimeout  time.Duration
 }
 
 func (l trackerLimits) MaxHAReplicaGroups(_ string) int {
 	return l.maxReplicaGroups
+}
+
+func (l trackerLimits) HATrackerFailoverTimeout(_ string) time.Duration {
+	return l.failoverTimeout
 }
 
 func TestHATracker_MetricsCleanup(t *testing.T) {
@@ -796,8 +834,7 @@ func TestCheckReplicaCleanup(t *testing.T) {
 		KVStore:                kv.Config{Mock: mock},
 		UpdateTimeout:          1 * time.Second,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
-	}, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", util_log.Logger)
+	}, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", util_log.Logger)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), c))
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
@@ -884,7 +921,7 @@ func BenchmarkHATracker_syncKVStoreToLocalMap(b *testing.B) {
 				EnableStartupSync: true,
 				KVStore:           kv.Config{Mock: mockKV},
 			}
-			tracker, _ := NewHATracker(cfg, trackerLimits{}, haTrackerStatusConfig, nil, "bench", log.NewNopLogger())
+			tracker, _ := NewHATracker(cfg, trackerLimits{failoverTimeout: time.Second}, haTrackerStatusConfig, nil, "bench", log.NewNopLogger())
 
 			b.ReportAllocs()
 			for b.Loop() {
@@ -953,10 +990,9 @@ func TestHATracker_CacheWarmupOnStart(t *testing.T) {
 		KVStore:                kv.Config{Mock: mockKV}, // Use the seeded KV
 		UpdateTimeout:          time.Second,
 		UpdateTimeoutJitterMax: 0,
-		FailoverTimeout:        time.Second,
 	}
 
-	tracker, err := NewHATracker(cfg, trackerLimits{maxReplicaGroups: 100}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
+	tracker, err := NewHATracker(cfg, trackerLimits{maxReplicaGroups: 100, failoverTimeout: time.Second}, haTrackerStatusConfig, prometheus.WrapRegistererWithPrefix("cortex_", reg), "test-ha-tracker", log.NewNopLogger())
 	require.NoError(t, err)
 
 	// Start ha tracker

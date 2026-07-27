@@ -14,7 +14,15 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/alertmanager/config"
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
+	"github.com/prometheus/alertmanager/notify/discord"
+	"github.com/prometheus/alertmanager/notify/incidentio"
+	"github.com/prometheus/alertmanager/notify/jira"
+	"github.com/prometheus/alertmanager/notify/mattermost"
+	"github.com/prometheus/alertmanager/notify/msteams"
+	"github.com/prometheus/alertmanager/notify/webhook"
 	"github.com/prometheus/alertmanager/template"
+	amtracing "github.com/prometheus/alertmanager/tracing"
 	commoncfg "github.com/prometheus/common/config"
 	"gopkg.in/yaml.v2"
 
@@ -342,33 +350,33 @@ var noopValidator = func(any) error { return nil }
 // - nil: receiver config with no file-based fields to validate
 // - noopValidator: non-receiver config type to ignore
 var configValidators = map[reflect.Type]func(any) error{
-	reflect.TypeFor[config.GlobalConfig]():        func(v any) error { return validateGlobalConfig(v.(config.GlobalConfig)) },
-	reflect.TypeFor[commoncfg.HTTPClientConfig](): func(v any) error { return validateReceiverHTTPConfig(v.(commoncfg.HTTPClientConfig)) },
-	reflect.TypeFor[commoncfg.TLSConfig]():        func(v any) error { return validateReceiverTLSConfig(v.(commoncfg.TLSConfig)) },
-	reflect.TypeFor[config.OpsGenieConfig]():      func(v any) error { return validateOpsGenieConfig(v.(config.OpsGenieConfig)) },
-	reflect.TypeFor[config.SlackConfig]():         func(v any) error { return validateSlackConfig(v.(config.SlackConfig)) },
-	reflect.TypeFor[config.VictorOpsConfig]():     func(v any) error { return validateVictorOpsConfig(v.(config.VictorOpsConfig)) },
-	reflect.TypeFor[config.PagerdutyConfig]():     func(v any) error { return validatePagerdutyConfig(v.(config.PagerdutyConfig)) },
-	reflect.TypeFor[config.WebhookConfig]():       func(v any) error { return validateWebhookConfig(v.(config.WebhookConfig)) },
-	reflect.TypeFor[config.PushoverConfig]():      func(v any) error { return validatePushOverConfig(v.(config.PushoverConfig)) },
-	reflect.TypeFor[config.TelegramConfig]():      func(v any) error { return validateTelegramConfig(v.(config.TelegramConfig)) },
-	reflect.TypeFor[config.MSTeamsConfig]():       func(v any) error { return validateMSTeamsConfig(v.(config.MSTeamsConfig)) },
-	reflect.TypeFor[config.MSTeamsV2Config]():     func(v any) error { return validateMSTeamsV2Config(v.(config.MSTeamsV2Config)) },
-	reflect.TypeFor[config.RocketchatConfig]():    func(v any) error { return validateRocketChatConfig(v.(config.RocketchatConfig)) },
-	reflect.TypeFor[config.DiscordConfig]():       func(v any) error { return validateDiscordConfig(v.(config.DiscordConfig)) },
-	reflect.TypeFor[config.EmailConfig]():         func(v any) error { return validateEmailConfig(v.(config.EmailConfig)) },
-	reflect.TypeFor[config.IncidentioConfig]():    func(v any) error { return validateIncidentIOConfig(v.(config.IncidentioConfig)) },
-	reflect.TypeFor[config.MattermostConfig]():    func(v any) error { return validateMattermostConfig(v.(config.MattermostConfig)) },
-	reflect.TypeFor[config.WechatConfig]():        func(v any) error { return validateWeChatConfig(v.(config.WechatConfig)) },
-	reflect.TypeFor[config.WebexConfig]():         nil, // No file-based fields to validate
-	reflect.TypeFor[config.SNSConfig]():           nil, // No file-based fields to validate
-	reflect.TypeFor[config.JiraConfig]():          nil, // No file-based fields to validate
+	reflect.TypeFor[config.GlobalConfig]():         func(v any) error { return validateGlobalConfig(v.(config.GlobalConfig)) },
+	reflect.TypeFor[commoncfg.HTTPClientConfig]():  func(v any) error { return validateReceiverHTTPConfig(v.(commoncfg.HTTPClientConfig)) },
+	reflect.TypeFor[commoncfg.TLSConfig]():         func(v any) error { return validateReceiverTLSConfig(v.(commoncfg.TLSConfig)) },
+	reflect.TypeFor[config.OpsGenieConfig]():       func(v any) error { return validateOpsGenieConfig(v.(config.OpsGenieConfig)) },
+	reflect.TypeFor[config.SlackConfig]():          func(v any) error { return validateSlackConfig(v.(config.SlackConfig)) },
+	reflect.TypeFor[config.VictorOpsConfig]():      func(v any) error { return validateVictorOpsConfig(v.(config.VictorOpsConfig)) },
+	reflect.TypeFor[config.PagerdutyConfig]():      func(v any) error { return validatePagerdutyConfig(v.(config.PagerdutyConfig)) },
+	reflect.TypeFor[webhook.WebhookConfig]():       func(v any) error { return validateWebhookConfig(v.(webhook.WebhookConfig)) },
+	reflect.TypeFor[config.PushoverConfig]():       func(v any) error { return validatePushOverConfig(v.(config.PushoverConfig)) },
+	reflect.TypeFor[config.TelegramConfig]():       func(v any) error { return validateTelegramConfig(v.(config.TelegramConfig)) },
+	reflect.TypeFor[msteams.MSTeamsConfig]():       func(v any) error { return validateMSTeamsConfig(v.(msteams.MSTeamsConfig)) },
+	reflect.TypeFor[config.MSTeamsV2Config]():      func(v any) error { return validateMSTeamsV2Config(v.(config.MSTeamsV2Config)) },
+	reflect.TypeFor[config.RocketchatConfig]():     func(v any) error { return validateRocketChatConfig(v.(config.RocketchatConfig)) },
+	reflect.TypeFor[discord.DiscordConfig]():       func(v any) error { return validateDiscordConfig(v.(discord.DiscordConfig)) },
+	reflect.TypeFor[config.EmailConfig]():          func(v any) error { return validateEmailConfig(v.(config.EmailConfig)) },
+	reflect.TypeFor[incidentio.IncidentioConfig](): func(v any) error { return validateIncidentIOConfig(v.(incidentio.IncidentioConfig)) },
+	reflect.TypeFor[mattermost.MattermostConfig](): func(v any) error { return validateMattermostConfig(v.(mattermost.MattermostConfig)) },
+	reflect.TypeFor[config.WechatConfig]():         func(v any) error { return validateWeChatConfig(v.(config.WechatConfig)) },
+	reflect.TypeFor[config.WebexConfig]():          nil, // No file-based fields to validate
+	reflect.TypeFor[config.SNSConfig]():            nil, // No file-based fields to validate
+	reflect.TypeFor[jira.JiraConfig]():             nil, // No file-based fields to validate
 	// Non-receiver config types (ignored during validation)
-	reflect.TypeFor[config.Config]():          noopValidator,
-	reflect.TypeFor[config.NotifierConfig]():  noopValidator,
-	reflect.TypeFor[config.TracingConfig]():   noopValidator,
-	reflect.TypeFor[config.ThreadingConfig](): noopValidator,
-	reflect.TypeFor[config.JiraFieldConfig](): noopValidator,
+	reflect.TypeFor[config.Config]():              noopValidator,
+	reflect.TypeFor[amcommoncfg.NotifierConfig](): noopValidator,
+	reflect.TypeFor[amtracing.TracingConfig]():    noopValidator,
+	reflect.TypeFor[config.ThreadingConfig]():     noopValidator,
+	reflect.TypeFor[jira.JiraFieldConfig]():       noopValidator,
 }
 
 // validateAlertmanagerConfig recursively scans the input config looking for data types for which
@@ -385,7 +393,7 @@ func validateAlertmanagerConfig(cfg any) error {
 
 	// If the input config is a pointer then we need to get its value.
 	// At this point the pointer value can't be nil.
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 		t = v.Type()
 	}
@@ -405,8 +413,7 @@ func validateAlertmanagerConfig(cfg any) error {
 
 	// If the input config is a struct, recursively iterate on all fields.
 	if t.Kind() == reflect.Struct {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
+		for field := range t.Fields() {
 			fieldValue := v.FieldByIndex(field.Index)
 
 			// Skip any field value which can't be converted to interface (eg. primitive types).
@@ -562,7 +569,7 @@ func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
 
 // validateWebhookConfig validates the Webhook config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateWebhookConfig(cfg config.WebhookConfig) error {
+func validateWebhookConfig(cfg webhook.WebhookConfig) error {
 	if cfg.URLFile != "" {
 		return errWebhookURLFileNotAllowed
 	}
@@ -597,7 +604,7 @@ func validateTelegramConfig(cfg config.TelegramConfig) error {
 
 // validateMSTeamsConfig validates the MSTeams Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateMSTeamsConfig(cfg config.MSTeamsConfig) error {
+func validateMSTeamsConfig(cfg msteams.MSTeamsConfig) error {
 	if cfg.WebhookURLFile != "" {
 		return errMSTeamsWebhookUrlFileNotAllowed
 	}
@@ -629,7 +636,7 @@ func validateRocketChatConfig(cfg config.RocketchatConfig) error {
 
 // validateDiscordConfig validates the Discord Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateDiscordConfig(cfg config.DiscordConfig) error {
+func validateDiscordConfig(cfg discord.DiscordConfig) error {
 	if cfg.WebhookURLFile != "" {
 		return errDiscordWebhookUrlFileNotAllowed
 	}
@@ -650,7 +657,7 @@ func validateEmailConfig(cfg config.EmailConfig) error {
 
 // validateIncidentIOConfig validates the IncidentIO Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
+func validateIncidentIOConfig(cfg incidentio.IncidentioConfig) error {
 	if cfg.URLFile != "" {
 		return errIncidentIOURLFileNotAllowed
 	}
@@ -664,7 +671,7 @@ func validateIncidentIOConfig(cfg config.IncidentioConfig) error {
 
 // validateMatterMostConfig validates the Mattermost Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateMattermostConfig(cfg config.MattermostConfig) error {
+func validateMattermostConfig(cfg mattermost.MattermostConfig) error {
 	if cfg.WebhookURLFile != "" {
 		return errMatterMostWebhookUrlFileNotAllowed
 	}

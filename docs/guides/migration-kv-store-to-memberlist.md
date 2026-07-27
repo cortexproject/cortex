@@ -29,8 +29,10 @@ Update your configuration file and deploy the changes:
 ring:
   store: memberlist
 memberlist:
-  abort_if_join_fails: false
+  abort_if_cluster_join_fails: false
   bind_port: <gossip-ring-port>
+  cluster_label: <shared-cluster-label>
+  cluster_label_verification_disabled: true
   join_members:
     - gossip-ring.<namespace>.svc.cluster.local:<gossip-ring-port>
 ...
@@ -54,6 +56,19 @@ ingester:
 > The Memberlist gossip protocol requires a bit of time to propagate the state across the cluster. Setting a 60-second delay ensures that the ingester has enough time to fully sync the existing ring topology from other peers before actively joining and receiving traffic.
 >
 > **Note:** Make sure to apply this multi KV store configuration to all other components that interact with the ring (e.g. distributors, store-gateways), not just the ingesters.
+>
+> **Note:** If multiple Cortex, Mimir, or Loki clusters could reach the same gossip seed addresses, configure a shared `memberlist.cluster_label` for your Cortex cluster.
+>
+> **For a fresh Memberlist rollout:**
+> 1. Deploy with `memberlist.cluster_label` set and `memberlist.cluster_label_verification_disabled: true`.
+> 2. Once every memberlist-enabled process is running with the same label, set `memberlist.cluster_label_verification_disabled: false`.
+>
+> **For an existing unlabeled Memberlist cluster:**
+> 1. Roll out `memberlist.cluster_label_verification_disabled: true` everywhere (leave `memberlist.cluster_label` empty).
+> 2. Roll out the shared `memberlist.cluster_label` value to all processes.
+> 3. Set `memberlist.cluster_label_verification_disabled: false`.
+>
+> This isolates Memberlist traffic only; it does not isolate Consul or Etcd prefixes.
 
 Once deployed, Cortex will begin mirroring primary (Consul) data to Memberlist.
 
@@ -88,3 +103,5 @@ ingester:
 > **Note:** Again, ensure this update is applied across all components.
 
 After the updated configuration is fully deployed across your cluster and everything is running stably, you can remove your Consul cluster.
+
+If you enabled `memberlist.cluster_label_verification_disabled: true` during the migration, finish the rollout by setting it back to `false` once every memberlist-enabled Cortex process is using the same `memberlist.cluster_label`.

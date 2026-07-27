@@ -46,7 +46,7 @@ func (cfg *MemcachedClientConfig) GetAddresses() []string {
 // Validate the config.
 func (cfg *MemcachedClientConfig) Validate() error {
 	if len(cfg.GetAddresses()) == 0 {
-		return errNoIndexCacheAddresses
+		return errNoCacheAddresses
 	}
 
 	return nil

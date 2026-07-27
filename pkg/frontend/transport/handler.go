@@ -65,6 +65,7 @@ const (
 	reasonChunksLimitStoreGateway  = "store_gateway_chunks_limit"
 	reasonBytesLimitStoreGateway   = "store_gateway_bytes_limit"
 	reasonUnOptimizedRegexMatcher  = `unoptimized_regex_matcher`
+	reasonQueryTooExpensive        = "query_too_expensive"
 
 	limitTooManySamples          = `query processing would load too many samples into memory`
 	limitTimeRangeExceeded       = `the query time range exceeds the limit`
@@ -74,6 +75,7 @@ const (
 	limitChunkBytesFetched       = `the query hit the aggregated chunks size limit`
 	limitDataBytesFetched        = `the query hit the aggregated data size limit`
 	limitUnOptimizedRegexMatcher = `unoptimized regex matcher`
+	limitQueryTooExpensive       = `query spent too long in evaluation`
 
 	// Store gateway limits.
 	limitSeriesStoreGateway = `exceeded series limit`
@@ -320,7 +322,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		queryString = f.parseRequestQueryString(r, buf)
 	}
 	if shouldReportSlowQuery {
-		f.reportSlowQuery(r, queryString, queryResponseTime)
+		f.reportSlowQuery(r, queryString, queryResponseTime, source, stats)
 		if f.cfg.QueryStatsEnabled {
 			f.getOrCreateSlowQueryMetric().WithLabelValues(source, userID).Inc()
 		}
@@ -421,18 +423,58 @@ func (f *Handler) logQueryRequest(r *http.Request, queryString url.Values, sourc
 }
 
 // reportSlowQuery reports slow queries.
-func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
+func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration, source string, stats *querier_stats.QueryStats) {
 	logMessage := []any{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
 		"path", r.URL.Path,
-		"time_taken", queryResponseTime.String(),
+		"source", source,
+		"time_taken_ms", queryResponseTime.Milliseconds(),
 	}
+
 	grafanaFields := formatGrafanaStatsFields(r)
 	if len(grafanaFields) > 0 {
 		logMessage = append(logMessage, grafanaFields...)
 	}
+
+	if userAgent := r.Header.Get("User-Agent"); len(userAgent) > 0 {
+		logMessage = append(logMessage, "user_agent", userAgent)
+	}
+	if engineType := r.Header.Get(engine.TypeHeader); len(engineType) > 0 {
+		logMessage = append(logMessage, "engine_type", engineType)
+	}
+	if blockStoreType := r.Header.Get(querier.BlockStoreTypeHeader); len(blockStoreType) > 0 {
+		logMessage = append(logMessage, "block_store_type", blockStoreType)
+	}
+	if wallTime := stats.LoadWallTime(); wallTime > 0 {
+		logMessage = append(logMessage, "query_wall_time_seconds", wallTime.Seconds())
+	}
+	if storageWallTime := stats.LoadQueryStorageWallTime(); storageWallTime > 0 {
+		logMessage = append(logMessage, "query_storage_wall_time_seconds", storageWallTime.Seconds())
+	}
+	if n := stats.LoadFetchedSeries(); n > 0 {
+		logMessage = append(logMessage, "fetched_series_count", n)
+	}
+	if n := stats.LoadFetchedChunks(); n > 0 {
+		logMessage = append(logMessage, "fetched_chunks_count", n)
+	}
+	if n := stats.LoadFetchedSamples(); n > 0 {
+		logMessage = append(logMessage, "fetched_samples_count", n)
+	}
+	if n := stats.LoadScannedSamples(); n > 0 {
+		logMessage = append(logMessage, "samples_scanned", n)
+	}
+	if n := stats.LoadFetchedChunkBytes(); n > 0 {
+		logMessage = append(logMessage, "fetched_chunks_bytes", n)
+	}
+	if n := stats.LoadFetchedDataBytes(); n > 0 {
+		logMessage = append(logMessage, "fetched_data_bytes", n)
+	}
+	if n := stats.LoadSplitQueries(); n > 0 {
+		logMessage = append(logMessage, "split_queries", n)
+	}
+
 	logMessage = append(logMessage, formatQueryString(queryString)...)
 
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
@@ -536,6 +578,19 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		logMessage = append(logMessage, "query_storage_wall_time_seconds", sws)
 	}
 
+	if maxFetch := stats.LoadMaxFetchTime(); maxFetch > 0 {
+		logMessage = append(logMessage, "max_fetch_time", maxFetch)
+	}
+	if maxEval := stats.LoadMaxEvalTime(); maxEval > 0 {
+		logMessage = append(logMessage, "max_eval_time", maxEval)
+	}
+	if maxQueue := stats.LoadMaxQueueWaitTime(); maxQueue > 0 {
+		logMessage = append(logMessage, "max_queue_wait_time", maxQueue)
+	}
+	if maxTotal := stats.LoadMaxTotalTime(); maxTotal > 0 {
+		logMessage = append(logMessage, "max_total_time", maxTotal)
+	}
+
 	if splitInterval > 0 {
 		logMessage = append(logMessage, "split_interval", splitInterval.String())
 	}
@@ -546,16 +601,6 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			logMessage = append(logMessage, "error", error)
 		} else {
 			logMessage = append(logMessage, "error", s.Message())
-		}
-	}
-
-	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
-	if shouldLog {
-		logMessage = append(logMessage, formatQueryString(queryString)...)
-		if error != nil {
-			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
-		} else {
-			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 		}
 	}
 
@@ -589,6 +634,8 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 			reason = reasonBytesLimitStoreGateway
 		} else if strings.Contains(errMsg, limitUnOptimizedRegexMatcher) {
 			reason = reasonUnOptimizedRegexMatcher
+		} else if strings.Contains(errMsg, limitQueryTooExpensive) {
+			reason = reasonQueryTooExpensive
 		}
 	} else if statusCode == http.StatusServiceUnavailable && error != nil {
 		errMsg := error.Error()
@@ -597,8 +644,19 @@ func (f *Handler) reportQueryStats(r *http.Request, source, userID string, query
 		}
 	}
 	if len(reason) > 0 {
+		logMessage = append(logMessage, "reason", reason)
 		f.rejectedQueries.WithLabelValues(reason, source, userID).Inc()
 		stats.LimitHit = reason
+	}
+
+	shouldLog := source == requestmeta.SourceAPI || (f.cfg.EnabledRulerQueryStatsLog && source == requestmeta.SourceRuler)
+	if shouldLog {
+		logMessage = append(logMessage, formatQueryString(queryString)...)
+		if error != nil {
+			level.Error(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		} else {
+			level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
+		}
 	}
 }
 

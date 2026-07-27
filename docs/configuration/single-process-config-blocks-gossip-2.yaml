@@ -56,6 +56,7 @@ ingester:
 
 memberlist:
   bind_port: 7947
+  cluster_label: gossip-demo
   join_members:
     - localhost:7946
   abort_if_cluster_join_fails: false

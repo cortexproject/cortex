@@ -41,7 +41,7 @@ func TestDistriubtorAcceptMixedHASamplesRunningInMicroservicesMode(t *testing.T)
 			"-distributor.ha-tracker.etcd.endpoints":                "etcd:2379",
 		}
 		querierFlags := mergeFlags(BlocksStorageFlags(), map[string]string{
-			"-querier.query-store-after": (1 * time.Hour).String(),
+			"-limits.query-store-after": (1 * time.Hour).String(),
 		})
 		flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 			"-blocks-storage.tsdb.block-ranges-period":          blockRangePeriod.String(),

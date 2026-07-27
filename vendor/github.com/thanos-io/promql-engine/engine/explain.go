@@ -22,6 +22,7 @@ type ExplainableQuery interface {
 
 type AnalyzeOutputNode struct {
 	OperatorTelemetry telemetry.OperatorTelemetry `json:"telemetry,omitempty"`
+	OperatorID        *uint64                     `json:"operatorId,omitempty"`
 	Children          []*AnalyzeOutputNode        `json:"children,omitempty"`
 
 	once                sync.Once
@@ -83,17 +84,28 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 	})
 }
 
-func analyzeQuery(obsv telemetry.ObservableVectorOperator) *AnalyzeOutputNode {
+func analyzeQuery(op model.VectorOperator) *AnalyzeOutputNode {
+	var operatorID *uint64
+	if ider, ok := op.(model.OperatorIDer); ok {
+		id := ider.OperatorID()
+		operatorID = &id
+	}
+	obsv, ok := model.Unwrap(op).(telemetry.ObservableVectorOperator)
+	if !ok {
+		return nil
+	}
+
 	children := obsv.Explain()
 	var childTelemetry []*AnalyzeOutputNode
 	for _, child := range children {
-		if obsChild, ok := child.(telemetry.ObservableVectorOperator); ok {
-			childTelemetry = append(childTelemetry, analyzeQuery(obsChild))
+		if node := analyzeQuery(child); node != nil {
+			childTelemetry = append(childTelemetry, node)
 		}
 	}
 
 	return &AnalyzeOutputNode{
 		OperatorTelemetry: obsv,
+		OperatorID:        operatorID,
 		Children:          childTelemetry,
 	}
 }

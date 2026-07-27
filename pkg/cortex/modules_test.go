@@ -2,11 +2,16 @@ package cortex
 
 import (
 	"context"
+	"maps"
 	"net/http/httptest"
 	"os"
+	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/prometheus/promql/parser"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/configs"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 )
 
 func changeTargetConfig(c *Config) {
@@ -165,6 +171,75 @@ func (p *myPusher) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	return nil, nil
 }
 
+func TestCortex_InitRulerStorage_RegistersXFunctions(t *testing.T) {
+	tests := map[string]struct {
+		enabled          bool
+		enableXFunctions bool
+		expectRegistered bool
+	}{
+		"should register xfunctions when thanos engine is enabled and EnableXFunctions is true": {
+			enabled:          true,
+			enableXFunctions: true,
+			expectRegistered: true,
+		},
+		"should not register xfunctions when EnableXFunctions is false": {
+			enabled:          true,
+			enableXFunctions: false,
+			expectRegistered: false,
+		},
+		"should not register xfunctions when thanos engine is disabled": {
+			enabled:          false,
+			enableXFunctions: true,
+			expectRegistered: false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			// Clean up global state after each test
+			originalFunctions := make(map[string]*parser.Function, len(parser.Functions))
+			maps.Copy(originalFunctions, parser.Functions)
+			defer func() {
+				// Restore original parser.Functions
+				for k := range parser.Functions {
+					if _, ok := originalFunctions[k]; !ok {
+						delete(parser.Functions, k)
+					}
+				}
+			}()
+
+			cfg := newDefaultConfig()
+			cfg.Target = []string{"ruler"}
+			cfg.RulerStorage.Backend = "local"
+			cfg.RulerStorage.Local.Directory = os.TempDir()
+			cfg.Querier.ThanosEngine.Enabled = testData.enabled
+			cfg.Querier.ThanosEngine.EnableXFunctions = testData.enableXFunctions
+
+			cortex := &Cortex{
+				Server: &server.Server{},
+				Cfg:    *cfg,
+			}
+
+			_, err := cortex.initRulerStorage()
+			require.NoError(t, err)
+
+			_, hasXincrease := parser.Functions["xincrease"]
+			_, hasXrate := parser.Functions["xrate"]
+			_, hasXdelta := parser.Functions["xdelta"]
+
+			if testData.expectRegistered {
+				assert.True(t, hasXincrease, "xincrease should be registered")
+				assert.True(t, hasXrate, "xrate should be registered")
+				assert.True(t, hasXdelta, "xdelta should be registered")
+			} else {
+				assert.False(t, hasXincrease, "xincrease should not be registered")
+				assert.False(t, hasXrate, "xrate should not be registered")
+				assert.False(t, hasXdelta, "xdelta should not be registered")
+			}
+		})
+	}
+}
+
 type myQueryable struct{}
 
 func (q *myQueryable) Querier(mint, maxt int64) (prom_storage.Querier, error) {
@@ -247,4 +322,119 @@ func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
 	// log warning message and spin up other cortex services
 	_, err := cortex.initResourceMonitor()
 	require.ErrorContains(t, err, "unknown resource type")
+}
+
+func TestConfigEndpoint_SecretsMasked(t *testing.T) {
+	cfg := newDefaultConfig()
+
+	// Use reflection to find every flagext.Secret field in the config and set
+	// it to a sentinel value. This ensures newly added Secret fields are
+	// automatically covered without updating this test.
+	sentinel := "LEAKED_SECRET_VALUE"
+	setAllSecrets(reflect.ValueOf(cfg), sentinel)
+
+	cortex := &Cortex{
+		Server: &server.Server{},
+		Cfg:    *cfg,
+	}
+	cortex.Server.HTTP = mux.NewRouter()
+
+	_, err := cortex.initAPI()
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("GET", "/config", nil)
+	resp := httptest.NewRecorder()
+	cortex.Server.HTTP.ServeHTTP(resp, req)
+
+	require.Equal(t, 200, resp.Code)
+
+	body := resp.Body.String()
+
+	// Verify the sentinel never appears in cleartext.
+	assert.NotContains(t, body, sentinel, "a flagext.Secret value was leaked in /config output")
+
+	// Verify at least one masked value is present (sanity check).
+	assert.Contains(t, body, "********", "expected masked secrets in /config output")
+}
+
+// TestConfig_SensitiveFieldTypes verifies that every struct field in Config
+// whose YAML tag name suggests a credential uses a masking type (flagext.Secret
+// or flagext.SecretStringSliceCSV), not a plain string or []string.
+// This catches new password/secret/key fields added as plain strings even if
+// they have no default value.
+func TestConfig_SensitiveFieldTypes(t *testing.T) {
+	// Match exact known sensitive names, plus any tag ending with _key or _keys.
+	sensitivePattern := regexp.MustCompile(`(?i)^(?:password|secret|secret_key|application_credential_secret|basic_auth_password)$|_keys?$`)
+	secretType := reflect.TypeFor[flagext.Secret]()
+	secretSliceType := reflect.TypeFor[flagext.SecretStringSliceCSV]()
+
+	var violations []string
+	checkSensitiveFields(reflect.TypeFor[Config](), "", sensitivePattern, secretType, secretSliceType, &violations)
+
+	for _, v := range violations {
+		t.Errorf("field should use flagext.Secret or flagext.SecretStringSliceCSV, not a plain string type: %s", v)
+	}
+}
+
+// checkSensitiveFields recursively walks a type and reports any string or
+// string-slice field whose YAML tag matches the sensitive pattern but does not
+// use an approved masking type (secretType or secretSliceType).
+func checkSensitiveFields(t reflect.Type, prefix string, pattern *regexp.Regexp, secretType reflect.Type, secretSliceType reflect.Type, violations *[]string) {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return
+	}
+	for f := range t.Fields() {
+		path := prefix + f.Name
+
+		yamlTag := f.Tag.Get("yaml")
+		yamlName, _, _ := strings.Cut(yamlTag, ",")
+
+		if pattern.MatchString(yamlName) && f.Type != secretType && f.Type != secretSliceType {
+			isPlainString := f.Type.Kind() == reflect.String
+			isStringSlice := f.Type.Kind() == reflect.Slice && f.Type.Elem().Kind() == reflect.String
+			if isPlainString || isStringSlice {
+				*violations = append(*violations, path+" (yaml:\""+yamlName+"\")")
+			}
+		}
+
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct && ft != secretType && ft != secretSliceType {
+			checkSensitiveFields(ft, path+".", pattern, secretType, secretSliceType, violations)
+		}
+	}
+}
+
+// setAllSecrets recursively walks a reflect.Value and sets every
+// flagext.Secret and flagext.SecretStringSliceCSV field to the given sentinel
+// string so that TestConfigEndpoint_SecretsMasked can detect regressions.
+func setAllSecrets(v reflect.Value, sentinel string) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			setAllSecrets(v.Elem(), sentinel)
+		}
+	case reflect.Struct:
+		secretType := reflect.TypeFor[flagext.Secret]()
+		secretSliceType := reflect.TypeFor[flagext.SecretStringSliceCSV]()
+		for _, f := range v.Fields() {
+			if !f.CanSet() {
+				continue
+			}
+			switch f.Type() {
+			case secretType:
+				f.Set(reflect.ValueOf(flagext.Secret{Value: sentinel}))
+			case secretSliceType:
+				s := f.Addr().Interface().(*flagext.SecretStringSliceCSV)
+				_ = s.Set(sentinel)
+			default:
+				setAllSecrets(f, sentinel)
+			}
+		}
+	}
 }

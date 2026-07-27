@@ -8,7 +8,7 @@ security:
 database:
   file:
     extension: yaml
-    folder: /perses
+    folder: /tmp/perses-data
 
 schemas:
   datasources_path: /etc/perses/cue/schemas/datasources
@@ -16,6 +16,11 @@ schemas:
   panels_path: /etc/perses/cue/schemas/panels
   queries_path: /etc/perses/cue/schemas/queries
   variables_path: /etc/perses/cue/schemas/variables
+
+frontend:
+  explorer:
+    enable: true
+
 provisioning:
   folders:
     - /etc/perses/resources

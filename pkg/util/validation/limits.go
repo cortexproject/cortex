@@ -10,6 +10,7 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -137,6 +138,7 @@ type Limits struct {
 	HAClusterLabel                    string              `yaml:"ha_cluster_label" json:"ha_cluster_label"`
 	HAReplicaLabel                    string              `yaml:"ha_replica_label" json:"ha_replica_label"`
 	HAMaxClusters                     int                 `yaml:"ha_max_clusters" json:"ha_max_clusters"`
+	HATrackerFailoverTimeout          model.Duration      `yaml:"ha_tracker_failover_timeout" json:"ha_tracker_failover_timeout"`
 	DropLabels                        flagext.StringSlice `yaml:"drop_labels" json:"drop_labels"`
 	MaxLabelNameLength                int                 `yaml:"max_label_name_length" json:"max_label_name_length"`
 	MaxLabelValueLength               int                 `yaml:"max_label_value_length" json:"max_label_value_length"`
@@ -154,17 +156,19 @@ type Limits struct {
 	MaxNativeHistogramBuckets         int                 `yaml:"max_native_histogram_buckets" json:"max_native_histogram_buckets"`
 	PromoteResourceAttributes         []string            `yaml:"promote_resource_attributes" json:"promote_resource_attributes"`
 	EnableTypeAndUnitLabels           bool                `yaml:"enable_type_and_unit_labels" json:"enable_type_and_unit_labels"`
+	EnableStartTimestamp              bool                `yaml:"enable_start_timestamp" json:"enable_start_timestamp"`
 
 	// Ingester enforced limits.
 	// Series
-	MaxLocalSeriesPerUser                 int                 `yaml:"max_series_per_user" json:"max_series_per_user"`
-	MaxLocalSeriesPerMetric               int                 `yaml:"max_series_per_metric" json:"max_series_per_metric"`
-	MaxLocalNativeHistogramSeriesPerUser  int                 `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
-	MaxGlobalSeriesPerUser                int                 `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
-	MaxGlobalSeriesPerMetric              int                 `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
-	MaxGlobalNativeHistogramSeriesPerUser int                 `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
-	LimitsPerLabelSet                     []LimitsPerLabelSet `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
-	EnableNativeHistograms                bool                `yaml:"enable_native_histograms" json:"enable_native_histograms"`
+	MaxLocalSeriesPerUser                 int                        `yaml:"max_series_per_user" json:"max_series_per_user"`
+	MaxLocalSeriesPerMetric               int                        `yaml:"max_series_per_metric" json:"max_series_per_metric"`
+	MaxLocalNativeHistogramSeriesPerUser  int                        `yaml:"max_native_histogram_series_per_user" json:"max_native_histogram_series_per_user"`
+	MaxGlobalSeriesPerUser                int                        `yaml:"max_global_series_per_user" json:"max_global_series_per_user"`
+	MaxGlobalSeriesPerMetric              int                        `yaml:"max_global_series_per_metric" json:"max_global_series_per_metric"`
+	MaxGlobalNativeHistogramSeriesPerUser int                        `yaml:"max_global_native_histogram_series_per_user" json:"max_global_native_histogram_series_per_user"`
+	LimitsPerLabelSet                     []LimitsPerLabelSet        `yaml:"limits_per_label_set" json:"limits_per_label_set" doc:"nocli|description=[Experimental] Enable limits per LabelSet. Supported limits per labelSet: [max_series]"`
+	ActiveSeriesTrackers                  ActiveSeriesTrackersConfig `yaml:"active_series_trackers,omitempty" json:"active_series_trackers,omitempty" doc:"nocli|description=List of active series tracker configurations. Each tracker counts active series matching its matchers and exposes the count as a metric."`
+	EnableNativeHistograms                bool                       `yaml:"enable_native_histograms" json:"enable_native_histograms"`
 
 	// Regex matcher query limits.
 	MaxRegexPatternLength                       int `yaml:"max_regex_pattern_length" json:"max_regex_pattern_length"`
@@ -196,6 +200,12 @@ type Limits struct {
 	MaxQueriersPerTenant         float64        `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
 	QueryVerticalShardSize       int            `yaml:"query_vertical_shard_size" json:"query_vertical_shard_size"`
 	QueryPartialData             bool           `yaml:"query_partial_data" json:"query_partial_data" doc:"nocli|description=Enable to allow queries to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	QueryIngestersWithin         model.Duration `yaml:"query_ingesters_within" json:"query_ingesters_within"`
+
+	// If set, the querier manipulates the max time to not be greater than
+	// "now - queryStoreAfter" so that most recent blocks are not queried.
+	QueryStoreAfter                        model.Duration `yaml:"query_store_after" json:"query_store_after"`
+	ShuffleShardingIngestersLookbackPeriod model.Duration `yaml:"shuffle_sharding_ingesters_lookback_period" json:"shuffle_sharding_ingesters_lookback_period"`
 
 	// Parquet Queryable enforced limits.
 	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
@@ -210,13 +220,15 @@ type Limits struct {
 	QueryRejection              QueryRejection `yaml:"query_rejection" json:"query_rejection" doc:"nocli|description=Configuration for query rejection."`
 
 	// Ruler defaults and limits.
-	RulerEvaluationDelay        model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
-	RulerTenantShardSize        float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
-	RulerMaxRulesPerRuleGroup   int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
-	RulerMaxRuleGroupsPerTenant int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
-	RulerQueryOffset            model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
-	RulerExternalLabels         labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
-	RulesPartialData            bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
+	RulerEvaluationDelay           model.Duration `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
+	RulerTenantShardSize           float64        `yaml:"ruler_tenant_shard_size" json:"ruler_tenant_shard_size"`
+	RulerMaxRulesPerRuleGroup      int            `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
+	RulerMaxRuleGroupsPerTenant    int            `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
+	RulerQueryOffset               model.Duration `yaml:"ruler_query_offset" json:"ruler_query_offset"`
+	RulerExternalLabels            labels.Labels  `yaml:"ruler_external_labels" json:"ruler_external_labels" doc:"nocli|description=external labels for alerting rules"`
+	RulerExternalURL               string         `yaml:"ruler_external_url" json:"ruler_external_url" doc:"nocli|description=Per-tenant external URL for the ruler. If set, it overrides the global -ruler.external.url for this tenant's alert notifications."`
+	RulerAlertGeneratorURLTemplate string         `yaml:"ruler_alert_generator_url_template" json:"ruler_alert_generator_url_template" doc:"nocli|description=Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. A jsonEscape function is also provided for embedding expressions inside JSON-encoded URL parameters. If empty, uses default Prometheus /graph format."`
+	RulesPartialData               bool           `yaml:"rules_partial_data" json:"rules_partial_data" doc:"nocli|description=Enable to allow rules to be evaluated with data from a single zone, if other zones are not available.|default=false"`
 
 	// Store-gateway.
 	StoreGatewayTenantShardSize  float64 `yaml:"store_gateway_tenant_shard_size" json:"store_gateway_tenant_shard_size"`
@@ -271,9 +283,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&l.HAClusterLabel, "distributor.ha-tracker.cluster", "cluster", "Prometheus label to look for in samples to identify a Prometheus HA cluster.")
 	f.StringVar(&l.HAReplicaLabel, "distributor.ha-tracker.replica", "__replica__", "Prometheus label to look for in samples to identify a Prometheus HA replica.")
 	f.IntVar(&l.HAMaxClusters, "distributor.ha-tracker.max-clusters", 0, "Maximum number of clusters that HA tracker will keep track of for single user. 0 to disable the limit.")
+	_ = l.HATrackerFailoverTimeout.Set("30s")
+	f.Var(&l.HATrackerFailoverTimeout, "distributor.ha-tracker.failover-timeout", "If the elected replica doesn't send samples in this time, the HA tracker will accept a new replica. This value must be greater than the update timeout plus the maximum jitter.")
 	f.Var((*flagext.StringSliceCSV)(&l.PromoteResourceAttributes), "distributor.promote-resource-attributes", "Comma separated list of resource attributes that should be converted to labels.")
 	f.Var(&l.DropLabels, "distributor.drop-label", "This flag can be used to specify label names that to drop during sample ingestion within the distributor and can be repeated in order to drop multiple labels.")
 	f.BoolVar(&l.EnableTypeAndUnitLabels, "distributor.enable-type-and-unit-labels", false, "EXPERIMENTAL: If true, the __type__ and __unit__ labels are added to metrics. This applies to remote write v2 and OTLP requests.")
+	f.BoolVar(&l.EnableStartTimestamp, "distributor.enable-start-timestamp", false, "EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2 samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is not set.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 30, "Maximum number of label names per series.")
@@ -312,6 +327,16 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxFetchedSeriesPerQuery, "querier.max-fetched-series-per-query", 0, "The maximum number of unique series for which a query can fetch samples from each ingesters and blocks storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable")
 	f.IntVar(&l.MaxFetchedChunkBytesPerQuery, "querier.max-fetched-chunk-bytes-per-query", 0, "Deprecated (use max-fetched-data-bytes-per-query instead): The maximum size of all chunks in bytes that a query can fetch from each ingester and storage. This limit is enforced in the querier, ruler and store-gateway. 0 to disable.")
 	f.IntVar(&l.MaxFetchedDataBytesPerQuery, "querier.max-fetched-data-bytes-per-query", 0, "The maximum combined size of all data that a query can fetch from each ingester and storage. This limit is enforced in the querier and ruler for `query`, `query_range` and `series` APIs. 0 to disable.")
+
+	_ = l.QueryIngestersWithin.Set("0")
+	f.Var(&l.QueryIngestersWithin, "limits.query-ingesters-within", "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.")
+
+	_ = l.QueryStoreAfter.Set("0")
+	f.Var(&l.QueryStoreAfter, "limits.query-store-after", "Minimum age of data before querying the long-term storage. Queries for data younger than this will only query ingesters. This is a per-tenant limit that can be overridden in the runtime configuration.")
+
+	_ = l.ShuffleShardingIngestersLookbackPeriod.Set("0")
+	f.Var(&l.ShuffleShardingIngestersLookbackPeriod, "limits.shuffle-sharding-ingesters-lookback-period", "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.")
+
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time of range query parameter and max - min of data fetched time range). This limit is enforced in the query-frontend and ruler (on the received query). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 14, "Maximum number of split queries will be scheduled in parallel by the frontend.")
@@ -376,7 +401,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 // Validate the limits config and returns an error if the validation
 // doesn't pass
-func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool) error {
+func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAllLabels bool, activeSeriesMetricsEnabled bool, haTrackerUpdateTimeout time.Duration, haTrackerUpdateTimeoutJitterMax time.Duration) error {
 	// The ingester.max-global-series-per-user metric is not supported
 	// if shard-by-all-labels is disabled
 	if l.MaxGlobalSeriesPerUser > 0 && !shardByAllLabels {
@@ -417,6 +442,47 @@ func (l *Limits) Validate(nameValidationScheme model.ValidationScheme, shardByAl
 		}
 	}
 
+	if l.RulerAlertGeneratorURLTemplate != "" {
+		// Register custom functions so that templates using them pass validation.
+		// The actual implementations are in the ruler package; these stubs just
+		// allow the parser to accept the function names.
+		funcMap := template.FuncMap{
+			"jsonEscape": func(s string) string { return s },
+		}
+		if _, err := template.New("").Funcs(funcMap).Parse(l.RulerAlertGeneratorURLTemplate); err != nil {
+			return fmt.Errorf("invalid ruler_alert_generator_url_template: %w", err)
+		}
+	}
+
+	if haTrackerUpdateTimeout > 0 || haTrackerUpdateTimeoutJitterMax > 0 || l.HATrackerFailoverTimeout > 0 {
+		minFailoverTimeout := haTrackerUpdateTimeout + haTrackerUpdateTimeoutJitterMax + time.Second
+		if time.Duration(l.HATrackerFailoverTimeout) < minFailoverTimeout {
+			return fmt.Errorf("HA Tracker failover timeout (%v) must be at least 1s greater than update timeout - max jitter (%v)", time.Duration(l.HATrackerFailoverTimeout), minFailoverTimeout)
+		}
+	}
+
+	return nil
+}
+func (l *Limits) ValidateQueryLimits(userID string, closeIdleTSDBTimeout time.Duration) error {
+	queryIngestersWithin := time.Duration(l.QueryIngestersWithin)
+	queryStoreAfter := time.Duration(l.QueryStoreAfter)
+	shuffleShardingLookback := time.Duration(l.ShuffleShardingIngestersLookbackPeriod)
+
+	if queryIngestersWithin > 0 && closeIdleTSDBTimeout > 0 && queryIngestersWithin >= closeIdleTSDBTimeout {
+		return fmt.Errorf("tenant %s: query_ingesters_within (%s) must be less than close_idle_tsdb_timeout (%s)",
+			userID, queryIngestersWithin, closeIdleTSDBTimeout)
+	}
+
+	if queryIngestersWithin > 0 && queryStoreAfter > 0 && queryStoreAfter >= queryIngestersWithin {
+		return fmt.Errorf("tenant %s: query_store_after (%s) must be less than query_ingesters_within (%s)",
+			userID, queryStoreAfter, queryIngestersWithin)
+	}
+
+	if queryStoreAfter > 0 && shuffleShardingLookback > 0 && shuffleShardingLookback < queryStoreAfter {
+		return fmt.Errorf("tenant %s: shuffle_sharding_ingesters_lookback_period (%s) is less than query_store_after (%s)",
+			userID, shuffleShardingLookback, queryStoreAfter)
+	}
+
 	return nil
 }
 
@@ -442,6 +508,10 @@ func (l *Limits) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 
 	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
+
+	if err := l.ActiveSeriesTrackers.Validate(); err != nil {
 		return err
 	}
 
@@ -472,6 +542,10 @@ func (l *Limits) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := l.calculateMaxSeriesPerLabelSetId(); err != nil {
+		return err
+	}
+
+	if err := l.ActiveSeriesTrackers.Validate(); err != nil {
 		return err
 	}
 
@@ -775,6 +849,11 @@ func (o *Overrides) LimitsPerLabelSet(userID string) []LimitsPerLabelSet {
 	return o.GetOverridesForUser(userID).LimitsPerLabelSet
 }
 
+// ActiveSeriesTrackers returns the active series tracker configurations for a given user.
+func (o *Overrides) ActiveSeriesTrackers(userID string) ActiveSeriesTrackersConfig {
+	return o.GetOverridesForUser(userID).ActiveSeriesTrackers
+}
+
 // MaxChunksPerQueryFromStore returns the maximum number of chunks allowed per query when fetching
 // chunks from the long-term storage.
 func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int {
@@ -1021,6 +1100,11 @@ func (o *Overrides) MaxHAReplicaGroups(user string) int {
 	return o.GetOverridesForUser(user).HAMaxClusters
 }
 
+// HATrackerFailoverTimeout returns the per-tenant HA tracker failover timeout.
+func (o *Overrides) HATrackerFailoverTimeout(user string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(user).HATrackerFailoverTimeout)
+}
+
 // S3SSEType returns the per-tenant S3 SSE type.
 func (o *Overrides) S3SSEType(user string) string {
 	return o.GetOverridesForUser(user).S3SSEType
@@ -1137,6 +1221,10 @@ func (o *Overrides) EnableTypeAndUnitLabels(userID string) bool {
 	return o.GetOverridesForUser(userID).EnableTypeAndUnitLabels
 }
 
+func (o *Overrides) EnableStartTimestamp(userID string) bool {
+	return o.GetOverridesForUser(userID).EnableStartTimestamp
+}
+
 func (o *Overrides) DisabledRuleGroups(userID string) DisabledRuleGroups {
 	if o.tenantLimits != nil {
 		l := o.tenantLimits.ByUserID(userID)
@@ -1161,6 +1249,14 @@ func (o *Overrides) RulerExternalLabels(userID string) labels.Labels {
 	return o.GetOverridesForUser(userID).RulerExternalLabels
 }
 
+func (o *Overrides) RulerExternalURL(userID string) string {
+	return o.GetOverridesForUser(userID).RulerExternalURL
+}
+
+func (o *Overrides) RulerAlertGeneratorURLTemplate(userID string) string {
+	return o.GetOverridesForUser(userID).RulerAlertGeneratorURLTemplate
+}
+
 // MaxRegexPatternLength returns the maximum length of an unoptimized regex pattern.
 // This is only used in Ingester.
 func (o *Overrides) MaxRegexPatternLength(userID string) int {
@@ -1177,6 +1273,18 @@ func (o *Overrides) MaxLabelCardinalityForUnoptimizedRegex(userID string) int {
 // This is only used in Ingester.
 func (o *Overrides) MaxTotalLabelValueLengthForUnoptimizedRegex(userID string) int {
 	return o.GetOverridesForUser(userID).MaxTotalLabelValueLengthForUnoptimizedRegex
+}
+
+func (o *Overrides) QueryIngestersWithin(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryIngestersWithin)
+}
+
+func (o *Overrides) QueryStoreAfter(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).QueryStoreAfter)
+}
+
+func (o *Overrides) ShuffleShardingIngestersLookbackPeriod(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).ShuffleShardingIngestersLookbackPeriod)
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
@@ -104,9 +105,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:                finder,
 			blocksStoreQuerier:    q,
 			parquetQuerier:        mParquetQuerier,
-			queryStoreAfter:       time.Hour,
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:                defaultOverrides(t, 0),
+			limits:                defaultOverridesWithQueryStoreAfter(t, 0, time.Hour),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
 		}
@@ -234,9 +234,8 @@ func TestParquetQueryableFallbackLogic(t *testing.T) {
 			finder:                finder,
 			blocksStoreQuerier:    q,
 			parquetQuerier:        mParquetQuerier,
-			queryStoreAfter:       queryStoreAfter,
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:                defaultOverrides(t, 0),
+			limits:                defaultOverridesWithQueryStoreAfter(t, 0, queryStoreAfter),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
 		}
@@ -399,7 +398,6 @@ func TestParquetQueryable_Limits(t *testing.T) {
 	bkt, tempDir := cortex_testutil.PrepareFilesystemBucket(t)
 
 	config := Config{
-		QueryStoreAfter:                         0,
 		StoreGatewayQueryStatsEnabled:           false,
 		StoreGatewayConsistencyCheckMaxAttempts: 3,
 		ParquetShardCache: parquetutil.CacheConfig{
@@ -590,9 +588,14 @@ func convertBlockToParquet(t *testing.T, ctx context.Context, userBucketClient o
 }
 
 func defaultOverrides(t *testing.T, queryVerticalShardSize int) *validation.Overrides {
+	return defaultOverridesWithQueryStoreAfter(t, queryVerticalShardSize, 0)
+}
+
+func defaultOverridesWithQueryStoreAfter(t *testing.T, queryVerticalShardSize int, queryStoreAfter time.Duration) *validation.Overrides {
 	limits := validation.Limits{}
 	flagext.DefaultValues(&limits)
 	limits.QueryVerticalShardSize = queryVerticalShardSize
+	limits.QueryStoreAfter = model.Duration(queryStoreAfter)
 
 	overrides := validation.NewOverrides(limits, nil)
 	return overrides
@@ -815,9 +818,8 @@ func TestSelectProjectionHints(t *testing.T) {
 				finder:                finder,
 				blocksStoreQuerier:    mockTSDBQuerier,
 				parquetQuerier:        mockParquetQuerierInstance,
-				queryStoreAfter:       0, // Disable queryStoreAfter manipulation
 				metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-				limits:                defaultOverrides(t, 0),
+				limits:                defaultOverridesWithQueryStoreAfter(t, 0, 0), // Disable queryStoreAfter manipulation
 				logger:                log.NewNopLogger(),
 				defaultBlockStoreType: parquetBlockStore,
 				fallbackDisabled:      false,
@@ -1082,14 +1084,14 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 
 		mParquetQuerier := &mockParquetQuerier{}
 		pq := &parquetQuerierWithFallback{
-			minT:                  minT,
-			maxT:                  maxT,
-			finder:                finder,
-			blocksStoreQuerier:    q,
-			parquetQuerier:        mParquetQuerier,
-			queryStoreAfter:       time.Hour,
+			minT:               minT,
+			maxT:               maxT,
+			finder:             finder,
+			blocksStoreQuerier: q,
+			parquetQuerier:     mParquetQuerier,
+
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
-			limits:                defaultOverrides(t, 0),
+			limits:                defaultOverridesWithQueryStoreAfter(t, 0, time.Hour),
 			logger:                log.NewNopLogger(),
 			defaultBlockStoreType: parquetBlockStore,
 			fallbackDisabled:      true, // Disable fallback
@@ -1146,7 +1148,6 @@ func TestParquetQueryableFallbackDisabled(t *testing.T) {
 			finder:                finder,
 			blocksStoreQuerier:    q,
 			parquetQuerier:        mParquetQuerier,
-			queryStoreAfter:       time.Hour,
 			metrics:               newParquetQueryableFallbackMetrics(prometheus.NewRegistry()),
 			limits:                defaultOverrides(t, 0),
 			logger:                log.NewNopLogger(),

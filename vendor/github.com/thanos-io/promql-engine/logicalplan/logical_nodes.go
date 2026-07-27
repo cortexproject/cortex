@@ -572,12 +572,18 @@ func shallowCloneSlice[T any](s []T) []T {
 	return clone
 }
 
+func isAggregation(expr *Node) bool {
+	if expr == nil {
+		return false
+	}
+	_, ok := (*expr).(*Aggregation)
+	return ok
+}
+
 func isAvgAggregation(expr *Node) bool {
 	if expr == nil {
 		return false
 	}
-	if aggr, ok := (*expr).(*Aggregation); ok {
-		return aggr.Op == parser.AVG
-	}
-	return false
+	aggr, ok := (*expr).(*Aggregation)
+	return ok && aggr.Op == parser.AVG
 }

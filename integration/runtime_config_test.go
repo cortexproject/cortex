@@ -215,6 +215,10 @@ overrides:
 		"-querier.store-gateway-addresses": strings.Join([]string{storeGateway.NetworkGRPCEndpoint()}, ","),
 	}), "")
 	require.Error(t, s.StartAndWaitReady(querier))
+	// Stop the failed service to unregister it before retrying with the same name.
+	// Ignore error: if the container crashed before Start() completed, the service
+	// was never registered and Stop() returns "does not exist" which is fine.
+	_ = s.Stop(querier)
 
 	// Start Query frontend
 	queryFrontend := e2ecortex.NewQueryFrontendWithConfigFile("query-frontend", "", flags, "")
@@ -231,6 +235,8 @@ overrides:
 	// Ruler start, but fail with "-distributor.shard-by-all-labels": "false"
 	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(flags, RulerFlags()), "")
 	require.Error(t, s.StartAndWaitReady(ruler))
+	// Stop the failed service to unregister it before retrying with the same name.
+	_ = s.Stop(ruler)
 
 	// Ruler start, should success with "-distributor.shard-by-all-labels": "true"
 	ruler = e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), mergeFlags(flags, RulerFlags(), map[string]string{
@@ -249,6 +255,8 @@ overrides:
 	// Distributor start, but fail with "-distributor.shard-by-all-labels": "false"
 	distributor := e2ecortex.NewQuerier("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{}), "")
 	require.Error(t, s.StartAndWaitReady(distributor))
+	// Stop the failed service to unregister it before retrying with the same name.
+	_ = s.Stop(distributor)
 
 	// Distributor start, should success with "-distributor.shard-by-all-labels": "true"
 	distributor = e2ecortex.NewQuerier("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{

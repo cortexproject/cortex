@@ -72,6 +72,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Delete user overrides](#delete-user-overrides) | Overrides || `DELETE /api/v1/user-overrides` |
 | [Store-gateway ring status](#store-gateway-ring-status) | Store-gateway || `GET /store-gateway/ring` |
 | [Compactor ring status](#compactor-ring-status) | Compactor || `GET /compactor/ring` |
+| [Parquet Converter ring status](#parquet-converter-ring-status) | Parquet Converter || `GET /parquet-converter/ring` |
 | [Get rule files](#get-rule-files) | Configs API (deprecated) || `GET /api/prom/configs/rules` |
 | [Set rule files](#set-rule-files) | Configs API (deprecated) || `POST /api/prom/configs/rules` |
 | [Get template files](#get-template-files) | Configs API (deprecated) || `GET /api/prom/configs/templates` |
@@ -967,6 +968,16 @@ GET /compactor/ring
 ```
 
 Displays a web page with the compactor hash ring status, including the state, healthy and last heartbeat time of each compactor.
+
+## Parquet Converter
+
+### Parquet Converter ring status
+
+```
+GET /parquet-converter/ring
+```
+
+Displays a web page with the parquet-converter hash ring status, including the state, healthy and last heartbeat time of each parquet-converter instance.
 
 ## Configs API
 

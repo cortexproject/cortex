@@ -124,6 +124,11 @@ func (c *coalesce) Next(ctx context.Context, buf []model.StepVector) (int, error
 		c.wg.Add(1)
 		go func(opIdx int, o model.VectorOperator) {
 			defer c.wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					errChan <- errors.Newf("unexpected panic: %v", r)
+				}
+			}()
 
 			n, err := o.Next(ctx, c.tempBufs[opIdx])
 			if err != nil {
@@ -221,16 +226,9 @@ func (c *coalesce) loadSeries(ctx context.Context) error {
 		go func(i int) {
 			defer wg.Done()
 			defer func() {
-				e := recover()
-				if e == nil {
-					return
+				if r := recover(); r != nil {
+					errChan <- errors.Newf("unexpected panic: %v", r)
 				}
-
-				switch err := e.(type) {
-				case error:
-					errChan <- errors.Wrapf(err, "unexpected error")
-				}
-
 			}()
 			series, err := c.operators[i].Series(ctx)
 			if err != nil {

@@ -265,8 +265,7 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 			TransactItems: slice,
 		})
 		if err != nil {
-			var checkFailed *types.ConditionalCheckFailedException
-			isCheckFailed := errors.As(err, &checkFailed)
+			isCheckFailed := isConditionalCheckFailure(err)
 			if isCheckFailed {
 				kv.logger.Log("msg", "conditional check failed on DynamoDB Batch", "err", err)
 			}
@@ -278,6 +277,38 @@ func (kv dynamodbKV) Batch(ctx context.Context, put map[dynamodbKey]dynamodbItem
 	}
 
 	return totalCapacity, false, nil
+}
+
+// isConditionalCheckFailure returns true if the given error was caused by a
+// conditional check failure, meaning another writer updated the item between
+// our read and write. Such conflicts are retryable: the caller should re-read
+// the latest state and retry the operation.
+//
+// DynamoDB reports conditional check failures differently depending on the API:
+//   - Single-item operations (PutItem, UpdateItem, DeleteItem) return
+//     ConditionalCheckFailedException.
+//   - TransactWriteItems returns TransactionCanceledException with the failure
+//     reported in CancellationReasons with code "ConditionalCheckFailed".
+//
+// TransactionConflict cancellation reasons (another transaction is in progress
+// on the same item) are equally transient and also treated as retryable.
+func isConditionalCheckFailure(err error) bool {
+	if _, ok := errors.AsType[*types.ConditionalCheckFailedException](err); ok {
+		return true
+	}
+
+	if txnCanceled, ok := errors.AsType[*types.TransactionCanceledException](err); ok {
+		for _, reason := range txnCanceled.CancellationReasons {
+			if reason.Code == nil {
+				continue
+			}
+			switch *reason.Code {
+			case "ConditionalCheckFailed", "TransactionConflict":
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (kv dynamodbKV) generatePutItemRequest(key dynamodbKey, ddbItem dynamodbItem) map[string]types.AttributeValue {

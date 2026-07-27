@@ -71,6 +71,9 @@ func newMultiLevelBucketCache(name string, cfg MultiLevelBucketCacheConfig, reg 
 	case "parquet-labels-cache":
 		itemName = "parquet_labels_cache"
 		metricHelpText = "parquet labels cache"
+	case "parquet-row-ranges-cache":
+		itemName = "parquet_row_ranges_cache"
+		metricHelpText = "parquet row ranges cache"
 	default:
 		itemName = name
 	}
@@ -80,14 +83,20 @@ func newMultiLevelBucketCache(name string, cfg MultiLevelBucketCacheConfig, reg 
 		caches:            c,
 		backfillProcessor: cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    fmt.Sprintf("cortex_store_multilevel_%s_fetch_duration_seconds", itemName),
-			Help:    fmt.Sprintf("Histogram to track latency to fetch items from multi level %s", metricHelpText),
-			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			Name:                            fmt.Sprintf("cortex_store_multilevel_%s_fetch_duration_seconds", itemName),
+			Help:                            fmt.Sprintf("Histogram to track latency to fetch items from multi level %s", metricHelpText),
+			Buckets:                         []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, nil),
 		backFillLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    fmt.Sprintf("cortex_store_multilevel_%s_backfill_duration_seconds", itemName),
-			Help:    fmt.Sprintf("Histogram to track latency to backfill items from multi level %s", metricHelpText),
-			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			Name:                            fmt.Sprintf("cortex_store_multilevel_%s_backfill_duration_seconds", itemName),
+			Help:                            fmt.Sprintf("Histogram to track latency to backfill items from multi level %s", metricHelpText),
+			Buckets:                         []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, nil),
 		storeDroppedItems: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: fmt.Sprintf("cortex_store_multilevel_%s_backfill_dropped_items_total", itemName),

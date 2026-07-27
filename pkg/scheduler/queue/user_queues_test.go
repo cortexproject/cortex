@@ -481,7 +481,9 @@ func TestQueueConcurrency(t *testing.T) {
 				queue.enqueueRequest(MockRequest{})
 				q.getNextQueueForQuerier(0, "q-1")
 			} else if cnt%5 == 0 {
-				queue.dequeueRequest(0, false)
+				if queue.length() > 0 {
+					queue.dequeueRequest(0, false)
+				}
 			} else if cnt%7 == 0 {
 				q.deleteQueue("userID")
 			}

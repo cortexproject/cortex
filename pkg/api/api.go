@@ -33,6 +33,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/overrides"
+	"github.com/cortexproject/cortex/pkg/parquetconverter"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -423,6 +424,12 @@ func (a *API) RegisterStoreGateway(s *storegateway.StoreGateway) {
 func (a *API) RegisterCompactor(c *compactor.Compactor) {
 	a.indexPage.AddLink(SectionAdminEndpoints, "/compactor/ring", "Compactor Ring Status")
 	a.RegisterRoute("/compactor/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
+}
+
+// RegisterParquetConverter registers the ring UI page associated with the parquet-converter.
+func (a *API) RegisterParquetConverter(c *parquetconverter.Converter) {
+	a.indexPage.AddLink(SectionAdminEndpoints, "/parquet-converter/ring", "Parquet Converter Ring Status")
+	a.RegisterRoute("/parquet-converter/ring", http.HandlerFunc(c.RingHandler), false, "GET", "POST")
 }
 
 type Distributor interface {

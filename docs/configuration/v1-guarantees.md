@@ -45,6 +45,7 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - OpenStack Swift storage support.
+- Oracle Cloud Infrastructure (OCI) Object Storage support.
 - Metric relabeling in the distributor.
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor:
@@ -117,7 +118,9 @@ Currently experimental features are:
   - `-store-gateway.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
+  - Enable stream push authentication on Distributor/Ingester. (`-distributor.sign-write-requests-keys`)
   - Add `__type__` and `__unit__` labels to OTLP and remote write v2 requests (`-distributor.enable-type-and-unit-labels`)
+  - Handle StartTimestampMs (ST) for remote write v2 samples and histograms, using CreatedTimestamp (CT) as a fallback when ST is not set (`-distributor.enable-start-timestamp`)
 - Ingester: Series Queried Metric
   - Enable on Ingester via `-ingester.active-queried-series-metrics-enabled=true`
   - Set the time window to expose via metrics using `-ingester.active-queried-series-metrics-windows=2h`. At least 1 time window is required to expose the metric.
@@ -131,3 +134,26 @@ Currently experimental features are:
     - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
     - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
 - HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled, fetches all tracked keys on startup to populate the local cache.
+- Querier: Resource-based query eviction
+  - `-querier.query-protection.eviction.threshold.cpu-utilization` (float)
+  - `-querier.query-protection.eviction.threshold.heap-utilization` (float)
+  - `-querier.query-protection.eviction.check-interval` (duration)
+  - `-querier.query-protection.eviction.cooldown-period` (int)
+  - `-querier.query-protection.eviction.eviction-metric` (string)
+  - `-querier.query-protection.eviction.min-query-age` (duration)
+- Ingester: Active Series Tracker
+  - Per-tenant `active_series_trackers` configuration in runtime config overrides
+  - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric
+- Ingester: Lazy regex evaluation on head postings cache miss
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio` (int) CLI flag
+- Ingester: Head Queried Series Metrics
+  - Enable on Ingester via `-ingester.head-queried-series-metrics-enabled=true`
+  - Tracks unique series queried from head only (not blocks) using HLL
+  - `-ingester.head-queried-series-metrics-windows` time windows to report (default: 2h)
+  - `-ingester.head-queried-series-metrics-window-duration` HLL sub-window size
+  - `-ingester.head-queried-series-metrics-sample-rate` query sampling rate
+- Parquet Converter: Maximum number of columns per file
+  - `-parquet-converter.max-num-columns` (int) CLI flag
+  - Automatically shards parquet files when the number of columns exceeds the configured limit

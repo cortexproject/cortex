@@ -98,7 +98,6 @@ type parquetQueryableWithFallback struct {
 	services.Service
 
 	fallbackDisabled      bool
-	queryStoreAfter       time.Duration
 	parquetQueryable      storage.Queryable
 	cache                 parquetutil.CacheInterface[parquet_storage.ParquetShard]
 	blockStorageQueryable *BlocksStoreQueryable
@@ -141,6 +140,19 @@ func NewParquetQueryable(
 	cache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&config.ParquetShardCache, "parquet-shards", extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 	if err != nil {
 		return nil, err
+	}
+
+	rowRangesCacheBackend, err := cortex_tsdb.CreateParquetRowRangesCache(storageCfg.BucketStore.ParquetRowRangesCache, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+	if err != nil {
+		return nil, err
+	}
+	rowRangesCache := parquetutil.NewRowRangesCache(rowRangesCacheBackend, "parquet-row-ranges", storageCfg.BucketStore.ParquetRowRangesCache.TTL, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
+
+	var constraintCacheFunc queryable.ConstraintCacheFunction
+	if rowRangesCache != nil {
+		constraintCacheFunc = func(context.Context) (search.RowRangesForConstraintsCache, error) {
+			return rowRangesCache, nil
+		}
 	}
 
 	cDecoder := schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool())
@@ -273,14 +285,13 @@ func NewParquetQueryable(
 		}
 
 		return shards, errGroup.Wait()
-	}, nil, cDecoder, parquetQueryableOpts...)
+	}, constraintCacheFunc, cDecoder, parquetQueryableOpts...)
 
 	p := &parquetQueryableWithFallback{
 		subservices:           manager,
 		blockStorageQueryable: blockStorageQueryable,
 		parquetQueryable:      parquetQueryable,
 		cache:                 cache,
-		queryStoreAfter:       config.QueryStoreAfter,
 		subservicesWatcher:    services.NewFailureWatcher(),
 		finder:                blockStorageQueryable.finder,
 		metrics:               newParquetQueryableFallbackMetrics(reg),
@@ -338,7 +349,6 @@ func (p *parquetQueryableWithFallback) Querier(mint, maxt int64) (storage.Querie
 		minT:                  mint,
 		maxT:                  maxt,
 		parquetQuerier:        pq,
-		queryStoreAfter:       p.queryStoreAfter,
 		blocksStoreQuerier:    bsq,
 		finder:                p.finder,
 		metrics:               p.metrics,
@@ -357,10 +367,6 @@ type parquetQuerierWithFallback struct {
 
 	parquetQuerier     storage.Querier
 	blocksStoreQuerier storage.Querier
-
-	// If set, the querier manipulates the max time to not be greater than
-	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
 
 	// metrics
 	metrics *parquetQueryableFallbackMetrics
@@ -402,7 +408,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelValues(InjectBlocksIntoContext(ctx, parquet...), name, hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 		result = res
 		rAnnotations = ann
@@ -411,7 +417,7 @@ func (q *parquetQuerierWithFallback) LabelValues(ctx context.Context, name strin
 	if len(remaining) > 0 {
 		res, ann, qErr := q.blocksStoreQuerier.LabelValues(InjectBlocksIntoContext(ctx, remaining...), name, hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 
 		if len(result) == 0 {
@@ -456,7 +462,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	if len(parquet) > 0 {
 		res, ann, qErr := q.parquetQuerier.LabelNames(InjectBlocksIntoContext(ctx, parquet...), hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 		result = res
 		rAnnotations = ann
@@ -465,7 +471,7 @@ func (q *parquetQuerierWithFallback) LabelNames(ctx context.Context, hints *stor
 	if len(remaining) > 0 {
 		res, ann, qErr := q.blocksStoreQuerier.LabelNames(InjectBlocksIntoContext(ctx, remaining...), hints, matchers...)
 		if qErr != nil {
-			return nil, nil, err
+			return nil, nil, qErr
 		}
 
 		if len(result) == 0 {
@@ -503,7 +509,7 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 		mint, maxt, limit = hints.Start, hints.End, hints.Limit
 	}
 
-	maxt = q.adjustMaxT(maxt)
+	maxt = q.adjustMaxT(ctx, maxt)
 	hints.End = maxt
 
 	if maxt < mint {
@@ -578,14 +584,19 @@ func (q *parquetQuerierWithFallback) Select(ctx context.Context, sortSeries bool
 	return storage.NewMergeSeriesSet(seriesSets, limit, storage.ChainedSeriesMerge)
 }
 
-func (q *parquetQuerierWithFallback) adjustMaxT(maxt int64) int64 {
+func (q *parquetQuerierWithFallback) adjustMaxT(ctx context.Context, maxt int64) int64 {
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip
 	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
+	userID, err := users.TenantID(ctx)
+	if err != nil {
+		return maxt
+	}
+	queryStoreAfter := q.limits.QueryStoreAfter(userID)
+	if queryStoreAfter > 0 {
 		now := time.Now()
-		maxt = min(maxt, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxt = min(maxt, util.TimeToMillis(now.Add(-queryStoreAfter)))
 	}
 	return maxt
 }
@@ -603,7 +614,7 @@ func (q *parquetQuerierWithFallback) getBlocks(ctx context.Context, minT, maxT i
 		return nil, nil, err
 	}
 
-	maxT = q.adjustMaxT(maxT)
+	maxT = q.adjustMaxT(ctx, maxT)
 
 	if maxT < minT {
 		return nil, nil, nil

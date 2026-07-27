@@ -10,6 +10,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
@@ -32,6 +33,7 @@ type PartitionCompactionPlanner struct {
 	partitionVisitMarkerTimeout            time.Duration
 	partitionVisitMarkerFileUpdateInterval time.Duration
 	compactorMetrics                       *compactorMetrics
+	ignoreDeletionMarkFilter               *block.IgnoreDeletionMarkFilter
 }
 
 func NewPartitionCompactionPlanner(
@@ -46,6 +48,7 @@ func NewPartitionCompactionPlanner(
 	partitionVisitMarkerTimeout time.Duration,
 	partitionVisitMarkerFileUpdateInterval time.Duration,
 	compactorMetrics *compactorMetrics,
+	ignoreDeletionMarkFilter *block.IgnoreDeletionMarkFilter,
 ) *PartitionCompactionPlanner {
 	return &PartitionCompactionPlanner{
 		ctx:                                    ctx,
@@ -59,6 +62,7 @@ func NewPartitionCompactionPlanner(
 		partitionVisitMarkerTimeout:            partitionVisitMarkerTimeout,
 		partitionVisitMarkerFileUpdateInterval: partitionVisitMarkerFileUpdateInterval,
 		compactorMetrics:                       compactorMetrics,
+		ignoreDeletionMarkFilter:               ignoreDeletionMarkFilter,
 	}
 }
 
@@ -169,6 +173,28 @@ func (p *PartitionCompactionPlanner) PlanWithPartition(_ context.Context, metasB
 		p.compactorMetrics.compactionsNotPlanned.WithLabelValues(p.userID, cortexMetaExtensions.TimeRangeStr()).Inc()
 		level.Warn(p.logger).Log("msg", "result meta size is empty", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "group_size", len(metasByMinTime))
 		return nil, nil
+	}
+
+	if p.ignoreDeletionMarkFilter != nil {
+		resultMetasMap := make(map[ulid.ULID]*metadata.Meta, len(resultMetas))
+		for _, m := range resultMetas {
+			resultMetasMap[m.ULID] = m
+		}
+		err = p.ignoreDeletionMarkFilter.Filter(p.ctx, resultMetasMap, p.compactorMetrics.metaFetcherSynced, p.compactorMetrics.metaFetcherModified)
+		if err != nil {
+			visitMarkerManager.MarkWithStatus(p.ctx, Failed)
+			level.Warn(p.logger).Log("msg", "unable to filter blocks by deletion marker", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "err", err)
+			return nil, err
+		}
+		var deletedBlocks []string
+		for deletedBlock := range p.ignoreDeletionMarkFilter.DeletionMarkBlocks() {
+			deletedBlocks = append(deletedBlocks, deletedBlock.String())
+		}
+		if len(deletedBlocks) > 0 {
+			visitMarkerManager.MarkWithStatus(p.ctx, Failed)
+			level.Warn(p.logger).Log("msg", "partitioned group contains deleted blocks", "partitioned_group_id", partitionedGroupID, "partition_id", partitionID, "deleted_blocks", deletedBlocks)
+			return nil, fmt.Errorf("partitioned group contains %d deleted blocks", len(deletedBlocks))
+		}
 	}
 
 	go visitMarkerManager.HeartBeat(p.ctx, errChan, p.partitionVisitMarkerFileUpdateInterval, false)

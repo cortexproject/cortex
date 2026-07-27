@@ -284,7 +284,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	flags = mergeFlags(flags, map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
-		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":     "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-frontend.query-stats-enabled":      "true", // Always enable query stats to capture regressions
 	})
@@ -882,7 +882,7 @@ func TestQueryFrontendStatsFromResultsCacheShouldBeSame(t *testing.T) {
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":                  "true",
 		"-querier.split-queries-by-interval":      "24h",
-		"-querier.query-ingesters-within":         "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":          "12h", // Required by the test on query /series out of ingesters time range
 		"-querier.per-step-stats-enabled":         strconv.FormatBool(true),
 		"-frontend.memcached.addresses":           "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-frontend.query-stats-enabled":           strconv.FormatBool(true),
@@ -988,6 +988,9 @@ func TestQueryFrontendResponseSizeLimit(t *testing.T) {
 
 	require.NoError(t, s.StartAndWaitReady(distributor, ingester, querier))
 	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait until the distributor has discovered the ingester in the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)

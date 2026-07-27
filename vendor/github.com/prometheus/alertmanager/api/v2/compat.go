@@ -20,24 +20,27 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	prometheus_model "github.com/prometheus/common/model"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/prometheus/alertmanager/alert"
 	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
+	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/silence/silencepb"
-	"github.com/prometheus/alertmanager/types"
 )
 
 // GettableSilenceFromProto converts *silencepb.Silence to open_api_models.GettableSilence.
 func GettableSilenceFromProto(s *silencepb.Silence) (open_api_models.GettableSilence, error) {
-	start := strfmt.DateTime(s.StartsAt)
-	end := strfmt.DateTime(s.EndsAt)
-	updated := strfmt.DateTime(s.UpdatedAt)
-	state := string(types.CalcSilenceState(s.StartsAt, s.EndsAt))
+	start := strfmt.DateTime(s.StartsAt.AsTime())
+	end := strfmt.DateTime(s.EndsAt.AsTime())
+	updated := strfmt.DateTime(s.UpdatedAt.AsTime())
+	state := string(silence.CurrentState(s.StartsAt.AsTime(), s.EndsAt.AsTime()))
 	sil := open_api_models.GettableSilence{
 		Silence: open_api_models.Silence{
-			StartsAt:  &start,
-			EndsAt:    &end,
-			Comment:   &s.Comment,
-			CreatedBy: &s.CreatedBy,
+			StartsAt:    &start,
+			EndsAt:      &end,
+			Comment:     &s.Comment,
+			CreatedBy:   &s.CreatedBy,
+			Annotations: s.Annotations,
 		},
 		ID:        &s.Id,
 		UpdatedAt: &updated,
@@ -46,7 +49,16 @@ func GettableSilenceFromProto(s *silencepb.Silence) (open_api_models.GettableSil
 		},
 	}
 
-	for _, m := range s.Matchers {
+	// For backward compatibility, only return silences with a single matcher set
+	if len(s.MatcherSets) > 1 {
+		return sil, fmt.Errorf("silence '%v' has multiple matcher sets which is not supported by this API version", s.Id)
+	}
+
+	if len(s.MatcherSets) == 0 {
+		return sil, nil
+	}
+
+	for _, m := range s.MatcherSets[0].Matchers {
 		matcher := &open_api_models.Matcher{
 			Name:  &m.Name,
 			Value: &m.Pattern,
@@ -82,12 +94,15 @@ func GettableSilenceFromProto(s *silencepb.Silence) (open_api_models.GettableSil
 // PostableSilenceToProto converts *open_api_models.PostableSilenc to *silencepb.Silence.
 func PostableSilenceToProto(s *open_api_models.PostableSilence) (*silencepb.Silence, error) {
 	sil := &silencepb.Silence{
-		Id:        s.ID,
-		StartsAt:  time.Time(*s.StartsAt),
-		EndsAt:    time.Time(*s.EndsAt),
-		Comment:   *s.Comment,
-		CreatedBy: *s.CreatedBy,
+		Id:          s.ID,
+		StartsAt:    timestamppb.New(time.Time(*s.StartsAt)),
+		EndsAt:      timestamppb.New(time.Time(*s.EndsAt)),
+		Comment:     *s.Comment,
+		CreatedBy:   *s.CreatedBy,
+		Annotations: map[string]string{},
 	}
+
+	matcherSet := &silencepb.MatcherSet{}
 	for _, m := range s.Matchers {
 		matcher := &silencepb.Matcher{
 			Name:    *m.Name,
@@ -112,23 +127,29 @@ func PostableSilenceToProto(s *open_api_models.PostableSilence) (*silencepb.Sile
 		case !isEqual && isRegex:
 			matcher.Type = silencepb.Matcher_NOT_REGEXP
 		}
-		sil.Matchers = append(sil.Matchers, matcher)
+		matcherSet.Matchers = append(matcherSet.Matchers, matcher)
 	}
+	sil.MatcherSets = append(sil.MatcherSets, matcherSet)
+
+	if s.Annotations != nil {
+		sil.Annotations = s.Annotations
+	}
+
 	return sil, nil
 }
 
 // AlertToOpenAPIAlert converts internal alerts, alert types, and receivers to *open_api_models.GettableAlert.
-func AlertToOpenAPIAlert(alert *types.Alert, status types.AlertStatus, receivers, mutedBy []string) *open_api_models.GettableAlert {
-	startsAt := strfmt.DateTime(alert.StartsAt)
-	updatedAt := strfmt.DateTime(alert.UpdatedAt)
-	endsAt := strfmt.DateTime(alert.EndsAt)
+func AlertToOpenAPIAlert(source *alert.Alert, status alert.AlertStatus, receivers, mutedBy []string) *open_api_models.GettableAlert {
+	startsAt := strfmt.DateTime(source.StartsAt)
+	updatedAt := strfmt.DateTime(source.UpdatedAt)
+	endsAt := strfmt.DateTime(source.EndsAt)
 
-	apiReceivers := make([]*open_api_models.Receiver, 0, len(receivers))
+	apiReceivers := make([]*open_api_models.ReceiverReference, 0, len(receivers))
 	for i := range receivers {
-		apiReceivers = append(apiReceivers, &open_api_models.Receiver{Name: &receivers[i]})
+		apiReceivers = append(apiReceivers, &open_api_models.ReceiverReference{Name: &receivers[i]})
 	}
 
-	fp := alert.Fingerprint().String()
+	fp := source.Fingerprint().String()
 
 	state := string(status.State)
 	if len(mutedBy) > 0 {
@@ -138,10 +159,10 @@ func AlertToOpenAPIAlert(alert *types.Alert, status types.AlertStatus, receivers
 
 	aa := &open_api_models.GettableAlert{
 		Alert: open_api_models.Alert{
-			GeneratorURL: strfmt.URI(alert.GeneratorURL),
-			Labels:       ModelLabelSetToAPILabelSet(alert.Labels),
+			GeneratorURL: strfmt.URI(source.GeneratorURL),
+			Labels:       ModelLabelSetToAPILabelSet(source.Labels),
 		},
-		Annotations: ModelLabelSetToAPILabelSet(alert.Annotations),
+		Annotations: ModelLabelSetToAPILabelSet(source.Annotations),
 		StartsAt:    &startsAt,
 		UpdatedAt:   &updatedAt,
 		EndsAt:      &endsAt,
@@ -170,14 +191,14 @@ func AlertToOpenAPIAlert(alert *types.Alert, status types.AlertStatus, receivers
 	return aa
 }
 
-// OpenAPIAlertsToAlerts converts open_api_models.PostableAlerts to []*types.Alert.
-func OpenAPIAlertsToAlerts(ctx context.Context, apiAlerts open_api_models.PostableAlerts) []*types.Alert {
+// OpenAPIAlertsToAlerts converts open_api_models.PostableAlerts to []*alert.Alert.
+func OpenAPIAlertsToAlerts(ctx context.Context, apiAlerts open_api_models.PostableAlerts) []*alert.Alert {
 	_, span := tracer.Start(ctx, "OpenAPIAlertsToAlerts")
 	defer span.End()
 
-	alerts := []*types.Alert{}
+	alerts := make([]*alert.Alert, 0, len(apiAlerts))
 	for _, apiAlert := range apiAlerts {
-		alert := types.Alert{
+		alerts = append(alerts, &alert.Alert{
 			Alert: prometheus_model.Alert{
 				Labels:       APILabelSetToModelLabelSet(apiAlert.Labels),
 				Annotations:  APILabelSetToModelLabelSet(apiAlert.Annotations),
@@ -185,8 +206,7 @@ func OpenAPIAlertsToAlerts(ctx context.Context, apiAlerts open_api_models.Postab
 				EndsAt:       time.Time(apiAlert.EndsAt),
 				GeneratorURL: string(apiAlert.GeneratorURL),
 			},
-		}
-		alerts = append(alerts, &alert)
+		})
 	}
 
 	return alerts

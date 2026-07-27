@@ -43,9 +43,12 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 			return schedulerpb.NewSchedulerForQuerierClient(conn)
 		},
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_querier_query_frontend_request_duration_seconds",
-			Help:    "Time spend doing requests to frontend.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+			Name:                            "cortex_querier_query_frontend_request_duration_seconds",
+			Help:                            "Time spend doing requests to frontend.",
+			Buckets:                         prometheus.ExponentialBuckets(0.001, 4, 6),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operation", "status_code"}),
 		querierAddress: querierAddress,
 	}
@@ -176,6 +179,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	var stats *querier_stats.QueryStats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
+		querier_stats.ExtractQueueTimeHeader(request, stats)
 	}
 
 	response, err := sp.handler.Handle(ctx, request)
@@ -192,6 +196,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	if statsEnabled {
 		level.Info(logger).Log("msg", "finished request", "status_code", response.Code, "response_size", len(response.GetBody()))
 	}
+
+	// Compute timing breakdown before sending stats back to the frontend.
+	stats.ComputeAndStoreTimingBreakdown()
 
 	if err = ctx.Err(); err != nil {
 		return

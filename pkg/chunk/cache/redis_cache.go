@@ -31,11 +31,14 @@ func NewRedisCache(name string, redisClient *RedisClient, reg prometheus.Registe
 		logger: logger,
 		requestDuration: instr.NewHistogramCollector(
 			promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace:   "cortex",
-				Name:        "rediscache_request_duration_seconds",
-				Help:        "Total time spent in seconds doing Redis requests.",
-				Buckets:     prometheus.ExponentialBuckets(0.000016, 4, 8),
-				ConstLabels: prometheus.Labels{"name": name},
+				Namespace:                       "cortex",
+				Name:                            "rediscache_request_duration_seconds",
+				Help:                            "Total time spent in seconds doing Redis requests.",
+				Buckets:                         prometheus.ExponentialBuckets(0.000016, 4, 8),
+				ConstLabels:                     prometheus.Labels{"name": name},
+				NativeHistogramBucketFactor:     1.1,
+				NativeHistogramMaxBucketNumber:  100,
+				NativeHistogramMinResetDuration: time.Hour,
 			}, []string{"method", "status_code"}),
 		),
 	}

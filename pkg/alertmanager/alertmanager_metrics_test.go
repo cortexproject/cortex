@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/alertmanager/alert"
+	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -978,8 +979,8 @@ func populateAlertmanager(base float64) *prometheus.Registry {
 	}
 
 	m := newMarkerMetrics(reg)
-	m.alerts.WithLabelValues(string(types.AlertStateActive)).Add(base)
-	m.alerts.WithLabelValues(string(types.AlertStateSuppressed)).Add(base * 2)
+	m.alerts.WithLabelValues(string(alert.AlertStateActive)).Add(base)
+	m.alerts.WithLabelValues(string(alert.AlertStateSuppressed)).Add(base * 2)
 
 	v1APIMetrics := newAPIMetrics("v1", reg)
 	v1APIMetrics.firing.Add(base * 2)
@@ -1113,17 +1114,17 @@ func newSilenceMetrics(r prometheus.Registerer) *silenceMetrics {
 	m.silencesActive = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
-		ConstLabels: prometheus.Labels{"state": string(types.SilenceStateActive)},
+		ConstLabels: prometheus.Labels{"state": string(silence.SilenceStateActive)},
 	})
 	m.silencesPending = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
-		ConstLabels: prometheus.Labels{"state": string(types.SilenceStatePending)},
+		ConstLabels: prometheus.Labels{"state": string(silence.SilenceStatePending)},
 	})
 	m.silencesExpired = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name:        "alertmanager_silences",
 		Help:        "How many silences by state.",
-		ConstLabels: prometheus.Labels{"state": string(types.SilenceStateExpired)},
+		ConstLabels: prometheus.Labels{"state": string(silence.SilenceStateExpired)},
 	})
 	m.silencesMaintenanceTotal = promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "alertmanager_silences_maintenance_total",

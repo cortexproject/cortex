@@ -1,6 +1,7 @@
 package alertmanager
 
 import (
+	"bytes"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,32 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStatusHandler_HTMLEscaping(t *testing.T) {
+	// Verify that html/template escapes XSS payloads in the status page.
+	xssPayload := `<script>alert("xss")</script>`
+
+	var buf bytes.Buffer
+	err := statusTemplate.Execute(&buf, struct {
+		ClusterInfo map[string]any
+	}{
+		ClusterInfo: map[string]any{
+			"self": map[string]any{
+				"Name": xssPayload,
+				"Addr": "127.0.0.1",
+				"Port": "9094",
+			},
+			"members": []map[string]any{
+				{"Name": xssPayload, "Addr": "127.0.0.1:9094"},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	content := buf.String()
+	require.NotContains(t, content, xssPayload, "XSS payload must be escaped by html/template")
+	require.Contains(t, content, "&lt;script&gt;", "HTML special characters must be escaped")
+}
 
 func TestMultitenantAlertmanager_GetStatusHandler(t *testing.T) {
 	ctx := t.Context()

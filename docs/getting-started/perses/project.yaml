@@ -1,6 +1,6 @@
 kind: Project
 metadata:
-  name: default
+  name: cortex
 spec:
   display:
-    name: "default"
+    name: "Cortex"

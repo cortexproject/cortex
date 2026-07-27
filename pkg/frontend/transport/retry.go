@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,6 +12,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 )
@@ -24,10 +26,13 @@ func NewRetry(maxRetries int, reg prometheus.Registerer) *Retry {
 	return &Retry{
 		maxRetries: maxRetries,
 		retriesCount: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "query_frontend_retries",
-			Help:      "Number of times a request is retried.",
-			Buckets:   []float64{0, 1, 2, 3, 4, 5},
+			Namespace:                       "cortex",
+			Name:                            "query_frontend_retries",
+			Help:                            "Number of times a request is retried.",
+			Buckets:                         []float64{0, 1, 2, 3, 4, 5},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }
@@ -84,6 +89,11 @@ func isBodyRetryable(body string) bool {
 		return false
 	}
 	if strings.Contains(body, storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error()) {
+		return false
+	}
+
+	// If request timed out upstream, there isnt enough time to retry.
+	if strings.Contains(body, queryapi.ErrUpstreamRequestTimeout) {
 		return false
 	}
 	return true

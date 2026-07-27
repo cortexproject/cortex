@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"net/http"
 	"slices"
 	"sort"
@@ -179,6 +180,7 @@ type resultsCache struct {
 	merger                     tripperware.Merger
 	shouldCache                ShouldCacheFn
 	cacheQueryableSamplesStats bool
+	tenantResolverFn           func() users.Resolver
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -196,6 +198,7 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	shouldCache ShouldCacheFn,
 	reg prometheus.Registerer,
+	tenantResolverFn func() users.Resolver,
 ) (tripperware.Middleware, cache.Cache, error) {
 	c, err := cache.New(cfg.CacheConfig, reg, logger)
 	if err != nil {
@@ -219,6 +222,7 @@ func NewResultsCacheMiddleware(
 			now:                        time.Now,
 			shouldCache:                shouldCache,
 			cacheQueryableSamplesStats: cfg.CacheQueryableSamplesStats,
+			tenantResolverFn:           tenantResolverFn,
 		}
 	}), c, nil
 }
@@ -242,7 +246,21 @@ func (s resultsCache) Do(ctx context.Context, r tripperware.Request) (tripperwar
 		return s.next.Do(ctx, r)
 	}
 
-	key := s.splitter.GenerateCacheKey(ctx, users.JoinTenantIDs(tenantIDs), r)
+	// Build the user ID portion of the cache key.
+	// For regex-federation users the resolved tenant set is hashed and appended
+	// so that adding or removing a tenant invalidates cached entries automatically.
+	cacheUserID := users.JoinTenantIDs(tenantIDs)
+	if s.tenantResolverFn != nil {
+		if resolver := s.tenantResolverFn(); resolver != nil {
+			if resolvedIDs, resolveErr := resolver.TenantIDs(ctx); resolveErr == nil && len(resolvedIDs) > 0 {
+				h := fnv.New64a()
+				_, _ = h.Write([]byte(strings.Join(resolvedIDs, "|")))
+				cacheUserID = fmt.Sprintf("%s:h%x", cacheUserID, h.Sum64())
+			}
+		}
+	}
+
+	key := s.splitter.GenerateCacheKey(ctx, cacheUserID, r)
 
 	var (
 		extents  []tripperware.Extent

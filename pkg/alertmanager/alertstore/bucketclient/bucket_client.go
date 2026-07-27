@@ -11,9 +11,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/extprom"
+	googleproto "google.golang.org/protobuf/proto"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertspb"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -176,23 +178,36 @@ func (s *BucketAlertStore) GetFullState(ctx context.Context, userID string) (ale
 	bkt := s.getAlertmanagerUserBucket(userID)
 	fs := alertspb.FullStateDesc{}
 
-	err := s.get(ctx, bkt, fullStateName, &fs)
-	if bkt.IsObjNotFoundErr(err) {
-		return fs, alertspb.ErrNotFound
+	readCloser, err := bkt.Get(ctx, fullStateName)
+	if err != nil {
+		if bkt.IsObjNotFoundErr(err) {
+			return fs, alertspb.ErrNotFound
+		}
+		if bkt.IsAccessDeniedErr(err) {
+			return fs, alertspb.ErrAccessDenied
+		}
+		return fs, err
+	}
+	defer runutil.CloseWithLogOnErr(s.logger, readCloser, "close bucket reader")
+
+	buf, err := io.ReadAll(readCloser)
+	if err != nil {
+		return fs, errors.Wrapf(err, "failed to read full state for user %s", userID)
 	}
 
-	if bkt.IsAccessDeniedErr(err) {
-		return fs, alertspb.ErrAccessDenied
+	state := &clusterpb.FullState{}
+	if err := googleproto.Unmarshal(buf, state); err != nil {
+		return fs, errors.Wrapf(err, "failed to deserialize full state for user %s", userID)
 	}
-
-	return fs, err
+	fs.State = state
+	return fs, nil
 }
 
 // SetFullState implements alertstore.AlertStore.
 func (s *BucketAlertStore) SetFullState(ctx context.Context, userID string, fs alertspb.FullStateDesc) error {
 	bkt := s.getAlertmanagerUserBucket(userID)
 
-	fsBytes, err := fs.Marshal()
+	fsBytes, err := googleproto.Marshal(fs.State)
 	if err != nil {
 		return err
 	}

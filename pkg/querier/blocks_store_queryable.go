@@ -29,6 +29,7 @@ import (
 	"github.com/thanos-io/thanos/pkg/pool"
 	thanosquery "github.com/thanos-io/thanos/pkg/query"
 	"github.com/thanos-io/thanos/pkg/store/hintspb"
+	"github.com/thanos-io/thanos/pkg/store/labelpb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/thanos-io/thanos/pkg/strutil"
 	"go.uber.org/atomic"
@@ -104,6 +105,7 @@ type BlocksStoreLimits interface {
 
 	MaxChunksPerQueryFromStore(userID string) int
 	StoreGatewayTenantShardSize(userID string) float64
+	QueryStoreAfter(userID string) time.Duration
 }
 
 type blocksStoreQueryableMetrics struct {
@@ -114,16 +116,22 @@ type blocksStoreQueryableMetrics struct {
 func newBlocksStoreQueryableMetrics(reg prometheus.Registerer) *blocksStoreQueryableMetrics {
 	return &blocksStoreQueryableMetrics{
 		storesHit: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_storegateway_instances_hit_per_query",
-			Help:      "Number of store-gateway instances hit for a single query.",
-			Buckets:   []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			Namespace:                       "cortex",
+			Name:                            "querier_storegateway_instances_hit_per_query",
+			Help:                            "Number of store-gateway instances hit for a single query.",
+			Buckets:                         []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		refetches: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_storegateway_refetches_per_query",
-			Help:      "Number of re-fetches attempted while querying store-gateway instances due to missing blocks.",
-			Buckets:   []float64{0, 1, 2, 4, 8},
+			Namespace:                       "cortex",
+			Name:                            "querier_storegateway_refetches_per_query",
+			Help:                            "Number of re-fetches attempted while querying store-gateway instances due to missing blocks.",
+			Buckets:                         []float64{0, 1, 2, 4, 8},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }
@@ -133,13 +141,12 @@ func newBlocksStoreQueryableMetrics(reg prometheus.Registerer) *blocksStoreQuery
 type BlocksStoreQueryable struct {
 	services.Service
 
-	stores          BlocksStoreSet
-	finder          BlocksFinder
-	consistency     *BlocksConsistencyChecker
-	logger          log.Logger
-	queryStoreAfter time.Duration
-	metrics         *blocksStoreQueryableMetrics
-	limits          BlocksStoreLimits
+	stores      BlocksStoreSet
+	finder      BlocksFinder
+	consistency *BlocksConsistencyChecker
+	logger      log.Logger
+	metrics     *blocksStoreQueryableMetrics
+	limits      BlocksStoreLimits
 
 	storeGatewayQueryStatsEnabled           bool
 	storeGatewayConsistencyCheckMaxAttempts int
@@ -168,7 +175,6 @@ func NewBlocksStoreQueryable(
 		stores:                                  stores,
 		finder:                                  finder,
 		consistency:                             consistency,
-		queryStoreAfter:                         config.QueryStoreAfter,
 		logger:                                  logger,
 		subservices:                             manager,
 		subservicesWatcher:                      services.NewFailureWatcher(),
@@ -204,7 +210,7 @@ func NewBlocksStoreQueryableFromConfig(querierCfg Config, gatewayCfg storegatewa
 			MaxStalePeriod:           storageCfg.BucketStore.BucketIndex.MaxStalePeriod,
 			IgnoreDeletionMarksDelay: storageCfg.BucketStore.IgnoreDeletionMarksDelay,
 			IgnoreBlocksWithin:       storageCfg.BucketStore.IgnoreBlocksWithin,
-		}, bucketClient, limits, logger, reg)
+		}, bucketClient, limits, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "store-queryable"}, reg))
 	} else {
 		usersScanner, err := users.NewScanner(storageCfg.UsersScanner, bucketClient, logger, extprom.WrapRegistererWith(prometheus.Labels{"component": "querier"}, reg))
 		if err != nil {
@@ -305,10 +311,10 @@ func (q *BlocksStoreQueryable) Querier(mint, maxt int64) (storage.Querier, error
 		limits:                                  q.limits,
 		consistency:                             q.consistency,
 		logger:                                  q.logger,
-		queryStoreAfter:                         q.queryStoreAfter,
 		storeGatewayQueryStatsEnabled:           q.storeGatewayQueryStatsEnabled,
 		storeGatewayConsistencyCheckMaxAttempts: q.storeGatewayConsistencyCheckMaxAttempts,
 		storeGatewaySeriesBatchSize:             q.storeGatewaySeriesBatchSize,
+		nowFn:                                   time.Now,
 	}, nil
 }
 
@@ -321,10 +327,6 @@ type blocksStoreQuerier struct {
 	limits      BlocksStoreLimits
 	logger      log.Logger
 
-	// If set, the querier manipulates the max time to not be greater than
-	// "now - queryStoreAfter" so that most recent blocks are not queried.
-	queryStoreAfter time.Duration
-
 	// If enabled, query stats of store gateway requests will be logged
 	// using `info` level.
 	storeGatewayQueryStatsEnabled bool
@@ -334,6 +336,8 @@ type blocksStoreQuerier struct {
 
 	// The maximum number of series to be batched in a single gRPC response message from Store Gateways.
 	storeGatewaySeriesBatchSize int64
+
+	nowFn func() time.Time
 }
 
 // Select implements storage.Querier interface.
@@ -492,14 +496,15 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 
 func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logger log.Logger, minT, maxT int64, matchers []*labels.Matcher,
 	userID string, queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error)) error {
+	queryStoreAfter := q.limits.QueryStoreAfter(userID)
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
 	// optimization is particularly important for the blocks storage because can be used to skip
 	// querying most recent not-compacted-yet blocks from the storage.
-	if q.queryStoreAfter > 0 {
-		now := time.Now()
+	if queryStoreAfter > 0 {
+		now := q.nowFn()
 		origMaxT := maxT
-		maxT = min(maxT, util.TimeToMillis(now.Add(-q.queryStoreAfter)))
+		maxT = min(maxT, util.TimeToMillis(now.Add(-queryStoreAfter)))
 
 		if origMaxT != maxT {
 			level.Debug(logger).Log("msg", "the max time of the query to blocks storage has been manipulated", "original", origMaxT, "updated", maxT)
@@ -677,7 +682,11 @@ func (q *blocksStoreQuerier) fetchSeriesFromStores(
 			myQueriedBlocks := []ulid.ULID(nil)
 
 			processSeries := func(s *storepb.Series) error {
-				mySeries = append(mySeries, s)
+				// Detach series data from the gRPC unmarshal buffer so that it can be freed.
+				sCopy := *s
+				sCopy.Labels = append([]labelpb.ZLabel(nil), s.Labels...)
+				detachSeriesFromBuffer(&sCopy)
+				mySeries = append(mySeries, &sCopy)
 
 				// Add series fingerprint to query limiter; will return error if we are over the limit
 				limitErr := queryLimiter.AddSeries(cortexpb.FromLabelsToLabelAdapters(s.PromLabels()))
@@ -1189,6 +1198,17 @@ func convertBlockHintsToULIDs(hints []hintspb.Block) ([]ulid.ULID, error) {
 	}
 
 	return res, nil
+}
+
+// detachSeriesFromBuffer re-allocates label strings and chunk data byte slices
+// so that the series no longer references the gRPC unmarshal buffer.
+func detachSeriesFromBuffer(s *storepb.Series) {
+	labelpb.ReAllocZLabelsStrings(&s.Labels, false)
+	for i := range s.Chunks {
+		if s.Chunks[i].Raw != nil && len(s.Chunks[i].Raw.Data) > 0 {
+			s.Chunks[i].Raw.Data = append([]byte(nil), s.Chunks[i].Raw.Data...)
+		}
+	}
 }
 
 // countChunkBytes returns the size of the chunks making up the provided series in bytes

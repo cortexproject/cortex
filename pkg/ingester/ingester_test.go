@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -881,9 +882,9 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 	// Series
 	labels1 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar")
 	labels3 := labels.FromStrings(labels.MetricName, "testmetric", "foo", "biz")
-	sampleNativeHistogram1 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1))
-	sampleNativeHistogram2 := cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2))
-	sampleNativeHistogram3 := cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3))
+	sampleNativeHistogram1 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(1)))
+	sampleNativeHistogram2 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1, tsdbutil.GenerateTestHistogram(2)))
+	sampleNativeHistogram3 := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(0, tsdbutil.GenerateTestHistogram(3)))
 
 	// Metadata
 	metadata1 := &cortexpb.MetricMetadata{MetricFamilyName: "testmetric", Help: "a help for testmetric", Type: cortexpb.COUNTER}
@@ -916,12 +917,12 @@ func TestIngesterUserLimitExceededForNativeHistogram(t *testing.T) {
 
 			// Append only one series and one metadata first, expect no error.
 			ctx := user.InjectOrgID(context.Background(), userID)
-			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, nil, []*cortexpb.MetricMetadata{metadata1}, []cortexpb.Histogram{sampleNativeHistogram1}, cortexpb.API))
+			_, err := ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1}, nil, []*cortexpb.MetricMetadata{metadata1}, []cortexpb.WrappedHistogram{sampleNativeHistogram1}, cortexpb.API))
 			require.NoError(t, err)
 
 			testLimits := func(reg prometheus.Gatherer) {
 				// Append to two series, expect series-exceeded error.
-				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.Histogram{sampleNativeHistogram2, sampleNativeHistogram3}, cortexpb.API))
+				_, err = ing.Push(ctx, cortexpb.ToWriteRequest([]labels.Labels{labels1, labels3}, nil, nil, []cortexpb.WrappedHistogram{sampleNativeHistogram2, sampleNativeHistogram3}, cortexpb.API))
 				httpResp, ok := httpgrpc.HTTPResponseFromError(err)
 				require.True(t, ok, "returned error is not an httpgrpc response")
 				assert.Equal(t, http.StatusBadRequest, int(httpResp.Code))
@@ -1119,8 +1120,8 @@ func TestIngester_Push(t *testing.T) {
 	}
 	userID := "test"
 
-	testHistogram := cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1))
-	testFloatHistogram := cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1))
+	testHistogram := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, tsdbutil.GenerateTestHistogram(1)))
+	testFloatHistogram := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(11, tsdbutil.GenerateTestFloatHistogram(1)))
 	tests := map[string]struct {
 		reqs                      []*cortexpb.WriteRequest
 		expectedErr               error
@@ -1142,10 +1143,10 @@ func TestIngester_Push(t *testing.T) {
 					[]*cortexpb.MetricMetadata{
 						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 					},
-					[]cortexpb.Histogram{
-						{
+					[]cortexpb.WrappedHistogram{
+						{Histogram: cortexpb.Histogram{
 							TimestampMs: 10,
-						},
+						}},
 					},
 					cortexpb.API),
 			},
@@ -1426,8 +1427,8 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 9}},
 					nil,
-					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.WrappedHistogram{
+						cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(9, tsdbutil.GenerateTestHistogram(1))),
 					},
 					cortexpb.API),
 			},
@@ -1498,12 +1499,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					[]cortexpb.Sample{{Value: 1, TimestampMs: 1575043969 - (86400 * 1000)}},
 					nil,
-					[]cortexpb.Histogram{
-						cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1)),
+					[]cortexpb.WrappedHistogram{
+						cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(86400*1000), tsdbutil.GenerateTestHistogram(1))),
 					},
 					cortexpb.API),
 			},
-			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr: httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969-(86400*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1560,7 +1561,7 @@ func TestIngester_Push(t *testing.T) {
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
 				{Labels: metricLabelAdapters, Samples: []cortexpb.Sample{{Value: 2, TimestampMs: 1575043969}}},
 			},
@@ -1652,19 +1653,19 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(600*1000), tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
-			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
+			expectedErr:   httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969-(600*1000)), model.Time(1575043969), cortexpb.FromLabelsToLabelAdapters(metricLabels)), userID).Error()),
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1718,18 +1719,18 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 				cortexpb.ToWriteRequest(
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))},
+					[]cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)))},
 					cortexpb.API),
 			},
 			oooTimeWindow: 5 * time.Minute,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1)), cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1))}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969-(10), tsdbutil.GenerateTestHistogram(1))), cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(1575043969, tsdbutil.GenerateTestHistogram(1)))}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1910,12 +1911,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{testHistogram},
+					[]cortexpb.WrappedHistogram{testHistogram},
 					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testHistogram}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{testHistogram}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -1970,12 +1971,12 @@ func TestIngester_Push(t *testing.T) {
 					[]labels.Labels{metricLabels},
 					nil,
 					nil,
-					[]cortexpb.Histogram{testFloatHistogram},
+					[]cortexpb.WrappedHistogram{testFloatHistogram},
 					cortexpb.API),
 			},
 			expectedErr: nil,
 			expectedIngested: []cortexpb.TimeSeries{
-				{Labels: metricLabelAdapters, Histograms: []cortexpb.Histogram{testFloatHistogram}},
+				{Labels: metricLabelAdapters, Histograms: []cortexpb.WrappedHistogram{testFloatHistogram}},
 			},
 			additionalMetrics: []string{
 				"cortex_ingester_tsdb_head_samples_appended_total",
@@ -2127,152 +2128,306 @@ func TestIngester_Push(t *testing.T) {
 	}
 }
 
+func TestIngester_Push_StartTimestamp(t *testing.T) {
+	tests := []struct {
+		name       string
+		metricName string
+		req        *cortexpb.WriteRequest
+		assertFn   func(t *testing.T, ts cortexpb.TimeSeries)
+	}{
+		{
+			name:       "sample start timestamp appends zero sample",
+			metricName: "test_start_timestamp_sample",
+			req: cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_sample")},
+				[]cortexpb.Sample{{Value: 42, TimestampMs: 200, StartTimestampMs: 100}},
+				nil,
+				nil,
+				cortexpb.API,
+			),
+			assertFn: func(t *testing.T, ts cortexpb.TimeSeries) {
+				require.Len(t, ts.Samples, 2)
+				assert.Equal(t, int64(100), ts.Samples[0].TimestampMs)
+				assert.Equal(t, float64(0), ts.Samples[0].Value)
+				assert.Equal(t, int64(200), ts.Samples[1].TimestampMs)
+				assert.Equal(t, float64(42), ts.Samples[1].Value)
+			},
+		},
+		{
+			name:       "histogram start timestamp appends zero histogram",
+			metricName: "test_start_timestamp_histogram",
+			req: func() *cortexpb.WriteRequest {
+				h := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1)))
+				h.StartTimestampMs = 100
+				return cortexpb.ToWriteRequest(
+					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_histogram")},
+					nil,
+					nil,
+					[]cortexpb.WrappedHistogram{h},
+					cortexpb.API,
+				)
+			}(),
+			assertFn: func(t *testing.T, ts cortexpb.TimeSeries) {
+				require.Len(t, ts.Histograms, 2)
+				assert.Equal(t, int64(100), ts.Histograms[0].TimestampMs)
+				assert.Equal(t, int64(200), ts.Histograms[1].TimestampMs)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+
+			ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", prometheus.NewRegistry())
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return ing.lifecycler.GetState()
+			})
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = ing.Push(ctx, tc.req)
+			require.NoError(t, err)
+
+			s := &mockQueryStreamServer{ctx: ctx}
+			err = ing.QueryStream(&client.QueryRequest{
+				StartTimestampMs: math.MinInt64,
+				EndTimestampMs:   math.MaxInt64,
+				Matchers:         []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: tc.metricName}},
+			}, s)
+			require.NoError(t, err)
+
+			set, err := seriesSetFromResponseStream(s)
+			require.NoError(t, err)
+
+			resp, err := client.SeriesSetToQueryResponse(set)
+			require.NoError(t, err)
+			require.Len(t, resp.Timeseries, 1)
+
+			ts := resp.Timeseries[0]
+			tc.assertFn(t, ts)
+		})
+	}
+}
+
+func TestIngester_Push_StartTimestampAppendFailureMetrics(t *testing.T) {
+	tests := []struct {
+		name           string
+		req            *cortexpb.WriteRequest
+		expectedType   string
+		unexpectedType string
+	}{
+		{
+			name: "sample start timestamp append failure increments float metric",
+			req: cortexpb.ToWriteRequest(
+				[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_failure_sample")},
+				[]cortexpb.Sample{{Value: 42, TimestampMs: 200, StartTimestampMs: math.MinInt64}},
+				nil,
+				nil,
+				cortexpb.API,
+			),
+			expectedType:   sampleMetricTypeFloat,
+			unexpectedType: sampleMetricTypeHistogram,
+		},
+		{
+			name: "histogram start timestamp append failure increments histogram metric",
+			req: func() *cortexpb.WriteRequest {
+				h := cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(200, tsdbutil.GenerateTestHistogram(1)))
+				h.StartTimestampMs = math.MinInt64
+				return cortexpb.ToWriteRequest(
+					[]labels.Labels{labels.FromStrings(labels.MetricName, "test_start_timestamp_failure_histogram")},
+					nil,
+					nil,
+					[]cortexpb.WrappedHistogram{h},
+					cortexpb.API,
+				)
+			}(),
+			expectedType:   sampleMetricTypeHistogram,
+			unexpectedType: sampleMetricTypeFloat,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+
+			registry := prometheus.NewRegistry()
+			ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+			defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return ing.lifecycler.GetState()
+			})
+
+			ctx := user.InjectOrgID(context.Background(), "test")
+			_, err = ing.Push(ctx, tc.req)
+			require.NoError(t, err)
+
+			require.Equal(t, float64(1), testutil.ToFloat64(ing.metrics.startTimestampFail.WithLabelValues(tc.expectedType)))
+			require.Equal(t, float64(0), testutil.ToFloat64(ing.metrics.startTimestampFail.WithLabelValues(tc.unexpectedType)))
+		})
+	}
+}
+
 // Referred from https://github.com/prometheus/prometheus/blob/v3.9.1/model/histogram/histogram_test.go#L1384.
 func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
 	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
 	for _, tc := range []struct {
 		name        string
-		histograms  []cortexpb.Histogram
+		histograms  []cortexpb.WrappedHistogram
 		expectedErr error
 	}{
 		{
 			name: "rejects histogram with NaN observations that has its Count (2) lower than the actual total of buckets (2 + 1)",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           2,
 					Sum:             math.NaN(),
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountNotBigEnough),
 		},
 		{
 			name: "rejects histogram without NaN observations that has its Count (4) higher than the actual total of buckets (2 + 1)",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					ZeroCount:       2,
 					Count:           4,
 					Sum:             333,
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 4: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects histogram that has too few negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too few positive buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 0 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too many negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects histogram that has too many positive buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: 0, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: spans need 1 buckets, have 2 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative offset",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative offset",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}, {Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{1, 2},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a histogram that has a negative span with a negative count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{-1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("negative side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
 		},
 		{
 			name: "rejects a histogram that has a positive span with a negative count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveBuckets: []int64{-1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("positive side: bucket number 1 has observation count of -1: %w", histogram.ErrHistogramNegativeBucketCount),
 		},
 		{
 			name: "rejects a histogram that has a lower count than count in buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           0,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("2 observations found in buckets, but the Count field is 0: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects a histogram that doesn't count the zero bucket in its count",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:           2,
 					ZeroCount:       1,
 					NegativeSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					PositiveSpans:   []histogram.Span{{Offset: -1, Length: 1}},
 					NegativeBuckets: []int64{1},
 					PositiveBuckets: []int64{1},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("3 observations found in buckets, but the Count field is 2: %w", histogram.ErrHistogramCountMismatch),
 		},
 		{
 			name: "rejects an exponential histogram with custom buckets schema",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:         12,
 					ZeroCount:     2,
 					ZeroThreshold: 0.001,
@@ -2288,14 +2443,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 						{Offset: 1, Length: 2},
 					},
 					NegativeBuckets: []int64{1, 1, -1, 0},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: only 0 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
 		},
 		{
 			name: "rejects a custom buckets histogram with exponential schema",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: 0,
@@ -2305,14 +2460,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: histogram.ErrHistogramExpSchemaCustomBounds,
 		},
 		{
 			name: "rejects a custom buckets histogram with zero/negative buckets",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:         12,
 					ZeroCount:     2,
 					ZeroThreshold: 0.001,
@@ -2329,14 +2484,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					NegativeBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: histogram.ErrHistogramCustomBucketsZeroCount,
 		},
 		{
 			name: "rejects a custom buckets histogram with negative offset in first span",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2346,14 +2501,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: span number 1 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a custom buckets histogram with negative offset in subsequent spans",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2363,14 +2518,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: span number 2 with offset -1: %w", histogram.ErrHistogramSpanNegativeOffset),
 		},
 		{
 			name: "rejects a custom buckets histogram with non-matching bucket counts",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2380,14 +2535,14 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1},
 					CustomValues:    []float64{1, 2, 3, 4},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: spans need 4 buckets, have 3 buckets: %w", histogram.ErrHistogramSpansBucketsMismatch),
 		},
 		{
 			name: "rejects a custom buckets histogram with too few bounds",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Count:  5,
 					Sum:    19.4,
 					Schema: histogram.CustomBucketsSchema,
@@ -2397,55 +2552,55 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 					},
 					PositiveBuckets: []int64{1, 1, -1, 0},
 					CustomValues:    []float64{1, 2, 3},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: only 3 custom bounds defined which is insufficient to cover total span length of 5: %w", histogram.ErrHistogramCustomBucketsMismatch),
 		},
 		{
 			name: "reject custom buckets histogram with non-increasing bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{0, 0},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: previous bound is 0.000000 and current is 0.000000: %w", histogram.ErrHistogramCustomBucketsInvalid),
 		},
 		{
 			name: "reject custom buckets histogram with explicit +Inf bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{1, math.Inf(1)},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: last +Inf bound must not be explicitly defined: %w", histogram.ErrHistogramCustomBucketsInfinite),
 		},
 		{
 			name: "reject custom buckets histogram with NaN bound",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema:       histogram.CustomBucketsSchema,
 					CustomValues: []float64{1, math.NaN(), 3},
-				}),
+				})),
 			},
 			expectedErr: fmt.Errorf("custom buckets: %w", histogram.ErrHistogramCustomBucketsNaN),
 		},
 		{
 			name: "schema too high",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema: 10,
-				}),
+				})),
 			},
 			expectedErr: histogram.InvalidSchemaError(10),
 		},
 		{
 			name: "schema too low",
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &histogram.Histogram{
 					Schema: -10,
-				}),
+				})),
 			},
 			expectedErr: histogram.InvalidSchemaError(-10),
 		},
@@ -2477,6 +2632,64 @@ func TestIngester_PushNativeHistogramErrors(t *testing.T) {
 			assert.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "%s", wrapWithUser(wrappedTSDBIngestErr(tc.expectedErr, model.Time(10), metricLabelAdapters), userID).Error()), err)
 
 			require.Equal(t, testutil.ToFloat64(i.metrics.ingestedHistogramsFail), float64(1))
+		})
+	}
+}
+
+func TestIngester_Push_FloatHistogramWithZeroCount(t *testing.T) {
+	// Regression test: a float histogram with a count of 0 (e.g. a staleness
+	// marker or an empty histogram) has the CountFloat oneof set, so it IS a
+	// float histogram. A value-based discriminator (hp.GetCountFloat() > 0)
+	// misroutes it to the integer decoder cortexpb.HistogramProtoToHistogram,
+	// which panics with "HistogramProtoToHistogram called with a float
+	// histogram" and crashes the ingester. The decoder must be selected by the
+	// proto type via IsFloatHistogram() instead.
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+	userID := "test"
+
+	for _, tc := range []struct {
+		name      string
+		histogram cortexpb.WrappedHistogram
+	}{
+		{
+			name:      "staleness marker float histogram with zero count",
+			histogram: cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(10, &histogram.FloatHistogram{Sum: math.Float64frombits(value.StaleNaN)})),
+		},
+		{
+			name:      "empty float histogram with zero count",
+			histogram: cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(10, &histogram.FloatHistogram{})),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+
+			// Create a mocked ingester
+			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
+
+			limits := defaultLimitsTestConfig()
+			limits.EnableNativeHistograms = true
+			i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", registry)
+			require.NoError(t, err)
+			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+			ctx := user.InjectOrgID(context.Background(), userID)
+
+			// Wait until the ingester is ACTIVE
+			test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+				return i.lifecycler.GetState()
+			})
+
+			req := cortexpb.ToWriteRequest([]labels.Labels{metricLabels}, nil, nil, []cortexpb.WrappedHistogram{tc.histogram}, cortexpb.API)
+			// Before the fix this panics inside Push; after the fix it must be
+			// ingested without error.
+			_, err = i.Push(ctx, req)
+			require.NoError(t, err)
+
+			require.Equal(t, float64(0), testutil.ToFloat64(i.metrics.ingestedHistogramsFail))
+			require.Equal(t, float64(1), testutil.ToFloat64(i.metrics.ingestedHistograms))
 		})
 	}
 }
@@ -2677,6 +2890,193 @@ func TestIngester_Push_OutOfOrderLabels(t *testing.T) {
 `
 	err = testutil.GatherAndCompare(r, bytes.NewBufferString(metric), "cortex_ingester_out_of_order_labels_total")
 	require.NoError(t, err)
+}
+
+func TestIngester_IngestionDelayMetric(t *testing.T) {
+	metricLabelAdapters := []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test"}}
+	metricLabels := cortexpb.FromLabelAdaptersToLabels(metricLabelAdapters)
+
+	t.Run("float samples with delays", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		userID := "user-1"
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		// Push samples with different delays (oldest first to avoid OOO)
+		now := time.Now().UnixMilli()
+		samples := []cortexpb.Sample{
+			{Value: 1, TimestampMs: now - 30000}, // 30 seconds ago
+			{Value: 2, TimestampMs: now - 10000}, // 10 seconds ago
+			{Value: 3, TimestampMs: now - 5000},  // 5 seconds ago
+		}
+
+		for _, sample := range samples {
+			req := cortexpb.ToWriteRequest(
+				[]labels.Labels{metricLabels},
+				[]cortexpb.Sample{sample},
+				nil,
+				nil,
+				cortexpb.API,
+			)
+			_, err = ing.Push(ctx, req)
+			require.NoError(t, err)
+		}
+
+		// Verify metric exists and has 3 observations
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		var found bool
+		var sampleCount uint64
+		var sampleSum float64
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" && label.GetValue() == userID {
+							found = true
+							if metric.Histogram != nil {
+								sampleCount = metric.Histogram.GetSampleCount()
+								sampleSum = metric.Histogram.GetSampleSum()
+							}
+						}
+					}
+				}
+			}
+		}
+
+		require.True(t, found, "ingestion delay metric not found")
+		assert.Equal(t, uint64(3), sampleCount, "expected 3 observations")
+
+		// Verify delays were actually measured (sum should be positive and reasonable)
+		// We sent samples 30s, 10s, and 5s old, so total delay should be ~45s (with some execution time added)
+		assert.Greater(t, sampleSum, 40.0, "sum of delays should be at least 40s")
+	})
+
+	t.Run("future timestamps are filtered", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		userID := "user-future"
+		ctx := user.InjectOrgID(context.Background(), userID)
+
+		// Push sample with future timestamp
+		futureTimestamp := time.Now().UnixMilli() + 60000 // 60 seconds in the future
+		req := cortexpb.ToWriteRequest(
+			[]labels.Labels{metricLabels},
+			[]cortexpb.Sample{{Value: 1, TimestampMs: futureTimestamp}},
+			nil,
+			nil,
+			cortexpb.API,
+		)
+
+		_, err = ing.Push(ctx, req)
+		require.NoError(t, err)
+
+		// Verify metric has 0 observations (future timestamp filtered)
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" && label.GetValue() == userID {
+							if metric.Histogram != nil {
+								assert.Equal(t, uint64(0), metric.Histogram.GetSampleCount(),
+									"future timestamp should not be observed")
+							}
+						}
+					}
+				}
+			}
+		}
+	})
+
+	t.Run("per-user isolation", func(t *testing.T) {
+		registry := prometheus.NewRegistry()
+		cfg := defaultIngesterTestConfig(t)
+		cfg.LifecyclerConfig.JoinAfter = 0
+
+		ing, err := prepareIngesterWithBlocksStorage(t, cfg, registry)
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
+		defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
+
+		test.Poll(t, 100*time.Millisecond, ring.ACTIVE, func() any {
+			return ing.lifecycler.GetState()
+		})
+
+		// Push samples for two users
+		baseTime := time.Now().UnixMilli()
+		for _, u := range []struct {
+			id         string
+			numSamples int
+			delayMs    int64
+		}{
+			{"user-a", 2, 5000},
+			{"user-b", 3, 30000},
+		} {
+			ctx := user.InjectOrgID(context.Background(), u.id)
+			// Send in chronological order (oldest first)
+			for idx := u.numSamples - 1; idx >= 0; idx-- {
+				timestamp := baseTime - u.delayMs - int64(idx*1000)
+				req := cortexpb.ToWriteRequest(
+					[]labels.Labels{metricLabels},
+					[]cortexpb.Sample{{Value: float64(idx + 1), TimestampMs: timestamp}},
+					nil,
+					nil,
+					cortexpb.API,
+				)
+				_, err := ing.Push(ctx, req)
+				require.NoError(t, err)
+			}
+		}
+
+		// Verify each user has their own metric
+		metricFamily, err := registry.Gather()
+		require.NoError(t, err)
+
+		userCounts := make(map[string]uint64)
+		for _, mf := range metricFamily {
+			if mf.GetName() == "cortex_ingester_ingestion_delay_seconds" {
+				for _, metric := range mf.GetMetric() {
+					for _, label := range metric.GetLabel() {
+						if label.GetName() == "user" {
+							userID := label.GetValue()
+							if metric.Histogram != nil {
+								userCounts[userID] = metric.Histogram.GetSampleCount()
+							}
+						}
+					}
+				}
+			}
+		}
+
+		assert.Equal(t, uint64(2), userCounts["user-a"])
+		assert.Equal(t, uint64(3), userCounts["user-b"])
+	})
 }
 
 func BenchmarkIngesterPush(b *testing.B) {
@@ -3379,7 +3779,9 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		{labels.FromStrings("__name__", "test_1", "route", "get_user", "status", "200"), 1, 100000},
 	}
 
-	i, err := prepareIngesterWithBlocksStorage(t, defaultIngesterTestConfig(t), prometheus.NewRegistry())
+	cfg := defaultIngesterTestConfig(t)
+	cfg.DefaultLimits.MaxInflightQueryRequests = 1
+	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -3388,7 +3790,8 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 		resource.CPU:  0.5,
 		resource.Heap: 0.5,
 	}
-	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(&mockResourceMonitor{cpu: 0.4, heap: 0.6}, limits, nil, "ingester")
+	monitor := &mockResourceMonitor{cpu: 0.4, heap: 0.6}
+	i.resourceBasedLimiter, err = limiter.NewResourceBasedLimiter(monitor, limits, nil, "ingester")
 	require.NoError(t, err)
 
 	// Wait until it's ACTIVE
@@ -3412,6 +3815,12 @@ func Test_Ingester_Query_ResourceThresholdBreached(t *testing.T) {
 
 	// Expected error from isRetryableError in blocks_store_queryable.go
 	require.ErrorIs(t, err, limiter.ErrResourceLimitReached)
+	require.Equal(t, int64(0), i.inflightQueryRequests.Load())
+
+	// Verify that a query not blocked by the limiter still succeeds after the rejected request.
+	monitor.heap = 0.4
+	s = &mockQueryStreamServer{ctx: ctx}
+	require.NoError(t, i.QueryStream(rreq, s))
 }
 
 func TestIngester_LabelValues_ShouldNotCreateTSDBIfDoesNotExists(t *testing.T) {
@@ -3712,13 +4121,17 @@ func Test_Ingester_MetricsForLabelMatchers(t *testing.T) {
 	for testName, testData := range tests {
 
 		t.Run(testName, func(t *testing.T) {
+			limits := defaultLimitsTestConfig()
+			limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
+			tenantLimits := newMockTenantLimits(map[string]*validation.Limits{"test": &limits})
+			i.limits = validation.NewOverrides(limits, tenantLimits)
+
 			req := &client.MetricsForLabelMatchersRequest{
 				StartTimestampMs: testData.from,
 				EndTimestampMs:   testData.to,
 				MatchersSet:      testData.matchers,
 				Limit:            testData.limit,
 			}
-			i.cfg.QueryIngestersWithin = testData.queryIngestersWithin
 			res, err := i.MetricsForLabelMatchers(ctx, req)
 			require.NoError(t, err)
 			assert.ElementsMatch(t, testData.expected, res.Metric)
@@ -4342,21 +4755,21 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 
 func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, timestampMs int64, float bool) (*cortexpb.WriteRequest, *client.QueryStreamResponse) {
 	var (
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 		h          *histogram.Histogram
 		fh         *histogram.FloatHistogram
 		c          chunkenc.Chunk
 	)
 	if float {
 		fh = tsdbutil.GenerateTestFloatHistogram(value)
-		histograms = []cortexpb.Histogram{
-			cortexpb.FloatHistogramToHistogramProto(timestampMs, fh),
+		histograms = []cortexpb.WrappedHistogram{
+			cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(timestampMs, fh)),
 		}
 		c = chunkenc.NewFloatHistogramChunk()
 	} else {
 		h = tsdbutil.GenerateTestHistogram(value)
-		histograms = []cortexpb.Histogram{
-			cortexpb.HistogramToHistogramProto(timestampMs, h),
+		histograms = []cortexpb.WrappedHistogram{
+			cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(timestampMs, h)),
 		}
 		c = chunkenc.NewHistogramChunk()
 	}
@@ -5005,6 +5418,11 @@ type shipperMock struct {
 func (m *shipperMock) Sync(ctx context.Context) (uploaded int, err error) {
 	args := m.Called(ctx)
 	return args.Int(0), args.Error(1)
+}
+
+// Close mocks Shipper.Close()
+func (m *shipperMock) Close() error {
+	return nil
 }
 
 func TestIngester_invalidSamplesDontChangeLastUpdateTime(t *testing.T) {
@@ -6327,12 +6745,15 @@ func TestExpendedPostingsCacheMatchers(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled = true
 	cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled = true
-	cfg.QueryIngestersWithin = 24 * time.Hour
+
+	limits := defaultLimitsTestConfig()
+	limits.QueryIngestersWithin = model.Duration(24 * time.Hour)
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
 
 	ctx := user.InjectOrgID(context.Background(), userID)
 
 	r := prometheus.NewRegistry()
-	ing, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	ing, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", r)
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 	defer services.StopAndAwaitTerminated(context.Background(), ing) //nolint:errcheck
@@ -7942,4 +8363,26 @@ func TestIngester_DiscardOutOfOrderFlagIntegration(t *testing.T) {
 	}
 	require.NoError(t, iter.Err())
 	require.Equal(t, 1, sampleCount, "Should have exactly one sample stored")
+}
+
+func TestWrappedTSDBIngestErrWithHeadMaxTime(t *testing.T) {
+	lbls := cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(labels.MetricName, "test"))
+
+	// The error message should include both the sample timestamp and the TSDB head max time.
+	err := wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969), model.Time(1575043969+60000), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: out of bounds. timestamp=1970-01-19T05:30:43.969Z, tsdbHeadMaxTimestamp=1970-01-19T05:31:43.969Z, series={__name__="test"}`, err.Error())
+
+	err = wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrTooOldSample, model.Time(1575043969), model.Time(1575043969+60000), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: too old sample. timestamp=1970-01-19T05:30:43.969Z, tsdbHeadMaxTimestamp=1970-01-19T05:31:43.969Z, series={__name__="test"}`, err.Error())
+
+	// When the TSDB head max time is unset (empty head), fall back to the error message
+	// without the head max time.
+	err = wrappedTSDBIngestErrWithHeadMaxTime(storage.ErrOutOfBounds, model.Time(1575043969), model.Time(math.MinInt64), lbls)
+	require.Error(t, err)
+	require.Equal(t, `err: out of bounds. timestamp=1970-01-19T05:30:43.969Z, series={__name__="test"}`, err.Error())
+
+	// A nil ingest error returns nil.
+	require.NoError(t, wrappedTSDBIngestErrWithHeadMaxTime(nil, model.Time(1575043969), model.Time(1575043969), lbls))
 }

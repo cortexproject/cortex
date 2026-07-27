@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
@@ -45,7 +45,7 @@ func runNotifications(t *testing.T, rateLimitedNotifier *rateLimitedNotifier, co
 	rateLimited := 0
 
 	for range count {
-		retry, err := rateLimitedNotifier.Notify(context.Background(), &types.Alert{})
+		retry, err := rateLimitedNotifier.Notify(context.Background(), &alert.Alert{})
 
 		switch err {
 		case nil:
@@ -65,7 +65,7 @@ func runNotifications(t *testing.T, rateLimitedNotifier *rateLimitedNotifier, co
 
 type mockNotifier struct{}
 
-func (m *mockNotifier) Notify(ctx context.Context, alert ...*types.Alert) (bool, error) {
+func (m *mockNotifier) Notify(ctx context.Context, alert ...*alert.Alert) (bool, error) {
 	return false, nil
 }
 

@@ -156,6 +156,12 @@ func (s *ConcreteService) Stop() error {
 	logger.Log("Stopping", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "stop", "--time=30", s.containerName()); err != nil {
+		// If the container has already exited and been removed (e.g., started
+		// with --rm), treat it as a successful stop.
+		if strings.Contains(string(out), "No such container") {
+			s.usedNetworkName = ""
+			return nil
+		}
 		logger.Log(string(out))
 		return err
 	}
@@ -181,6 +187,12 @@ func (s *ConcreteService) Kill() error {
 	logger.Log("Killing", s.name)
 
 	if out, err := RunCommandAndGetOutput("docker", "kill", s.containerName()); err != nil {
+		// If the container has already exited and been removed (e.g., started
+		// with --rm), treat it as a successful kill.
+		if strings.Contains(string(out), "No such container") {
+			s.usedNetworkName = ""
+			return nil
+		}
 		logger.Log(string(out))
 		return err
 	}

@@ -25,3 +25,15 @@ func RequestFromRuler(ctx context.Context) bool {
 	}
 	return metadataMap[RequestSourceKey] == SourceRuler
 }
+
+// GetSource returns the request source from context, or "unknown" if not set.
+func GetSource(ctx context.Context) string {
+	metadataMap := MapFromContext(ctx)
+	if metadataMap == nil {
+		return "unknown"
+	}
+	if source := metadataMap[RequestSourceKey]; source != "" {
+		return source
+	}
+	return "unknown"
+}

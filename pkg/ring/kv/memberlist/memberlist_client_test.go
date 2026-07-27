@@ -530,33 +530,156 @@ func TestMultipleCAS(t *testing.T) {
 }
 
 func TestMultipleClients(t *testing.T) {
-	c := dataCodec{}
+	t.Parallel()
+
+	err := testMultipleClientsWithConfigGenerator(t, 10, defaultMultipleClientsKVConfig)
+	require.NoError(t, err)
+}
+
+func TestMultipleClientsWithMixedClusterLabelsAndExpectFailure(t *testing.T) {
+	t.Parallel()
+
+	memberLabels := []string{"", "label1", "label2", "label3", "label4"}
+
+	configGen := func(memberID int) KVConfig {
+		cfg := defaultMultipleClientsKVConfig(memberID)
+		cfg.ClusterLabel = memberLabels[memberID]
+		return cfg
+	}
+
+	err := testMultipleClientsWithConfigGenerator(t, len(memberLabels), configGen)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "expected to see at least 2 members, got 1")
+}
+
+func TestMultipleClientsWithMixedClusterLabelsAndVerificationDisabled(t *testing.T) {
+	t.Parallel()
+
+	memberLabels := []string{"", "label1", "label2"}
+
+	configGen := func(memberID int) KVConfig {
+		cfg := defaultMultipleClientsKVConfig(memberID)
+		cfg.ClusterLabel = memberLabels[memberID]
+		cfg.ClusterLabelVerificationDisabled = true
+		return cfg
+	}
+
+	err := testMultipleClientsWithConfigGenerator(t, len(memberLabels), configGen)
+	require.NoError(t, err)
+}
+
+func TestMultipleClientsWithSameClusterLabel(t *testing.T) {
+	t.Parallel()
 
 	const members = 10
+	const clusterLabel = "test-cluster"
+
+	configGen := func(memberID int) KVConfig {
+		cfg := defaultMultipleClientsKVConfig(memberID)
+		cfg.ClusterLabel = clusterLabel
+		return cfg
+	}
+
+	err := testMultipleClientsWithConfigGenerator(t, members, configGen)
+	require.NoError(t, err)
+}
+
+func TestBuildMemberlistConfigClusterLabelOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                             string
+		clusterLabel                     string
+		clusterLabelVerificationDisabled bool
+	}{
+		{
+			name: "empty label keeps verification enabled by default",
+		},
+		{
+			name:                             "configured label can disable verification",
+			clusterLabel:                     "cluster-a",
+			clusterLabelVerificationDisabled: true,
+		},
+		{
+			name:                             "configured label with verification enabled",
+			clusterLabel:                     "cluster-a",
+			clusterLabelVerificationDisabled: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg KVConfig
+			flagext.DefaultValues(&cfg)
+			cfg.TCPTransport = TCPTransportConfig{
+				BindAddrs: []string{"localhost"},
+				BindPort:  0,
+			}
+			cfg.ClusterLabel = tc.clusterLabel
+			cfg.ClusterLabelVerificationDisabled = tc.clusterLabelVerificationDisabled
+
+			kv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
+
+			mlCfg, err := kv.buildMemberlistConfig()
+			require.NoError(t, err)
+			require.Equal(t, tc.clusterLabel, mlCfg.Label)
+			require.Equal(t, tc.clusterLabelVerificationDisabled, mlCfg.SkipInboundLabelCheck)
+
+			transport, ok := mlCfg.Transport.(*TCPTransport)
+			require.True(t, ok)
+			require.NoError(t, transport.Shutdown())
+		})
+	}
+}
+
+func defaultMultipleClientsKVConfig(memberID int) KVConfig {
+	var cfg KVConfig
+	flagext.DefaultValues(&cfg)
+
+	cfg.NodeName = fmt.Sprintf("Member-%d", memberID)
+	cfg.GossipInterval = 100 * time.Millisecond
+	cfg.GossipNodes = 3
+	cfg.PushPullInterval = 5 * time.Second
+	cfg.TCPTransport = TCPTransportConfig{
+		BindAddrs: []string{"localhost"},
+		BindPort:  0,
+	}
+
+	return cfg
+}
+
+func testMultipleClientsWithConfigGenerator(t *testing.T, members int, configGen func(memberID int) KVConfig) error {
+	t.Helper()
+
+	c := dataCodec{}
 	const key = "ring"
 
-	var clients []*Client
-
-	stop := make(chan struct{})
-	start := make(chan struct{})
-
+	clients := make([]*Client, 0, members)
 	port := 0
+	casInterval := time.Second
+
+	start := make(chan struct{})
+	stop := make(chan struct{})
+
+	var clientWg sync.WaitGroup
+
+	clientErrCh := make(chan error, members)
+	getClientErr := func() error {
+		select {
+		case err := <-clientErrCh:
+			return err
+		default:
+			return nil
+		}
+	}
+
+	defer func() {
+		close(stop)
+		clientWg.Wait()
+	}()
 
 	for i := range members {
-		id := fmt.Sprintf("Member-%d", i)
-		var cfg KVConfig
-		flagext.DefaultValues(&cfg)
-		cfg.NodeName = id
-
-		cfg.GossipInterval = 100 * time.Millisecond
-		cfg.GossipNodes = 3
-		cfg.PushPullInterval = 5 * time.Second
-
-		cfg.TCPTransport = TCPTransportConfig{
-			BindAddrs: []string{"localhost"},
-			BindPort:  0, // randomize ports
-		}
-
+		cfg := configGen(i)
 		cfg.Codecs = []codec.Codec{c}
 
 		mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -564,29 +687,36 @@ func TestMultipleClients(t *testing.T) {
 
 		kv, err := NewClient(mkv, c)
 		require.NoError(t, err)
-
 		clients = append(clients, kv)
 
-		go runClient(t, kv, id, key, port, start, stop)
+		clientWg.Add(1)
+		go func(kv *Client, nodeName string, portToConnect int) {
+			defer clientWg.Done()
+
+			if err := runClientWithErr(kv, nodeName, key, portToConnect, casInterval, start, stop); err != nil {
+				clientErrCh <- err
+			}
+		}(kv, cfg.NodeName, port)
 
 		// next KV will connect to this one
 		port = kv.kv.GetListeningPort()
 	}
 
-	println("Waiting before start")
+	t.Log("Waiting before start")
 	time.Sleep(2 * time.Second)
 	close(start)
 
-	println("Observing ring ...")
+	t.Log("Observing ring ...")
 
 	startTime := time.Now()
-	firstKv := clients[0]
+	firstKV := clients[0]
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	updates := 0
-	firstKv.WatchKey(ctx, key, func(in any) bool {
-		updates++
+	defer cancel()
 
+	joinedMembers := 0
+	firstKV.WatchKey(ctx, key, func(in any) bool {
 		r := in.(*data)
+		joinedMembers = len(r.Members)
 
 		minTimestamp, maxTimestamp, avgTimestamp := getTimestamps(r.Members)
 
@@ -595,64 +725,81 @@ func TestMultipleClients(t *testing.T) {
 			"tokens, oldest timestamp:", now.Sub(time.Unix(minTimestamp, 0)).String(),
 			"avg timestamp:", now.Sub(time.Unix(avgTimestamp, 0)).String(),
 			"youngest timestamp:", now.Sub(time.Unix(maxTimestamp, 0)).String())
-		return true // yes, keep watching
+		return true
 	})
-	cancel() // make linter happy
 
-	t.Logf("Ring updates observed: %d", updates)
-
-	if updates < members {
-		// in general, at least one update from each node. (although that's not necessarily true...
-		// but typically we get more updates than that anyway)
-		t.Errorf("expected to see updates, got %d", updates)
+	if joinedMembers <= 1 {
+		return fmt.Errorf("expected to see at least 2 members, got %d", joinedMembers)
 	}
 
-	// Let's check all the clients to see if they have relatively up-to-date information
-	// All of them should at least have all the clients
-	// And same tokens.
-	allTokens := []uint32(nil)
+	if err := getClientErr(); err != nil {
+		return err
+	}
 
-	for i := range members {
-		kv := clients[i]
+	check := func() error {
+		allTokens := []uint32(nil)
 
-		r := getData(t, kv, key)
-		t.Logf("KV %d: number of known members: %d\n", i, len(r.Members))
-		if len(r.Members) != members {
-			t.Errorf("Member %d has only %d members in the ring", i, len(r.Members))
-		}
-
-		minTimestamp, maxTimestamp, avgTimestamp := getTimestamps(r.Members)
-		for n, ing := range r.Members {
-			if ing.State != ACTIVE {
-				t.Errorf("Member %d: invalid state of member %s in the ring: %v ", i, n, ing.State)
+		for i, kv := range clients {
+			r := getData(t, kv, key)
+			t.Logf("KV %d: number of known members: %d", i, len(r.Members))
+			if len(r.Members) != members {
+				return fmt.Errorf("member %d has only %d members in the ring", i, len(r.Members))
 			}
-		}
-		now := time.Now()
-		t.Logf("Member %d: oldest: %v, avg: %v, youngest: %v", i,
-			now.Sub(time.Unix(minTimestamp, 0)).String(),
-			now.Sub(time.Unix(avgTimestamp, 0)).String(),
-			now.Sub(time.Unix(maxTimestamp, 0)).String())
 
-		tokens := r.getAllTokens()
-		if allTokens == nil {
-			allTokens = tokens
-			t.Logf("Found tokens: %d", len(allTokens))
-		} else {
-			if len(allTokens) != len(tokens) {
-				t.Errorf("Member %d: Expected %d tokens, got %d", i, len(allTokens), len(tokens))
-			} else {
-				for ix, tok := range allTokens {
-					if tok != tokens[ix] {
-						t.Errorf("Member %d: Tokens at position %d differ: %v, %v", i, ix, tok, tokens[ix])
-						break
+			minTimestamp, maxTimestamp, avgTimestamp := getTimestamps(r.Members)
+			for n, ing := range r.Members {
+				if ing.State != ACTIVE {
+					stateStr := "UNKNOWN"
+					switch ing.State {
+					case JOINING:
+						stateStr = "JOINING"
+					case LEFT:
+						stateStr = "LEFT"
 					}
+					return fmt.Errorf("member %d: invalid state of member %s in the ring: %s (%v)", i, n, stateStr, ing.State)
+				}
+			}
+
+			now := time.Now()
+			t.Logf("Member %d: oldest: %v, avg: %v, youngest: %v", i,
+				now.Sub(time.Unix(minTimestamp, 0)).String(),
+				now.Sub(time.Unix(avgTimestamp, 0)).String(),
+				now.Sub(time.Unix(maxTimestamp, 0)).String())
+
+			tokens := r.getAllTokens()
+			if allTokens == nil {
+				allTokens = tokens
+				t.Logf("Found tokens: %d", len(allTokens))
+				continue
+			}
+
+			if len(allTokens) != len(tokens) {
+				return fmt.Errorf("member %d: expected %d tokens, got %d", i, len(allTokens), len(tokens))
+			}
+
+			for ix, tok := range allTokens {
+				if tok != tokens[ix] {
+					return fmt.Errorf("member %d: tokens at position %d differ: %v, %v", i, ix, tok, tokens[ix])
 				}
 			}
 		}
+
+		return getClientErr()
 	}
 
-	// We cannot shutdown the KV until now in order for Get() to work reliably.
-	close(stop)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			return check()
+		case <-ticker.C:
+			if err := check(); err == nil {
+				return nil
+			}
+		}
+	}
 }
 
 func TestJoinMembersWithRetryBackoff(t *testing.T) {
@@ -871,6 +1018,14 @@ func getTimestamps(members map[string]member) (min int64, max int64, avg int64) 
 }
 
 func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConnect int, start <-chan struct{}, stop <-chan struct{}) {
+	t.Helper()
+
+	if err := runClientWithErr(kv, name, ringKey, portToConnect, time.Second, start, stop); err != nil {
+		t.Errorf("%v", err)
+	}
+}
+
+func runClientWithErr(kv *Client, name string, ringKey string, portToConnect int, casInterval time.Duration, start <-chan struct{}, stop <-chan struct{}) error {
 	// stop gossipping about the ring(s)
 	defer services.StopAndAwaitTerminated(context.Background(), kv.kv) //nolint:errcheck
 
@@ -883,14 +1038,28 @@ func runClient(t *testing.T, kv *Client, name string, ringKey string, portToConn
 			if portToConnect > 0 {
 				_, err := kv.kv.JoinMembers([]string{fmt.Sprintf("127.0.0.1:%d", portToConnect)})
 				if err != nil {
-					t.Errorf("%s failed to join the cluster: %v", name, err)
-					return
+					return fmt.Errorf("%s failed to join the cluster: %w", name, err)
 				}
 			}
 		case <-stop:
-			return
-		case <-time.After(1 * time.Second):
-			cas(t, kv, ringKey, updateFn(name))
+			return nil
+		case <-time.After(casInterval):
+			err := kv.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
+				var d *data
+				if in != nil {
+					d = in.(*data)
+				}
+
+				updated, retry, err := updateFn(name)(d)
+				if updated == nil {
+					return nil, retry, err
+				}
+
+				return updated, retry, err
+			})
+			if err != nil {
+				return fmt.Errorf("failed to CAS the ring: %w", err)
+			}
 		}
 	}
 }

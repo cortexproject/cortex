@@ -24,9 +24,13 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+// benchMaxRecvMsgSize is the max message size used in benchmarks.
+const benchMaxRecvMsgSize = 100 * 1024 * 1024
 
 var (
 	testHistogram = histogram.Histogram{
@@ -42,6 +46,51 @@ var (
 	}
 )
 
+// makeV2ReqWithSeriesAndSymbols builds a PRW2 request with the given number of
+// series and symbols
+func makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount int) *cortexpb.PreallocWriteRequestV2 {
+	const baseSymbols = 5 // "", "__name__", "bench_metric", "help text", "unit"
+	if symbolCount < baseSymbols {
+		symbolCount = baseSymbols
+	}
+
+	symbols := make([]string, 0, symbolCount)
+	symbols = append(symbols, "", "__name__", "bench_metric", "help text", "unit")
+
+	extraPairs := (symbolCount - baseSymbols) / 2
+	for i := range extraPairs {
+		symbols = append(symbols, fmt.Sprintf("lbl_%d", i), fmt.Sprintf("val_%d", i))
+	}
+
+	labelsRefs := []uint32{1, 2} // __name__ = "bench_metric"
+	for i := range extraPairs {
+		nameIdx := uint32(baseSymbols + i*2)
+		labelsRefs = append(labelsRefs, nameIdx, nameIdx+1)
+	}
+
+	ts := make([]cortexpb.PreallocTimeseriesV2, 0, seriesNum)
+	for range seriesNum {
+		ts = append(ts, cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: labelsRefs,
+				Metadata: cortexpb.MetadataV2{
+					Type:    cortexpb.METRIC_TYPE_GAUGE,
+					HelpRef: 3,
+					UnitRef: 4,
+				},
+				Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 10}},
+			},
+		})
+	}
+
+	return &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols:    symbols,
+			Timeseries: ts,
+		},
+	}
+}
+
 func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 	ts := make([]cortexpb.PreallocTimeseriesV2, 0, num)
 	symbols := []string{"", "__name__", "test_metric1", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
@@ -50,16 +99,15 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 			TimeSeriesV2: &cortexpb.TimeSeriesV2{
 				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
 				Metadata: cortexpb.MetadataV2{
-					Type: cortexpb.METRIC_TYPE_GAUGE,
-
+					Type:    cortexpb.METRIC_TYPE_GAUGE,
 					HelpRef: 15,
 					UnitRef: 16,
 				},
 				Samples:   []cortexpb.Sample{{Value: 1, TimestampMs: 10}},
 				Exemplars: []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 10}},
-				Histograms: []cortexpb.Histogram{
-					cortexpb.HistogramToHistogramProto(10, &testHistogram),
-					cortexpb.FloatHistogramToHistogramProto(20, testHistogram.ToFloat(nil)),
+				Histograms: []cortexpb.WrappedHistogram{
+					cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(10, &testHistogram)),
+					cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(20, testHistogram.ToFloat(nil))),
 				},
 			},
 		})
@@ -75,7 +123,7 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 
 func createPRW1HTTPRequest(seriesNum int) (*http.Request, error) {
 	series := makeV2ReqWithSeries(seriesNum)
-	v1Req, err := convertV2RequestToV1(series, false)
+	v1Req, err := convertV2RequestToV1(series, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +195,9 @@ func Benchmark_Handler(b *testing.B) {
 			req, err := createPRW2HTTPRequest(seriesNum)
 			require.NoError(b, err)
 
+			ctx := user.InjectOrgID(req.Context(), "user")
+			req = req.WithContext(ctx)
+
 			b.ReportAllocs()
 
 			for b.Loop() {
@@ -168,8 +219,75 @@ func Benchmark_convertV2RequestToV1(b *testing.B) {
 
 			b.ReportAllocs()
 			for b.Loop() {
-				_, err := convertV2RequestToV1(series, false)
+				_, err := convertV2RequestToV1(series, false, false)
 				require.NoError(b, err)
+			}
+		})
+	}
+}
+
+func makeEncodedPRW2Body(b *testing.B, seriesNum, symbolCount int) (body []byte, contentLength int) {
+	b.Helper()
+	series := makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount)
+	protobuf, err := series.Marshal()
+	if err != nil {
+		b.Fatal(err)
+	}
+	encoded := snappy.Encode(nil, protobuf)
+	return encoded, len(encoded)
+}
+
+// runPRW2HandleFromPool simulates handlePRW2 using the sync.Pool
+func runPRW2HandleFromPool(ctx context.Context, body []byte, contentLength int, overrides *validation.Overrides, userID string) error {
+	req := cortexpb.PreallocWriteRequestV2FromPool()
+	defer cortexpb.ReuseWriteRequestV2(req)
+
+	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, req, util.RawSnappy); err != nil {
+		return err
+	}
+	_, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+	return err
+}
+
+// runPRW2HandleFromScratch simulates handlePRW2 without using the sync.Pool.
+func runPRW2HandleFromScratch(ctx context.Context, body []byte, contentLength int, overrides *validation.Overrides, userID string) error {
+	var req cortexpb.PreallocWriteRequestV2
+	defer cortexpb.ReuseWriteRequestV2(&req)
+
+	if err := util.ParseProtoReader(ctx, bytes.NewReader(body), contentLength, benchMaxRecvMsgSize, &req, util.RawSnappy); err != nil {
+		return err
+	}
+	_, err := convertV2RequestToV1(&req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+	return err
+}
+
+// Benchmark_HandlePRW2_PoolVsScratch compares two allocation strategies for the PRW2 parse path.
+//   - pool:    req := cortexpb.PreallocWriteRequestV2FromPool() + defer ReuseWriteRequestV2(req)
+//   - scratch: var req cortexpb.PreallocWriteRequestV2          + defer ReuseWriteRequestV2(&req)
+func Benchmark_HandlePRW2_PoolVsScratch(b *testing.B) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	userID := "bench-user"
+	seriesNum := 100
+	ctx := user.InjectOrgID(context.Background(), userID)
+
+	for _, symCount := range []int{32, 128, 512, 2048, 4096} {
+		body, contentLength := makeEncodedPRW2Body(b, seriesNum, symCount)
+		name := fmt.Sprintf("symbols=%d", symCount)
+
+		b.Run("pool/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				require.NoError(b, runPRW2HandleFromPool(ctx, body, contentLength, overrides, userID))
+			}
+		})
+
+		b.Run("scratch/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				require.NoError(b, runPRW2HandleFromScratch(ctx, body, contentLength, overrides, userID))
 			}
 		})
 	}
@@ -377,7 +495,7 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.desc, func(t *testing.T) {
-			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels)
+			v1Req, err := convertV2RequestToV1(test.v2Req, test.enableTypeAndUnitLabels, false)
 
 			for i := range v1Req.Timeseries {
 				if len(v1Req.Timeseries[i].Samples) == 0 {
@@ -401,7 +519,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 	var v2Req cortexpb.PreallocWriteRequestV2
 
 	fh := tsdbutil.GenerateTestFloatHistogram(1)
-	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+	ph := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(4, fh))
 
 	symbols := []string{"", "__name__", "test_metric", "b", "c", "baz", "qux", "d", "e", "foo", "bar", "f", "g", "h", "i", "Test gauge for test purposes", "Maybe op/sec who knows (:", "Test counter for test purposes"}
 	timeseries := []cortexpb.PreallocTimeseriesV2{
@@ -433,7 +551,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 		{
 			TimeSeriesV2: &cortexpb.TimeSeriesV2{
 				LabelsRefs: []uint32{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
-				Histograms: []cortexpb.Histogram{ph, ph},
+				Histograms: []cortexpb.WrappedHistogram{ph, ph},
 				Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 			},
 		},
@@ -441,7 +559,7 @@ func Test_convertV2RequestToV1(t *testing.T) {
 
 	v2Req.Symbols = symbols
 	v2Req.Timeseries = timeseries
-	v1Req, err := convertV2RequestToV1(&v2Req, false)
+	v1Req, err := convertV2RequestToV1(&v2Req, false, false)
 	assert.NoError(t, err)
 	expectedSamples := 3
 	expectedExemplars := 2
@@ -541,7 +659,7 @@ func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := convertV2RequestToV1(tt.v2Req, false)
+			_, err := convertV2RequestToV1(tt.v2Req, false, false)
 			if tt.expectedError == "" {
 				assert.NoError(t, err)
 			} else {
@@ -659,6 +777,29 @@ func TestHandler_remoteWrite(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "TimeSeries must contain at least one sample or histogram for series {__name__=\"foo\"}",
+		},
+		{
+			name: "remote write v1 with oversized histogram returns 400",
+			createBody: func() ([]byte, bool) {
+				// Create a histogram that exceeds the default 16KB limit
+				h := cortexpb.Histogram{
+					Schema:         3,
+					NegativeDeltas: make([]int64, 10000),
+					PositiveDeltas: make([]int64, 10000),
+				}
+				ts := cortexpb.TimeSeries{
+					Labels:     []cortexpb.LabelAdapter{{Name: "__name__", Value: "test"}},
+					Histograms: []cortexpb.WrappedHistogram{{Histogram: h}},
+				}
+				wr := cortexpb.WriteRequest{
+					Timeseries: []cortexpb.PreallocTimeseries{{TimeSeries: &ts}},
+				}
+				data, err := wr.Marshal()
+				require.NoError(t, err)
+				return data, false
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "native histogram size",
 		},
 	}
 
@@ -1184,7 +1325,7 @@ func TestHandler_RemoteWriteV2_MetadataPoolReset(t *testing.T) {
 
 func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 	fh := tsdbutil.GenerateTestFloatHistogram(1)
-	ph := cortexpb.FloatHistogramToHistogramProto(4, fh)
+	ph := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(4, fh))
 
 	v2Req := &cortexpb.PreallocWriteRequestV2{
 		WriteRequestV2: cortexpb.WriteRequestV2{
@@ -1199,7 +1340,7 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 						Exemplars: []cortexpb.ExemplarV2{
 							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
 						},
-						Histograms: []cortexpb.Histogram{
+						Histograms: []cortexpb.WrappedHistogram{
 							ph,
 						},
 					},
@@ -1208,7 +1349,7 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 		},
 	}
 
-	v1Req, err := convertV2RequestToV1(v2Req, false)
+	v1Req, err := convertV2RequestToV1(v2Req, false, false)
 	require.NoError(t, err)
 	require.Len(t, v1Req.Timeseries, 1)
 
@@ -1223,4 +1364,142 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 
 	require.True(t, len(v1Ts.Histograms) > 0 && len(v2Ts.Histograms) > 0)
 	require.NotSame(t, &v1Ts.Histograms[0], &v2Ts.Histograms[0], "Histograms array must not share the same memory address")
+}
+
+func Test_convertV2RequestToV1_PreservesStartTimestamp(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs: []uint32{1, 2},
+						Samples: []cortexpb.Sample{
+							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+						},
+						Histograms: []cortexpb.WrappedHistogram{
+							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true preserves ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(100), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(200), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false clears ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+}
+
+func Test_convertV2RequestToV1_UsesCreatedTimestampAsFallback(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs:       []uint32{1, 2},
+						CreatedTimestamp: 777,
+						Samples:          []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
+						Histograms:       []cortexpb.WrappedHistogram{{Histogram: cortexpb.Histogram{TimestampMs: 2000}}},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true uses CT as fallback for ST", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(777), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(777), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false ignores CT", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+}
+
+func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.T) {
+	v2Req := &cortexpb.PreallocWriteRequestV2{
+		WriteRequestV2: cortexpb.WriteRequestV2{
+			Symbols: []string{"", "__name__", "test_metric"},
+			Timeseries: []cortexpb.PreallocTimeseriesV2{
+				{
+					TimeSeriesV2: &cortexpb.TimeSeriesV2{
+						LabelsRefs:       []uint32{1, 2},
+						CreatedTimestamp: 777,
+						Samples: []cortexpb.Sample{
+							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+						},
+						Histograms: []cortexpb.WrappedHistogram{
+							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	t.Run("enableStartTimestamp=true: explicit ST takes precedence over CT", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, true)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(100), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(200), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+
+	t.Run("enableStartTimestamp=false: ST and CT are both ignored", func(t *testing.T) {
+		v1Req, err := convertV2RequestToV1(v2Req, false, false)
+		require.NoError(t, err)
+		require.Len(t, v1Req.Timeseries[0].Samples, 1)
+		require.Len(t, v1Req.Timeseries[0].Histograms, 1)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Samples[0].StartTimestampMs)
+		assert.Equal(t, int64(0), v1Req.Timeseries[0].Histograms[0].StartTimestampMs)
+	})
+}
+
+func TestHandler_remoteWriteV2_UnauthorizedWithoutTenantID(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	pushCalled := false
+	pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+		pushCalled = true
+		return &cortexpb.WriteResponse{}, nil
+	}
+
+	handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+
+	req := createRequest(t, createPrometheusRemoteWriteV2Protobuf(t), true)
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusUnauthorized, resp.Code)
+	assert.Contains(t, resp.Body.String(), user.ErrNoOrgID.Error())
+	assert.False(t, pushCalled, "push function must not be called when tenant ID is missing")
 }

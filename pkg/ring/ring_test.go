@@ -2666,7 +2666,8 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 					currTime := time.Now().Add(lookbackPeriod).Add(time.Minute)
 
 					// Add the initial shard to the history.
-					rs, err := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding).GetReplicationSetForOperation(Read)
+					subRing, _ := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding)
+					rs, err := subRing.GetReplicationSetForOperation(Read)
 					require.NoError(t, err)
 
 					history := map[time.Time]ReplicationSet{
@@ -2732,7 +2733,8 @@ func TestRing_ShuffleShardWithLookback_CorrectnessWithFuzzy(t *testing.T) {
 						}
 
 						// Add the current shard to the history.
-						rs, err = ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding).GetReplicationSetForOperation(Read)
+						subRing, _ := ring.shuffleShard(userID, shardSize, 0, time.Now(), enableStableSharding)
+						rs, err = subRing.GetReplicationSetForOperation(Read)
 						require.NoError(t, err)
 						history[currTime] = rs
 
@@ -2808,7 +2810,7 @@ func benchmarkShuffleSharding(b *testing.B, numInstances, numZones, numTokens, s
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},
@@ -2835,7 +2837,7 @@ func BenchmarkRing_Get(b *testing.B) {
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},
@@ -2862,7 +2864,7 @@ func TestRing_Get_NoMemoryAllocations(t *testing.T) {
 		ringTokensByZone:     ringDesc.getTokensByZone(),
 		ringInstanceByToken:  ringDesc.getTokensInfo(),
 		ringZones:            getZones(ringDesc.getTokensByZone()),
-		shuffledSubringCache: map[subringCacheKey]*Ring{},
+		shuffledSubringCache: map[subringCacheKey]*cachedSubring{},
 		strategy:             NewDefaultReplicationStrategy(),
 		lastTopologyChange:   time.Now(),
 		KVClient:             &MockClient{},
@@ -3165,6 +3167,120 @@ func TestShuffleShardWithCaching(t *testing.T) {
 	require.False(t, subring == newSubring)
 }
 
+func TestShuffleShardWithLookbackCaching(t *testing.T) {
+	inmem, closer := consul.NewInMemoryClientWithConfig(GetCodec(), consul.Config{
+		MaxCasRetries: 20,
+		CasRetryDelay: 100 * time.Millisecond,
+	}, log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	cfg := Config{
+		KVStore:              kv.Config{Mock: inmem},
+		HeartbeatTimeout:     1 * time.Minute,
+		ReplicationFactor:    3,
+		ZoneAwarenessEnabled: true,
+	}
+
+	ring, err := New(cfg, "test", "test", log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ring))
+	t.Cleanup(func() {
+		_ = services.StopAndAwaitTerminated(context.Background(), ring)
+	})
+
+	const numLifecyclers = 6
+	const zones = 3
+
+	lcs := []*Lifecycler(nil)
+	for i := range numLifecyclers {
+		lc := startLifecycler(t, cfg, 500*time.Millisecond, i, zones)
+
+		lcs = append(lcs, lc)
+	}
+
+	// Wait until all instances in the ring are ACTIVE.
+	test.Poll(t, 5*time.Second, numLifecyclers, func() any {
+		active := 0
+		rs, _ := ring.GetReplicationSetForOperation(Read)
+		for _, ing := range rs.Instances {
+			if ing.State == ACTIVE {
+				active++
+			}
+		}
+		return active
+	})
+
+	const (
+		shardSize      = zones
+		user           = "user"
+		lookbackPeriod = time.Hour
+	)
+
+	// All instances were registered just now, so with an hour lookback they are all within the
+	// lookback window and the resulting subring carries a non-zero expiry.
+	now := time.Now()
+
+	// This lookback subring should be cached and reused while now is before its expiry.
+	subring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now)
+
+	// Repeated calls with now still before the expiry reuse the cached subring.
+	const iters = 100
+	sleep := (2 * time.Second) / iters
+	for range iters {
+		newSubring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, time.Now())
+		require.True(t, subring == newSubring, "cached lookback subring reused before expiry")
+		time.Sleep(sleep)
+	}
+
+	// On a cache hit the subring still has up-to-date instance timestamps.
+	{
+		rs, err := subring.GetReplicationSetForOperation(Read)
+		require.NoError(t, err)
+
+		nowTs := time.Now()
+		for _, ing := range rs.Instances {
+			// Lifecyclers use 500ms refresh, but timestamps use 1s resolution, so give it some buffer.
+			assert.InDelta(t, nowTs.UnixNano(), time.Unix(ing.Timestamp, 0).UnixNano(), float64(2*time.Second.Nanoseconds()))
+		}
+	}
+
+	// Advancing now past the lookback window forces a recompute: instances registered ~now are no
+	// longer within the window, so the subring shrinks and a new one is returned.
+	subringAfterExpiry := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now.Add(lookbackPeriod+time.Minute))
+	require.False(t, subring == subringAfterExpiry, "expired lookback subring is recomputed")
+	require.NotEqual(t, subring.InstancesCount(), subringAfterExpiry.InstancesCount())
+
+	// The recomputed subring has no instances within lookback, so no time-based expiry, and is reused.
+	subring = subringAfterExpiry
+	newSubring := ring.ShuffleShardWithLookback(user, shardSize, lookbackPeriod, now.Add(lookbackPeriod+2*time.Minute))
+	require.True(t, subring == newSubring, "recomputed lookback subring reused")
+
+	// A plain shuffle shard for the same user and size is cached under a separate key.
+	require.False(t, ring.ShuffleShard(user, shardSize) == newSubring, "plain and lookback subrings are cached separately")
+
+	// Change of instances (topology) invalidates the cache.
+	before := ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now())
+	require.True(t, before == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "cached before topology change")
+
+	// Stop one instance per zone. Subring needs to be recomputed.
+	for i := range zones {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), lcs[i]))
+	}
+	test.Poll(t, 5*time.Second, numLifecyclers-zones, func() any {
+		return ring.InstancesCount()
+	})
+	require.False(t, before == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "recomputed after topology change")
+
+	// Change of shard size needs a different subring.
+	sizeOne := ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now())
+	require.False(t, sizeOne == ring.ShuffleShardWithLookback(user, 2, lookbackPeriod, time.Now()), "different shard sizes cached separately")
+
+	// Same size reuses the cache, and cleanup invalidates it.
+	require.True(t, sizeOne == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()))
+	ring.CleanupShuffleShardCache(user)
+	require.False(t, sizeOne == ring.ShuffleShardWithLookback(user, 1, lookbackPeriod, time.Now()), "recomputed after cache cleanup")
+}
+
 // User shuffle shard token.
 func userToken(user, zone string, skip int) uint32 {
 	r := rand.New(rand.NewSource(shard.ShuffleShardSeed(user, zone)))
@@ -3183,6 +3299,9 @@ func TestUpdateMetrics(t *testing.T) {
 		{
 			DetailedMetricsEnabled: true,
 			Expected: `
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
@@ -3215,6 +3334,9 @@ func TestUpdateMetrics(t *testing.T) {
 		{
 			DetailedMetricsEnabled: false,
 			Expected: `
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone=""} 2
@@ -3291,6 +3413,9 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 	ring.updateRingState(&ringDesc)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
@@ -3329,6 +3454,9 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 	ring.updateRingState(&ringDescNew)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
@@ -3383,6 +3511,9 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 	ring.updateRingState(&ringDesc)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.3333333332557231
@@ -3435,6 +3566,9 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 	ring.updateRingState(&ringDescNew)
 
 	err = testutil.GatherAndCompare(registry, bytes.NewBufferString(`
+		# HELP ring_duplicate_tokens Number of duplicate tokens in the ring (tokens owned by multiple instances).
+		# TYPE ring_duplicate_tokens gauge
+		ring_duplicate_tokens{name="test"} 0
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
@@ -3474,4 +3608,50 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 		ring_tokens_total{name="test"} 2
 	`))
 	assert.NoError(t, err)
+}
+
+func TestUpdateMetricsDuplicateTokens(t *testing.T) {
+	cfg := Config{
+		KVStore:           kv.Config{},
+		HeartbeatTimeout:  0,
+		ReplicationFactor: 3,
+	}
+
+	registry := prometheus.NewRegistry()
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	// No duplicate tokens: A owns {1, 2}, B owns {3, 4}.
+	ringDesc1 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 10, Tokens: []uint32{1, 2}},
+			"B": {Addr: "127.0.0.2", Timestamp: 10, Tokens: []uint32{3, 4}},
+		},
+	}
+	ring.updateRingState(&ringDesc1)
+
+	assert.Equal(t, float64(0), testutil.ToFloat64(ring.duplicateTokensGauge))
+
+	// Duplicate tokens: A and B both own token 100, plus one shared token 200.
+	ringDesc2 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 20, Tokens: []uint32{100, 200, 300}},
+			"B": {Addr: "127.0.0.2", Timestamp: 20, Tokens: []uint32{100, 200, 400}},
+		},
+	}
+	ring.updateRingState(&ringDesc2)
+
+	// Total instance tokens = 6, unique tokens = {100, 200, 300, 400} = 4, duplicates = 2.
+	assert.Equal(t, float64(2), testutil.ToFloat64(ring.duplicateTokensGauge))
+
+	// Back to no duplicates.
+	ringDesc3 := Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 30, Tokens: []uint32{100, 200}},
+			"B": {Addr: "127.0.0.2", Timestamp: 30, Tokens: []uint32{300, 400}},
+		},
+	}
+	ring.updateRingState(&ringDesc3)
+
+	assert.Equal(t, float64(0), testutil.ToFloat64(ring.duplicateTokensGauge))
 }

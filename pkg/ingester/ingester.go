@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -63,6 +64,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	logutil "github.com/cortexproject/cortex/pkg/util/log"
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
@@ -79,6 +81,7 @@ const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 	errTSDBIngestWithTimestamp     = "err: %v. series=%s"               // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
+	errTSDBIngestWithHeadMaxTime   = "err: %v. timestamp=%s, tsdbHeadMaxTimestamp=%s, series=%s"
 	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
@@ -110,6 +113,8 @@ var (
 	errLabelsOutOfOrder = errors.New("labels out of order")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
+
+	distributorWorkerOrgIDRe = regexp.MustCompile(`^ingester-.+-stream-push-worker-\d+$`)
 )
 
 // Config for an Ingester.
@@ -132,6 +137,11 @@ type Config struct {
 	ActiveQueriedSeriesMetricsSampleRate     float64                  `yaml:"active_queried_series_metrics_sample_rate"`
 	ActiveQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"active_queried_series_metrics_windows"`
 
+	HeadQueriedSeriesMetricsEnabled        bool                     `yaml:"head_queried_series_metrics_enabled"`
+	HeadQueriedSeriesMetricsWindowDuration time.Duration            `yaml:"head_queried_series_metrics_window_duration"`
+	HeadQueriedSeriesMetricsSampleRate     float64                  `yaml:"head_queried_series_metrics_sample_rate"`
+	HeadQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"head_queried_series_metrics_windows"`
+
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
@@ -142,9 +152,6 @@ type Config struct {
 	// to accurately apply global limits.
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
-
-	// Injected at runtime and read from querier config.
-	QueryIngestersWithin time.Duration `yaml:"-"`
 
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
@@ -200,6 +207,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.ActiveQueriedSeriesMetricsSampleRate, "ingester.active-queried-series-metrics-sample-rate", 1.0, "Sampling rate for active queried series tracking (1.0 = 100% sampling, 0.1 = 10% sampling). By default, all queries are sampled.")
 	cfg.ActiveQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
 	f.Var(&cfg.ActiveQueriedSeriesMetricsWindows, "ingester.active-queried-series-metrics-windows", "Time windows to expose queried series metric. Each window tracks queried series within that time period.")
+
+	f.BoolVar(&cfg.HeadQueriedSeriesMetricsEnabled, "ingester.head-queried-series-metrics-enabled", false, "Experimental: Enable tracking of series queried from head only and expose them as metrics.")
+	f.DurationVar(&cfg.HeadQueriedSeriesMetricsWindowDuration, "ingester.head-queried-series-metrics-window-duration", 15*time.Minute, "Duration of each sub-window for head queried series tracking.")
+	f.Float64Var(&cfg.HeadQueriedSeriesMetricsSampleRate, "ingester.head-queried-series-metrics-sample-rate", 1.0, "Sampling rate for head queried series tracking (1.0 = 100%%).")
+	cfg.HeadQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
+	f.Var(&cfg.HeadQueriedSeriesMetricsWindows, "ingester.head-queried-series-metrics-windows", "Time windows to expose head queried series metrics. Also controls how long per-metric-name cardinality is reported after last query.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
@@ -328,6 +341,7 @@ type Ingester struct {
 // Shipper interface is used to have an easy way to mock it in tests.
 type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
+	Close() error
 }
 
 type tsdbState int
@@ -364,8 +378,10 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 type userTSDB struct {
 	db                  *tsdb.DB
 	userID              string
+	logger              log.Logger
 	activeSeries        *ActiveSeries
 	activeQueriedSeries *ActiveQueriedSeries
+	headQueriedSeries   *ActiveQueriedSeries
 	seriesInMetric      *metricCounter
 	labelSetCounter     *labelSetCounter
 	limiter             *Limiter
@@ -407,6 +423,9 @@ type userTSDB struct {
 	blockRetentionPeriod int64
 
 	postingCache cortex_tsdb.ExpandedPostingsCache
+
+	// Tracks active series per configured tracker pattern.
+	trackerCounter *trackerCounter
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -436,6 +455,11 @@ func (u *userTSDB) Blocks() []*tsdb.Block {
 }
 
 func (u *userTSDB) Close() error {
+	if u.shipper != nil {
+		if err := u.shipper.Close(); err != nil {
+			level.Warn(u.logger).Log("msg", "failed to close shipper", "err", err)
+		}
+	}
 	return u.db.Close()
 }
 
@@ -548,6 +572,7 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	}
 	u.seriesInMetric.increaseSeriesForMetric(metricName)
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
+	u.trackerCounter.increase(metric)
 
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
@@ -566,6 +591,7 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 		}
 		u.seriesInMetric.decreaseSeriesForMetric(metricName)
 		u.labelSetCounter.decreaseSeriesLabelSet(u, metric)
+		u.trackerCounter.decrease(metric)
 		if u.postingCache != nil {
 			u.postingCache.ExpireSeries(metric)
 		}
@@ -755,19 +781,28 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 			Help: "Total number of compactions that failed.",
 		}),
 		walReplayTime: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_tsdb_wal_replay_duration_seconds",
-			Help:    "The total time it takes to open and replay a TSDB WAL.",
-			Buckets: prometheus.DefBuckets,
+			Name:                            "cortex_ingester_tsdb_wal_replay_duration_seconds",
+			Help:                            "The total time it takes to open and replay a TSDB WAL.",
+			Buckets:                         prometheus.DefBuckets,
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		appenderAddDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_tsdb_appender_add_duration_seconds",
-			Help:    "The total time it takes for a push request to add samples to the TSDB appender.",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			Name:                            "cortex_ingester_tsdb_appender_add_duration_seconds",
+			Help:                            "The total time it takes for a push request to add samples to the TSDB appender.",
+			Buckets:                         []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		appenderCommitDuration: promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_ingester_tsdb_appender_commit_duration_seconds",
-			Help:    "The total time it takes for a push request to commit samples appended to TSDB.",
-			Buckets: []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			Name:                            "cortex_ingester_tsdb_appender_commit_duration_seconds",
+			Help:                            "The total time it takes for a push request to commit samples appended to TSDB.",
+			Buckets:                         []float64{.001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
 		idleTsdbChecks: idleTsdbChecks,
@@ -797,7 +832,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		matchersCache:                storecache.NoopMatchersCache,
 	}
 
-	if cfg.ActiveQueriedSeriesMetricsEnabled {
+	if cfg.ActiveQueriedSeriesMetricsEnabled || cfg.HeadQueriedSeriesMetricsEnabled {
 		i.activeQueriedSeriesService = NewActiveQueriedSeriesService(logger, registerer)
 	}
 
@@ -814,6 +849,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		false,
 		cfg.ActiveSeriesMetricsEnabled,
 		cfg.ActiveQueriedSeriesMetricsEnabled,
+		cfg.HeadQueriedSeriesMetricsEnabled,
 		i.getInstanceLimits,
 		i.ingestionRate,
 		&i.maxInflightPushRequests,
@@ -909,6 +945,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		cfg.AdminLimitMessage,
 	)
 	i.metrics = newIngesterMetrics(registerer,
+		false,
 		false,
 		false,
 		false,
@@ -1052,6 +1089,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		defer t.Stop()
 	}
 
+	var headQueriedSeriesTickerChan <-chan time.Time
+	if i.cfg.HeadQueriedSeriesMetricsEnabled {
+		t := time.NewTicker(i.cfg.ActiveQueriedSeriesMetricsUpdatePeriod)
+		headQueriedSeriesTickerChan = t.C
+		defer t.Stop()
+	}
+
 	// Similarly to the above, this is a hardcoded value.
 	metadataPurgeTicker := time.NewTicker(metadataPurgePeriod)
 	defer metadataPurgeTicker.Stop()
@@ -1080,6 +1124,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateActiveSeries(ctx)
 		case <-activeQueriedSeriesTickerChan:
 			i.updateActiveQueriedSeries(ctx)
+		case <-headQueriedSeriesTickerChan:
+			i.updateHeadQueriedMetrics(ctx)
 		case <-maxTrackerResetTicker.C:
 			i.maxInflightQueryRequests.Tick()
 			i.maxInflightPushRequests.Tick()
@@ -1146,9 +1192,15 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
+		i.metrics.headMetricNamesPerUser.WithLabelValues(userID).Set(float64(userDB.seriesInMetric.ActiveMetricNames()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
+
+		// Per-tenant active series trackers (hot-reloadable via runtime config overrides).
+		trackers := i.limits.ActiveSeriesTrackers(userID)
+		userDB.trackerCounter.updateConfig(ctx, userDB.db, trackers)
+		userDB.trackerCounter.updateMetrics(i.metrics.activeSeriesPerTracker, userID, trackers)
 	}
 }
 
@@ -1174,6 +1226,30 @@ func (i *Ingester) updateActiveQueriedSeries(ctx context.Context) {
 			// Update metric with window label
 			i.metrics.activeQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
 		}
+	}
+}
+
+func (i *Ingester) updateHeadQueriedMetrics(ctx context.Context) {
+	now := time.Now()
+	for _, userID := range i.getTSDBUsers() {
+		userDB, err := i.getTSDB(userID)
+		if err != nil || userDB == nil {
+			continue
+		}
+
+		// Metric 1: total series queried from head (HLL)
+		if userDB.headQueriedSeries != nil {
+			userDB.headQueriedSeries.Purge(now)
+			for _, windowDuration := range i.cfg.HeadQueriedSeriesMetricsWindows {
+				estimatedCount, err := userDB.headQueriedSeries.GetSeriesQueried(now, windowDuration)
+				if err != nil {
+					level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to get head queried series count", "user", userID, "window", windowDuration, "err", err)
+					continue
+				}
+				i.metrics.headQueriedSeriesPerUser.WithLabelValues(userID, windowDuration.String()).Set(float64(estimatedCount))
+			}
+		}
+
 	}
 }
 
@@ -1336,6 +1412,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		failedHistogramsCount                  = 0
 		succeededExemplarsCount                = 0
 		failedExemplarsCount                   = 0
+		startTimestampSampleAppendFailCount    = 0
+		startTimestampHistogramAppendFailCount = 0
 		startAppend                            = time.Now()
 		sampleOutOfBoundsCount                 = 0
 		sampleOutOfOrderCount                  = 0
@@ -1346,6 +1424,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		perLabelSetSeriesLimitCount            = 0
 		perMetricSeriesLimitCount              = 0
 		discardedNativeHistogramCount          = 0
+
+		// headMaxTime is snapshotted right after the appender is created. The appender
+		// derives its lower time bound checks (e.g. out of bounds) from the head max
+		// time at creation time. We cannot access the appender's internal bound
+		// directly, so we snapshot the head max time once here instead of fetching it
+		// again for every failed sample.
+		headMaxTime int64
 
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
@@ -1362,7 +1447,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
+				})
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
@@ -1377,7 +1464,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
+				})
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
@@ -1423,6 +1512,23 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
+	headMaxTime = db.Head().MaxTime()
+
+	// Ensure the appender is always released so that we don't leak TSDB head
+	// series references, mmap'd chunks and pending state on early returns.
+	// `committed` is flipped to true immediately before app.Commit() because
+	// Prometheus closes the appender even on Commit failure (it self-rolls
+	// back internally on WAL error), so the deferred Rollback must not run
+	// afterwards.
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if rollbackErr := app.Rollback(); rollbackErr != nil {
+			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback appender on early return", "user", userID, "err", rollbackErr)
+		}
+	}()
 
 	// Even when OOO is enabled globally, we want to reject OOO samples in some cases.
 	// prometheus implementation: https://github.com/prometheus/prometheus/pull/14710
@@ -1431,6 +1537,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 
 	var newSeries []labels.Labels
+
+	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
+	nowMs := time.Now().UnixMilli()
+	observeDelay := func(timestampMs int64) {
+		if delayMs := nowMs - timestampMs; delayMs >= 0 {
+			delayObserver.Observe(float64(delayMs) / 1000.0)
+		}
+	}
 
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
@@ -1460,6 +1574,16 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		for _, s := range ts.Samples {
 			var err error
 
+			// Observe ingestion delay for all samples (accepted and rejected)
+			observeDelay(s.TimestampMs)
+
+			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
+				if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
+					startTimestampSampleAppendFailCount++
+					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
+				}
+			}
+
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
 				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
@@ -1484,15 +1608,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 				continue
 			}
-			// The error looks an issue on our side, so we should rollback
-			if rollbackErr := app.Rollback(); rollbackErr != nil {
-				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
-			}
-
+			// The error looks an issue on our side, so we should rollback.
+			// The deferred rollback above will close the appender; nothing to do here.
 			return nil, wrapWithUser(err, userID)
 		}
 
 		if i.limits.EnableNativeHistograms(userID) {
+			ingestedBucketsObserver := i.metrics.ingestedHistogramBuckets.WithLabelValues(userID)
 			for _, hp := range ts.Histograms {
 				var (
 					err error
@@ -1500,16 +1622,33 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					fh  *histogram.FloatHistogram
 				)
 
-				if hp.GetCountFloat() > 0 {
-					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp)
+				// Observe ingestion delay for all histograms (accepted and rejected)
+				observeDelay(hp.TimestampMs)
+
+				// Choose the decoder based on the histogram's proto type (the
+				// CountInt/CountFloat oneof), not the count value. A float
+				// histogram with a count of 0 (e.g. a staleness marker or an
+				// empty histogram) still has the CountFloat oneof set, so a
+				// value-based check (hp.GetCountFloat() > 0) would misroute it
+				// to the integer decoder, which panics. This mirrors the
+				// discriminator used everywhere else (e.g. util/validation).
+				if hp.IsFloatHistogram() {
+					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
 				} else {
-					h = cortexpb.HistogramProtoToHistogram(hp)
+					h = cortexpb.HistogramProtoToHistogram(hp.Histogram)
+				}
+
+				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
+					if _, err = app.AppendHistogramSTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
+						startTimestampHistogramAppendFailCount++
+						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
+					}
 				}
 
 				if ref != 0 {
 					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
 						succeededHistogramsCount++
-						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
 				} else {
@@ -1521,7 +1660,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 							newSeries = append(newSeries, copiedLabels)
 						}
 						succeededHistogramsCount++
-						i.metrics.ingestedHistogramBuckets.WithLabelValues(userID).Observe(float64(hp.BucketCount()))
+						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
 					}
 				}
@@ -1531,10 +1670,8 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
 					continue
 				}
-				// The error looks an issue on our side, so we should rollback
-				if rollbackErr := app.Rollback(); rollbackErr != nil {
-					level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback on error", "user", userID, "err", rollbackErr)
-				}
+				// The error looks an issue on our side, so we should rollback.
+				// The deferred rollback above will close the appender; nothing to do here.
 				return nil, wrapWithUser(err, userID)
 			}
 		} else {
@@ -1587,7 +1724,20 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	// At this point all samples have been added to the appender, so we can track the time it took.
 	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
 
+	if startTimestampSampleAppendFailCount > 0 || startTimestampHistogramAppendFailCount > 0 {
+		level.Debug(logutil.WithContext(ctx, i.logger)).Log(
+			"msg", "failed to append start timestamp in push",
+			"user", userID,
+			"sample_failures", startTimestampSampleAppendFailCount,
+			"histogram_failures", startTimestampHistogramAppendFailCount,
+		)
+	}
+
 	startCommit := time.Now()
+	// Mark committed before calling Commit: Prometheus closes the appender on
+	// both success and failure of Commit (it self-rolls-back on WAL error), so
+	// the deferred Rollback must not fire afterwards.
+	committed = true
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
 	}
@@ -1700,6 +1850,16 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		if err != nil {
 			return err
 		}
+
+		if contextOrgID, extractErr := users.TenantID(ctx); extractErr == nil {
+			if !isDistributorWorkerOrgID(contextOrgID) && contextOrgID != req.TenantID {
+				req.Free()
+				return status.Errorf(codes.PermissionDenied,
+					"tenant ID mismatch: stream authenticated as %q but request specifies %q",
+					contextOrgID, req.TenantID)
+			}
+		}
+
 		pushCtx := user.InjectOrgID(ctx, req.TenantID)
 		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
@@ -1721,6 +1881,21 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}
 	}
+}
+
+// isDistributorWorkerOrgID reports whether orgID matches the synthetic worker-name pattern
+// that the distributor injects as X-Scope-OrgID when opening a long-lived PushStream:
+//
+//	"ingester-<addr>-stream-push-worker-<N>"
+//
+// When this pattern is detected, PushStream bypasses the orgID == req.TenantID check and
+// instead trusts req.TenantID from the payload.
+//
+// Note: trusting this pattern alone is not sufficient — an attacker who knows the
+// pattern can spoof it and write to any tenant.  The stream-level gRPC interceptor
+// enabled via -distributor.sign-write-requests-keys provides cryptographic proof.
+func isDistributorWorkerOrgID(orgID string) bool {
+	return distributorWorkerOrgIDRe.MatchString(orgID)
 }
 
 func (u *userTSDB) acquireReadLock() error {
@@ -1783,7 +1958,7 @@ func (i *Ingester) QueryExemplars(ctx context.Context, req *client.ExemplarQuery
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		resp, err = i.queryExemplars(ctx, userID, req)
 	})
 	return resp, err
@@ -1853,7 +2028,7 @@ func (i *Ingester) LabelValues(ctx context.Context, req *client.LabelValuesReque
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
 		defer cleanup()
@@ -1872,7 +2047,7 @@ func (i *Ingester) LabelValuesStream(req *client.LabelValuesRequest, stream clie
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelValuesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelsValuesCommon(ctx, req)
@@ -1926,7 +2101,7 @@ func (i *Ingester) labelsValuesCommon(ctx context.Context, req *client.LabelValu
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -1969,7 +2144,7 @@ func (i *Ingester) LabelNames(ctx context.Context, req *client.LabelNamesRequest
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
 		defer cleanup()
@@ -1988,7 +2163,7 @@ func (i *Ingester) LabelNamesStream(req *client.LabelNamesRequest, stream client
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		var resp *client.LabelNamesResponse
 		var cleanup func()
 		resp, cleanup, err = i.labelNamesCommon(ctx, req)
@@ -2042,7 +2217,7 @@ func (i *Ingester) labelNamesCommon(ctx context.Context, req *client.LabelNamesR
 	}
 	defer db.releaseReadLock()
 
-	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(startTimestampMs, endTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return nil, cleanup, err
 	}
@@ -2085,7 +2260,7 @@ func (i *Ingester) MetricsForLabelMatchers(ctx context.Context, req *client.Metr
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result = &client.MetricsForLabelMatchersResponse{}
 		var cleanup func()
 		cleanup, err = i.metricsForLabelMatchersCommon(ctx, req, func(l labels.Labels) error {
@@ -2109,7 +2284,7 @@ func (i *Ingester) MetricsForLabelMatchersStream(req *client.MetricsForLabelMatc
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		result := &client.MetricsForLabelMatchersStreamResponse{}
 
 		var cleanup func()
@@ -2174,7 +2349,7 @@ func (i *Ingester) metricsForLabelMatchersCommon(ctx context.Context, req *clien
 		return cleanup, err
 	}
 
-	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.cfg.QueryIngestersWithin)
+	mint, maxt, err := metadataQueryRange(req.StartTimestampMs, req.EndTimestampMs, db, i.limits.QueryIngestersWithin(userID))
 	if err != nil {
 		return cleanup, err
 	}
@@ -2249,7 +2424,7 @@ func (i *Ingester) MetricsMetadata(ctx context.Context, req *client.MetricsMetad
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		userMetadata := i.getUserMetadata(userID)
 
 		if userMetadata == nil {
@@ -2391,7 +2566,7 @@ func (i *Ingester) QueryStream(req *client.QueryRequest, stream client.Ingester_
 	}
 
 	// Set pprof labels for profiling
-	pprof.Do(ctx, pprof.Labels("user", userID), func(ctx context.Context) {
+	pprof.Do(ctx, pprof.Labels("user", userID, "source", requestmeta.GetSource(ctx)), func(ctx context.Context) {
 		err = i.queryStream(ctx, userID, req, stream, spanlog)
 	})
 
@@ -2452,14 +2627,14 @@ func (i *Ingester) trackInflightQueryRequest() (func(), error) {
 		}
 	}
 
-	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
-
 	if i.resourceBasedLimiter != nil {
 		if err := i.resourceBasedLimiter.AcceptNewRequest(); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to accept request", "err", err)
 			return nil, limiter.ErrResourceLimitReached
 		}
 	}
+
+	i.maxInflightQueryRequests.Track(i.inflightQueryRequests.Inc())
 
 	return func() {
 		i.inflightQueryRequests.Dec()
@@ -2807,11 +2982,28 @@ func (i *Ingester) blockChunkQuerierFunc(userId string) tsdb.BlockChunkQuerierFu
 		// This occurs because the tsdb.PostingsForMatchers function can return invalid data in such scenarios.
 		// For more details, see: https://github.com/cortexproject/cortex/issues/6556
 		// TODO: alanprot: Consider removing this logic when prometheus is updated as this logic is "fixed" upstream.
+		var q storage.ChunkQuerier
 		if postingCache == nil || mint > db.Head().MaxTime() {
-			return tsdb.NewBlockChunkQuerier(b, mint, maxt)
+			q, err = tsdb.NewBlockChunkQuerier(b, mint, maxt)
+		} else {
+			q, err = cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+		}
+		if err != nil {
+			return nil, err
 		}
 
-		return cortex_tsdb.NewCachedBlockChunkQuerier(postingCache, b, mint, maxt)
+		// Wrap only for head queriers when head queried series metrics are enabled.
+		if i.cfg.HeadQueriedSeriesMetricsEnabled && isHead(b) && db != nil && db.headQueriedSeries != nil {
+			q = &headQueriedSeriesChunkQuerier{
+				ChunkQuerier:               q,
+				headQueriedSeries:          db.headQueriedSeries,
+				activeQueriedSeriesService: i.activeQueriedSeriesService,
+				userID:                     userId,
+				sampled:                    db.headQueriedSeries.SampleRequest(),
+			}
+		}
+
+		return q, nil
 	}
 }
 
@@ -2838,12 +3030,25 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		)
 	}
 
+	var headQueriedSeries *ActiveQueriedSeries
+	if i.cfg.HeadQueriedSeriesMetricsEnabled {
+		headQueriedSeries = NewActiveQueriedSeries(
+			i.cfg.HeadQueriedSeriesMetricsWindows,
+			i.cfg.HeadQueriedSeriesMetricsWindowDuration,
+			i.cfg.HeadQueriedSeriesMetricsSampleRate,
+			i.logger,
+		)
+	}
+
 	userDB := &userTSDB{
 		userID:              userID,
+		logger:              userLogger,
 		activeSeries:        NewActiveSeries(),
 		activeQueriedSeries: activeQueriedSeries,
+		headQueriedSeries:   headQueriedSeries,
 		seriesInMetric:      newMetricCounter(i.limiter, i.cfg.getIgnoreSeriesLimitForMetricNamesMap()),
 		labelSetCounter:     newLabelSetCounter(i.limiter),
+		trackerCounter:      newTrackerCounter(),
 		ingestedAPISamples:  util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 		ingestedRuleSamples: util_math.NewEWMARate(0.2, i.cfg.RateUpdatePeriod),
 
@@ -2889,6 +3094,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
+		BlockReloadInterval:            1 * time.Minute, // use default value
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -2901,6 +3107,9 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	level.Info(userLogger).Log("msg", "Running compaction after WAL replay")
 	err = db.Compact(context.TODO())
 	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			level.Warn(userLogger).Log("msg", "failed to close TSDB after compact failure", "err", closeErr)
+		}
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
 
@@ -2925,9 +3134,14 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
+		udirRoot, err := os.OpenRoot(udir)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to open root dir for shipper: %s", udir)
+		}
+
 		userDB.shipper = shipper.New(
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
-			udir,
+			udirRoot,
 			shipper.WithLogger(userLogger),
 			shipper.WithRegisterer(tsdbPromReg),
 			shipper.WithLabels(func() labels.Labels { return l }),
@@ -2977,6 +3191,7 @@ func (i *Ingester) closeAllTSDB() {
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.headMetricNamesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 
@@ -3756,6 +3971,23 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	default:
 		return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 	}
+}
+
+// wrappedTSDBIngestErrWithHeadMaxTime is like wrappedTSDBIngestErr, but it also includes the
+// TSDB head max time in the error message. This helps users understand how far behind the
+// accepted time range a rejected sample is, e.g. for out of bounds or too old sample errors.
+func wrappedTSDBIngestErrWithHeadMaxTime(ingestErr error, timestamp, headMaxTime model.Time, labels []cortexpb.LabelAdapter) error {
+	if ingestErr == nil {
+		return nil
+	}
+
+	// The TSDB head max time is unset when the head is empty (e.g. no sample ingested yet
+	// after startup). Fall back to the error message without the head max time in that case.
+	if int64(headMaxTime) == math.MinInt64 {
+		return wrappedTSDBIngestErr(ingestErr, timestamp, labels)
+	}
+
+	return fmt.Errorf(errTSDBIngestWithHeadMaxTime, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), headMaxTime.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 }
 
 func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {

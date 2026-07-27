@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/notify"
-	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 	"golang.org/x/time/rate"
@@ -40,7 +40,7 @@ func newRateLimitedNotifier(upstream notify.Notifier, limits rateLimits, recheck
 
 var errRateLimited = errors.New("failed to notify due to rate limits")
 
-func (r *rateLimitedNotifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
+func (r *rateLimitedNotifier) Notify(ctx context.Context, alerts ...*alert.Alert) (bool, error) {
 	now := time.Now()
 	if now.UnixNano() >= r.recheckAt.Load() {
 		if limit := r.limits.RateLimit(); r.limiter.Limit() != limit {

@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const day = 24 * time.Hour
@@ -107,6 +108,7 @@ func Middlewares(
 	defaultEvaluationInterval time.Duration,
 	distributedExecEnabled bool,
 	localOptimizers []logicalplan.Optimizer,
+	tenantResolverFn func() users.Resolver,
 ) ([]tripperware.Middleware, cache.Cache, error) {
 	// Metric used to keep track of each middleware execution duration.
 	metrics := tripperware.NewInstrumentMiddlewareMetrics(registerer)
@@ -132,7 +134,7 @@ func Middlewares(
 			return false
 		}
 
-		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, splitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer)
+		queryCacheMiddleware, cache, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, splitter(cfg.SplitQueriesByInterval), limits, prometheusCodec, cacheExtractor, shouldCache, registerer, tenantResolverFn)
 		if err != nil {
 			return nil, nil, err
 		}

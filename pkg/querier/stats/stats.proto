@@ -45,4 +45,10 @@ message Stats {
   // The highest count of samples considered while evaluating a query.
   // Equal to PeakSamples in https://github.com/prometheus/prometheus/blob/main/util/stats/query_stats.go
   uint64 peak_samples = 14;
+  // Max timing breakdown across sub-queries for timeout classification.
+  // These use max() semantics during Merge rather than sum.
+  google.protobuf.Duration max_fetch_time = 15 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration max_eval_time = 16 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration max_queue_wait_time = 17 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  google.protobuf.Duration max_total_time = 18 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
 }

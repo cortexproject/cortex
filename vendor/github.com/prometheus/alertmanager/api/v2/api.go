@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -33,9 +34,9 @@ import (
 	prometheus_model "github.com/prometheus/common/model"
 	"github.com/prometheus/common/version"
 	"github.com/rs/cors"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/api/metrics"
 	open_api_models "github.com/prometheus/alertmanager/api/v2/models"
 	"github.com/prometheus/alertmanager/api/v2/restapi"
@@ -48,15 +49,17 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/dispatch"
+	"github.com/prometheus/alertmanager/eventrecorder"
+	"github.com/prometheus/alertmanager/marker"
 	"github.com/prometheus/alertmanager/matcher/compat"
 	"github.com/prometheus/alertmanager/pkg/labels"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/silence/silencepb"
-	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/alertmanager/tracing"
 )
 
-var tracer = otel.Tracer("github.com/prometheus/alertmanager/api/v2")
+var tracer = tracing.NewTracer("github.com/prometheus/alertmanager/api/v2")
 
 // API represents an Alertmanager API v2.
 type API struct {
@@ -64,7 +67,6 @@ type API struct {
 	silences       *silence.Silences
 	alerts         provider.Alerts
 	alertGroups    groupsFn
-	getAlertStatus getAlertStatusFn
 	groupMutedFunc groupMutedFunc
 	uptime         time.Time
 
@@ -83,9 +85,8 @@ type API struct {
 }
 
 type (
-	groupsFn         func(context.Context, func(*dispatch.Route) bool, func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[prometheus_model.Fingerprint][]string, error)
+	groupsFn         func(context.Context, func(*dispatch.Route) bool, func(*alert.Alert, time.Time) bool) (dispatch.AlertGroups, map[prometheus_model.Fingerprint][]string, error)
 	groupMutedFunc   func(routeID, groupKey string) ([]string, bool)
-	getAlertStatusFn func(prometheus_model.Fingerprint) types.AlertStatus
 	setAlertStatusFn func(ctx context.Context, labels prometheus_model.LabelSet)
 )
 
@@ -93,7 +94,6 @@ type (
 func NewAPI(
 	alerts provider.Alerts,
 	gf groupsFn,
-	asf getAlertStatusFn,
 	gmf groupMutedFunc,
 	silences *silence.Silences,
 	peer cluster.ClusterPeer,
@@ -102,7 +102,6 @@ func NewAPI(
 ) (*API, error) {
 	api := API{
 		alerts:         alerts,
-		getAlertStatus: asf,
 		alertGroups:    gf,
 		groupMutedFunc: gmf,
 		peer:           peer,
@@ -239,9 +238,20 @@ func (api *API) getReceiversHandler(params receiver_ops.GetReceiversParams) midd
 	_, span := tracer.Start(params.HTTPRequest.Context(), "api.getReceiversHandler")
 	defer span.End()
 
+	receiverMatchers, err := parseFilter(params.ReceiverMatchers)
+	if err != nil {
+		return receiver_ops.NewGetReceiversBadRequest().WithPayload(
+			fmt.Sprintf("failed to parse receiver_matchers param: %v", err.Error()),
+		)
+	}
+
 	receivers := make([]*open_api_models.Receiver, 0, len(api.alertmanagerConfig.Receivers))
 	for i := range api.alertmanagerConfig.Receivers {
-		receivers = append(receivers, &open_api_models.Receiver{Name: &api.alertmanagerConfig.Receivers[i].Name})
+		rcv := &api.alertmanagerConfig.Receivers[i]
+		if len(receiverMatchers) > 0 && !matchFilterLabels(receiverMatchers, rcv.Labels) {
+			continue
+		}
+		receivers = append(receivers, configReceiverToAPIReceiver(rcv))
 	}
 
 	return receiver_ops.NewGetReceiversOK().WithPayload(receivers)
@@ -278,13 +288,23 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 		}
 	}
 
+	receiverMatchers, err := parseFilter(params.ReceiverMatchers)
+	if err != nil {
+		logger.Debug("Failed to parse receiver matchers", "err", err)
+		return alert_ops.NewGetAlertsBadRequest().WithPayload(
+			fmt.Sprintf("failed to parse receiver_matchers param: %v", err.Error()),
+		)
+	}
+
 	alerts := api.alerts.GetPending()
 	defer alerts.Close()
 
-	alertFilter := api.alertFilter(matchers, *params.Silenced, *params.Inhibited, *params.Active)
+	tempMarker := marker.NewAlertMarker()
+	alertFilter := api.alertFilter(ctx, matchers, *params.Silenced, *params.Inhibited, *params.Active, tempMarker)
 	now := time.Now()
 
 	api.mtx.RLock()
+	rcvLabels := api.receiverLabelsMap()
 	for a := range alerts.Next() {
 		alert := a.Data
 		if err = alerts.Err(); err != nil {
@@ -304,11 +324,15 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 			continue
 		}
 
+		if len(receiverMatchers) > 0 && !receiversMatchLabels(receivers, receiverMatchers, rcvLabels) {
+			continue
+		}
+
 		if !alertFilter(alert, now) {
 			continue
 		}
 
-		openAlert := AlertToOpenAPIAlert(alert, api.getAlertStatus(alert.Fingerprint()), receivers, nil)
+		openAlert := AlertToOpenAPIAlert(alert, tempMarker.Status(alert.Fingerprint()), receivers, nil)
 
 		res = append(res, openAlert)
 	}
@@ -328,7 +352,7 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
-	ctx, span := tracer.Start(params.HTTPRequest.Context(), "api.postAlertsHandler")
+	ctx, span := tracer.Start(eventrecorder.WithEventRecording(params.HTTPRequest.Context()), "api.postAlertsHandler")
 	defer span.End()
 
 	alerts := OpenAPIAlertsToAlerts(ctx, params.Alerts)
@@ -365,14 +389,14 @@ func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.
 
 	// Make a best effort to insert all alerts that are valid.
 	var (
-		validAlerts    = make([]*types.Alert, 0, len(alerts))
-		validationErrs = &types.MultiError{}
+		validAlerts    = make([]*alert.Alert, 0, len(alerts))
+		validationErrs error
 	)
 	for _, a := range alerts {
 		removeEmptyLabels(a.Labels)
 
 		if err := a.Validate(); err != nil {
-			validationErrs.Add(err)
+			validationErrs = errors.Join(validationErrs, err)
 			api.m.Invalid().Inc()
 			continue
 		}
@@ -386,7 +410,7 @@ func (api *API) postAlertsHandler(params alert_ops.PostAlertsParams) middleware.
 		return alert_ops.NewPostAlertsInternalServerError().WithPayload(err.Error())
 	}
 
-	if validationErrs.Len() > 0 {
+	if validationErrs != nil {
 		message := "Failed to validate alerts"
 		logger.Error(message, "err", validationErrs.Error())
 		span.SetStatus(codes.Error, message)
@@ -422,17 +446,44 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 		}
 	}
 
-	rf := func(receiverFilter *regexp.Regexp) func(r *dispatch.Route) bool {
+	receiverMatchers, err := parseFilter(params.ReceiverMatchers)
+	if err != nil {
+		logger.Debug("Failed to parse receiver matchers", "err", err)
+		return alertgroup_ops.NewGetAlertGroupsBadRequest().WithPayload(
+			fmt.Sprintf("failed to parse receiver_matchers param: %v", err.Error()),
+		)
+	}
+
+	api.mtx.RLock()
+	rcvLabels := api.receiverLabelsMap()
+	api.mtx.RUnlock()
+
+	rf := func(receiverFilter *regexp.Regexp, receiverMatchers []*labels.Matcher, rcvLabels map[string]open_api_models.LabelSet) func(r *dispatch.Route) bool {
 		return func(r *dispatch.Route) bool {
 			receiver := r.RouteOpts.Receiver
 			if receiverFilter != nil && !receiverFilter.MatchString(receiver) {
 				return false
 			}
+			if len(receiverMatchers) > 0 {
+				if lbls, ok := rcvLabels[receiver]; ok {
+					if !matchFilterLabels(receiverMatchers, lbls) {
+						return false
+					}
+				} else {
+					return false
+				}
+			}
 			return true
 		}
-	}(receiverFilter)
+	}(receiverFilter, receiverMatchers, rcvLabels)
 
-	af := api.alertFilter(matchers, *params.Silenced, *params.Inhibited, *params.Active)
+	// The alertFilter runs the inhibitor/silencer pipeline per alert to
+	// decide whether the alert should be included based on the
+	// silenced/inhibited/active query params. Passing a nil marker makes
+	// the filter use a fresh marker per alert, so the prediction for one
+	// alert does not leak into another (the same fingerprint may appear
+	// in multiple aggregation groups).
+	af := api.alertFilter(ctx, matchers, *params.Silenced, *params.Inhibited, *params.Active, nil)
 	alertGroups, allReceivers, err := api.alertGroups(ctx, rf, af)
 	if err != nil {
 		message := "Failed to get alert groups"
@@ -444,6 +495,15 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 
 	res := make(open_api_models.AlertGroups, 0, len(alertGroups))
 
+	// Snapshot setAlertStatus under the lock so we can predict the status
+	// for each alert without holding api.mtx. We predict at query time
+	// rather than reading the group's actual marker, so the response is
+	// stable across calls regardless of whether the notification pipeline
+	// has run in between (assuming no new alerts/silences/inhibits).
+	api.mtx.RLock()
+	setAlertStatus := api.setAlertStatus
+	api.mtx.RUnlock()
+
 	for _, alertGroup := range alertGroups {
 		mutedBy, isMuted := api.groupMutedFunc(alertGroup.RouteID, alertGroup.GroupKey)
 		if !*params.Muted && isMuted {
@@ -451,7 +511,7 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 		}
 
 		ag := &open_api_models.AlertGroup{
-			Receiver: &open_api_models.Receiver{Name: &alertGroup.Receiver},
+			Receiver: &open_api_models.ReceiverReference{Name: &alertGroup.Receiver},
 			Labels:   ModelLabelSetToAPILabelSet(alertGroup.Labels),
 			Alerts:   make([]*open_api_models.GettableAlert, 0, len(alertGroup.Alerts)),
 		}
@@ -459,7 +519,9 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 		for _, alert := range alertGroup.Alerts {
 			fp := alert.Fingerprint()
 			receivers := allReceivers[fp]
-			status := api.getAlertStatus(fp)
+			// Predict status per (alert, group) using a fresh marker so
+			// writes don't leak across alerts or groups.
+			status := predictAlertStatus(ctx, setAlertStatus, alert)
 			apiAlert := AlertToOpenAPIAlert(alert, status, receivers, mutedBy)
 			ag.Alerts = append(ag.Alerts, apiAlert)
 		}
@@ -469,22 +531,55 @@ func (api *API) getAlertGroupsHandler(params alertgroup_ops.GetAlertGroupsParams
 	return alertgroup_ops.NewGetAlertGroupsOK().WithPayload(res)
 }
 
-func (api *API) alertFilter(matchers []*labels.Matcher, silenced, inhibited, active bool) func(a *types.Alert, now time.Time) bool {
-	return func(a *types.Alert, now time.Time) bool {
-		ctx, span := tracer.Start(context.Background(), "alertFilter")
+// predictAlertStatus runs the silencer/inhibitor pipeline against a fresh
+// AlertMarker to compute the alert's current status at query time. Using
+// a fresh marker per call isolates the prediction so it does not leak
+// across alerts or aggregation groups.
+func predictAlertStatus(ctx context.Context, setAlertStatus setAlertStatusFn, a *alert.Alert) alert.AlertStatus {
+	m := marker.NewAlertMarker()
+	ctx = marker.WithContext(ctx, m)
+	setAlertStatus(ctx, a.Labels)
+	return m.Status(a.Fingerprint())
+}
+
+func (api *API) alertFilter(parent context.Context, matchers []*labels.Matcher, silenced, inhibited, active bool, m marker.AlertMarker) func(a *alert.Alert, now time.Time) bool {
+	// Snapshot the function pointer under the lock so the closure is safe
+	// to call without holding api.mtx (e.g. in getAlertGroupsHandler).
+	api.mtx.RLock()
+	setAlertStatus := api.setAlertStatus
+	api.mtx.RUnlock()
+
+	return func(a *alert.Alert, now time.Time) bool {
+		ctx, span := tracer.Start(parent, "alertFilter")
 		defer span.End()
 
 		if !a.EndsAt.IsZero() && a.EndsAt.Before(now) {
 			return false
 		}
 
+		// Short-circuit on label matchers before the expensive
+		// silencer/inhibitor pipeline.
+		if !alertMatchesFilterLabels(&a.Alert, matchers) {
+			return false
+		}
+
 		// Set alert's current status based on its label set.
-		api.setAlertStatus(ctx, a.Labels)
+		// The inhibitor and silencer write to the marker via the context.
+		// When the caller does not provide a marker, use a fresh per-alert
+		// marker to avoid cross-alert contamination (e.g. the same
+		// fingerprint may appear in multiple aggregation groups for
+		// /alerts/groups).
+		predict := m
+		if predict == nil {
+			predict = marker.NewAlertMarker()
+		}
+		ctx = marker.WithContext(ctx, predict)
+		setAlertStatus(ctx, a.Labels)
 
 		// Get alert's current status after seeing if it is suppressed.
-		status := api.getAlertStatus(a.Fingerprint())
+		status := predict.Status(a.Fingerprint())
 
-		if !active && status.State == types.AlertStateActive {
+		if !active && status.State == alert.AlertStateActive {
 			return false
 		}
 
@@ -496,7 +591,7 @@ func (api *API) alertFilter(matchers []*labels.Matcher, silenced, inhibited, act
 			return false
 		}
 
-		return alertMatchesFilterLabels(&a.Alert, matchers)
+		return true
 	}
 }
 
@@ -540,6 +635,40 @@ func matchFilterLabels(matchers []*labels.Matcher, sms map[string]string) bool {
 	return true
 }
 
+// receiversMatchLabels returns true if at least one receiver's labels match all the given matchers.
+func receiversMatchLabels(receivers []string, matchers []*labels.Matcher, rcvLabels map[string]open_api_models.LabelSet) bool {
+	for _, rcvName := range receivers {
+		if lbls, ok := rcvLabels[rcvName]; ok {
+			if matchFilterLabels(matchers, lbls) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// configReceiverToAPIReceiver converts a config.Receiver to an API model Receiver.
+func configReceiverToAPIReceiver(rcv *config.Receiver) *open_api_models.Receiver {
+	apiLabels := make(open_api_models.LabelSet, len(rcv.Labels))
+	maps.Copy(apiLabels, rcv.Labels)
+	return &open_api_models.Receiver{
+		Name:   &rcv.Name,
+		Labels: apiLabels,
+	}
+}
+
+// receiverLabelsMap builds a lookup from receiver name to labels for the current config.
+func (api *API) receiverLabelsMap() map[string]open_api_models.LabelSet {
+	m := make(map[string]open_api_models.LabelSet, len(api.alertmanagerConfig.Receivers))
+	for i := range api.alertmanagerConfig.Receivers {
+		rcv := &api.alertmanagerConfig.Receivers[i]
+		apiLabels := make(open_api_models.LabelSet, len(rcv.Labels))
+		maps.Copy(apiLabels, rcv.Labels)
+		m[rcv.Name] = apiLabels
+	}
+	return m
+}
+
 func (api *API) getSilencesHandler(params silence_ops.GetSilencesParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
@@ -576,10 +705,10 @@ func (api *API) getSilencesHandler(params silence_ops.GetSilencesParams) middlew
 	return silence_ops.NewGetSilencesOK().WithPayload(sils)
 }
 
-var silenceStateOrder = map[types.SilenceState]int{
-	types.SilenceStateActive:  1,
-	types.SilenceStatePending: 2,
-	types.SilenceStateExpired: 3,
+var silenceStateOrder = map[silence.SilenceState]int{
+	silence.SilenceStateActive:  1,
+	silence.SilenceStatePending: 2,
+	silence.SilenceStateExpired: 3,
 }
 
 // SortSilences sorts first according to the state "active, pending, expired"
@@ -589,21 +718,21 @@ var silenceStateOrder = map[types.SilenceState]int{
 // expired are ordered based on which one expired most recently.
 func SortSilences(sils open_api_models.GettableSilences) {
 	sort.Slice(sils, func(i, j int) bool {
-		state1 := types.SilenceState(*sils[i].Status.State)
-		state2 := types.SilenceState(*sils[j].Status.State)
+		state1 := silence.SilenceState(*sils[i].Status.State)
+		state2 := silence.SilenceState(*sils[j].Status.State)
 		if state1 != state2 {
 			return silenceStateOrder[state1] < silenceStateOrder[state2]
 		}
 		switch state1 {
-		case types.SilenceStateActive:
+		case silence.SilenceStateActive:
 			endsAt1 := time.Time(*sils[i].EndsAt)
 			endsAt2 := time.Time(*sils[j].EndsAt)
 			return endsAt1.Before(endsAt2)
-		case types.SilenceStatePending:
+		case silence.SilenceStatePending:
 			startsAt1 := time.Time(*sils[i].StartsAt)
 			startsAt2 := time.Time(*sils[j].StartsAt)
 			return startsAt1.Before(startsAt2)
-		case types.SilenceStateExpired:
+		case silence.SilenceStateExpired:
 			endsAt1 := time.Time(*sils[i].EndsAt)
 			endsAt2 := time.Time(*sils[j].EndsAt)
 			return endsAt1.After(endsAt2)
@@ -618,9 +747,19 @@ func SortSilences(sils open_api_models.GettableSilences) {
 // for all matchers in the filter, there exists a matcher in the silence
 // such that their names, types, and values are equivalent.
 func CheckSilenceMatchesFilterLabels(s *silencepb.Silence, matchers []*labels.Matcher) bool {
+	// Check if any matcher set matches (OR logic)
+	for _, ms := range s.MatcherSets {
+		if checkMatcherSetMatchesFilterLabels(ms, matchers) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkMatcherSetMatchesFilterLabels(ms *silencepb.MatcherSet, matchers []*labels.Matcher) bool {
 	for _, matcher := range matchers {
 		found := false
-		for _, m := range s.Matchers {
+		for _, m := range ms.Matchers {
 			if matcher.Name == m.Name &&
 				(matcher.Type == labels.MatchEqual && m.Type == silencepb.Matcher_EQUAL ||
 					matcher.Type == labels.MatchRegexp && m.Type == silencepb.Matcher_REGEXP ||
@@ -668,7 +807,7 @@ func (api *API) getSilenceHandler(params silence_ops.GetSilenceParams) middlewar
 func (api *API) deleteSilenceHandler(params silence_ops.DeleteSilenceParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
-	ctx, span := tracer.Start(params.HTTPRequest.Context(), "api.deleteSilenceHandler")
+	ctx, span := tracer.Start(eventrecorder.WithEventRecording(params.HTTPRequest.Context()), "api.deleteSilenceHandler")
 	defer span.End()
 
 	sid := params.SilenceID.String()
@@ -685,7 +824,7 @@ func (api *API) deleteSilenceHandler(params silence_ops.DeleteSilenceParams) mid
 func (api *API) postSilencesHandler(params silence_ops.PostSilencesParams) middleware.Responder {
 	logger := api.requestLogger(params.HTTPRequest)
 
-	ctx, span := tracer.Start(params.HTTPRequest.Context(), "api.postSilencesHandler")
+	ctx, span := tracer.Start(eventrecorder.WithEventRecording(params.HTTPRequest.Context()), "api.postSilencesHandler")
 	defer span.End()
 
 	sil, err := PostableSilenceToProto(params.Silence)
@@ -696,13 +835,13 @@ func (api *API) postSilencesHandler(params silence_ops.PostSilencesParams) middl
 		)
 	}
 
-	if sil.StartsAt.After(sil.EndsAt) || sil.StartsAt.Equal(sil.EndsAt) {
+	if sil.StartsAt.AsTime().After(sil.EndsAt.AsTime()) || sil.StartsAt.AsTime().Equal(sil.EndsAt.AsTime()) {
 		msg := "Failed to create silence: start time must be before end time"
 		logger.Error(msg, "starts_at", sil.StartsAt, "ends_at", sil.EndsAt)
 		return silence_ops.NewPostSilencesBadRequest().WithPayload(msg)
 	}
 
-	if sil.EndsAt.Before(time.Now()) {
+	if sil.EndsAt.AsTime().Before(time.Now()) {
 		msg := "Failed to create silence: end time can't be in the past"
 		logger.Error(msg, "ends_at", sil.EndsAt)
 		return silence_ops.NewPostSilencesBadRequest().WithPayload(msg)

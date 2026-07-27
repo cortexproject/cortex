@@ -20,6 +20,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -3220,12 +3221,12 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 func mockWriteRequest(lbls []labels.Labels, value int64, timestampMs int64, histogram bool) *cortexpb.WriteRequest {
 	var (
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 	)
 	if histogram {
-		histograms = make([]cortexpb.Histogram, len(lbls))
+		histograms = make([]cortexpb.WrappedHistogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value))
+			histograms[i] = cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value)))
 		}
 	} else {
 		samples = make([]cortexpb.Sample, len(lbls))
@@ -3388,7 +3389,7 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 
 		if cfg.shuffleShardEnabled {
 			distributorCfg.ShardingStrategy = util.ShardingStrategyShuffle
-			distributorCfg.ShuffleShardingLookbackPeriod = time.Hour
+			cfg.limits.ShuffleShardingIngestersLookbackPeriod = model.Duration(time.Hour)
 
 			cfg.limits.IngestionTenantShardSize = cfg.shuffleShardSize
 		}
@@ -3402,9 +3403,9 @@ func prepare(tb testing.TB, cfg prepConfig) ([]*Distributor, []*mockIngester, []
 				EnableHATracker: true,
 				KVStore:         kv.Config{Mock: mock},
 				UpdateTimeout:   100 * time.Millisecond,
-				FailoverTimeout: time.Hour,
 			}
 			cfg.limits.HAMaxClusters = 100
+			cfg.limits.HATrackerFailoverTimeout = model.Duration(time.Hour)
 		}
 
 		distributorCfg.RemoteWriteV2Enabled = cfg.remoteWriteV2Enabled
@@ -3496,7 +3497,7 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 		},
 	}
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value))))
 	} else {
 		t.Samples = append(t.Samples, cortexpb.Sample{
 			TimestampMs: ts,
@@ -3510,7 +3511,7 @@ func makeWriteRequestTimeseriesNHCB(labels []cortexpb.LabelAdapter, ts, value in
 	return cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
 			Labels:     labels,
-			Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value))},
+			Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value)))},
 		},
 	}
 }
@@ -3530,8 +3531,8 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 			},
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i)))),
 			}
 		} else {
 			ts.Samples = []cortexpb.Sample{
@@ -3627,8 +3628,8 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 			}
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples)))),
 			}
 		} else {
 			var s = make([]cortexpb.Sample, 0)
@@ -4098,7 +4099,7 @@ func TestDistributorValidation(t *testing.T) {
 		metadata   []*cortexpb.MetricMetadata
 		labels     []labels.Labels
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 		err        error
 	}{
 		// Test validation passes.
@@ -4111,8 +4112,8 @@ func TestDistributorValidation(t *testing.T) {
 				TimestampMs: int64(now),
 				Value:       1,
 			}},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 		},
 		// Test validation fails for very old samples.
@@ -4200,8 +4201,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `series has too many labels (actual: 3, limit: 2) series: 'testmetric{foo2="bar2", foo="bar"}'`),
 		},
@@ -4210,8 +4211,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(past), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(past), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past),
 		},
@@ -4220,8 +4221,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too new: %d metric: "testmetric"`, future),
 		},
@@ -4793,4 +4794,180 @@ func TestDistributor_BatchTimeoutMetric(t *testing.T) {
 		# TYPE cortex_distributor_ingester_push_timeouts_total counter
 		cortex_distributor_ingester_push_timeouts_total 5
 	`), "cortex_distributor_ingester_push_timeouts_total"))
+}
+func TestDistributor_ShuffleShardingIngestersLookbackPeriod(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		lookbackPeriod   time.Duration
+		shardSize        int
+		expectedBehavior string
+	}{
+		"lookback disabled (0) should not use shuffle sharding with lookback": {
+			lookbackPeriod:   0,
+			shardSize:        3,
+			expectedBehavior: "no_lookback",
+		},
+		"lookback 1h should include ingesters from past hour": {
+			lookbackPeriod:   1 * time.Hour,
+			shardSize:        3,
+			expectedBehavior: "with_lookback",
+		},
+		"lookback 2h should include ingesters from past 2 hours": {
+			lookbackPeriod:   2 * time.Hour,
+			shardSize:        3,
+			expectedBehavior: "with_lookback",
+		},
+		"shard size 0 should not use shuffle sharding": {
+			lookbackPeriod:   1 * time.Hour,
+			shardSize:        0,
+			expectedBehavior: "no_shuffle_sharding",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup distributor with shuffle sharding enabled
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.IngestionTenantShardSize = testData.shardSize
+			limits.ShuffleShardingIngestersLookbackPeriod = model.Duration(testData.lookbackPeriod)
+
+			numIngesters := 10
+			ds, _, _, _ := prepare(t, prepConfig{
+				numIngesters:        numIngesters,
+				happyIngesters:      numIngesters,
+				numDistributors:     1,
+				shardByAllLabels:    true,
+				shuffleShardSize:    testData.shardSize,
+				shuffleShardEnabled: true,
+				limits:              limits,
+			})
+
+			ctx := user.InjectOrgID(context.Background(), "test-user")
+
+			// Get ingesters for query
+			replicationSet, err := ds[0].GetIngestersForQuery(ctx)
+			require.NoError(t, err)
+
+			switch testData.expectedBehavior {
+			case "no_lookback":
+				// When lookback is disabled, should still use shuffle sharding but without lookback
+				// This means we get the current shard size
+				if testData.shardSize > 0 {
+					assert.LessOrEqual(t, len(replicationSet.Instances), testData.shardSize,
+						"should not exceed shard size when lookback is disabled")
+				}
+
+			case "with_lookback":
+				// When lookback is enabled, should use shuffle sharding with lookback
+				// This means we might get more ingesters than the shard size
+				assert.GreaterOrEqual(t, len(replicationSet.Instances), testData.shardSize,
+					"should include at least shard size ingesters with lookback")
+
+			case "no_shuffle_sharding":
+				// When shard size is 0, shuffle sharding is disabled
+				// Should query all ingesters
+				assert.Equal(t, numIngesters, len(replicationSet.Instances),
+					"should query all ingesters when shuffle sharding is disabled")
+			}
+		})
+	}
+}
+
+func TestDistributor_ShuffleShardingIngestersLookbackPeriod_Validation(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		queryStoreAfter                        time.Duration
+		shuffleShardingIngestersLookbackPeriod time.Duration
+		shouldBeValid                          bool
+		description                            string
+	}{
+		"valid: lookback >= queryStoreAfter": {
+			queryStoreAfter:                        1 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 2 * time.Hour,
+			shouldBeValid:                          true,
+			description:                            "lookback period should be >= queryStoreAfter",
+		},
+		"valid: lookback == queryStoreAfter": {
+			queryStoreAfter:                        1 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 1 * time.Hour,
+			shouldBeValid:                          true,
+			description:                            "lookback period can equal queryStoreAfter",
+		},
+		"invalid: lookback < queryStoreAfter": {
+			queryStoreAfter:                        2 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 1 * time.Hour,
+			shouldBeValid:                          false,
+			description:                            "lookback period must be >= queryStoreAfter",
+		},
+		"valid: both disabled": {
+			queryStoreAfter:                        0,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			shouldBeValid:                          true,
+			description:                            "both can be disabled",
+		},
+		"valid: queryStoreAfter disabled": {
+			queryStoreAfter:                        0,
+			shuffleShardingIngestersLookbackPeriod: 1 * time.Hour,
+			shouldBeValid:                          true,
+			description:                            "queryStoreAfter can be disabled while lookback is enabled",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+
+			limits := &validation.Limits{}
+			flagext.DefaultValues(limits)
+			limits.QueryStoreAfter = model.Duration(testData.queryStoreAfter)
+			limits.ShuffleShardingIngestersLookbackPeriod = model.Duration(testData.shuffleShardingIngestersLookbackPeriod)
+
+			// ValidateQueryLimits requires userID and closeIdleTSDBTimeout
+			err := limits.ValidateQueryLimits("test-user", 13*time.Hour)
+
+			if testData.shouldBeValid {
+				assert.NoError(t, err, testData.description)
+			} else {
+				assert.Error(t, err, testData.description)
+				assert.Contains(t, err.Error(), "shuffle_sharding_ingesters_lookback_period", testData.description)
+			}
+		})
+	}
+}
+
+func TestDistributor_ReceivedHistogramBucketsMetric(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	// Set a bucket limit so resolution reduction kicks in, but the metric should still capture the original count.
+	limits.MaxNativeHistogramBuckets = 4
+
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+
+	// Push a native histogram sample. GenerateTestHistogram produces 4 positive + 4 negative buckets + zero bucket = 9 buckets.
+	ctx := user.InjectOrgID(context.Background(), "user")
+	req := makeWriteRequest(0, 0, 0, 1)
+	_, err := ds[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Verify the receivedHistogramBuckets metric observed the pre-validation bucket count.
+	m := &dto.Metric{}
+	observer, err := ds[0].receivedHistogramBuckets.GetMetricWithLabelValues("user")
+	require.NoError(t, err)
+	require.NoError(t, observer.(prometheus.Metric).Write(m))
+	require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
+	// GenerateTestHistogram(0): 4 positive + 4 negative + 1 zero = 9 buckets
+	require.Equal(t, float64(9), m.GetHistogram().GetSampleSum())
 }

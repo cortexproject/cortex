@@ -104,7 +104,7 @@ func (c *countValuesOperator) Next(ctx context.Context, buf []model.StepVector) 
 }
 
 func (c *countValuesOperator) initSeriesOnce(ctx context.Context) error {
-	if !prommodel.LabelName(c.param).IsValid() {
+	if !prommodel.UTF8Validation.IsValidLabelName(c.param) {
 		return errors.Newf("invalid label name %q", c.param)
 	}
 

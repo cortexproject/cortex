@@ -68,7 +68,7 @@ func v2alert(fingerprint, annotation, updatedAt string) *v2_models.GettableAlert
 		},
 		EndsAt:      v2ParseTime("2020-01-01T12:00:00.000Z"),
 		Fingerprint: &fingerprint,
-		Receivers: []*v2_models.Receiver{
+		Receivers: []*v2_models.ReceiverReference{
 			{
 				Name: &receiver,
 			},

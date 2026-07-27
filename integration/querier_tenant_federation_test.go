@@ -3,7 +3,10 @@
 package integration
 
 import (
+	"context"
 	"fmt"
+	"math/rand"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,12 +16,138 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2ecache "github.com/cortexproject/cortex/integration/e2e/cache"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
 	"github.com/cortexproject/cortex/integration/e2ecortex"
+	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	"github.com/cortexproject/cortex/pkg/util/log"
 )
+
+// extractTenantIDsFromMatrix returns the unique __tenant_id__ label values
+// present across all streams in a query range result matrix.
+func extractTenantIDsFromMatrix(m model.Matrix) []string {
+	seen := map[string]struct{}{}
+	for _, stream := range m {
+		if tid, ok := stream.Metric[model.LabelName("__tenant_id__")]; ok {
+			seen[string(tid)] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(seen))
+	for tid := range seen {
+		result = append(result, tid)
+	}
+	return result
+}
+
+// TestRegexResolver_ResultCacheStale verifies the behavior of
+// query result caching with dynamic tenant discovery.
+func TestRegexResolver_ResultCacheStale(t *testing.T) {
+	ctx := context.Background()
+	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		// Enable result cache with memcached.
+		"-querier.cache-results":             "true",
+		"-querier.split-queries-by-interval": "24h",
+		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+
+		// Regex tenant federation with fast discovery.
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "5s",
+
+		// Disable bucket index so the store-gateway picks up new blocks via
+		// direct bucket scan
+		"-blocks-storage.bucket-store.bucket-index.enabled": "false",
+		"-blocks-storage.bucket-store.sync-interval":        "2s",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+
+	// entire range is cached on the first query
+	blockStart := time.Now().Add(-20 * time.Minute)
+	blockEnd := time.Now().Add(-10 * time.Minute)
+	seriesLabels := []labels.Labels{labels.FromStrings(labels.MetricName, "series_1")}
+	dir := t.TempDir()
+
+	// Upload blocks for user-0 and user-1.
+	for _, tenantID := range []string{"user-0", "user-1"} {
+		bkt := bucket.NewUserBucketClient(tenantID, storage.GetBucket(), nil)
+		id, err := e2e.CreateBlock(ctx, rnd, dir, seriesLabels, 10,
+			blockStart.UnixMilli(), blockEnd.UnixMilli(), 30_000, 1)
+		require.NoError(t, err)
+		require.NoError(t, block.Upload(ctx, log.Logger, bkt,
+			filepath.Join(dir, id.String()), metadata.NoneFunc))
+	}
+
+	// Start all services.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, distributor, storeGateway))
+	require.NoError(t, s.Start(queryFrontend))
+
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(flags, map[string]string{
+		"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+	}), "")
+	require.NoError(t, s.StartAndWaitReady(querier))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait for the store-gateway to load the 2 initial blocks.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(
+		e2e.Equals(2), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+
+	// Wait for the regex resolver to discover user-0 and user-1.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(2), "cortex_regex_resolver_discovered_users"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-.+")
+	require.NoError(t, err)
+
+	result1, err := c.QueryRange("series_1", blockStart, blockEnd, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result1.Type())
+	require.ElementsMatch(t, []string{"user-0", "user-1"},
+		extractTenantIDsFromMatrix(result1.(model.Matrix)),
+		"first query must return data for exactly the initial two tenants")
+
+	bkt2 := bucket.NewUserBucketClient("user-2", storage.GetBucket(), nil)
+	id2, err := e2e.CreateBlock(ctx, rnd, dir, seriesLabels, 10,
+		blockStart.UnixMilli(), blockEnd.UnixMilli(), 30_000, 1)
+	require.NoError(t, err)
+	require.NoError(t, block.Upload(ctx, log.Logger, bkt2,
+		filepath.Join(dir, id2.String()), metadata.NoneFunc))
+
+	// Wait for user-2's block to be picked up by the store-gateway.
+	require.NoError(t, storeGateway.WaitSumMetricsWithOptions(
+		e2e.Equals(3), []string{"cortex_blocks_meta_synced"}, e2e.WaitMissingMetrics))
+
+	// Wait for the regex resolver to discover user-2.
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(3), "cortex_regex_resolver_discovered_users"))
+
+	result2, err := c.QueryRange("series_1", blockStart, blockEnd, 30*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, model.ValMatrix, result2.Type())
+	require.ElementsMatch(t, []string{"user-0", "user-1", "user-2"},
+		extractTenantIDsFromMatrix(result2.(model.Matrix)),
+		"second query must include newly discovered user-2")
+}
 
 type querierTenantFederationConfig struct {
 	querySchedulerEnabled  bool
@@ -72,7 +201,7 @@ func TestRegexResolver_NewlyCreatedTenant(t *testing.T) {
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":                   "true",
 		"-querier.split-queries-by-interval":       "24h",
-		"-querier.query-ingesters-within":          "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":           "12h", // Required by the test on query /series out of ingesters time range
 		"-tenant-federation.enabled":               "true",
 		"-tenant-federation.regex-matcher-enabled": "true",
 
@@ -126,6 +255,143 @@ func TestRegexResolver_NewlyCreatedTenant(t *testing.T) {
 	require.Equal(t, expectedVector, result.(model.Vector))
 }
 
+// Test that when the regex resolver is enabled, and 0 or 1 tenants are matched.
+// See issue 7413, https://github.com/cortexproject/cortex/issues/7413
+func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	memcached := e2ecache.NewMemcached()
+	consul := e2edb.NewConsul()
+	require.NoError(t, s.StartAndWaitReady(consul, memcached))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-querier.cache-results":                   "true",
+		"-querier.split-queries-by-interval":       "24h",
+		"-limits.query-ingesters-within":           "12h", // Required by the test on query /series out of ingesters time range
+		"-frontend.memcached.addresses":            "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "5s",
+
+		// to upload block quickly
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+		"-blocks-storage.tsdb.retention-period":    ((blockRangePeriod * 2) - 1).String(),
+
+		// store gateway
+		"-blocks-storage.bucket-store.sync-interval": blockRangePeriod.String(),
+		"-querier.max-fetched-series-per-query":      "1",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	// Start ingester and distributor.
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, distributor))
+
+	// Wait until distributor have updated the ring.
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Start the query-frontend.
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	// Start the querier and store-gateway
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+
+	// Start queriers.
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
+	require.NoError(t, s.WaitReady(queryFrontend))
+
+	// Wait until the querier and store-gateway have updated ring
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
+
+	clientForMatchOneTenant, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
+	require.NoError(t, err)
+
+	var series []prompb.TimeSeries
+	now := time.Now()
+	series, expectedResult := generateSeries("series_1", now)
+	// To ship series_1 block
+	series2, _ := generateSeries("series_2", now.Add(blockRangePeriod*2))
+	metadata := []prompb.MetricMetadata{
+		{
+			MetricFamilyName: "series_1",
+			Help:             "help",
+			Unit:             "total",
+		},
+	}
+
+	res, err := clientForMatchOneTenant.Push(series, metadata...)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	res, err = clientForMatchOneTenant.Push(series2)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	// wait to update knownUsers
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(1), "cortex_regex_resolver_discovered_users"))
+
+	clientForMatchOneTenant, err = e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-.+")
+	require.NoError(t, err)
+
+	// query
+	result, err := clientForMatchOneTenant.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	require.Equal(t, expectedResult, result.(model.Vector))
+
+	// label names
+	start := now.Add(-time.Minute * 5)
+	end := now
+	labelNames, err := clientForMatchOneTenant.LabelNames(start, end, "series_1")
+	require.NoError(t, err)
+	require.Len(t, labelNames, 1)
+
+	// label value
+	labelValues, err := clientForMatchOneTenant.LabelValues("__name__", start, end, []string{"series_1"})
+	require.NoError(t, err)
+	require.Len(t, labelValues, 1)
+
+	// metadata
+	metadataResult, err := clientForMatchOneTenant.Metadata("series_1", "")
+	require.NoError(t, err)
+	require.Len(t, metadataResult, 1)
+
+	clientForMatchZeroTenant, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-11111.+")
+	require.NoError(t, err)
+
+	// query
+	result, err = clientForMatchZeroTenant.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+
+	// label names
+	labelNames, err = clientForMatchZeroTenant.LabelNames(start, end, "series_1")
+	require.NoError(t, err)
+	require.Len(t, labelNames, 0)
+
+	// label value
+	labelValues, err = clientForMatchZeroTenant.LabelValues("__name__", start, end, []string{"series_1"})
+	require.NoError(t, err)
+	require.Len(t, labelValues, 0)
+
+	// metadata
+	metadataResult, err = clientForMatchZeroTenant.Metadata("series_1", "")
+	require.NoError(t, err)
+	require.Len(t, metadataResult, 0)
+}
+
 func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTenantFederationConfig) {
 	const numUsers = 10
 	const blockRangePeriod = 5 * time.Second
@@ -141,7 +407,7 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":                   "true",
 		"-querier.split-queries-by-interval":       "24h",
-		"-querier.query-ingesters-within":          "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":           "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":            "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-tenant-federation.enabled":               "true",
 		"-tenant-federation.regex-matcher-enabled": "true",
@@ -237,13 +503,10 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 		require.NoError(t, querier2.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	}
 
-	// wait to upload blocks
-	require.NoError(t, ingester.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_ingester_shipper_uploads_total"}, e2e.WaitMissingMetrics))
-
 	// wait to update knownUsers
-	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}), e2e.WaitMissingMetrics)
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(numUsers)), "cortex_regex_resolver_discovered_users"))
 	if cfg.shuffleShardingEnabled {
-		require.NoError(t, querier2.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_regex_resolver_last_update_run_timestamp_seconds"}), e2e.WaitMissingMetrics)
+		require.NoError(t, querier2.WaitSumMetrics(e2e.Equals(float64(numUsers)), "cortex_regex_resolver_discovered_users"))
 	}
 
 	// query all tenants
@@ -305,7 +568,7 @@ func runQuerierTenantFederationTest(t *testing.T, cfg querierTenantFederationCon
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-querier.cache-results":             "true",
 		"-querier.split-queries-by-interval": "24h",
-		"-querier.query-ingesters-within":    "12h", // Required by the test on query /series out of ingesters time range
+		"-limits.query-ingesters-within":     "12h", // Required by the test on query /series out of ingesters time range
 		"-frontend.memcached.addresses":      "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort),
 		"-tenant-federation.enabled":         "true",
 	})

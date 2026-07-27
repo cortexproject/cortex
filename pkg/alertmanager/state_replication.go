@@ -111,9 +111,12 @@ func newReplicatedStates(userID string, rf int, re Replicator, st alertstore.Ale
 			Help: "Number of times we have completed syncing initial state for each possible outcome.",
 		}, []string{"outcome"}),
 		initialSyncDuration: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
-			Name:    "alertmanager_state_initial_sync_duration_seconds",
-			Help:    "Time spent syncing initial state from peers or remote storage.",
-			Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
+			Name:                            "alertmanager_state_initial_sync_duration_seconds",
+			Help:                            "Time spent syncing initial state from peers or remote storage.",
+			Buckets:                         prometheus.ExponentialBuckets(0.008, 4, 7),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 	s.initialSyncCompleted.WithLabelValues(syncFromReplica)
@@ -177,7 +180,7 @@ func (s *state) GetFullState() (*clusterpb.FullState, error) {
 	defer s.mtx.Unlock()
 
 	all := &clusterpb.FullState{
-		Parts: make([]clusterpb.Part, 0, len(s.states)),
+		Parts: make([]*clusterpb.Part, 0, len(s.states)),
 	}
 
 	for key, s := range s.states {
@@ -185,7 +188,7 @@ func (s *state) GetFullState() (*clusterpb.FullState, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to encode state for key: %v", key)
 		}
-		all.Parts = append(all.Parts, clusterpb.Part{Key: key, Data: b})
+		all.Parts = append(all.Parts, &clusterpb.Part{Key: key, Data: b})
 	}
 
 	return all, nil

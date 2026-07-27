@@ -20,7 +20,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 	// Test with feature flag disabled - metrics should be nil
 	t.Run("metrics are nil when feature flag is disabled", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
 
@@ -33,7 +33,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 	// Test with feature flag enabled - metrics should be initialized
 	t.Run("metrics are initialized when feature flag is enabled", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -51,7 +51,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 
 	t.Run("rejected metric increments correctly", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -75,7 +75,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 
 	t.Run("metric cleanup works correctly", func(t *testing.T) {
 		reg := prometheus.NewRegistry()
-		m := newIngesterMetrics(reg, false, false, false,
+		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
 			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
 
@@ -84,16 +84,31 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 		// Add metrics for multiple users
 		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
 		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "cardinality").Inc()
+		m.ingestionDelaySeconds.WithLabelValues("user1").Observe(10.0)
+		m.ingestionDelaySeconds.WithLabelValues("user2").Observe(5.0)
 
 		// Delete user1 metrics
 		m.deletePerUserMetrics("user1")
 
 		// Only user2 metrics should remain
 		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_ingestion_delay_seconds Delay in seconds between sample ingestion time and sample timestamp.
+			# TYPE cortex_ingester_ingestion_delay_seconds histogram
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="1"} 0
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="5"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="10"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="30"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="60"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="120"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="300"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="600"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="+Inf"} 1
+			cortex_ingester_ingestion_delay_seconds_sum{user="user2"} 5
+			cortex_ingester_ingestion_delay_seconds_count{user="user2"} 1
 			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
 			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
 			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user2"} 1
-		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total", "cortex_ingester_ingestion_delay_seconds")
 		require.NoError(t, err)
 	})
 }
@@ -109,6 +124,7 @@ func TestIngesterMetrics(t *testing.T) {
 	m := newIngesterMetrics(mainReg,
 		false,
 		true,
+		false,
 		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{
@@ -151,6 +167,10 @@ func TestIngesterMetrics(t *testing.T) {
 			# HELP cortex_ingester_ingested_samples_total The total number of samples ingested.
 			# TYPE cortex_ingester_ingested_samples_total counter
 			cortex_ingester_ingested_samples_total 0
+			# HELP cortex_ingester_start_timestamp_append_failures_total Total number of failed appends for samples and histograms with a start timestamp.
+			# TYPE cortex_ingester_start_timestamp_append_failures_total counter
+			cortex_ingester_start_timestamp_append_failures_total{type="float"} 0
+			cortex_ingester_start_timestamp_append_failures_total{type="histogram"} 0
 			# HELP cortex_ingester_ingested_native_histograms_total The total number of native histograms ingested.
 			# TYPE cortex_ingester_ingested_native_histograms_total counter
 			cortex_ingester_ingested_native_histograms_total 0
@@ -441,6 +461,23 @@ func TestTSDBMetrics(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
 			cortex_ingester_tsdb_checkpoint_creations_total 1883489
 
+			# HELP cortex_ingester_tsdb_wal_record_part_writes_total Total number of WAL record parts written before flushing.
+			# TYPE cortex_ingester_tsdb_wal_record_part_writes_total counter
+			# 32*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_part_writes_total 3172192
+
+			# HELP cortex_ingester_tsdb_wal_record_parts_bytes_written_total Total number of WAL record part bytes written before flushing, including CRC and compression headers.
+			# TYPE cortex_ingester_tsdb_wal_record_parts_bytes_written_total counter
+			# 33*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_parts_bytes_written_total 3271323
+
+			# HELP cortex_ingester_tsdb_wal_record_bytes_saved_total Total number of bytes saved by the optional WAL record compression.
+			# TYPE cortex_ingester_tsdb_wal_record_bytes_saved_total counter
+			# 34*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="snappy"} 3370454
+			# 35*(12345 + 85787 + 999)
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="zstd"} 3469585
+
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter
 			# 5 * (12345, 85787 and 999 respectively)
@@ -594,6 +631,12 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
 			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
 			cortex_ingester_tsdb_head_stale_series{user="user3"} 30969
+			# HELP cortex_ingester_tsdb_head_max_timestamp Maximum timestamp of the head block, in milliseconds since epoch.
+			# TYPE cortex_ingester_tsdb_head_max_timestamp gauge
+			# 36 * base
+			cortex_ingester_tsdb_head_max_timestamp{user="user1"} 444420
+			cortex_ingester_tsdb_head_max_timestamp{user="user2"} 3088332
+			cortex_ingester_tsdb_head_max_timestamp{user="user3"} 35964
 	`))
 	require.NoError(t, err)
 }
@@ -740,6 +783,23 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_checkpoint_creations_total counter
 			cortex_ingester_tsdb_checkpoint_creations_total 1883489
 
+			# HELP cortex_ingester_tsdb_wal_record_part_writes_total Total number of WAL record parts written before flushing.
+			# TYPE cortex_ingester_tsdb_wal_record_part_writes_total counter
+			# 32*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_part_writes_total 3172192
+
+			# HELP cortex_ingester_tsdb_wal_record_parts_bytes_written_total Total number of WAL record part bytes written before flushing, including CRC and compression headers.
+			# TYPE cortex_ingester_tsdb_wal_record_parts_bytes_written_total counter
+			# 33*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_parts_bytes_written_total 3271323
+
+			# HELP cortex_ingester_tsdb_wal_record_bytes_saved_total Total number of bytes saved by the optional WAL record compression.
+			# TYPE cortex_ingester_tsdb_wal_record_bytes_saved_total counter
+			# 34*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="snappy"} 3370454
+			# 35*(12345 + 85787 + 999) - counter retained after user3 removal
+			cortex_ingester_tsdb_wal_record_bytes_saved_total{compression="zstd"} 3469585
+
 			# HELP cortex_ingester_memory_series_created_total The total number of series that were created per user.
 			# TYPE cortex_ingester_memory_series_created_total counter
 			# 5 * (12345, 85787 and 999 respectively)
@@ -871,6 +931,11 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_stale_series gauge
 			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
 			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
+			# HELP cortex_ingester_tsdb_head_max_timestamp Maximum timestamp of the head block, in milliseconds since epoch.
+			# TYPE cortex_ingester_tsdb_head_max_timestamp gauge
+			# 36 * base
+			cortex_ingester_tsdb_head_max_timestamp{user="user1"} 444420
+			cortex_ingester_tsdb_head_max_timestamp{user="user2"} 3088332
 	`))
 	require.NoError(t, err)
 }
@@ -1203,6 +1268,33 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of stale series in the head block.",
 	})
 	headStaleSeries.Set(31 * base)
+
+	headMaxTime := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_max_time",
+		Help: "Maximum timestamp of the head block. The unit is decided by the library consumer.",
+	})
+	headMaxTime.Set(36 * base)
+
+	recordPartWrites := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_part_writes_total",
+		Help: "Total number of record parts written before flushing.",
+	})
+	recordPartWrites.Add(32 * base)
+
+	recordPartBytes := promauto.With(r).NewCounter(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_parts_bytes_written_total",
+		Help: "Total number of record part bytes written before flushing, including" +
+			" CRC and compression headers.",
+	})
+	recordPartBytes.Add(33 * base)
+
+	recordBytesSaved := promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+		Name: "prometheus_tsdb_wal_record_bytes_saved_total",
+		Help: "Total number of bytes saved by the optional record compression." +
+			" Use this metric to learn about the effectiveness compression.",
+	}, []string{"compression"})
+	recordBytesSaved.WithLabelValues("snappy").Add(34 * base)
+	recordBytesSaved.WithLabelValues("zstd").Add(35 * base)
 
 	return r
 }

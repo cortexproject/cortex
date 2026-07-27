@@ -28,15 +28,17 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/prometheus/alertmanager/eventrecorder"
 	"github.com/prometheus/alertmanager/featurecontrol"
 	"github.com/prometheus/alertmanager/provider"
 	"github.com/prometheus/alertmanager/store"
+	"github.com/prometheus/alertmanager/tracing"
 	"github.com/prometheus/alertmanager/types"
 )
 
 const alertChannelLength = 200
 
-var tracer = otel.Tracer("github.com/prometheus/alertmanager/provider/mem")
+var tracer = tracing.NewTracer("github.com/prometheus/alertmanager/provider/mem")
 
 // Alerts gives access to a set of alerts. All methods are goroutine-safe.
 type Alerts struct {
@@ -45,7 +47,6 @@ type Alerts struct {
 	mtx sync.Mutex
 
 	alerts *store.Alerts
-	marker types.AlertMarker
 
 	listeners map[int]listeningAlerts
 	next      int
@@ -54,6 +55,7 @@ type Alerts struct {
 
 	logger     *slog.Logger
 	propagator propagation.TextMapPropagator
+	recorder   eventrecorder.Recorder
 	flagger    featurecontrol.Flagger
 
 	alertsLimit             prometheus.Gauge
@@ -71,8 +73,11 @@ type AlertStoreCallback interface {
 	// PostStore is called after alert has been put into store.
 	PostStore(alert *types.Alert, existing bool)
 
-	// PostDelete is called after alert has been removed from the store due to alert garbage collection.
+	// PostDelete is called after alert have been removed from the store due to alert garbage collection.
 	PostDelete(alert *types.Alert)
+
+	// PostGC is called after alerts have been removed from the store due to alert garbage collection.
+	PostGC(fingerprints model.Fingerprints)
 }
 
 type listeningAlerts struct {
@@ -82,8 +87,6 @@ type listeningAlerts struct {
 }
 
 func (a *Alerts) registerMetrics(r prometheus.Registerer) {
-	r.MustRegister(&alertsCollector{alerts: a})
-
 	a.alertsLimit = promauto.With(r).NewGauge(prometheus.GaugeOpts{
 		Name: "alertmanager_alerts_per_alert_limit",
 		Help: "Current limit on number of alerts per alert name",
@@ -113,11 +116,11 @@ func (a *Alerts) registerMetrics(r prometheus.Registerer) {
 // NewAlerts returns a new alert provider.
 func NewAlerts(
 	ctx context.Context,
-	m types.AlertMarker,
 	intervalGC time.Duration,
 	perAlertNameLimit int,
 	alertCallback AlertStoreCallback,
 	l *slog.Logger,
+	recorder eventrecorder.Recorder,
 	r prometheus.Registerer,
 	flagger featurecontrol.Flagger,
 ) (*Alerts, error) {
@@ -135,13 +138,13 @@ func NewAlerts(
 
 	ctx, cancel := context.WithCancel(ctx)
 	a := &Alerts{
-		marker:     m,
 		alerts:     store.NewAlerts().WithPerAlertLimit(perAlertNameLimit),
 		cancel:     cancel,
 		listeners:  map[int]listeningAlerts{},
 		next:       0,
 		logger:     l.With("component", "provider"),
 		propagator: otel.GetTextMapPropagator(),
+		recorder:   recorder,
 		callback:   alertCallback,
 		flagger:    flagger,
 	}
@@ -170,17 +173,35 @@ func (a *Alerts) gcLoop(ctx context.Context, interval time.Duration) {
 }
 
 func (a *Alerts) gc() {
+	a.gcListeners()
+
+	// As we don't persist alerts, we no longer consider them after
+	// they are resolved. Alerts waiting for resolved notifications are
+	// held in memory in aggregation groups redundantly.
+	deleted := a.gcAlerts()
+
+	// If there are no deleted alerts, there is nothing to do.
+	if len(deleted) == 0 {
+		return
+	}
+
+	ff := make(model.Fingerprints, len(deleted))
+	for i, alert := range deleted {
+		ff[i] = alert.Fingerprint()
+		a.callback.PostDelete(alert)
+	}
+	a.callback.PostGC(ff)
+}
+
+func (a *Alerts) gcAlerts() []*types.Alert {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
+	return a.alerts.GC()
+}
 
-	deleted := a.alerts.GC()
-	for _, alert := range deleted {
-		// As we don't persist alerts, we no longer consider them after
-		// they are resolved. Alerts waiting for resolved notifications are
-		// held in memory in aggregation groups redundantly.
-		a.marker.Delete(alert.Fingerprint())
-		a.callback.PostDelete(&alert)
-	}
+func (a *Alerts) gcListeners() {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
 
 	for i, l := range a.listeners {
 		select {
@@ -325,6 +346,10 @@ func (a *Alerts) Put(ctx context.Context, alerts ...*types.Alert) error {
 
 		a.callback.PostStore(alert, existing)
 
+		if !existing {
+			a.recorder.RecordEvent(ctx, eventrecorder.NewAlertCreatedEvent(alert))
+		}
+
 		metadata := map[string]string{}
 		a.propagator.Inject(ctx, propagation.MapCarrier(metadata))
 		msg := &provider.Alert{
@@ -344,50 +369,9 @@ func (a *Alerts) Put(ctx context.Context, alerts ...*types.Alert) error {
 	return nil
 }
 
-// countByState returns the number of non-resolved alerts by state.
-func (a *Alerts) countByState() (active, suppressed, unprocessed int) {
-	for _, alert := range a.alerts.List() {
-		if alert.Resolved() {
-			continue
-		}
-
-		switch a.marker.Status(alert.Fingerprint()).State {
-		case types.AlertStateActive:
-			active++
-		case types.AlertStateSuppressed:
-			suppressed++
-		case types.AlertStateUnprocessed:
-			unprocessed++
-		}
-	}
-	return active, suppressed, unprocessed
-}
-
-// alertsCollector implements prometheus.Collector to collect all alert count metrics in a single pass.
-type alertsCollector struct {
-	alerts *Alerts
-}
-
-var alertsDesc = prometheus.NewDesc(
-	"alertmanager_alerts",
-	"How many alerts by state.",
-	[]string{"state"}, nil,
-)
-
-func (c *alertsCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- alertsDesc
-}
-
-func (c *alertsCollector) Collect(ch chan<- prometheus.Metric) {
-	active, suppressed, unprocessed := c.alerts.countByState()
-
-	ch <- prometheus.MustNewConstMetric(alertsDesc, prometheus.GaugeValue, float64(active), string(types.AlertStateActive))
-	ch <- prometheus.MustNewConstMetric(alertsDesc, prometheus.GaugeValue, float64(suppressed), string(types.AlertStateSuppressed))
-	ch <- prometheus.MustNewConstMetric(alertsDesc, prometheus.GaugeValue, float64(unprocessed), string(types.AlertStateUnprocessed))
-}
-
 type noopCallback struct{}
 
 func (n noopCallback) PreStore(_ *types.Alert, _ bool) error { return nil }
 func (n noopCallback) PostStore(_ *types.Alert, _ bool)      {}
 func (n noopCallback) PostDelete(_ *types.Alert)             {}
+func (n noopCallback) PostGC(_ model.Fingerprints)           {}

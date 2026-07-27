@@ -507,3 +507,89 @@ func mergeLocalCAS(ring1, ring2 *Desc, nowUnixTime int64) (*Desc, *Desc) {
 	changeRing := change.(*Desc)
 	return ring1, changeRing
 }
+
+func TestMergeResolvesConflictsDuringObservePeriod(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Ring has two ingesters with duplicate tokens. One is in JOINING state
+	// (observe period), which should trigger conflict resolution even though
+	// the incoming merge doesn't change tokens.
+	ring1 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-A": {Addr: "addr-A", Timestamp: now, State: JOINING, Tokens: []uint32{1, 2, 3, 10, 20}},
+			"ing-B": {Addr: "addr-B", Timestamp: now, State: JOINING, Tokens: []uint32{1, 2, 3, 30, 40}},
+		},
+	}
+
+	// ing-B sends a heartbeat (only timestamp changes, no token change)
+	ring2 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-B": {Addr: "addr-B", Timestamp: now + 5, State: JOINING, Tokens: []uint32{1, 2, 3, 30, 40}},
+		},
+	}
+
+	change, err := ring1.Merge(ring2, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, change)
+
+	// After merge, conflict should be resolved: ing-A wins tokens 1,2,3 (lower name)
+	assert.Equal(t, []uint32{1, 2, 3, 10, 20}, ring1.Ingesters["ing-A"].Tokens)
+	assert.Equal(t, []uint32{30, 40}, ring1.Ingesters["ing-B"].Tokens)
+}
+
+func TestMergeSkipsConflictCheckWhenAllActive(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Ring has two ingesters with duplicate tokens but both are ACTIVE.
+	// Without tokensChanged, the conflict check should NOT trigger
+	// (steady-state optimization).
+	ring1 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-A": {Addr: "addr-A", Timestamp: now, State: ACTIVE, Tokens: []uint32{1, 2, 3, 10, 20}},
+			"ing-B": {Addr: "addr-B", Timestamp: now, State: ACTIVE, Tokens: []uint32{1, 2, 3, 30, 40}},
+		},
+	}
+
+	// ing-B sends a heartbeat (only timestamp changes)
+	ring2 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-B": {Addr: "addr-B", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3, 30, 40}},
+		},
+	}
+
+	change, err := ring1.Merge(ring2, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, change)
+
+	// Conflict is NOT resolved because no ingester is JOINING and tokens didn't change
+	assert.Equal(t, []uint32{1, 2, 3, 10, 20}, ring1.Ingesters["ing-A"].Tokens)
+	assert.Equal(t, []uint32{1, 2, 3, 30, 40}, ring1.Ingesters["ing-B"].Tokens)
+}
+
+func TestMergeResolvesConflictsWhenTokensChange(t *testing.T) {
+	now := time.Now().Unix()
+
+	// Ring has two ACTIVE ingesters with duplicate tokens.
+	// A new merge brings a token change, which triggers conflict resolution.
+	ring1 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-A": {Addr: "addr-A", Timestamp: now, State: ACTIVE, Tokens: []uint32{1, 2, 3, 10, 20}},
+			"ing-B": {Addr: "addr-B", Timestamp: now, State: ACTIVE, Tokens: []uint32{1, 2, 3, 30, 40}},
+		},
+	}
+
+	// ing-B updates with new tokens (e.g., after regeneration)
+	ring2 := &Desc{
+		Ingesters: map[string]InstanceDesc{
+			"ing-B": {Addr: "addr-B", Timestamp: now + 5, State: ACTIVE, Tokens: []uint32{1, 2, 3, 30, 40, 50}},
+		},
+	}
+
+	change, err := ring1.Merge(ring2, false)
+	assert.NoError(t, err)
+	assert.NotNil(t, change)
+
+	// Conflict resolved: ing-A wins tokens 1,2,3
+	assert.Equal(t, []uint32{1, 2, 3, 10, 20}, ring1.Ingesters["ing-A"].Tokens)
+	assert.Equal(t, []uint32{30, 40, 50}, ring1.Ingesters["ing-B"].Tokens)
+}

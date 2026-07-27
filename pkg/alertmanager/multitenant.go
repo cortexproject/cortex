@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-
 	"net/http"
 	"net/url"
 	"os"
@@ -19,9 +18,9 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	amconfig "github.com/prometheus/alertmanager/config"
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/user"
@@ -60,6 +59,9 @@ var (
 	errInvalidExternalURL                  = errors.New("the configured external URL is invalid: should not end with /")
 	errShardingUnsupportedStorage          = errors.New("the configured alertmanager storage backend is not supported when sharding is enabled")
 	errZoneAwarenessEnabledWithoutZoneInfo = errors.New("the configured alertmanager has zone awareness enabled but zone is not set")
+	// errAlertmanagerShuttingDown is returned when a per-tenant alertmanager cannot be
+	// created or reconfigured because the MultitenantAlertmanager is shutting down.
+	errAlertmanagerShuttingDown = errors.New("alertmanager is shutting down")
 )
 
 // MultitenantAlertmanagerConfig is the configuration for a multitenant Alertmanager.
@@ -275,6 +277,10 @@ type MultitenantAlertmanager struct {
 	// Stores the current set of configurations we're running in each tenant's Alertmanager.
 	// Used for comparing configurations as we synchronize them.
 	cfgs map[string]alertspb.AlertConfigDesc
+	// shuttingDown is set by stopping() before it stops the per-tenant alertmanagers, and
+	// prevents new per-tenant alertmanagers from being created or reconfigured afterwards
+	// (they would never be stopped). Guarded by alertmanagersMtx.
+	shuttingDown bool
 
 	logger              log.Logger
 	alertmanagerMetrics *alertmanagerMetrics
@@ -469,10 +475,6 @@ func (h *handlerForGRPCServer) ServeHTTP(w http.ResponseWriter, req *http.Reques
 }
 
 func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
-	err = am.migrateStateFilesToPerTenantDirectories()
-	if err != nil {
-		return err
-	}
 
 	defer func() {
 		if err == nil || am.subservices == nil {
@@ -546,119 +548,6 @@ func (am *MultitenantAlertmanager) starting(ctx context.Context) (err error) {
 	return nil
 }
 
-// migrateStateFilesToPerTenantDirectories migrates any existing configuration from old place to new hierarchy.
-// TODO: Remove in Cortex 1.11.
-func (am *MultitenantAlertmanager) migrateStateFilesToPerTenantDirectories() error {
-	migrate := func(from, to string) error {
-		level.Info(am.logger).Log("msg", "migrating alertmanager state", "from", from, "to", to)
-		err := os.Rename(from, to)
-		return errors.Wrapf(err, "failed to migrate alertmanager state from %v to %v", from, to)
-	}
-
-	st, err := am.getObsoleteFilesPerUser()
-	if err != nil {
-		return errors.Wrap(err, "failed to migrate alertmanager state files")
-	}
-
-	for userID, files := range st {
-		tenantDir := am.getTenantDirectory(userID)
-		err := os.MkdirAll(tenantDir, 0777)
-		if err != nil {
-			return errors.Wrapf(err, "failed to create per-tenant directory %v", tenantDir)
-		}
-
-		errs := tsdb_errors.NewMulti()
-
-		if files.notificationLogSnapshot != "" {
-			errs.Add(migrate(files.notificationLogSnapshot, filepath.Join(tenantDir, notificationLogSnapshot)))
-		}
-
-		if files.silencesSnapshot != "" {
-			errs.Add(migrate(files.silencesSnapshot, filepath.Join(tenantDir, silencesSnapshot)))
-		}
-
-		if files.templatesDir != "" {
-			errs.Add(migrate(files.templatesDir, filepath.Join(tenantDir, templatesDir)))
-		}
-
-		if err := errs.Err(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type obsoleteStateFiles struct {
-	notificationLogSnapshot string
-	silencesSnapshot        string
-	templatesDir            string
-}
-
-// getObsoleteFilesPerUser returns per-user set of files that should be migrated from old structure to new structure.
-func (am *MultitenantAlertmanager) getObsoleteFilesPerUser() (map[string]obsoleteStateFiles, error) {
-	files, err := os.ReadDir(am.cfg.DataDir)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to list dir %v", am.cfg.DataDir)
-	}
-
-	// old names
-	const (
-		notificationLogPrefix = "nflog:"
-		silencesPrefix        = "silences:"
-		templates             = "templates"
-	)
-
-	result := map[string]obsoleteStateFiles{}
-
-	for _, f := range files {
-		fullPath := filepath.Join(am.cfg.DataDir, f.Name())
-
-		if f.IsDir() {
-			// Process templates dir.
-			if f.Name() != templates {
-				// Ignore other files -- those are likely per tenant directories.
-				continue
-			}
-
-			templateDirs, err := os.ReadDir(fullPath)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to list dir %v", fullPath)
-			}
-
-			// Previously templates directory contained per-tenant subdirectory.
-			for _, d := range templateDirs {
-				if d.IsDir() {
-					v := result[d.Name()]
-					v.templatesDir = filepath.Join(fullPath, d.Name())
-					result[d.Name()] = v
-				} else {
-					level.Warn(am.logger).Log("msg", "ignoring unknown local file while migrating local alertmanager state files", "file", filepath.Join(fullPath, d.Name()))
-				}
-			}
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(f.Name(), notificationLogPrefix):
-			userID := strings.TrimPrefix(f.Name(), notificationLogPrefix)
-			v := result[userID]
-			v.notificationLogSnapshot = fullPath
-			result[userID] = v
-
-		case strings.HasPrefix(f.Name(), silencesPrefix):
-			userID := strings.TrimPrefix(f.Name(), silencesPrefix)
-			v := result[userID]
-			v.silencesSnapshot = fullPath
-			result[userID] = v
-
-		default:
-			level.Warn(am.logger).Log("msg", "ignoring unknown local data file while migrating local alertmanager state files", "file", fullPath)
-		}
-	}
-
-	return result, nil
-}
-
 func (am *MultitenantAlertmanager) run(ctx context.Context) error {
 	tick := time.NewTicker(am.cfg.PollInterval)
 	defer tick.Stop()
@@ -714,7 +603,10 @@ func (am *MultitenantAlertmanager) userIndexUpdateLoop(ctx context.Context) {
 			level.Error(am.logger).Log("msg", "context timeout, exit user index update loop", "err", ctx.Err())
 			return
 		case <-ticker.C:
-			owned := am.isUserOwned(userID)
+			owned, err := am.isUserOwned(userID)
+			if err != nil {
+				continue
+			}
 			if !owned {
 				continue
 			}
@@ -772,6 +664,10 @@ func (am *MultitenantAlertmanager) waitInitialStateSync(ctx context.Context) err
 // stopping runs when MultitenantAlertmanager transitions to Stopping state.
 func (am *MultitenantAlertmanager) stopping(_ error) error {
 	am.alertmanagersMtx.Lock()
+	// Reject any further per-tenant alertmanager creation (e.g. the fallback
+	// lazy-create path of an in-flight request): only the alertmanagers present
+	// in the map right now get stopped below.
+	am.shuttingDown = true
 	for _, am := range am.alertmanagers {
 		am.StopAndWait()
 	}
@@ -804,7 +700,11 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 
 	// Filter out users not owned by this shard.
 	for _, userID := range allUserIDs {
-		if am.isUserOwned(userID) {
+		owned, err := am.isUserOwned(userID)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "failed to check if user %s is owned", userID)
+		}
+		if owned {
 			ownedUserIDs = append(ownedUserIDs, userID)
 		}
 	}
@@ -821,24 +721,24 @@ func (am *MultitenantAlertmanager) loadAlertmanagerConfigs(ctx context.Context) 
 	return allUserIDs, configs, nil
 }
 
-func (am *MultitenantAlertmanager) isUserOwned(userID string) bool {
+func (am *MultitenantAlertmanager) isUserOwned(userID string) (bool, error) {
 	if !am.allowedTenants.IsAllowed(userID) {
-		return false
+		return false, nil
 	}
 
 	// If sharding is disabled, any alertmanager instance owns all users.
 	if !am.cfg.ShardingEnabled {
-		return true
+		return true, nil
 	}
 
 	alertmanagers, err := am.ring.Get(users.ShardByUser(userID), getSyncRingOp(am.cfg.ShardingRing.DisableReplicaSetExtension), nil, nil, nil)
 	if err != nil {
 		am.ringCheckErrors.Inc()
 		level.Error(am.logger).Log("msg", "failed to load alertmanager configuration", "user", userID, "err", err)
-		return false
+		return false, err
 	}
 
-	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr())
+	return alertmanagers.Includes(am.ringLifecycler.GetInstanceAddr()), nil
 }
 
 func (am *MultitenantAlertmanager) syncConfigs(cfgs map[string]alertspb.AlertConfigDesc) {
@@ -932,6 +832,13 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 
 	am.alertmanagersMtx.Lock()
 	defer am.alertmanagersMtx.Unlock()
+
+	// Once shutdown has begun, don't create a new per-tenant alertmanager (it would
+	// never be stopped) nor restart the dispatcher/inhibitor of an already stopped one.
+	if am.shuttingDown {
+		return errAlertmanagerShuttingDown
+	}
+
 	existing, hasExisting := am.alertmanagers[cfg.User]
 
 	rawCfg := cfg.RawConfig
@@ -972,7 +879,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 					if err != nil {
 						return err
 					}
-					userAmConfig.Receivers[i].WebhookConfigs[j].URL = amconfig.SecretTemplateURL(u.String())
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = amcommoncfg.SecretTemplateURL(u.String())
 				}
 			}
 		}
@@ -1111,6 +1018,10 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 
 	if am.fallbackConfig != "" {
 		userAM, err = am.alertmanagerFromFallbackConfig(userID)
+		if errors.Is(err, errAlertmanagerShuttingDown) {
+			http.Error(w, "Alertmanager is shutting down", http.StatusServiceUnavailable)
+			return
+		}
 		if err != nil {
 			level.Error(am.logger).Log("msg", "unable to initialize the Alertmanager with a fallback configuration", "user", userID, "err", err)
 			http.Error(w, "Failed to initialize the Alertmanager", http.StatusInternalServerError)
@@ -1126,6 +1037,15 @@ func (am *MultitenantAlertmanager) serveRequest(w http.ResponseWriter, req *http
 }
 
 func (am *MultitenantAlertmanager) alertmanagerFromFallbackConfig(userID string) (*Alertmanager, error) {
+	// Avoid the config upload below if shutdown has already begun. This check is
+	// best-effort (the authoritative one is in setConfig, under the same lock).
+	am.alertmanagersMtx.Lock()
+	shuttingDown := am.shuttingDown
+	am.alertmanagersMtx.Unlock()
+	if shuttingDown {
+		return nil, errAlertmanagerShuttingDown
+	}
+
 	// Upload an empty config so that the Alertmanager is no de-activated in the next poll
 	cfgDesc := alertspb.ToProto("", nil, userID)
 	err := am.store.SetAlertConfig(context.Background(), cfgDesc)

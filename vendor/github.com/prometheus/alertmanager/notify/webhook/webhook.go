@@ -26,7 +26,6 @@ import (
 
 	commoncfg "github.com/prometheus/common/config"
 
-	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
@@ -34,7 +33,7 @@ import (
 
 // Notifier implements a Notifier for generic webhooks.
 type Notifier struct {
-	conf    *config.WebhookConfig
+	conf    *WebhookConfig
 	tmpl    *template.Template
 	logger  *slog.Logger
 	client  *http.Client
@@ -42,7 +41,7 @@ type Notifier struct {
 }
 
 // New returns a new Webhook.
-func New(conf *config.WebhookConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+func New(conf *WebhookConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
 	client, err := notify.NewClientWithTracing(*conf.HTTPConfig, "webhook", httpOpts...)
 	if err != nil {
 		return nil, err
@@ -101,6 +100,14 @@ func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, er
 		return false, err
 	}
 
+	// Override the payload if a custom one is configured.
+	if n.conf.Payload != nil {
+		buf, err = n.renderPayload(msg)
+		if err != nil {
+			return false, fmt.Errorf("failed to render custom payload: %w", err)
+		}
+	}
+
 	var url string
 	var tmplErr error
 	tmpl := notify.TmplText(n.tmpl, data, &tmplErr)
@@ -143,4 +150,27 @@ func (n *Notifier) Notify(ctx context.Context, alerts ...*types.Alert) (bool, er
 		return shouldRetry, notify.NewErrorWithReason(notify.GetFailureReasonFromStatusCode(resp.StatusCode), err)
 	}
 	return shouldRetry, err
+}
+
+func (n *Notifier) renderPayload(
+	data *Message,
+) (bytes.Buffer, error) {
+	var (
+		tmplTextErr  error
+		tmplText     = notify.TmplText(n.tmpl, data.Data, &tmplTextErr)
+		tmplTextFunc = func(tmpl string) (string, error) {
+			return tmplText(tmpl), tmplTextErr
+		}
+	)
+	var err error
+	rendered, err := template.DeepCopyWithTemplate(n.conf.Payload, tmplTextFunc)
+	if err != nil {
+		return bytes.Buffer{}, err
+	}
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(rendered); err != nil {
+		return bytes.Buffer{}, err
+	}
+	return buf, nil
 }

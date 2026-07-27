@@ -186,6 +186,19 @@ parquet_converter:
   # CLI flag: -parquet-converter.max-rows-per-row-group
   [max_rows_per_row_group: <int> | default = 1000000]
 
+  # Maximum number of row groups per parquet shard. Each shard holds at most
+  # num-row-groups * max-rows-per-row-group series, so lowering this value
+  # splits a block into more parquet shards for better read parallelization. 0
+  # means unlimited (single shard).
+  # CLI flag: -parquet-converter.num-row-groups
+  [num_row_groups: <int> | default = 0]
+
+  # Maximum number of columns per Parquet file. When exceeded, conversion will
+  # automatically shard the data into multiple files. 0 uses the library default
+  # (32767).
+  # CLI flag: -parquet-converter.max-num-columns
+  [max_num_columns: <int> | default = 0]
+
   # Enable disk-based write buffering to reduce memory consumption during
   # parquet file generation.
   # CLI flag: -parquet-converter.file-buffer-enabled
@@ -711,7 +724,7 @@ alertmanager_client:
 The `alertmanager_storage_config` configures the Cortex alertmanager storage backend.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem, configdb, local.
 # CLI flag: -alertmanager-storage.backend
 [backend: <string> | default = "s3"]
@@ -845,7 +858,7 @@ azure:
   # Azure storage endpoint suffix without schema. The account name will be
   # prefixed to this value to create the FQDN
   # CLI flag: -alertmanager-storage.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
+  [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
   # Number of retries for recoverable errors
   # CLI flag: -alertmanager-storage.azure.max-retries
@@ -989,6 +1002,59 @@ swift:
   # CLI flag: -alertmanager-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
 
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -alertmanager-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -alertmanager-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -alertmanager-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -alertmanager-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -alertmanager-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -alertmanager-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
+  # CLI flag: -alertmanager-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
+  # CLI flag: -alertmanager-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -alertmanager-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -alertmanager-storage.filesystem.dir
@@ -1030,7 +1096,7 @@ users_scanner:
 The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem.
 # CLI flag: -blocks-storage.backend
 [backend: <string> | default = "s3"]
@@ -1164,7 +1230,7 @@ azure:
   # Azure storage endpoint suffix without schema. The account name will be
   # prefixed to this value to create the FQDN
   # CLI flag: -blocks-storage.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
+  [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
   # Number of retries for recoverable errors
   # CLI flag: -blocks-storage.azure.max-retries
@@ -1307,6 +1373,59 @@ swift:
   # data is received on a request.
   # CLI flag: -blocks-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
+
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -blocks-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -blocks-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -blocks-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -blocks-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -blocks-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -blocks-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
+  # CLI flag: -blocks-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
+  # CLI flag: -blocks-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -blocks-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
 
 filesystem:
   # Local filesystem storage directory.
@@ -2121,7 +2240,7 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.block-index-attributes-ttl
     [block_index_attributes_ttl: <duration> | default = 168h]
 
-    # How long to cache content of the bucket index.
+    # How long to cache content of the bucket index. 0 disables caching
     # CLI flag: -blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl
     [bucket_index_content_ttl: <duration> | default = 5m]
 
@@ -2384,6 +2503,238 @@ bucket_store:
     # CLI flag: -blocks-storage.bucket-store.parquet-labels-cache.subrange-ttl
     [subrange_ttl: <duration> | default = 24h]
 
+  parquet_row_ranges_cache:
+    # The parquet row ranges cache backend type. Single or Multiple cache
+    # backend can be provided. Supported values in single cache: memcached,
+    # redis, inmemory, and '' (disable). Supported values in multi level cache:
+    # a comma-separated list of (inmemory, memcached, redis)
+    # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.backend
+    [backend: <string> | default = ""]
+
+    inmemory:
+      # Maximum size in bytes of in-memory parquet-row-ranges cache used (shared
+      # between all tenants).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.inmemory.max-size-bytes
+      [max_size_bytes: <int> | default = 1073741824]
+
+    memcached:
+      # Comma separated list of memcached addresses. Supported prefixes are:
+      # dns+ (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.addresses
+      [addresses: <string> | default = ""]
+
+      # The socket read/write timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.timeout
+      [timeout: <duration> | default = 100ms]
+
+      # The maximum number of idle connections that will be maintained per
+      # address.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-idle-connections
+      [max_idle_connections: <int> | default = 16]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of concurrent connections running get operations. If
+      # set to 0, concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum number of keys a single underlying get operation should run.
+      # If more keys are specified, internally keys are split into multiple
+      # batches and fetched concurrently, honoring the max concurrency. If set
+      # to 0, the max batch size is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-get-multi-batch-size
+      [max_get_multi_batch_size: <int> | default = 0]
+
+      # The maximum size of an item stored in memcached. Bigger items are not
+      # stored. If set to 0, no maximum size is enforced.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.max-item-size
+      [max_item_size: <int> | default = 1048576]
+
+      # Use memcached auto-discovery mechanism provided by some cloud provider
+      # like GCP and AWS
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.auto-discovery
+      [auto_discovery: <boolean> | default = false]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
+    redis:
+      # Comma separated list of redis addresses. Supported prefixes are: dns+
+      # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
+      # dnssrvnoa+ (looked up as a SRV query, with no A/AAAA lookup made after
+      # that).
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.addresses
+      [addresses: <string> | default = ""]
+
+      # Redis username.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.username
+      [username: <string> | default = ""]
+
+      # Redis password.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.password
+      [password: <string> | default = ""]
+
+      # Database to be selected after connecting to the server.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.db
+      [db: <int> | default = 0]
+
+      # Specifies the master's name. Must be not empty for Redis Sentinel.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.master-name
+      [master_name: <string> | default = ""]
+
+      # The maximum number of concurrent GetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-get-multi-concurrency
+      [max_get_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for mget.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.get-multi-batch-size
+      [get_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent SetMulti() operations. If set to 0,
+      # concurrency is unlimited.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-set-multi-concurrency
+      [max_set_multi_concurrency: <int> | default = 100]
+
+      # The maximum size per batch for pipeline set.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-multi-batch-size
+      [set_multi_batch_size: <int> | default = 100]
+
+      # The maximum number of concurrent asynchronous operations can occur.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # Client dial timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.dial-timeout
+      [dial_timeout: <duration> | default = 5s]
+
+      # Client read timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.read-timeout
+      [read_timeout: <duration> | default = 3s]
+
+      # Client write timeout.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.write-timeout
+      [write_timeout: <duration> | default = 3s]
+
+      # Whether to enable tls for redis connection.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-enabled
+      [tls_enabled: <boolean> | default = false]
+
+      # Path to the client certificate file, which will be used for
+      # authenticating with the server. Also requires the key path to be
+      # configured.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-cert-path
+      [tls_cert_path: <string> | default = ""]
+
+      # Path to the key file for the client certificate. Also requires the
+      # client certificate to be configured.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-key-path
+      [tls_key_path: <string> | default = ""]
+
+      # Path to the CA certificates file to validate server certificate against.
+      # If not set, the host's root CA certificates are used.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-ca-path
+      [tls_ca_path: <string> | default = ""]
+
+      # Override the expected name on the server certificate.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-server-name
+      [tls_server_name: <string> | default = ""]
+
+      # Skip validating server certificate.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.tls-insecure-skip-verify
+      [tls_insecure_skip_verify: <boolean> | default = false]
+
+      # If not zero then client-side caching is enabled. Client-side caching is
+      # when data is stored in memory instead of fetching data each time. See
+      # https://redis.io/docs/manual/client-side-caching/ for more info.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.cache-size
+      [cache_size: <int> | default = 0]
+
+      set_async_circuit_breaker_config:
+        # If true, enable circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.enabled
+        [enabled: <boolean> | default = false]
+
+        # Maximum number of requests allowed to pass through when the circuit
+        # breaker is half-open. If set to 0, by default it allows 1 request.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.half-open-max-requests
+        [half_open_max_requests: <int> | default = 10]
+
+        # Period of the open state after which the state of the circuit breaker
+        # becomes half-open. If set to 0, by default open duration is 60
+        # seconds.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.open-duration
+        [open_duration: <duration> | default = 5s]
+
+        # Minimal requests to trigger the circuit breaker.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.min-requests
+        [min_requests: <int> | default = 50]
+
+        # Consecutive failures to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.consecutive-failures
+        [consecutive_failures: <int> | default = 5]
+
+        # Failure percentage to determine if the circuit breaker should open.
+        # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.redis.set-async.circuit-breaker.failure-percent
+        [failure_percent: <float> | default = 0.05]
+
+    multilevel:
+      # The maximum number of concurrent asynchronous operations can occur when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-concurrency
+      [max_async_concurrency: <int> | default = 3]
+
+      # The maximum number of enqueued asynchronous operations allowed when
+      # backfilling cache items.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-async-buffer-size
+      [max_async_buffer_size: <int> | default = 10000]
+
+      # The maximum number of items to backfill per asynchronous operation.
+      # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.multilevel.max-backfill-items
+      [max_backfill_items: <int> | default = 10000]
+
+    # TTL for caching parquet row ranges.
+    # CLI flag: -blocks-storage.bucket-store.parquet-row-ranges-cache.ttl
+    [ttl: <duration> | default = 10m]
+
   # Maximum number of entries in the regex matchers cache. 0 to disable.
   # CLI flag: -blocks-storage.bucket-store.matchers-cache-max-items
   [matchers_cache_max_items: <int> | default = 0]
@@ -2419,13 +2770,14 @@ bucket_store:
     [enabled: <boolean> | default = true]
 
     # How frequently a bucket index, which previously failed to load, should be
-    # tried to load again. This option is used only by querier.
+    # tried to load again. This option is used by querier and store-gateway
+    # parquet mode.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
     [update_on_error_interval: <duration> | default = 1m]
 
     # How long a unused bucket index should be cached. Once this timeout
     # expires, the unused bucket index is removed from the in-memory cache. This
-    # option is used only by querier.
+    # option is used by querier and store-gateway parquet mode.
     # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
     [idle_timeout: <duration> | default = 1h]
 
@@ -2511,6 +2863,14 @@ bucket_store:
   # CLI flag: -blocks-storage.bucket-store.parquet-shard-cache-ttl
   [parquet_shard_cache_ttl: <duration> | default = 24h]
 
+  # Maximum number of concurrent goroutines per query applied at each level of
+  # parquet processing: shard querying, row group processing, and column
+  # materialization. Note: this limit is applied independently at each level, so
+  # the total goroutines per query can grow multiplicatively (up to N^3 in the
+  # worst case).
+  # CLI flag: -blocks-storage.bucket-store.parquet-query-concurrency
+  [parquet_query_concurrency: <int> | default = 4]
+
 tsdb:
   # Local directory to store TSDBs in the ingesters.
   # CLI flag: -blocks-storage.tsdb.dir
@@ -2580,8 +2940,8 @@ tsdb:
 
   # If TSDB has not received any data for this duration, and all blocks from
   # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-  # to positive value, this value should be equal or higher than
-  # -querier.query-ingesters-within flag to make sure that TSDB is not closed
+  # to positive value, this value must be greater than
+  # -limits.query-ingesters-within flag to make sure that TSDB is not closed
   # prematurely, which could cause partial query results. 0 or negative value
   # disables closing of idle TSDB.
   # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
@@ -2657,6 +3017,25 @@ tsdb:
       # have given up.
       # CLI flag: -blocks-storage.expanded_postings_cache.block.fetch-timeout
       [fetch_timeout: <duration> | default = 0s]
+
+    # [EXPERIMENTAL] Maximum label cardinality for deferring regex matchers on
+    # the head block. When a regex matcher targets a label with more unique
+    # values than this threshold, it is applied lazily during iteration instead
+    # of postings lookup. 0 disables.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality
+    [lazy_matcher_max_cardinality: <int> | default = 0]
+
+    # [EXPERIMENTAL] Cardinality:postings ratio above which a simple regex
+    # (prefix-only, single contains) is deferred to lazy iteration. Lower = more
+    # aggressive deferral. Calibrated empirically; defaults to 6.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio
+    [lazy_matcher_simple_cost_ratio: <int> | default = 6]
+
+    # [EXPERIMENTAL] Cardinality:postings ratio above which a complex regex
+    # (multi-substring, capture groups, character classes) is deferred. Lower =
+    # more aggressive deferral. Calibrated empirically; defaults to 2.
+    # CLI flag: -blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio
+    [lazy_matcher_complex_cost_ratio: <int> | default = 2]
 
 users_scanner:
   # Strategy to use to scan users. Supported values are: list, user_index.
@@ -3109,12 +3488,6 @@ ha_tracker:
   # CLI flag: -distributor.ha-tracker.update-timeout-jitter-max
   [ha_tracker_update_timeout_jitter_max: <duration> | default = 5s]
 
-  # The timeout after which a new replica will be accepted if the currently
-  # elected replica stops sending data. This value must be greater than the
-  # update timeout plus the maximum jitter.
-  # CLI flag: -distributor.ha-tracker.failover-timeout
-  [ha_tracker_failover_timeout: <duration> | default = 30s]
-
   # [Experimental] If enabled, fetches all tracked keys on startup to populate
   # the local cache. This prevents duplicate GET calls for the same key while
   # the cache is cold, but could cause a spike in GET requests during
@@ -3221,6 +3594,17 @@ ha_tracker:
 # CLI flag: -distributor.sign-write-requests
 [sign_write_requests: <boolean> | default = false]
 
+# EXPERIMENTAL: Comma-separated list of HMAC-SHA256 keys authenticating
+# PushStream connections between distributors and ingesters. The first key is
+# used by the distributor to sign; all keys are accepted by the ingester. It
+# only takes effect when the -distributor.sign-write-requests is true. The key
+# change procedure for zero downtime is: (1) redeploy ingesters first with
+# 'newkey,oldkey' — ingester accepts both keys; (2) redeploy distributors with
+# 'newkey,oldkey' — distributor signs with newkey; (3) once stable, redeploy
+# both with 'newkey' to drop the old key.
+# CLI flag: -distributor.sign-write-requests-keys
+[sign_write_requests_keys: <string> | default = ""]
+
 # EXPERIMENTAL: If enabled, distributor would use stream connection to send
 # requests to ingesters.
 # CLI flag: -distributor.use-stream-push
@@ -3323,6 +3707,14 @@ ring:
 # goroutine will be created for each push request.
 # CLI flag: -distributor.num-push-workers
 [num_push_workers: <int> | default = 0]
+
+# EXPERIMENTAL: Number of go routines to handle query fan-out calls from
+# distributors (queriers and rulers) to ingesters. When no workers are
+# available, a new goroutine will be spawned automatically. If set to 0
+# (default), workers are disabled, and a new goroutine will be created for each
+# query request.
+# CLI flag: -distributor.num-query-workers
+[num_query_workers: <int> | default = 0]
 
 instance_limits:
   # Max ingestion rate (samples/sec) that this distributor will accept. This
@@ -3788,6 +4180,24 @@ lifecycler:
 # CLI flag: -ingester.active-queried-series-metrics-windows
 [active_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
+# Experimental: Enable tracking of series queried from head only and expose them
+# as metrics.
+# CLI flag: -ingester.head-queried-series-metrics-enabled
+[head_queried_series_metrics_enabled: <boolean> | default = false]
+
+# Duration of each sub-window for head queried series tracking.
+# CLI flag: -ingester.head-queried-series-metrics-window-duration
+[head_queried_series_metrics_window_duration: <duration> | default = 15m]
+
+# Sampling rate for head queried series tracking (1.0 = 100%%).
+# CLI flag: -ingester.head-queried-series-metrics-sample-rate
+[head_queried_series_metrics_sample_rate: <float> | default = 1]
+
+# Time windows to expose head queried series metrics. Also controls how long
+# per-metric-name cardinality is reported after last query.
+# CLI flag: -ingester.head-queried-series-metrics-windows
+[head_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]
@@ -3867,19 +4277,61 @@ instance_limits:
 query_protection:
   rejection:
     threshold:
-      # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
       # rejecting new query request (across all tenants) in percentage, between
       # 0 and 1. monitored_resources config must include the resource type. 0 to
       # disable.
       # CLI flag: -ingester.query-protection.rejection.threshold.cpu-utilization
       [cpu_utilization: <float> | default = 0]
 
-      # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
       # rejecting new query request (across all tenants) in percentage, between
       # 0 and 1. monitored_resources config must include the resource type. 0 to
       # disable.
       # CLI flag: -ingester.query-protection.rejection.threshold.heap-utilization
       [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -ingester.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -ingester.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -ingester.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -ingester.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -ingester.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -ingester.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -ingester.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `ingester_client_config`
@@ -4035,6 +4487,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.ha-tracker.max-clusters
 [ha_max_clusters: <int> | default = 0]
 
+# If the elected replica doesn't send samples in this time, the HA tracker will
+# accept a new replica. This value must be greater than the update timeout plus
+# the maximum jitter.
+# CLI flag: -distributor.ha-tracker.failover-timeout
+[ha_tracker_failover_timeout: <duration> | default = 30s]
+
 # This flag can be used to specify label names that to drop during sample
 # ingestion within the distributor and can be repeated in order to drop multiple
 # labels.
@@ -4119,6 +4577,12 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # CLI flag: -distributor.enable-type-and-unit-labels
 [enable_type_and_unit_labels: <boolean> | default = false]
 
+# EXPERIMENTAL: If true, StartTimestampMs (ST) is handled for remote write v2
+# samples and histograms. CreatedTimestamp (CT) is used as a fallback when ST is
+# not set.
+# CLI flag: -distributor.enable-start-timestamp
+[enable_start_timestamp: <boolean> | default = false]
+
 # The maximum number of active series per user, per ingester. 0 to disable.
 # CLI flag: -ingester.max-series-per-user
 [max_series_per_user: <int> | default = 5000000]
@@ -4154,6 +4618,10 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # [Experimental] Enable limits per LabelSet. Supported limits per labelSet:
 # [max_series]
 [limits_per_label_set: <list of LimitsPerLabelSet> | default = []]
+
+# List of active series tracker configurations. Each tracker counts active
+# series matching its matchers and exposes the count as a metric.
+[active_series_trackers: <list of ActiveSeriesTrackerConfig> | default = []]
 
 # [EXPERIMENTAL] True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
@@ -4294,6 +4762,25 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # zones are not available.
 [query_partial_data: <boolean> | default = false]
 
+# Maximum lookback duration for querying data from ingesters. Queries for data
+# older than this will only query the long-term storage. This is a per-tenant
+# limit that can be overridden in the runtime configuration. Should be less than
+# or equal to close-idle-tsdb-timeout.
+# CLI flag: -limits.query-ingesters-within
+[query_ingesters_within: <duration> | default = 0s]
+
+# Minimum age of data before querying the long-term storage. Queries for data
+# younger than this will only query ingesters. This is a per-tenant limit that
+# can be overridden in the runtime configuration.
+# CLI flag: -limits.query-store-after
+[query_store_after: <duration> | default = 0s]
+
+# Lookback period for shuffle sharding of ingesters. This is a per-tenant limit
+# that can be overridden in the runtime configuration. Should be greater than or
+# equal to query-ingesters-within.
+# CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
+[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
+
 # The maximum number of rows that can be fetched when querying parquet storage.
 # Each row maps to a series in a parquet file. This limit applies before
 # materializing chunks. 0 to disable.
@@ -4370,6 +4857,17 @@ query_rejection:
 
 # external labels for alerting rules
 [ruler_external_labels: <map of string (labelName) to string (labelValue)> | default = []]
+
+# Per-tenant external URL for the ruler. If set, it overrides the global
+# -ruler.external.url for this tenant's alert notifications.
+[ruler_external_url: <string> | default = ""]
+
+# Go text/template for alert generator URLs. Available variables: .ExternalURL
+# (resolved external URL) and .Expression (PromQL expression). Built-in
+# functions like urlquery are available. A jsonEscape function is also provided
+# for embedding expressions inside JSON-encoded URL parameters. If empty, uses
+# default Prometheus /graph format.
+[ruler_alert_generator_url_template: <string> | default = ""]
 
 # Enable to allow rules to be evaluated with data from a single zone, if other
 # zones are not available.
@@ -4572,6 +5070,20 @@ The `memberlist_config` configures the Gossip memberlist.
 # CLI flag: -memberlist.advertise-port
 [advertise_port: <int> | default = 7946]
 
+# The cluster label is an optional string to include in outbound packets and
+# gossip streams. Other members in the memberlist cluster will discard any
+# message whose label doesn't match the configured one, unless the
+# 'cluster-label-verification-disabled' configuration option is set to true.
+# CLI flag: -memberlist.cluster-label
+[cluster_label: <string> | default = ""]
+
+# When true, memberlist doesn't verify that inbound packets and gossip streams
+# have the cluster label matching the configured one. This verification should
+# be disabled while rolling out the change to the configured cluster label in a
+# live memberlist cluster.
+# CLI flag: -memberlist.cluster-label-verification-disabled
+[cluster_label_verification_disabled: <boolean> | default = false]
+
 # Other cluster members to join. Can be specified multiple times. It can be an
 # IP, hostname or an entry specified in the DNS Service Discovery format.
 # CLI flag: -memberlist.join
@@ -4635,6 +5147,18 @@ The `memberlist_config` configures the Gossip memberlist.
 # Timeout for writing 'packet' data.
 # CLI flag: -memberlist.packet-write-timeout
 [packet_write_timeout: <duration> | default = 5s]
+
+# Timeout for reading packet data from inbound connections. 0 = no limit.
+# CLI flag: -memberlist.packet-read-timeout
+[packet_read_timeout: <duration> | default = 5s]
+
+# Maximum size in bytes of an inbound gossip packet. 0 = no limit.
+# CLI flag: -memberlist.max-packet-size
+[max_packet_size: <int> | default = 1048576]
+
+# Maximum number of concurrent inbound TCP connections. 0 = no limit.
+# CLI flag: -memberlist.max-concurrent-connections
+[max_concurrent_connections: <int> | default = 100]
 
 # Enable TLS on the memberlist transport layer.
 # CLI flag: -memberlist.tls-enabled
@@ -4763,11 +5287,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.max-samples
 [max_samples: <int> | default = 50000000]
 
-# Maximum lookback beyond which queries are not sent to ingester. 0 means all
-# queries are sent to ingester.
-# CLI flag: -querier.query-ingesters-within
-[query_ingesters_within: <duration> | default = 0s]
-
 # Enable returning samples stats per steps in query response.
 # CLI flag: -querier.per-step-stats-enabled
 [per_step_stats_enabled: <boolean> | default = false]
@@ -4776,14 +5295,6 @@ The `querier_config` configures the Cortex querier.
 # Supported compression 'gzip', 'snappy', 'zstd' and '' (disable compression)
 # CLI flag: -querier.response-compression
 [response_compression: <string> | default = "gzip"]
-
-# The time after which a metric should be queried from storage and not just
-# ingesters. 0 means all queries are sent to store. When running the blocks
-# storage, if this option is enabled, the time range of the query sent to the
-# store will be manipulated to ensure the query end is not more recent than 'now
-# - query-store-after'.
-# CLI flag: -querier.query-store-after
-[query_store_after: <duration> | default = 0s]
 
 # Maximum duration into the future you can query. 0 to disable.
 # CLI flag: -querier.max-query-into-future
@@ -4893,16 +5404,6 @@ store_gateway_client:
 # CLI flag: -querier.ingester-query-max-attempts
 [ingester_query_max_attempts: <int> | default = 1]
 
-# When distributor's sharding strategy is shuffle-sharding and this setting is >
-# 0, queriers fetch in-memory series from the minimum set of required ingesters,
-# selecting only ingesters which may have received series since 'now - lookback
-# period'. The lookback period should be greater or equal than the configured
-# 'query store after' and 'query ingesters within'. If this setting is 0,
-# queriers always query all ingesters (ingesters shuffle sharding on read path
-# is disabled).
-# CLI flag: -querier.shuffle-sharding-ingesters-lookback-period
-[shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
-
 thanos_engine:
   # Experimental. Use Thanos promql engine
   # https://github.com/thanos-io/promql-engine rather than the Prometheus promql
@@ -4967,6 +5468,79 @@ thanos_engine:
 # types (parquet and non-parquet) and not querying ingesters.
 # CLI flag: -querier.honor-projection-hints
 [honor_projection_hints: <boolean> | default = false]
+
+# If true, classify query timeouts as 4XX (user error) or 5XX (system error)
+# based on phase timing.
+# CLI flag: -querier.timeout-classification-enabled
+[timeout_classification_enabled: <boolean> | default = false]
+
+# The total time before the querier proactively cancels a query for timeout
+# classification. Set this a few seconds less than the querier timeout.
+# CLI flag: -querier.timeout-classification-deadline
+[timeout_classification_deadline: <duration> | default = 1m59s]
+
+# Eval time threshold above which a timeout is classified as user error (4XX).
+# CLI flag: -querier.timeout-classification-eval-threshold
+[timeout_classification_eval_threshold: <duration> | default = 1m30s]
+
+query_protection:
+  rejection:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -querier.query-protection.rejection.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # rejecting new query request (across all tenants) in percentage, between
+      # 0 and 1. monitored_resources config must include the resource type. 0 to
+      # disable.
+      # CLI flag: -querier.query-protection.rejection.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -querier.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -querier.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -querier.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -querier.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -querier.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -querier.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 ```
 
 ### `query_frontend_config`
@@ -5709,7 +6283,7 @@ thanos_engine:
 The `ruler_storage_config` configures the Cortex ruler storage backend.
 
 ```yaml
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem, configdb, local.
 # CLI flag: -ruler-storage.backend
 [backend: <string> | default = "s3"]
@@ -5843,7 +6417,7 @@ azure:
   # Azure storage endpoint suffix without schema. The account name will be
   # prefixed to this value to create the FQDN
   # CLI flag: -ruler-storage.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
+  [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
   # Number of retries for recoverable errors
   # CLI flag: -ruler-storage.azure.max-retries
@@ -5987,6 +6561,59 @@ swift:
   # CLI flag: -ruler-storage.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
 
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -ruler-storage.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -ruler-storage.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -ruler-storage.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -ruler-storage.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -ruler-storage.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -ruler-storage.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
+  # CLI flag: -ruler-storage.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
+  # CLI flag: -ruler-storage.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -ruler-storage.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -ruler-storage.filesystem.dir
@@ -6036,7 +6663,7 @@ The `runtime_configuration_storage_config` configures the storage backend for th
 # CLI flag: -runtime-config.file
 [file: <string> | default = ""]
 
-# Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+# Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
 # filesystem.
 # CLI flag: -runtime-config.backend
 [backend: <string> | default = "filesystem"]
@@ -6170,7 +6797,7 @@ azure:
   # Azure storage endpoint suffix without schema. The account name will be
   # prefixed to this value to create the FQDN
   # CLI flag: -runtime-config.azure.endpoint-suffix
-  [endpoint_suffix: <string> | default = ""]
+  [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
   # Number of retries for recoverable errors
   # CLI flag: -runtime-config.azure.max-retries
@@ -6313,6 +6940,59 @@ swift:
   # data is received on a request.
   # CLI flag: -runtime-config.swift.request-timeout
   [request_timeout: <duration> | default = 5s]
+
+oci:
+  # The OCI configuration provider to use. Supported values are: default,
+  # instance-principal, raw, oke-workload-identity.
+  # CLI flag: -runtime-config.oci.provider
+  [provider: <string> | default = "default"]
+
+  # The OCI bucket name.
+  # CLI flag: -runtime-config.oci.bucket
+  [bucket: <string> | default = ""]
+
+  # The OCID of the compartment that contains the bucket.
+  # CLI flag: -runtime-config.oci.compartment-ocid
+  [compartment_ocid: <string> | default = ""]
+
+  # The OCID of the tenancy. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.tenancy-ocid
+  [tenancy_ocid: <string> | default = ""]
+
+  # The OCID of the user. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.user-ocid
+  [user_ocid: <string> | default = ""]
+
+  # The OCI region. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.region
+  [region: <string> | default = ""]
+
+  # The fingerprint of the API signing key. Required when the provider is 'raw'.
+  # CLI flag: -runtime-config.oci.fingerprint
+  [fingerprint: <string> | default = ""]
+
+  # The API signing private key in PEM format. Required when the provider is
+  # 'raw'.
+  # CLI flag: -runtime-config.oci.private-key
+  [privatekey: <string> | default = ""]
+
+  # The passphrase for the API signing private key, if the key is encrypted.
+  # CLI flag: -runtime-config.oci.private-key-passphrase
+  [passphrase: <string> | default = ""]
+
+  # The part size in bytes used for multipart uploads. 0 uses the provider
+  # default.
+  # CLI flag: -runtime-config.oci.part-size
+  [part_size: <int> | default = 0]
+
+  # The maximum number of request attempts when encountering recoverable errors.
+  # Values of 0 or 1 disable retries.
+  # CLI flag: -runtime-config.oci.max-request-retries
+  [max_request_retries: <int> | default = 3]
+
+  # The fixed interval in seconds to wait between request retry attempts.
+  # CLI flag: -runtime-config.oci.request-retry-interval
+  [request_retry_interval: <int> | default = 10]
 
 filesystem:
   # Local filesystem storage directory.
@@ -6722,19 +7402,61 @@ sharding_ring:
 query_protection:
   rejection:
     threshold:
-      # EXPERIMENTAL: Max CPU utilization that this ingester can reach before
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
       # rejecting new query request (across all tenants) in percentage, between
       # 0 and 1. monitored_resources config must include the resource type. 0 to
       # disable.
       # CLI flag: -store-gateway.query-protection.rejection.threshold.cpu-utilization
       [cpu_utilization: <float> | default = 0]
 
-      # EXPERIMENTAL: Max heap utilization that this ingester can reach before
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
       # rejecting new query request (across all tenants) in percentage, between
       # 0 and 1. monitored_resources config must include the resource type. 0 to
       # disable.
       # CLI flag: -store-gateway.query-protection.rejection.threshold.heap-utilization
       [heap_utilization: <float> | default = 0]
+
+  eviction:
+    threshold:
+      # EXPERIMENTAL: Max CPU utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -store-gateway.query-protection.eviction.threshold.cpu-utilization
+      [cpu_utilization: <float> | default = 0]
+
+      # EXPERIMENTAL: Max heap utilization that this instance can reach before
+      # evicting the heaviest running query (across all tenants) in percentage,
+      # between 0 and 1. monitored_resources config must include the resource
+      # type. 0 to disable.
+      # CLI flag: -store-gateway.query-protection.eviction.threshold.heap-utilization
+      [heap_utilization: <float> | default = 0]
+
+    # EXPERIMENTAL: How frequently the evictor checks system resource
+    # utilization.
+    # CLI flag: -store-gateway.query-protection.eviction.check-interval
+    [check_interval: <duration> | default = 1s]
+
+    # EXPERIMENTAL: Number of check intervals to wait after an eviction before
+    # evicting again.
+    # CLI flag: -store-gateway.query-protection.eviction.cooldown-period
+    [cooldown_period: <int> | default = 3]
+
+    # EXPERIMENTAL: The query metric used to determine the heaviest query for
+    # eviction. Supported values: fetched_samples, fetched_series,
+    # fetched_chunks, fetched_chunk_bytes.
+    # CLI flag: -store-gateway.query-protection.eviction.eviction-metric
+    [eviction_metric: <string> | default = "fetched_samples"]
+
+    # EXPERIMENTAL: Minimum time a query must be running before it becomes
+    # eligible for eviction. Queries younger than this are ignored.
+    # CLI flag: -store-gateway.query-protection.eviction.min-query-age
+    [min_query_age: <duration> | default = 10s]
+
+    # EXPERIMENTAL: Maximum number of queries to evict in a single check cycle
+    # when resource thresholds are breached.
+    # CLI flag: -store-gateway.query-protection.eviction.max-evictions-per-cycle
+    [max_evictions_per_cycle: <int> | default = 1]
 
 hedged_request:
   # If true, hedged requests are applied to object store calls. It can help with
@@ -6830,6 +7552,17 @@ limits:
 # becomes the default partition which matches any series that doesn't match any
 # other explicitly defined label sets.'
 [label_set: <map of string (labelName) to string (labelValue)> | default = []]
+```
+
+### `ActiveSeriesTrackerConfig`
+
+```yaml
+# Name of the tracker, used as a label value in the emitted metric.
+[name: <string> | default = ""]
+
+# PromQL series selector (e.g. {__name__=~"api_.*"}). All matchers must match
+# for a series to be counted.
+[matchers: <string> | default = ""]
 ```
 
 ### `PriorityDef`

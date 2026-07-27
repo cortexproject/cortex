@@ -49,6 +49,7 @@ type BucketStores interface {
 	storepb.StoreServer
 	SyncBlocks(ctx context.Context) error
 	InitialSync(ctx context.Context) error
+	Stop() error
 }
 
 // ThanosBucketStores is a multi-tenant wrapper of Thanos BucketStore.
@@ -157,9 +158,12 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 		concurrentDataBytesTracker:    NewConcurrentDataBytesTracker(uint64(cfg.BucketStore.MaxConcurrentDataBytes), reg),
 		requestDataBytesTrackerHolder: &requestDataBytesTrackerHolder{},
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_bucket_stores_blocks_sync_seconds",
-			Help:    "The total time it takes to perform a sync stores",
-			Buckets: []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
+			Name:                            "cortex_bucket_stores_blocks_sync_seconds",
+			Help:                            "The total time it takes to perform a sync stores",
+			Buckets:                         []float64{0.1, 1, 10, 30, 60, 120, 300, 600, 900},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		syncLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_bucket_stores_blocks_last_successful_sync_timestamp_seconds",
@@ -235,6 +239,9 @@ func (u *ThanosBucketStores) SyncBlocks(ctx context.Context) error {
 		return s.SyncBlocks(ctx)
 	})
 }
+
+// Stop implements BucketStores. ThanosBucketStores has no background services to stop.
+func (u *ThanosBucketStores) Stop() error { return nil }
 
 func (u *ThanosBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
@@ -716,7 +723,6 @@ func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore
 		newBytesLimiterFactory(u.limits, userID, u.getUserTokenBucket(userID), u.instanceTokenBucket, u.cfg.BucketStore.TokenBucketBytesLimiter, u.getTokensToRetrieve, u.requestDataBytesTrackerHolder),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,

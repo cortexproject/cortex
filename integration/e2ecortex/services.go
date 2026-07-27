@@ -447,3 +447,24 @@ func NewRuler(name string, consulAddress string, flags map[string]string, image 
 		grpcPort,
 	)
 }
+
+func NewConfigs(name string, flags map[string]string, image string) *CortexService {
+	if image == "" {
+		image = GetDefaultImage()
+	}
+
+	return NewCortexService(
+		name,
+		image,
+		e2e.NewCommandWithoutEntrypoint("cortex", e2e.BuildArgs(e2e.MergeFlags(map[string]string{
+			"-target":    "configs",
+			"-log.level": "warn",
+			// /migrations is the path the cortex Docker image copies the SQL migrations to;
+			// see cmd/cortex/Dockerfile.
+			"-configs.database.migrations-dir": "/migrations",
+		}, flags))...),
+		e2e.NewHTTPReadinessProbe(httpPort, "/ready", 200, 299),
+		httpPort,
+		grpcPort,
+	)
+}

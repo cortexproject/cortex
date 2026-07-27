@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInstanceDesc_IsHealthy_ForIngesterOperations(t *testing.T) {
@@ -744,6 +745,50 @@ func TestDesc_FindDifference(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+}
+
+func TestDesc_FindDifference_ConcurrentConflictResolutionIsDeterministic(t *testing.T) {
+	// Simulate two ingesters with duplicate tokens both doing CAS at the same time
+	// during the observe period (JOINING state). Both read the same DDB state (current)
+	// and produce the same new state (out). FindDifference must produce identical
+	// toUpdate results so they don't write conflicting resolutions to DDB.
+	current := &Desc{Ingesters: map[string]InstanceDesc{
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: JOINING},
+	}}
+
+	// ing-A does a heartbeat CAS (only timestamp changes)
+	outA := &Desc{Ingesters: map[string]InstanceDesc{
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 110, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 100, State: JOINING},
+	}}
+
+	// ing-B does a heartbeat CAS (only timestamp changes)
+	outB := &Desc{Ingesters: map[string]InstanceDesc{
+		"ing-A": {Addr: "addr-A", Tokens: []uint32{1, 2, 3, 10, 20}, Timestamp: 100, State: JOINING},
+		"ing-B": {Addr: "addr-B", Tokens: []uint32{1, 2, 3, 30, 40}, Timestamp: 110, State: JOINING},
+	}}
+
+	toUpdateA, _, errA := current.FindDifference(outA)
+	toUpdateB, _, errB := current.FindDifference(outB)
+
+	require.NoError(t, errA)
+	require.NoError(t, errB)
+
+	// Both must resolve the conflict: ing-A wins tokens 1,2,3 (lower name), ing-B loses them.
+	updatedA := toUpdateA.(*Desc)
+	updatedB := toUpdateB.(*Desc)
+
+	// ing-A's resolution should strip tokens 1,2,3 from ing-B
+	require.Contains(t, updatedA.Ingesters, "ing-B")
+	assert.Equal(t, []uint32{30, 40}, updatedA.Ingesters["ing-B"].Tokens)
+
+	// ing-B's resolution should also strip tokens 1,2,3 from ing-B
+	require.Contains(t, updatedB.Ingesters, "ing-B")
+	assert.Equal(t, []uint32{30, 40}, updatedB.Ingesters["ing-B"].Tokens)
+
+	// Both produce the same token assignment for ing-B — deterministic resolution.
+	assert.Equal(t, updatedA.Ingesters["ing-B"].Tokens, updatedB.Ingesters["ing-B"].Tokens)
 }
 
 func Test_resolveConflicts(t *testing.T) {

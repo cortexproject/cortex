@@ -26,6 +26,7 @@ func Test_UserMetricsMetadata(t *testing.T) {
 		false,
 		false,
 		false,
+		false,
 		func() *InstanceLimits {
 			return &InstanceLimits{}
 		},

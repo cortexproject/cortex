@@ -61,7 +61,7 @@ func v2group(label, receiver string, alerts ...*v2_models.GettableAlert) *v2_mod
 	return &v2_models.AlertGroup{
 		Alerts:   alerts,
 		Labels:   v2_models.LabelSet{"some-label": label},
-		Receiver: &v2_models.Receiver{Name: &receiver},
+		Receiver: &v2_models.ReceiverReference{Name: &receiver},
 	}
 }
 

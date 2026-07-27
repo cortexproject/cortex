@@ -28,7 +28,6 @@ import (
 	commoncfg "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 
-	"github.com/prometheus/alertmanager/config"
 	"github.com/prometheus/alertmanager/notify"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
@@ -41,14 +40,14 @@ const (
 
 // Notifier implements a Notifier for JIRA notifications.
 type Notifier struct {
-	conf    *config.JiraConfig
+	conf    *JiraConfig
 	tmpl    *template.Template
 	logger  *slog.Logger
 	client  *http.Client
 	retrier *notify.Retrier
 }
 
-func New(c *config.JiraConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
+func New(c *JiraConfig, t *template.Template, l *slog.Logger, httpOpts ...commoncfg.HTTPClientOption) (*Notifier, error) {
 	client, err := notify.NewClientWithTracing(*c.HTTPConfig, "jira", httpOpts...)
 	if err != nil {
 		return nil, err
@@ -219,7 +218,11 @@ func (n *Notifier) searchExistingIssue(ctx context.Context, logger *slog.Logger,
 	jql := strings.Builder{}
 
 	if n.conf.WontFixResolution != "" {
-		jql.WriteString(fmt.Sprintf(`resolution != %q and `, n.conf.WontFixResolution))
+		// JQL's != on resolution silently excludes issues whose resolution
+		// is EMPTY (unresolved). Use (resolution is EMPTY or resolution != X)
+		// so open issues remain in the candidate set and only the won't-fix
+		// resolved ones are filtered out. See prometheus/alertmanager#4295.
+		fmt.Fprintf(&jql, `(resolution is EMPTY or resolution != %q) and `, n.conf.WontFixResolution)
 	}
 
 	// If the group is firing, search for open issues. If a reopen transition is
@@ -227,7 +230,7 @@ func (n *Notifier) searchExistingIssue(ctx context.Context, logger *slog.Logger,
 	if firing {
 		reopenDuration := int64(time.Duration(n.conf.ReopenDuration).Minutes())
 		if n.conf.ReopenTransition != "" && reopenDuration > 0 {
-			jql.WriteString(fmt.Sprintf(`(resolutiondate is EMPTY OR resolutiondate >= -%dm) and `, reopenDuration))
+			fmt.Fprintf(&jql, `(resolutiondate is EMPTY OR resolutiondate >= -%dm) and `, reopenDuration)
 		} else {
 			jql.WriteString(`statusCategory != Done and `)
 		}
@@ -240,7 +243,7 @@ func (n *Notifier) searchExistingIssue(ctx context.Context, logger *slog.Logger,
 	if err != nil {
 		return nil, false, fmt.Errorf("invalid project template or value: %w", err)
 	}
-	jql.WriteString(fmt.Sprintf(`project=%q and labels=%q order by status ASC,resolutiondate DESC`, project, alertLabel))
+	fmt.Fprintf(&jql, `project=%q and labels=%q order by status ASC,resolutiondate DESC`, project, alertLabel)
 
 	requestBody, searchPath := n.prepareSearchRequest(jql.String())
 
@@ -344,6 +347,10 @@ func (n *Notifier) transitionIssue(ctx context.Context, logger *slog.Logger, i *
 		}
 
 		transition = n.conf.ResolveTransition
+	}
+
+	if transition == "" {
+		return false, nil
 	}
 
 	transitionID, shouldRetry, err := n.getIssueTransitionByName(ctx, i.Key, transition)

@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -313,6 +314,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 				mockLimits{},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
+				nil,
 				nil,
 				nil,
 			)
@@ -1281,6 +1283,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -1320,6 +1323,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1386,6 +1390,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -1422,6 +1427,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1538,6 +1544,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				PrometheusResponseExtractor{},
 				tc.shouldCache,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
@@ -1568,6 +1575,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1852,6 +1860,7 @@ func TestExtentsOverlapOutOfOrderWindow(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
@@ -1941,6 +1950,7 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
@@ -1953,6 +1963,193 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 			assert.Equal(t, tc.expectedTTL, mockCache.(*cache.MockCache).GetLastTTL())
 		})
 	}
+}
+
+type mockResolver struct {
+	tenantIDs []string
+	err       error
+}
+
+func (m *mockResolver) TenantID(_ context.Context) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	if len(m.tenantIDs) == 1 {
+		return m.tenantIDs[0], nil
+	}
+	return "", user.ErrTooManyOrgIDs
+}
+
+func (m *mockResolver) TenantIDs(_ context.Context) ([]string, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.tenantIDs, nil
+}
+
+func newResultsCacheWithResolver(t *testing.T, resolverFn func() users.Resolver) tripperware.Middleware {
+	t.Helper()
+	cfg := ResultsCacheConfig{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		splitter(day),
+		mockLimits{},
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		nil,
+		resolverFn,
+	)
+	require.NoError(t, err)
+	return rcm
+}
+
+func TestResultsCacheTenantFingerprint(t *testing.T) {
+	useRegexResolver := func(t *testing.T) {
+		t.Helper()
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		t.Cleanup(func() {
+			users.WithDefaultResolver(users.NewSingleResolver())
+		})
+	}
+
+	t.Run("nil resolver preserves existing cache key format - cache hit on second call", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, nil) // legacy behaviour
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "first request must reach upstream")
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "second identical request must be served from cache")
+	})
+
+	t.Run("resolver present - same tenant set produces cache hit", func(t *testing.T) {
+		// Uses ".+" as org ID – requires RegexValidator as the global resolver.
+		// Not parallel because it mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		// Inject the regex pattern exactly as the query frontend does.
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "first request must reach upstream")
+
+		// Same resolver result → same fingerprint → cache hit.
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "same tenant set must produce a cache hit")
+	})
+
+	t.Run("new tenant added - fingerprint changes so stale cache is bypassed", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// Simulate a new tenant joining: the resolver now returns three IDs.
+		resolver.tenantIDs = []string{"t1", "t2", "t3"}
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 2, calls, "adding a tenant must change the fingerprint and trigger a cache miss")
+	})
+
+	t.Run("tenant swap with same count - hash fingerprint still changes", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// Replace t2 with t3 – tenant count stays at 2, but the FNV64a hash
+		// of "t1|t3" differs from "t1|t2" so the key must change.
+		resolver.tenantIDs = []string{"t1", "t3"}
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 2, calls, "swapping a tenant (same count) must change the fingerprint hash and cause a cache miss")
+	})
+
+	t.Run("resolver returns error - falls back to plain cache key", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{err: fmt.Errorf("resolving error")}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		// The resolver fails – fall back to the plain key.
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// A second request with the same failing resolver should still hit the
+		// plain-key cache entry written by the first call.
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "failed resolver must fall back to plain key, which is still cacheable")
+	})
 }
 
 func TestResultsCacheWithPerTenantTTL(t *testing.T) {
@@ -1980,6 +2177,7 @@ func TestResultsCacheWithPerTenantTTL(t *testing.T) {
 		limits,
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)

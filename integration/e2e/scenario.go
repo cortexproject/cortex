@@ -3,6 +3,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -151,14 +152,14 @@ func (s *Scenario) shutdown() {
 	// Kill the services in parallel. We still iterate in reverse order
 	// to respect service dependencies, but we kill them concurrently.
 	var wg sync.WaitGroup
-	for i := len(s.services) - 1; i >= 0; i-- {
+	for _, v := range slices.Backward(s.services) {
 		wg.Add(1)
 		go func(service Service) {
 			defer wg.Done()
 			if err := service.Kill(); err != nil {
 				logger.Log("Unable to kill service", service.Name(), ":", err.Error())
 			}
-		}(s.services[i])
+		}(v)
 	}
 	wg.Wait()
 

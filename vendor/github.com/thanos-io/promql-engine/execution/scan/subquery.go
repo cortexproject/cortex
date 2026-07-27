@@ -20,6 +20,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
+const sampleLimitCheckPercentage = 0.05
+
 type subqueryOperator struct {
 	next      model.VectorOperator
 	paramOp   model.VectorOperator
@@ -52,6 +54,9 @@ type subqueryOperator struct {
 	paramBuf  []model.StepVector
 	param2Buf []model.StepVector
 	tempBuf   []model.StepVector
+
+	currentTrackedSamples int
+	lastTrackedSamples    int
 }
 
 func NewSubqueryOperator(next, paramOp, paramOp2 model.VectorOperator, opts *query.Options, funcExpr *logicalplan.FunctionCall, subQuery *logicalplan.Subquery) (model.VectorOperator, error) {
@@ -150,6 +155,9 @@ func (o *subqueryOperator) Next(ctx context.Context, buf []model.StepVector) (in
 		for _, b := range o.buffers {
 			b.Reset(mint, maxt+o.subQuery.Offset.Milliseconds())
 		}
+		o.currentTrackedSamples = 0
+		o.lastTrackedSamples = 0
+		checkSampleLimitCounter := 0
 		if len(o.lastVectors) > 0 {
 			for _, v := range o.lastVectors[o.lastCollected+1:] {
 				if v.T > maxt {
@@ -184,6 +192,18 @@ func (o *subqueryOperator) Next(ctx context.Context, buf []model.StepVector) (in
 				o.collect(vector, mint)
 			}
 
+			checkSampleLimitCounter++
+			if o.shouldCheckSampleLimit(checkSampleLimitCounter) {
+				if err := o.checkSampleLimit(); err != nil {
+					return 0, err
+				}
+				checkSampleLimitCounter = 0
+			}
+		}
+		if checkSampleLimitCounter > 0 {
+			if err := o.checkSampleLimit(); err != nil {
+				return 0, err
+			}
 		}
 
 		buf[n].Reset(o.currentStep)
@@ -210,6 +230,15 @@ func (o *subqueryOperator) Next(ctx context.Context, buf []model.StepVector) (in
 	return n, nil
 }
 
+func (o *subqueryOperator) checkSampleLimit() error {
+	delta := o.currentTrackedSamples - o.lastTrackedSamples
+	if delta > 0 {
+		o.opts.SampleTracker.Add(delta)
+	}
+	o.lastTrackedSamples = o.currentTrackedSamples
+	return o.opts.SampleTracker.CheckLimit()
+}
+
 func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 	if v.T < mint {
 		return
@@ -220,6 +249,7 @@ func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 			continue
 		}
 		buffer.Push(v.T, ringbuffer.Value{F: s})
+		o.currentTrackedSamples++
 	}
 	for i, s := range v.Histograms {
 		buffer := o.buffers[v.HistogramIDs[i]]
@@ -245,6 +275,7 @@ func (o *subqueryOperator) collect(v model.StepVector, mint int64) {
 			s.CounterResetHint = histogram.UnknownCounterReset
 		}
 		buffer.Push(v.T, ringbuffer.Value{H: s})
+		o.currentTrackedSamples += telemetry.CalculateHistogramSampleCount(s)
 	}
 
 }
@@ -290,4 +321,22 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 
 	})
 	return err
+}
+
+func (o *subqueryOperator) shouldCheckSampleLimit(checkSampleLimitCounter int) bool {
+	if len(o.series) == 0 {
+		return checkSampleLimitCounter >= 1
+	}
+
+	limit := o.opts.SampleTracker.Limit()
+	targetSamplesPerCheck := int(float64(limit) * sampleLimitCheckPercentage)
+
+	maxSamplesPerCall := len(o.series) * o.stepsBatch
+	if maxSamplesPerCall == 0 {
+		return checkSampleLimitCounter >= 1
+	}
+
+	interval := max(targetSamplesPerCheck/maxSamplesPerCall, 1)
+
+	return checkSampleLimitCounter >= interval
 }

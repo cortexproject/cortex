@@ -3,8 +3,10 @@ package querier
 import (
 	"context"
 	"maps"
+	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -89,9 +91,12 @@ func NewBucketScanBlocksFinder(cfg BucketScanBlocksFinderConfig, usersScanner us
 		fetchersMetrics:   storegateway.NewMetadataFetcherMetrics(),
 		usersScanner:      usersScanner,
 		scanDuration: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Name:    "cortex_querier_blocks_scan_duration_seconds",
-			Help:    "The total time it takes to run a full blocks scan across the storage.",
-			Buckets: []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
+			Name:                            "cortex_querier_blocks_scan_duration_seconds",
+			Help:                            "The total time it takes to run a full blocks scan across the storage.",
+			Buckets:                         []float64{1, 10, 20, 30, 60, 120, 180, 240, 300, 600},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 		scanLastSuccess: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name: "cortex_querier_blocks_last_successful_scan_timestamp_seconds",
@@ -133,13 +138,13 @@ func (d *BucketScanBlocksFinder) GetBlocks(_ context.Context, userID string, min
 	// Given we do expect the large majority of queries to have a time range close
 	// to "now", we're going to find matching blocks iterating the list in reverse order.
 	var matchingMetas bucketindex.Blocks
-	for i := len(userMetas) - 1; i >= 0; i-- {
-		if userMetas[i].Within(minT, maxT) {
-			matchingMetas = append(matchingMetas, userMetas[i])
+	for _, userMeta := range slices.Backward(userMetas) {
+		if userMeta.Within(minT, maxT) {
+			matchingMetas = append(matchingMetas, userMeta)
 		}
 
 		// We can safely break the loop because metas are sorted by MaxTime.
-		if userMetas[i].MaxTime <= minT {
+		if userMeta.MaxTime <= minT {
 			break
 		}
 	}
@@ -265,6 +270,17 @@ pushJobsLoop:
 		maps.Copy(d.userDeletionMarks, resDeletionMarks)
 	}
 	d.userMx.Unlock()
+
+	// Reconcile the cached metadata fetchers (and their per-tenant Prometheus registries and
+	// on-disk meta caches) against the set of currently active tenants, so these resources stay
+	// bounded as tenants are deleted from storage. userIDs comes from a successful ScanUsers call
+	// (we return early above if it failed), so it is the authoritative active set regardless of
+	// any per-tenant scan errors collected in resErrs; we therefore reconcile even on the
+	// partial-error path, so the leak stays bounded under tenant churn. We only skip when the
+	// context has been cancelled (i.e. the service is shutting down).
+	if ctx.Err() == nil {
+		d.evictInactiveUserFetchers(userIDs)
+	}
 
 	return resErrs.Err()
 }
@@ -414,6 +430,61 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 
 	d.fetchersMetrics.AddUserRegistry(userID, userReg)
 	return f, userBucket, deletionMarkFilter, nil
+}
+
+// metaSyncerCacheDirName is the sub-directory, under the per-tenant cache directory, where
+// block.NewMetaFetcher stores its cached meta.json files (see createMetaFetcher).
+const metaSyncerCacheDirName = "meta-syncer"
+
+// evictInactiveUserFetchers reconciles the per-tenant metadata fetchers against the set of
+// currently active tenants. For every tenant that is no longer active it removes the cached
+// fetcher, unregisters its per-tenant Prometheus registry, and deletes the fetcher's on-disk meta
+// cache. Without this, d.fetchers, d.fetchersMetrics and the on-disk cache would grow unbounded
+// for the lifetime of the process as tenants are deleted from storage.
+func (d *BucketScanBlocksFinder) evictInactiveUserFetchers(activeUserIDs []string) {
+	active := make(map[string]struct{}, len(activeUserIDs))
+	for _, userID := range activeUserIDs {
+		active[userID] = struct{}{}
+	}
+
+	// Evict the in-memory fetchers and their per-tenant Prometheus registries.
+	var evicted []string
+	d.fetchersMx.Lock()
+	for userID := range d.fetchers {
+		if _, ok := active[userID]; ok {
+			continue
+		}
+
+		d.fetchersMetrics.RemoveUserRegistry(userID)
+		delete(d.fetchers, userID)
+		evicted = append(evicted, userID)
+	}
+	d.fetchersMx.Unlock()
+
+	if len(evicted) == 0 {
+		return
+	}
+
+	level.Info(d.logger).Log("msg", "evicted metadata fetchers for inactive tenants", "count", len(evicted))
+
+	// Delete each evicted fetcher's on-disk meta cache, outside the lock to keep disk I/O off it.
+	// We remove only the fetcher's own "meta-syncer" sub-directory, not the whole CacheDir/<userID>
+	// tree: in single-binary mode CacheDir is the store-gateway's SyncDir, whose block data also
+	// lives under CacheDir/<userID>/ and must not be deleted here. We key this off the fetchers
+	// this process evicted rather than sweeping CacheDir, so we never reach into a co-located
+	// store-gateway's cache; stale directories left by a previous process are reaped by the
+	// store-gateway's own cleanup (single-binary) and are otherwise a negligible disk residual.
+	for _, userID := range evicted {
+		metaCacheDir := filepath.Join(d.cfg.CacheDir, userID, metaSyncerCacheDirName)
+		if err := os.RemoveAll(metaCacheDir); err != nil {
+			level.Warn(d.logger).Log("msg", "failed to delete cached metadata fetcher directory for inactive user", "user", userID, "dir", metaCacheDir, "err", err)
+			continue
+		}
+
+		// Best-effort removal of the now-empty per-tenant directory. os.Remove only succeeds on an
+		// empty directory, so a co-located store-gateway's data under the same path is preserved.
+		_ = os.Remove(filepath.Join(d.cfg.CacheDir, userID))
+	}
 }
 
 func (d *BucketScanBlocksFinder) getBlockMeta(userID string, blockID ulid.ULID) *bucketindex.Block {

@@ -62,7 +62,7 @@ jobs:
       - name: Build Website
         run: |
           ./tools/website/web-pre.sh
-          cd website && HUGO_ENV=production hugo --config config.toml --minify -v
+          cd website && HUGO_ENV=production hugo --config config.toml --minify
       - name: Upload Website Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

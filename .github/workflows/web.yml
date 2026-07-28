@@ -33,8 +33,8 @@ jobs:
     needs: [lint]
     runs-on: ubuntu-24.04
     env:
-      HUGO_VERSION: "0.101.0"
-      NODE_VERSION: "18"
+      HUGO_VERSION: "0.164.0"
+      NODE_VERSION: "26"
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

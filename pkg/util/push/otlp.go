@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -25,6 +26,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -94,6 +96,9 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 		prwReq.Metadata = metadata
 
 		if _, err := push(ctx, &prwReq); err != nil {
+			if errors.Is(err, context.Canceled) {
+				err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
+			}
 			resp, ok := httpgrpc.HTTPResponseFromError(err)
 			if !ok {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -101,7 +106,7 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			}
 			if resp.GetCode()/100 == 5 {
 				level.Error(logger).Log("msg", "push error", "err", err)
-			} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+			} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 				level.Warn(logger).Log("msg", "push refused", "err", err)
 			}
 			http.Error(w, string(resp.Body), int(resp.Code))

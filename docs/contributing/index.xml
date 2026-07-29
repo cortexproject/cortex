@@ -1,232 +1,58 @@
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Cortex – Contributing</title><link>/docs/contributing/</link><description>Recent content in Contributing on Cortex</description><generator>Hugo -- gohugo.io</generator><atom:link href="/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>Docs: Governance</title><link>/docs/contributing/governance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/governance/</guid><description>
-&lt;p>This document defines project governance for the cortex project. Its purpose is to describe how decisions are made on the project and how anyone can influence these decisions.&lt;/p>
-&lt;p>This governance charter applies to every project under the cortex GitHub organization. The term &amp;ldquo;cortex project&amp;rdquo; refers to any work done under the cortexproject GitHub organization and includes the cortexproject/cortex repository itself as well as cortexproject/cortex-tools, cortexproject/cortex-jsonnet and all the other repositories under the cortexproject GitHub organization.&lt;/p>
-&lt;h2 id="voting">Voting&lt;/h2>
-&lt;p>The Cortex project employs voting to ensure no single member can dominate the project. Any maintainer may cast a vote. To avoid having a single company dominate the project, at most two votes from maintainers working for the same company will count.&lt;/p>
-&lt;p>For formal votes, a specific statement of what is being voted on should be added to the relevant github issue or PR, and a link to that issue or PR added to the maintainers meeting agenda document.&lt;/p>
-&lt;p>Maintainers should indicate their yes/no vote on that issue or PR, and after a suitable period of time (minimum 2 business weeks), the votes will be tallied and the outcome noted. Maintainers who do not cast a vote, after a suitable period of time, are not included in the majority calculation.&lt;/p>
-&lt;h2 id="maintainer-role">Maintainer Role&lt;/h2>
-&lt;p>Maintainers are required to participate in the project, by joining discussions, submitting and reviewing pull requests, answering user questions, among others.&lt;/p>
-&lt;p>Besides that, we have one concrete activity in which maintainers have to engage from time to time: releasing new versions of Cortex. This process ideally takes only a couple of hours, but requires coordination on different fronts. Even though the process is well documented, it is not without eventual glitches, so, each release needs a &amp;ldquo;Release shepherd&amp;rdquo;. How it works is described in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/RELEASE.md">RELEASE.md&lt;/a> file.&lt;/p>
-&lt;h2 id="changes-in-maintainership">Changes in Maintainership&lt;/h2>
-&lt;p>Contributors who are interested in becoming a maintainer, if performing relevant responsibilities, should discuss their interest with the existing maintainers. New maintainers must be nominated by an existing maintainer and must be elected by 2/3 majority vote.&lt;/p>
-&lt;p>We do not expect anyone to make a permanent commitment to be a Cortex maintainer forever. After all, circumstances change,
-people get new jobs, new interests, and may not be able to continue contributing to the project. At the same time, we need
-to keep the list of maintainers current in order to have effective governance. People may be removed from the current list
-of maintainers via one of the following ways:&lt;/p>
-&lt;ul>
-&lt;li>They can resign&lt;/li>
-&lt;li>If they stop contributing to the project for a period of 6 months or more&lt;/li>
-&lt;li>By a 2/3 majority vote from active maintainers&lt;/li>
-&lt;/ul>
-&lt;p>Former maintainers are recognized with an honorary &lt;em>Emeritus Maintainer&lt;/em> status, and have their names permanently
-listed in the &lt;a href="https://github.com/cortexproject/cortex/blob/master/README.md">README&lt;/a> as a form of gratitude for their contributions.&lt;/p>
-&lt;h2 id="approving-prs">Approving PRs&lt;/h2>
-&lt;p>PRs may be merged after receiving at least two positive votes. If the PR author is a maintainer, this counts as a vote.&lt;/p>
-&lt;h2 id="triage-role">Triage Role&lt;/h2>
-&lt;p>Triagers are contributors who assist in managing and organizing issues and pull requests. See &lt;a href="https://docs.github.com/en/organizations/managing-user-access-to-your-organizations-repositories/managing-repository-roles/repository-roles-for-an-organization#repository-roles-for-organizations">here&lt;/a> for details about the role’s permission.&lt;/p>
-&lt;h2 id="github-project-administration">Github Project Administration&lt;/h2>
-&lt;p>Maintainers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Write&amp;rdquo; access while Triagers will be added to the collaborators list of the Cortex repository with &amp;ldquo;Triage&amp;rdquo; access.&lt;/p>
-&lt;p>After 6 months a maintainer will be given &amp;ldquo;Admin&amp;rdquo; access to the Cortex repository.&lt;/p>
-&lt;h2 id="changes-in-governance">Changes in Governance&lt;/h2>
-&lt;p>All changes in Governance require a 2/3 majority vote.&lt;/p>
-&lt;h2 id="cortex-team">Cortex Team&lt;/h2>
-&lt;h3 id="maintainers">Maintainers&lt;/h3>
-&lt;table>
-&lt;thead>
-&lt;tr>
-&lt;th>Name&lt;/th>
-&lt;th>Email&lt;/th>
-&lt;th>GitHub&lt;/th>
-&lt;th>Company&lt;/th>
-&lt;/tr>
-&lt;/thead>
-&lt;tbody>
-&lt;tr>
-&lt;td>Alan Protasio&lt;/td>
-&lt;td>&lt;a href="mailto:alanprot@gmail.com">alanprot@gmail.com&lt;/a>&lt;/td>
-&lt;td>@alanprot&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Ben Ye&lt;/td>
-&lt;td>&lt;a href="mailto:yb532204897@gmail.com">yb532204897@gmail.com&lt;/a>&lt;/td>
-&lt;td>@yeya24&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Charlie Le&lt;/td>
-&lt;td>&lt;a href="mailto:chtle4@gmail.com">chtle4@gmail.com&lt;/a>&lt;/td>
-&lt;td>@CharlieTLe&lt;/td>
-&lt;td>Apple&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Daniel Blando&lt;/td>
-&lt;td>&lt;a href="mailto:daniel@blando.com.br">daniel@blando.com.br&lt;/a>&lt;/td>
-&lt;td>@danielblando&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Friedrich Gonzalez&lt;/td>
-&lt;td>&lt;a href="mailto:friedrichg@gmail.com">friedrichg@gmail.com&lt;/a>&lt;/td>
-&lt;td>@friedrichg&lt;/td>
-&lt;td>Apple&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Sungjin Lee&lt;/td>
-&lt;td>&lt;a href="mailto:tjdwls1201@gmail.com">tjdwls1201@gmail.com&lt;/a>&lt;/td>
-&lt;td>@SungJin1212&lt;/td>
-&lt;td>KakaoEnterprise&lt;/td>
-&lt;/tr>
-&lt;/tbody>
-&lt;/table>
-&lt;h3 id="triagers">Triagers&lt;/h3>
-&lt;table>
-&lt;thead>
-&lt;tr>
-&lt;th>Name&lt;/th>
-&lt;th>Email&lt;/th>
-&lt;th>GitHub&lt;/th>
-&lt;th>Company&lt;/th>
-&lt;/tr>
-&lt;/thead>
-&lt;tbody>
-&lt;tr>
-&lt;td>Anand Rajagopal&lt;/td>
-&lt;td>&lt;a href="mailto:anand.rajagopal@icloud.com">anand.rajagopal@icloud.com&lt;/a>&lt;/td>
-&lt;td>@rajagopalanand&lt;/td>
-&lt;td>Amazon Web Services&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Daniel Sabsay&lt;/td>
-&lt;td>&lt;a href="mailto:danielsabsay.sofware@gmail.com">danielsabsay.sofware@gmail.com&lt;/a>&lt;/td>
-&lt;td>@dsabsay&lt;/td>
-&lt;td>Adobe&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Yuxuan Chen&lt;/td>
-&lt;td>&lt;a href="mailto:sandy19890604@gmail.com">sandy19890604@gmail.com&lt;/a>&lt;/td>
-&lt;td>@sandy2008&lt;/td>
-&lt;td>Morgan Stanley&lt;/td>
-&lt;/tr>
-&lt;tr>
-&lt;td>Siddarth Gundu&lt;/td>
-&lt;td>&lt;a href="mailto:siddarthg0910@gmail.com">siddarthg0910@gmail.com&lt;/a>&lt;/td>
-&lt;td>@siddarth2810&lt;/td>
-&lt;td>Independent&lt;/td>
-&lt;/tr>
-&lt;/tbody>
-&lt;/table>
-&lt;h2 id="other-changes">Other Changes&lt;/h2>
-&lt;p>Unless specified above, all other changes to the project require a 2/3 majority vote.
-Additionally, any maintainer may request that any change require a 2/3 majority vote.&lt;/p></description></item><item><title>Docs: Design patterns and Code conventions</title><link>/docs/contributing/design-patterns-and-code-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/design-patterns-and-code-conventions/</guid><description>
-&lt;p>Cortex adopts some design patterns and code conventions that we ask you to follow when contributing to the project. These conventions have been adopted based on the experience gained over the time and aim to enforce good coding practices and keep a consistent UX (ie. config).&lt;/p>
-&lt;h2 id="go-coding-style">Go coding style&lt;/h2>
-&lt;p>Cortex follows the &lt;a href="https://github.com/golang/go/wiki/CodeReviewComments">Go Code Review Comments&lt;/a> styleguide and the &lt;a href="https://peter.bourgon.org/go-in-production/#formatting-and-style">Formatting and style&lt;/a> section of Peter Bourgon&amp;rsquo;s &lt;a href="https://peter.bourgon.org/go-in-production/">Go: Best Practices for Production Environments&lt;/a>.&lt;/p>
-&lt;h2 id="no-global-variables">No global variables&lt;/h2>
-&lt;ul>
-&lt;li>Do not use global variables&lt;/li>
-&lt;/ul>
-&lt;h2 id="prometheus-metrics">Prometheus metrics&lt;/h2>
-&lt;p>When registering a metric:&lt;/p>
-&lt;ul>
-&lt;li>Do not use a global variable for the metric&lt;/li>
-&lt;li>Create and register the metric with &lt;code>promauto.With(reg)&lt;/code>&lt;/li>
-&lt;li>In any internal Cortex component, do not register the metric to the default prometheus registerer, but pick the registerer in input (ie. &lt;code>NewComponent(reg prometheus.Registerer)&lt;/code>)&lt;/li>
-&lt;/ul>
-&lt;p>Testing metrics:&lt;/p>
-&lt;ul>
-&lt;li>When writing using tests, test exported metrics using &lt;code>testutil.GatherAndCompare()&lt;/code>&lt;/li>
-&lt;/ul>
-&lt;h2 id="config-file-and-cli-flags-conventions">Config file and CLI flags conventions&lt;/h2>
-&lt;p>Naming:&lt;/p>
-&lt;ul>
-&lt;li>Config file options should be lowercase with words &lt;code>_&lt;/code> (underscore) separated (ie. &lt;code>memcached_client&lt;/code>)&lt;/li>
-&lt;li>CLI flags should be lowercase with words &lt;code>-&lt;/code> (dash) separated (ie. &lt;code>memcached-client&lt;/code>)&lt;/li>
-&lt;li>When adding a new config option, look if a similar one already exists within the &lt;a href="/docs/configuration/configuration-file/">config&lt;/a> and keep the same naming (ie. &lt;code>addresses&lt;/code> for a list of network endpoints)&lt;/li>
-&lt;/ul>
-&lt;p>Documentation:&lt;/p>
-&lt;ul>
-&lt;li>A CLI flag mentioned in the documentation or changelog should be always prefixed with a single &lt;code>-&lt;/code> (dash)&lt;/li>
-&lt;/ul></description></item><item><title>Docs: How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>
-&lt;p>The Cortex documentation is compiled into a website published at &lt;a href="https://cortexmetrics.io/">cortexmetrics.io&lt;/a>. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p>
-&lt;h2 id="initial-setup">Initial setup&lt;/h2>
-&lt;p>The following initial setup is required only once:&lt;/p>
-&lt;ol>
-&lt;li>Install &lt;a href="https://gohugo.io/">Hugo&lt;/a> (&lt;strong>extended&lt;/strong> version)
-&lt;ul>
-&lt;li>Look for value of &lt;code>HUGO_VERSION&lt;/code> in &lt;code>build-image/Dockerfile&lt;/code>.&lt;/li>
-&lt;/ul>
-&lt;/li>
-&lt;li>Install &lt;a href="https://nodejs.org/en/">Node.js&lt;/a> &lt;code>v14&lt;/code> or above (alternatively via &lt;a href="https://github.com/nvm-sh/nvm">&lt;code>nvm&lt;/code>&lt;/a>)&lt;/li>
-&lt;li>Install required Node modules with:
-&lt;pre tabindex="0">&lt;code>cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
-&lt;/code>&lt;/pre>&lt;/li>
-&lt;li>Install &lt;a href="https://github.com/campoy/embedmd">embedmd&lt;/a> &lt;code>v1.0.0&lt;/code>:
-&lt;pre tabindex="0">&lt;code>go install github.com/campoy/embedmd@v1.0.0
-&lt;/code>&lt;/pre>&lt;/li>
-&lt;li>Run &lt;code>make BUILD_IN_CONTAINER=false web-build&lt;/code>&lt;/li>
-&lt;/ol>
-&lt;h2 id="run-it">Run it&lt;/h2>
-&lt;p>Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/">&lt;code>http://localhost:1313/&lt;/code>&lt;/a>&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>&lt;span style="color:#75715e"># Keep this running&lt;/span>
-&lt;/span>&lt;/span>&lt;span style="display:flex;">&lt;span>make web-serve
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the content of &lt;code>docs/&lt;/code> or markdown files in the repository root &lt;code>/&lt;/code> you should run:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make BUILD_IN_CONTAINER&lt;span style="color:#f92672">=&lt;/span>false web-pre
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div>&lt;p>Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:&lt;/p>
-&lt;div class="highlight">&lt;pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;">&lt;code class="language-bash" data-lang="bash">&lt;span style="display:flex;">&lt;span>make BUILD_IN_CONTAINER&lt;span style="color:#f92672">=&lt;/span>false doc web-pre
-&lt;/span>&lt;/span>&lt;/code>&lt;/pre>&lt;/div></description></item><item><title>Docs: How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>
-&lt;p>To upgrade the Go&amp;rsquo;s runtime version:&lt;/p>
-&lt;ol>
-&lt;li>Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/">here&lt;/a>&lt;/li>
-&lt;/ol>
-&lt;p>If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p>
-&lt;ol>
-&lt;li>Upgrade &lt;code>go&lt;/code> version in &lt;code>go.mod&lt;/code>&lt;/li>
-&lt;/ol></description></item><item><title>Docs: How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>
-&lt;p>Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e">custom framework&lt;/a> running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/">&lt;code>testing&lt;/code>&lt;/a> package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p>
-&lt;h2 id="how-to-run-integration-tests">How to run integration tests&lt;/h2>
-&lt;p>When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong>locally&lt;/strong> you should build the Cortex Docker image first:&lt;/p>
-&lt;pre tabindex="0">&lt;code>make ./cmd/cortex/.uptodate
-&lt;/code>&lt;/pre>&lt;p>This will locally build the &lt;code>quay.io/cortexproject/cortex:latest&lt;/code> image used by integration tests. Whenever the Cortex code changes (&lt;code>cmd/&lt;/code>, &lt;code>pkg/&lt;/code> or vendors) you should rebuild the Cortex image, while it&amp;rsquo;s &lt;strong>not&lt;/strong> necessary to rebuild it while developing integration tests.&lt;/p>
-&lt;p>Once the Docker image is built, you can run integration tests:&lt;/p>
-&lt;pre tabindex="0">&lt;code>go test -v -tags=integration,requires_docker,integration_alertmanager,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz ./integration/...
-&lt;/code>&lt;/pre>&lt;p>If you want to run a single test you can use a filter. For example, to only run &lt;code>TestRulerAPISharding&lt;/code>:&lt;/p>
-&lt;pre tabindex="0">&lt;code>go test -v -tags=integration,integration_ruler -timeout 2400s -v -count=1 ./integration/... -run &amp;#34;^TestRulerAPISharding$&amp;#34;
-&lt;/code>&lt;/pre>&lt;h3 id="supported-environment-variables">Supported environment variables&lt;/h3>
-&lt;ul>
-&lt;li>&lt;strong>&lt;code>CORTEX_IMAGE&lt;/code>&lt;/strong>&lt;br />
-Docker image used to run Cortex in integration tests (defaults to &lt;code>quay.io/cortexproject/cortex:latest&lt;/code>)&lt;/li>
-&lt;li>&lt;strong>&lt;code>CORTEX_CHECKOUT_DIR&lt;/code>&lt;/strong>&lt;br />
-The absolute path of the Cortex repository local checkout (defaults to &lt;code>$GOPATH/src/github.com/cortexproject/cortex&lt;/code>)&lt;/li>
-&lt;li>&lt;strong>&lt;code>E2E_TEMP_DIR&lt;/code>&lt;/strong>&lt;br />
-The absolute path to a directory where the integration test will create an additional temporary directory to store files generated during the test.&lt;/li>
-&lt;li>&lt;strong>&lt;code>E2E_NETWORK_NAME&lt;/code>&lt;/strong>&lt;br />
-Name of the docker network to create and use for integration tests. If no variable is set, defaults to &lt;code>e2e-cortex-test&lt;/code>.&lt;/li>
-&lt;/ul>
-&lt;h3 id="the-requires_docker-tag">The &lt;code>requires_docker&lt;/code> tag&lt;/h3>
-&lt;p>Integration tests have &lt;code>requires_docker&lt;/code> tag (&lt;code>// +build requires_docker&lt;/code> line followed by empty line on top of Go files), to avoid running them unintentionally as they require Docker, e.g. by running &lt;code>go test ./...&lt;/code> in main Cortex package.&lt;/p>
-&lt;h2 id="isolation">Isolation&lt;/h2>
-&lt;p>Each integration test runs in isolation. For each integration test, we do create a Docker network, start Cortex and its dependencies containers, push/query series to/from Cortex and run assertions on it. Once the test has done, both the Docker network and containers are terminated and deleted.&lt;/p></description></item><item><title>Docs: How to update the build image</title><link>/docs/contributing/how-to-update-the-build-image/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-update-the-build-image/</guid><description>
-&lt;p>The procedure is:&lt;/p>
-&lt;ol>
-&lt;li>Update &lt;code>build-image/Dockerfile&lt;/code>&lt;/li>
-&lt;li>Create a PR to master with that changed, after the PR is merged to master, the new build image is available in the quay.io repository. Check github action logs &lt;a href="https://github.com/cortexproject/cortex/actions/workflows/build-image.yml">here&lt;/a> for to find the image tag.&lt;/li>
-&lt;li>Create another PR to replace the image tag in &lt;code>.github/workflows/*&lt;/code> (&lt;em>there may be multiple references&lt;/em>) and Makefile (variable &lt;code>LATEST_BUILD_IMAGE_TAG&lt;/code>).&lt;/li>
-&lt;li>If you are updating Go&amp;rsquo;s runtime version be sure to change &lt;code>actions/setup-go&lt;/code>&amp;rsquo;s &lt;code>go-version&lt;/code> in ``.github/workflows/*`.&lt;/li>
-&lt;li>Open a PR and make sure the CI with new build-image passes&lt;/li>
-&lt;/ol></description></item><item><title>Docs: How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>
-&lt;p>New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting">majority vote&lt;/a>. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p>
-&lt;ol>
-&lt;li>Submit a PR to add the new member to &lt;code>MAINTAINERS&lt;/code>&lt;/li>
-&lt;li>Invite to &lt;a href="https://github.com/orgs/cortexproject/people">GitHub organization&lt;/a>&lt;/li>
-&lt;li>Invite to &lt;a href="https://groups.google.com/forum/#!forum/cortex-team">&lt;code>cortex-team&lt;/code> group&lt;/a>&lt;/li>
-&lt;li>Invite to &lt;a href="https://quay.io/organization/cortexproject?tab=teams">Quay.io repository&lt;/a>&lt;/li>
-&lt;li>Invite to &lt;a href="https://hub.docker.com/u/cortexproject">Docker Hub organization&lt;/a>&lt;/li>
-&lt;li>Submit a PR to &lt;a href="http://maintainers.cncf.io">CNCF maintainer list for Cortex&lt;/a>&lt;/li>
-&lt;li>Invite to &lt;a href="https://lists.cncf.io/g/cncf-cortex-maintainers">CNCF &lt;code>cncf-cortex-maintainers&lt;/code> mailing list&lt;/a> (via &lt;a href="https://servicedesk.cncf.io">CNCF Service Desk&lt;/a>)&lt;/li>
-&lt;li>Invite to &lt;a href="https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw">Cortex Project Public Calendar&lt;/a>&lt;/li>
-&lt;li>Invite to &lt;a href="https://drive.google.com/drive/folders/1aT7-rx4hvYoB3EjvOeX1LHJhgH0Sawzb">maintainer&amp;rsquo;s Google Docs&lt;/a>&lt;/li>
-&lt;li>Add to the Google Analytics property used for the website statistics&lt;/li>
-&lt;li>Invite to credentials vault&lt;/li>
-&lt;/ol></description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Contributing on Cortex</title><link>/docs/contributing/</link><description>Recent content in Contributing on Cortex</description><generator>Hugo</generator><language>en</language><atom:link href="/docs/contributing/index.xml" rel="self" type="application/rss+xml"/><item><title>Governance</title><link>/docs/contributing/governance/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/governance/</guid><description>&lt;p&gt;This document defines project governance for the cortex project. Its purpose is to describe how decisions are made on the project and how anyone can influence these decisions.&lt;/p&gt;
+&lt;p&gt;This governance charter applies to every project under the cortex GitHub organization. The term &amp;ldquo;cortex project&amp;rdquo; refers to any work done under the cortexproject GitHub organization and includes the cortexproject/cortex repository itself as well as cortexproject/cortex-tools, cortexproject/cortex-jsonnet and all the other repositories under the cortexproject GitHub organization.&lt;/p&gt;</description></item><item><title>Design patterns and Code conventions</title><link>/docs/contributing/design-patterns-and-code-conventions/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/design-patterns-and-code-conventions/</guid><description>&lt;p&gt;Cortex adopts some design patterns and code conventions that we ask you to follow when contributing to the project. These conventions have been adopted based on the experience gained over the time and aim to enforce good coding practices and keep a consistent UX (ie. config).&lt;/p&gt;
+&lt;h2 id="go-coding-style"&gt;Go coding style&lt;/h2&gt;
+&lt;p&gt;Cortex follows the &lt;a href="https://github.com/golang/go/wiki/CodeReviewComments"&gt;Go Code Review Comments&lt;/a&gt; styleguide and the &lt;a href="https://peter.bourgon.org/go-in-production/#formatting-and-style"&gt;Formatting and style&lt;/a&gt; section of Peter Bourgon&amp;rsquo;s &lt;a href="https://peter.bourgon.org/go-in-production/"&gt;Go: Best Practices for Production Environments&lt;/a&gt;.&lt;/p&gt;
+&lt;h2 id="no-global-variables"&gt;No global variables&lt;/h2&gt;
+&lt;ul&gt;
+&lt;li&gt;Do not use global variables&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="prometheus-metrics"&gt;Prometheus metrics&lt;/h2&gt;
+&lt;p&gt;When registering a metric:&lt;/p&gt;</description></item><item><title>How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>&lt;p&gt;The Cortex documentation is compiled into a website published at &lt;a href="https://cortexmetrics.io/"&gt;cortexmetrics.io&lt;/a&gt;. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p&gt;
+&lt;h2 id="initial-setup"&gt;Initial setup&lt;/h2&gt;
+&lt;p&gt;The following initial setup is required only once:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Install &lt;a href="https://gohugo.io/"&gt;Hugo&lt;/a&gt; (&lt;strong&gt;extended&lt;/strong&gt; version)
+&lt;ul&gt;
+&lt;li&gt;Look for value of &lt;code&gt;HUGO_VERSION&lt;/code&gt; in &lt;code&gt;build-image/Dockerfile&lt;/code&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;li&gt;Install &lt;a href="https://nodejs.org/en/"&gt;Node.js&lt;/a&gt; &lt;code&gt;v14&lt;/code&gt; or above (alternatively via &lt;a href="https://github.com/nvm-sh/nvm"&gt;&lt;code&gt;nvm&lt;/code&gt;&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Install required Node modules with:
+&lt;pre tabindex="0"&gt;&lt;code&gt;cd website &amp;amp;&amp;amp; npm install &amp;amp;&amp;amp; cd -
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;Install &lt;a href="https://github.com/campoy/embedmd"&gt;embedmd&lt;/a&gt; &lt;code&gt;v1.0.0&lt;/code&gt;:
+&lt;pre tabindex="0"&gt;&lt;code&gt;go install github.com/campoy/embedmd@v1.0.0
+&lt;/code&gt;&lt;/pre&gt;&lt;/li&gt;
+&lt;li&gt;Run &lt;code&gt;make BUILD_IN_CONTAINER=false web-build&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h2 id="run-it"&gt;Run it&lt;/h2&gt;
+&lt;p&gt;Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/"&gt;&lt;code&gt;http://localhost:1313/&lt;/code&gt;&lt;/a&gt;&lt;/p&gt;</description></item><item><title>How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>&lt;p&gt;To upgrade the Go&amp;rsquo;s runtime version:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/"&gt;here&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
+&lt;/ol&gt;</description></item><item><title>How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>&lt;p&gt;Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e"&gt;custom framework&lt;/a&gt; running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/"&gt;&lt;code&gt;testing&lt;/code&gt;&lt;/a&gt; package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p&gt;
+&lt;h2 id="how-to-run-integration-tests"&gt;How to run integration tests&lt;/h2&gt;
+&lt;p&gt;When integration tests run in CI, we build the Cortex docker image based on the PR code and then run the integration tests against it. When running tests &lt;strong&gt;locally&lt;/strong&gt; you should build the Cortex Docker image first:&lt;/p&gt;</description></item><item><title>How to update the build image</title><link>/docs/contributing/how-to-update-the-build-image/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-update-the-build-image/</guid><description>&lt;p&gt;The procedure is:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Update &lt;code&gt;build-image/Dockerfile&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Create a PR to master with that changed, after the PR is merged to master, the new build image is available in the quay.io repository. Check github action logs &lt;a href="https://github.com/cortexproject/cortex/actions/workflows/build-image.yml"&gt;here&lt;/a&gt; for to find the image tag.&lt;/li&gt;
+&lt;li&gt;Create another PR to replace the image tag in &lt;code&gt;.github/workflows/*&lt;/code&gt; (&lt;em&gt;there may be multiple references&lt;/em&gt;) and Makefile (variable &lt;code&gt;LATEST_BUILD_IMAGE_TAG&lt;/code&gt;).&lt;/li&gt;
+&lt;li&gt;If you are updating Go&amp;rsquo;s runtime version be sure to change &lt;code&gt;actions/setup-go&lt;/code&gt;&amp;rsquo;s &lt;code&gt;go-version&lt;/code&gt; in ``.github/workflows/*`.&lt;/li&gt;
+&lt;li&gt;Open a PR and make sure the CI with new build-image passes&lt;/li&gt;
+&lt;/ol&gt;</description></item><item><title>How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>&lt;p&gt;New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting"&gt;majority vote&lt;/a&gt;. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Submit a PR to add the new member to &lt;code&gt;MAINTAINERS&lt;/code&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://github.com/orgs/cortexproject/people"&gt;GitHub organization&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://groups.google.com/forum/#!forum/cortex-team"&gt;&lt;code&gt;cortex-team&lt;/code&gt; group&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://quay.io/organization/cortexproject?tab=teams"&gt;Quay.io repository&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://hub.docker.com/u/cortexproject"&gt;Docker Hub organization&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Submit a PR to &lt;a href="http://maintainers.cncf.io"&gt;CNCF maintainer list for Cortex&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://lists.cncf.io/g/cncf-cortex-maintainers"&gt;CNCF &lt;code&gt;cncf-cortex-maintainers&lt;/code&gt; mailing list&lt;/a&gt; (via &lt;a href="https://servicedesk.cncf.io"&gt;CNCF Service Desk&lt;/a&gt;)&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://calendar.google.com/calendar/u/0?cid=Y25jZi1jb3J0ZXgtbWFpbnRhaW5lcnNAbGlzdHMuY25jZi5pbw"&gt;Cortex Project Public Calendar&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Invite to &lt;a href="https://drive.google.com/drive/folders/1aT7-rx4hvYoB3EjvOeX1LHJhgH0Sawzb"&gt;maintainer&amp;rsquo;s Google Docs&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Add to the Google Analytics property used for the website statistics&lt;/li&gt;
+&lt;li&gt;Invite to credentials vault&lt;/li&gt;
+&lt;/ol&gt;</description></item></channel></rss>

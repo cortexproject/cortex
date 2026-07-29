@@ -84,16 +84,31 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 		// Add metrics for multiple users
 		m.unoptimizedRegexRejectedTotal.WithLabelValues("user1", "pattern_length").Inc()
 		m.unoptimizedRegexRejectedTotal.WithLabelValues("user2", "cardinality").Inc()
+		m.ingestionDelaySeconds.WithLabelValues("user1").Observe(10.0)
+		m.ingestionDelaySeconds.WithLabelValues("user2").Observe(5.0)
 
 		// Delete user1 metrics
 		m.deletePerUserMetrics("user1")
 
 		// Only user2 metrics should remain
 		err := testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+			# HELP cortex_ingester_ingestion_delay_seconds Delay in seconds between sample ingestion time and sample timestamp.
+			# TYPE cortex_ingester_ingestion_delay_seconds histogram
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="1"} 0
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="5"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="10"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="30"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="60"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="120"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="300"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="600"} 1
+			cortex_ingester_ingestion_delay_seconds_bucket{user="user2",le="+Inf"} 1
+			cortex_ingester_ingestion_delay_seconds_sum{user="user2"} 5
+			cortex_ingester_ingestion_delay_seconds_count{user="user2"} 1
 			# HELP cortex_ingester_unoptimized_regex_rejected_requests_total Total number of requests rejected due to unoptimized regex matcher limits per user and reason.
 			# TYPE cortex_ingester_unoptimized_regex_rejected_requests_total counter
 			cortex_ingester_unoptimized_regex_rejected_requests_total{reason="cardinality",user="user2"} 1
-		`), "cortex_ingester_unoptimized_regex_rejected_requests_total")
+		`), "cortex_ingester_unoptimized_regex_rejected_requests_total", "cortex_ingester_ingestion_delay_seconds")
 		require.NoError(t, err)
 	})
 }
@@ -616,6 +631,12 @@ func TestTSDBMetrics(t *testing.T) {
 			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
 			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
 			cortex_ingester_tsdb_head_stale_series{user="user3"} 30969
+			# HELP cortex_ingester_tsdb_head_max_timestamp Maximum timestamp of the head block, in milliseconds since epoch.
+			# TYPE cortex_ingester_tsdb_head_max_timestamp gauge
+			# 36 * base
+			cortex_ingester_tsdb_head_max_timestamp{user="user1"} 444420
+			cortex_ingester_tsdb_head_max_timestamp{user="user2"} 3088332
+			cortex_ingester_tsdb_head_max_timestamp{user="user3"} 35964
 	`))
 	require.NoError(t, err)
 }
@@ -910,6 +931,11 @@ func TestTSDBMetricsWithRemoval(t *testing.T) {
 			# TYPE cortex_ingester_tsdb_head_stale_series gauge
 			cortex_ingester_tsdb_head_stale_series{user="user1"} 382695
 			cortex_ingester_tsdb_head_stale_series{user="user2"} 2659397
+			# HELP cortex_ingester_tsdb_head_max_timestamp Maximum timestamp of the head block, in milliseconds since epoch.
+			# TYPE cortex_ingester_tsdb_head_max_timestamp gauge
+			# 36 * base
+			cortex_ingester_tsdb_head_max_timestamp{user="user1"} 444420
+			cortex_ingester_tsdb_head_max_timestamp{user="user2"} 3088332
 	`))
 	require.NoError(t, err)
 }
@@ -1242,6 +1268,12 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 		Help: "Total number of stale series in the head block.",
 	})
 	headStaleSeries.Set(31 * base)
+
+	headMaxTime := promauto.With(r).NewGauge(prometheus.GaugeOpts{
+		Name: "prometheus_tsdb_head_max_time",
+		Help: "Maximum timestamp of the head block. The unit is decided by the library consumer.",
+	})
+	headMaxTime.Set(36 * base)
 
 	recordPartWrites := promauto.With(r).NewCounter(prometheus.CounterOpts{
 		Name: "prometheus_tsdb_wal_record_part_writes_total",

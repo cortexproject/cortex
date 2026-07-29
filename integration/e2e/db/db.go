@@ -14,6 +14,11 @@ import (
 const (
 	MinioAccessKey = "Cheescake"
 	MinioSecretKey = "supersecret"
+
+	PostgresDB       = "configs_test"
+	PostgresUser     = "postgres"
+	PostgresPort     = 5432
+	PostgresHostName = "configs-db"
 )
 
 // NewMinio returns minio server, used as a local replacement for S3.
@@ -68,6 +73,24 @@ func NewETCD() *e2e.HTTPService {
 		2379,
 		9000, // Metrics
 	)
+}
+
+// NewPostgres returns a postgres server suitable for tests that need a real database
+// (e.g. the configs API). The default database, user and port match the values exposed
+// as Postgres* constants in this package.
+func NewPostgres(name string) *e2e.ConcreteService {
+	s := e2e.NewConcreteService(
+		name,
+		images.Postgres,
+		nil,
+		e2e.NewCmdReadinessProbe(e2e.NewCommand("pg_isready", "-U", PostgresUser, "-d", PostgresDB)),
+		PostgresPort,
+	)
+	s.SetEnvVars(map[string]string{
+		"POSTGRES_DB":               PostgresDB,
+		"POSTGRES_HOST_AUTH_METHOD": "trust",
+	})
+	return s
 }
 func NewPrometheus(image string, flags map[string]string) *e2e.HTTPService {
 	return NewPrometheusWithName("prometheus", image, flags)

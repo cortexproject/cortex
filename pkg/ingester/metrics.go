@@ -42,6 +42,7 @@ type ingesterMetrics struct {
 	ingestedExemplarsFail    prometheus.Counter
 	ingestedMetadataFail     prometheus.Counter
 	ingestedHistogramBuckets *prometheus.HistogramVec
+	ingestionDelaySeconds    *prometheus.HistogramVec
 	oooLabelsTotal           *prometheus.CounterVec
 	queries                  prometheus.Counter
 	queriedSamples           prometheus.Histogram
@@ -59,6 +60,7 @@ type ingesterMetrics struct {
 
 	activeSeriesPerUser        *prometheus.GaugeVec
 	activeNHSeriesPerUser      *prometheus.GaugeVec
+	headMetricNamesPerUser     *prometheus.GaugeVec
 	activeQueriedSeriesPerUser *prometheus.GaugeVec
 	headQueriedSeriesPerUser   *prometheus.GaugeVec
 	limitsPerLabelSet          *prometheus.GaugeVec
@@ -148,6 +150,14 @@ func newIngesterMetrics(r prometheus.Registerer,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
+		}, []string{"user"}),
+		ingestionDelaySeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Name:                            "cortex_ingester_ingestion_delay_seconds",
+			Help:                            "Delay in seconds between sample ingestion time and sample timestamp.",
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 1,
+			Buckets:                         []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
 		}, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_out_of_order_labels_total",
@@ -315,6 +325,12 @@ func newIngesterMetrics(r prometheus.Registerer,
 		}, []string{"user"}),
 
 		// Not registered automatically, but only if activeSeriesEnabled is true.
+		headMetricNamesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_head_metric_names",
+			Help: "Number of unique metric names in the TSDB head per user.",
+		}, []string{"user"}),
+
+		// Not registered automatically, but only if activeSeriesEnabled is true.
 		activeSeriesPerTracker: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ingester_active_series_per_tracker",
 			Help: "Number of currently active series matching a configured tracker pattern.",
@@ -371,6 +387,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	if activeSeriesEnabled && r != nil {
 		r.MustRegister(m.activeSeriesPerUser)
 		r.MustRegister(m.activeNHSeriesPerUser)
+		r.MustRegister(m.headMetricNamesPerUser)
 		r.MustRegister(m.activeSeriesPerTracker)
 	}
 
@@ -406,6 +423,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.memMetadataRemovedTotal.DeleteLabelValues(userID)
 	m.activeSeriesPerUser.DeleteLabelValues(userID)
 	m.activeNHSeriesPerUser.DeleteLabelValues(userID)
+	m.headMetricNamesPerUser.DeleteLabelValues(userID)
 	m.activeSeriesPerTracker.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.activeQueriedSeriesPerUser.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.headQueriedSeriesPerUser.DeletePartialMatch(prometheus.Labels{"user": userID})
@@ -413,6 +431,7 @@ func (m *ingesterMetrics) deletePerUserMetrics(userID string) {
 	m.limitsPerLabelSet.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.pushErrorsTotal.DeletePartialMatch(prometheus.Labels{"user": userID})
 	m.ingestedHistogramBuckets.DeleteLabelValues(userID)
+	m.ingestionDelaySeconds.DeleteLabelValues(userID)
 
 	if m.memSeriesCreatedTotal != nil {
 		m.memSeriesCreatedTotal.DeleteLabelValues(userID)
@@ -453,6 +472,7 @@ type tsdbMetrics struct {
 	tsdbHeadTruncateTotal              *prometheus.Desc
 	tsdbHeadGcDuration                 *prometheus.Desc
 	tsdbHeadStaleSeries                *prometheus.Desc
+	tsdbHeadMaxTimestamp               *prometheus.Desc
 	tsdbActiveAppenders                *prometheus.Desc
 	tsdbSeriesNotFound                 *prometheus.Desc
 	tsdbChunks                         *prometheus.Desc
@@ -589,6 +609,10 @@ func newTSDBMetrics(r prometheus.Registerer) *tsdbMetrics {
 		tsdbHeadStaleSeries: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_stale_series",
 			"Total number of stale series in the head block.",
+			[]string{"user"}, nil),
+		tsdbHeadMaxTimestamp: prometheus.NewDesc(
+			"cortex_ingester_tsdb_head_max_timestamp",
+			"Maximum timestamp of the head block, in milliseconds since epoch.",
 			[]string{"user"}, nil),
 		tsdbActiveAppenders: prometheus.NewDesc(
 			"cortex_ingester_tsdb_head_active_appenders",
@@ -756,6 +780,7 @@ func (sm *tsdbMetrics) Describe(out chan<- *prometheus.Desc) {
 	out <- sm.tsdbHeadTruncateFail
 	out <- sm.tsdbHeadTruncateTotal
 	out <- sm.tsdbHeadStaleSeries
+	out <- sm.tsdbHeadMaxTimestamp
 	out <- sm.tsdbHeadGcDuration
 	out <- sm.tsdbActiveAppenders
 	out <- sm.tsdbSeriesNotFound
@@ -822,6 +847,7 @@ func (sm *tsdbMetrics) Collect(out chan<- prometheus.Metric) {
 	data.SendSumOfCounters(out, sm.tsdbHeadTruncateTotal, "prometheus_tsdb_head_truncations_total")
 	data.SendSumOfSummaries(out, sm.tsdbHeadGcDuration, "prometheus_tsdb_head_gc_duration_seconds")
 	data.SendSumOfGaugesPerUser(out, sm.tsdbHeadStaleSeries, "prometheus_tsdb_head_stale_series")
+	data.SendMaxOfGaugesPerUser(out, sm.tsdbHeadMaxTimestamp, "prometheus_tsdb_head_max_time")
 	data.SendSumOfGauges(out, sm.tsdbActiveAppenders, "prometheus_tsdb_head_active_appenders")
 	data.SendSumOfCounters(out, sm.tsdbSeriesNotFound, "prometheus_tsdb_head_series_not_found_total")
 	data.SendSumOfGauges(out, sm.tsdbChunks, "prometheus_tsdb_head_chunks")

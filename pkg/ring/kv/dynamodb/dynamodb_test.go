@@ -170,6 +170,38 @@ func Test_Batch_Error(t *testing.T) {
 			mockError:     &types.ConditionalCheckFailedException{},
 			expectedRetry: true,
 		},
+		{
+			// TransactWriteItems reports conditional check failures as
+			// TransactionCanceledException with a ConditionalCheckFailed
+			// cancellation reason, wrapped by the SDK operation error.
+			name: "transaction_canceled_conditional_check_failed_should_retry",
+			mockError: fmt.Errorf("operation error DynamoDB: TransactWriteItems: %w", &types.TransactionCanceledException{
+				Message: aws.String("Transaction cancelled, please refer cancellation reasons for specific reasons"),
+				CancellationReasons: []types.CancellationReason{
+					{Code: aws.String("None")},
+					{Code: aws.String("ConditionalCheckFailed")},
+				},
+			}),
+			expectedRetry: true,
+		},
+		{
+			name: "transaction_canceled_transaction_conflict_should_retry",
+			mockError: fmt.Errorf("operation error DynamoDB: TransactWriteItems: %w", &types.TransactionCanceledException{
+				CancellationReasons: []types.CancellationReason{
+					{Code: aws.String("TransactionConflict")},
+				},
+			}),
+			expectedRetry: true,
+		},
+		{
+			name: "transaction_canceled_other_reason_no_retry",
+			mockError: fmt.Errorf("operation error DynamoDB: TransactWriteItems: %w", &types.TransactionCanceledException{
+				CancellationReasons: []types.CancellationReason{
+					{Code: aws.String("ValidationError")},
+				},
+			}),
+			expectedRetry: false,
+		},
 	}
 
 	for _, tc := range testCases {

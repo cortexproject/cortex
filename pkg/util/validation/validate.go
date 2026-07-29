@@ -432,7 +432,10 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 				return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 			}
-			fh = fh.ReduceResolution(fh.Schema - 1)
+			if err := fh.ReduceResolution(fh.Schema - 1); err != nil {
+				validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID).Inc()
+				return cortexpb.Histogram{}, newNativeHistogramInvalidError(ls, err)
+			}
 		}
 		if oBuckets != len(fh.PositiveBuckets)+len(fh.NegativeBuckets) {
 			validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()
@@ -476,7 +479,10 @@ func ValidateNativeHistogram(validateMetrics *ValidateMetrics, limits *Limits, u
 			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramBucketCountLimitExceeded, userID).Inc()
 			return cortexpb.Histogram{}, newHistogramBucketLimitExceededError(ls, limits.MaxNativeHistogramBuckets)
 		}
-		h = h.ReduceResolution(h.Schema - 1)
+		if err := h.ReduceResolution(h.Schema - 1); err != nil {
+			validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramInvalid, userID).Inc()
+			return cortexpb.Histogram{}, newNativeHistogramInvalidError(ls, err)
+		}
 	}
 	if oBuckets != len(h.PositiveBuckets)+len(h.NegativeBuckets) {
 		validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID).Inc()

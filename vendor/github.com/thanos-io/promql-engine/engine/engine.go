@@ -500,10 +500,7 @@ func (q *Query) Explain() *ExplainOutputNode {
 }
 
 func (q *Query) Analyze() *AnalyzeOutputNode {
-	if observableRoot, ok := model.Unwrap(q.exec).(telemetry.ObservableVectorOperator); ok {
-		return analyzeQuery(observableRoot)
-	}
-	return nil
+	return analyzeQuery(q.exec)
 }
 
 type compatibilityQuery struct {

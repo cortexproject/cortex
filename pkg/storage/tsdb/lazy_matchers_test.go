@@ -229,7 +229,84 @@ func TestFetchWithLazyMatchers_FiltersCorrectly(t *testing.T) {
 	assert.Equal(t, []storage.SeriesRef{1, 3}, refs)
 }
 
-func TestFetchWithLazyMatchers_PropagatesLabelValueForError(t *testing.T) {
+// TestFetchWithLazyMatchers_BufferReuseSafety guards the per-series label
+// buffer reuse in fetchWithLazyMatchers.
+func TestFetchWithLazyMatchers_BufferReuseSafety(t *testing.T) {
+	ctx := context.Background()
+
+	const totalSeries = 500
+	series := make(map[storage.SeriesRef]labels.Labels, totalSeries)
+	refs := make([]storage.SeriesRef, totalSeries)
+	var wantMatches []storage.SeriesRef
+	for i := range totalSeries {
+		ref := storage.SeriesRef(i + 1)
+		refs[i] = ref
+		// Half the series share a single "web-shared" pod value (exercises the
+		// per-value cache-hit branch across many overwritten buffers); the other
+		// half get distinct values, alternating match/no-match.
+		var pod string
+		switch {
+		case i%2 == 0:
+			pod = "web-shared" // matches web.*
+		case i%4 == 1:
+			pod = "web-" + string(rune('a'+i%26)) // distinct, matches web.*
+		default:
+			pod = "db-" + string(rune('a'+i%26)) // distinct, does not match
+		}
+		series[ref] = labels.FromStrings("__name__", "cpu", "pod", pod)
+		if pod == "web-shared" || (len(pod) >= 4 && pod[:4] == "web-") {
+			wantMatches = append(wantMatches, ref)
+		}
+	}
+
+	ir := &mockIndexReaderWithSeries{
+		mockIndexReader: mockIndexReader{},
+		series:          series,
+	}
+	cache := &blocksPostingsForMatchersCache{
+		postingsForMatchersFunc: func(_ context.Context, _ prom_tsdb.IndexReader, _ ...*labels.Matcher) (index.Postings, error) {
+			return index.NewListPostings(append([]storage.SeriesRef(nil), refs...)), nil
+		},
+	}
+
+	got, _, err := cache.fetchWithLazyMatchers(ctx, ir,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "cpu")},
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "pod", "web.*")},
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, wantMatches, got, "buffer reuse must not corrupt cached label values")
+}
+
+func TestFetchWithLazyMatchers_SkipsGCdSeries(t *testing.T) {
+	ctx := context.Background()
+
+	ir := &mockIndexReaderWithError{
+		mockIndexReaderWithSeries: mockIndexReaderWithSeries{
+			mockIndexReader: mockIndexReader{},
+			series: map[storage.SeriesRef]labels.Labels{
+				1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
+				3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
+			},
+		},
+		errOnRef: 2,
+		err:      storage.ErrNotFound,
+	}
+
+	cache := &blocksPostingsForMatchersCache{
+		postingsForMatchersFunc: func(_ context.Context, _ prom_tsdb.IndexReader, _ ...*labels.Matcher) (index.Postings, error) {
+			return index.NewListPostings([]storage.SeriesRef{1, 2, 3}), nil
+		},
+	}
+
+	refs, _, err := cache.fetchWithLazyMatchers(ctx, ir,
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchEqual, "__name__", "cpu")},
+		[]*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "pod", "web.*")},
+	)
+	assert.NoError(t, err, "ErrNotFound should not propagate — Head GC'd series must be skipped")
+	assert.Equal(t, []storage.SeriesRef{1, 3}, refs, "only non-Head GC'd matching series should be returned")
+}
+
+func TestFetchWithLazyMatchers_PropagatesSeriesError(t *testing.T) {
 	ctx := context.Background()
 	injectedErr := errors.New("injected disk error")
 
@@ -272,11 +349,11 @@ type mockIndexReaderWithError struct {
 	err      error
 }
 
-func (m *mockIndexReaderWithError) LabelValueFor(ctx context.Context, id storage.SeriesRef, label string) (string, error) {
+func (m *mockIndexReaderWithError) Series(id storage.SeriesRef, builder *labels.ScratchBuilder, chks *[]chunks.Meta) error {
 	if id == m.errOnRef {
-		return "", m.err
+		return m.err
 	}
-	return m.mockIndexReaderWithSeries.LabelValueFor(ctx, id, label)
+	return m.mockIndexReaderWithSeries.Series(id, builder, chks)
 }
 
 // --- Mocks ---
@@ -323,9 +400,6 @@ func (m *mockIndexReader) ShardedPostings(p index.Postings, _, _ uint64) index.P
 func (m *mockIndexReader) Series(_ storage.SeriesRef, _ *labels.ScratchBuilder, _ *[]chunks.Meta) error {
 	return nil
 }
-func (m *mockIndexReader) LabelValueFor(_ context.Context, _ storage.SeriesRef, _ string) (string, error) {
-	return "", storage.ErrNotFound
-}
 func (m *mockIndexReader) LabelNamesFor(_ context.Context, _ index.Postings) ([]string, error) {
 	return nil, nil
 }
@@ -336,16 +410,13 @@ type mockIndexReaderWithSeries struct {
 	series map[storage.SeriesRef]labels.Labels
 }
 
-func (m *mockIndexReaderWithSeries) LabelValueFor(_ context.Context, id storage.SeriesRef, label string) (string, error) {
+func (m *mockIndexReaderWithSeries) Series(id storage.SeriesRef, builder *labels.ScratchBuilder, _ *[]chunks.Meta) error {
 	lbls, ok := m.series[id]
 	if !ok {
-		return "", storage.ErrNotFound
+		return storage.ErrNotFound
 	}
-	v := lbls.Get(label)
-	if v == "" {
-		return "", storage.ErrNotFound
-	}
-	return v, nil
+	builder.Assign(lbls)
+	return nil
 }
 
 func generateValues(prefix string, count int) []string {

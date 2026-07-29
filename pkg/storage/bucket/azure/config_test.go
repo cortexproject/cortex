@@ -13,6 +13,7 @@ import (
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
+	Endpoint:   "blob.core.windows.net",
 	MaxRetries: 20,
 	Config: http.Config{
 		IdleConnTimeout:       90 * time.Second,

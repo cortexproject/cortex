@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/features"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -193,6 +194,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		false,
 		false,
 		nil,
+		features.NewRegistry(),
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

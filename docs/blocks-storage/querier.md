@@ -380,7 +380,7 @@ The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
 blocks_storage:
-  # Backend storage to use. Supported backends are: s3, gcs, azure, swift,
+  # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
   # filesystem.
   # CLI flag: -blocks-storage.backend
   [backend: <string> | default = "s3"]
@@ -515,7 +515,7 @@ blocks_storage:
     # Azure storage endpoint suffix without schema. The account name will be
     # prefixed to this value to create the FQDN
     # CLI flag: -blocks-storage.azure.endpoint-suffix
-    [endpoint_suffix: <string> | default = ""]
+    [endpoint_suffix: <string> | default = "blob.core.windows.net"]
 
     # Number of retries for recoverable errors
     # CLI flag: -blocks-storage.azure.max-retries
@@ -658,6 +658,60 @@ blocks_storage:
     # data is received on a request.
     # CLI flag: -blocks-storage.swift.request-timeout
     [request_timeout: <duration> | default = 5s]
+
+  oci:
+    # The OCI configuration provider to use. Supported values are: default,
+    # instance-principal, raw, oke-workload-identity.
+    # CLI flag: -blocks-storage.oci.provider
+    [provider: <string> | default = "default"]
+
+    # The OCI bucket name.
+    # CLI flag: -blocks-storage.oci.bucket
+    [bucket: <string> | default = ""]
+
+    # The OCID of the compartment that contains the bucket.
+    # CLI flag: -blocks-storage.oci.compartment-ocid
+    [compartment_ocid: <string> | default = ""]
+
+    # The OCID of the tenancy. Required when the provider is 'raw'.
+    # CLI flag: -blocks-storage.oci.tenancy-ocid
+    [tenancy_ocid: <string> | default = ""]
+
+    # The OCID of the user. Required when the provider is 'raw'.
+    # CLI flag: -blocks-storage.oci.user-ocid
+    [user_ocid: <string> | default = ""]
+
+    # The OCI region. Required when the provider is 'raw'.
+    # CLI flag: -blocks-storage.oci.region
+    [region: <string> | default = ""]
+
+    # The fingerprint of the API signing key. Required when the provider is
+    # 'raw'.
+    # CLI flag: -blocks-storage.oci.fingerprint
+    [fingerprint: <string> | default = ""]
+
+    # The API signing private key in PEM format. Required when the provider is
+    # 'raw'.
+    # CLI flag: -blocks-storage.oci.private-key
+    [privatekey: <string> | default = ""]
+
+    # The passphrase for the API signing private key, if the key is encrypted.
+    # CLI flag: -blocks-storage.oci.private-key-passphrase
+    [passphrase: <string> | default = ""]
+
+    # The part size in bytes used for multipart uploads. 0 uses the provider
+    # default.
+    # CLI flag: -blocks-storage.oci.part-size
+    [part_size: <int> | default = 0]
+
+    # The maximum number of request attempts when encountering recoverable
+    # errors. Values of 0 or 1 disable retries.
+    # CLI flag: -blocks-storage.oci.max-request-retries
+    [max_request_retries: <int> | default = 3]
+
+    # The fixed interval in seconds to wait between request retry attempts.
+    # CLI flag: -blocks-storage.oci.request-retry-interval
+    [request_retry_interval: <int> | default = 10]
 
   filesystem:
     # Local filesystem storage directory.
@@ -2006,13 +2060,14 @@ blocks_storage:
       [enabled: <boolean> | default = true]
 
       # How frequently a bucket index, which previously failed to load, should
-      # be tried to load again. This option is used only by querier.
+      # be tried to load again. This option is used by querier and store-gateway
+      # parquet mode.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.update-on-error-interval
       [update_on_error_interval: <duration> | default = 1m]
 
       # How long a unused bucket index should be cached. Once this timeout
       # expires, the unused bucket index is removed from the in-memory cache.
-      # This option is used only by querier.
+      # This option is used by querier and store-gateway parquet mode.
       # CLI flag: -blocks-storage.bucket-store.bucket-index.idle-timeout
       [idle_timeout: <duration> | default = 1h]
 

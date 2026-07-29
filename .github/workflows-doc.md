@@ -17,7 +17,6 @@ test-build-deploy.yml specifies a workflow that runs all Cortex continuous integ
 |------------------------|-------------------------------------------------------------------------------------------------------------------------------|------|
 | lint                   | Runs linting and ensures vendor directory, protos and generated documentation are consistent.                                 | CI   |
 | test                   | Runs units tests on Cassandra testing framework.                                                                              | CI   |
-| integration-configs-db | Integration tests for database configurations.                                                                                | CI   |
 | integration            | Runs integration tests after upgrading golang, pulling necessary docker images and downloading necessary module dependencies. | CI   |
 | Security/CodeQL        | CodeQL is a semantic code analysis engine used for automating security checks.                                                | CI   |
 | build                  | Builds and saves an up-to-date Cortex image and website.                                                                      | CI   |
@@ -62,7 +61,7 @@ As of October 2020, GitHub Actions do not persist between different jobs in the 
 | Artifact                      | Stored In | Used By                                     | Purpose of Storing Artifact |
 |-------------------------------|-----------|---------------------------------------------|-----------------------------|
 | website public                | build     | deploy_website                              | share data between jobs     |
-| Docker Images                 | build     | deploy, integration, integrations-config-db | share data between jobs     |
+| Docker Images                 | build     | deploy, integration                         | share data between jobs     |
 
 *Note:* Docker Images are zipped before uploading as a workaround. The images contain characters that are illegal in the upload-artifact action.
 ```yaml

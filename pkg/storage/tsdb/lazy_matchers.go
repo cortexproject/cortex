@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	prom_tsdb "github.com/prometheus/prometheus/tsdb"
-	"github.com/prometheus/prometheus/tsdb/index"
 )
 
 // regexCost classifies how expensive per-call evaluation of a regex matcher
@@ -295,14 +294,19 @@ func splitMatchersForHeadWithConfig(ctx context.Context, ix prom_tsdb.IndexReade
 }
 
 // postingsLen returns the number of series matching a single label pair.
-// For the head block, Postings() for a single value returns a *ListPostings
-// directly, so Len() is O(1) — just a slice length read.
+// For the head block, Postings() for a single value returns an internal
+// listPostings (unexported since https://github.com/prometheus/prometheus/pull/17661)
+// that implements Len() in O(1) — just a slice length read.
 func postingsLen(ctx context.Context, ix prom_tsdb.IndexReader, name, value string) int {
 	p, err := ix.Postings(ctx, name, value)
 	if err != nil {
 		return 0
 	}
-	if lp, ok := p.(*index.ListPostings); ok {
+
+	type lener interface {
+		Len() int
+	}
+	if lp, ok := p.(lener); ok {
 		return lp.Len()
 	}
 	return 0

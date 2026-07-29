@@ -81,6 +81,7 @@ const (
 	errTSDBCreateIncompatibleState = "cannot create a new TSDB while the ingester is not in active state (current state: %s)"
 	errTSDBIngestWithTimestamp     = "err: %v. series=%s"               // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
 	errTSDBIngest                  = "err: %v. timestamp=%s, series=%s" // Using error.Wrap puts the message before the error and if the series is too long, its truncated.
+	errTSDBIngestWithHeadMaxTime   = "err: %v. timestamp=%s, tsdbHeadMaxTimestamp=%s, series=%s"
 	errTSDBIngestExemplar          = "err: %v. timestamp=%s, series=%s, exemplar=%s"
 
 	// Jitter applied to the idle timeout to prevent compaction in all ingesters concurrently.
@@ -340,6 +341,7 @@ type Ingester struct {
 // Shipper interface is used to have an easy way to mock it in tests.
 type Shipper interface {
 	Sync(ctx context.Context) (uploaded int, err error)
+	Close() error
 }
 
 type tsdbState int
@@ -376,6 +378,7 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 type userTSDB struct {
 	db                  *tsdb.DB
 	userID              string
+	logger              log.Logger
 	activeSeries        *ActiveSeries
 	activeQueriedSeries *ActiveQueriedSeries
 	headQueriedSeries   *ActiveQueriedSeries
@@ -452,6 +455,11 @@ func (u *userTSDB) Blocks() []*tsdb.Block {
 }
 
 func (u *userTSDB) Close() error {
+	if u.shipper != nil {
+		if err := u.shipper.Close(); err != nil {
+			level.Warn(u.logger).Log("msg", "failed to close shipper", "err", err)
+		}
+	}
 	return u.db.Close()
 }
 
@@ -1184,6 +1192,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		userDB.activeSeries.Purge(purgeTime)
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
+		i.metrics.headMetricNamesPerUser.WithLabelValues(userID).Set(float64(userDB.seriesInMetric.ActiveMetricNames()))
 		if err := userDB.labelSetCounter.UpdateMetric(ctx, userDB, i.metrics); err != nil {
 			level.Warn(i.logger).Log("msg", "failed to update per labelSet metrics", "user", userID, "err", err)
 		}
@@ -1416,6 +1425,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		perMetricSeriesLimitCount              = 0
 		discardedNativeHistogramCount          = 0
 
+		// headMaxTime is snapshotted right after the appender is created. The appender
+		// derives its lower time bound checks (e.g. out of bounds) from the head max
+		// time at creation time. We cannot access the appender's internal bound
+		// directly, so we snapshot the head max time once here instead of fetching it
+		// again for every failed sample.
+		headMaxTime int64
+
 		updateFirstPartial = func(errFn func() error) {
 			if firstPartialErr == nil {
 				firstPartialErr = errFn()
@@ -1431,7 +1447,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrOutOfBounds):
 				sampleOutOfBoundsCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
+				})
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				sampleOutOfOrderCount++
@@ -1446,7 +1464,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.Is(cause, storage.ErrTooOldSample):
 				sampleTooOldCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
+				})
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
 				perUserSeriesLimitCount++
@@ -1492,6 +1512,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Walk the samples, appending them to the users database
 	app := db.Appender(ctx).(extendedAppender)
+	headMaxTime = db.Head().MaxTime()
 
 	// Ensure the appender is always released so that we don't leak TSDB head
 	// series references, mmap'd chunks and pending state on early returns.
@@ -1516,6 +1537,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	}
 
 	var newSeries []labels.Labels
+
+	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
+	nowMs := time.Now().UnixMilli()
+	observeDelay := func(timestampMs int64) {
+		if delayMs := nowMs - timestampMs; delayMs >= 0 {
+			delayObserver.Observe(float64(delayMs) / 1000.0)
+		}
+	}
 
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
@@ -1545,9 +1574,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		for _, s := range ts.Samples {
 			var err error
 
+			// Observe ingestion delay for all samples (accepted and rejected)
+			observeDelay(s.TimestampMs)
+
 			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
-				// TODO(SungJin1212): Change to AppendSTZeroSample after update the Prometheus v3.9.0+
-				if _, err = app.AppendCTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+				if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
 					startTimestampSampleAppendFailCount++
 					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
 				}
@@ -1591,6 +1622,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					fh  *histogram.FloatHistogram
 				)
 
+				// Observe ingestion delay for all histograms (accepted and rejected)
+				observeDelay(hp.TimestampMs)
+
 				// Choose the decoder based on the histogram's proto type (the
 				// CountInt/CountFloat oneof), not the count value. A float
 				// histogram with a count of 0 (e.g. a staleness marker or an
@@ -1605,8 +1639,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				}
 
 				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
-					// TODO(SungJin1212): Change to AppendHistogramSTZeroSample after update the Prometheus v3.9.0+
-					if _, err = app.AppendHistogramCTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderCT) {
+					if _, err = app.AppendHistogramSTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
 						startTimestampHistogramAppendFailCount++
 						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
 					}
@@ -3009,6 +3042,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	userDB := &userTSDB{
 		userID:              userID,
+		logger:              userLogger,
 		activeSeries:        NewActiveSeries(),
 		activeQueriedSeries: activeQueriedSeries,
 		headQueriedSeries:   headQueriedSeries,
@@ -3060,6 +3094,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		OutOfOrderCapMax:               i.cfg.BlocksStorageConfig.TSDB.OutOfOrderCapMax,
 		EnableOverlappingCompaction:    false, // Always let compactors handle overlapped blocks, e.g. OOO blocks.
 		BlockChunkQuerierFunc:          i.blockChunkQuerierFunc(userID),
+		BlockReloadInterval:            1 * time.Minute, // use default value
 	}, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to open TSDB: %s", udir)
@@ -3099,9 +3134,14 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 
 	// Create a new shipper for this database
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
+		udirRoot, err := os.OpenRoot(udir)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to open root dir for shipper: %s", udir)
+		}
+
 		userDB.shipper = shipper.New(
 			bucket.NewUserBucketClient(userID, i.TSDBState.bucket, i.limits),
-			udir,
+			udirRoot,
 			shipper.WithLogger(userLogger),
 			shipper.WithRegisterer(tsdbPromReg),
 			shipper.WithLabels(func() labels.Labels { return l }),
@@ -3151,6 +3191,7 @@ func (i *Ingester) closeAllTSDB() {
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.headMetricNamesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}
 
@@ -3930,6 +3971,23 @@ func wrappedTSDBIngestErr(ingestErr error, timestamp model.Time, labels []cortex
 	default:
 		return fmt.Errorf(errTSDBIngest, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 	}
+}
+
+// wrappedTSDBIngestErrWithHeadMaxTime is like wrappedTSDBIngestErr, but it also includes the
+// TSDB head max time in the error message. This helps users understand how far behind the
+// accepted time range a rejected sample is, e.g. for out of bounds or too old sample errors.
+func wrappedTSDBIngestErrWithHeadMaxTime(ingestErr error, timestamp, headMaxTime model.Time, labels []cortexpb.LabelAdapter) error {
+	if ingestErr == nil {
+		return nil
+	}
+
+	// The TSDB head max time is unset when the head is empty (e.g. no sample ingested yet
+	// after startup). Fall back to the error message without the head max time in that case.
+	if int64(headMaxTime) == math.MinInt64 {
+		return wrappedTSDBIngestErr(ingestErr, timestamp, labels)
+	}
+
+	return fmt.Errorf(errTSDBIngestWithHeadMaxTime, ingestErr, timestamp.Time().UTC().Format(time.RFC3339Nano), headMaxTime.Time().UTC().Format(time.RFC3339Nano), cortexpb.FromLabelAdaptersToLabels(labels).String())
 }
 
 func wrappedTSDBIngestExemplarErr(ingestErr error, timestamp model.Time, seriesLabels, exemplarLabels []cortexpb.LabelAdapter) error {

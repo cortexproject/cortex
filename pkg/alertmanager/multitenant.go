@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/alertmanager/cluster"
 	"github.com/prometheus/alertmanager/cluster/clusterpb"
 	amconfig "github.com/prometheus/alertmanager/config"
+	amcommoncfg "github.com/prometheus/alertmanager/config/common"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
@@ -878,7 +879,7 @@ func (am *MultitenantAlertmanager) setConfig(cfg alertspb.AlertConfigDesc) error
 					if err != nil {
 						return err
 					}
-					userAmConfig.Receivers[i].WebhookConfigs[j].URL = amconfig.SecretTemplateURL(u.String())
+					userAmConfig.Receivers[i].WebhookConfigs[j].URL = amcommoncfg.SecretTemplateURL(u.String())
 				}
 			}
 		}

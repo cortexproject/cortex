@@ -49,6 +49,7 @@ type BucketStores interface {
 	storepb.StoreServer
 	SyncBlocks(ctx context.Context) error
 	InitialSync(ctx context.Context) error
+	Stop() error
 }
 
 // ThanosBucketStores is a multi-tenant wrapper of Thanos BucketStore.
@@ -229,6 +230,9 @@ func (u *ThanosBucketStores) SyncBlocks(ctx context.Context) error {
 		return s.SyncBlocks(ctx)
 	})
 }
+
+// Stop implements BucketStores. ThanosBucketStores has no background services to stop.
+func (u *ThanosBucketStores) Stop() error { return nil }
 
 func (u *ThanosBucketStores) syncUsersBlocksWithRetries(ctx context.Context, f func(context.Context, *store.BucketStore) error) error {
 	retries := backoff.New(ctx, backoff.Config{
@@ -703,7 +707,6 @@ func (u *ThanosBucketStores) getOrCreateStore(userID string) (*store.BucketStore
 		newBytesLimiterFactory(u.limits, userID, u.getUserTokenBucket(userID), u.instanceTokenBucket, u.cfg.BucketStore.TokenBucketBytesLimiter, u.getTokensToRetrieve),
 		u.partitioner,
 		u.cfg.BucketStore.BlockSyncConcurrency,
-		false, // No need to enable backward compatibility with Thanos pre 0.8.0 queriers
 		u.cfg.BucketStore.PostingOffsetsInMemSampling,
 		true, // Enable series hints.
 		u.cfg.BucketStore.IndexHeaderLazyLoadingEnabled,

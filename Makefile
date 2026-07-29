@@ -104,7 +104,6 @@ pkg/alertmanager/alertspb/alerts.pb.go: pkg/alertmanager/alertspb/alerts.proto
 all: $(UPTODATE_FILES)
 test: protos
 mod-check: protos
-configs-integration-test: protos
 lint: protos
 build-image/$(UPTODATE): build-image/*
 
@@ -112,7 +111,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-ee0b97cc37
+LATEST_BUILD_IMAGE_TAG ?= master-5607698940
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -132,22 +131,6 @@ exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos do
 	@echo
 	@echo ">>>> Entering build container: $@"
 	@$(SUDO) time docker run --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
-
-configs-integration-test: build-image/$(UPTODATE)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6.16)"; \
-	echo ; \
-	echo ">>>> Entering build container: $@"; \
-	$(SUDO) docker run --rm $(TTY) -i $(GOVOLUMES) \
-		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
-		--workdir /go/src/github.com/cortexproject/cortex \
-		--link "$$DB_CONTAINER":configs-db.cortex.local \
-		-e DB_ADDR=configs-db.cortex.local \
-		$(BUILD_IMAGE) $@; \
-	status=$$?; \
-	docker rm -f "$$DB_CONTAINER"; \
-	exit $$status
 
 else
 
@@ -175,7 +158,7 @@ lint:
 	golangci-lint run
 
 	# Ensure no blocklisted package is imported.
-	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_configs_db,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
 		github.com/prometheus/client_golang/prometheus.{MultiError}=github.com/prometheus/prometheus/tsdb/errors.{NewMulti},\
@@ -228,9 +211,6 @@ cover:
 
 shell:
 	bash
-
-configs-integration-test:
-	/bin/bash -c "go test -v -tags 'netgo integration slicelabels' -timeout 10m ./pkg/configs/... ./pkg/ruler/..."
 
 mod-check:
 	GO111MODULE=on go mod download

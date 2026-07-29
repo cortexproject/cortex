@@ -17,4 +17,5 @@
 | Anand Rajagopal | anand.rajagopal@icloud.com | @rajagopalanand | Amazon Web Services |
 | Daniel Sabsay   | danielsabsay.sofware@gmail.com          | @dsabsay        | Adobe               |
 | Yuxuan Chen     | sandy19890604@gmail.com    | @sandy2008      | Morgan Stanley      |
+| Siddarth Gundu  | siddarthg0910@gmail.com    | @siddarth2810   | Independent         |
 

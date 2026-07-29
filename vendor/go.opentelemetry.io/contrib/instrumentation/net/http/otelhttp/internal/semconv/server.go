@@ -20,8 +20,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/semconv/v1.39.0"
-	"go.opentelemetry.io/otel/semconv/v1.39.0/httpconv"
+	"go.opentelemetry.io/otel/semconv/v1.40.0"
+	"go.opentelemetry.io/otel/semconv/v1.40.0/httpconv"
 )
 
 type RequestTraceAttrsOpts struct {
@@ -364,7 +364,9 @@ func (n HTTPServer) MetricAttributes(server string, req *http.Request, statusCod
 	if statusCode > 0 {
 		num++
 	}
-
+	if route == "" && req.Pattern != "" {
+		route = httpRoute(req.Pattern)
+	}
 	if route != "" {
 		num++
 	}

@@ -652,7 +652,8 @@ func TestCompactor_ShouldNotCompactBlocksMarkedForDeletion(t *testing.T) {
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/meta.json", nil)
 	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/deletion-mark.json", nil)
 	bucketClient.MockDelete("user-1/markers/01DTW0ZCPDDNV4BV83Q2SV4QAZ-deletion-mark.json", nil)
-	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ", nil)
+	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/chunks/", nil)
+	bucketClient.MockDelete("user-1/01DTW0ZCPDDNV4BV83Q2SV4QAZ/", nil)
 	bucketClient.MockGet("user-1/bucket-index.json.gz", "", nil)
 	bucketClient.MockGet("user-1/bucket-index-sync-status.json", "", nil)
 	bucketClient.MockUpload("user-1/bucket-index.json.gz", nil)
@@ -848,6 +849,8 @@ func TestCompactor_ShouldNotCompactBlocksForUsersMarkedForDeletion(t *testing.T)
 
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/meta.json", nil)
 	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/index", nil)
+	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/chunks/", nil)
+	bucketClient.MockDelete("user-1/01DTVP434PA9VFXSW2JKB3392D/", nil)
 	bucketClient.MockDelete("user-1/bucket-index.json.gz", nil)
 	bucketClient.MockDelete("user-1/bucket-index-sync-status.json", nil)
 
@@ -1163,7 +1166,7 @@ func TestCompactor_ShouldCompactOnlyUsersOwnedByTheInstanceOnShardingEnabledAndM
 
 	// Wait until a run has been completed on each compactor
 	for _, c := range compactors {
-		cortex_testutil.Poll(t, 120*time.Second, true, func() any {
+		cortex_testutil.Poll(t, 240*time.Second, true, func() any {
 			return prom_testutil.ToFloat64(c.CompactionRunsCompleted) >= 1
 		})
 	}

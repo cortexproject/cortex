@@ -80,13 +80,13 @@ func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {
 	a.opts = opts
 }
 
-func (a *PusherAppender) AppendHistogramCTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	// AppendHistogramCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+func (a *PusherAppender) AppendHistogramSTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// AppendHistogramSTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
 }
 
-func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
-	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+func (a *PusherAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
+	// AppendSTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
 }
 

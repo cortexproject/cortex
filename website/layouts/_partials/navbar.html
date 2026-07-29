@@ -3,11 +3,11 @@
 	<a id="cortex-logo" class="navbar-brand {{ if $cover }}d-none{{end}}" href="{{ .Site.Home.RelPermalink }}">
 		<span class="navbar-logo">{{ with resources.Get "icons/logo-white.svg" }}{{ ( . ).Content | safeHTML }}{{ end }}</span>
 	</a>
-	<div class="td-navbar-nav-scroll ml-md-auto" id="main_navbar">
+	<div class="td-navbar-nav-scroll ms-md-auto" id="main_navbar">
 		<ul class="navbar-nav mt-2 mt-lg-0">
 			{{ $p := . }}
 			{{ range .Site.Menus.main }}
-			<li class="nav-item mr-4 mb-2 mb-lg-0">
+			<li class="nav-item me-4 mb-2 mb-lg-0">
 				{{ $active := or ($p.IsMenuCurrent "main" .) ($p.HasMenuCurrent "main" .) }}
 				{{ with .Page }}
 				{{ $active = or $active ( $.IsDescendant .)  }}
@@ -27,12 +27,12 @@
 				{{ partial "navbar-lang-selector.html" . }}
 			</li>
 			{{ end }}
-			<li class="nav-item mr-4 mb-2 mb-lg-0">
+			<li class="nav-item me-4 mb-2 mb-lg-0">
 				<a href="https://twitter.com/cortexmetrics" class="nav-link active">
 					<span class="active"><i class="fab fa-fw fa-twitter"></i> Twitter</span>
 				</a>
 			</li>
-			<li class="nav-item mr-4 mb-2 mb-lg-0">
+			<li class="nav-item me-4 mb-2 mb-lg-0">
 				<a href="https://github.com/cortexproject" class="nav-link active">
 					<span class="active"><i class="fab fa-fw fa-github"></i> GitHub</span>
 				</a>

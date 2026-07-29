@@ -17,6 +17,12 @@ defaultContentLanguageInSubdir = false
 enableMissingTranslationPlaceholders = true
 
 disableKinds = []
+
+[security]
+  allowContent = ['^.*$']
+  [security.node.permissions]
+    allowRead = ['*']
+
 [taxonomies]
 tag = "tags"
 category = "categories"

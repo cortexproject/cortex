@@ -16,6 +16,9 @@
     "url": "https://github.com/cortexproject/cortex/issues"
   },
   "homepage": "https://github.com/cortexproject/cortex/",
+  "browserslist": [
+    "defaults"
+  ],
   "dependencies": {},
   "devDependencies": {
     "autoprefixer": "^10.5.0",

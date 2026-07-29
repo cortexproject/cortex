@@ -252,9 +252,12 @@ jobs:
       - name: Stage Test Data
         # The integration tests read docs/configuration/*.yaml at runtime via getCortexProjectDir()
         # in integration/util.go. Bundling these so the integration job doesn't need a checkout.
+        # The VERSION file is also read (getLatestReleaseImage) to pin backward-compatibility
+        # fuzz tests to the latest release image.
         run: |
           mkdir -p out/testdata/docs
           cp -r docs/configuration out/testdata/docs/
+          cp VERSION out/testdata/
       - name: Create Integration Tests Archive
         run: tar -C out -czvf integration-tests-${{ matrix.arch }}.tar.gz bin testdata
       - name: Upload Integration Tests Artifact
@@ -324,9 +327,10 @@ jobs:
             retry docker pull quay.io/cortexproject/cortex:v1.19.1
             retry docker pull quay.io/cortexproject/cortex:v1.20.1
             retry docker pull quay.io/cortexproject/cortex:v1.21.0
+            retry docker pull quay.io/cortexproject/cortex:v1.21.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            retry docker pull quay.io/cortexproject/cortex:v1.20.1
-            retry docker pull quay.io/prometheus/prometheus:v3.8.1
+            retry docker pull quay.io/cortexproject/cortex:v$(cat testdata/VERSION)
+            retry docker pull quay.io/prometheus/prometheus:v3.9.1
           elif [ "$TEST_TAGS" = "integration_configs_db" ]; then
             retry docker pull postgres:9.6.16
           fi

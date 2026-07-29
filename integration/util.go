@@ -4,9 +4,11 @@ package integration
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/pkg/errors"
 
@@ -32,6 +34,22 @@ func getCortexProjectDir() string {
 	}
 
 	return os.Getenv("GOPATH") + "/src/github.com/cortexproject/cortex"
+}
+
+// getLatestReleaseImage returns the Cortex image reference for the latest release,
+// derived from the VERSION file at the project root.
+func getLatestReleaseImage() (string, error) {
+	content, err := os.ReadFile(filepath.Join(getCortexProjectDir(), "VERSION"))
+	if err != nil {
+		return "", errors.Wrap(err, "unable to read VERSION file")
+	}
+
+	version := strings.TrimSpace(string(content))
+	if version == "" {
+		return "", errors.New("VERSION file is empty")
+	}
+
+	return fmt.Sprintf("quay.io/cortexproject/cortex:v%s", version), nil
 }
 
 func writeFileToSharedDir(s *e2e.Scenario, dst string, content []byte) error {

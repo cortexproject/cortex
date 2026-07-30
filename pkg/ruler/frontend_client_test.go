@@ -134,7 +134,7 @@ func TestInstantQueryJsonCodec(t *testing.T) {
 					"error": "something wrong"
 				}`,
 			expected:    nil,
-			expectedErr: errors.New("failed to execute query with error: something wrong"),
+			expectedErr: errors.New("something wrong"),
 		},
 	}
 

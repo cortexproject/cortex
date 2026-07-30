@@ -17,32 +17,67 @@ type SelectorBatchSize struct {
 }
 
 // Optimize configures the batch size of selector based on the query plan.
-// If any aggregate is present in the plan, the batch size is set to the configured value.
-// The two exceptions where this cannot be done is if the aggregate is quantile, or
-// when a binary expression precedes the aggregate.
+// It recursively traverses the plan and sets BatchSize on VectorSelectors
+// that can safely produce results in batches. Batching is enabled when an
+// Aggregation is encountered and propagated down through nodes that are
+// per-series independent (range functions, set operations, scalar-vector
+// arithmetic). Batching is disabled by nodes that require cross-series
+// visibility (group_left/group_right, histogram_quantile, topk, etc.).
 func (m SelectorBatchSize) Optimize(plan Node, _ *query.Options) (Node, annotations.Annotations) {
-	canBatch := false
-	Traverse(&plan, func(current *Node) {
-		switch e := (*current).(type) {
-		case *FunctionCall:
-			//TODO: calls can reduce the labelset of the input; think histogram_quantile reducing
-			// multiple "le" labels into one output. We cannot handle this in batching. Revisit
-			// what is safe here.
+	m.setBatchSize(&plan, false)
+	return plan, nil
+}
+
+func (m SelectorBatchSize) setBatchSize(node *Node, canBatch bool) {
+	switch e := (*node).(type) {
+	case *Aggregation:
+		if e.Op == parser.QUANTILE || e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
 			canBatch = false
-		case *Binary:
-			canBatch = false
-		case *Aggregation:
-			if e.Op == parser.QUANTILE || e.Op == parser.TOPK || e.Op == parser.BOTTOMK || e.Op == parser.LIMITK || e.Op == parser.LIMIT_RATIO {
-				canBatch = false
-				return
-			}
+		} else {
 			canBatch = true
-		case *VectorSelector:
-			if canBatch {
-				e.BatchSize = m.Size
-			}
+		}
+	case *FunctionCall:
+		// Range vector functions (rate, increase, present_over_time, etc.) are safe for
+		// batching because each output series depends only on that series' own range data.
+		// The function receives a single series' samples over the [range] window and produces
+		// one output value — no cross-series state is needed.
+		//
+		// Instant vector functions (e.g., histogram_quantile) may reduce or combine series
+		// (e.g., merging multiple "le" labels into one output), requiring full series visibility.
+		// We disable batching for those.
+		if !isRangeVectorFunction(e) {
 			canBatch = false
 		}
-	})
-	return plan, nil
+	case *Binary:
+		if isManyToOneOrOneToMany(e) {
+			canBatch = false
+		}
+	case *VectorSelector:
+		if canBatch {
+			e.BatchSize = m.Size
+		}
+		return
+	}
+
+	for _, child := range (*node).Children() {
+		m.setBatchSize(child, canBatch)
+	}
+}
+
+func isRangeVectorFunction(f *FunctionCall) bool {
+	for _, arg := range f.Args {
+		switch arg.(type) {
+		case *MatrixSelector, *Subquery:
+			return true
+		}
+	}
+	return false
+}
+
+// isManyToOneOrOneToMany returns true for binary operations with group_left/group_right
+// matching, which require full series visibility for correct join behavior.
+// All other binary operations (set ops, one-to-one, scalar-vector) are safe with batching.
+func isManyToOneOrOneToMany(b *Binary) bool {
+	return b.VectorMatching != nil &&
+		(b.VectorMatching.Card == parser.CardManyToOne || b.VectorMatching.Card == parser.CardOneToMany)
 }

@@ -425,7 +425,8 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 }
 
 func TestExpandedPostingsCacheFuzz(t *testing.T) {
-	stableCortexImage := "quay.io/cortexproject/cortex:v1.18.0"
+	stableCortexImage, err := getLatestReleaseImage()
+	require.NoError(t, err)
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -1762,8 +1763,8 @@ var labelSetsComparer = cmp.Comparer(func(x, y []model.LabelSet) bool {
 
 // TestBackwardCompatibilityQueryFuzz compares query results with the latest Cortex release.
 func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
-	// TODO: expose the image tag to be passed from Makefile or Github Action Config.
-	previousCortexReleaseImage := "quay.io/cortexproject/cortex:v1.18.1"
+	previousCortexReleaseImage, err := getLatestReleaseImage()
+	require.NoError(t, err)
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()

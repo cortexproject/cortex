@@ -163,6 +163,24 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
+		"should fail on negative max concurrent data bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = -1
+			},
+			expectedErr: ErrInvalidMaxConcurrentDataBytes,
+		},
+		"should pass on zero max concurrent data bytes (disabled)": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = 0
+			},
+			expectedErr: nil,
+		},
+		"should pass on positive max concurrent data bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = 1024 * 1024 * 1024 // 1GB
+			},
+			expectedErr: nil,
+		},
 	}
 
 	for testName, testData := range tests {

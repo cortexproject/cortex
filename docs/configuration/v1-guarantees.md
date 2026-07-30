@@ -54,6 +54,9 @@ Currently experimental features are:
   - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
 - Tenant Deletion in Purger, for blocks storage.
 - Blocks storage user index
+- Store Gateway max concurrent fetched data bytes limit
+  - `-blocks-storage.bucket-store.max-concurrent-data-bytes` (int) CLI flag
+  - `max_concurrent_data_bytes` (int) field in config file
 - Querier: tenant federation
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.regex-cache-size`

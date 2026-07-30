@@ -799,6 +799,14 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.max-inflight-requests
     [max_inflight_requests: <int> | default = 0]
 
+    # [Experimental] Max number of data bytes (postings, series and chunks)
+    # fetched from object storage via the Series() API call and processed
+    # concurrently across all queries. The limit is shared across all tenants.
+    # When the limit is reached, new requests are rejected with HTTP 503. 0 to
+    # disable.
+    # CLI flag: -blocks-storage.bucket-store.max-concurrent-data-bytes
+    [max_concurrent_data_bytes: <int> | default = 0]
+
     # Maximum number of concurrent tenants syncing blocks.
     # CLI flag: -blocks-storage.bucket-store.tenant-sync-concurrency
     [tenant_sync_concurrency: <int> | default = 10]

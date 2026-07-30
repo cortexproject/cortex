@@ -14,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 )
 
 type Retry struct {
@@ -82,9 +83,12 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 }
 
 func isBodyRetryable(body string) bool {
-	// If pool exhausted, retry at query frontend might make things worse.
-	// Rely on retries at querier level only.
+	// If pool exhausted or concurrent data bytes limit exceeded, retry at query frontend
+	// might make things worse. Rely on retries at querier level only.
 	if strings.Contains(body, pool.ErrPoolExhausted.Error()) {
+		return false
+	}
+	if strings.Contains(body, storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error()) {
 		return false
 	}
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -39,7 +38,7 @@ func (j JsonDecoder) Decode(body []byte) (promql.Vector, Warnings, error) {
 		return nil, nil, err
 	}
 	if response.Status == statusError {
-		return nil, response.Warnings, fmt.Errorf("failed to execute query with error: %s", response.Error)
+		return nil, response.Warnings, errors.New(response.Error)
 	}
 	data := struct {
 		Type   model.ValueType `json:"resultType"`
@@ -99,7 +98,7 @@ func (p ProtobufDecoder) Decode(body []byte) (promql.Vector, Warnings, error) {
 	}
 
 	if resp.Status == statusError {
-		return nil, resp.Warnings, fmt.Errorf("failed to execute query with error: %s", resp.Error)
+		return nil, resp.Warnings, errors.New(resp.Error)
 	}
 
 	switch resp.Data.ResultType {

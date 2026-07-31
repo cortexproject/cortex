@@ -297,7 +297,7 @@ func TestJsonDecode(t *testing.T) {
 					"warnings": ["a","b","c"]
 				}`,
 			expectedVector:  nil,
-			expectedErr:     errors.New("failed to execute query with error: something wrong"),
+			expectedErr:     errors.New("something wrong"),
 			expectedWarning: []string{"a", "b", "c"},
 		},
 	}

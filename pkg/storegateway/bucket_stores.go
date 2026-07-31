@@ -142,7 +142,6 @@ func newMatchersCache(cfg tsdb.BlocksStorageConfig, logger log.Logger, reg prome
 	return storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
 }
 
-
 // newThanosBucketStores creates a new TSDB-based bucket stores
 func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy ShardingStrategy, bucketClient objstore.InstrumentedBucket, cachingBucket objstore.InstrumentedBucket, matcherCache storecache.MatchersCache, ignoreParquetBlocks bool, limits *validation.Overrides, logLevel logging.Level, logger log.Logger, reg prometheus.Registerer) (*ThanosBucketStores, error) {
 	var err error
@@ -168,22 +167,22 @@ func newThanosBucketStores(cfg tsdb.BlocksStorageConfig, shardingStrategy Shardi
 	}).Set(float64(cfg.BucketStore.MaxConcurrent))
 
 	u := &ThanosBucketStores{
-		logger:              logger,
-		cfg:                 cfg,
-		limits:              limits,
-		bucket:              cachingBucket,
-		shardingStrategy:    shardingStrategy,
-		ignoreParquetBlocks: ignoreParquetBlocks,
-		stores:              map[string]*store.BucketStore{},
-		storesErrors:        map[string]error{},
-		parquetFilters:      map[string]*IgnoreParquetBlocksFilter{},
-		logLevel:            logLevel,
-		bucketStoreMetrics:  NewBucketStoreMetrics(),
-		metaFetcherMetrics:  NewMetadataFetcherMetrics(),
-		queryGate:           queryGate,
-		partitioner:         newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
-		userTokenBuckets:    make(map[string]*util.TokenBucket),
-		inflightRequests:    util.NewInflightRequestTracker(),
+		logger:                        logger,
+		cfg:                           cfg,
+		limits:                        limits,
+		bucket:                        cachingBucket,
+		shardingStrategy:              shardingStrategy,
+		ignoreParquetBlocks:           ignoreParquetBlocks,
+		stores:                        map[string]*store.BucketStore{},
+		storesErrors:                  map[string]error{},
+		parquetFilters:                map[string]*IgnoreParquetBlocksFilter{},
+		logLevel:                      logLevel,
+		bucketStoreMetrics:            NewBucketStoreMetrics(),
+		metaFetcherMetrics:            NewMetadataFetcherMetrics(),
+		queryGate:                     queryGate,
+		partitioner:                   newGapBasedPartitioner(cfg.BucketStore.PartitionerMaxGapBytes, reg),
+		userTokenBuckets:              make(map[string]*util.TokenBucket),
+		inflightRequests:              util.NewInflightRequestTracker(),
 		concurrentDataBytesTracker:    NewConcurrentDataBytesTracker(uint64(cfg.BucketStore.MaxConcurrentDataBytes), reg),
 		requestDataBytesTrackerHolder: &requestDataBytesTrackerHolder{},
 		syncTimes: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{

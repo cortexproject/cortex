@@ -65,7 +65,7 @@ func TestCompactorMetrics(t *testing.T) {
 			cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="aaa"} 144430
 			cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="bbb"} 155540
 			cortex_compactor_blocks_marked_for_deletion_total{reason="compaction",user="ccc"} 166650
-			# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks marked for deletion by compactor.
+			# HELP cortex_compactor_garbage_collected_blocks_total Total number of blocks garbage collected (deleted after being marked) by the compactor syncer.
 			# TYPE cortex_compactor_garbage_collected_blocks_total counter
 			cortex_compactor_garbage_collected_blocks_total 99990
 			# HELP cortex_compactor_garbage_collection_duration_seconds Time it took to perform garbage collection iteration.

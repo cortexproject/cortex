@@ -107,16 +107,17 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 	val := cache.Get("key1")
 	require.Equal(t, "value1", val)
 
-	// sleep longer than TTL
-	time.Sleep(150 * time.Millisecond)
+	c, ok := cache.(*ParquetShardCache[string])
+	require.True(t, ok)
 
-	if c, ok := cache.(*ParquetShardCache[string]); ok {
-		// should delete by maintenance loop
-		_, ok := c.cache.Peek("key1")
-		require.False(t, ok)
-	}
+	// should still exist before TTL expires
+	_, ok = c.cache.Peek("key1")
+	require.True(t, ok)
 
-	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
+	// Poll on the final metric state (not Peek) because the LRU eviction
+	// callback that updates the metrics runs after the entry is already
+	// removed from the map.
+	expected := `
 		# HELP cortex_parquet_cache_evictions_total Total number of parquet cache evictions
 		# TYPE cortex_parquet_cache_evictions_total counter
 		cortex_parquet_cache_evictions_total{name="test"} 1
@@ -126,5 +127,9 @@ func Test_Cache_TTLEvictionByLoop(t *testing.T) {
 		# HELP cortex_parquet_cache_item_count Current number of cached parquet items
 		# TYPE cortex_parquet_cache_item_count gauge
 		cortex_parquet_cache_item_count{name="test"} 0
-	`)))
+	`
+	require.Eventually(t, func() bool {
+		_, ok := c.cache.Peek("key1")
+		return !ok && testutil.GatherAndCompare(reg, bytes.NewBufferString(expected)) == nil
+	}, 2*time.Second, 10*time.Millisecond)
 }

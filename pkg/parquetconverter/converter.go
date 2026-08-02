@@ -49,6 +49,9 @@ const (
 	ringKey = "parquet-converter"
 
 	converterMetaPrefix = "converter-meta-"
+
+	parquetConverterDataColumnDuration = time.Hour * 8
+	parquetConverterSystemColumnCount  = 2 // s_col_indexes and s_series_hash.
 )
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
@@ -419,6 +422,29 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
+		configuredMaxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
+		maxBlockLabelNames := effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames, b.MinTime, b.MaxTime)
+
+		noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
+			continue
+		}
+
+		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+			if noConvertMark.Reason != cortex_parquet.NoConvertReasonTooManyLabels {
+				level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
+				continue
+			}
+
+			if noConvertMark.ShouldSkipBlock(maxBlockLabelNames) {
+				level.Debug(logger).Log("msg", "skipping block because label count still exceeds current limit", "block", b.ULID.String(), "label_names_count", noConvertMark.LabelNamesCount, "current_limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
+				continue
+			}
+		}
+
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
 			if c.checkConvertError(userID, err) {
@@ -446,6 +472,33 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 				return err
 			}
 			continue
+		}
+
+		if configuredMaxBlockLabelNames > 0 {
+			labelNames, err := tsdbBlock.LabelNames(ctx)
+			if err != nil {
+				_ = tsdbBlock.Close()
+				level.Error(logger).Log("msg", "failed to get label names", "block", b.ULID.String(), "err", err)
+				if c.checkConvertError(userID, err) {
+					return err
+				}
+				continue
+			}
+			labelNamesCount := len(labelNames)
+			if labelNamesCount > maxBlockLabelNames {
+				if err := cortex_parquet.WriteNoConvertMark(ctx, b.ULID, uBucket, labelNamesCount, maxBlockLabelNames); err != nil {
+					_ = tsdbBlock.Close()
+					level.Error(logger).Log("msg", "failed to write parquet no-convert marker", "block", b.ULID.String(), "err", err)
+					if c.checkConvertError(userID, err) {
+						return err
+					}
+					continue
+				}
+				level.Debug(logger).Log("msg", "skipping parquet conversion for block with too many label names", "block", b.ULID.String(), "label_names", labelNamesCount, "limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
+				_ = tsdbBlock.Close()
+				continue
+			}
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
@@ -507,6 +560,25 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	}
 
 	return nil
+}
+
+func effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames int, mint, maxt int64) int {
+	if configuredMaxBlockLabelNames <= 0 {
+		return configuredMaxBlockLabelNames
+	}
+
+	dataColumnCount := 0
+	if maxt >= mint {
+		dataColumnCount = int((maxt-mint)/parquetConverterDataColumnDuration.Milliseconds()) + 1
+	}
+
+	// Reserve for s_col_indexes, s_series_hash, and generated s_data_* columns.
+	maxBlockLabelNames := max(parquet.MaxColumnIndex-parquetConverterSystemColumnCount-dataColumnCount, 0)
+
+	if configuredMaxBlockLabelNames > maxBlockLabelNames {
+		return maxBlockLabelNames
+	}
+	return configuredMaxBlockLabelNames
 }
 
 func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {

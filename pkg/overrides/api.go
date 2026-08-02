@@ -71,11 +71,17 @@ func (a *API) GetOverrides(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(overrides); err != nil {
+
+	// Buffer the response before writing headers so http.Error works if encoding fails
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(overrides); err != nil {
 		level.Error(a.logger).Log("msg", "failed to encode overrides response", "err", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		level.Error(a.logger).Log("msg", "failed to write overrides response", "err", err)
 	}
 }
 
@@ -122,7 +128,7 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // DeleteOverrides removes tenant-specific overrides

@@ -93,7 +93,15 @@ var indexPageTemplate = `
 		<p>{{ $s }}</p>
 		<ul>
 			{{ range $path, $desc := $links }}
+				{{ if IsDangerous $s }}
+				<li>
+					<form method="POST" action="{{ AddPathPrefix $path }}" style="display: inline;">
+						<button type="submit">{{ $desc }}</button>
+					</form>
+				</li>
+				{{ else }}
 				<li><a href="{{ AddPathPrefix $path }}">{{ $desc }}</a></li>
+				{{ end }}
 			{{ end }}
 		</ul>
 		{{ end }}
@@ -105,6 +113,9 @@ func indexHandler(httpPathPrefix string, content *IndexPageContent) http.Handler
 	templ.Funcs(map[string]any{
 		"AddPathPrefix": func(link string) string {
 			return path.Join(httpPathPrefix, link)
+		},
+		"IsDangerous": func(section string) bool {
+			return section == SectionDangerous
 		},
 	})
 	template.Must(templ.Parse(indexPageTemplate))

@@ -272,7 +272,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
-			name:            "test handler with reasonSeriesFetched",
+			name:            "test handler with reasonFetchedSeriesExceeded",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -282,13 +282,13 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonSeriesFetched, requestmeta.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonFetchedSeriesExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
-			name:            "test handler with reasonChunksFetched",
+			name:            "test handler with reasonFetchedChunksExceeded",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -298,13 +298,13 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunksFetched, requestmeta.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonFetchedChunksExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
-			name:            "test handler with reasonChunkBytesFetched",
+			name:            "test handler with reasonFetchedChunkBytesExceeded",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -314,13 +314,13 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonChunkBytesFetched, requestmeta.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonFetchedChunkBytesExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,
 		},
 		{
-			name:            "test handler with reasonDataBytesFetched",
+			name:            "test handler with reasonFetchedDataBytesExceeded",
 			cfg:             HandlerConfig{QueryStatsEnabled: true},
 			expectedMetrics: 6,
 			roundTripperFunc: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -330,7 +330,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 				}, nil
 			}),
 			additionalMetricsCheckFunc: func(h *Handler) {
-				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonDataBytesFetched, requestmeta.SourceAPI, userID))
+				v := promtest.ToFloat64(h.rejectedQueries.WithLabelValues(reasonFetchedDataBytesExceeded, requestmeta.SourceAPI, userID))
 				assert.Equal(t, float64(1), v)
 			},
 			expectedStatusCode: http.StatusUnprocessableEntity,

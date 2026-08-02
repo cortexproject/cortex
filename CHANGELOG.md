@@ -1,6 +1,9 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Query Frontend: Rename `cortex_rejected_queries_total` metric label `reason` values for fetched-data limit rejections. #7517
+  * Old values: `series_fetched`, `chunks_fetched`, `chunk_bytes_fetched`, `data_bytes_fetched`.
+  * New values: `fetched_series_exceeded`, `fetched_chunks_exceeded`, `fetched_chunk_bytes_exceeded`, `fetched_data_bytes_exceeded`.
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481

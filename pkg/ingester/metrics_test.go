@@ -7,6 +7,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/require"
 
 	util_math "github.com/cortexproject/cortex/pkg/util/math"
@@ -1297,4 +1298,47 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	recordBytesSaved.WithLabelValues("zstd").Add(35 * base)
 
 	return r
+}
+
+// TestIngestionDelaySecondsHistogram_DoesNotLoseObservationsOnNativeBucketLimit
+// is a regression test for a bug where ingestionDelaySeconds was registered
+// with NativeHistogramMinResetDuration effectively equal to zero (an untyped
+// constant "1", i.e. 1 nanosecond, rather than 1 hour). Once the native
+// histogram exceeds NativeHistogramMaxBucketNumber, client_golang's
+// limitBuckets() first tries maybeReset(), which fully resets the histogram
+// (both native and classic buckets, keeping only the latest observation) if
+// at least NativeHistogramMinResetDuration has elapsed since the last reset.
+// With a ~0 duration that condition is satisfied on essentially every call,
+// so instead of gracefully reducing resolution (bucket width doubling / zero
+// bucket widening), the histogram silently drops the vast majority of prior
+// observations on every bucket-limit breach.
+func TestIngestionDelaySecondsHistogram_DoesNotLoseObservationsOnNativeBucketLimit(t *testing.T) {
+	ingestionRate := util_math.NewEWMARate(0.2, instanceIngestionRateTickInterval)
+	inflightPushRequests := util_math.MaxTracker{}
+	maxInflightQueryRequests := util_math.MaxTracker{}
+
+	reg := prometheus.NewRegistry()
+	m := newIngesterMetrics(reg, false, false, false, false,
+		func() *InstanceLimits { return &InstanceLimits{} },
+		ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
+
+	observer := m.ingestionDelaySeconds.WithLabelValues("user")
+
+	// Observe many widely-spread values so that the native histogram's
+	// bucket count exceeds NativeHistogramMaxBucketNumber (100) well before
+	// the loop ends, forcing limitBuckets()/maybeReset() to run repeatedly.
+	const numObservations = 500
+	value := 0.001
+	for i := 0; i < numObservations; i++ {
+		observer.Observe(value)
+		value *= 1.2 // bucket factor is 1.1, so each step lands in a new native bucket
+	}
+
+	metric := &dto.Metric{}
+	require.NoError(t, observer.(prometheus.Metric).Write(metric))
+
+	// With a correctly configured (non-trivial) minimum reset duration, no
+	// observations should be lost: the bucket count is reduced by merging
+	// buckets, not by discarding samples.
+	require.Equal(t, uint64(numObservations), metric.GetHistogram().GetSampleCount())
 }

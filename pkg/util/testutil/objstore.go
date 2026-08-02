@@ -97,6 +97,12 @@ func (m *MockBucketFailure) Attributes(ctx context.Context, name string) (objsto
 	if e, ok := m.AttributesFailures[name]; ok {
 		return objstore.ObjectAttributes{}, e
 	}
+	// In real object storage, HEAD fails with the same errors as GET (e.g., access denied, not found).
+	for prefix, err := range m.GetFailures {
+		if strings.HasPrefix(name, prefix) {
+			return objstore.ObjectAttributes{}, err
+		}
+	}
 	return m.Bucket.Attributes(ctx, name)
 }
 

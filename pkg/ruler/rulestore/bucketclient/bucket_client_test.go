@@ -11,6 +11,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
@@ -201,7 +202,7 @@ func TestLoadRules(t *testing.T) {
 		// Load with missing rule groups fails.
 		require.NoError(t, rs.DeleteRuleGroup(context.Background(), "user1", "hello", "first testGroup"))
 		_, err = rs.LoadRuleGroups(context.Background(), allGroupsMap)
-		require.EqualError(t, err, "get rule group user=\"user2\", namespace=\"world\", name=\"first testGroup\": group does not exist")
+		require.EqualError(t, err, "get rule group user=\"user1\", namespace=\"hello\", name=\"first testGroup\": group does not exist")
 	})
 }
 
@@ -460,4 +461,102 @@ func (mb mockBucket) Iter(_ context.Context, dir string, f func(string) error, o
 		}
 	}
 	return nil
+}
+
+func TestLoadRuleGroupsCache(t *testing.T) {
+	bucketClient := objstore.NewInMemBucket()
+	reg := prometheus.NewPedanticRegistry()
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	bucketStore, err := NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Setup: create a rule group.
+	desc := rulespb.ToProto("user1", "ns", rulefmt.RuleGroup{Name: "group1", Interval: model.Duration(time.Minute)})
+	require.NoError(t, bucketStore.SetRuleGroup(context.Background(), "user1", "ns", desc))
+
+	allGroups, err := bucketStore.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
+
+	// First load: cold cache, should do full GET (miss).
+	loaded, err := bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+	require.Len(t, loaded["user1"], 1)
+	require.Equal(t, "group1", loaded["user1"][0].Name)
+
+	// Second load: cache is warm, file unchanged → should be a cache hit.
+	time.Sleep(10 * time.Millisecond) // ensure downloadedAt is after LastModified
+	loaded2, err := bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+	require.Len(t, loaded2["user1"], 1)
+	require.Equal(t, "group1", loaded2["user1"][0].Name)
+
+	// Verify cache hit metric.
+	hitCount := promtestutil.ToFloat64(bucketStore.cacheOps.WithLabelValues("hit"))
+	require.Equal(t, float64(1), hitCount)
+}
+
+func TestLoadRuleGroupsCacheMissOnModification(t *testing.T) {
+	bucketClient := objstore.NewInMemBucket()
+	reg := prometheus.NewPedanticRegistry()
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	bucketStore, err := NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Setup: create a rule group.
+	desc := rulespb.ToProto("user1", "ns", rulefmt.RuleGroup{Name: "group1", Interval: model.Duration(time.Minute)})
+	require.NoError(t, bucketStore.SetRuleGroup(context.Background(), "user1", "ns", desc))
+
+	allGroups, err := bucketStore.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
+
+	// First load: populates cache.
+	_, err = bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+
+	// Modify the rule group in S3.
+	time.Sleep(10 * time.Millisecond)
+	desc2 := rulespb.ToProto("user1", "ns", rulefmt.RuleGroup{Name: "group1", Interval: model.Duration(2 * time.Minute)})
+	require.NoError(t, bucketStore.SetRuleGroup(context.Background(), "user1", "ns", desc2))
+
+	// Second load: file modified → cache miss → should get new content.
+	loaded, err := bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Minute, loaded["user1"][0].Interval)
+}
+
+func TestLoadRuleGroupsCachePrune(t *testing.T) {
+	bucketClient := objstore.NewInMemBucket()
+	reg := prometheus.NewPedanticRegistry()
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList}
+	bucketStore, err := NewBucketRuleStore(bucketClient, usersScannerConfig, nil, log.NewNopLogger(), reg)
+	require.NoError(t, err)
+
+	// Setup: create two rule groups.
+	desc1 := rulespb.ToProto("user1", "ns", rulefmt.RuleGroup{Name: "group1", Interval: model.Duration(time.Minute)})
+	desc2 := rulespb.ToProto("user1", "ns", rulefmt.RuleGroup{Name: "group2", Interval: model.Duration(time.Minute)})
+	require.NoError(t, bucketStore.SetRuleGroup(context.Background(), "user1", "ns", desc1))
+	require.NoError(t, bucketStore.SetRuleGroup(context.Background(), "user1", "ns", desc2))
+
+	allGroups, err := bucketStore.ListAllRuleGroups(context.Background())
+	require.NoError(t, err)
+
+	// Load both groups → cache has 2 entries.
+	_, err = bucketStore.LoadRuleGroups(context.Background(), allGroups)
+	require.NoError(t, err)
+
+	bucketStore.ruleGroupCacheMu.RLock()
+	require.Len(t, bucketStore.ruleGroupCache, 2)
+	bucketStore.ruleGroupCacheMu.RUnlock()
+
+	// Now load only group1 (simulating ring rebalance where group2 is no longer owned).
+	partialGroups := map[string]rulespb.RuleGroupList{
+		"user1": {allGroups["user1"][0]}, // only first group
+	}
+	_, err = bucketStore.LoadRuleGroups(context.Background(), partialGroups)
+	require.NoError(t, err)
+
+	// Cache should be pruned to 1 entry.
+	bucketStore.ruleGroupCacheMu.RLock()
+	require.Len(t, bucketStore.ruleGroupCache, 1)
+	bucketStore.ruleGroupCacheMu.RUnlock()
 }

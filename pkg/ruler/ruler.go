@@ -182,6 +182,9 @@ type Config struct {
 
 	ThanosEngine engine.ThanosEngineConfig `yaml:"thanos_engine"`
 
+	SelectMergerEnabled  bool `yaml:"select_merger_enabled"`
+	SelectMergerMinRules int  `yaml:"select_merger_min_rules"`
+
 	// NameValidationScheme is the scheme for validating metric and label names (set from root config).
 	NameValidationScheme model.ValidationScheme `yaml:"-"`
 }
@@ -273,6 +276,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
 	f.DurationVar(&cfg.LivenessCheckTimeout, "ruler.liveness-check-timeout", 1*time.Second, "Timeout duration for non-primary rulers during liveness checks. If the check times out, the non-primary ruler will evaluate the rule group. Applicable when ruler.enable-ha-evaluation is true.")
+
+	f.BoolVar(&cfg.SelectMergerEnabled, "ruler.select-merger-enabled", false, "Enable merged select pre-fetching to reduce redundant queries for rules sharing the same metric.")
+	f.IntVar(&cfg.SelectMergerMinRules, "ruler.select-merger-min-rules", 3, "Minimum number of rules querying the same metric to trigger merged pre-fetching.")
+
 	cfg.RingCheckPeriod = 5 * time.Second
 }
 

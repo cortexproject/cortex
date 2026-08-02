@@ -471,11 +471,19 @@ func buildQueryFunc(
 	failedQueries := metrics.FailedQueriesVec.WithLabelValues(userID)
 	metricsFunc := metricsQueryFunc(baseQueryFunc, totalQueries, failedQueries)
 
+	var qf rules.QueryFunc
 	// apply statistic middleware
 	if cfg.EnableQueryStats {
-		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+		qf = recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+	} else {
+		qf = metricsFunc
 	}
-	return metricsFunc
+
+	// apply select merger wrapper (checks context for prefetch cache)
+	if cfg.SelectMergerEnabled {
+		qf = selectMergerQueryFunc(qf)
+	}
+	return qf
 }
 
 type QueryableError struct {

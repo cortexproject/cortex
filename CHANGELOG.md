@@ -14,6 +14,7 @@
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
 * [FEATURE] Querier: Implement Resource Based Throttling in Querier. #7442
+* [FEATURE] API: Add Prometheus-compatible `GET <prometheus-http-prefix>/api/v1/features` endpoint to let clients discover which PromQL functions, operators, and API capabilities are supported. #7507
 * [FEATURE] Querier: Add resource-based query eviction that automatically cancels the heaviest running query when CPU or heap utilization exceeds configured thresholds. #7488
 * [FEATURE] Storage: Add support for Oracle Cloud Infrastructure (OCI) Object Storage as a backend for blocks, ruler, and alertmanager storage. Configured via `-<prefix>.oci.*` flags with `backend: oci`. #7718
 * [FEATURE] StoreGateway: Add experimental optional limit `blocks-storage.bucket-store.max-concurrent-data-bytes` on the data bytes (postings, series and chunks) fetched via the Series() API call and processed concurrently across all queries per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271

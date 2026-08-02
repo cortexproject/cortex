@@ -45,6 +45,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Get metric metadata](#get-metric-metadata) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/metadata` |
 | [Remote read](#remote-read) | Querier, Query-frontend || `POST <prometheus-http-prefix>/api/v1/read` |
 | [Build information](#build-information) | Querier, Query-frontend |v1.15.0| `GET <prometheus-http-prefix>/api/v1/status/buildinfo` |
+| [Features](#features) | Querier, Query-frontend || `GET <prometheus-http-prefix>/api/v1/features` |
 | [Get tenant ingestion stats](#get-tenant-ingestion-stats) | Querier || `GET /api/v1/user_stats` |
 | [Ruler ring status](#ruler-ring-status) | Ruler || `GET /ruler/ring` |
 | [Ruler rules ](#ruler-rule-groups) | Ruler || `GET /ruler/rule_groups` |
@@ -488,6 +489,18 @@ GET <legacy-http-prefix>/api/v1/status/buildinfo
 ```
 
 Prometheus-compatible [build information](https://prometheus.io/docs/prometheus/latest/querying/api/#build-information) endpoint.
+
+_Requires [authentication](#authentication)._
+
+### Features
+
+```
+GET <prometheus-http-prefix>/api/v1/features
+# Legacy
+GET <legacy-http-prefix>/api/v1/features
+```
+
+Prometheus-compatible features endpoint. Returns the set of PromQL functions, operators, and API capabilities supported by the Cortex instance, so clients can discover available features without relying on version strings. The response follows the Prometheus [`features.json`](https://github.com/prometheus/prometheus/blob/main/cmd/prometheus/testdata/features.json) format.
 
 _Requires [authentication](#authentication)._
 

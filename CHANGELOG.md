@@ -84,6 +84,7 @@
 * [BUGFIX] Ring: Fix DynamoDB KV CAS not retrying on transactional conditional check failures. `TransactWriteItems` reports condition failures as `TransactionCanceledException` with a `ConditionalCheckFailed` cancellation reason, which was not recognized as retryable, so any concurrent ring update conflict (e.g. many ingesters joining during a rolling update) failed immediately instead of re-reading and retrying. `TransactionConflict` cancellation reasons are also treated as retryable. #7706
 * [BUGFIX] Distributor: Return HTTP 499 (Client Closed Request) instead of 500 when a remote-write or OTLP push is canceled by the client, so client-side cancellations are no longer counted as server-side errors. #7717
 * [BUGFIX] Querier: Fix gRPC `codes.Canceled` errors being mapped to HTTP 500 instead of 499 when a client cancels a query. #7738
+* [BUGFIX] Querier: Fix unbounded growth of the bucket-scan blocks finder's per-tenant metadata on the partial-error scan path (used when the bucket index is disabled). Metadata for departed tenants is now pruned even while other tenants' scans keep failing, so deleted tenants no longer serve stale block references or retain memory forever. #7747
 
 ## 1.21.1 2026-06-04
 

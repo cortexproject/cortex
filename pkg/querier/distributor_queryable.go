@@ -186,10 +186,31 @@ func (q *distributorQuerier) streamingSelect(ctx context.Context, sortSeries, pa
 			continue
 		}
 
-		// Detach label and chunk data from gRPC unmarshal buffers so the Go GC
-		// can reclaim receive buffers and reduce heap usage.
+		// Copy labels out of the gRPC unmarshal buffer: LabelAdapter.Unmarshal uses
+		// yoloString, so label names/values alias the receive buffer. Today that
+		// buffer is never returned to a reusable pool while still referenced (see
+		// pkg/cortexpb/codec.go: QueryStreamResponse doesn't implement
+		// ReleasableMessage, so cortexCodec never hands it back to mem.BufferPool),
+		// so the immediate risk is heap retention rather than corruption -- but
+		// that is an implementation detail of the current codec/message types, not
+		// a documented guarantee. Keep this copy: it is both what lets the Go GC
+		// reclaim the receive buffer promptly and a safety net against a future
+		// change (e.g. QueryStreamResponse opting into ReleasableMessage for a
+		// zero-copy chunk path) silently turning that retention issue into a
+		// use-after-recycle correctness bug for label values.
+		//
+		// Chunk.Data does not need the same treatment: Recv() allocates a fresh
+		// QueryStreamResponse per message, TimeSeriesChunk.Unmarshal appends a
+		// zero client.Chunk value, and Chunk.Unmarshal's
+		// `m.Data = append(m.Data[:0], ...)` therefore starts from a nil slice
+		// and allocates a private backing array, never aliasing the receive
+		// buffer. This relies on response messages not being reused: if
+		// QueryStreamResponse ever becomes pooled or reused across Recv calls,
+		// that same append would recycle prior backing arrays and a detach copy
+		// must be reinstated here. TestChunkDataDoesNotAliasWireBuffer_* pin the
+		// non-aliasing invariant.
 		ls := cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
-		chunks, err := chunkcompat.FromChunks(ls, detachChunksFromBuffer(result.Chunks))
+		chunks, err := chunkcompat.FromChunks(ls, result.Chunks)
 		if err != nil {
 			return storage.ErrSeriesSet(err)
 		}
@@ -449,18 +470,4 @@ func labelHintsToSelectHints(hints *storage.LabelHints) *storage.SelectHints {
 	return &storage.SelectHints{
 		Limit: hints.Limit,
 	}
-}
-
-// detachChunksFromBuffer returns a copy of the chunks slice with data byte
-// slices re-allocated so that the series no longer references the gRPC
-// unmarshal buffer, allowing the Go GC to reclaim receive buffers.
-func detachChunksFromBuffer(chunks []client.Chunk) []client.Chunk {
-	copied := make([]client.Chunk, len(chunks))
-	for i, c := range chunks {
-		copied[i] = c
-		if len(c.Data) > 0 {
-			copied[i].Data = append([]byte(nil), c.Data...)
-		}
-	}
-	return copied
 }

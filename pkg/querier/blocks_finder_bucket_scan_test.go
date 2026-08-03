@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -511,18 +513,19 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsOnlyInactiveUserFetchers(t *te
 // with an empty prefix) still succeeds.
 type failUserBucket struct {
 	objstore.InstrumentedBucket
-	failUser string
+	failUser      string
+	failScanUsers bool
 }
 
 func (b *failUserBucket) Iter(ctx context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
-	if strings.HasPrefix(dir, b.failUser) {
+	if (b.failScanUsers && dir == "") || (b.failUser != "" && strings.HasPrefix(dir, b.failUser)) {
 		return errors.New("injected listing failure")
 	}
 	return b.InstrumentedBucket.Iter(ctx, dir, f, options...)
 }
 
 func (b *failUserBucket) IterWithAttributes(ctx context.Context, dir string, f func(objstore.IterObjectAttributes) error, options ...objstore.IterOption) error {
-	if strings.HasPrefix(dir, b.failUser) {
+	if (b.failScanUsers && dir == "") || (b.failUser != "" && strings.HasPrefix(dir, b.failUser)) {
 		return errors.New("injected listing failure")
 	}
 	return b.InstrumentedBucket.IterWithAttributes(ctx, dir, f, options...)
@@ -536,12 +539,12 @@ func (b *failUserBucket) ReaderWithExpectedErrs(objstore.IsOpFailureExpectedFunc
 	return b
 }
 
-func TestBucketScanBlocksFinder_PeriodicScanEvictsInactiveUserDespiteOtherTenantScanError(t *testing.T) {
+func TestBucketScanBlocksFinder_PeriodicScanReconcilesInactiveUserDespiteOtherTenantScanError(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
 	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
-	wrapped := &failUserBucket{InstrumentedBucket: bkt, failUser: "user-2"}
+	wrapped := &failUserBucket{InstrumentedBucket: bkt}
 
 	cfg := prepareBucketScanBlocksFinderConfig()
 	cfg.CacheDir = t.TempDir()
@@ -558,32 +561,110 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsInactiveUserDespiteOtherTenant
 		require.NoError(t, s.AwaitTerminated(context.Background()))
 	})
 
-	// Only user-1 is active at startup, so the initial scan succeeds and caches its fetcher.
-	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	// Both users initially scan successfully, so they have known-good metas and cached fetchers.
+	user1Block := cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	user2Block := cortex_testutil.MockStorageBlock(t, bkt, "user-2", 10, 20)
+	cortex_testutil.MockStorageDeletionMark(t, bkt, "user-1", user1Block)
+	user2Mark := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bkt, "user-2", user2Block))
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
 	s.fetchersMx.Lock()
-	require.Equal(t, 1, len(s.fetchers))
+	require.Equal(t, 2, len(s.fetchers))
 	s.fetchersMx.Unlock()
 
-	// Introduce an active-but-erroring tenant and delete user-1.
-	cortex_testutil.MockStorageBlock(t, bkt, "user-2", 10, 20)
+	// Make user-2's own scan fail while it remains active, and delete user-1.
+	wrapped.failUser = "user-2"
 	require.NoError(t, bkt.Delete(ctx, "user-1"))
 
 	// This scan collects a per-tenant error for user-2 (resErrs != 0). The failing tenant is
 	// retried with the finder's hardcoded backoff, so this scan takes a few seconds; that cost is
 	// intrinsic and must not be "optimised" with a short-deadline context, which would cancel the
-	// context and make scanBucket skip eviction entirely (eviction is gated on ctx.Err() == nil).
+	// context and make scanBucket skip reconciliation entirely (it is gated on ctx.Err() == nil).
 	require.Error(t, s.scanBucket(ctx))
 
-	// ...but eviction is decoupled from per-tenant scan errors, so the now-inactive user-1 is still
-	// evicted while the erroring (but still active) user-2 is retained.
+	// The departed user is removed from every metas map even though another user's scan failed.
+	s.userMx.RLock()
+	_, hasUser1Metas := s.userMetas["user-1"]
+	_, hasUser1Lookup := s.userMetasLookup["user-1"]
+	_, hasUser1DeletionMarks := s.userDeletionMarks["user-1"]
+	_, hasUser2Metas := s.userMetas["user-2"]
+	_, hasUser2Lookup := s.userMetasLookup["user-2"]
+	_, hasUser2DeletionMarks := s.userDeletionMarks["user-2"]
+	s.userMx.RUnlock()
+	assert.False(t, hasUser1Metas)
+	assert.False(t, hasUser1Lookup)
+	assert.False(t, hasUser1DeletionMarks)
+	assert.True(t, hasUser2Metas)
+	assert.True(t, hasUser2Lookup)
+	assert.True(t, hasUser2DeletionMarks)
+
+	// GetBlocks no longer serves stale blocks for the departed user.
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(blocks))
+	assert.Equal(t, 0, len(deletionMarks))
+
+	// The active user whose own scan failed keeps its previously-good metas and deletion marks.
+	blocks, deletionMarks, err = s.GetBlocks(ctx, "user-2", 0, 30, nil)
+	require.NoError(t, err)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, user2Block.ULID, blocks[0].ID)
+	assert.Equal(t, map[ulid.ULID]*bucketindex.BlockDeletionMark{user2Block.ULID: user2Mark}, deletionMarks)
+
+	// Fetchers are reconciled against the same active set: user-1 is evicted and user-2 retained.
 	s.fetchersMx.Lock()
 	_, has1 := s.fetchers["user-1"]
 	_, has2 := s.fetchers["user-2"]
 	s.fetchersMx.Unlock()
 	assert.False(t, has1)
 	assert.True(t, has2)
+}
+
+func TestBucketScanBlocksFinder_PeriodicScanPreservesMetasWhenUserScanFails(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	wrapped := &failUserBucket{InstrumentedBucket: bkt}
+
+	cfg := prepareBucketScanBlocksFinderConfig()
+	cfg.CacheDir = t.TempDir()
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, wrapped, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, wrapped, nil, log.NewNopLogger(), nil)
+	t.Cleanup(func() {
+		s.StopAsync()
+		require.NoError(t, s.AwaitTerminated(context.Background()))
+	})
+
+	block := cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	mark := bucketindex.BlockDeletionMarkFromThanosMarker(cortex_testutil.MockStorageDeletionMark(t, bkt, "user-1", block))
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+	// A ScanUsers failure returns before reconciliation and must not treat an unavailable listing
+	// as an authoritative empty active set.
+	wrapped.failScanUsers = true
+	require.Error(t, s.scanBucket(ctx))
+
+	s.userMx.RLock()
+	_, hasMetas := s.userMetas["user-1"]
+	_, hasLookup := s.userMetasLookup["user-1"]
+	_, hasDeletionMarks := s.userDeletionMarks["user-1"]
+	s.userMx.RUnlock()
+	assert.True(t, hasMetas)
+	assert.True(t, hasLookup)
+	assert.True(t, hasDeletionMarks)
+
+	blocks, deletionMarks, err := s.GetBlocks(ctx, "user-1", 0, 30, nil)
+	require.NoError(t, err)
+	require.Len(t, blocks, 1)
+	assert.Equal(t, block.ULID, blocks[0].ID)
+	assert.Equal(t, map[ulid.ULID]*bucketindex.BlockDeletionMark{block.ULID: mark}, deletionMarks)
 }
 
 // TestBucketScanBlocksFinder_PeriodicScanPreservesNonMetaSyncerDataOnEviction guards the
@@ -751,4 +832,152 @@ func prepareBucketScanBlocksFinderConfig() BucketScanBlocksFinderConfig {
 		IgnoreBlocksWithin:       10 * time.Hour, // All blocks created in the last 10 hour shouldn't be scanned.
 		BlockDiscoveryStrategy:   string(cortex_tsdb.RecursiveDiscovery),
 	}
+}
+
+func TestBucketScanBlocksFinder_FullySuccessfulScanStillReplacesMapWholesale(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, bkt, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
+
+	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+	// Inject a stale entry for a tenant with no bucket presence at all (neither active, deleting
+	// nor deleted), simulating a leftover from the past, and alias the maps: a fully successful
+	// scan must REPLACE the maps wholesale — which also reclaims the maps' internal bucket
+	// capacity, something merge+prune never does — not merely prune the stale entry out of the
+	// old maps. The pointer-identity assertion pins the replacement itself, so the partial-error
+	// reconciliation can never silently become the only cleanup mechanism.
+	s.userMx.Lock()
+	s.userMetas["ghost"] = bucketindex.Blocks{&bucketindex.Block{ID: ulid.MustNew(1, nil)}}
+	s.userMetasLookup["ghost"] = map[ulid.ULID]*bucketindex.Block{}
+	s.userDeletionMarks["ghost"] = map[ulid.ULID]*bucketindex.BlockDeletionMark{}
+	oldMetas := s.userMetas
+	s.userMx.Unlock()
+
+	require.NoError(t, s.scanBucket(ctx))
+
+	s.userMx.RLock()
+	replaced := reflect.ValueOf(s.userMetas).Pointer() != reflect.ValueOf(oldMetas).Pointer()
+	_, hasGhostMetas := s.userMetas["ghost"]
+	_, hasGhostLookup := s.userMetasLookup["ghost"]
+	_, hasGhostMarks := s.userDeletionMarks["ghost"]
+	s.userMx.RUnlock()
+	assert.True(t, replaced, "a fully successful scan must replace the metas maps wholesale, not merge into them")
+	assert.False(t, hasGhostMetas)
+	assert.False(t, hasGhostLookup)
+	assert.False(t, hasGhostMarks)
+}
+
+// TestBucketScanBlocksFinder_PruningDoesNotRaceWithConcurrentGetBlocks verifies the lock
+// discipline between the pruning writer in reconcileActiveUsers and concurrent GetBlocks readers
+// under -race. Note the race detector can only prove the absence of unsynchronized access; the
+// transient visibility of a departed tenant between the merge and prune critical sections is
+// documented at reconcileActiveUsers and is not what this test checks. The final assertion pins
+// that pruning actually happened.
+func TestBucketScanBlocksFinder_PruningDoesNotRaceWithConcurrentGetBlocks(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	wrapped := &failUserBucket{InstrumentedBucket: bkt, failUser: "user-2"}
+
+	cfg := prepareBucketScanBlocksFinderConfig()
+	cfg.CacheDir = t.TempDir()
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, wrapped, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, wrapped, nil, log.NewNopLogger(), nil)
+	t.Cleanup(func() {
+		s.StopAsync()
+		require.NoError(t, s.AwaitTerminated(context.Background()))
+	})
+
+	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+	require.NoError(t, bkt.Delete(ctx, "user-1"))
+	cortex_testutil.MockStorageBlock(t, bkt, "user-2", 10, 20)
+
+	// Hammer GetBlocks concurrently with a scan that prunes user-1 on the partial-error path, so
+	// the race detector can catch any locking gap between the pruning writer and readers.
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_, _, _ = s.GetBlocks(ctx, "user-1", 0, 30, nil)
+				_, _, _ = s.GetBlocks(ctx, "user-2", 0, 30, nil)
+			}
+		}
+	})
+
+	require.Error(t, s.scanBucket(ctx))
+	close(stop)
+	wg.Wait()
+
+	s.userMx.RLock()
+	_, hasUser1 := s.userMetas["user-1"]
+	s.userMx.RUnlock()
+	assert.False(t, hasUser1)
+}
+
+// TestBucketScanBlocksFinder_FetcherCreatedDuringFailingScanIsRetained preserves the original
+// #7573 regression scenario: a tenant whose scan errors from the moment it appears still gets a
+// metadata fetcher created during the (partially failing) scan, and reconciliation must retain
+// that fetcher because the tenant is active — while a departed tenant is still evicted by the
+// same reconciliation.
+func TestBucketScanBlocksFinder_FetcherCreatedDuringFailingScanIsRetained(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	wrapped := &failUserBucket{InstrumentedBucket: bkt, failUser: "user-2"}
+
+	cfg := prepareBucketScanBlocksFinderConfig()
+	cfg.CacheDir = t.TempDir()
+	usersScanner, err := users.NewScanner(users.UsersScannerConfig{
+		Strategy:       users.UserScanStrategyList,
+		MaxStalePeriod: time.Hour,
+		CacheTTL:       0,
+	}, wrapped, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+
+	s := NewBucketScanBlocksFinder(cfg, usersScanner, wrapped, nil, log.NewNopLogger(), nil)
+	t.Cleanup(func() {
+		s.StopAsync()
+		require.NoError(t, s.AwaitTerminated(context.Background()))
+	})
+
+	// Only user-1 is active at startup, so the initial scan succeeds and caches its fetcher.
+	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+	s.fetchersMx.Lock()
+	require.Equal(t, 1, len(s.fetchers))
+	s.fetchersMx.Unlock()
+
+	// Introduce an active-but-erroring tenant and delete user-1.
+	cortex_testutil.MockStorageBlock(t, bkt, "user-2", 10, 20)
+	require.NoError(t, bkt.Delete(ctx, "user-1"))
+
+	// This scan collects a per-tenant error for user-2 (resErrs != 0); the failing tenant is
+	// retried with the finder's hardcoded backoff, so this scan takes a few seconds.
+	require.Error(t, s.scanBucket(ctx))
+
+	// Reconciliation is decoupled from per-tenant scan errors: the now-inactive user-1 is evicted
+	// while user-2's fetcher — created during the failing scan — is retained.
+	s.fetchersMx.Lock()
+	_, has1 := s.fetchers["user-1"]
+	_, has2 := s.fetchers["user-2"]
+	s.fetchersMx.Unlock()
+	assert.False(t, has1)
+	assert.True(t, has2)
 }

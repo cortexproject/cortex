@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/thanos-io/promql-engine/execution/model"
+	"github.com/thanos-io/promql-engine/execution/telemetry"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/storage/prometheus"
 
@@ -27,7 +28,8 @@ func NewOperator(opts *query.Options) model.VectorOperator {
 		0,     // shard
 		1,     // numShards
 	)
-	return &operator{VectorOperator: scanner}
+	op := &operator{VectorOperator: scanner}
+	return telemetry.NewOperator(telemetry.NewTelemetry(op, opts), op)
 }
 
 func (o operator) String() string                         { return "[noop]" }

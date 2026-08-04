@@ -271,15 +271,14 @@ pushJobsLoop:
 	}
 	d.userMx.Unlock()
 
-	// Reconcile the cached metadata fetchers (and their per-tenant Prometheus registries and
-	// on-disk meta caches) against the set of currently active tenants, so these resources stay
-	// bounded as tenants are deleted from storage. userIDs comes from a successful ScanUsers call
-	// (we return early above if it failed), so it is the authoritative active set regardless of
+	// Reconcile the cached metadata and fetchers against the set of currently active tenants, so
+	// these resources stay bounded as tenants are deleted from storage. userIDs comes from a
+	// successful ScanUsers call (we return early above if it failed), and is valid regardless of
 	// any per-tenant scan errors collected in resErrs; we therefore reconcile even on the
 	// partial-error path, so the leak stays bounded under tenant churn. We only skip when the
 	// context has been cancelled (i.e. the service is shutting down).
 	if ctx.Err() == nil {
-		d.evictInactiveUserFetchers(userIDs)
+		d.reconcileActiveUsers(userIDs)
 	}
 
 	return resErrs.Err()
@@ -436,16 +435,41 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 // block.NewMetaFetcher stores its cached meta.json files (see createMetaFetcher).
 const metaSyncerCacheDirName = "meta-syncer"
 
-// evictInactiveUserFetchers reconciles the per-tenant metadata fetchers against the set of
-// currently active tenants. For every tenant that is no longer active it removes the cached
-// fetcher, unregisters its per-tenant Prometheus registry, and deletes the fetcher's on-disk meta
-// cache. Without this, d.fetchers, d.fetchersMetrics and the on-disk cache would grow unbounded
-// for the lifetime of the process as tenants are deleted from storage.
-func (d *BucketScanBlocksFinder) evictInactiveUserFetchers(activeUserIDs []string) {
+// reconcileActiveUsers reconciles all per-tenant state against the set of currently active
+// tenants: the metadata maps (which otherwise grow unbounded on the partial-error scan path,
+// where the wholesale replacement of a fully-successful scan never runs) and the fetchers, their
+// Prometheus registries and on-disk meta caches (which would grow unbounded on every path).
+// Everything is deliberately reconciled against the same active set in one place, so the
+// individual pieces of per-tenant state cannot diverge again; if some state ever needs a
+// different liveness set, split this function deliberately rather than special-casing inside it.
+//
+// The maps are pruned in their own userMx critical section, after scanBucket's merge section has
+// released the lock: a concurrent GetBlocks may briefly observe a departed tenant between the
+// merge and the prune. That is indistinguishable from reading while a scan is still in progress,
+// and strictly better than the unbounded retention it replaces.
+func (d *BucketScanBlocksFinder) reconcileActiveUsers(activeUserIDs []string) {
 	active := make(map[string]struct{}, len(activeUserIDs))
 	for _, userID := range activeUserIDs {
 		active[userID] = struct{}{}
 	}
+
+	d.userMx.Lock()
+	for userID := range d.userMetas {
+		if _, ok := active[userID]; !ok {
+			delete(d.userMetas, userID)
+		}
+	}
+	for userID := range d.userMetasLookup {
+		if _, ok := active[userID]; !ok {
+			delete(d.userMetasLookup, userID)
+		}
+	}
+	for userID := range d.userDeletionMarks {
+		if _, ok := active[userID]; !ok {
+			delete(d.userDeletionMarks, userID)
+		}
+	}
+	d.userMx.Unlock()
 
 	// Evict the in-memory fetchers and their per-tenant Prometheus registries.
 	var evicted []string

@@ -30,7 +30,6 @@ const (
 var (
 	ErrorBlockVisitMarkerNotFound  = errors.New("block visit marker not found")
 	ErrorUnmarshalBlockVisitMarker = errors.New("unmarshal block visit marker JSON")
-	ErrorNotBlockVisitMarker       = errors.New("file is not block visit marker")
 )
 
 type BlockVisitMarker struct {
@@ -148,6 +147,3 @@ func IsBlockVisitMarker(path string) bool {
 	return strings.HasSuffix(path, BlockVisitMarkerFile)
 }
 
-func IsNotBlockVisitMarkerError(err error) bool {
-	return errors.Is(err, ErrorNotBlockVisitMarker)
-}

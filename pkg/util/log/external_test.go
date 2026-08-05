@@ -15,7 +15,7 @@ func TestGRPCLoggerUsesConfiguredLogger(t *testing.T) {
 	t.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", "")
 
 	logger, logs := testJSONLogger(t)
-	grpcLogger := NewGRPCLogger(logger)
+	grpcLogger := newGRPCLogger(logger)
 
 	grpcLogger.Info("not logged by default")
 	grpcLogger.Error("transport failure")
@@ -29,7 +29,7 @@ func TestGRPCLoggerUsesConfiguredLogger(t *testing.T) {
 func TestAutomaxprocsLoggerUsesConfiguredLogger(t *testing.T) {
 	logger, logs := testJSONLogger(t)
 
-	AutomaxprocsLogger(logger)("maxprocs: Leaving GOMAXPROCS=%v: CPU quota undefined", 4)
+	automaxprocsLogger(logger)("maxprocs: Leaving GOMAXPROCS=%v: CPU quota undefined", 4)
 
 	entry := readSingleJSONLogEntry(t, logs)
 	require.Equal(t, "info", entry["level"])
@@ -46,13 +46,13 @@ func testJSONLogger(t *testing.T) (kitlog.Logger, *bytes.Buffer) {
 	return newPrometheusLoggerFrom(kitlog.NewJSONLogger(logs), logLevel), logs
 }
 
-func readSingleJSONLogEntry(t *testing.T, logs *bytes.Buffer) map[string]interface{} {
+func readSingleJSONLogEntry(t *testing.T, logs *bytes.Buffer) map[string]any {
 	t.Helper()
 
 	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
 	require.Len(t, lines, 1)
 
-	var entry map[string]interface{}
+	var entry map[string]any
 	require.NoError(t, json.Unmarshal(lines[0], &entry))
 	return entry
 }

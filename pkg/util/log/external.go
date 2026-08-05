@@ -8,26 +8,35 @@ import (
 
 	kitlog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"go.uber.org/automaxprocs/maxprocs"
 	"google.golang.org/grpc/grpclog"
 )
 
 // InitExternalLoggers configures package-level loggers from dependencies that
 // do not take Cortex's logger through normal constructors.
 func InitExternalLoggers() {
-	grpclog.SetLoggerV2(NewGRPCLogger(Logger))
+	grpclog.SetLoggerV2(newGRPCLogger(Logger))
 }
 
-// AutomaxprocsLogger adapts the printf-style logger used by automaxprocs to
+// InitAutomaxprocs configures GOMAXPROCS from the container CPU quota and logs
+// through Cortex's configured logger.
+func InitAutomaxprocs() {
+	if _, err := maxprocs.Set(maxprocs.Logger(automaxprocsLogger(Logger))); err != nil {
+		level.Warn(Logger).Log("msg", "failed to set GOMAXPROCS from CPU quota", "err", err)
+	}
+}
+
+// automaxprocsLogger adapts the printf-style logger used by automaxprocs to
 // Cortex's configured go-kit logger.
-func AutomaxprocsLogger(logger kitlog.Logger) func(string, ...interface{}) {
-	return func(format string, args ...interface{}) {
+func automaxprocsLogger(logger kitlog.Logger) func(string, ...any) {
+	return func(format string, args ...any) {
 		level.Info(logger).Log("msg", fmt.Sprintf(format, args...))
 	}
 }
 
-// NewGRPCLogger adapts gRPC's package-level logger to Cortex's configured
+// newGRPCLogger adapts gRPC's package-level logger to Cortex's configured
 // go-kit logger so gRPC transport logs use the selected Cortex log format.
-func NewGRPCLogger(logger kitlog.Logger) grpclog.LoggerV2 {
+func newGRPCLogger(logger kitlog.Logger) grpclog.LoggerV2 {
 	return &grpcLogger{
 		logger:   logger,
 		severity: grpcSeverityFromEnv(),

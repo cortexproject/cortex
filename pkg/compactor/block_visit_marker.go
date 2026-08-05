@@ -146,4 +146,3 @@ heartBeat:
 func IsBlockVisitMarker(path string) bool {
 	return strings.HasSuffix(path, BlockVisitMarkerFile)
 }
-

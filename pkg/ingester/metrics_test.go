@@ -1329,7 +1329,7 @@ func TestIngestionDelaySecondsHistogram_DoesNotLoseObservationsOnNativeBucketLim
 	// the loop ends, forcing limitBuckets()/maybeReset() to run repeatedly.
 	const numObservations = 500
 	value := 0.001
-	for i := 0; i < numObservations; i++ {
+	for range numObservations {
 		observer.Observe(value)
 		value *= 1.2 // bucket factor is 1.1, so each step lands in a new native bucket
 	}

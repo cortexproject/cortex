@@ -1367,3 +1367,39 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateAlertmanagerConfig_DoesNotPanicOnNilInterfaceValues(t *testing.T) {
+	tests := map[string]any{
+		"nil root interface":        any(nil),
+		"map value nil interface":   map[string]any{"test": nil},
+		"slice value nil interface": []any{nil},
+	}
+
+	for testName, input := range tests {
+		t.Run(testName, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				err := validateAlertmanagerConfig(input)
+				assert.NoError(t, err)
+			})
+		})
+	}
+}
+
+func TestValidateAlertmanagerConfig_PagerdutyDetailsNullValue(t *testing.T) {
+	amCfg, err := config.Load(`
+route:
+  receiver: pd
+receivers:
+  - name: pd
+    pagerduty_configs:
+      - routing_key: "abc123"
+        details:
+          foo: null
+`)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		err = validateAlertmanagerConfig(amCfg)
+	})
+	assert.NoError(t, err)
+}

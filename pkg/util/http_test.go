@@ -222,25 +222,38 @@ func TestIsRequestBodyTooLargeRegression(t *testing.T) {
 	assert.True(t, util.IsRequestBodyTooLarge(err))
 }
 
-func TestParseProtoReader_GzipDecompressionBomb(t *testing.T) {
-	// Create a gzip payload where decompressed size far exceeds maxSize.
-	const maxSize = 4096                // 4 KB limit on decompressed output
-	uncompressed := make([]byte, 1<<20) // 1 MB of zeros
+func TestParseProtoReader_Gzip(t *testing.T) {
+	req := &cortexpb.PreallocWriteRequest{
+		WriteRequest: cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
+				{TimeSeries: &cortexpb.TimeSeries{
+					Labels:     []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+					Samples:    []cortexpb.Sample{{Value: 10, TimestampMs: 1}},
+					Exemplars:  []cortexpb.Exemplar{},
+					Histograms: []cortexpb.WrappedHistogram{},
+				}},
+			},
+		},
+	}
+	data, err := req.Marshal()
+	require.NoError(t, err)
 
 	var compressed bytes.Buffer
 	gzw := gzip.NewWriter(&compressed)
-	_, err := gzw.Write(uncompressed)
+	_, err = gzw.Write(data)
 	require.NoError(t, err)
 	require.NoError(t, gzw.Close())
 
-	// The compressed payload is small enough to pass the compressed-size limit,
-	// but decompresses to far more than maxSize.
-	require.Less(t, compressed.Len(), maxSize)
-
+	// Under-cap payload decodes successfully. maxSize must clear both the
+	// compressed input and the decompressed body; gzip framing makes a tiny
+	// message larger compressed, so size off the compressed length.
+	maxSize := compressed.Len()
 	var fromWire cortexpb.PreallocWriteRequest
-	err = util.ParseProtoReader(context.Background(), io.NopCloser(&compressed), 0, maxSize, &fromWire, util.Gzip)
-	// The decompressed output should be limited to maxSize+1 bytes, causing a
-	// proto unmarshal error (not an OOM). The key assertion is that we don't
-	// allocate 1 MB of memory.
-	assert.NotNil(t, err)
+	err = util.ParseProtoReader(context.Background(), io.NopCloser(bytes.NewReader(compressed.Bytes())), 0, maxSize, &fromWire, util.Gzip)
+	require.NoError(t, err)
+	require.Equal(t, req.Timeseries, fromWire.Timeseries)
+
+	// Capping the decompressed size below the message rejects it.
+	err = util.ParseProtoReader(context.Background(), io.NopCloser(bytes.NewReader(compressed.Bytes())), 0, len(data)-1, &fromWire, util.Gzip)
+	assert.Error(t, err)
 }

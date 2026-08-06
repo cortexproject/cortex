@@ -2186,7 +2186,7 @@ func TestDistributor_Push_LabelRemoval_RemovingNameLabelWillError(t *testing.T) 
 	req := mockWriteRequest([]labels.Labels{tc.inputSeries}, 1, 1, false)
 	_, err = ds[0].Push(ctx, req)
 	require.Error(t, err)
-	assert.Equal(t, "rpc error: code = Code(400) desc = sample missing metric name", err.Error())
+	assert.Equal(t, `rpc error: code = Code(400) desc = sample missing metric name metric: "{cluster=\"one\"}"`, err.Error())
 }
 
 func TestDistributor_Push_ShouldGuaranteeShardingTokenConsistencyOverTheTime(t *testing.T) {

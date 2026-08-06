@@ -101,6 +101,8 @@ type Config struct {
 
 	DistributedExecEnabled bool `yaml:"distributed_exec_enabled" doc:"hidden"`
 
+	DistributedExecShardCount int `yaml:"distributed_exec_shard_count" doc:"hidden"`
+
 	HonorProjectionHints bool `yaml:"honor_projection_hints"`
 
 	// Timeout classification flags for converting 5XX to 4XX on expensive queries.
@@ -164,6 +166,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ParquetQueryableDefaultBlockStore, "querier.parquet-queryable-default-block-store", string(parquetBlockStore), "[Experimental] Parquet queryable's default block store to query. Valid options are tsdb and parquet. If it is set to tsdb, parquet queryable always fallback to store gateway.")
 	f.BoolVar(&cfg.HonorProjectionHints, "querier.honor-projection-hints", false, "[Experimental] If true, querier will honor projection hints and only materialize requested labels. Today, projection is only effective when Parquet Queryable is enabled. Projection is only applied when not querying mixed block types (parquet and non-parquet) and not querying ingesters.")
 	f.BoolVar(&cfg.DistributedExecEnabled, "querier.distributed-exec-enabled", false, "Experimental: Enables distributed execution of queries by passing logical query plan fragments to downstream components.")
+	f.IntVar(&cfg.DistributedExecShardCount, "querier.distributed-exec-shard-count", 0, "Experimental: Number of shards the distributed-execution optimizer fans a shardable aggregation into. Only effective when -querier.distributed-exec-enabled is true. 0 (default) disables aggregation sharding.")
 	f.BoolVar(&cfg.ParquetQueryableFallbackDisabled, "querier.parquet-queryable-fallback-disabled", false, "[Experimental] Disable Parquet queryable to fallback queries to Store Gateway if the block is not available as Parquet files but available in TSDB. Setting this to true will disable the fallback and users can remove Store Gateway. But need to make sure Parquet files are created before it is queryable.")
 	f.BoolVar(&cfg.TimeoutClassificationEnabled, "querier.timeout-classification-enabled", false, "If true, classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing.")
 	f.DurationVar(&cfg.TimeoutClassificationDeadline, "querier.timeout-classification-deadline", time.Minute+59*time.Second, "The total time before the querier proactively cancels a query for timeout classification. Set this a few seconds less than the querier timeout.")

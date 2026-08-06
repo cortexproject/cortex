@@ -4070,6 +4070,16 @@ func (s *metricsForLabelMatchersStream) Recv() (*client.MetricsForLabelMatchersS
 	return result, nil
 }
 
+func (i *mockIngester) UserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UserStatsResponse, error) {
+	if !i.happy.Load() {
+		return nil, errFail
+	}
+	return &client.UserStatsResponse{
+		IngestionRate: 0,
+		NumSeries:     0,
+	}, nil
+}
+
 func (i *mockIngester) AllUserStats(ctx context.Context, in *client.UserStatsRequest, opts ...grpc.CallOption) (*client.UsersStatsResponse, error) {
 	return &i.stats, nil
 }
@@ -4970,4 +4980,27 @@ func TestDistributor_ReceivedHistogramBucketsMetric(t *testing.T) {
 	require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
 	// GenerateTestHistogram(0): 4 positive + 4 negative + 1 zero = 9 buckets
 	require.Equal(t, float64(9), m.GetHistogram().GetSampleSum())
+}
+
+// TestUserStats_ToleratesLeavingIngester verifies that UserStats succeeds
+// when one of the ring ingesters fails (e.g. because it is LEAVING).
+// Before the fix, MaxErrors was set to 0, causing the endpoint to return an
+// error whenever a single ingester in the replication set was unavailable.
+func TestUserStats_ToleratesLeavingIngester(t *testing.T) {
+	t.Parallel()
+
+	// 3 ingesters, RF=3, only 2 are happy — simulates one LEAVING ingester
+	// returning an error.
+	ctx := user.InjectOrgID(context.Background(), "user1")
+	distributors, _, _, _ := prepare(t, prepConfig{
+		numIngesters:      3,
+		happyIngesters:    2,
+		numDistributors:   1,
+		replicationFactor: 3,
+	})
+
+	// UserStats must succeed despite one ingester failing.
+	stats, err := distributors[0].UserStats(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, stats)
 }

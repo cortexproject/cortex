@@ -45,6 +45,10 @@ func TestValidTenantIDs(t *testing.T) {
 			name: "user-index.json.gz",
 			err:  new("tenant ID 'user-index.json.gz' is not allowed"),
 		},
+		{
+			name: "__querier__",
+			err:  new("tenant ID '__querier__' is not allowed"),
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidTenantID(tc.name)

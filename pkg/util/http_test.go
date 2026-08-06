@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -223,13 +224,29 @@ func TestIsRequestBodyTooLargeRegression(t *testing.T) {
 }
 
 func TestParseProtoReader_GzipDecompressionBomb(t *testing.T) {
-	// Create a gzip payload where decompressed size far exceeds maxSize.
-	const maxSize = 4096                // 4 KB limit on decompressed output
-	uncompressed := make([]byte, 1<<20) // 1 MB of zeros
+	const maxSize = 4096
+	req := &cortexpb.PreallocWriteRequest{
+		WriteRequest: cortexpb.WriteRequest{
+			Timeseries: []cortexpb.PreallocTimeseries{
+				{
+					TimeSeries: &cortexpb.TimeSeries{
+						Labels: []cortexpb.LabelAdapter{
+							{Name: "__name__", Value: "large_series"},
+							{Name: "payload", Value: strings.Repeat("a", 1<<20)},
+						},
+						Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+					},
+				},
+			},
+		},
+	}
+	uncompressed, err := req.Marshal()
+	require.NoError(t, err)
+	require.Greater(t, len(uncompressed), maxSize)
 
 	var compressed bytes.Buffer
 	gzw := gzip.NewWriter(&compressed)
-	_, err := gzw.Write(uncompressed)
+	_, err = gzw.Write(uncompressed)
 	require.NoError(t, err)
 	require.NoError(t, gzw.Close())
 
@@ -239,8 +256,7 @@ func TestParseProtoReader_GzipDecompressionBomb(t *testing.T) {
 
 	var fromWire cortexpb.PreallocWriteRequest
 	err = util.ParseProtoReader(context.Background(), io.NopCloser(&compressed), 0, maxSize, &fromWire, util.Gzip)
-	// The decompressed output should be limited to maxSize+1 bytes, causing a
-	// proto unmarshal error (not an OOM). The key assertion is that we don't
-	// allocate 1 MB of memory.
-	assert.NotNil(t, err)
+	// The decompressed output should be limited to maxSize+1 bytes. Without
+	// the gzip LimitReader, the complete valid protobuf would unmarshal.
+	require.Error(t, err)
 }

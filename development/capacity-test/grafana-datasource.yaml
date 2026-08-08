@@ -1,0 +1,32 @@
+# Grafana datasource configuration for capacity test (microservices mode).
+# Queries go through the querier service.
+apiVersion: 1
+
+datasources:
+  - name: Cortex (tenant-01)
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://querier:8003/api/prom
+    jsonData: &jsonData
+      cacheLevel: None
+      httpHeaderName1: X-Scope-OrgID
+      httpMethod: POST
+      prometheusType: Cortex
+      prometheusVersion: 1.14.0
+      timeInterval: 15s
+    secureJsonData:
+      httpHeaderValue1: tenant-01
+    version: 1
+    editable: true
+    isDefault: true
+  - name: Tenant 02
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://querier:8003/api/prom
+    jsonData: *jsonData
+    secureJsonData:
+      httpHeaderValue1: tenant-02
+    version: 1
+    editable: true

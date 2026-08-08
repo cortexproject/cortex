@@ -1,0 +1,68 @@
+# Cortex configuration for capacity testing in microservices mode.
+# Runs distributor, ingester, querier, and store-gateway as separate
+# containers using memberlist for ring discovery (no Consul needed).
+
+auth_enabled: true
+
+server:
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+
+distributor:
+  shard_by_all_labels: true
+  pool:
+    health_check_ingesters: true
+
+ingester_client:
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
+    grpc_compression: gzip
+
+ingester:
+  lifecycler:
+    min_ready_duration: 0s
+    final_sleep: 0s
+    num_tokens: 512
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 1
+
+blocks_storage:
+  backend: s3
+  s3:
+    endpoint: seaweedfs:8333
+    region: local
+    bucket_name: cortex-blocks
+    access_key_id: any
+    secret_access_key: any
+    insecure: true
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+    bucket_index:
+      enabled: true
+
+compactor:
+  data_dir: /tmp/cortex/compactor
+  sharding_ring:
+    kvstore:
+      store: memberlist
+
+store_gateway:
+  sharding_enabled: true
+  sharding_ring:
+    replication_factor: 1
+    wait_stability_min_duration: 0s
+    kvstore:
+      store: memberlist
+
+frontend_worker:
+  match_max_concurrent: true
+
+memberlist:
+  join_members:
+    - ingester:7946

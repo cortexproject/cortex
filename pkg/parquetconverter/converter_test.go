@@ -703,8 +703,6 @@ func TestConverter_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T
 		cfg.Ring.HeartbeatPeriod = 100 * time.Millisecond
 		cfg.Ring.HeartbeatTimeout = 200 * time.Millisecond
 		cfg.Ring.AutoForgetDelay = 400 * time.Millisecond
-		// UnregisterOnShutdown=false lets the instance stay in the ring
-		// after stopping, so we can verify auto-forget kicks it out.
 
 		c, _, _ := prepare(t, cfg, bucketClient, limits, nil)
 		converters = append(converters, c)

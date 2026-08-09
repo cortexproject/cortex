@@ -174,7 +174,12 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 func (c *Converter) starting(ctx context.Context) error {
 	lifecyclerCfg := c.cfg.Ring.ToLifecyclerConfig()
 	var err error
-	c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
+	var delegate ring.LifecyclerDelegate
+	delegate = &ring.DefaultLifecyclerDelegate{}
+	if c.cfg.Ring.AutoForgetDelay > 0 {
+		delegate = ring.NewLifecyclerAutoForgetDelegate(c.cfg.Ring.AutoForgetDelay, delegate, c.logger)
+	}
+	c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg), delegate)
 	if err != nil {
 		return errors.Wrap(err, "unable to initialize converter ring lifecycler")
 	}

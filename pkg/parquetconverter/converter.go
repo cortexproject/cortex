@@ -45,7 +45,7 @@ import (
 )
 
 const (
-	// ringKey is the key under which we store the compactors ring in the KVStore.
+	// ringKey is the key under which we store the parquet converters ring in the KVStore.
 	ringKey = "parquet-converter"
 
 	converterMetaPrefix = "converter-meta-"
@@ -181,12 +181,12 @@ func (c *Converter) starting(ctx context.Context) error {
 	}
 	c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg), delegate)
 	if err != nil {
-		return errors.Wrap(err, "unable to initialize converter ring lifecycler")
+		return errors.Wrap(err, "unable to initialize parquet converter ring lifecycler")
 	}
 
 	c.ring, err = ring.New(lifecyclerCfg.RingConfig, "parquet-converter", ringKey, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
 	if err != nil {
-		return errors.Wrap(err, "unable to initialize compactor ring")
+		return errors.Wrap(err, "unable to initialize parquet converter ring")
 	}
 
 	c.ringSubservices, err = services.NewManager(c.ringLifecycler, c.ring)
@@ -197,7 +197,7 @@ func (c *Converter) starting(ctx context.Context) error {
 		err = services.StartManagerAndAwaitHealthy(ctx, c.ringSubservices)
 	}
 	if err != nil {
-		return errors.Wrap(err, "unable to start compactor ring dependencies")
+		return errors.Wrap(err, "unable to start parquet converter ring dependencies")
 	}
 
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, time.Minute*3)
@@ -561,14 +561,14 @@ func (c *Converter) ownBlock(ring ring.ReadRing, blockId string) (bool, error) {
 	_, _ = hasher.Write([]byte(blockId))
 	userHash := hasher.Sum32()
 
-	// Check whether this compactor instance owns the user.
+	// Check whether this parquet converter instance owns the user.
 	rs, err := ring.Get(userHash, RingOp, nil, nil, nil)
 	if err != nil {
 		return false, err
 	}
 
 	if len(rs.Instances) != 1 {
-		return false, fmt.Errorf("unexpected number of compactors in the shard (expected 1, got %d)", len(rs.Instances))
+		return false, fmt.Errorf("unexpected number of parquet converters in the shard (expected 1, got %d)", len(rs.Instances))
 	}
 
 	return rs.Instances[0].Addr == c.ringLifecycler.Addr, nil

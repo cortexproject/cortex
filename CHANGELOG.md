@@ -86,6 +86,7 @@
 * [BUGFIX] Distributor: Return HTTP 499 (Client Closed Request) instead of 500 when a remote-write or OTLP push is canceled by the client, so client-side cancellations are no longer counted as server-side errors. #7717
 * [BUGFIX] Querier: Fix gRPC `codes.Canceled` errors being mapped to HTTP 500 instead of 499 when a client cancels a query. #7738
 * [BUGFIX] Compactor: Fix spurious `bucket operation fail after retries` error logs emitted during partial block cleanup. #7749
+* [BUGFIX] Alertmanager: Fix panic in `validateAlertmanagerConfig` when receiver config traversal encounters nil interface values. #7751
 * [BUGFIX] Parquet Converter: Fix `auto_forget_delay` having no effect. The ring lifecycler was created without the auto-forget delegate, so unhealthy instances were never automatically removed from the ring. #7752
 
 ## 1.21.1 2026-06-04

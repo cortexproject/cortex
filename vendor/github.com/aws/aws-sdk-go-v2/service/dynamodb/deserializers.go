@@ -5353,6 +5353,126 @@ func awsAwsjson10_deserializeOpErrorScan(response *smithyhttp.Response, metadata
 	}
 }
 
+type awsAwsjson10_deserializeOpSearchVectors struct {
+}
+
+func (*awsAwsjson10_deserializeOpSearchVectors) ID() string {
+	return "OperationDeserializer"
+}
+
+func (m *awsAwsjson10_deserializeOpSearchVectors) HandleDeserialize(ctx context.Context, in middleware.DeserializeInput, next middleware.DeserializeHandler) (
+	out middleware.DeserializeOutput, metadata middleware.Metadata, err error,
+) {
+	out, metadata, err = next.HandleDeserialize(ctx, in)
+	if err != nil {
+		return out, metadata, err
+	}
+
+	_, span := tracing.StartSpan(ctx, "OperationDeserializer")
+	endTimer := startMetricTimer(ctx, "client.call.deserialization_duration")
+	defer endTimer()
+	defer span.End()
+	response, ok := out.RawResponse.(*smithyhttp.Response)
+	if !ok {
+		return out, metadata, &smithy.DeserializationError{Err: fmt.Errorf("unknown transport type %T", out.RawResponse)}
+	}
+
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return out, metadata, awsAwsjson10_deserializeOpErrorSearchVectors(response, &metadata)
+	}
+	output := &SearchVectorsOutput{}
+	out.Result = output
+
+	var buff [1024]byte
+	ringBuffer := smithyio.NewRingBuffer(buff[:])
+
+	body := io.TeeReader(response.Body, ringBuffer)
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	var shape interface{}
+	if err := decoder.Decode(&shape); err != nil && err != io.EOF {
+		var snapshot bytes.Buffer
+		io.Copy(&snapshot, ringBuffer)
+		err = &smithy.DeserializationError{
+			Err:      fmt.Errorf("failed to decode response body, %w", err),
+			Snapshot: snapshot.Bytes(),
+		}
+		return out, metadata, err
+	}
+
+	err = awsAwsjson10_deserializeOpDocumentSearchVectorsOutput(&output, shape)
+	if err != nil {
+		var snapshot bytes.Buffer
+		io.Copy(&snapshot, ringBuffer)
+		err = &smithy.DeserializationError{
+			Err:      fmt.Errorf("failed to decode response body, %w", err),
+			Snapshot: snapshot.Bytes(),
+		}
+		return out, metadata, err
+	}
+
+	return out, metadata, err
+}
+
+func awsAwsjson10_deserializeOpErrorSearchVectors(response *smithyhttp.Response, metadata *middleware.Metadata) error {
+	var errorBuffer bytes.Buffer
+	if _, err := io.Copy(&errorBuffer, response.Body); err != nil {
+		return &smithy.DeserializationError{Err: fmt.Errorf("failed to copy error response body, %w", err)}
+	}
+	errorBody := bytes.NewReader(errorBuffer.Bytes())
+
+	errorCode := "UnknownError"
+	errorMessage := errorCode
+
+	headerCode := response.Header.Get("X-Amzn-ErrorType")
+
+	var buff [1024]byte
+	ringBuffer := smithyio.NewRingBuffer(buff[:])
+
+	body := io.TeeReader(errorBody, ringBuffer)
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	bodyInfo, err := getProtocolErrorInfo(decoder)
+	if err != nil {
+		var snapshot bytes.Buffer
+		io.Copy(&snapshot, ringBuffer)
+		err = &smithy.DeserializationError{
+			Err:      fmt.Errorf("failed to decode response body, %w", err),
+			Snapshot: snapshot.Bytes(),
+		}
+		return err
+	}
+
+	errorBody.Seek(0, io.SeekStart)
+	if typ, ok := resolveProtocolErrorType(headerCode, bodyInfo); ok {
+		errorCode = restjson.SanitizeErrorCode(typ)
+	}
+	if len(bodyInfo.Message) != 0 {
+		errorMessage = bodyInfo.Message
+	}
+	switch {
+	case strings.EqualFold("InternalServerError", errorCode):
+		return awsAwsjson10_deserializeErrorInternalServerError(response, errorBody)
+
+	case strings.EqualFold("RequestLimitExceeded", errorCode):
+		return awsAwsjson10_deserializeErrorRequestLimitExceeded(response, errorBody)
+
+	case strings.EqualFold("ResourceNotFoundException", errorCode):
+		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
+	default:
+		genericError := &smithy.GenericAPIError{
+			Code:    errorCode,
+			Message: errorMessage,
+		}
+		return genericError
+
+	}
+}
+
 type awsAwsjson10_deserializeOpTagResource struct {
 }
 
@@ -9863,6 +9983,11 @@ func awsAwsjson10_deserializeDocumentConsumedCapacity(v **types.ConsumedCapacity
 					return fmt.Errorf("expected TableArn to be of type string, got %T instead", value)
 				}
 				sv.TableName = ptr.String(jtv)
+			}
+
+		case "VectorIndexes":
+			if err := awsAwsjson10_deserializeDocumentVectorIndexesCapacityMap(&sv.VectorIndexes, value); err != nil {
+				return err
 			}
 
 		case "WriteCapacityUnits":
@@ -15334,6 +15459,193 @@ func awsAwsjson10_deserializeDocumentS3BucketSource(v **types.S3BucketSource, va
 	return nil
 }
 
+func awsAwsjson10_deserializeDocumentSearchResultItem(v **types.SearchResultItem, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.SearchResultItem
+	if *v == nil {
+		sv = &types.SearchResultItem{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "Item":
+			if err := awsAwsjson10_deserializeDocumentAttributeMap(&sv.Item, value); err != nil {
+				return err
+			}
+
+		case "Score":
+			if value != nil {
+				switch jtv := value.(type) {
+				case json.Number:
+					f64, err := jtv.Float64()
+					if err != nil {
+						return err
+					}
+					sv.Score = f64
+
+				case string:
+					var f64 float64
+					switch {
+					case strings.EqualFold(jtv, "NaN"):
+						f64 = math.NaN()
+
+					case strings.EqualFold(jtv, "Infinity"):
+						f64 = math.Inf(1)
+
+					case strings.EqualFold(jtv, "-Infinity"):
+						f64 = math.Inf(-1)
+
+					default:
+						return fmt.Errorf("unknown JSON number value: %s", jtv)
+
+					}
+					sv.Score = f64
+
+				default:
+					return fmt.Errorf("expected ScoreNumber to be a JSON Number, got %T instead", value)
+
+				}
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentSearchResultList(v *[]types.SearchResultItem, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.SearchResultItem
+	if *v == nil {
+		cv = []types.SearchResultItem{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.SearchResultItem
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentSearchResultItem(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentSearchSchema(v *[]types.SearchSchemaElement, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.SearchSchemaElement
+	if *v == nil {
+		cv = []types.SearchSchemaElement{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.SearchSchemaElement
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentSearchSchemaElement(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentSearchSchemaElement(v **types.SearchSchemaElement, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.SearchSchemaElement
+	if *v == nil {
+		sv = &types.SearchSchemaElement{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "AttributeName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected AttributeName to be of type string, got %T instead", value)
+				}
+				sv.AttributeName = ptr.String(jtv)
+			}
+
+		case "SearchSchemaElementType":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected SearchSchemaElementType to be of type string, got %T instead", value)
+				}
+				sv.SearchSchemaElementType = types.SearchSchemaElementType(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
 func awsAwsjson10_deserializeDocumentSecondaryIndexesCapacityMap(v *map[string]types.Capacity, value interface{}) error {
 	if v == nil {
 		return fmt.Errorf("unexpected nil of type %T", v)
@@ -15537,6 +15849,11 @@ func awsAwsjson10_deserializeDocumentSourceTableFeatureDetails(v **types.SourceT
 
 		case "TimeToLiveDescription":
 			if err := awsAwsjson10_deserializeDocumentTimeToLiveDescription(&sv.TimeToLiveDescription, value); err != nil {
+				return err
+			}
+
+		case "VectorIndexes":
+			if err := awsAwsjson10_deserializeDocumentVectorIndexes(&sv.VectorIndexes, value); err != nil {
 				return err
 			}
 
@@ -15986,6 +16303,11 @@ func awsAwsjson10_deserializeDocumentTableCreationParameters(v **types.TableCrea
 				sv.TableName = ptr.String(jtv)
 			}
 
+		case "VectorIndexes":
+			if err := awsAwsjson10_deserializeDocumentVectorIndexList(&sv.VectorIndexes, value); err != nil {
+				return err
+			}
+
 		default:
 			_, _ = key, value
 
@@ -16217,6 +16539,11 @@ func awsAwsjson10_deserializeDocumentTableDescription(v **types.TableDescription
 					return fmt.Errorf("expected TableStatus to be of type string, got %T instead", value)
 				}
 				sv.TableStatus = types.TableStatus(jtv)
+			}
+
+		case "VectorIndexes":
+			if err := awsAwsjson10_deserializeDocumentVectorIndexDescriptionList(&sv.VectorIndexes, value); err != nil {
+				return err
 			}
 
 		case "WarmThroughput":
@@ -16886,6 +17213,566 @@ func awsAwsjson10_deserializeDocumentUpdateKinesisStreamingConfiguration(v **typ
 		}
 	}
 	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorAttributeDefinition(v **types.VectorAttributeDefinition, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.VectorAttributeDefinition
+	if *v == nil {
+		sv = &types.VectorAttributeDefinition{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "AttributeName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected VectorAttributeName to be of type string, got %T instead", value)
+				}
+				sv.AttributeName = ptr.String(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorCapacity(v **types.VectorCapacity, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.VectorCapacity
+	if *v == nil {
+		sv = &types.VectorCapacity{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "VectorSearchRequestBytes":
+			if value != nil {
+				switch jtv := value.(type) {
+				case json.Number:
+					f64, err := jtv.Float64()
+					if err != nil {
+						return err
+					}
+					sv.VectorSearchRequestBytes = ptr.Float64(f64)
+
+				case string:
+					var f64 float64
+					switch {
+					case strings.EqualFold(jtv, "NaN"):
+						f64 = math.NaN()
+
+					case strings.EqualFold(jtv, "Infinity"):
+						f64 = math.Inf(1)
+
+					case strings.EqualFold(jtv, "-Infinity"):
+						f64 = math.Inf(-1)
+
+					default:
+						return fmt.Errorf("unknown JSON number value: %s", jtv)
+
+					}
+					sv.VectorSearchRequestBytes = ptr.Float64(f64)
+
+				default:
+					return fmt.Errorf("expected ConsumedCapacityUnits to be a JSON Number, got %T instead", value)
+
+				}
+			}
+
+		case "VectorWriteRequestBytes":
+			if value != nil {
+				switch jtv := value.(type) {
+				case json.Number:
+					f64, err := jtv.Float64()
+					if err != nil {
+						return err
+					}
+					sv.VectorWriteRequestBytes = ptr.Float64(f64)
+
+				case string:
+					var f64 float64
+					switch {
+					case strings.EqualFold(jtv, "NaN"):
+						f64 = math.NaN()
+
+					case strings.EqualFold(jtv, "Infinity"):
+						f64 = math.Inf(1)
+
+					case strings.EqualFold(jtv, "-Infinity"):
+						f64 = math.Inf(-1)
+
+					default:
+						return fmt.Errorf("unknown JSON number value: %s", jtv)
+
+					}
+					sv.VectorWriteRequestBytes = ptr.Float64(f64)
+
+				default:
+					return fmt.Errorf("expected ConsumedCapacityUnits to be a JSON Number, got %T instead", value)
+
+				}
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndex(v **types.VectorIndex, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.VectorIndex
+	if *v == nil {
+		sv = &types.VectorIndex{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "Dimensions":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected PositiveLongObject to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.Dimensions = ptr.Int64(i64)
+			}
+
+		case "DistanceFunction":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected VectorDistanceFunction to be of type string, got %T instead", value)
+				}
+				sv.DistanceFunction = types.VectorDistanceFunction(jtv)
+			}
+
+		case "IndexName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected IndexName to be of type string, got %T instead", value)
+				}
+				sv.IndexName = ptr.String(jtv)
+			}
+
+		case "Projection":
+			if err := awsAwsjson10_deserializeDocumentProjection(&sv.Projection, value); err != nil {
+				return err
+			}
+
+		case "SearchSchema":
+			if err := awsAwsjson10_deserializeDocumentSearchSchema(&sv.SearchSchema, value); err != nil {
+				return err
+			}
+
+		case "VectorAttribute":
+			if err := awsAwsjson10_deserializeDocumentVectorAttributeDefinition(&sv.VectorAttribute, value); err != nil {
+				return err
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexDescription(v **types.VectorIndexDescription, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.VectorIndexDescription
+	if *v == nil {
+		sv = &types.VectorIndexDescription{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "Backfilling":
+			if value != nil {
+				jtv, ok := value.(bool)
+				if !ok {
+					return fmt.Errorf("expected Backfilling to be of type *bool, got %T instead", value)
+				}
+				sv.Backfilling = ptr.Bool(jtv)
+			}
+
+		case "Dimensions":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected PositiveLongObject to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.Dimensions = ptr.Int64(i64)
+			}
+
+		case "DistanceFunction":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected VectorDistanceFunction to be of type string, got %T instead", value)
+				}
+				sv.DistanceFunction = types.VectorDistanceFunction(jtv)
+			}
+
+		case "IndexArn":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected String to be of type string, got %T instead", value)
+				}
+				sv.IndexArn = ptr.String(jtv)
+			}
+
+		case "IndexName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected IndexName to be of type string, got %T instead", value)
+				}
+				sv.IndexName = ptr.String(jtv)
+			}
+
+		case "IndexSizeBytes":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected LongObject to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.IndexSizeBytes = ptr.Int64(i64)
+			}
+
+		case "IndexStatus":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected IndexStatus to be of type string, got %T instead", value)
+				}
+				sv.IndexStatus = types.IndexStatus(jtv)
+			}
+
+		case "ItemCount":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected LongObject to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.ItemCount = ptr.Int64(i64)
+			}
+
+		case "Projection":
+			if err := awsAwsjson10_deserializeDocumentProjection(&sv.Projection, value); err != nil {
+				return err
+			}
+
+		case "SearchSchema":
+			if err := awsAwsjson10_deserializeDocumentSearchSchema(&sv.SearchSchema, value); err != nil {
+				return err
+			}
+
+		case "VectorAttribute":
+			if err := awsAwsjson10_deserializeDocumentVectorAttributeDefinition(&sv.VectorAttribute, value); err != nil {
+				return err
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexDescriptionList(v *[]types.VectorIndexDescription, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.VectorIndexDescription
+	if *v == nil {
+		cv = []types.VectorIndexDescription{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.VectorIndexDescription
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentVectorIndexDescription(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexes(v *[]types.VectorIndexInfo, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.VectorIndexInfo
+	if *v == nil {
+		cv = []types.VectorIndexInfo{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.VectorIndexInfo
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentVectorIndexInfo(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexesCapacityMap(v *map[string]types.VectorCapacity, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var mv map[string]types.VectorCapacity
+	if *v == nil {
+		mv = map[string]types.VectorCapacity{}
+	} else {
+		mv = *v
+	}
+
+	for key, value := range shape {
+		var parsedVal types.VectorCapacity
+		mapVar := parsedVal
+		destAddr := &mapVar
+		if err := awsAwsjson10_deserializeDocumentVectorCapacity(&destAddr, value); err != nil {
+			return err
+		}
+		parsedVal = *destAddr
+		mv[key] = parsedVal
+
+	}
+	*v = mv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexInfo(v **types.VectorIndexInfo, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.VectorIndexInfo
+	if *v == nil {
+		sv = &types.VectorIndexInfo{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "Dimensions":
+			if value != nil {
+				jtv, ok := value.(json.Number)
+				if !ok {
+					return fmt.Errorf("expected PositiveLongObject to be json.Number, got %T instead", value)
+				}
+				i64, err := jtv.Int64()
+				if err != nil {
+					return err
+				}
+				sv.Dimensions = ptr.Int64(i64)
+			}
+
+		case "DistanceFunction":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected VectorDistanceFunction to be of type string, got %T instead", value)
+				}
+				sv.DistanceFunction = types.VectorDistanceFunction(jtv)
+			}
+
+		case "IndexName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected IndexName to be of type string, got %T instead", value)
+				}
+				sv.IndexName = ptr.String(jtv)
+			}
+
+		case "Projection":
+			if err := awsAwsjson10_deserializeDocumentProjection(&sv.Projection, value); err != nil {
+				return err
+			}
+
+		case "SearchSchema":
+			if err := awsAwsjson10_deserializeDocumentSearchSchema(&sv.SearchSchema, value); err != nil {
+				return err
+			}
+
+		case "VectorAttribute":
+			if err := awsAwsjson10_deserializeDocumentVectorAttributeDefinition(&sv.VectorAttribute, value); err != nil {
+				return err
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentVectorIndexList(v *[]types.VectorIndex, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.VectorIndex
+	if *v == nil {
+		cv = []types.VectorIndex{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.VectorIndex
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentVectorIndex(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
 	return nil
 }
 
@@ -19000,6 +19887,47 @@ func awsAwsjson10_deserializeOpDocumentScanOutput(v **ScanOutput, value interfac
 					return err
 				}
 				sv.ScannedCount = int32(i64)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeOpDocumentSearchVectorsOutput(v **SearchVectorsOutput, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *SearchVectorsOutput
+	if *v == nil {
+		sv = &SearchVectorsOutput{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "ConsumedCapacity":
+			if err := awsAwsjson10_deserializeDocumentVectorCapacity(&sv.ConsumedCapacity, value); err != nil {
+				return err
+			}
+
+		case "SearchResults":
+			if err := awsAwsjson10_deserializeDocumentSearchResultList(&sv.SearchResults, value); err != nil {
+				return err
 			}
 
 		default:

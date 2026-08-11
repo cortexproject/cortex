@@ -545,6 +545,23 @@ func (d *Desc) getTokensByZone() map[string][]uint32 {
 	return MergeTokensByZone(zones)
 }
 
+// getTokensByZoneExcludingState returns tokens grouped by zone, excluding instances in the given state.
+// Used to exclude READONLY ingesters from ownership calculations during scale-down.
+func (d *Desc) getTokensByZoneExcludingState(excludeState InstanceState) map[string][]uint32 {
+	zones := map[string][][]uint32{}
+	for _, instance := range d.Ingesters {
+		if instance.State == excludeState {
+			continue
+		}
+		tokens := instance.Tokens
+		if !sort.IsSorted(Tokens(tokens)) {
+			sort.Sort(Tokens(tokens))
+		}
+		zones[instance.Zone] = append(zones[instance.Zone], tokens)
+	}
+	return MergeTokensByZone(zones)
+}
+
 // getInstancesByAddr returns instances id by its address
 func (d *Desc) getInstancesByAddr() map[string]string {
 	instancesByAddMap := make(map[string]string, len(d.Ingesters))

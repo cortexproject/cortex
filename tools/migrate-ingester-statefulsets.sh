@@ -39,7 +39,7 @@ while [[ $INSTANCES_TO_DOWNSCALE -gt 0 ]]; do
   # wget (BusyBox version) will fail, but we don't care ... important thing is that it has triggered shutdown.
   # -T causes wget to wait only 5 seconds, otherwise /shutdown takes a long time.
   # Preferably we would wait for /shutdown to return, but unfortunately that doesn't work (even with big timeout), wget complains with weird error.
-  kubectl exec "$POD_TO_SHUTDOWN" --namespace="$NAMESPACE" -- wget -T 5 http://localhost:80/shutdown >/dev/null 2>/dev/null || true
+  kubectl exec "$POD_TO_SHUTDOWN" --namespace="$NAMESPACE" -- wget --post-data="" -T 5 http://localhost:80/shutdown >/dev/null 2>/dev/null || true
 
   # While request to /shutdown completes only after flushing has finished, it unfortunately returns 204 status code,
   # which confuses wget. That is the reason why instead of waiting for /shutdown to complete, this script waits for

@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [CHANGE] Ingester: `/ingester/flush`, `/ingester/shutdown`, `/flush`, and `/shutdown` endpoints now only accept `POST` requests. The index page renders these as HTML form buttons to prevent accidental browser-triggered GET requests. Update any scripts using `wget` or `curl` without `-X POST` to use `curl -X POST` or `wget --post-data=""`. #3243
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481

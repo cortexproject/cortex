@@ -200,7 +200,7 @@ func TestActiveSeries_Basic(t *testing.T) {
 	now := time.Now()
 
 	s := labels.FromStrings("__name__", "test", "job", "app")
-	as.UpdateSeries(s, s.Hash(), now, false, func(l labels.Labels) labels.Labels { return l.Copy() })
+	as.UpdateSeries(s, s.Hash(), 0, now, false, func(l labels.Labels) labels.Labels { return l.Copy() })
 
 	assert.Equal(t, 1, as.Active())
 }

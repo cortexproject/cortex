@@ -59,7 +59,7 @@ func newHybridBucketStoresMetrics(reg prometheus.Registerer) *hybridBucketStores
 		}, []string{"store"}),
 		operationsTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_hybrid_bucket_stores_operations_total",
-			Help: "Total number of operations by which sub-store(s) served them.",
+			Help: "Total number of operations served, labeled by method and which sub-store(s) served them.",
 		}, []string{"store", "method"}),
 	}
 }

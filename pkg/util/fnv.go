@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package client
+package util
 
-// Inline and byte-free variant of hash/fnv's fnv64a.
+// Inline and byte-free variant of hash/fnv's fnv64a and fnv32.
 
 const (
 	offset64 = 14695981039346656037
@@ -23,14 +23,14 @@ const (
 	prime32  = 16777619
 )
 
-// hashNew initializes a new fnv64a hash value.
-func hashNew() uint64 {
+// HashNew initializes a new fnv64a hash value.
+func HashNew() uint64 {
 	return offset64
 }
 
-// hashAdd adds a string to a fnv64a hash value, returning the updated hash.
+// HashAdd adds a string to a fnv64a hash value, returning the updated hash.
 // Note this is the same algorithm as Go stdlib `sum64a.Write()`
-func hashAdd(h uint64, s string) uint64 {
+func HashAdd(h uint64, s string) uint64 {
 	for i := 0; i < len(s); i++ {
 		h ^= uint64(s[i])
 		h *= prime64
@@ -38,14 +38,21 @@ func hashAdd(h uint64, s string) uint64 {
 	return h
 }
 
-// hashAddByte adds a byte to a fnv64a hash value, returning the updated hash.
-func hashAddByte(h uint64, b byte) uint64 {
+// HashAddByte adds a byte to a fnv64a hash value, returning the updated hash.
+func HashAddByte(h uint64, b byte) uint64 {
 	h ^= uint64(b)
 	h *= prime64
 	return h
 }
 
-// HashNew32 initializies a new fnv32 hash value.
+// HashAddUint adds a uint64 to a fnv64a hash value, returning the updated hash.
+func HashAddUint(h uint64, i uint64) uint64 {
+	h ^= i
+	h *= prime64
+	return h
+}
+
+// HashNew32 initializes a new fnv32 hash value.
 func HashNew32() uint32 {
 	return offset32
 }
@@ -64,5 +71,12 @@ func HashAdd32(h uint32, s string) uint32 {
 func HashAddByte32(h uint32, b byte) uint32 {
 	h *= prime32
 	h ^= uint32(b)
+	return h
+}
+
+// HashAddUint32 adds a uint32 to a fnv32 hash value, returning the updated hash.
+func HashAddUint32(h uint32, i uint32) uint32 {
+	h *= prime32
+	h ^= i
 	return h
 }

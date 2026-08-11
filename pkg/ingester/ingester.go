@@ -142,6 +142,19 @@ type Config struct {
 	HeadQueriedSeriesMetricsSampleRate     float64                  `yaml:"head_queried_series_metrics_sample_rate"`
 	HeadQueriedSeriesMetricsWindows        cortex_tsdb.DurationList `yaml:"head_queried_series_metrics_windows"`
 
+	// OwnedSeriesMetricsEnabled enables tracking of owned series per user.
+	// When enabled, the ingester computes series ownership based on the ring and
+	// emits the cortex_ingester_owned_series metric. Does NOT change limit enforcement
+	// behavior — use OwnedSeriesLimitEnforcementEnabled for that.
+	OwnedSeriesMetricsEnabled bool `yaml:"owned_series_metrics_enabled"`
+
+	// OwnedSeriesLimitEnforcementEnabled enables using owned series count for limit
+	// enforcement in PreCreation(). When enabled (requires OwnedSeriesMetricsEnabled=true),
+	// both the per-user series limit and instance-level max_series limit use owned count
+	// instead of Head().NumSeries(), preventing false throttling during resharding.
+	// If OwnedSeriesMetricsEnabled is false, this flag has no effect (falls back to old behavior).
+	OwnedSeriesLimitEnforcementEnabled bool `yaml:"owned_series_limit_enforcement_enabled"`
+
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
 
@@ -213,6 +226,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.HeadQueriedSeriesMetricsSampleRate, "ingester.head-queried-series-metrics-sample-rate", 1.0, "Sampling rate for head queried series tracking (1.0 = 100%%).")
 	cfg.HeadQueriedSeriesMetricsWindows = cortex_tsdb.DurationList{2 * time.Hour}
 	f.Var(&cfg.HeadQueriedSeriesMetricsWindows, "ingester.head-queried-series-metrics-windows", "Time windows to expose head queried series metrics. Also controls how long per-metric-name cardinality is reported after last query.")
+
+	f.BoolVar(&cfg.OwnedSeriesMetricsEnabled, "ingester.owned-series-metrics-enabled", false, "Enable tracking of owned series per user. When enabled, the ingester computes series ownership based on the ring and emits cortex_ingester_owned_series metric.")
+	f.BoolVar(&cfg.OwnedSeriesLimitEnforcementEnabled, "ingester.owned-series-limit-enforcement-enabled", false, "Use owned series count for limit enforcement. Requires owned-series-metrics-enabled. When enabled, PreCreation uses owned count instead of Head().NumSeries() for both per-user and instance-level limits.")
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
@@ -389,6 +405,19 @@ type userTSDB struct {
 	instanceSeriesCount *atomic.Int64 // Shared across all userTSDB instances created by ingester.
 	instanceLimitsFn    func() *InstanceLimits
 
+	// ownedSeriesLimitEnabled controls whether PreCreation uses activeSeries.Owned()
+	// for limit checks instead of Head().NumSeries(). Only true when BOTH
+	// OwnedSeriesMetricsEnabled AND OwnedSeriesLimitEnforcementEnabled are set.
+	ownedSeriesLimitEnabled bool
+
+	// instanceOwnedCount tracks total owned series across all tenants on this ingester.
+	// Recalculated every updateActiveSeries cycle (1 min). Used for instance-level
+	// max_series limit when ownedSeriesLimitEnabled is true.
+	// NOTE: Up to 1 minute stale after ring changes. This is acceptable because
+	// staleness is conservative (overcounts) and this limit protects against OOM,
+	// not customer-facing throttle errors.
+	instanceOwnedCount *atomic.Int64
+
 	stateMtx       sync.RWMutex
 	state          tsdbState
 	pushesInFlight sync.WaitGroup // Increased with stateMtx read lock held, only if state == active or activeShipping.
@@ -523,16 +552,42 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 		return nil
 	}
 
-	// Verify ingester's global limit
+	// Verify ingester's global limit (instance-level max_series).
+	// When limit enforcement is enabled, use instanceOwnedCount which reflects
+	// only series this ingester currently owns according to the ring.
+	// NOTE: instanceOwnedCount is recalculated every ~1 min in updateActiveSeries.
+	// Up to 1 min stale after ring changes, but conservative (overcounts).
 	gl := u.instanceLimitsFn()
 	if gl != nil && gl.MaxInMemorySeries > 0 {
-		if series := u.instanceSeriesCount.Load(); series >= gl.MaxInMemorySeries {
+		var instanceCount int64
+		if u.ownedSeriesLimitEnabled {
+			instanceCount = u.instanceOwnedCount.Load()
+			// Fallback at startup: instanceOwnedCount is 0 until the first
+			// updateActiveSeries cycle runs (~1 min). Use instanceSeriesCount
+			// to maintain OOM protection during this window.
+			if instanceCount == 0 {
+				instanceCount = u.instanceSeriesCount.Load()
+			}
+		} else {
+			instanceCount = u.instanceSeriesCount.Load()
+		}
+		if instanceCount >= gl.MaxInMemorySeries {
 			return errMaxSeriesLimitReached
 		}
 	}
 
-	// Total series limit.
-	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, int(u.Head().NumSeries())); err != nil {
+	// Per-user series limit.
+	// When limit enforcement is enabled (flag 2 + flag 1), use activeSeries.Owned()
+	// which excludes resharded/stale series this ingester no longer owns. This prevents
+	// false throttling during scale-up (where Head().NumSeries() stays high but the
+	// local limit has dropped due to more ingesters joining).
+	seriesCount := int(u.Head().NumSeries())
+	if u.ownedSeriesLimitEnabled {
+		if owned := u.activeSeries.Owned(); owned > 0 {
+			seriesCount = owned
+		}
+	}
+	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, seriesCount); err != nil {
 		return err
 	}
 
@@ -732,6 +787,10 @@ type TSDBState struct {
 
 	// Number of series in memory, across all tenants.
 	seriesCount atomic.Int64
+
+	// Number of owned series across all tenants. Recalculated every updateActiveSeries
+	// cycle (~1 min). Used for instance-level max_series when limit enforcement is enabled.
+	ownedSeriesCount atomic.Int64
 
 	// Head compactions metrics.
 	compactionsTriggered   prometheus.Counter
@@ -1183,13 +1242,28 @@ func (i *Ingester) getMaxExemplars(userID string) int64 {
 func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
 
+	// When owned metrics are enabled, recalculate the instance-level owned count
+	// from scratch each cycle. This avoids drift from edge cases (missed decrements
+	// during ring changes or tenant deletions). The loop already iterates all userTSDBs
+	// and calls Owned(), so this is essentially free (one int64 addition per tenant).
+	var totalOwnedCount int64
+
 	for _, userID := range i.getTSDBUsers() {
 		userDB, err := i.getTSDB(userID)
 		if err != nil || userDB == nil {
 			continue
 		}
 
-		userDB.activeSeries.Purge(purgeTime)
+		if i.cfg.OwnedSeriesMetricsEnabled {
+			// Use UpdateMetrics which handles both purge AND ownership re-evaluation.
+			userDB.activeSeries.UpdateMetrics(purgeTime, i.lifecycler.GetTokens(), i.lifecycler.GetRingTokensForZone(i.lifecycler.Zone))
+			owned := userDB.activeSeries.Owned()
+			i.metrics.ownedSeriesPerUser.WithLabelValues(userID).Set(float64(owned))
+			totalOwnedCount += int64(owned)
+		} else {
+			userDB.activeSeries.Purge(purgeTime)
+		}
+
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
 		i.metrics.activeNHSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.ActiveNativeHistogram()))
 		i.metrics.headMetricNamesPerUser.WithLabelValues(userID).Set(float64(userDB.seriesInMetric.ActiveMetricNames()))
@@ -1201,6 +1275,11 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 		trackers := i.limits.ActiveSeriesTrackers(userID)
 		userDB.trackerCounter.updateConfig(ctx, userDB.db, trackers)
 		userDB.trackerCounter.updateMetrics(i.metrics.activeSeriesPerTracker, userID, trackers)
+	}
+
+	// Store the instance-level owned count for use in PreCreation's max_series check.
+	if i.cfg.OwnedSeriesMetricsEnabled {
+		i.TSDBState.ownedSeriesCount.Store(totalOwnedCount)
 	}
 }
 
@@ -1557,6 +1636,18 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", tsLabels), userID)
 		}
 		tsLabelsHash := tsLabels.Hash()
+
+		// Compute ring token for this series (same hash the distributor uses for routing).
+		// Used by ActiveSeries to track ownership. When flag is off, tsToken=0 and
+		// ActiveSeries skips ownership checks.
+		var tsToken uint32
+		if i.cfg.OwnedSeriesMetricsEnabled {
+			tsToken, err = ring.TokenForLabels(userID, ts.Labels, i.cfg.DistributorShardByAllLabels)
+			if err != nil {
+				return nil, wrapWithUser(err, userID)
+			}
+		}
+
 		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
 
 		// To find out if any sample was added to this series, we keep old value.
@@ -1681,7 +1772,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
 		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
 		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
-			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
+			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, tsToken, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
 				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
@@ -3056,6 +3147,8 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		instanceSeriesCount:          &i.TSDBState.seriesCount,
 		interner:                     util.NewLruInterner(i.cfg.LabelsStringInterningEnabled),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
+		ownedSeriesLimitEnabled:      i.cfg.OwnedSeriesMetricsEnabled && i.cfg.OwnedSeriesLimitEnforcementEnabled,
+		instanceOwnedCount:           &i.TSDBState.ownedSeriesCount,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
 		postingCache:         postingCache,
@@ -3450,7 +3543,7 @@ func (i *Ingester) compactionLoop(ctx context.Context) error {
 		}
 
 		// Lets create the slot based on the hash id
-		i := int(client.HashAdd32(client.HashNew32(), i.lifecycler.ID) % 10)
+		i := int(util.HashAdd32(util.HashNew32(), i.lifecycler.ID) % 10)
 		return i, 10
 	}
 	ticker := util.NewSlottedTicker(infoFunc, i.cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval, 1)

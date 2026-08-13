@@ -306,6 +306,9 @@ type UpdateItemOutput struct {
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
 	// information, see [Capacity unity consumption for write operations]in the Amazon DynamoDB Developer Guide.
 	//
+	// If the table has vector indexes, the response includes a VectorIndexes field
+	// with VectorWriteRequestBytes consumed for each affected vector index.
+	//
 	// [Capacity unity consumption for write operations]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#write-operation-consumption
 	ConsumedCapacity *types.ConsumedCapacity
 
@@ -358,7 +361,7 @@ func (c *Client) addOperationUpdateItemMiddlewares(stack *middleware.Stack, opti
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {

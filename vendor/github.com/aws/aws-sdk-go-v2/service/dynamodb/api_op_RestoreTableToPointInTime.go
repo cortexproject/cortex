@@ -80,6 +80,11 @@ type RestoreTableToPointInTimeInput struct {
 	// List of global secondary indexes for the restored table. The indexes provided
 	// should match existing secondary indexes. You can choose to exclude some or all
 	// of the indexes at the time of restore.
+	//
+	// The WarmThroughput setting is not supported on global secondary indexes when
+	// you use RestoreTableToPointInTime . Although WarmThroughput appears in the
+	// shared index definition, including it in a GlobalSecondaryIndexOverride entry
+	// causes the request to fail with a validation error.
 	GlobalSecondaryIndexOverride []types.GlobalSecondaryIndex
 
 	// List of local secondary indexes for the restored table. The indexes provided
@@ -111,6 +116,12 @@ type RestoreTableToPointInTimeInput struct {
 	// Restore the table to the latest possible time. LatestRestorableDateTime is
 	// typically 5 minutes before the current time.
 	UseLatestRestorableTime *bool
+
+	// The vector indexes for the restored table. If not specified, all vector indexes
+	// from the source table are restored. The indexes provided must match existing
+	// vector indexes from the source table. You can choose to exclude some or all of
+	// the vector indexes at the time of restore.
+	VectorIndexOverride []types.VectorIndex
 
 	noSmithyDocumentSerde
 }
@@ -154,7 +165,7 @@ func (c *Client) addOperationRestoreTableToPointInTimeMiddlewares(stack *middlew
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {

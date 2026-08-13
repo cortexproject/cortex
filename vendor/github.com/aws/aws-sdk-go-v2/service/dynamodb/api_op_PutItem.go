@@ -74,6 +74,18 @@ type PutItemInput struct {
 	// types for those attributes must match those of the schema in the table's
 	// attribute definition.
 	//
+	// If the table has vector indexes, the following validations apply to write
+	// operations. A violation of any of these constraints results in a
+	// ValidationException :
+	//
+	//   - The vector attribute must be a list of numbers with dimensions matching the
+	//   index configuration.
+	//
+	//   - Vector values must fit in 32-bit IEEE-754 floating point format (f32).
+	//
+	//   - Partition key and inline filter attributes defined in the search schema
+	//   must have data types matching the index schema definition.
+	//
 	// Empty String and Binary attribute values are allowed. Attribute values of type
 	// String and Binary must have a length greater than zero if the attribute is used
 	// as a key attribute for a table or index.
@@ -259,6 +271,9 @@ type PutItemOutput struct {
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
 	// information, see [Capacity unity consumption for write operations]in the Amazon DynamoDB Developer Guide.
 	//
+	// If the table has vector indexes, the response includes a VectorIndexes field
+	// with VectorWriteRequestBytes consumed for each affected vector index.
+	//
 	// [Capacity unity consumption for write operations]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html#write-operation-consumption
 	ConsumedCapacity *types.ConsumedCapacity
 
@@ -311,7 +326,7 @@ func (c *Client) addOperationPutItemMiddlewares(stack *middleware.Stack, options
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {

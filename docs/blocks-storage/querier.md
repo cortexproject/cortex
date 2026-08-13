@@ -256,6 +256,11 @@ querier:
     # CLI flag: -querier.decoding-concurrency
     [decoding_concurrency: <int> | default = 0]
 
+    # Maximum number of series processed per batch in selectors. 0 disables
+    # batching.
+    # CLI flag: -querier.selector-batch-size
+    [selector_batch_size: <int> | default = 0]
+
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
   # evaluation like at Query Frontend or Ruler.

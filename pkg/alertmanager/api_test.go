@@ -1022,6 +1022,24 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
 		}, {
+			// No mattermost receiver here on purpose. When one is present, upstream copies
+			// the global value into the receiver's webhook_url_file during unmarshal and the
+			// per-receiver check already catches it. Without one, nothing propagated and the
+			// global field went unvalidated.
+			name: "Should return error if global mattermost_webhook_url_file is set without a Mattermost receiver",
+			cfg: `
+alertmanager_config: |
+  global:
+    mattermost_webhook_url_file: /secret
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		}, {
 			name: "Should return error if global wechat_api_secret_file is set",
 			cfg: `
 alertmanager_config: |
@@ -1357,6 +1375,12 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 				}},
 			},
 			expected: errTLSFileNotAllowed,
+		},
+		"GlobalConfig with mattermost_webhook_url_file": {
+			input: config.GlobalConfig{
+				MattermostWebhookURLFile: "/secrets",
+			},
+			expected: errMatterMostWebhookUrlFileNotAllowed,
 		},
 	}
 

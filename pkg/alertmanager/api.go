@@ -79,7 +79,7 @@ var (
 	errEmailAuthSecretFileNotAllowed            = errors.New("setting Email auth_secret_file and global smtp_auth_secret_file is not allowed")
 	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
 	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
-	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file is not allowed")
+	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file and global mattermost_webhook_url_file is not allowed")
 	errWeChatAPISecretFileNotAllowed            = errors.New("setting Wechat api_secret_file and global wechat_api_secret_file is not allowed")
 )
 
@@ -517,6 +517,9 @@ func validateReceiverTLSConfig(cfg commoncfg.TLSConfig) error {
 // validateGlobalConfig validates the Global config and returns an error if it contains
 // settings not allowed by Cortex.
 func validateGlobalConfig(cfg config.GlobalConfig) error {
+	if cfg.MattermostWebhookURLFile != "" {
+		return errMatterMostWebhookUrlFileNotAllowed
+	}
 	if cfg.OpsGenieAPIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}

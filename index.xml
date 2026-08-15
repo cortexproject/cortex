@@ -868,6 +868,7 @@ service:
 &lt;li&gt;[BUGFIX] Compactor: Fix spurious &lt;code&gt;bucket operation fail after retries&lt;/code&gt; error logs emitted during partial block cleanup. &lt;a href="https://github.com/cortexproject/cortex/pull/7749"&gt;#7749&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Alertmanager: Fix panic in &lt;code&gt;validateAlertmanagerConfig&lt;/code&gt; when receiver config traversal encounters nil interface values. &lt;a href="https://github.com/cortexproject/cortex/pull/7751"&gt;#7751&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Parquet Converter: Fix &lt;code&gt;auto_forget_delay&lt;/code&gt; having no effect. The ring lifecycler was created without the auto-forget delegate, so unhealthy instances were never automatically removed from the ring. &lt;a href="https://github.com/cortexproject/cortex/pull/7752"&gt;#7752&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Alertmanager: Reject the global &lt;code&gt;mattermost_webhook_url_file&lt;/code&gt; setting in per-tenant configs, consistent with every other global &lt;code&gt;*_file&lt;/code&gt; setting. &lt;a href="https://github.com/cortexproject/cortex/pull/7768"&gt;#7768&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="1211-2026-06-04"&gt;1.21.1 2026-06-04&lt;/h2&gt;
 &lt;ul&gt;

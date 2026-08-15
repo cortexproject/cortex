@@ -54,6 +54,7 @@
 * [ENHANCEMENT] Compactor: Reduce object storage GET calls when updating the bucket index by skipping re-reading parquet converter markers for blocks that already have a valid-version parquet entry in the previous index. #7669
 * [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
+* [ENHANCEMENT] Docs: Add an interactive architecture diagram at `/diagrams/cortex-architecture.html`, linked from the new Interactive Diagram documentation page. It replaces the static `images/architecture.png` embed in the architecture documentation and shows the protocol, endpoint, hash ring and source file behind each component and hop. #7769
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389

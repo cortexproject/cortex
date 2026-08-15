@@ -1,7 +1,7 @@
 ---
 title: "Blocks Storage"
 linkTitle: "Blocks Storage"
-weight: 3
+weight: 4
 menu:
 ---
 

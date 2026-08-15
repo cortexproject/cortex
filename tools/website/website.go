@@ -38,13 +38,17 @@ func main() {
 }
 
 var (
-	ref    = regexp.MustCompile(`\[([^\\\]]+?)\](\(.*?\))`)
-	link   = regexp.MustCompile(`(\(.*?\))`)
-	prRef  = regexp.MustCompile(`#(\d+)`)
-	images = regexp.MustCompile(`\..*images/(.*)\.(png|gif|jpeg|jpg|pdf)`)
+	ref     = regexp.MustCompile(`\[([^\\\]]+?)\](\(.*?\))`)
+	link    = regexp.MustCompile(`(\(.*?\))`)
+	prRef   = regexp.MustCompile(`#(\d+)`)
+	images  = regexp.MustCompile(`\..*images/(.*)\.(png|gif|jpeg|jpg|pdf)`)
+	diagram = regexp.MustCompile(`(\.\./)+tools/diagram/cortex-architecture\.html`)
 )
 
 func convertLinks(md string) string {
+	// the interactive diagram is linked repo-relatively so it resolves on GitHub; on the website
+	// tools/website/web-pre.sh copies it to website/static/diagrams/, so point at that path instead.
+	md = diagram.ReplaceAllString(md, "/diagrams/cortex-architecture.html")
 	// grabs relative image path and make then relative to the root of the website where the static images are served.
 	// images in the root folder `images/` of this repository are copied over the website/static/images/
 	md = images.ReplaceAllStringFunc(md, func(imagePath string) string {

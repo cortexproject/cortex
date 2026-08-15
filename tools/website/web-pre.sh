@@ -18,6 +18,12 @@ cp -r code-of-conduct.md CHANGELOG.md ${OUTPUT_CONTENT_DIR}
 Maintainers=`cat MAINTAINERS.md` envsubst <  GOVERNANCE.md >> ${OUTPUT_CONTENT_DIR}/contributing/governance.md
 cp images/* ${WEBSITE_DIR}/static/images
 
+# Copy the interactive architecture diagram and its vendored D3. tools/diagram/
+# is the single source of truth; a diagrams/ subdirectory keeps d3.min.js out of
+# the site root, and the page's relative <script src> resolves in both places.
+mkdir -p ${WEBSITE_DIR}/static/diagrams
+cp tools/diagram/cortex-architecture.html tools/diagram/d3.min.js ${WEBSITE_DIR}/static/diagrams/
+
 # Add headers to special CODE_OF_CONDUCT.md, CHANGELOG.md and README.md files.
 echo "$(cat <<EOT
 ---

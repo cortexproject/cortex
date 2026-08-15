@@ -16,3 +16,10 @@ in the ./vendor/ directory:
 
 [One file used in tests](COPYING.LGPL-3) is under LGPL-3, that's why we ship
 the license text in this repository.
+
+Outside of ./vendor/, [tools/diagram/d3.min.js](tools/diagram/d3.min.js) is an
+unmodified copy of [D3](https://d3js.org/) 7.9.0, which is under the ISC license
+(Copyright 2010-2023 Mike Bostock). It is vendored so the interactive
+architecture diagram renders offline and the documentation site makes no
+third-party request; see [tools/diagram/readme.md](tools/diagram/readme.md) for
+its provenance.

@@ -195,7 +195,7 @@ jobs:
           ln -s /tmp/images ./docker-images
           make BUILD_IN_CONTAINER=false save-images
       - name: Create Docker Images Archive
-        run: tar -cvf images.tar /tmp/images
+        run: tar -cf images.tar /tmp/images
       - name: Upload Docker Images Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -232,6 +232,17 @@ jobs:
           ALL_TAGS="slicelabels,integration,${{ needs.discover-tags.outputs.tags_csv }}"
           mkdir -p out/bin
           go test -c -tags="${ALL_TAGS}" -o out/bin/integration.test ./integration/
+      - name: Compile Test Output Renderers
+        # test2json turns the test binary's -test.v=test2json framing into a JSON event
+        # stream; gha-testlog renders that stream as collapsible groups, a result index,
+        # annotations and a job summary. Both ride along in the tarball below so the
+        # integration job still needs no checkout and no Go toolchain.
+        #
+        # test2json must be built by the same toolchain that built integration.test: the
+        # framing markers are a private contract between `testing` and test2json.
+        run: |
+          go build -o out/bin/test2json cmd/test2json
+          go build -o out/bin/gha-testlog ./tools/gha-testlog
       - name: Generate Run-Pattern Manifest
         # For each build tag, derive a -test.run regex listing every TestX function in source files
         # gated by that tag. The integration job will read these to select which tests to run.
@@ -259,7 +270,7 @@ jobs:
           cp -r docs/configuration out/testdata/docs/
           cp VERSION out/testdata/
       - name: Create Integration Tests Archive
-        run: tar -C out -czvf integration-tests-${{ matrix.arch }}.tar.gz bin testdata
+        run: tar -C out -czf integration-tests-${{ matrix.arch }}.tar.gz bin testdata
       - name: Upload Integration Tests Artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -279,21 +290,21 @@ jobs:
         with:
           name: Docker Images
       - name: Extract Docker Images Archive
-        run: tar -xvf images.tar -C /
+        run: tar -xf images.tar -C /
       - name: Load Docker Images
         # Load every saved docker image tar into the runner's docker daemon. Each tar in /tmp/images
         # was produced by `make save-images` in the build job (one file per image:tag-arch).
         run: |
           for img in /tmp/images/*; do
             [ -f "$img" ] || continue
-            docker load -i "$img"
+            docker load -q -i "$img"
           done
       - name: Download Integration Tests Artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: integration-tests-${{ matrix.arch }}
       - name: Extract Integration Tests Archive
-        run: tar -xzvf integration-tests-${{ matrix.arch }}.tar.gz
+        run: tar -xzf integration-tests-${{ matrix.arch }}.tar.gz
       - name: Preload Images
         # We download docker images used by integration tests so that all images are available
         # locally and the download time doesn't account in the test execution time, which is subject
@@ -317,40 +328,113 @@ jobs:
             done
           }
 
-          retry docker pull minio/minio:RELEASE.2024-05-28T17-19-04Z
-          retry docker pull consul:1.8.4
-          retry docker pull quay.io/coreos/etcd:v3.5.29
+          retry docker pull -q minio/minio:RELEASE.2024-05-28T17-19-04Z
+          retry docker pull -q consul:1.8.4
+          retry docker pull -q quay.io/coreos/etcd:v3.5.29
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then
-            retry docker pull quay.io/cortexproject/cortex:v1.16.1
-            retry docker pull quay.io/cortexproject/cortex:v1.17.2
-            retry docker pull quay.io/cortexproject/cortex:v1.18.1
-            retry docker pull quay.io/cortexproject/cortex:v1.19.1
-            retry docker pull quay.io/cortexproject/cortex:v1.20.1
-            retry docker pull quay.io/cortexproject/cortex:v1.21.0
-            retry docker pull quay.io/cortexproject/cortex:v1.21.1
+            retry docker pull -q quay.io/cortexproject/cortex:v1.16.1
+            retry docker pull -q quay.io/cortexproject/cortex:v1.17.2
+            retry docker pull -q quay.io/cortexproject/cortex:v1.18.1
+            retry docker pull -q quay.io/cortexproject/cortex:v1.19.1
+            retry docker pull -q quay.io/cortexproject/cortex:v1.20.1
+            retry docker pull -q quay.io/cortexproject/cortex:v1.21.0
+            retry docker pull -q quay.io/cortexproject/cortex:v1.21.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            retry docker pull quay.io/cortexproject/cortex:v$(cat testdata/VERSION)
-            retry docker pull quay.io/prometheus/prometheus:v3.9.1
+            retry docker pull -q quay.io/cortexproject/cortex:v$(cat testdata/VERSION)
+            retry docker pull -q quay.io/prometheus/prometheus:v3.9.1
           elif [ "$TEST_TAGS" = "integration_configs_db" ]; then
-            retry docker pull postgres:9.6.16
+            retry docker pull -q postgres:9.6.16
           fi
-          retry docker pull memcached:1.6.1
-          retry docker pull redis:7.0.4-alpine
+          retry docker pull -q memcached:1.6.1
+          retry docker pull -q redis:7.0.4-alpine
         env:
           TEST_TAGS: ${{ matrix.tags }}
       - name: Integration Tests
+        # -test.timeout=2400s (40m) deliberately stays below this step's timeout, so a hung
+        # test is killed by Go rather than by the runner: its timeout panic then flows through
+        # as ordinary output inside the hanging test's group and still gets a FAIL result.
         timeout-minutes: 45
         run: |
+          set -o pipefail
           export CORTEX_IMAGE_PREFIX="${IMAGE_PREFIX:-quay.io/cortexproject/}"
           export IMAGE_TAG="${{ needs.build.outputs.image_tag }}"
-          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${IMAGE_TAG}-${{ matrix.arch }}"
+          export CORTEX_IMAGE="${CORTEX_IMAGE_PREFIX}cortex:${IMAGE_TAG}-${TEST_ARCH}"
           export CORTEX_CHECKOUT_DIR="$PWD/testdata"
-          PATTERN="$(cat bin/run-pattern-${{ matrix.tags }}.txt)"
-          echo "Running integration tests on ${{ matrix.arch }} with image: ${CORTEX_IMAGE}"
+          PATTERN="$(cat "bin/run-pattern-${TEST_TAGS}.txt")"
+          echo "Running integration tests on ${TEST_ARCH} with image: ${CORTEX_IMAGE}"
           echo "Selecting tests via -test.run=${PATTERN}"
-          ./bin/integration.test -test.timeout=2400s -test.v -test.count=1 -test.run="${PATTERN}"
+
+          RAW="integration-test2json-${TEST_ARCH}-${TEST_TAGS}.jsonl"
+
+          # -test.v=test2json (not plain -test.v) makes `testing` emit the framing markers
+          # test2json needs to attribute output — including the docker container logs the
+          # tests stream to stdout — to the test that produced it. bin/gha-testlog turns the
+          # resulting event stream into collapsible groups, a scannable result index,
+          # ::error:: annotations and a job summary. The raw stream is kept as the
+          # authoritative copy: containers are removed after each test, so this is the only
+          # surviving record of their logs.
+          #
+          # errexit is off around the pipeline so the raw stream is still archived, and the
+          # step's status still comes from the test binary, when tests fail.
+          set +e
+          ./bin/test2json -t -p integration \
+            ./bin/integration.test -test.timeout=2400s -test.count=1 -test.v=test2json -test.run="${PATTERN}" \
+            | tee "${RAW}" \
+            | ./bin/gha-testlog \
+                -shard "${TEST_ARCH} / ${TEST_TAGS}" \
+                -arch "${TEST_ARCH}" \
+                -tags "${TEST_TAGS}" \
+                -report "integration-report-${TEST_ARCH}-${TEST_TAGS}.json"
+          STATUS=("${PIPESTATUS[@]}")
+          set -e
+
+          gzip -f "${RAW}"
+
+          if [ "${STATUS[2]}" -ne 0 ]; then
+            echo "::warning::bin/gha-testlog exited ${STATUS[2]}; the rendering above may be incomplete. The uploaded raw test2json stream is authoritative."
+          fi
+          exit "${STATUS[0]}"
         env:
           IMAGE_PREFIX: ${{ secrets.IMAGE_PREFIX }}
+          TEST_ARCH: ${{ matrix.arch }}
+          TEST_TAGS: ${{ matrix.tags }}
+      - name: Upload Integration Test Logs
+        # Failure-only: an artifact per shard on every green run is clutter, and "no report"
+        # then cleanly means "this shard passed" to the integration-summary job.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-logs-${{ matrix.arch }}-${{ matrix.tags }}
+          path: |
+            integration-test2json-*.jsonl.gz
+            integration-report-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  integration-summary:
+    # Renders one table across every integration shard, so a red run can be triaged without
+    # opening 24 job logs one at a time. Reads the reports uploaded by failing shards; shards
+    # that pass upload nothing and are simply absent.
+    needs: [integration]
+    if: ${{ !cancelled() && needs.integration.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Workflow Scripts
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          sparse-checkout: .github/workflows/scripts
+      - name: Download Integration Test Reports
+        # No artifacts at all is the green case, which download-artifact treats as an error.
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: integration-logs-*
+          merge-multiple: true
+          path: reports
+      - name: Summarize Integration Tests
+        run: ./.github/workflows/scripts/summarize-integration-tests.sh reports
+        env:
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
 
   deploy:
     needs: [build, test, lint, integration]

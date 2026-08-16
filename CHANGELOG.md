@@ -1,7 +1,7 @@
 # Changelog
 
 ## master / unreleased
-* [BUGFIX] Querier: Fix a panic in the active query tracker's `trimStringByBytes` when a request field consists only of UTF-8 continuation bytes (e.g. an unvalidated `match[]`/`query` value), which caused the rune-boundary scan to underflow and crash the querier. #7729
+* [BUGFIX] Ingester: Fix `cortex_ingester_ingestion_delay_seconds` native histogram losing ~86% of observations by setting `NativeHistogramMinResetDuration` to 1h instead of the bare integer `1` (interpreted as 1ns). #7731
 * [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446

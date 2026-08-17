@@ -171,3 +171,33 @@ func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChun
 
 	return result
 }
+
+func BenchmarkNewChunkMergeIterator_ManyIterators(b *testing.B) {
+	const numSeries = 10000
+	chunks := createChunks(b, step, 10, 100, 3, promchunk.PrometheusXorChunk)
+
+	b.Run("create_only", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			iters := make([]chunkenc.Iterator, numSeries)
+			for i := range numSeries {
+				iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+			}
+			_ = iters
+		}
+	})
+
+	b.Run("create_and_iterate_sequential", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			iters := make([]chunkenc.Iterator, numSeries)
+			for i := range numSeries {
+				iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+			}
+			for _, it := range iters {
+				for it.Next() != chunkenc.ValNone {
+				}
+			}
+		}
+	})
+}

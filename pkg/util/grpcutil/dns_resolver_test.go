@@ -3,6 +3,7 @@ package grpcutil
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
 	"time"
 
@@ -70,6 +71,44 @@ func TestDNSWatcher_Lookup_TransientFailureRetainsCache(t *testing.T) {
 	require.Equal(t, map[string]*Update{"1.2.3.4:80": {Addr: "1.2.3.4:80"}}, w.curAddrs)
 
 	// Fail next lookup
+	stubLookups(t, func(context.Context, string) ([]string, error) {
+		return nil, errors.New("unable to resolve address")
+	})
+
+	result = w.lookup()
+	assert.Nil(t, result)
+	assert.Equal(t, map[string]*Update{"1.2.3.4:80": {Addr: "1.2.3.4:80"}}, w.curAddrs)
+}
+
+func stubLookupSRV(t *testing.T, srv func(ctx context.Context, service, proto, name string) (string, []*net.SRV, error)) {
+	t.Helper()
+	orig := lookupSRV
+	lookupSRV = srv
+	t.Cleanup(func() { lookupSRV = orig })
+}
+
+// TestDNSWatcher_LookupSRV_TransientTargetFailureRetainsCache is a regression
+// test for cortexproject/cortex#7730: when the SRV query itself succeeds but
+// every target's A-record resolution fails transiently, lookupSRV must return
+// nil (not a non-nil empty map) so the caller keeps the cached endpoints
+// instead of deleting every known address.
+func TestDNSWatcher_LookupSRV_TransientTargetFailureRetainsCache(t *testing.T) {
+	// First resolution succeeds (A-record path) and populates curAddrs.
+	stubLookups(t, func(context.Context, string) ([]string, error) {
+		return []string{"1.2.3.4"}, nil
+	})
+
+	w := newTestDNSWatcher()
+	result := w.lookup()
+	assert.ElementsMatch(t, []*Update{{Op: Add, Addr: "1.2.3.4:80"}}, result)
+	require.Equal(t, map[string]*Update{"1.2.3.4:80": {Addr: "1.2.3.4:80"}}, w.curAddrs)
+
+	// SRV path: the SRV query returns a record, but every target's A-record
+	// resolution fails. lookupSRV must report failure (nil) so the cache is
+	// retained.
+	stubLookupSRV(t, func(context.Context, string, string, string) (string, []*net.SRV, error) {
+		return "myhost.", []*net.SRV{{Target: "backend", Port: 80}}, nil
+	})
 	stubLookups(t, func(context.Context, string) ([]string, error) {
 		return nil, errors.New("unable to resolve address")
 	})

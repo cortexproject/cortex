@@ -782,17 +782,23 @@ func (s resultsCache) get(ctx context.Context, key string, ttl time.Duration) ([
 // getTTLForExtents calculates the appropriate TTL for given extents based on whether
 // they overlap with the out-of-order time window.
 func (s resultsCache) getTTLForExtents(tenantIDs []string, extents []tripperware.Extent) time.Duration {
-	var resultsCacheTTL, outOfOrderCacheTTL time.Duration
-	if len(tenantIDs) > 0 {
-		// Use smallest non-zero TTL to respect the most restrictive tenant's cache policy
-		resultsCacheTTL = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, s.limits.ResultsCacheTTL)
-		outOfOrderCacheTTL = validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, s.limits.OutOfOrderResultsCacheTTL)
+	if len(tenantIDs) == 0 {
+		return 0
 	}
 
 	if s.extentsOverlapOutOfOrderWindow(extents, tenantIDs) {
-		return outOfOrderCacheTTL
+		// Use smallest non-zero TTL to respect the most restrictive tenant's cache policy.
+		// The out-of-order TTL is resolved per-tenant before aggregating: if a tenant does
+		// not explicitly set out_of_order_results_cache_ttl (0), it falls back to that
+		// tenant's results_cache_ttl, and only then to the global cache backend TTL (0).
+		return validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, func(userID string) time.Duration {
+			if ttl := s.limits.OutOfOrderResultsCacheTTL(userID); ttl > 0 {
+				return ttl
+			}
+			return s.limits.ResultsCacheTTL(userID)
+		})
 	}
-	return resultsCacheTTL
+	return validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, s.limits.ResultsCacheTTL)
 }
 
 // extentsOverlapOutOfOrderWindow checks if any extent overlaps with the out-of-order time window.

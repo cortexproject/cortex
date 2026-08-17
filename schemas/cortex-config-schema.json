@@ -5975,7 +5975,7 @@
         },
         "out_of_order_results_cache_ttl": {
           "default": "0s",
-          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.",
+          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means fall back to frontend.results-cache-ttl, and if that is also 0, use the global cache backend TTL configuration.",
           "type": "string",
           "x-cli-flag": "frontend.out-of-order-results-cache-ttl",
           "x-format": "duration"

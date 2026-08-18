@@ -17,6 +17,7 @@ type ThanosEngineConfig struct {
 	EnableXFunctions    bool                    `yaml:"enable_x_functions"`
 	Optimizers          string                  `yaml:"optimizers"`
 	DecodingConcurrency int                     `yaml:"decoding_concurrency"`
+	SelectorBatchSize   int64                   `yaml:"selector_batch_size"`
 	LogicalOptimizers   []logicalplan.Optimizer `yaml:"-"`
 }
 
@@ -25,6 +26,7 @@ func (cfg *ThanosEngineConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Fl
 	f.BoolVar(&cfg.EnableXFunctions, prefix+"enable-x-functions", false, "Enable xincrease, xdelta, xrate etc from Thanos engine.")
 	f.StringVar(&cfg.Optimizers, prefix+"optimizers", "default", "Logical plan optimizers. Multiple optimizers can be provided as a comma-separated list. Supported values: "+strings.Join(supportedOptimizers, ", "))
 	f.IntVar(&cfg.DecodingConcurrency, prefix+"decoding-concurrency", 0, "Maximum number of goroutines that can be used to decode samples. 0 defaults to GOMAXPROCS / 2.")
+	f.Int64Var(&cfg.SelectorBatchSize, prefix+"selector-batch-size", 0, "Maximum number of series processed per batch in selectors. 0 disables batching.")
 }
 
 func (cfg *ThanosEngineConfig) Validate() error {

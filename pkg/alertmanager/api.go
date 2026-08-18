@@ -58,6 +58,7 @@ var (
 	errOAuth2CertificateKeyFileNotAllowed       = errors.New("setting OAuth2 client_certificate_key_file is not allowed")
 	errOAuth2SecretFileNotAllowed               = errors.New("setting OAuth2 client_secret_file is not allowed")
 	errTLSFileNotAllowed                        = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
+	errHTTPHeadersFilesNotAllowed               = errors.New("setting http_headers files is not allowed")
 	errSlackAPIURLFileNotAllowed                = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
 	errSlackAppTokenFileNotAllowed              = errors.New("setting Slack slack_app_token_file and global slack_app_token_file is not allowed")
 	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file and global victorops_api_key_file is not allowed")
@@ -78,7 +79,7 @@ var (
 	errEmailAuthSecretFileNotAllowed            = errors.New("setting Email auth_secret_file and global smtp_auth_secret_file is not allowed")
 	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
 	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
-	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file is not allowed")
+	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file and global mattermost_webhook_url_file is not allowed")
 	errWeChatAPISecretFileNotAllowed            = errors.New("setting Wechat api_secret_file and global wechat_api_secret_file is not allowed")
 )
 
@@ -475,7 +476,33 @@ func validateReceiverHTTPConfig(cfg commoncfg.HTTPClientConfig) error {
 	if cfg.OAuth2 != nil && cfg.OAuth2.ClientSecretFile != "" {
 		return errOAuth2SecretFileNotAllowed
 	}
+	if err := validateReceiverHTTPHeaders(cfg.HTTPHeaders); err != nil {
+		return err
+	}
 	return validateReceiverTLSConfig(cfg.TLSConfig)
+}
+
+// validateReceiverHTTPHeaders validates the configured HTTP headers and returns an error
+// if any of them sources its value from a file on the Alertmanager host.
+//
+// commoncfg.Header.Files is a list of paths that headersRoundTripper.RoundTrip os.ReadFile()s
+// at notification time, injecting the contents into an outbound request whose URL the tenant
+// also controls. That is the same "tenant config reads a host file" primitive the rest of the
+// *_file denylist in this file exists to block, originally added for CVE-2021-31232 (#4129)
+// and extended per-receiver for CVE-2022-23536, so it has to be blocked here too.
+//
+// Only Files is rejected. Values and Secrets are literals supplied inline by the tenant; they
+// read nothing from the host and remain allowed, so ordinary header use keeps working.
+func validateReceiverHTTPHeaders(headers *commoncfg.Headers) error {
+	if headers == nil {
+		return nil
+	}
+	for _, header := range headers.Headers {
+		if len(header.Files) > 0 {
+			return errHTTPHeadersFilesNotAllowed
+		}
+	}
+	return nil
 }
 
 // validateReceiverTLSConfig validates the TLS config and returns an error if it contains
@@ -490,6 +517,9 @@ func validateReceiverTLSConfig(cfg commoncfg.TLSConfig) error {
 // validateGlobalConfig validates the Global config and returns an error if it contains
 // settings not allowed by Cortex.
 func validateGlobalConfig(cfg config.GlobalConfig) error {
+	if cfg.MattermostWebhookURLFile != "" {
+		return errMatterMostWebhookUrlFileNotAllowed
+	}
 	if cfg.OpsGenieAPIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}

@@ -584,6 +584,20 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsInactiveUserDespiteOtherTenant
 	s.fetchersMx.Unlock()
 	assert.False(t, has1)
 	assert.True(t, has2)
+
+	// #7728: the same eviction must apply to the per-tenant metas maps on the
+	// partial-error path, not just the fetchers. Otherwise a deleted tenant's
+	// stale block references keep being served indefinitely. user-1 was active
+	// at the initial scan (so its metas were cached) but is now gone from the
+	// active set, and user-2's scan error must not keep user-1's entries alive.
+	s.userMx.Lock()
+	_, meta1 := s.userMetas["user-1"]
+	_, lookup1 := s.userMetasLookup["user-1"]
+	_, del1 := s.userDeletionMarks["user-1"]
+	s.userMx.Unlock()
+	assert.False(t, meta1)
+	assert.False(t, lookup1)
+	assert.False(t, del1)
 }
 
 // TestBucketScanBlocksFinder_PeriodicScanPreservesNonMetaSyncerDataOnEviction guards the

@@ -730,6 +730,26 @@ func (m *validateOpScan) HandleInitialize(ctx context.Context, in middleware.Ini
 	return next.HandleInitialize(ctx, in)
 }
 
+type validateOpSearchVectors struct {
+}
+
+func (*validateOpSearchVectors) ID() string {
+	return "OperationInputValidation"
+}
+
+func (m *validateOpSearchVectors) HandleInitialize(ctx context.Context, in middleware.InitializeInput, next middleware.InitializeHandler) (
+	out middleware.InitializeOutput, metadata middleware.Metadata, err error,
+) {
+	input, ok := in.Parameters.(*SearchVectorsInput)
+	if !ok {
+		return out, metadata, fmt.Errorf("unknown input parameters type %T", in.Parameters)
+	}
+	if err := validateOpSearchVectorsInput(input); err != nil {
+		return out, metadata, err
+	}
+	return next.HandleInitialize(ctx, in)
+}
+
 type validateOpTagResource struct {
 }
 
@@ -1134,6 +1154,10 @@ func addOpScanValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpScan{}, middleware.After)
 }
 
+func addOpSearchVectorsValidationMiddleware(stack *middleware.Stack) error {
+	return stack.Initialize.Add(&validateOpSearchVectors{}, middleware.After)
+}
+
 func addOpTagResourceValidationMiddleware(stack *middleware.Stack) error {
 	return stack.Initialize.Add(&validateOpTagResource{}, middleware.After)
 }
@@ -1438,6 +1462,42 @@ func validateCreateReplicationGroupMemberAction(v *types.CreateReplicationGroupM
 	}
 }
 
+func validateCreateVectorIndexAction(v *types.CreateVectorIndexAction) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateVectorIndexAction"}
+	if v.IndexName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("IndexName"))
+	}
+	if v.VectorAttribute == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("VectorAttribute"))
+	} else if v.VectorAttribute != nil {
+		if err := validateVectorAttributeDefinition(v.VectorAttribute); err != nil {
+			invalidParams.AddNested("VectorAttribute", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.SearchSchema != nil {
+		if err := validateSearchSchema(v.SearchSchema); err != nil {
+			invalidParams.AddNested("SearchSchema", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Projection == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Projection"))
+	}
+	if v.Dimensions == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Dimensions"))
+	}
+	if len(v.DistanceFunction) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("DistanceFunction"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateDelete(v *types.Delete) error {
 	if v == nil {
 		return nil
@@ -1523,6 +1583,21 @@ func validateDeleteRequest(v *types.DeleteRequest) error {
 	invalidParams := smithy.InvalidParamsError{Context: "DeleteRequest"}
 	if v.Key == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("Key"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateDeleteVectorIndexAction(v *types.DeleteVectorIndexAction) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteVectorIndexAction"}
+	if v.IndexName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("IndexName"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -2278,6 +2353,41 @@ func validateS3BucketSource(v *types.S3BucketSource) error {
 	}
 }
 
+func validateSearchSchema(v []types.SearchSchemaElement) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "SearchSchema"}
+	for i := range v {
+		if err := validateSearchSchemaElement(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateSearchSchemaElement(v *types.SearchSchemaElement) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "SearchSchemaElement"}
+	if v.AttributeName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("AttributeName"))
+	}
+	if len(v.SearchSchemaElementType) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("SearchSchemaElementType"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateStreamSpecification(v *types.StreamSpecification) error {
 	if v == nil {
 		return nil
@@ -2323,6 +2433,11 @@ func validateTableCreationParameters(v *types.TableCreationParameters) error {
 	if v.GlobalSecondaryIndexes != nil {
 		if err := validateGlobalSecondaryIndexList(v.GlobalSecondaryIndexes); err != nil {
 			invalidParams.AddNested("GlobalSecondaryIndexes", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.VectorIndexes != nil {
+		if err := validateVectorIndexList(v.VectorIndexes); err != nil {
+			invalidParams.AddNested("VectorIndexes", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -2531,6 +2646,113 @@ func validateUpdateReplicationGroupMemberAction(v *types.UpdateReplicationGroupM
 	}
 }
 
+func validateVectorAttributeDefinition(v *types.VectorAttributeDefinition) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "VectorAttributeDefinition"}
+	if v.AttributeName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("AttributeName"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateVectorIndex(v *types.VectorIndex) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "VectorIndex"}
+	if v.IndexName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("IndexName"))
+	}
+	if v.VectorAttribute == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("VectorAttribute"))
+	} else if v.VectorAttribute != nil {
+		if err := validateVectorAttributeDefinition(v.VectorAttribute); err != nil {
+			invalidParams.AddNested("VectorAttribute", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.SearchSchema != nil {
+		if err := validateSearchSchema(v.SearchSchema); err != nil {
+			invalidParams.AddNested("SearchSchema", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Projection == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Projection"))
+	}
+	if v.Dimensions == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("Dimensions"))
+	}
+	if len(v.DistanceFunction) == 0 {
+		invalidParams.Add(smithy.NewErrParamRequired("DistanceFunction"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateVectorIndexList(v []types.VectorIndex) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "VectorIndexList"}
+	for i := range v {
+		if err := validateVectorIndex(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateVectorIndexUpdate(v *types.VectorIndexUpdate) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "VectorIndexUpdate"}
+	if v.Create != nil {
+		if err := validateCreateVectorIndexAction(v.Create); err != nil {
+			invalidParams.AddNested("Create", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Delete != nil {
+		if err := validateDeleteVectorIndexAction(v.Delete); err != nil {
+			invalidParams.AddNested("Delete", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateVectorIndexUpdateList(v []types.VectorIndexUpdate) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "VectorIndexUpdateList"}
+	for i := range v {
+		if err := validateVectorIndexUpdate(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateWriteRequest(v *types.WriteRequest) error {
 	if v == nil {
 		return nil
@@ -2704,6 +2926,11 @@ func validateOpCreateTableInput(v *CreateTableInput) error {
 	if v.Tags != nil {
 		if err := validateTagList(v.Tags); err != nil {
 			invalidParams.AddNested("Tags", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.VectorIndexes != nil {
+		if err := validateVectorIndexList(v.VectorIndexes); err != nil {
+			invalidParams.AddNested("VectorIndexes", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
@@ -3193,6 +3420,11 @@ func validateOpRestoreTableFromBackupInput(v *RestoreTableFromBackupInput) error
 			invalidParams.AddNested("ProvisionedThroughputOverride", err.(smithy.InvalidParamsError))
 		}
 	}
+	if v.VectorIndexOverride != nil {
+		if err := validateVectorIndexList(v.VectorIndexOverride); err != nil {
+			invalidParams.AddNested("VectorIndexOverride", err.(smithy.InvalidParamsError))
+		}
+	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	} else {
@@ -3223,6 +3455,11 @@ func validateOpRestoreTableToPointInTimeInput(v *RestoreTableToPointInTimeInput)
 			invalidParams.AddNested("ProvisionedThroughputOverride", err.(smithy.InvalidParamsError))
 		}
 	}
+	if v.VectorIndexOverride != nil {
+		if err := validateVectorIndexList(v.VectorIndexOverride); err != nil {
+			invalidParams.AddNested("VectorIndexOverride", err.(smithy.InvalidParamsError))
+		}
+	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
 	} else {
@@ -3242,6 +3479,30 @@ func validateOpScanInput(v *ScanInput) error {
 		if err := validateFilterConditionMap(v.ScanFilter); err != nil {
 			invalidParams.AddNested("ScanFilter", err.(smithy.InvalidParamsError))
 		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateOpSearchVectorsInput(v *SearchVectorsInput) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "SearchVectorsInput"}
+	if v.TableName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("TableName"))
+	}
+	if v.IndexName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("IndexName"))
+	}
+	if v.SearchVector == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("SearchVector"))
+	}
+	if v.TopK == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("TopK"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -3492,6 +3753,11 @@ func validateOpUpdateTableInput(v *UpdateTableInput) error {
 	if v.GlobalTableWitnessUpdates != nil {
 		if err := validateGlobalTableWitnessGroupUpdateList(v.GlobalTableWitnessUpdates); err != nil {
 			invalidParams.AddNested("GlobalTableWitnessUpdates", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.VectorIndexUpdates != nil {
+		if err := validateVectorIndexUpdateList(v.VectorIndexUpdates); err != nil {
+			invalidParams.AddNested("VectorIndexUpdates", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {

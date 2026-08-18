@@ -860,18 +860,28 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	}
 
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
-	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
+	// Metadata does not count towards the ingestion rate limit. The limit is documented as
+	// "samples per second" (-distributor.ingestion-rate-limit), and metadata is not sample
+	// data. Metadata volume is bounded separately by -ingester.max-metadata-per-user and
+	// -ingester.max-metadata-per-metric.
+	//
+	// This matters most for remote write 2.0, which attaches metadata to every series, so
+	// counting it made a tenant consume roughly twice the configured limit for the same data.
+	totalN := totalSamples + validatedExemplars
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
 		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
+		// The whole request is rejected, so any metadata it carried is discarded too, even
+		// though metadata did not contribute to exceeding the limit.
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		// Return a 429 here to tell the client it is going too fast.
 		// Client may discard the data or slow down and re-send.
 		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples", d.ingestionRateLimiter.Limit(now, userID), totalSamples)
 	}
 
-	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.
+	// totalN counts samples and exemplars, but not metadata. Ingester follows this pattern
+	// when computing its ingestion rate.
 	d.ingestionRate.Add(int64(totalN))
 
 	var nativeHistogramErr error

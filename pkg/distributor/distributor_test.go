@@ -726,11 +726,15 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			ingestionBurstSize:    10,
 			pushes: []testPush{
 				{samples: 4, expectedError: nil},
+				// Metadata does not consume any of the rate budget.
 				{metadata: 1, expectedError: nil},
-				{samples: 6, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples and 0 metadata")},
-				{samples: 4, metadata: 1, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 6, expectedError: nil},
+				// The budget is exhausted by the 10 samples above, so the samples in this
+				// request are rejected even though its metadata costs nothing.
+				{samples: 4, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 4 samples")},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples")},
+				// Metadata only requests are still accepted once the sample budget is gone.
+				{metadata: 1, expectedError: nil},
 			},
 		},
 		"global strategy: limit should be evenly shared across distributors": {
@@ -741,10 +745,10 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			pushes: []testPush{
 				{samples: 2, expectedError: nil},
 				{samples: 1, expectedError: nil},
-				{samples: 2, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 2 samples and 1 metadata")},
-				{samples: 2, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 2, metadata: 1, expectedError: nil},
+				{samples: 2, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 2 samples")},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+				{metadata: 1, expectedError: nil},
 			},
 		},
 		"global strategy: burst should set to each distributor": {
@@ -755,10 +759,27 @@ func TestDistributor_PushIngestionRateLimiter(t *testing.T) {
 			pushes: []testPush{
 				{samples: 10, expectedError: nil},
 				{samples: 5, expectedError: nil},
-				{samples: 5, metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 5 samples and 1 metadata")},
-				{samples: 5, expectedError: nil},
-				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples and 0 metadata")},
-				{metadata: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 0 samples and 1 metadata")},
+				{samples: 5, metadata: 1, expectedError: nil},
+				{samples: 5, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 5 samples")},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (5) exceeded while adding 1 samples")},
+				{metadata: 1, expectedError: nil},
+			},
+		},
+		"metadata does not count towards the ingestion rate limit": {
+			distributors:          2,
+			ingestionRateStrategy: validation.LocalIngestionRateStrategy,
+			ingestionRate:         10,
+			ingestionBurstSize:    10,
+			pushes: []testPush{
+				// Metadata alone is never rate limited, so these are accepted even though
+				// each request carries far more metadata than the configured limit. Metadata
+				// volume is bounded by the max-metadata-per-user and max-metadata-per-metric
+				// limits instead.
+				{metadata: 20, expectedError: nil},
+				{metadata: 20, expectedError: nil},
+				// The full sample budget is still intact afterwards.
+				{samples: 10, expectedError: nil},
+				{samples: 1, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 1 samples")},
 			},
 		},
 	}
@@ -923,8 +944,11 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 			nativeHistogramIngestionBurstSize: 10,
 			pushes: []testPush{
 				{samples: 4, nhSamples: 4, metadata: 4, expectedError: nil},
-				{samples: 4, nhSamples: 4, metadata: 4, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 8 samples and 4 metadata")},
-				{samples: 3, nhSamples: 3, metadata: 2, expectedError: nil},
+				// The 4 metadata in each request no longer consume budget, so this one now
+				// fits: 8 samples against the 12 remaining of the burst.
+				{samples: 4, nhSamples: 4, metadata: 4, expectedError: nil},
+				// Only 4 of the burst is left, so these 6 samples are rejected.
+				{samples: 3, nhSamples: 3, metadata: 2, expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (10) exceeded while adding 6 samples")},
 			},
 		},
 	}

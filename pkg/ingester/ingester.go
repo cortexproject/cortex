@@ -1399,7 +1399,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	// Given metadata is a best-effort approach, and we don't halt on errors
 	// process it before samples. Otherwise, we risk returning an error before ingestion.
-	ingestedMetadata := i.pushMetadata(ctx, userID, req.GetMetadata())
+	// The ingested count is deliberately discarded: metadata does not count towards the
+	// ingestion rate, and pushMetadata already records its own metrics.
+	i.pushMetadata(ctx, userID, req.GetMetadata())
 
 	reasonCounter := newLabelSetReasonCounters()
 
@@ -1806,8 +1808,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 	}
 
-	// Distributor counts both samples, metadata and histograms, so for consistency ingester does the same.
-	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount + ingestedMetadata))
+	// Distributor counts samples and histograms but not metadata, so for consistency ingester
+	// does the same.
+	i.ingestionRate.Add(int64(succeededSamplesCount + succeededHistogramsCount))
 
 	switch req.Source {
 	case cortexpb.RULE:

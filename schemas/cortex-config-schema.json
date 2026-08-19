@@ -6123,13 +6123,6 @@
           "description": "Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. A jsonEscape function is also provided for embedding expressions inside JSON-encoded URL parameters. If empty, uses default Prometheus /graph format.",
           "type": "string"
         },
-        "ruler_evaluation_delay_duration": {
-          "default": "0s",
-          "description": "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.",
-          "type": "string",
-          "x-cli-flag": "ruler.evaluation-delay-duration",
-          "x-format": "duration"
-        },
         "ruler_external_labels": {
           "additionalProperties": true,
           "default": [],

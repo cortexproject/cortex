@@ -20,26 +20,34 @@ func GetRuleGroupNextToken(namespace string, group string) string {
 }
 
 // generatePage function takes in a sorted list of groups and returns a page of groups and the next token which can be
-// used to in subsequent requests. The # of groups per page is at most equal to maxRuleGroups. If the total passed in
-// rule group count is greater than maxRuleGroups, then a next token is returned. Otherwise, next token is empty
-func generatePage(groups []*GroupStateDesc, maxRuleGroups int) ([]*GroupStateDesc, string) {
-	resultNumber := 0
+// used to in subsequent requests. The # of groups per page is at most equal to maxRuleGroups and the number of rules is
+// at most maxRules, unless one rulegroup contains more rules, then that entire rulegroup is returned.
+// If the rule or rule group count is greater than their limit, a next token is returned. Otherwise, next token is empty
+func generatePage(groups []*GroupStateDesc, maxRuleGroups int, maxRules uint) ([]*GroupStateDesc, string) {
 	var returnPaginationToken string
 	returnGroupDescs := make([]*GroupStateDesc, 0, len(groups))
+	resultNumber := 0
+	ruleCount := 0
+	truncated := false
+
 	for _, groupInfo := range groups {
+		ruleLimit := maxRules > 0 && uint(ruleCount+len(groupInfo.ActiveRules)) > maxRules
+		groupLimit := maxRuleGroups > 0 && resultNumber >= maxRuleGroups
 
-		// Add the rule group to the return slice if the maxRuleGroups is not hit
-		if maxRuleGroups < 0 || resultNumber < maxRuleGroups {
+		// Add the rule group to the return slice if the maxRules and maxRuleGroups is not hit, or if the first rulegroup exceeds maxRules
+		if (!groupLimit && !ruleLimit) || (ruleLimit && resultNumber == 0) {
 			returnGroupDescs = append(returnGroupDescs, groupInfo)
+			ruleCount += len(groupInfo.ActiveRules)
 			resultNumber++
-			continue
-		}
-
-		// Return the next token if there are more groups
-		if maxRuleGroups > 0 && resultNumber == maxRuleGroups {
-			returnPaginationToken = GetRuleGroupNextToken(returnGroupDescs[maxRuleGroups-1].Group.Namespace, returnGroupDescs[maxRuleGroups-1].Group.Name)
+		} else {
+			truncated = true
 			break
 		}
+	}
+
+	// Return the next token if there are more groups. The guard above ensures resultNumber can never be 0 if truncated==true
+	if truncated {
+		returnPaginationToken = GetRuleGroupNextToken(returnGroupDescs[resultNumber-1].Group.Namespace, returnGroupDescs[resultNumber-1].Group.Name)
 	}
 	return returnGroupDescs, returnPaginationToken
 }

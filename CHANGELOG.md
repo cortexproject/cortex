@@ -56,6 +56,7 @@
 * [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
+* [ENHANCEMENT] Ruler: Add new limit `-ruler.list-rules-max-rules` on the total number of rules returned by the Prometheus ListRules API. Responses exceeding the limit are truncated on a rule group boundary and return a `groupNextToken` for retrieving the remaining groups. A rule group is never split, so a single group larger than the limit is still returned whole. Defaults to 0, which is unlimited. #7785
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389

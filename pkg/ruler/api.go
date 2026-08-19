@@ -186,7 +186,7 @@ func (a *API) PrometheusRules(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	response, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	response, err := a.ruler.GetRules(req.Context(), rulesRequest, a.ruler.cfg.ListRulesMaxRules)
 
 	if err != nil {
 		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)
@@ -346,7 +346,7 @@ func (a *API) PrometheusAlerts(w http.ResponseWriter, req *http.Request) {
 		Type:          alertingRuleFilter,
 		MaxRuleGroups: -1,
 	}
-	rulesResponse, err := a.ruler.GetRules(req.Context(), rulesRequest)
+	rulesResponse, err := a.ruler.GetRules(req.Context(), rulesRequest, 0)
 
 	if err != nil {
 		util_api.RespondError(logger, w, v1.ErrServer, err.Error(), http.StatusInternalServerError)

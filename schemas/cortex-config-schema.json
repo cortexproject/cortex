@@ -4710,12 +4710,6 @@
           "type": "number",
           "x-cli-flag": "frontend.fifocache.max-size-items"
         },
-        "size": {
-          "default": 0,
-          "description": "Deprecated (use max-size-items or max-size-bytes instead): The number of entries to cache. ",
-          "type": "number",
-          "x-cli-flag": "frontend.fifocache.size"
-        },
         "validity": {
           "default": "0s",
           "description": "The expiry duration for the cache.",
@@ -6589,12 +6583,6 @@
           "description": "Use LabelNames ingester RPCs with match params.",
           "type": "boolean",
           "x-cli-flag": "querier.ingester-label-names-with-matchers"
-        },
-        "ingester_metadata_streaming": {
-          "default": true,
-          "description": "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.",
-          "type": "boolean",
-          "x-cli-flag": "querier.ingester-metadata-streaming"
         },
         "ingester_query_max_attempts": {
           "default": 1,

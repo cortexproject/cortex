@@ -3844,11 +3844,6 @@ The `fifo_cache_config` configures the local in-memory cache.
 # The expiry duration for the cache.
 # CLI flag: -frontend.fifocache.duration
 [validity: <duration> | default = 0s]
-
-# Deprecated (use max-size-items or max-size-bytes instead): The number of
-# entries to cache.
-# CLI flag: -frontend.fifocache.size
-[size: <int> | default = 0]
 ```
 
 ### `flusher_config`
@@ -5275,11 +5270,6 @@ The `querier_config` configures the Cortex querier.
 # The timeout for a query.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
-
-# Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-# for metadata APIs from ingester.
-# CLI flag: -querier.ingester-metadata-streaming
-[ingester_metadata_streaming: <boolean> | default = true]
 
 # Use LabelNames ingester RPCs with match params.
 # CLI flag: -querier.ingester-label-names-with-matchers

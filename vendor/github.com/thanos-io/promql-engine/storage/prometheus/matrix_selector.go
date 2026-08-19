@@ -14,7 +14,6 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
 	"github.com/thanos-io/promql-engine/warnings"
@@ -23,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/util/annotations"
 )
@@ -71,7 +71,7 @@ type matrixSelector struct {
 	hasFloats        bool
 }
 
-const sampleLimitCheckInterval = 500
+const sampleLimitCheckInterval = 1
 
 // NewMatrixSelector creates operator which selects vector of series over time.
 func NewMatrixSelector(
@@ -269,13 +269,12 @@ func (o *matrixSelector) loadSeries(ctx context.Context) error {
 
 		o.scanners = make([]matrixScanner, len(series))
 		o.series = make([]labels.Labels, len(series))
-		var b labels.ScratchBuilder
 
 		for i, s := range series {
 			origLbls := s.Labels()
 			lbls := origLbls
 			if o.functionName != "last_over_time" && o.functionName != "first_over_time" {
-				lbls = extlabels.DropReserved(lbls, b)
+				lbls = lbls.DropReserved(schema.IsMetadataLabel)
 			}
 			o.scanners[i] = matrixScanner{
 				labels:     lbls,

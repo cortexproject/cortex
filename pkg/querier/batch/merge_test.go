@@ -20,10 +20,10 @@ func TestMergeIter(t *testing.T) {
 		chunk4 := mkGenericChunk(t, model.TimeFromUnix(75), 100, enc)
 		chunk5 := mkGenericChunk(t, model.TimeFromUnix(100), 100, enc)
 
-		iter := newMergeIterator(nil, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5})
+		iter := newMergeIterator(nil, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5}, nil)
 		testIter(t, 200, newIteratorAdapter(iter), enc)
 
-		iter = newMergeIterator(iter, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5})
+		iter = newMergeIterator(iter, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5}, nil)
 		testSeek(t, 200, newIteratorAdapter(iter), enc)
 	})
 }
@@ -33,16 +33,16 @@ func BenchmarkMergeIterator(b *testing.B) {
 	for i := range 10 {
 		chunks = append(chunks, mkGenericChunk(b, model.Time(i*25), 120, encoding.PrometheusXorChunk))
 	}
-	iter := newMergeIterator(nil, chunks)
+	iter := newMergeIterator(nil, chunks, nil)
 
 	for _, r := range []bool{true, false} {
 		b.Run(fmt.Sprintf("reuse-%t", r), func(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				if r {
-					iter = newMergeIterator(iter, chunks)
+					iter = newMergeIterator(iter, chunks, nil)
 				} else {
-					iter = newMergeIterator(nil, chunks)
+					iter = newMergeIterator(nil, chunks, nil)
 				}
 				a := newIteratorAdapter(iter)
 				for a.Next() != chunkenc.ValNone {
@@ -67,10 +67,10 @@ func TestMergeHarder(t *testing.T) {
 			chunks = append(chunks, mkGenericChunk(t, from, samples, enc))
 			from = from.Add(time.Duration(offset) * time.Second)
 		}
-		iter := newMergeIterator(nil, chunks)
+		iter := newMergeIterator(nil, chunks, nil)
 		testIter(t, offset*numChunks+samples-offset, newIteratorAdapter(iter), enc)
 
-		iter = newMergeIterator(iter, chunks)
+		iter = newMergeIterator(iter, chunks, nil)
 		testSeek(t, offset*numChunks+samples-offset, newIteratorAdapter(iter), enc)
 	})
 }

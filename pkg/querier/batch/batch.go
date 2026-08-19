@@ -61,16 +61,35 @@ func NewChunkMergeIterator(it chunkenc.Iterator, chunks []chunk.Chunk, _, _ mode
 	return NewGenericChunkMergeIterator(it, converted)
 }
 
+// bufProvider is satisfied by any iterator carrying a reusable buffer.
+type bufProvider interface {
+	chunkenc.Iterator
+	GetBuf() any
+	SetBuf(any)
+}
+
 // NewGenericChunkMergeIterator returns a chunkenc.Iterator that merges generic chunks together.
 func NewGenericChunkMergeIterator(it chunkenc.Iterator, chunks []GenericChunk) chunkenc.Iterator {
 
 	var underlying iterator
+	var sharedBuf batchStream
+
+	if bp, ok := it.(bufProvider); ok {
+		if buf, ok := bp.GetBuf().(batchStream); ok {
+			sharedBuf = buf
+		}
+	}
 
 	if ia, ok := it.(*iteratorAdapter); ok {
 		underlying = ia.underlying
 	}
 
-	iter := newMergeIterator(underlying, chunks)
+	iter := newMergeIterator(underlying, chunks, sharedBuf)
+
+	if bp, ok := it.(bufProvider); ok && bp.GetBuf() == nil {
+		bp.SetBuf(iter.batchesBuf)
+	}
+
 	return newIteratorAdapter(iter)
 }
 

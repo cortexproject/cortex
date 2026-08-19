@@ -171,3 +171,39 @@ func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChun
 
 	return result
 }
+
+type testBufCarrier struct {
+	chunkenc.Iterator
+	buf any
+}
+
+func (t *testBufCarrier) GetBuf() any  { return t.buf }
+func (t *testBufCarrier) SetBuf(v any) { t.buf = v }
+
+func BenchmarkNewChunkMergeIterator_BufferCarrier(b *testing.B) {
+	const numSeries = 10000
+	chunks := createChunks(b, step, 10, 100, 3, promchunk.PrometheusXorChunk)
+
+	b.Run("no_carrier", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			for range numSeries {
+				it := NewChunkMergeIterator(nil, chunks, 0, 0)
+				for it.Next() != chunkenc.ValNone {
+				}
+			}
+		}
+	})
+
+	b.Run("with_carrier", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			carrier := &testBufCarrier{}
+			for range numSeries {
+				it := NewChunkMergeIterator(carrier, chunks, 0, 0)
+				for it.Next() != chunkenc.ValNone {
+				}
+			}
+		}
+	})
+}

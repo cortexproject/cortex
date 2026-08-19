@@ -23,7 +23,7 @@ type mergeIterator struct {
 	currErr error
 }
 
-func newMergeIterator(it iterator, cs []GenericChunk) *mergeIterator {
+func newMergeIterator(it iterator, cs []GenericChunk, sharedBuf batchStream) *mergeIterator {
 	css := partitionChunks(cs)
 
 	var c *mergeIterator
@@ -32,9 +32,16 @@ func newMergeIterator(it iterator, cs []GenericChunk) *mergeIterator {
 		c = mIterator.Reset(len(css))
 	} else {
 		c = &mergeIterator{
-			h:          make(iteratorHeap, 0, len(css)),
-			batches:    make(batchStream, 0, len(css)),
-			batchesBuf: make(batchStream, len(css)),
+			h:       make(iteratorHeap, 0, len(css)),
+			batches: make(batchStream, 0, len(css)),
+		}
+		if sharedBuf != nil && cap(sharedBuf) >= len(css) {
+			c.batchesBuf = sharedBuf[:len(css)]
+			for i := range c.batchesBuf {
+				c.batchesBuf[i] = promchunk.Batch{}
+			}
+		} else {
+			c.batchesBuf = make(batchStream, len(css))
 		}
 	}
 

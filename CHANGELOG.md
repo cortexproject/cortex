@@ -76,6 +76,7 @@
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823
 * [ENHANCEMENT] Upgrade promql-engine to latest. #7841
+* [ENHANCEMENT] Ruler: Add new limit `-ruler.list-rules-max-rules` on the total number of rules returned by the Prometheus ListRules API. Responses exceeding the limit are truncated on a rule group boundary and return a `groupNextToken` for retrieving the remaining groups. A rule group is never split, so a single group larger than the limit is still returned whole. Defaults to 0, which is unlimited. #7785
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389

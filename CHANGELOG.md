@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7797
 * [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446

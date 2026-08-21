@@ -26,11 +26,11 @@
 &lt;li&gt;Run &lt;code&gt;make BUILD_IN_CONTAINER=false web-build&lt;/code&gt;&lt;/li&gt;
 &lt;/ol&gt;
 &lt;h2 id="run-it"&gt;Run it&lt;/h2&gt;
-&lt;p&gt;Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/"&gt;&lt;code&gt;http://localhost:1313/&lt;/code&gt;&lt;/a&gt;&lt;/p&gt;</description></item><item><title>How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>&lt;p&gt;To upgrade the Go&amp;rsquo;s runtime version:&lt;/p&gt;
+&lt;p&gt;Once the initial setup is completed, you can run the website with the following command. The local website will run at &lt;a href="http://localhost:1313/"&gt;&lt;code&gt;http://localhost:1313/&lt;/code&gt;&lt;/a&gt;&lt;/p&gt;</description></item><item><title>How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>&lt;p&gt;To upgrade the Go runtime version:&lt;/p&gt;
 &lt;ol&gt;
-&lt;li&gt;Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/"&gt;here&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Upgrade build image version with golang version as described &lt;a href="/docs/contributing/how-to-update-the-build-image/"&gt;here&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
-&lt;p&gt;If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p&gt;
+&lt;p&gt;If the minimum supported Go language version should be upgraded as well:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
 &lt;/ol&gt;</description></item><item><title>How integration tests work</title><link>/docs/contributing/how-integration-tests-work/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-integration-tests-work/</guid><description>&lt;p&gt;Cortex integration tests are written in Go and based on a &lt;a href="https://github.com/cortexproject/cortex/tree/master/integration/e2e"&gt;custom framework&lt;/a&gt; running Cortex and its dependencies in Docker containers and using the Go &lt;a href="https://golang.org/pkg/testing/"&gt;&lt;code&gt;testing&lt;/code&gt;&lt;/a&gt; package for assertions. Integration tests run in CI for every PR, and can be easily executed locally during development (it just requires Docker).&lt;/p&gt;

@@ -151,7 +151,46 @@ Cortex endpoint for deleting a tenant data should be only called after this bloc
 Kubernetes environment. Please see &lt;a href="https://github.com/cortexproject/cortex/blob/v1.11.1/docs/blocks-storage/migrate-from-chunks-to-blocks.md"&gt;chunks to blocks migration guide (now removed from this site)&lt;/a&gt;
 instead.&lt;/p&gt;
 &lt;h2 id="introduction"&gt;Introduction&lt;/h2&gt;
-&lt;p&gt;This short document describes the first step in full migration of the Cortex cluster from using chunks storage to using blocks storage, specifically switching ingesters to using blocks, and modification of queriers to query both chunks and blocks storage.&lt;/p&gt;</description></item><item><title>Parallel Compaction by Time Interval</title><link>/docs/proposals/parallel-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/parallel-compaction/</guid><description>&lt;ul&gt;
+&lt;p&gt;This short document describes the first step in full migration of the Cortex cluster from using chunks storage to using blocks storage, specifically switching ingesters to using blocks, and modification of queriers to query both chunks and blocks storage.&lt;/p&gt;</description></item><item><title>Monitoring Cortex</title><link>/docs/operations/monitoring-cortex/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/monitoring-cortex/</guid><description>&lt;p&gt;This page describes the bundled assets Cortex ships for monitoring a production
+deployment — Grafana dashboards, Prometheus alerting rules, and recording rules
+— and how to install them. The assets live in the repository and are kept in
+sync with the code; they are the same artifacts the Cortex maintainers use to
+operate their own clusters.&lt;/p&gt;
+&lt;h2 id="what-ships-with-cortex"&gt;What ships with Cortex&lt;/h2&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Asset&lt;/th&gt;
+					&lt;th&gt;Source&lt;/th&gt;
+					&lt;th&gt;Purpose&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Dashboards (JSON)&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/dashboards/&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;Drop-in Grafana dashboards covering every Cortex component&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Alert rules&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/alerts.yaml&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;50+ PrometheusRule alerts grouped by component&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Recording rules&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/cortex-jsonnet/cortex-mixin/recording_rules.libsonnet&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;Pre-aggregated series used by the dashboards and alerts&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Jsonnet mixin&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/cortex-jsonnet/cortex-mixin/&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;The source of truth — generates the JSON/YAML above&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="dashboards"&gt;Dashboards&lt;/h2&gt;
+&lt;p&gt;Each dashboard JSON in &lt;code&gt;docs/getting-started/dashboards/&lt;/code&gt; is ready to import into
+Grafana via &lt;strong&gt;Dashboards → Import → Upload JSON file&lt;/strong&gt;.&lt;/p&gt;</description></item><item><title>Parallel Compaction by Time Interval</title><link>/docs/proposals/parallel-compaction/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/proposals/parallel-compaction/</guid><description>&lt;ul&gt;
 &lt;li&gt;Author: &lt;a href="https://github.com/roystchiang"&gt;Roy Chiang&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Date: May 2021&lt;/li&gt;
 &lt;li&gt;Status: Proposed&lt;/li&gt;
@@ -378,7 +417,28 @@ implementing a gossip protocol while consul and etcd are a KV store service.&lt;
 &lt;li&gt;&lt;a href="https://github.com/cortexproject/cortex-tools/"&gt;cortextool&lt;/a&gt; - For managing rules and alerts (we&amp;rsquo;ll use Docker to run this)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="architecture"&gt;Architecture&lt;/h2&gt;
-&lt;p&gt;This setup creates the following services:&lt;/p&gt;</description></item><item><title>Buoyant Cloud and Cortex: Standing on the shoulders of Linkerd and Prometheus</title><link>/docs/case-studies/buoyant-cloud/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/case-studies/buoyant-cloud/</guid><description>&lt;p&gt;&lt;a href="https://buoyant.io"&gt;Buoyant&lt;/a&gt;, the creator of &lt;a href="https://linkerd.io"&gt;Linkerd&lt;/a&gt;, has had a close relationship with Prometheus and related technologies for years. As of today, that relationship now includes &lt;a href="https://cortexmetrics.io/"&gt;Cortex&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;This setup creates the following services:&lt;/p&gt;</description></item><item><title>Troubleshooting Cortex</title><link>/docs/operations/troubleshooting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/troubleshooting/</guid><description>&lt;p&gt;A decision tree for the most common production issues. Each section starts with
+the symptom an operator sees, names the metrics and logs to inspect, and points
+to the upstream fix.&lt;/p&gt;
+&lt;p&gt;The &lt;a href="/docs/operations/monitoring-cortex/"&gt;bundled dashboards and alerts&lt;/a&gt;
+surface most of the signals referenced below. Install them first if you have
+not already.&lt;/p&gt;
+&lt;h2 id="write-path"&gt;Write path&lt;/h2&gt;
+&lt;h3 id="distributors-return-5xx-on-apiv1push"&gt;Distributors return 5xx on &lt;code&gt;/api/v1/push&lt;/code&gt;&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Confirm where the error originates.&lt;/strong&gt; Distributor logs include the cause:
+ingester unreachable, rate-limit exceeded, validation error. Filter for
+&lt;code&gt;level=warn&lt;/code&gt; and &lt;code&gt;level=error&lt;/code&gt; on the distributor.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Check ingester health on the ring page&lt;/strong&gt; (&lt;code&gt;/ring&lt;/code&gt; on any distributor). All
+ingesters should be in state &lt;code&gt;ACTIVE&lt;/code&gt;. &lt;code&gt;UNHEALTHY&lt;/code&gt; or missing ingesters
+point at a partition between distributor and ingester, or at the KV store.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Check the &lt;code&gt;CortexIngesterUnhealthy&lt;/code&gt; alert.&lt;/strong&gt; If it is firing, follow it:
+the offending ingester is in the alert&amp;rsquo;s labels.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Inspect &lt;code&gt;cortex_distributor_ingester_append_failures_total&lt;/code&gt;.&lt;/strong&gt; A non-zero
+rate that matches the 5xx rate confirms ingester-side rejection.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If the cause is &lt;code&gt;per-user limit exceeded&lt;/code&gt;, raise the limit in &lt;code&gt;runtime_config&lt;/code&gt;
+(&lt;a href="/docs/guides/overrides/"&gt;Overrides&lt;/a&gt;) rather than scaling out.&lt;/p&gt;</description></item><item><title>Buoyant Cloud and Cortex: Standing on the shoulders of Linkerd and Prometheus</title><link>/docs/case-studies/buoyant-cloud/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/case-studies/buoyant-cloud/</guid><description>&lt;p&gt;&lt;a href="https://buoyant.io"&gt;Buoyant&lt;/a&gt;, the creator of &lt;a href="https://linkerd.io"&gt;Linkerd&lt;/a&gt;, has had a close relationship with Prometheus and related technologies for years. As of today, that relationship now includes &lt;a href="https://cortexmetrics.io/"&gt;Cortex&lt;/a&gt;.&lt;/p&gt;
 &lt;p&gt;Linkerd is an open source service mesh for Kubernetes, and part of the CNCF, along with Prometheus and Cortex. Linkerd provides three key classes of features: observability, reliability, and security—all without requiring any changes to your code. That first pillar, observability, has motivated deep Prometheus integration, and is the focus of this case study.&lt;/p&gt;</description></item><item><title>How to run the website locally</title><link>/docs/contributing/how-to-run-the-website-locally/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-run-the-website-locally/</guid><description>&lt;p&gt;The Cortex documentation is compiled into a website published at &lt;a href="https://cortexmetrics.io/"&gt;cortexmetrics.io&lt;/a&gt;. These instructions explain how to run the website locally, in order to have a quick feedback loop while contributing to the documentation or website styling.&lt;/p&gt;
 &lt;h2 id="initial-setup"&gt;Initial setup&lt;/h2&gt;
 &lt;p&gt;The following initial setup is required only once:&lt;/p&gt;
@@ -511,7 +571,13 @@ arriving and other factors such as series churn.&lt;/p&gt;</description></item><
 &lt;p&gt;The store-gateway is the Cortex service responsible to query series from blocks. The store-gateway is required when running the Cortex blocks storage.&lt;/p&gt;
 &lt;p&gt;The store-gateway is &lt;strong&gt;semi-stateful&lt;/strong&gt;.&lt;/p&gt;
 &lt;h2 id="how-it-works"&gt;How it works&lt;/h2&gt;
-&lt;p&gt;The store-gateway needs to have an almost up-to-date view over the storage bucket, in order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:&lt;/p&gt;</description></item><item><title>Compactor</title><link>/docs/blocks-storage/compactor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/compactor/</guid><description>&lt;!-- DO NOT EDIT THIS FILE - This file has been automatically generated from its .template --&gt;
+&lt;p&gt;The store-gateway needs to have an almost up-to-date view over the storage bucket, in order to discover blocks belonging to their shard. The store-gateway can keep the bucket view updated in to two different ways:&lt;/p&gt;</description></item><item><title>Upgrading Cortex</title><link>/docs/operations/upgrading/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/upgrading/</guid><description>&lt;p&gt;This page describes how to upgrade a running Cortex cluster safely. It covers
+the general procedure, the component-by-component ordering, and the places to
+look for version-specific breaking changes.&lt;/p&gt;
+&lt;h2 id="where-breaking-changes-are-recorded"&gt;Where breaking changes are recorded&lt;/h2&gt;
+&lt;p&gt;Cortex follows semantic versioning for the &lt;a href="/docs/configuration/v1guarantees/"&gt;v1 surface&lt;/a&gt;. Anything outside that surface — and
+anything inside it that requires explicit operator action — is recorded in
+&lt;code&gt;CHANGELOG.md&lt;/code&gt; in the repository root, in the section for the target release.&lt;/p&gt;</description></item><item><title>Compactor</title><link>/docs/blocks-storage/compactor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/compactor/</guid><description>&lt;!-- DO NOT EDIT THIS FILE - This file has been automatically generated from its .template --&gt;
 &lt;p&gt;The &lt;strong&gt;compactor&lt;/strong&gt; is an service which is responsible to:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Compact multiple blocks of a given tenant into a single optimized larger block. This helps to reduce storage costs (deduplication, index size reduction), and increase query speed (querying fewer blocks is faster).&lt;/li&gt;
@@ -521,17 +587,17 @@ arriving and other factors such as series churn.&lt;/p&gt;</description></item><
 but it can also build its own KV store on top of the memberlist library using a gossip algorithm.&lt;/p&gt;
 &lt;p&gt;This short guide shows how to start Cortex in &lt;a href="/docs/architecture/"&gt;single-binary mode&lt;/a&gt; with a memberlist-based ring.
 To reduce the number of required dependencies in this guide, it will use &lt;a href="/docs/blocks-storage/"&gt;blocks storage&lt;/a&gt; with no shipping to external stores.
-The storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p&gt;</description></item><item><title>How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>&lt;p&gt;To upgrade the Go&amp;rsquo;s runtime version:&lt;/p&gt;
+The storage engine and external storage configuration are not dependent on the ring configuration.&lt;/p&gt;</description></item><item><title>How to upgrade Golang version</title><link>/docs/contributing/how-to-upgrade-golang-version/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-upgrade-golang-version/</guid><description>&lt;p&gt;To upgrade the Go runtime version:&lt;/p&gt;
 &lt;ol&gt;
-&lt;li&gt;Upgrade build image version with golang version as describe &lt;a href="/docs/contributing/how-to-update-the-build-image/"&gt;here&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Upgrade build image version with golang version as described &lt;a href="/docs/contributing/how-to-update-the-build-image/"&gt;here&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
-&lt;p&gt;If the minimum support Go&amp;rsquo;s language version should be upgraded as well:&lt;/p&gt;
+&lt;p&gt;If the minimum supported Go language version should be upgraded as well:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Upgrade &lt;code&gt;go&lt;/code&gt; version in &lt;code&gt;go.mod&lt;/code&gt;&lt;/li&gt;
-&lt;/ol&gt;</description></item><item><title>Production tips</title><link>/docs/blocks-storage/production-tips/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/production-tips/</guid><description>&lt;p&gt;This page shares some tips and things to take in consideration when setting up a production Cortex cluster based on the blocks storage.&lt;/p&gt;
+&lt;/ol&gt;</description></item><item><title>Production tips</title><link>/docs/blocks-storage/production-tips/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/production-tips/</guid><description>&lt;p&gt;This page shares some tips and things to take into consideration when setting up a production Cortex cluster based on the blocks storage.&lt;/p&gt;
 &lt;h2 id="ingester"&gt;Ingester&lt;/h2&gt;
 &lt;h3 id="ensure-a-high-number-of-max-open-file-descriptors"&gt;Ensure a high number of max open file descriptors&lt;/h3&gt;
-&lt;p&gt;The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed by a relatively large number of files which gets loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven&amp;rsquo;t reached the retention period yet.&lt;/p&gt;</description></item><item><title>Requests mirroring to secondary cluster</title><link>/docs/operations/requests-mirroring-to-secondary-cluster/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/requests-mirroring-to-secondary-cluster/</guid><description>&lt;p&gt;Requests mirroring (or shadowing) is a technique you can use to mirror requests from a primary Cortex cluster to a secondary one.&lt;/p&gt;
+&lt;p&gt;The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed of a relatively large number of files which get loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven&amp;rsquo;t reached the retention period yet.&lt;/p&gt;</description></item><item><title>Requests mirroring to secondary cluster</title><link>/docs/operations/requests-mirroring-to-secondary-cluster/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/requests-mirroring-to-secondary-cluster/</guid><description>&lt;p&gt;Requests mirroring (or shadowing) is a technique you can use to mirror requests from a primary Cortex cluster to a secondary one.&lt;/p&gt;
 &lt;p&gt;For example, requests mirroring can be used when you need to setup a testing Cortex cluster receiving the same series ingested by a primary one without having control over Prometheus remote write config (if you do, then configuring two remote write entries in Prometheus would be the preferred option).&lt;/p&gt;</description></item><item><title>Binary index-header</title><link>/docs/blocks-storage/binary-index-header/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/binary-index-header/</guid><description>&lt;p&gt;In order to query series inside blocks from object storage, the &lt;a href="/docs/blocks-storage/store-gateway/"&gt;store-gateway&lt;/a&gt; has to know certain initial info from each block index. In order to achieve so, the store-gateway builds an index-header for each block and stores it on local disk; such index-header is built by downloading specific pieces of original block&amp;rsquo;s index and storing them on local disk. Index header is then used by store-gateway at query time.&lt;/p&gt;
 &lt;p&gt;Store-gateways build the index-header with specific sections of the block&amp;rsquo;s index downloaded using &lt;strong&gt;GET byte range requests&lt;/strong&gt;. Since downloading specific sections of the original block&amp;rsquo;s index is a computationally easy operation, the index-header is never uploaded back to the object storage and multiple store-gateway instances (or the same instance after a rolling update without a persistent disk) will re-build the index-header from original block&amp;rsquo;s index each time, if not already existing on local disk.&lt;/p&gt;</description></item><item><title>Bucket Index</title><link>/docs/blocks-storage/bucket-index/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/blocks-storage/bucket-index/</guid><description>&lt;p&gt;The bucket index is a &lt;strong&gt;per-tenant file containing the list of blocks and block deletion marks&lt;/strong&gt; in the storage. The bucket index itself is stored in the backend object storage, is periodically updated by the compactor, and used by queriers, store-gateways and rulers to discover blocks in the storage.&lt;/p&gt;
 &lt;p&gt;The bucket index is &lt;strong&gt;enabled by default&lt;/strong&gt;. Disabling it via &lt;code&gt;-blocks-storage.bucket-store.bucket-index.enabled=false&lt;/code&gt; is not recommended for production environments.&lt;/p&gt;
@@ -626,8 +692,8 @@ high values:&lt;/p&gt;</description></item><item><title>Config for horizontally 
 &lt;p&gt;In order to enable sharding in the ruler, the following flag needs to be set:&lt;/p&gt;
 &lt;pre tabindex="0"&gt;&lt;code&gt; -ruler.enable-sharding=true
 &lt;/code&gt;&lt;/pre&gt;&lt;p&gt;In addition, the ruler requires its own ring to be configured, for instance:&lt;/p&gt;</description></item><item><title>Config for sending HA Pairs data to Cortex</title><link>/docs/guides/ha-pair-handling/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/ha-pair-handling/</guid><description>&lt;h2 id="context"&gt;Context&lt;/h2&gt;
-&lt;p&gt;You can have more than a single Prometheus monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy, and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
-&lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheus T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheus, T1.a, T1.b, and T2.a and T2.b.&lt;/p&gt;</description></item><item><title>Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>&lt;p&gt;Cortex supports data encryption at rest for some storage backends.&lt;/p&gt;
+&lt;p&gt;You can have more than a single Prometheus instance monitoring and ingesting the same metrics for redundancy. Cortex already does replication for redundancy, and it doesn&amp;rsquo;t make sense to ingest the same data twice. So in Cortex, we made sure we can dedupe the data we receive from HA Pairs of Prometheus. We do this via the following:&lt;/p&gt;
+&lt;p&gt;Assume that there are two teams, each running their own Prometheus, monitoring different services. Let&amp;rsquo;s call the Prometheus instances T1 and T2. Now, if the teams are running HA pairs, let&amp;rsquo;s call the individual Prometheus instances T1.a, T1.b, and T2.a and T2.b.&lt;/p&gt;</description></item><item><title>Encryption at Rest</title><link>/docs/guides/encryption-at-rest/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/encryption-at-rest/</guid><description>&lt;p&gt;Cortex supports data encryption at rest for some storage backends.&lt;/p&gt;
 &lt;h2 id="s3"&gt;S3&lt;/h2&gt;
 &lt;p&gt;The Cortex S3 client supports the following server-side encryption (SSE) modes:&lt;/p&gt;
 &lt;ul&gt;
@@ -652,7 +718,7 @@ high values:&lt;/p&gt;</description></item><item><title>Config for horizontally 
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#75715e"&gt;# CLI flag: -&amp;lt;prefix&amp;gt;.s3.sse.kms-encryption-context&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;span style="display:flex;"&gt;&lt;span&gt; &lt;span style="color:#f92672"&gt;[kms_encryption_context&lt;/span&gt;: &lt;span style="color:#ae81ff"&gt;&amp;lt;string&amp;gt; | default = &amp;#34;&amp;#34;]&lt;/span&gt;
 &lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h3 id="ruler"&gt;Ruler&lt;/h3&gt;
-&lt;p&gt;The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable the &lt;code&gt;-ruler-storage.&lt;/code&gt; flag prefix (or their respective YAML config options).&lt;/p&gt;</description></item><item><title>How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>&lt;p&gt;New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting"&gt;majority vote&lt;/a&gt;. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p&gt;
+&lt;p&gt;The ruler S3 server-side encryption can be configured similarly to the blocks storage. The per-tenant overrides are supported when using the storage backend configurable with the &lt;code&gt;-ruler-storage.&lt;/code&gt; flag prefix (or their respective YAML config options).&lt;/p&gt;</description></item><item><title>How to add a maintainer</title><link>/docs/contributing/how-to-add-a-maintainer/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/contributing/how-to-add-a-maintainer/</guid><description>&lt;p&gt;New maintainers are proposed by an existing maintainer and are elected by &lt;a href="/docs/contributing/governance/#voting"&gt;majority vote&lt;/a&gt;. Once the vote passed, the following steps should be done to add a new member to the maintainers team:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;Submit a PR to add the new member to &lt;code&gt;MAINTAINERS&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href="https://github.com/orgs/cortexproject/people"&gt;GitHub organization&lt;/a&gt;&lt;/li&gt;

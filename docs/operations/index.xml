@@ -1,9 +1,75 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Operating Cortex on Cortex</title><link>/docs/operations/</link><description>Recent content in Operating Cortex on Cortex</description><generator>Hugo</generator><language>en</language><atom:link href="/docs/operations/index.xml" rel="self" type="application/rss+xml"/><item><title>Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>&lt;p&gt;The query auditor is a tool bundled in the Cortex repository, but &lt;strong&gt;not&lt;/strong&gt; included in Docker images &amp;ndash; this must be built from source. It&amp;rsquo;s primarily useful for those &lt;em&gt;developing&lt;/em&gt; Cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).&lt;/p&gt;
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Operating Cortex on Cortex</title><link>/docs/operations/</link><description>Recent content in Operating Cortex on Cortex</description><generator>Hugo</generator><language>en</language><atom:link href="/docs/operations/index.xml" rel="self" type="application/rss+xml"/><item><title>Monitoring Cortex</title><link>/docs/operations/monitoring-cortex/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/monitoring-cortex/</guid><description>&lt;p&gt;This page describes the bundled assets Cortex ships for monitoring a production
+deployment — Grafana dashboards, Prometheus alerting rules, and recording rules
+— and how to install them. The assets live in the repository and are kept in
+sync with the code; they are the same artifacts the Cortex maintainers use to
+operate their own clusters.&lt;/p&gt;
+&lt;h2 id="what-ships-with-cortex"&gt;What ships with Cortex&lt;/h2&gt;
+&lt;table&gt;
+	&lt;thead&gt;
+			&lt;tr&gt;
+					&lt;th&gt;Asset&lt;/th&gt;
+					&lt;th&gt;Source&lt;/th&gt;
+					&lt;th&gt;Purpose&lt;/th&gt;
+			&lt;/tr&gt;
+	&lt;/thead&gt;
+	&lt;tbody&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Dashboards (JSON)&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/dashboards/&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;Drop-in Grafana dashboards covering every Cortex component&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Alert rules&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/alerts.yaml&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;50+ PrometheusRule alerts grouped by component&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Recording rules&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/cortex-jsonnet/cortex-mixin/recording_rules.libsonnet&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;Pre-aggregated series used by the dashboards and alerts&lt;/td&gt;
+			&lt;/tr&gt;
+			&lt;tr&gt;
+					&lt;td&gt;Jsonnet mixin&lt;/td&gt;
+					&lt;td&gt;&lt;code&gt;docs/getting-started/cortex-jsonnet/cortex-mixin/&lt;/code&gt;&lt;/td&gt;
+					&lt;td&gt;The source of truth — generates the JSON/YAML above&lt;/td&gt;
+			&lt;/tr&gt;
+	&lt;/tbody&gt;
+&lt;/table&gt;
+&lt;h2 id="dashboards"&gt;Dashboards&lt;/h2&gt;
+&lt;p&gt;Each dashboard JSON in &lt;code&gt;docs/getting-started/dashboards/&lt;/code&gt; is ready to import into
+Grafana via &lt;strong&gt;Dashboards → Import → Upload JSON file&lt;/strong&gt;.&lt;/p&gt;</description></item><item><title>Query Auditor (tool)</title><link>/docs/operations/query-auditor/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-auditor/</guid><description>&lt;p&gt;The query auditor is a tool bundled in the Cortex repository, but &lt;strong&gt;not&lt;/strong&gt; included in Docker images &amp;ndash; this must be built from source. It&amp;rsquo;s primarily useful for those &lt;em&gt;developing&lt;/em&gt; Cortex, but can be helpful to operators as well during certain scenarios (backend migrations come to mind).&lt;/p&gt;
 &lt;h2 id="how-it-works"&gt;How it works&lt;/h2&gt;
-&lt;p&gt;The &lt;code&gt;query-audit&lt;/code&gt; tool performs a set of queries against two backends that expose the Prometheus read API. This is generally the &lt;code&gt;query-frontend&lt;/code&gt; component of two Cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:&lt;/p&gt;</description></item><item><title>Query Tee (service)</title><link>/docs/operations/query-tee/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-tee/</guid><description>&lt;p&gt;The &lt;code&gt;query-tee&lt;/code&gt; is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;query-audit&lt;/code&gt; tool performs a set of queries against two backends that expose the Prometheus read API. This is generally the &lt;code&gt;query-frontend&lt;/code&gt; component of two Cortex deployments. It will then compare the differences in the responses to determine the average difference for each query. It does this by:&lt;/p&gt;</description></item><item><title>Troubleshooting Cortex</title><link>/docs/operations/troubleshooting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/troubleshooting/</guid><description>&lt;p&gt;A decision tree for the most common production issues. Each section starts with
+the symptom an operator sees, names the metrics and logs to inspect, and points
+to the upstream fix.&lt;/p&gt;
+&lt;p&gt;The &lt;a href="/docs/operations/monitoring-cortex/"&gt;bundled dashboards and alerts&lt;/a&gt;
+surface most of the signals referenced below. Install them first if you have
+not already.&lt;/p&gt;
+&lt;h2 id="write-path"&gt;Write path&lt;/h2&gt;
+&lt;h3 id="distributors-return-5xx-on-apiv1push"&gt;Distributors return 5xx on &lt;code&gt;/api/v1/push&lt;/code&gt;&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;strong&gt;Confirm where the error originates.&lt;/strong&gt; Distributor logs include the cause:
+ingester unreachable, rate-limit exceeded, validation error. Filter for
+&lt;code&gt;level=warn&lt;/code&gt; and &lt;code&gt;level=error&lt;/code&gt; on the distributor.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Check ingester health on the ring page&lt;/strong&gt; (&lt;code&gt;/ring&lt;/code&gt; on any distributor). All
+ingesters should be in state &lt;code&gt;ACTIVE&lt;/code&gt;. &lt;code&gt;UNHEALTHY&lt;/code&gt; or missing ingesters
+point at a partition between distributor and ingester, or at the KV store.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Check the &lt;code&gt;CortexIngesterUnhealthy&lt;/code&gt; alert.&lt;/strong&gt; If it is firing, follow it:
+the offending ingester is in the alert&amp;rsquo;s labels.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Inspect &lt;code&gt;cortex_distributor_ingester_append_failures_total&lt;/code&gt;.&lt;/strong&gt; A non-zero
+rate that matches the 5xx rate confirms ingester-side rejection.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;If the cause is &lt;code&gt;per-user limit exceeded&lt;/code&gt;, raise the limit in &lt;code&gt;runtime_config&lt;/code&gt;
+(&lt;a href="/docs/guides/overrides/"&gt;Overrides&lt;/a&gt;) rather than scaling out.&lt;/p&gt;</description></item><item><title>Query Tee (service)</title><link>/docs/operations/query-tee/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/query-tee/</guid><description>&lt;p&gt;The &lt;code&gt;query-tee&lt;/code&gt; is a standalone service which can be used for testing purposes to compare the query performances of 2+ backend systems (ie. Cortex clusters) ingesting the same exact series.&lt;/p&gt;
 &lt;p&gt;This service exposes Prometheus-compatible read API endpoints and, for each received request, performs the request against all backends tracking the response time of each backend and then sends back to the client one of the received responses.&lt;/p&gt;
 &lt;h2 id="how-to-run-it"&gt;How to run it&lt;/h2&gt;
-&lt;p&gt;You can run &lt;code&gt;query-tee&lt;/code&gt; in two ways:&lt;/p&gt;</description></item><item><title>Requests mirroring to secondary cluster</title><link>/docs/operations/requests-mirroring-to-secondary-cluster/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/requests-mirroring-to-secondary-cluster/</guid><description>&lt;p&gt;Requests mirroring (or shadowing) is a technique you can use to mirror requests from a primary Cortex cluster to a secondary one.&lt;/p&gt;
+&lt;p&gt;You can run &lt;code&gt;query-tee&lt;/code&gt; in two ways:&lt;/p&gt;</description></item><item><title>Upgrading Cortex</title><link>/docs/operations/upgrading/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/upgrading/</guid><description>&lt;p&gt;This page describes how to upgrade a running Cortex cluster safely. It covers
+the general procedure, the component-by-component ordering, and the places to
+look for version-specific breaking changes.&lt;/p&gt;
+&lt;h2 id="where-breaking-changes-are-recorded"&gt;Where breaking changes are recorded&lt;/h2&gt;
+&lt;p&gt;Cortex follows semantic versioning for the &lt;a href="/docs/configuration/v1guarantees/"&gt;v1 surface&lt;/a&gt;. Anything outside that surface — and
+anything inside it that requires explicit operator action — is recorded in
+&lt;code&gt;CHANGELOG.md&lt;/code&gt; in the repository root, in the section for the target release.&lt;/p&gt;</description></item><item><title>Requests mirroring to secondary cluster</title><link>/docs/operations/requests-mirroring-to-secondary-cluster/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/requests-mirroring-to-secondary-cluster/</guid><description>&lt;p&gt;Requests mirroring (or shadowing) is a technique you can use to mirror requests from a primary Cortex cluster to a secondary one.&lt;/p&gt;
 &lt;p&gt;For example, requests mirroring can be used when you need to setup a testing Cortex cluster receiving the same series ingested by a primary one without having control over Prometheus remote write config (if you do, then configuring two remote write entries in Prometheus would be the preferred option).&lt;/p&gt;</description></item><item><title>Scaling the Query Frontend</title><link>/docs/operations/scaling-query-frontend/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/scaling-query-frontend/</guid><description>&lt;p&gt;Historically scaling the Cortex query frontend has &lt;a href="/docs/proposals/scalable-query-frontend/"&gt;posed some challenges&lt;/a&gt;.
 This document aims to detail how to use some added configuration parameters to correctly scale the frontend.
 Note that these instructions apply in both the HA single binary scenario or microservices mode.&lt;/p&gt;

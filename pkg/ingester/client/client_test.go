@@ -2,8 +2,11 @@ package client
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"net"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
 	"testing"
 	"time"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 // TestMarshall is useful to try out various optimisation on the unmarshalling code.
@@ -392,4 +396,37 @@ func TestClosableHealthAndIngesterClient_ShouldNotPanicWhenClose(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	time.Sleep(100 * time.Millisecond)
+}
+
+// TestMakeIngesterClient_CleansUpOnRunFailure is a regression test for a
+// leaked grpc.ClientConn (and its background reconnect goroutines) when
+// Run() fails to start the stream-push workers. Using an address nothing
+// listens on reproduces the reported failure mode: PushStream is created
+// without WaitForReady, so it fails fast once the addrConn reaches
+// TRANSIENT_FAILURE, and every worker fails the same way.
+func TestMakeIngesterClient_CleansUpOnRunFailure(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := ln.Addr().String()
+	require.NoError(t, ln.Close())
+
+	cfg := Config{}
+	cfg.RegisterFlags(flag.NewFlagSet("test", flag.ContinueOnError))
+
+	// Let goroutines from earlier tests settle before taking the baseline.
+	test.Poll(t, time.Second, true, func() any {
+		before := runtime.NumGoroutine()
+		time.Sleep(10 * time.Millisecond)
+		return runtime.NumGoroutine() == before
+	})
+	baseline := runtime.NumGoroutine()
+
+	_, err = MakeIngesterClient(addr, cfg, true)
+	require.Error(t, err)
+
+	// Without the fix, the ClientConn's addrConn keeps retrying in the
+	// background and its goroutines never return to baseline.
+	test.Poll(t, time.Second, true, func() any {
+		return runtime.NumGoroutine() <= baseline
+	})
 }

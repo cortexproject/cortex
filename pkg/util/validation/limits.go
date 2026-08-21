@@ -316,7 +316,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.MaxLocalNativeHistogramSeriesPerUser, "ingester.max-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, per ingester. 0 to disable. Supported only if ingester.active-series-metrics-enabled is true.")
 	f.IntVar(&l.MaxGlobalNativeHistogramSeriesPerUser, "ingester.max-global-native-histogram-series-per-user", 0, "The maximum number of active native histogram series per user, across the cluster before replication. 0 to disable. Supported only if -distributor.shard-by-all-labels and ingester.active-series-metrics-enabled is true.")
 	f.BoolVar(&l.EnableNativeHistograms, "blocks-storage.tsdb.enable-native-histograms", false, "[EXPERIMENTAL] True to enable native histogram.")
-	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.")
+	f.IntVar(&l.MaxExemplars, "ingester.max-exemplars", 0, "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to the deprecated blocks-storage.tsdb.max-exemplars value; that fallback is removed in v1.24.0.")
 	f.Var(&l.OutOfOrderTimeWindow, "ingester.out-of-order-time-window", "[Experimental] Configures the allowed time window for ingestion of out-of-order samples. Disabled (0s) by default.")
 
 	f.IntVar(&l.MaxLocalMetricsWithMetadataPerUser, "ingester.max-metadata-per-user", 8000, "The maximum number of active metrics with metadata per user, per ingester. 0 to disable.")

@@ -323,9 +323,7 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 		// TODO(#4360): Remove this when issue is resolved.
 		//   Wait until memberlist for all nodes has recognised the instance left.
 		//   This means that we will not gossip tombstones to leaving nodes.
-		for _, c := range instances {
-			require.NoError(t, c.WaitSumMetrics(e2e.Equals(float64(len(instances))), "memberlist_client_cluster_members_count"))
-		}
+		requireMemberlistMembersCount(t, instances, len(instances))
 	}
 	require.NoError(t, stop.Wait())
 
@@ -359,6 +357,66 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	}, 30*time.Second, 2*time.Second,
 		"expected all instances to have %f ring members and %f tombstones",
 		expectedRingMembers, expectedTombstones)
+}
+
+// memberlistConvergenceTimeout bounds how long we wait for every surviving instance to
+// notice that a stopped instance left the memberlist cluster.
+//
+// An instance learns about a departure in one of three ways, in increasing order of cost:
+//
+//  1. The "leave" message the departing instance gossips on shutdown. This usually arrives
+//     within a second, but it is best effort: it has a finite retransmit budget
+//     (RetransmitMult * ceil(log10(N+1)), 8 transmissions at 22 nodes) and during an
+//     aggressive scale down much of that budget is spent on peers that are already gone.
+//     Memberlist keeps gossiping to nodes that died less than GossipToTheDeadTime (30s)
+//     ago, and each such send blocks the single gossip goroutine for
+//     -memberlist.packet-dial-timeout (5s), because a removed container's address is
+//     blackholed and the dial ends in "i/o timeout" rather than "connection refused".
+//  2. The next push/pull full state sync (memberlist.PushPullInterval, 30s). This reliably
+//     repairs a missed leave, since a remote StateLeft is applied directly, but a sync can
+//     pick the departed instance itself and fail, costing another interval.
+//  3. Failure detection, which is far slower than either: with the ProbeInterval Cortex
+//     configures (5s) a given peer is probed roughly once every len(members) * 5s, and the
+//     suspicion timer then runs for SuspicionMult * log10(N+1) * ProbeInterval, starting at
+//     SuspicionMaxTimeoutMult (6x) that value and only shrinking as other nodes confirm the
+//     suspicion. No confirmation ever arrives here, because every other node already
+//     recorded the leave and ignores suspect messages for non-alive nodes. At 22 nodes that
+//     is ~160s of suspicion on top of the probe delay.
+//
+// So the budget has to cover several push/pull intervals. It used to be whatever the
+// per-service retry backoff gave (100 retries of up to 500ms, see newSingleBinary), which is
+// ~50s: one marginal sync window, and the test failed whenever a single leave message was
+// lost. See #7801.
+const memberlistConvergenceTimeout = 2 * time.Minute
+
+// requireMemberlistMembersCount waits until every instance reports exactly expectedMembers
+// in memberlist_client_cluster_members_count.
+func requireMemberlistMembersCount(t *testing.T, instances []*e2ecortex.CortexService, expectedMembers int) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		converged := true
+
+		for _, c := range instances {
+			metrics, err := c.SumMetrics([]string{"memberlist_client_cluster_members_count"})
+			if err != nil {
+				// Scraping can fail transiently while the cluster is churning, so retry
+				// instead of failing the test.
+				converged = false
+				t.Logf("%s: failed to fetch memberlist_client_cluster_members_count: %s\n", c.Name(), err)
+				continue
+			}
+
+			// Don't short circuit the check, so we log every instance which is behind.
+			if metrics[0] != float64(expectedMembers) {
+				converged = false
+				t.Logf("%s: memberlist_client_cluster_members_count=%f, expected %d\n", c.Name(), metrics[0], expectedMembers)
+			}
+		}
+
+		return converged
+	}, memberlistConvergenceTimeout, time.Second,
+		"expected all instances to see %d memberlist cluster members", expectedMembers)
 }
 
 func TestHATrackerWithMemberlistClusterSync(t *testing.T) {

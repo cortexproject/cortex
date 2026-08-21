@@ -95,6 +95,7 @@
 * [BUGFIX] Alertmanager: Reject the global `mattermost_webhook_url_file` setting in per-tenant configs, consistent with every other global `*_file` setting. #7768
 * [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
 * [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
+* [BUGFIX] Ingester Client: Fix `grpc.ClientConn` and goroutine leak in `MakeIngesterClient` when `-distributor.use-stream-push=true` and starting the stream-push workers fails (e.g. the ingester address is in the ring but unreachable). The connection is now closed and the stream context cancelled on that error path. #7759
 
 ## 1.21.1 2026-06-04
 

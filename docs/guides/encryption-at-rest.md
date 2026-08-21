@@ -61,3 +61,4 @@ The following settings can be overridden for each tenant:
 ## Other storages
 
 Other storage backends may support encryption at rest, configuring it directly at the storage level.
+

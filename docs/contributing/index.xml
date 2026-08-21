@@ -46,6 +46,7 @@
 &lt;ol&gt;
 &lt;li&gt;Submit a PR to add the new member to &lt;code&gt;MAINTAINERS&lt;/code&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href="https://github.com/orgs/cortexproject/people"&gt;GitHub organization&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;Add to the &lt;a href="https://github.com/orgs/cortexproject/teams/maintainers"&gt;&lt;code&gt;maintainers&lt;/code&gt; GitHub team&lt;/a&gt; — this is what makes them a code owner via &lt;code&gt;CODEOWNERS&lt;/code&gt; and puts them in the review rotation&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href="https://groups.google.com/forum/#!forum/cortex-team"&gt;&lt;code&gt;cortex-team&lt;/code&gt; group&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href="https://quay.io/organization/cortexproject?tab=teams"&gt;Quay.io repository&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Invite to &lt;a href="https://hub.docker.com/u/cortexproject"&gt;Docker Hub organization&lt;/a&gt;&lt;/li&gt;
@@ -55,4 +56,5 @@
 &lt;li&gt;Invite to &lt;a href="https://drive.google.com/drive/folders/1aT7-rx4hvYoB3EjvOeX1LHJhgH0Sawzb"&gt;maintainer&amp;rsquo;s Google Docs&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;Add to the Google Analytics property used for the website statistics&lt;/li&gt;
 &lt;li&gt;Invite to credentials vault&lt;/li&gt;
-&lt;/ol&gt;</description></item></channel></rss>
+&lt;/ol&gt;
+&lt;p&gt;When a maintainer steps down, remove them from the &lt;a href="https://github.com/orgs/cortexproject/teams/maintainers"&gt;&lt;code&gt;maintainers&lt;/code&gt; GitHub team&lt;/a&gt; as well as from &lt;code&gt;MAINTAINERS&lt;/code&gt;, so that the review rotation and the published list stay in sync.&lt;/p&gt;</description></item></channel></rss>

@@ -83,7 +83,10 @@ func trimStringByBytes(str string, size int) string {
 	bytesStr := []byte(str)
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
-		for !utf8.RuneStart(bytesStr[size]) {
+		// Scan backwards to a rune boundary. Bound the scan at size > 0: if the
+		// string has no rune start (e.g. only UTF-8 continuation bytes) the loop
+		// must not underflow past zero, which would panic on bytesStr[-1].
+		for size > 0 && !utf8.RuneStart(bytesStr[size]) {
 			size--
 		}
 		trimIndex = size

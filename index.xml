@@ -414,7 +414,7 @@ implementing a gossip protocol while consul and etcd are a KV store service.&lt;
 &lt;/ul&gt;
 &lt;h3 id="optional-tools"&gt;Optional Tools&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/cortexproject/cortex-tools/"&gt;cortextool&lt;/a&gt; - For managing rules and alerts (we&amp;rsquo;ll use Docker to run this)&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/cortexproject/cortex-tools/"&gt;cortextool&lt;/a&gt; - For managing rules and alerts (install with &lt;code&gt;brew install cortexproject/tap/cortextool&lt;/code&gt;)&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="architecture"&gt;Architecture&lt;/h2&gt;
 &lt;p&gt;This setup creates the following services:&lt;/p&gt;</description></item><item><title>Troubleshooting Cortex</title><link>/docs/operations/troubleshooting/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/operations/troubleshooting/</guid><description>&lt;p&gt;A decision tree for the most common production issues. Each section starts with
@@ -484,7 +484,7 @@ rate that matches the 5xx rate confirms ingester-side rejection.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3 id="optional-tools"&gt;Optional Tools&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;a href="https://github.com/cortexproject/cortex-tools/"&gt;cortextool&lt;/a&gt; - For managing rules and alerts&lt;/li&gt;
+&lt;li&gt;&lt;a href="https://github.com/cortexproject/cortex-tools/"&gt;cortextool&lt;/a&gt; - For managing rules and alerts (install with &lt;code&gt;brew install cortexproject/tap/cortextool&lt;/code&gt;)&lt;/li&gt;
 &lt;li&gt;&lt;a href="https://jqlang.github.io/jq/"&gt;jq&lt;/a&gt; - For parsing JSON responses&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="architecture"&gt;Architecture&lt;/h2&gt;

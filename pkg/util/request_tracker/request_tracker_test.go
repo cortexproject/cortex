@@ -191,3 +191,20 @@ func TestRangedQueryExtractorMultiByteTruncation(t *testing.T) {
 		assert.True(t, utf8.Valid(entry), "entry should be valid UTF-8")
 	})
 }
+
+// TestTrimForJsonMarshalContinuationBytes reproduces cortexproject/cortex#7729:
+// when the string consists only of UTF-8 continuation bytes (0x80-0xBF) there is
+// no rune start to scan back to, so the backwards scan in trimStringByBytes
+// underflows past zero and panics with index out of range [-1]. The fix bounds
+// the scan at size > 0.
+func TestTrimForJsonMarshalContinuationBytes(t *testing.T) {
+	// 1200 continuation bytes (0x80) with a truncation size below the length.
+	continuation := strings.Repeat("\x80", 1200)
+
+	require.NotPanics(t, func() {
+		out := trimForJsonMarshal(continuation, 900)
+		// Result must always be valid UTF-8 (no partial runes).
+		assert.True(t, utf8.ValidString(out), "result should be valid UTF-8")
+		assert.LessOrEqual(t, len(out), len(continuation))
+	})
+}

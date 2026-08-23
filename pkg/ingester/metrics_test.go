@@ -3,6 +3,7 @@ package ingester
 import (
 	"bytes"
 	"testing"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -1297,4 +1298,15 @@ func populateTSDBMetrics(base float64) *prometheus.Registry {
 	recordBytesSaved.WithLabelValues("zstd").Add(35 * base)
 
 	return r
+}
+
+// TestIngestionDelaySecondsHistogramResetDuration is a regression test for
+// cortexproject/cortex#7731: ingestionDelaySeconds was registered with
+// NativeHistogramMinResetDuration: 1, where 1 is interpreted as 1 nanosecond
+// (the field is a time.Duration). That reset the native histogram on essentially
+// every scrape and discarded ~86% of observations. The reset duration must be a
+// real hour-long window.
+func TestIngestionDelaySecondsHistogramResetDuration(t *testing.T) {
+	require.Equal(t, time.Hour, ingestionDelaySecondsHistogramOpts.NativeHistogramMinResetDuration,
+		"NativeHistogramMinResetDuration must be time.Hour, not a bare integer (interpreted as nanoseconds)")
 }

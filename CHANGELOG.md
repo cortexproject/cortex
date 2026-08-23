@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] Ingester: Fix `cortex_ingester_ingestion_delay_seconds` native histogram losing ~86% of observations by setting `NativeHistogramMinResetDuration` to 1h instead of the bare integer `1` (interpreted as 1ns). #7731
 * [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160

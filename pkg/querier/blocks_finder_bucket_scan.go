@@ -196,6 +196,10 @@ func (d *BucketScanBlocksFinder) scanBucket(ctx context.Context) (returnErr erro
 	if err != nil {
 		return err
 	}
+	userIDsSet := make(map[string]struct{}, len(userIDs))
+	for _, id := range userIDs {
+		userIDsSet[id] = struct{}{}
+	}
 
 	jobsChan := make(chan string)
 	resMx := sync.Mutex{}
@@ -268,6 +272,20 @@ pushJobsLoop:
 		maps.Copy(d.userMetasLookup, resMetasLookup)
 
 		maps.Copy(d.userDeletionMarks, resDeletionMarks)
+
+		// Even on the partial-error path we must prune entries for tenants that are
+		// no longer in the active set (userIDs comes from a successful ScanUsers call,
+		// so it is authoritative regardless of per-tenant scan errors). Otherwise
+		// deleted tenants are retained for the process lifetime and GetBlocks keeps
+		// serving their stale block references. This mirrors what evictInactiveUserFetchers
+		// already does for the fetchers below. See cortexproject/cortex#7728.
+		for userID := range d.userMetas {
+			if _, ok := userIDsSet[userID]; !ok {
+				delete(d.userMetas, userID)
+				delete(d.userMetasLookup, userID)
+				delete(d.userDeletionMarks, userID)
+			}
+		}
 	}
 	d.userMx.Unlock()
 

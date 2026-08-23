@@ -215,6 +215,15 @@ func (w *dnsWatcher) lookupSRV() map[string]*Update {
 			newAddrs[addr] = &Update{Addr: addr}
 		}
 	}
+	// SRV records were returned but none of their targets resolved (for
+	// example a transient A-record failure while the SRV response is served
+	// from cache). Return nil so lookup() keeps the previously cached
+	// endpoints instead of deleting every known address. A genuine
+	// zero-record SRV result (srvs empty) still returns the empty map and is
+	// handled by the caller as before. See cortexproject/cortex#7730.
+	if len(srvs) > 0 && len(newAddrs) == 0 {
+		return nil
+	}
 	return newAddrs
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -689,24 +690,58 @@ func BenchmarkIngesterStreamingSelect(b *testing.B) {
 		return &client.QueryStreamResponse{Chunkseries: series}
 	}
 
-	b.Run("with_detach", func(b *testing.B) {
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			resp := buildResponse()
-			for _, result := range resp.Chunkseries {
-				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
-				_ = detachChunksFromBuffer(result.Chunks)
-			}
-		}
-	})
-
 	b.Run("without_detach", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			resp := buildResponse()
 			for _, result := range resp.Chunkseries {
-				_ = cortexpb.FromLabelAdaptersToLabels(result.Labels)
+				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
 			}
 		}
 	})
+}
+
+// TestChunksDoNotAliasWireBuffer is a regression test for
+// cortexproject/cortex#7732: the gogo-generated Chunk.Unmarshal allocates a
+// fresh slice for each chunk's Data, so chunk data never aliases the gRPC wire
+// buffer. The distributor queryable must therefore pass result.Chunks directly
+// to chunkcompat.FromChunks rather than copying it first (the copy was a wasted
+// allocation + memcpy that, because the response stays live for the whole
+// streamingSelect body, actually increased peak heap).
+func TestChunksDoNotAliasWireBuffer(t *testing.T) {
+	chunkData := []byte("some-chunk-bytes-that-should-not-alias")
+	resp := &client.QueryStreamResponse{
+		Chunkseries: []client.TimeSeriesChunk{
+			{
+				Labels: []cortexpb.LabelAdapter{{Name: "foo", Value: "bar"}},
+				Chunks: []client.Chunk{
+					{StartTimestampMs: 0, EndTimestampMs: 1000, Data: chunkData},
+				},
+			},
+		},
+	}
+
+	marshaled, err := resp.Marshal()
+	require.NoError(t, err)
+
+	var unmarshaled client.QueryStreamResponse
+	require.NoError(t, unmarshaled.Unmarshal(marshaled))
+
+	got := unmarshaled.Chunkseries[0].Chunks[0].Data
+	require.Equal(t, chunkData, got)
+
+	// The unmarshaled chunk Data must be a distinct allocation from the wire
+	// buffer, proving the redundant detach copy in #7670 was unnecessary.
+	require.False(t, aliases(got, marshaled),
+		"chunk Data aliases the wire buffer; the redundant detach copy may be needed after all")
+}
+
+// aliases reports whether b's backing array overlaps a's backing array.
+func aliases(a, b []byte) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	a0, a1 := uintptr(unsafe.Pointer(&a[0])), uintptr(unsafe.Pointer(&a[0]))+uintptr(len(a))
+	b0, b1 := uintptr(unsafe.Pointer(&b[0])), uintptr(unsafe.Pointer(&b[0]))+uintptr(len(b))
+	return a0 < b1 && b0 < a1
 }

@@ -88,6 +88,20 @@ type ingesterMetrics struct {
 	unoptimizedRegexRejectedTotal    *prometheus.CounterVec
 }
 
+// ingestionDelaySecondsHistogramOpts defines the options for the
+// cortex_ingester_ingestion_delay_seconds native histogram. NativeHistogramMinResetDuration
+// must be a real duration (time.Hour): a bare integer literal is interpreted as
+// nanoseconds, which resets the native histogram on essentially every scrape and
+// discards the vast majority of observations (see cortexproject/cortex#7731).
+var ingestionDelaySecondsHistogramOpts = prometheus.HistogramOpts{
+	Name:                            "cortex_ingester_ingestion_delay_seconds",
+	Help:                            "Delay in seconds between sample ingestion time and sample timestamp.",
+	NativeHistogramBucketFactor:     1.1,
+	NativeHistogramMaxBucketNumber:  100,
+	NativeHistogramMinResetDuration: 1 * time.Hour,
+	Buckets:                         []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
+}
+
 func newIngesterMetrics(r prometheus.Registerer,
 	createMetricsConflictingWithTSDB bool,
 	activeSeriesEnabled bool,
@@ -151,14 +165,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         prometheus.ExponentialBuckets(1, 2, 10), // 1 to 512 buckets
 		}, []string{"user"}),
-		ingestionDelaySeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-			Name:                            "cortex_ingester_ingestion_delay_seconds",
-			Help:                            "Delay in seconds between sample ingestion time and sample timestamp.",
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
-			Buckets:                         []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
-		}, []string{"user"}),
+		ingestionDelaySeconds: promauto.With(r).NewHistogramVec(ingestionDelaySecondsHistogramOpts, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Name: "cortex_ingester_out_of_order_labels_total",
 			Help: "The total number of out of order label found per user.",

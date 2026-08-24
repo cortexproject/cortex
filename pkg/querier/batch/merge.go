@@ -10,6 +10,8 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
+const maxPooledBatchesBufCap = 32
+
 var batchesBufPool = sync.Pool{
 	New: func() any {
 		buf := make(batchStream, 3)
@@ -150,16 +152,18 @@ func (c *mergeIterator) buildNextBatch(size int) chunkenc.ValueType {
 
 	bp := batchesBufPool.Get().(*batchStream)
 	defer func() {
-		batchesBufPool.Put(bp)
+		for i := range *bp {
+			(*bp)[i] = promchunk.Batch{}
+		}
+		if cap(*bp) <= maxPooledBatchesBufCap {
+			batchesBufPool.Put(bp)
+		}
 	}()
 
 	if cap(*bp) < c.numPartitions {
 		*bp = make(batchStream, c.numPartitions)
 	} else {
 		*bp = (*bp)[:c.numPartitions]
-		for i := range *bp {
-			(*bp)[i] = promchunk.Batch{}
-		}
 	}
 
 	// All we need to do is get enough batches that our first batch's last entry

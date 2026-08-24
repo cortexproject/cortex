@@ -2510,8 +2510,41 @@ func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 		if strings.Contains(queryStr, "atan2") {
 			return false
 		}
+		if containsLogicalOr(generatedQuery) {
+			// Prometheus 3.9 changed how a result whose series collide after __name__
+			// removal is handled: cleanupMetricLabels used to fail the whole query with
+			// "vector cannot contain metrics with the same labelset", and now merges
+			// series that have non-overlapping timestamps instead (see
+			// mergeSeriesWithSameLabelset, vendored by #7535).
+			//
+			// `or` is what builds such a result, by unioning series that only differ by
+			// __name__ and are then name-dropped by an enclosing operation, e.g.
+			// `-(rate({__name__="a"}[4m]) or {__name__="a"})`. The older Prometheus in
+			// the latest released Cortex image errors where HEAD returns data, which is a
+			// legitimate cross-version difference and not a Cortex bug. Whether a given
+			// `or` actually collides can only be known by evaluating it, so skip `or`
+			// entirely for cross-version comparisons. `or` stays covered by the fuzz
+			// tests that compare two instances of the same build.
+			//
+			// See https://github.com/cortexproject/cortex/issues/7803.
+			return false
+		}
 	}
 	return isValid
+}
+
+// containsLogicalOr reports whether the expression uses the `or` set operator anywhere.
+// `and` and `unless` are excluded on purpose: they only ever return series taken from
+// the left hand side, so they cannot union series that differ only by __name__.
+func containsLogicalOr(expr parser.Expr) bool {
+	found := false
+	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
+		if n, ok := node.(*parser.BinaryExpr); ok && n.Op == parser.LOR {
+			found = true
+		}
+		return nil
+	})
+	return found
 }
 
 func resultLength(x model.Value) int {

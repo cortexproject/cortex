@@ -172,7 +172,7 @@ func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChun
 	return result
 }
 
-func BenchmarkNewChunkMergeIterator_ManyIterators(b *testing.B) {
+func BenchmarkNewChunkMergeIterator_NoReuse(b *testing.B) {
 	const numSeries = 10000
 
 	scenarios := []struct {
@@ -196,19 +196,9 @@ func BenchmarkNewChunkMergeIterator_ManyIterators(b *testing.B) {
 
 		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
-		b.Run(name+"/create_only", func(b *testing.B) {
+		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
-			for b.Loop() {
-				iters := make([]chunkenc.Iterator, numSeries)
-				for i := range numSeries {
-					iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
-				}
-				_ = iters
-			}
-		})
 
-		b.Run(name+"/create_and_iterate_sequential", func(b *testing.B) {
-			b.ReportAllocs()
 			for b.Loop() {
 				iters := make([]chunkenc.Iterator, numSeries)
 				for i := range numSeries {

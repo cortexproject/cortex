@@ -256,6 +256,11 @@ querier:
     # CLI flag: -querier.decoding-concurrency
     [decoding_concurrency: <int> | default = 0]
 
+    # Maximum number of series processed per batch in selectors. 0 disables
+    # batching.
+    # CLI flag: -querier.selector-batch-size
+    [selector_batch_size: <int> | default = 0]
+
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
   # evaluation like at Query Frontend or Ruler.
@@ -2254,10 +2259,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-    # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value
-    # in limits is set to zero, cortex will fallback on this value. This setting
-    # enables support for exemplars in TSDB and sets the maximum number that
-    # will be stored. 0 or less means disabled.
+    # Deprecated (use the per-tenant max_exemplars limit instead) and will be
+    # removed in v1.24.0: the global fallback for the maximum number of
+    # exemplars stored in TSDB, used only when the per-tenant max_exemplars
+    # limit is 0. 0 or less means exemplars are disabled.
     # CLI flag: -blocks-storage.tsdb.max-exemplars
     [max_exemplars: <int> | default = 0]
 

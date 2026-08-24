@@ -174,30 +174,55 @@ func createChunks(b *testing.B, step time.Duration, numChunks, numSamplesPerChun
 
 func BenchmarkNewChunkMergeIterator_ManyIterators(b *testing.B) {
 	const numSeries = 10000
-	chunks := createChunks(b, step, 10, 100, 3, promchunk.PrometheusXorChunk)
 
-	b.Run("create_only", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			iters := make([]chunkenc.Iterator, numSeries)
-			for i := range numSeries {
-				iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
-			}
-			_ = iters
-		}
-	})
+	scenarios := []struct {
+		numChunks          int
+		numSamplesPerChunk int
+		duplicationFactor  int
+		enc                promchunk.Encoding
+	}{
+		{numChunks: 10, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 10, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusXorChunk},
+		{numChunks: 10, numSamplesPerChunk: 100, duplicationFactor: 1, enc: promchunk.PrometheusHistogramChunk},
+		{numChunks: 10, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusHistogramChunk},
+	}
 
-	b.Run("create_and_iterate_sequential", func(b *testing.B) {
-		b.ReportAllocs()
-		for b.Loop() {
-			iters := make([]chunkenc.Iterator, numSeries)
-			for i := range numSeries {
-				iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+	for _, scenario := range scenarios {
+		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d encoding: %s",
+			scenario.numChunks,
+			scenario.numSamplesPerChunk,
+			scenario.duplicationFactor,
+			scenario.enc.String())
+
+		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
+
+		b.Run(name+"/create_only", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				iters := make([]chunkenc.Iterator, numSeries)
+				for i := range numSeries {
+					iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+				}
+				_ = iters
 			}
-			for _, it := range iters {
-				for it.Next() != chunkenc.ValNone {
+		})
+
+		b.Run(name+"/create_and_iterate_sequential", func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				iters := make([]chunkenc.Iterator, numSeries)
+				for i := range numSeries {
+					iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+				}
+				for _, it := range iters {
+					for it.Next() != chunkenc.ValNone {
+						it.At()
+					}
+					if it.Err() != nil {
+						b.Fatal(it.Err().Error())
+					}
 				}
 			}
-		}
-	})
+		})
+	}
 }

@@ -1016,13 +1016,14 @@ func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
-	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
-		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
-			return true
-		}
-		return false
+	// Wait until the block has been marked for no compaction. Poll on the counter that is
+	// asserted below rather than on the marker file: the file is written before the counter
+	// is incremented, so waiting on the file can let the assertion observe a stale 0.
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
+		return prom_testutil.ToFloat64(c.BlocksMarkedForNoCompaction)
 	})
+
+	assert.FileExists(t, path.Join(dir, "no-compact-mark.json"))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 			# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.

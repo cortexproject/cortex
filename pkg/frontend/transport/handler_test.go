@@ -519,6 +519,11 @@ func TestReportQueryStatsFormat(t *testing.T) {
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 user_agent=Grafana`,
 			source:      requestmeta.SourceAPI,
 		},
+		"should include grafana user header": {
+			header:      http.Header{"X-Grafana-User": []string{"admin"}},
+			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 X-Grafana-User=admin`,
+			source:      requestmeta.SourceAPI,
+		},
 		"should include engine type": {
 			header:      http.Header{http.CanonicalHeaderKey(engine.TypeHeader): []string{string(engine.Thanos)}},
 			expectedLog: `level=info msg="query stats" component=query-frontend method=GET path=/prometheus/api/v1/query response_time=1s query_wall_time_seconds=0 response_series_count=0 fetched_series_count=0 fetched_chunks_count=0 fetched_samples_count=0 fetched_chunks_bytes=0 fetched_data_bytes=0 split_queries=0 status_code=200 response_size=1000 samples_scanned=0 engine_type=thanos`,
@@ -633,6 +638,15 @@ func TestReportSlowQueryFormat(t *testing.T) {
 				"X-Panel-Id":      []string{"panel-1"},
 			},
 			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 X-Dashboard-Uid=dashboard-1 X-Panel-Id=panel-1`,
+		},
+		"should include grafana user header": {
+			source: requestmeta.SourceAPI,
+			header: http.Header{
+				"X-Dashboard-Uid": []string{"dashboard-1"},
+				"X-Panel-Id":      []string{"panel-1"},
+				"X-Grafana-User":  []string{"admin"},
+			},
+			expectedLog: `level=info msg="slow query detected" method=GET host=localhost:8080 path=/prometheus/api/v1/query source=api time_taken_ms=1000 X-Dashboard-Uid=dashboard-1 X-Panel-Id=panel-1 X-Grafana-User=admin`,
 		},
 		"should include user agent, engine type and block store type headers": {
 			source: requestmeta.SourceAPI,

@@ -1390,3 +1390,106 @@ func (m *mockConfigProvider) S3SSEKMSKeyID(userID string) string {
 func (m *mockConfigProvider) S3SSEKMSEncryptionContext(userID string) string {
 	return ""
 }
+
+// TestCleanUserPartialBlocks_VisitMarkerOnly tests cleanUserPartialBlocks
+// which was fixed to use a boolean flag instead of a fast-fail error pattern
+// to avoid spurious "bucket operation fail after retries" ERROR logs.
+func TestCleanUserPartialBlocks_VisitMarkerOnly(t *testing.T) {
+	t.Parallel()
+
+	const userID = "user-1"
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	for _, tc := range []struct {
+		name          string
+		setupBlock    func(t *testing.T, bkt objstore.Bucket, blockID ulid.ULID)
+		expectDeleted bool
+	}{
+		{
+			name: "partial block with visit marker only: should be deleted",
+			setupBlock: func(t *testing.T, bkt objstore.Bucket, blockID ulid.ULID) {
+				createBlockVisitMarker(t, bkt, userID, blockID)
+			},
+			expectDeleted: true,
+		},
+		{
+			name: "partial block with deletion mark: should be deleted",
+			setupBlock: func(t *testing.T, bkt objstore.Bucket, blockID ulid.ULID) {
+				createDeletionMark(t, bkt, userID, blockID, time.Now().Add(-time.Hour))
+			},
+			expectDeleted: true,
+		},
+		{
+			name: "partial block with real data files (chunks): should not be deleted",
+			setupBlock: func(t *testing.T, bkt objstore.Bucket, blockID ulid.ULID) {
+				// visit marker + a real data file
+				createBlockVisitMarker(t, bkt, userID, blockID)
+				require.NoError(t, bkt.Upload(ctx,
+					path.Join(userID, blockID.String(), "chunks", "000001"),
+					strings.NewReader("chunk data"),
+				))
+			},
+			expectDeleted: false,
+		},
+		{
+			name: "partial block with empty directory: should not be deleted",
+			setupBlock: func(t *testing.T, bkt objstore.Bucket, blockID ulid.ULID) {
+				// upload nothing – directory is empty
+			},
+			expectDeleted: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+			bkt = bucketindex.BucketWithGlobalMarkers(bkt)
+
+			blockID := ulid.MustNew(ulid.Now(), rand.Reader)
+			tc.setupBlock(t, bkt, blockID)
+
+			// partials map: block is partial because meta.json is missing
+			partials := map[ulid.ULID]error{
+				blockID: bucketindex.ErrBlockMetaNotFound,
+			}
+			idx := &bucketindex.Index{}
+
+			cfg := BlocksCleanerConfig{
+				DeletionDelay:   12 * time.Hour,
+				CleanupInterval: time.Minute,
+			}
+			reg := prometheus.NewRegistry()
+			blocksMarkedForDeletion := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+				Name: blocksMarkedForDeletionName,
+				Help: blocksMarkedForDeletionHelp,
+			}, append(commonLabels, reasonLabelName))
+			dummyGaugeVec := prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"test"})
+
+			cleaner := NewBlocksCleaner(cfg, bkt, nil, 60*time.Second, newMockConfigProvider(), logger, "test-cleaner", reg, time.Minute, 30*time.Second, blocksMarkedForDeletion, dummyGaugeVec)
+
+			userBucket := bucket.NewUserBucketClient(userID, bkt, cleaner.cfgProvider)
+			userLogger := util_log.WithUserID(userID, logger)
+
+			cleaner.cleanUserPartialBlocks(ctx, userID, partials, idx, userBucket, userLogger)
+
+			visitMarkerPath := path.Join(userID, blockID.String(), BlockVisitMarkerFile)
+			chunkPath := path.Join(userID, blockID.String(), "chunks", "000001")
+			deletionMarkPath := path.Join(userID, blockID.String(), metadata.DeletionMarkFilename)
+
+			if tc.expectDeleted {
+				// Block directory should be gone
+				exists, err := bkt.Exists(ctx, visitMarkerPath)
+				require.NoError(t, err)
+				assert.False(t, exists)
+			} else {
+				// At least one file that was uploaded should still exist
+				for _, p := range []string{visitMarkerPath, chunkPath, deletionMarkPath} {
+					exists, err := bkt.Exists(ctx, p)
+					require.NoError(t, err)
+					if exists {
+						return // block was not deleted – as expected
+					}
+				}
+			}
+		})
+	}
+}

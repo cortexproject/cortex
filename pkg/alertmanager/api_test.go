@@ -463,6 +463,68 @@ alertmanager_config: |
 			err: errors.Wrap(errTLSFileNotAllowed, "error validating Alertmanager config"),
 		},
 		{
+			name: "Should return error if receiver's http_headers files is set",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            http_headers:
+              X-Canary:
+                files:
+                  - /var/run/secrets/kubernetes.io/serviceaccount/token
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errHTTPHeadersFilesNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should return error if global http_headers files is set",
+			cfg: `
+alertmanager_config: |
+  global:
+    http_config:
+      http_headers:
+        X-Canary:
+          files:
+            - /secrets
+
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errHTTPHeadersFilesNotAllowed, "error validating Alertmanager config"),
+		},
+		{
+			name: "Should pass if receiver's http_headers only uses values and secrets",
+			cfg: `
+alertmanager_config: |
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+          http_config:
+            http_headers:
+              X-Canary:
+                values:
+                  - canary
+              X-Token:
+                secrets:
+                  - sekret
+
+  route:
+    receiver: 'default-receiver'
+`,
+			err: nil,
+		},
+		{
 			name: "Should return error if global opsgenie_api_key_file is set",
 			cfg: `
 alertmanager_config: |
@@ -1022,6 +1084,24 @@ alertmanager_config: |
 `,
 			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
 		}, {
+			// No mattermost receiver here on purpose. When one is present, upstream copies
+			// the global value into the receiver's webhook_url_file during unmarshal and the
+			// per-receiver check already catches it. Without one, nothing propagated and the
+			// global field went unvalidated.
+			name: "Should return error if global mattermost_webhook_url_file is set without a Mattermost receiver",
+			cfg: `
+alertmanager_config: |
+  global:
+    mattermost_webhook_url_file: /secret
+  receivers:
+    - name: default-receiver
+      webhook_configs:
+        - url: http://localhost
+  route:
+    receiver: 'default-receiver'
+`,
+			err: errors.Wrap(errMatterMostWebhookUrlFileNotAllowed, "error validating Alertmanager config"),
+		}, {
 			name: "Should return error if global wechat_api_secret_file is set",
 			cfg: `
 alertmanager_config: |
@@ -1358,6 +1438,81 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 			},
 			expected: errTLSFileNotAllowed,
 		},
+		"*HTTPClientConfig with http_headers files": {
+			input: &commoncfg.HTTPClientConfig{
+				HTTPHeaders: &commoncfg.Headers{
+					Headers: map[string]commoncfg.Header{
+						"X-Canary": {Files: []string{"/secrets"}},
+					},
+				},
+			},
+			expected: errHTTPHeadersFilesNotAllowed,
+		},
+		"struct containing *HTTPClientConfig with http_headers files as direct child": {
+			input: config.GlobalConfig{
+				HTTPConfig: &commoncfg.HTTPClientConfig{
+					HTTPHeaders: &commoncfg.Headers{
+						Headers: map[string]commoncfg.Header{
+							"X-Canary": {Files: []string{"/secrets"}},
+						},
+					},
+				},
+			},
+			expected: errHTTPHeadersFilesNotAllowed,
+		},
+		"struct containing *HTTPClientConfig with http_headers files as nested child within a slice": {
+			input: config.Config{
+				Receivers: []config.Receiver{{
+					Name: "test",
+					WebhookConfigs: []*webhook.WebhookConfig{{
+						HTTPConfig: &commoncfg.HTTPClientConfig{
+							HTTPHeaders: &commoncfg.Headers{
+								Headers: map[string]commoncfg.Header{
+									"X-Canary": {Files: []string{"/secrets"}},
+								},
+							},
+						},
+					}}},
+				},
+			},
+			expected: errHTTPHeadersFilesNotAllowed,
+		},
+		"*HTTPClientConfig with http_headers values only": {
+			input: &commoncfg.HTTPClientConfig{
+				HTTPHeaders: &commoncfg.Headers{
+					Headers: map[string]commoncfg.Header{
+						"X-Canary": {Values: []string{"value"}},
+					},
+				},
+			},
+			expected: nil,
+		},
+		"*HTTPClientConfig with http_headers secrets only": {
+			input: &commoncfg.HTTPClientConfig{
+				HTTPHeaders: &commoncfg.Headers{
+					Headers: map[string]commoncfg.Header{
+						"X-Canary": {Secrets: []commoncfg.Secret{"secret"}},
+					},
+				},
+			},
+			expected: nil,
+		},
+		"*HTTPClientConfig with http_headers empty files": {
+			input: &commoncfg.HTTPClientConfig{
+				HTTPHeaders: &commoncfg.Headers{
+					Headers: map[string]commoncfg.Header{
+						"X-Canary": {Values: []string{"value"}, Files: []string{}},
+					},
+				},
+			},
+			expected: nil,
+		},
+		"GlobalConfig with mattermost_webhook_url_file": {
+			input: config.GlobalConfig{
+				MattermostWebhookURLFile: "/secrets",
+			},
+			expected: errMatterMostWebhookUrlFileNotAllowed,
+		},
 	}
 
 	for testName, testData := range tests {
@@ -1366,4 +1521,40 @@ func TestValidateAlertmanagerConfig(t *testing.T) {
 			assert.ErrorIs(t, err, testData.expected)
 		})
 	}
+}
+
+func TestValidateAlertmanagerConfig_DoesNotPanicOnNilInterfaceValues(t *testing.T) {
+	tests := map[string]any{
+		"nil root interface":        any(nil),
+		"map value nil interface":   map[string]any{"test": nil},
+		"slice value nil interface": []any{nil},
+	}
+
+	for testName, input := range tests {
+		t.Run(testName, func(t *testing.T) {
+			require.NotPanics(t, func() {
+				err := validateAlertmanagerConfig(input)
+				assert.NoError(t, err)
+			})
+		})
+	}
+}
+
+func TestValidateAlertmanagerConfig_PagerdutyDetailsNullValue(t *testing.T) {
+	amCfg, err := config.Load(`
+route:
+  receiver: pd
+receivers:
+  - name: pd
+    pagerduty_configs:
+      - routing_key: "abc123"
+        details:
+          foo: null
+`)
+	require.NoError(t, err)
+
+	require.NotPanics(t, func() {
+		err = validateAlertmanagerConfig(amCfg)
+	})
+	assert.NoError(t, err)
 }

@@ -515,6 +515,94 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 	}
 }
 
+func Test_convertV2RequestToV1_MetadataDedup(t *testing.T) {
+	symbols := []string{"", "__name__", "test_metric", "pod", "a", "b", "c", "Help text", "seconds", "Other help", "other_metric"}
+
+	// One series per pod, all sharing the same metric family and metadata.
+	sameFamily := func(nameRef uint32, podRef uint32, meta cortexpb.MetadataV2) cortexpb.PreallocTimeseriesV2 {
+		return cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{
+				LabelsRefs: []uint32{1, nameRef, 3, podRef},
+				Metadata:   meta,
+				Samples:    []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+			},
+		}
+	}
+
+	counterMeta := cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: 8}
+
+	tests := []struct {
+		name             string
+		timeseries       []cortexpb.PreallocTimeseriesV2
+		expectedMetadata []*cortexpb.MetricMetadata
+	}{
+		{
+			name: "identical metadata across series of the same family is deduped",
+			timeseries: []cortexpb.PreallocTimeseriesV2{
+				sameFamily(2, 4, counterMeta),
+				sameFamily(2, 5, counterMeta),
+				sameFamily(2, 6, counterMeta),
+			},
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				{Type: cortexpb.COUNTER, MetricFamilyName: "test_metric", Help: "Help text", Unit: "seconds"},
+			},
+		},
+		{
+			name: "distinct families are kept",
+			timeseries: []cortexpb.PreallocTimeseriesV2{
+				sameFamily(2, 4, counterMeta),
+				sameFamily(10, 4, counterMeta),
+				sameFamily(2, 5, counterMeta),
+			},
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				{Type: cortexpb.COUNTER, MetricFamilyName: "test_metric", Help: "Help text", Unit: "seconds"},
+				{Type: cortexpb.COUNTER, MetricFamilyName: "other_metric", Help: "Help text", Unit: "seconds"},
+			},
+		},
+		{
+			name: "same family with differing type, help or unit is kept",
+			timeseries: []cortexpb.PreallocTimeseriesV2{
+				sameFamily(2, 4, counterMeta),
+				sameFamily(2, 5, cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_GAUGE, HelpRef: 7, UnitRef: 8}),
+				sameFamily(2, 6, cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 9, UnitRef: 8}),
+				sameFamily(2, 4, cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: 0}),
+			},
+			expectedMetadata: []*cortexpb.MetricMetadata{
+				{Type: cortexpb.COUNTER, MetricFamilyName: "test_metric", Help: "Help text", Unit: "seconds"},
+				{Type: cortexpb.GAUGE, MetricFamilyName: "test_metric", Help: "Help text", Unit: "seconds"},
+				{Type: cortexpb.COUNTER, MetricFamilyName: "test_metric", Help: "Other help", Unit: "seconds"},
+				{Type: cortexpb.COUNTER, MetricFamilyName: "test_metric", Help: "Help text", Unit: ""},
+			},
+		},
+		{
+			name: "series without metadata produce none",
+			timeseries: []cortexpb.PreallocTimeseriesV2{
+				sameFamily(2, 4, cortexpb.MetadataV2{}),
+				sameFamily(2, 5, cortexpb.MetadataV2{}),
+			},
+			expectedMetadata: nil,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			v2Req := cortexpb.PreallocWriteRequestV2{
+				WriteRequestV2: cortexpb.WriteRequestV2{
+					Symbols:    symbols,
+					Timeseries: test.timeseries,
+				},
+			}
+
+			v1Req, err := convertV2RequestToV1(&v2Req, false, false)
+			require.NoError(t, err)
+
+			// Dedup must not drop any series.
+			require.Len(t, v1Req.Timeseries, len(test.timeseries))
+			require.Equal(t, test.expectedMetadata, v1Req.Metadata)
+		})
+	}
+}
+
 func Test_convertV2RequestToV1(t *testing.T) {
 	var v2Req cortexpb.PreallocWriteRequestV2
 

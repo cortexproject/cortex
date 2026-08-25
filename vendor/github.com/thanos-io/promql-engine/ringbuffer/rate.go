@@ -93,6 +93,9 @@ func (r *RateBuffer) SampleCount() int {
 func (r *RateBuffer) MaxT() int64 { return r.lastSample.T }
 
 func (r *RateBuffer) Push(t int64, v Value) {
+	if t <= r.currentMint {
+		return
+	}
 	// Detect resets and store the current and previous sample so that
 	// the rate is properly adjusted.
 	if r.lastSample.T > r.currentMint && v.H != nil && r.lastSample.V.H != nil {
@@ -178,7 +181,7 @@ func (r *RateBuffer) Reset(mint int64, evalt int64) {
 	r.firstSamples[lastSample].T = math.MaxInt64
 }
 
-func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+func (r *RateBuffer) Eval(ctx context.Context, _, _ float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	if r.firstSamples[0].T == math.MaxInt64 || r.firstSamples[0].T == r.lastSample.T {
 		return 0, nil, false, 0, nil
 	}
@@ -192,8 +195,6 @@ func (r *RateBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, 
 	numSamples := r.stepRanges[0].numSamples
 	return extrapolatedRate(r.rateBuffer, numSamples, r.isCounter, r.isRate, r.evalTs, r.selectRange, r.offset)
 }
-
-func (r *RateBuffer) ReadIntoLast(func(*Sample)) {}
 
 func querySteps(o query.Options) int64 {
 	// Instant evaluation is executed as a range evaluation with one step.

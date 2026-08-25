@@ -682,3 +682,55 @@ func TestConvertWithMaxNumColumns(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, shards2, "expected single shard with high column limit")
 }
+
+func TestConverter_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
+	// Create a shared KV Store
+	kvstore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	limits.ParquetConverterEnabled = true
+
+	// Create two converters
+	var converters []*Converter
+	for i := range 2 {
+		cfg := prepareConfig()
+		cfg.Ring.InstanceID = fmt.Sprintf("parquet-converter-%d", i)
+		cfg.Ring.InstanceAddr = fmt.Sprintf("127.0.0.%d", i+1)
+		cfg.Ring.KVStore.Mock = kvstore
+		cfg.Ring.HeartbeatPeriod = 100 * time.Millisecond
+		cfg.Ring.HeartbeatTimeout = 200 * time.Millisecond
+		cfg.Ring.AutoForgetDelay = 400 * time.Millisecond
+
+		c, _, _ := prepare(t, cfg, bucketClient, limits, nil)
+		converters = append(converters, c)
+	}
+
+	// Start both converters.
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), converters[0]))
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), converters[1]))
+
+	// Both should be healthy.
+	test.Poll(t, 5*time.Second, true, func() any {
+		healthy, unhealthy, _ := converters[0].ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 2 && len(unhealthy) == 0
+	})
+
+	// Override UnregisterOnShutdown so the instance stays in the ring after stop,
+	// simulating a crash or ungraceful shutdown.
+	converters[1].ringLifecycler.SetUnregisterOnShutdown(false)
+	// The converter running() returns ctx.Err() on stop, so context.Canceled is expected.
+	err := services.StopAndAwaitTerminated(context.Background(), converters[1])
+	require.True(t, err == nil || errors.Is(err, context.Canceled), "unexpected error stopping converter: %v", err)
+
+	// The stopped instance should appear unhealthy first, then be auto-forgotten.
+	test.Poll(t, 5*time.Second, true, func() any {
+		healthy, unhealthy, _ := converters[0].ring.GetAllInstanceDescs(ring.Reporting)
+		return len(healthy) == 1 && len(unhealthy) == 0
+	})
+
+	err = services.StopAndAwaitTerminated(context.Background(), converters[0])
+	require.True(t, err == nil || errors.Is(err, context.Canceled), "unexpected error stopping converter: %v", err)
+}

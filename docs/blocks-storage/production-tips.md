@@ -5,17 +5,17 @@ weight: 4
 slug: production-tips
 ---
 
-This page shares some tips and things to take in consideration when setting up a production Cortex cluster based on the blocks storage.
+This page shares some tips and things to take into consideration when setting up a production Cortex cluster based on the blocks storage.
 
 ## Ingester
 
 ### Ensure a high number of max open file descriptors
 
-The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed by a relatively large number of files which gets loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven't reached the retention period yet.
+The ingester stores received series into per-tenant TSDB blocks. Both TSDB WAL, head and compacted blocks are composed of a relatively large number of files which get loaded via mmap. This means that the ingester keeps file descriptors open for TSDB WAL segments, chunk files and compacted blocks which haven't reached the retention period yet.
 
-If your Cortex cluster has many tenants or ingester is running with a long `-blocks-storage.tsdb.retention-period`, the ingester may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or enabling [shuffle sharding](../guides/shuffle-sharding.md).
+If your Cortex cluster has many tenants or the ingester is running with a long `-blocks-storage.tsdb.retention-period`, the ingester may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or enabling [shuffle sharding](../guides/shuffle-sharding.md).
 
-The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
+The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (e.g. `1048576`).
 
 ### Ingester disk space
 
@@ -25,13 +25,13 @@ We typically configure ingesters to retain these blocks for longer, to allow tim
 
 If you configure ingesters with `-blocks-storage.tsdb.retention-period=24h`, a rule of thumb for disk space required is to take the number of timeseries after replication and multiply by 30KB.
 
-For example, if you have 20M active series replicated 3 ways, this gives approx 1.7TB.  Divide by the number of ingesters and allow some margin for growth, e.g. if you have 20 ingesters then 100GB each should work, or 150GB each to be more comfortable.
+For example, if you have 20M active series replicated 3 ways, this gives approx 1.7TB. Divide by the number of ingesters and allow some margin for growth, e.g. if you have 20 ingesters then 100GB each should work, or 150GB each to be more comfortable.
 
 ## Querier
 
 ### Ensure caching is enabled
 
-The querier relies on caching to reduce the number API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
+The querier relies on caching to reduce the number of API calls to the storage bucket. Ensure [caching](./querier.md#caching) is properly configured and [properly scaled](#ensure-memcached-is-properly-scaled).
 
 ### Ensure bucket index is enabled
 
@@ -41,8 +41,8 @@ The bucket index reduces the number of API calls to the storage bucket and, when
 
 When running Cortex blocks storage cluster at scale, querying non compacted blocks may be inefficient for two reasons:
 
-1. Non compacted blocks contain duplicated samples (as effect of the ingested samples replication)
-2. Overhead introduced querying many small indexes
+1. Non compacted blocks contain duplicated samples (as an effect of the ingested samples replication)
+2. Overhead introduced by querying many small indexes
 
 Because of this, we would suggest to avoid querying non compacted blocks. In order to do it, you should:
 
@@ -56,7 +56,7 @@ Because of this, we would suggest to avoid querying non compacted blocks. In ord
 
 The `-querier.query-store-after` should be set to a duration large enough to give compactor enough time to compact newly uploaded blocks, and queriers and store-gateways to discover and sync newly compacted blocks.
 
-The following diagram shows all the timings involved in the estimation. This diagram should be used only as a template and you're expected to tweak the assumptions based on real measurements in your Cortex cluster. In this example, the following assumptions have been done:
+The following diagram shows all the timings involved in the estimation. This diagram should be used only as a template and you're expected to tweak the assumptions based on real measurements in your Cortex cluster. In this example, the following assumptions have been made:
 
 - An ingester takes up to 30 minutes to upload a block to the storage
 - The compactor takes up to 3 hours to compact 2h blocks shipped from all ingesters
@@ -79,9 +79,9 @@ The bucket index reduces the number of API calls to the storage bucket and the s
 
 ### Ensure a high number of max open file descriptors
 
-The store-gateway stores each block’s index-header on the local disk and loads it via mmap. This means that the store-gateway keeps a file descriptor open for each loaded block. If your Cortex cluster has many blocks in the bucket, the store-gateway may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or running more store-gateway instances with blocks sharding enabled.
+The store-gateway stores each block's index-header on the local disk and loads it via mmap. This means that the store-gateway keeps a file descriptor open for each loaded block. If your Cortex cluster has many blocks in the bucket, the store-gateway may hit the **`file-max` ulimit** (maximum number of open file descriptions by a process); in such case, we recommend increasing the limit on your system or running more store-gateway instances with blocks sharding enabled.
 
-The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (eg. `1048576`).
+The rule of thumb is that a production system shouldn't have the `file-max` ulimit below `65536`, but higher values are recommended (e.g. `1048576`).
 
 ## Compactor
 
@@ -101,7 +101,7 @@ We also recommend to run a different memcached cluster for each cache type (meta
 
 ### Ensure Alertmanager networking is hardened
 
-If the Alertmanager API is enabled, users with access to Cortex can autonomously configure the Alertmanager, including receiver integrations that allow to issue network requests to the configured URL (eg. webhook). If the Alertmanager network is not hardened, Cortex users may have the ability to issue network requests to any network endpoint including services running in the local network accessible by the Alertmanager itself.
+If the Alertmanager API is enabled, users with access to Cortex can autonomously configure the Alertmanager, including receiver integrations that allow to issue network requests to the configured URL (e.g. webhook). If the Alertmanager network is not hardened, Cortex users may have the ability to issue network requests to any network endpoint including services running in the local network accessible by the Alertmanager itself.
 
 Despite hardening the system is out of the scope of Cortex, Cortex provides a basic built-in firewall to block connections created by Alertmanager receiver integrations:
 

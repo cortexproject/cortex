@@ -2955,10 +2955,10 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
   [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-  # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in
-  # limits is set to zero, cortex will fallback on this value. This setting
-  # enables support for exemplars in TSDB and sets the maximum number that will
-  # be stored. 0 or less means disabled.
+  # Deprecated (use the per-tenant max_exemplars limit instead) and will be
+  # removed in v1.24.0: the global fallback for the maximum number of exemplars
+  # stored in TSDB, used only when the per-tenant max_exemplars limit is 0. 0 or
+  # less means exemplars are disabled.
   # CLI flag: -blocks-storage.tsdb.max-exemplars
   [max_exemplars: <int> | default = 0]
 
@@ -4671,7 +4671,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Enables support for exemplars in TSDB and sets the maximum number that will be
 # stored. less than zero means disabled. If the value is set to zero, cortex
-# will fallback to blocks-storage.tsdb.max-exemplars value.
+# will fallback to the deprecated blocks-storage.tsdb.max-exemplars value; that
+# fallback is removed in v1.24.0.
 # CLI flag: -ingester.max-exemplars
 [max_exemplars: <int> | default = 0]
 
@@ -5425,6 +5426,11 @@ thanos_engine:
   # to GOMAXPROCS / 2.
   # CLI flag: -querier.decoding-concurrency
   [decoding_concurrency: <int> | default = 0]
+
+  # Maximum number of series processed per batch in selectors. 0 disables
+  # batching.
+  # CLI flag: -querier.selector-batch-size
+  [selector_batch_size: <int> | default = 0]
 
 # If enabled, ignore max query length check at Querier select method. Users can
 # choose to ignore it since the validation can be done before Querier evaluation
@@ -6276,6 +6282,11 @@ thanos_engine:
   # to GOMAXPROCS / 2.
   # CLI flag: -ruler.decoding-concurrency
   [decoding_concurrency: <int> | default = 0]
+
+  # Maximum number of series processed per batch in selectors. 0 disables
+  # batching.
+  # CLI flag: -ruler.selector-batch-size
+  [selector_batch_size: <int> | default = 0]
 ```
 
 ### `ruler_storage_config`

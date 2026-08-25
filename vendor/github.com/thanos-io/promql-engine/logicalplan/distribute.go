@@ -100,12 +100,15 @@ func (r RemoteExecution) Type() NodeType { return RemoteExecutionNode }
 
 func (r RemoteExecution) ReturnType() parser.ValueType { return r.Query.ReturnType() }
 
-// Deduplicate is a logical plan which deduplicates samples from multiple RemoteExecutions.
-type Deduplicate struct {
+// RemoteMerge is a logical plan node which merges samples from multiple RemoteExecutions.
+// It deduplicates overlapping samples by default, but deduplication can be skipped
+// when the remote engines are known to hold disjoint data.
+type RemoteMerge struct {
 	Expressions RemoteExecutions
+	SkipDedup   bool
 }
 
-func (r Deduplicate) Children() []*Node {
+func (r RemoteMerge) Children() []*Node {
 	children := make([]*Node, len(r.Expressions))
 	for i := range r.Expressions {
 		var n Node = r.Expressions[i]
@@ -114,7 +117,7 @@ func (r Deduplicate) Children() []*Node {
 	return children
 }
 
-func (r Deduplicate) Clone() Node {
+func (r RemoteMerge) Clone() Node {
 	clone := r
 	clone.Expressions = make(RemoteExecutions, len(r.Expressions))
 	for i, e := range r.Expressions {
@@ -123,13 +126,16 @@ func (r Deduplicate) Clone() Node {
 	return clone
 }
 
-func (r Deduplicate) String() string {
+func (r RemoteMerge) String() string {
+	if r.SkipDedup {
+		return fmt.Sprintf("merge(%s)", r.Expressions.String())
+	}
 	return fmt.Sprintf("dedup(%s)", r.Expressions.String())
 }
 
-func (r Deduplicate) ReturnType() parser.ValueType { return r.Expressions[0].ReturnType() }
+func (r RemoteMerge) ReturnType() parser.ValueType { return r.Expressions[0].ReturnType() }
 
-func (r Deduplicate) Type() NodeType { return DeduplicateNode }
+func (r RemoteMerge) Type() NodeType { return RemoteMergeNode }
 
 type Noop struct {
 	LeafNode
@@ -148,10 +154,11 @@ func (r Noop) Type() NodeType { return NoopNode }
 type DistributedExecutionOptimizer struct {
 	Endpoints          api.RemoteEndpoints
 	SkipBinaryPushdown bool
+	SkipDedup          bool
 }
 
 func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) (Node, annotations.Annotations) {
-	engines := m.Endpoints.Engines()
+	engines := m.Endpoints.Engines(MinMaxTime(plan, opts))
 	sort.Slice(engines, func(i, j int) bool {
 		return engines[i].MinT() < engines[j].MinT()
 	})
@@ -241,6 +248,13 @@ func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, par
 
 	// First pass: mark distribution points (aggregations, absent functions).
 	Traverse(plan, func(current *Node) {
+		// Skip subtrees that are already distributed (e.g. by a previous
+		// distributed optimizer). This lets multiple distributed optimizers
+		// be chained: once the plan is distributed, subsequent optimizers
+		// fall through instead of re-distributing.
+		if isDistributed(current) {
+			return
+		}
 		if isAbsent(current) {
 			if m.isDistributive(current, engineLabels, warns) {
 				marks[current] = struct{}{}
@@ -273,6 +287,9 @@ func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, par
 		if _, ok := marks[current]; ok {
 			return
 		}
+		if isDistributed(current) {
+			return
+		}
 		if subtreeHasMark(current, marks) {
 			return
 		}
@@ -289,6 +306,18 @@ func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, par
 	})
 
 	return marks
+}
+
+// isDistributed reports whether the subtree rooted at node has already been
+// processed by a distributed optimizer, i.e. it contains a Deduplicate,
+// RemoteExecution or Noop node (Noop is the terminal result of distributing a
+// subtree that matched no engines). Such subtrees must not be distributed again.
+func isDistributed(node *Node) bool {
+	switch (*node).(type) {
+	case RemoteMerge, RemoteExecution, Noop:
+		return true
+	}
+	return slices.ContainsFunc((*node).Children(), isDistributed)
 }
 
 func subtreeHasMark(node *Node, marks map[*Node]struct{}) bool {
@@ -352,7 +381,7 @@ func newRemoteAggregation(rootAggregation *Aggregation, engines []api.RemoteEngi
 
 // distributeQuery takes a PromQL expression in the form of *parser.Expr and a set of remote engines.
 // For each engine which matches the time range of the query, it creates a RemoteExecution scoped to the range of the engine.
-// All remote executions are wrapped in a Deduplicate logical node to make sure that results from overlapping engines are deduplicated.
+// All remote executions are wrapped in a RemoteMerge logical node to make sure that results from overlapping engines are deduplicated.
 func (m DistributedExecutionOptimizer) distributeQuery(expr *Node, engines []api.RemoteEngine, opts *query.Options, labelRanges labelSetRanges) Node {
 	startOffset := calculateStartOffset(expr, opts.LookbackDelta)
 	allowedStartOffset := labelRanges.minOverlap(opts.Start.UnixMilli()-startOffset.Milliseconds(), opts.End.UnixMilli())
@@ -415,8 +444,9 @@ func (m DistributedExecutionOptimizer) distributeQuery(expr *Node, engines []api
 		return Noop{}
 	}
 
-	return Deduplicate{
+	return RemoteMerge{
 		Expressions: remoteQueries,
+		SkipDedup:   m.SkipDedup,
 	}
 }
 
@@ -544,7 +574,15 @@ func getStartTimeForEngine(e api.RemoteEngine, opts *query.Options, offset time.
 		engineMinTime = calculateStepAlignedStart(opts, engineMinTime.Add(offset))
 	}
 
-	return calculateStepAlignedStart(opts, maxTime(engineMinTime, opts.Start)), true
+	start := calculateStepAlignedStart(opts, maxTime(engineMinTime, opts.Start))
+	// Step alignment can push the start time past the end of the query range,
+	// which would produce an invalid range (QueryRangeStart > QueryRangeEnd).
+	// In that case the engine has no data to contribute, so skip it.
+	if start.After(opts.End) {
+		return time.Time{}, false
+	}
+
+	return start, true
 }
 
 // calculateStepAlignedStart returns a start time for the query based on the
@@ -690,7 +728,7 @@ func (m DistributedExecutionOptimizer) isDistributive(expr *Node, engineLabels m
 	}
 
 	switch e := (*expr).(type) {
-	case Deduplicate, RemoteExecution:
+	case RemoteMerge, RemoteExecution:
 		return false
 	case *Binary:
 		if isBinaryExpressionWithOneScalarSide(e) {

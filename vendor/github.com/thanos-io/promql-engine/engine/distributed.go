@@ -68,6 +68,12 @@ func (l DistributedEngine) MakeInstantQueryFromPlan(ctx context.Context, q stora
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
 
+	// Cache engines to give optimizers a consistent view of Engines().
+	// Some RemoteEndpoints implementations also compute and cache
+	// MinT() / MaxT() / LabelSets() on the fly, so the cache prevents
+	// recomputing those fields in each optimizer.
+	e = api.NewCachedEndpoints(e)
+
 	qOpts := fromPromQLOpts(opts)
 	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
 		logicalplan.PassthroughOptimizer{Endpoints: e},
@@ -84,6 +90,12 @@ func (l DistributedEngine) MakeRangeQueryFromPlan(ctx context.Context, q storage
 	end = end.Truncate(time.Second)
 	interval = interval.Truncate(time.Second)
 
+	// Cache engines to give optimizers a consistent view of Engines().
+	// Some RemoteEndpoints implementations also compute and cache
+	// MinT() / MaxT() / LabelSets() on the fly, so the cache prevents
+	// recomputing those fields in each optimizer.
+	e = api.NewCachedEndpoints(e)
+
 	qOpts := fromPromQLOpts(opts)
 	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
 		logicalplan.PassthroughOptimizer{Endpoints: e},
@@ -97,6 +109,12 @@ func (l DistributedEngine) MakeInstantQuery(ctx context.Context, q storage.Query
 	// Truncate milliseconds to avoid mismatch in timestamps between remote and local engines.
 	// Some clients might only support second precision when executing queries.
 	ts = ts.Truncate(time.Second)
+
+	// Cache engines to give optimizers a consistent view of Engines().
+	// Some RemoteEndpoints implementations also compute and cache
+	// MinT() / MaxT() / LabelSets() on the fly, so the cache prevents
+	// recomputing those fields in each optimizer.
+	e = api.NewCachedEndpoints(e)
 
 	qOpts := fromPromQLOpts(opts)
 	qOpts.LogicalOptimizers = []logicalplan.Optimizer{
@@ -113,6 +131,12 @@ func (l DistributedEngine) MakeRangeQuery(ctx context.Context, q storage.Queryab
 	start = start.Truncate(time.Second)
 	end = end.Truncate(time.Second)
 	interval = interval.Truncate(time.Second)
+
+	// Cache engines to give optimizers a consistent view of Engines().
+	// Some RemoteEndpoints implementations also compute and cache
+	// MinT() / MaxT() / LabelSets() on the fly, so the cache prevents
+	// recomputing those fields in each optimizer.
+	e = api.NewCachedEndpoints(e)
 
 	qOpts := fromPromQLOpts(opts)
 	qOpts.LogicalOptimizers = []logicalplan.Optimizer{

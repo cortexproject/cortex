@@ -4,6 +4,9 @@
 package logicalplan
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/thanos-io/promql-engine/api"
 	"github.com/thanos-io/promql-engine/query"
 
@@ -38,53 +41,57 @@ func labelSetsMatch(matchers []*labels.Matcher, lset ...labels.Labels) bool {
 	return false
 }
 
-func matchingEngineTime(e api.RemoteEngine, opts *query.Options) bool {
-	return !(opts.Start.UnixMilli() > e.MaxT() || opts.End.UnixMilli() < e.MinT())
-}
-
 func (m PassthroughOptimizer) Optimize(plan Node, opts *query.Options) (Node, annotations.Annotations) {
-	engines := m.Endpoints.Engines()
-	if len(engines) == 1 {
-		if !matchingEngineTime(engines[0], opts) {
-			return plan, nil
+	mint, maxt := MinMaxTime(plan, opts)
+	engines := m.Endpoints.Engines(mint, maxt)
+	if len(engines) == 0 {
+		return plan, nil
+	}
+	var (
+		hasSelector       bool
+		matchingEngineSet = make(map[api.RemoteEngine]struct{})
+	)
+	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
+		if vs, ok := (*current).(*VectorSelector); ok {
+			hasSelector = true
+			for _, e := range engines {
+				if !labelSetsMatch(vs.LabelMatchers, e.LabelSets()...) {
+					continue
+				}
+				matchingEngineSet[e] = struct{}{}
+				if len(matchingEngineSet) > 1 {
+					return true
+				}
+			}
 		}
+		return false
+	})
+
+	matchingEngines := slices.Collect(maps.Keys(matchingEngineSet))
+	if len(matchingEngines) == 0 {
+		if !hasSelector && matchingEngineTime(engines[0], mint, maxt) {
+			return RemoteExecution{
+				Engine:          engines[0],
+				Query:           plan.Clone(),
+				QueryRangeStart: opts.Start,
+				QueryRangeEnd:   opts.End,
+			}, nil
+		}
+		return plan, nil
+	}
+
+	if len(matchingEngines) == 1 && matchingEngineTime(matchingEngines[0], mint, maxt) {
 		return RemoteExecution{
-			Engine:          engines[0],
+			Engine:          matchingEngines[0],
 			Query:           plan.Clone(),
 			QueryRangeStart: opts.Start,
 			QueryRangeEnd:   opts.End,
 		}, nil
 	}
 
-	if len(engines) == 0 {
-		return plan, nil
-	}
-
-	matchingEngines := make(map[api.RemoteEngine]struct{})
-	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
-		if vs, ok := (*current).(*VectorSelector); ok {
-			for _, e := range engines {
-				if !labelSetsMatch(vs.LabelMatchers, e.LabelSets()...) {
-					continue
-				}
-				matchingEngines[e] = struct{}{}
-			}
-		}
-		return false
-	})
-
-	if len(matchingEngines) == 1 {
-		for e := range matchingEngines {
-			if matchingEngineTime(e, opts) {
-				return RemoteExecution{
-					Engine:          e,
-					Query:           plan.Clone(),
-					QueryRangeStart: opts.Start,
-					QueryRangeEnd:   opts.End,
-				}, nil
-			}
-		}
-	}
-
 	return plan, nil
+}
+
+func matchingEngineTime(e api.RemoteEngine, minTime, maxTime int64) bool {
+	return !(minTime > e.MaxT() || maxTime < e.MinT())
 }

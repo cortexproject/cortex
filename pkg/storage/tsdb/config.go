@@ -16,8 +16,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
@@ -212,8 +210,6 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxExemplars, "blocks-storage.tsdb.max-exemplars", 0, "Deprecated (use the per-tenant max_exemplars limit instead) and will be removed in v1.24.0: the global fallback for the maximum number of exemplars stored in TSDB, used only when the per-tenant max_exemplars limit is 0. 0 or less means exemplars are disabled.")
 	f.BoolVar(&cfg.MemorySnapshotOnShutdown, "blocks-storage.tsdb.memory-snapshot-on-shutdown", false, "True to enable snapshotting of in-memory TSDB data on disk when shutting down.")
 	f.Int64Var(&cfg.OutOfOrderCapMax, "blocks-storage.tsdb.out-of-order-cap-max", tsdb.DefaultOutOfOrderCapMax, "[EXPERIMENTAL] Configures the maximum number of samples per chunk that can be out-of-order.")
-
-	flagext.DeprecatedFlag(f, "blocks-storage.tsdb.wal-compression-enabled", "Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to enable TSDB WAL compression.", util_log.Logger)
 
 	cfg.PostingsCache.RegisterFlagsWithPrefix("blocks-storage.", f)
 }

@@ -3,6 +3,15 @@
 ## master / unreleased
 * [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
+* [CHANGE] Remove deprecated CLI flags that have been no-ops for at least two minor releases. All of them were flag-only (no YAML config option) and already had no effect, so the only impact is that passing them now fails at startup. Remove them from your command lines before upgrading. #7790
+  - `-querier.ingester-streaming` (deprecated in 1.17.0)
+  - `-querier.iterators` (deprecated in 1.17.0)
+  - `-querier.batch-iterators` (deprecated in 1.17.0)
+  - `-querier.query-store-for-labels-enabled` (deprecated in 1.18.0)
+  - `-querier.max-outstanding-requests-per-tenant` (deprecated in 1.18.0; use `-frontend.max-outstanding-requests-per-tenant`)
+  - `-query-scheduler.max-outstanding-requests-per-tenant` (deprecated in 1.18.0; use `-frontend.max-outstanding-requests-per-tenant`)
+  - `-blocks-storage.tsdb.wal-compression-enabled` (deprecated in 1.19.0; use `-blocks-storage.tsdb.wal-compression-type`)
+  - `-ingester.max-series-per-query` (a chunks-storage limit, ignored since blocks storage; use `-querier.max-fetched-series-per-query`)
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446

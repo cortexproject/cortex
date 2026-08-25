@@ -103,7 +103,6 @@
 * [BUGFIX] Parquet Converter: Fix `auto_forget_delay` having no effect. The ring lifecycler was created without the auto-forget delegate, so unhealthy instances were never automatically removed from the ring. #7752
 * [BUGFIX] Alertmanager: Reject the global `mattermost_webhook_url_file` setting in per-tenant configs, consistent with every other global `*_file` setting. #7768
 * [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
-* [BUGFIX] Query Frontend: Fix per-tenant results cache TTL for out-of-order results fallback order. It now falls back to `results_cache_ttl` before falling back to the global cache backend TTL. #7775
 * [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
 
 ## 1.21.1 2026-06-04

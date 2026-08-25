@@ -790,7 +790,7 @@ func (s resultsCache) getTTLForExtents(tenantIDs []string, extents []tripperware
 		// Use smallest non-zero TTL to respect the most restrictive tenant's cache policy.
 		// The out-of-order TTL is resolved per-tenant before aggregating: if a tenant does
 		// not explicitly set out_of_order_results_cache_ttl (0), it falls back to that
-		// tenant's results_cache_ttl, and only then to the global cache backend TTL (0).
+		// tenant's results_cache_ttl, and only then to the global cache backend TTL.
 		return validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, func(userID string) time.Duration {
 			if ttl := s.limits.OutOfOrderResultsCacheTTL(userID); ttl > 0 {
 				return ttl

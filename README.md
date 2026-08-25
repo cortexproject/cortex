@@ -9,7 +9,7 @@
 [![CLOMonitor](https://img.shields.io/endpoint?url=https://clomonitor.io/api/projects/cncf/cortex/badge)](https://clomonitor.io/projects/cncf/cortex)
 
 
-# Cortex
+# Cortex Intelligence Nexus 
 
 Cortex is a horizontally scalable, highly available, multi-tenant, long-term storage solution for [Prometheus](https://prometheus.io) and [OpenTelemetry Metrics](https://opentelemetry.io/docs/specs/otel/metrics/).
 
@@ -154,7 +154,7 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 [promcon-2016-video]: https://youtu.be/3Tb4Wc0kfCM
 [promcon-2016-slides]: http://www.slideshare.net/weaveworks/project-frankenstein-a-multitenant-horizontally-scalable-prometheus-as-a-service
 
-## Hosted Cortex
+## Hosted Cortex Intelligence Nexus
 
 ### Amazon Managed Service for Prometheus (AMP)
 

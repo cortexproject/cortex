@@ -881,6 +881,175 @@ func TestExemplar(t *testing.T) {
 	require.Equal(t, 1, len(exemplars))
 }
 
+func TestPRW2PartialWrite(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                     blocksStorageEngine,
+			"-blocks-storage.backend":                           "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":     "4m",
+			"-blocks-storage.bucket-store.sync-interval":        "15m",
+			"-blocks-storage.bucket-store.index-cache.backend":  tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			"-blocks-storage.tsdb.ship-interval":                "1s",
+			"-blocks-storage.tsdb.enable-native-histograms":     "true",
+			// Ingester.
+			"-ring.store":             "consul",
+			"-consul.hostname":        consul.NetworkHTTPEndpoint(),
+			"-ingester.max-exemplars": "100",
+			// Distributor.
+			"-distributor.replication-factor":     "1",
+			"-distributor.remote-writev2-enabled": "true",
+			// Store-gateway.
+			"-store-gateway.sharding-enabled": "false",
+			// alert manager
+			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		},
+	)
+
+	// make alert manager config dir
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path := path.Join(s.SharedDir(), "cortex-1")
+
+	flags = mergeFlags(flags, map[string]string{"-blocks-storage.filesystem.dir": path})
+	// Start Cortex replicas.
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until Cortex replicas have updated the ring state.
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	tsMillis := e2e.TimeToMilliseconds(now)
+	start := now.Add(-time.Minute)
+	end := now.Add(time.Minute)
+
+	symbols := []string{
+		"",                 // 0
+		"__name__",         // 1
+		"good_sample",      // 2
+		"good_histogram",   // 3
+		"dropped_labels",   // 4
+		"dropped_exemplar", // 5
+		"dropped_metadata", // 6
+		"empty_series",     // 7
+		"trace_id",         // 8
+		"abc123",           // 9
+	}
+	// Any ref greater than or equal to the symbols table length is out of range.
+	const invalidRef = 10
+
+	t.Run("every series is dropped during conversion", func(t *testing.T) {
+		timeseries := []writev2.TimeSeries{
+			{LabelsRefs: []uint32{1, 7}},
+			{LabelsRefs: []uint32{1, invalidRef}, Samples: []writev2.Sample{{Value: 1, Timestamp: tsMillis}}},
+		}
+
+		writeStats, err := c.PushV2(symbols, timeseries)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "400")
+		require.Contains(t, err.Error(), "TimeSeries must contain at least one sample or histogram")
+		require.Contains(t, err.Error(), "outside of symbols table")
+
+		// Nothing was written, so the response headers must report zero of everything.
+		testPushHeader(t, writeStats, 0, 0, 0)
+
+		result, err := c.Query("empty_series", now)
+		require.NoError(t, err)
+		require.Empty(t, result.(model.Vector))
+	})
+
+	t.Run("dropped data is excluded from the written stats headers", func(t *testing.T) {
+		h := writev2.FromIntHistogram(tsMillis, tsdbutil.GenerateTestHistogram(1))
+
+		timeseries := []writev2.TimeSeries{
+			// Written: 1 sample and 1 exemplar.
+			{
+				LabelsRefs: []uint32{1, 2},
+				Samples:    []writev2.Sample{{Value: 1, Timestamp: tsMillis}},
+				Exemplars:  []writev2.Exemplar{{LabelsRefs: []uint32{8, 9}, Value: 1, Timestamp: tsMillis}},
+			},
+			// Written: 1 histogram.
+			{
+				LabelsRefs: []uint32{1, 3},
+				Histograms: []writev2.Histogram{h},
+			},
+			// Dropped on an out of range label ref, along with its 3 samples and 2 exemplars.
+			{
+				LabelsRefs: []uint32{1, invalidRef},
+				Samples: []writev2.Sample{
+					{Value: 1, Timestamp: tsMillis},
+					{Value: 2, Timestamp: tsMillis + 1},
+					{Value: 3, Timestamp: tsMillis + 2},
+				},
+				Exemplars: []writev2.Exemplar{
+					{LabelsRefs: []uint32{8, 9}, Value: 1, Timestamp: tsMillis},
+					{LabelsRefs: []uint32{8, 9}, Value: 2, Timestamp: tsMillis + 1},
+				},
+			},
+			// Only the exemplar is dropped on an out of range label ref, the samples are kept.
+			{
+				LabelsRefs: []uint32{1, 5},
+				Samples: []writev2.Sample{
+					{Value: 1, Timestamp: tsMillis},
+					{Value: 2, Timestamp: tsMillis + 1},
+				},
+				Exemplars: []writev2.Exemplar{{LabelsRefs: []uint32{8, invalidRef}, Value: 1, Timestamp: tsMillis}},
+			},
+			// The metadata is dropped on an out of range unit ref, but the series itself is kept.
+			{
+				LabelsRefs: []uint32{1, 6},
+				Metadata:   writev2.Metadata{UnitRef: invalidRef},
+				Histograms: []writev2.Histogram{h},
+			},
+			// Dropped for holding no data at all.
+			{LabelsRefs: []uint32{1, 7}},
+		}
+
+		writeStats, err := c.PushV2(symbols, timeseries)
+
+		// The client is told the request was a bad one, even though it was partially written.
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "400")
+
+		// Only the series that survived conversion are reported as written.
+		testPushHeader(t, writeStats, 3, 2, 1)
+
+		// And they are the only ones actually stored.
+		for _, name := range []string{"good_sample", "good_histogram", "dropped_metadata", "dropped_exemplar"} {
+			result, err := c.Query(name, now)
+			require.NoError(t, err)
+			require.Len(t, result.(model.Vector), 1, "%s must be ingested", name)
+		}
+		for _, name := range []string{"empty_series"} {
+			result, err := c.Query(name, now)
+			require.NoError(t, err)
+			require.Empty(t, result.(model.Vector), "%s must not be ingested", name)
+		}
+
+		exemplars, err := c.QueryExemplars("good_sample", start, end)
+		require.NoError(t, err)
+		require.Len(t, exemplars, 1)
+		require.Len(t, exemplars[0].Exemplars, 1)
+
+		exemplars, err = c.QueryExemplars("dropped_exemplar", start, end)
+		require.NoError(t, err)
+		require.Empty(t, exemplars)
+	})
+}
+
 func Test_WriteStatWithReplication(t *testing.T) {
 	// Test `X-Prometheus-Remote-Write-Samples-Written` header value
 	// with the replication.

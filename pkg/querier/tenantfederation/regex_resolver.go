@@ -128,7 +128,9 @@ func (r *RegexResolver) running(ctx context.Context) error {
 				continue
 			}
 
-			newUsers := append(active, deleting...)
+			newUsers := make([]string, 0, len(active)+len(deleting))
+			newUsers = append(newUsers, active...)
+			newUsers = append(newUsers, deleting...)
 			sort.Strings(newUsers)
 
 			r.Lock()

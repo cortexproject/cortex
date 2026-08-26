@@ -266,6 +266,59 @@ func Test_RegexResolver_Cache(t *testing.T) {
 	}
 }
 
+func Test_RegexResolver_DoesNotMutateScannerResult(t *testing.T) {
+	reg := prometheus.NewRegistry()
+
+	activeTenants := []string{"b-1", "b-2", "b-3"}
+	deletingTenant := "a-del"
+	expected := []string{"a-del", "b-1", "b-2", "b-3"}
+
+	bucketClient := &bucket.ClientMock{}
+	bucketClient.MockIter("", append([]string{deletingTenant}, activeTenants...), nil)
+	bucketClient.MockIter("__markers__", []string{"__markers__/" + deletingTenant + "/"}, nil)
+	bucketClient.MockExists(users.GetGlobalDeletionMarkPath(deletingTenant), true, nil)
+	for _, tenant := range activeTenants {
+		bucketClient.MockExists(users.GetGlobalDeletionMarkPath(tenant), false, nil)
+		bucketClient.MockExists(users.GetLocalDeletionMarkPath(tenant), false, nil)
+	}
+
+	bucketClientFactory := func(ctx context.Context) (objstore.InstrumentedBucket, error) {
+		return bucketClient, nil
+	}
+
+	// Caching makes the users scanner return the very same slices on every scan, so
+	// mutating them in place would corrupt the result of all the following scans.
+	usersScannerConfig := users.UsersScannerConfig{Strategy: users.UserScanStrategyList, CacheTTL: time.Hour}
+	tenantFederationConfig := Config{UserSyncInterval: 50 * time.Millisecond, MaxTenant: 0, RegexCacheSize: 10}
+	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
+	defer services.StopAndAwaitTerminated(context.Background(), regexResolver) //nolint:errcheck
+
+	// Wait for the first scan.
+	test.Poll(t, 10*time.Second, true, func() any {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > 0
+	})
+	firstRun := testutil.ToFloat64(regexResolver.lastUpdateUserRun)
+
+	// Wait for several more scans. The corruption only shows up from the second scan
+	// on, once the scanner starts returning the previously mutated slices.
+	test.Poll(t, 10*time.Second, true, func() any {
+		return testutil.ToFloat64(regexResolver.lastUpdateUserRun) > firstRun
+	})
+
+	regexResolver.RLock()
+	knownUsers := append([]string(nil), regexResolver.knownUsers...)
+	regexResolver.RUnlock()
+	require.Equal(t, expected, knownUsers)
+
+	ctx := user.InjectOrgID(context.Background(), "b-.+")
+	orgIDs, err := regexResolver.TenantIDs(ctx)
+	require.NoError(t, err)
+	require.Equal(t, activeTenants, orgIDs)
+}
+
 func Test_RegexResolver_CacheInvalidation(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	initialTenants := []string{"user-1", "user-2"}

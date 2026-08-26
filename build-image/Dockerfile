@@ -23,9 +23,18 @@ RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/golang/protobuf/protoc-gen-go@v1.3.1 &&\
 	go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 &&\
 	go install github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 &&\
-	go install github.com/fatih/faillint@v1.15.0 &&\
 	go install github.com/campoy/embedmd@v1.0.0 &&\
 	rm -rf /go/pkg /go/src /root/.cache
+
+# Go 1.27 writes export data at pkgbits V4, but faillint v1.15.0 pins
+# golang.org/x/tools v0.30.0, whose decoder stops at V2. `go install` would use
+# faillint's own pinned version, so build it against a current x/tools instead.
+RUN mkdir /tmp/faillint && cd /tmp/faillint && \
+	go mod init faillint-build && \
+	go get github.com/fatih/faillint@v1.15.0 && \
+	go get golang.org/x/tools@v0.49.0 && \
+	go build -o /usr/bin/faillint github.com/fatih/faillint && \
+	cd / && rm -rf /tmp/faillint /go/pkg /go/src /root/.cache
 
 COPY build.sh /
 ENV GOCACHE=/go/cache

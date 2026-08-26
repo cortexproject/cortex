@@ -5264,7 +5264,6 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 	ctx := context.Background()
 	cfg := defaultIngesterTestConfig(t)
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 
 	// Create ingester
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
@@ -5317,7 +5316,6 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Minute
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Minute
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 
 	// Create ingester
 	i, err := prepareIngesterWithBlocksStorage(t, cfg, prometheus.NewRegistry())
@@ -5365,7 +5363,6 @@ func TestIngester_ReadNotFailWhenTSDBIsBeingDeleted(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			cfg := defaultIngesterTestConfig(t)
-			cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 			cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
 
 			// Create ingester
@@ -6031,13 +6028,16 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 1 * time.Second
 	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
+
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.CloseIdleTSDBTimeout = model.Duration(1 * time.Second)
 
 	r := prometheus.NewRegistry()
 
 	// Create ingester
-	i, err := prepareIngesterWithBlocksStorage(t, cfg, r)
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", r)
 	require.NoError(t, err)
 
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -6140,6 +6140,88 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
 		# TYPE cortex_ingester_memory_metadata_created_total counter
 		cortex_ingester_memory_metadata_created_total{user="1"} 1
     `), metricsToCheck...))
+}
+
+func TestIngesterCloseIdleTSDB_PerTenantTimeout(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
+
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	// Per-tenant limit enables close-idle for this tenant
+	limits.CloseIdleTSDBTimeout = model.Duration(1 * time.Second)
+
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+	})
+
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSampleWithMetadata(t, i)
+
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
+
+	// Wait until TSDB has been closed via the per-tenant timeout.
+	test.Poll(t, 10*time.Second, 0, func() any {
+		i.stoppedMtx.Lock()
+		defer i.stoppedMtx.Unlock()
+		return len(i.TSDBState.dbs)
+	})
+
+	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
+}
+
+func TestIngesterCloseIdleTSDB_DisabledWhenZero(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
+
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.CloseIdleTSDBTimeout = 0 // Disabled
+
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() {
+		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
+	})
+
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	pushSingleSampleWithMetadata(t, i)
+
+	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
+
+	// Wait a bit and confirm TSDB is NOT closed (timeout is disabled).
+	time.Sleep(500 * time.Millisecond)
+
+	i.stoppedMtx.Lock()
+	numDBs := len(i.TSDBState.dbs)
+	i.stoppedMtx.Unlock()
+	require.Equal(t, 1, numDBs)
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {
@@ -7768,7 +7850,6 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 func TestIngesterPanicHandling(t *testing.T) {
 	ctx := context.Background()
 	cfg := defaultIngesterTestConfig(t)
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout = 0 // Will not run the loop, but will allow us to close any TSDB fast.
 	cfg.BlocksStorageConfig.TSDB.KeepUserTSDBOpenOnShutdown = true
 
 	// Create ingester

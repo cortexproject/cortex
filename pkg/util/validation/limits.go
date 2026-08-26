@@ -206,6 +206,7 @@ type Limits struct {
 	// "now - queryStoreAfter" so that most recent blocks are not queried.
 	QueryStoreAfter                        model.Duration `yaml:"query_store_after" json:"query_store_after"`
 	ShuffleShardingIngestersLookbackPeriod model.Duration `yaml:"shuffle_sharding_ingesters_lookback_period" json:"shuffle_sharding_ingesters_lookback_period"`
+	CloseIdleTSDBTimeout                   model.Duration `yaml:"close_idle_tsdb_timeout" json:"close_idle_tsdb_timeout"`
 
 	// Parquet Queryable enforced limits.
 	ParquetMaxFetchedRowCount   int `yaml:"parquet_max_fetched_row_count" json:"parquet_max_fetched_row_count"`
@@ -335,7 +336,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.QueryStoreAfter, "limits.query-store-after", "Minimum age of data before querying the long-term storage. Queries for data younger than this will only query ingesters. This is a per-tenant limit that can be overridden in the runtime configuration.")
 
 	_ = l.ShuffleShardingIngestersLookbackPeriod.Set("0")
-	f.Var(&l.ShuffleShardingIngestersLookbackPeriod, "limits.shuffle-sharding-ingesters-lookback-period", "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.")
+	f.Var(&l.ShuffleShardingIngestersLookbackPeriod, "limits.shuffle-sharding-ingesters-lookback-period", "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-store-after and query-ingesters-within.")
+
+	_ = l.CloseIdleTSDBTimeout.Set("0")
+	f.Var(&l.CloseIdleTSDBTimeout, "limits.close-idle-tsdb-timeout", "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to -limits.query-ingesters-within to prevent premature TSDB closure. 0 to disable.")
 
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "Limit the query time range (end - start time of range query parameter and max - min of data fetched time range). This limit is enforced in the query-frontend and ruler (on the received query). 0 to disable.")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how long back data (series and metadata) can be queried, up until <lookback> duration ago. This limit is enforced in the query-frontend, querier and ruler. If the requested time range is outside the allowed range, the request will not fail but will be manipulated to only query data within the allowed time range. 0 to disable.")
@@ -468,8 +472,8 @@ func (l *Limits) ValidateQueryLimits(userID string, closeIdleTSDBTimeout time.Du
 	queryStoreAfter := time.Duration(l.QueryStoreAfter)
 	shuffleShardingLookback := time.Duration(l.ShuffleShardingIngestersLookbackPeriod)
 
-	if queryIngestersWithin > 0 && closeIdleTSDBTimeout > 0 && queryIngestersWithin >= closeIdleTSDBTimeout {
-		return fmt.Errorf("tenant %s: query_ingesters_within (%s) must be less than close_idle_tsdb_timeout (%s)",
+	if queryIngestersWithin > 0 && closeIdleTSDBTimeout > 0 && queryIngestersWithin > closeIdleTSDBTimeout {
+		return fmt.Errorf("tenant %s: query_ingesters_within (%s) must be less than or equal to close_idle_tsdb_timeout (%s)",
 			userID, queryIngestersWithin, closeIdleTSDBTimeout)
 	}
 
@@ -481,6 +485,11 @@ func (l *Limits) ValidateQueryLimits(userID string, closeIdleTSDBTimeout time.Du
 	if queryStoreAfter > 0 && shuffleShardingLookback > 0 && shuffleShardingLookback < queryStoreAfter {
 		return fmt.Errorf("tenant %s: shuffle_sharding_ingesters_lookback_period (%s) is less than query_store_after (%s)",
 			userID, shuffleShardingLookback, queryStoreAfter)
+	}
+
+	if queryIngestersWithin > 0 && shuffleShardingLookback > 0 && shuffleShardingLookback < queryIngestersWithin {
+		return fmt.Errorf("tenant %s: shuffle_sharding_ingesters_lookback_period (%s) is less than query_ingesters_within (%s)",
+			userID, shuffleShardingLookback, queryIngestersWithin)
 	}
 
 	return nil
@@ -1285,6 +1294,10 @@ func (o *Overrides) QueryStoreAfter(userID string) time.Duration {
 
 func (o *Overrides) ShuffleShardingIngestersLookbackPeriod(userID string) time.Duration {
 	return time.Duration(o.GetOverridesForUser(userID).ShuffleShardingIngestersLookbackPeriod)
+}
+
+func (o *Overrides) CloseIdleTSDBTimeout(userID string) time.Duration {
+	return time.Duration(o.GetOverridesForUser(userID).CloseIdleTSDBTimeout)
 }
 
 // GetOverridesForUser returns the per-tenant limits with overrides.

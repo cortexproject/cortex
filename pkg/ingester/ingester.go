@@ -1016,7 +1016,9 @@ func (i *Ingester) starting(ctx context.Context) error {
 		servs = append(servs, shippingService)
 	}
 
-	if i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout > 0 {
+	// The close-idle TSDB timeout is now a per-tenant limit, so the timer always runs;
+	// closeAndDeleteIdleUserTSDBs decides per tenant whether any TSDB is actually closed.
+	{
 		interval := i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval
 		if interval == 0 {
 			interval = cortex_tsdb.DefaultCloseIdleTSDBInterval
@@ -3539,6 +3541,17 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 			return nil
 		}
 
+		// A non-positive close-idle timeout disables idle-based closing for this tenant,
+		// so we skip the idle check entirely (and don't record an idleTsdbChecks result,
+		// since no check is performed). A tenant marked for deletion is the one exception:
+		// its local TSDB must still be closed and deleted regardless of the timeout.
+		if i.limits.CloseIdleTSDBTimeout(userID) <= 0 {
+			userDB, err := i.getTSDB(userID)
+			if err != nil || userDB == nil || !userDB.deletionMarkFound.Load() {
+				continue
+			}
+		}
+
 		result := i.closeAndDeleteUserTSDBIfIdle(userID)
 
 		i.TSDBState.idleTsdbChecks.WithLabelValues(string(result)).Inc()
@@ -3569,7 +3582,9 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 		return tsdbShippingDisabled
 	}
 
-	if result := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
+	closeIdleTSDBTimeout := i.limits.CloseIdleTSDBTimeout(userID)
+
+	if result := userDB.shouldCloseTSDB(closeIdleTSDBTimeout); !result.shouldClose() {
 		return result
 	}
 
@@ -3587,7 +3602,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 
 	// Verify again, things may have changed during the checks and pushes.
 	tenantDeleted := false
-	if result := userDB.shouldCloseTSDB(i.cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBTimeout); !result.shouldClose() {
+	if result := userDB.shouldCloseTSDB(closeIdleTSDBTimeout); !result.shouldClose() {
 		// This will also change TSDB state back to active (via defer above).
 		return result
 	} else if result == tsdbTenantMarkedForDeletion {

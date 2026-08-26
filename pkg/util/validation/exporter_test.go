@@ -48,6 +48,7 @@ func TestOverridesExporter_withConfig(t *testing.T) {
 		cortex_overrides{limit_name="alertmanager_max_templates_count",user="tenant-a"} 0
 		cortex_overrides{limit_name="alertmanager_notification_rate_limit",user="tenant-a"} 0
 		cortex_overrides{limit_name="alertmanager_receivers_firewall_block_private_addresses",user="tenant-a"} 0
+		cortex_overrides{limit_name="close_idle_tsdb_timeout",user="tenant-a"} 0
 		cortex_overrides{limit_name="compactor_blocks_retention_period",user="tenant-a"} 0
 		cortex_overrides{limit_name="compactor_partition_index_size_bytes",user="tenant-a"} 6.8719476736e+10
 		cortex_overrides{limit_name="compactor_partition_series_count",user="tenant-a"} 0

@@ -1069,19 +1069,19 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 			closeIdleTSDBTimeout:                   0,
 			expectedError:                          "",
 		},
-		"invalid: queryIngestersWithin >= closeIdleTSDBTimeout": {
+		"valid: queryIngestersWithin == closeIdleTSDBTimeout": {
 			queryIngestersWithin:                   25 * time.Hour,
 			queryStoreAfter:                        24 * time.Hour,
 			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
 			closeIdleTSDBTimeout:                   25 * time.Hour,
-			expectedError:                          "query_ingesters_within (25h0m0s) must be less than close_idle_tsdb_timeout (25h0m0s)",
+			expectedError:                          "",
 		},
 		"invalid: queryIngestersWithin > closeIdleTSDBTimeout": {
 			queryIngestersWithin:                   26 * time.Hour,
 			queryStoreAfter:                        24 * time.Hour,
 			shuffleShardingIngestersLookbackPeriod: 26 * time.Hour,
 			closeIdleTSDBTimeout:                   25 * time.Hour,
-			expectedError:                          "query_ingesters_within (26h0m0s) must be less than close_idle_tsdb_timeout (25h0m0s)",
+			expectedError:                          "query_ingesters_within (26h0m0s) must be less than or equal to close_idle_tsdb_timeout (25h0m0s)",
 		},
 		"invalid: queryStoreAfter >= queryIngestersWithin": {
 			queryIngestersWithin:                   24 * time.Hour,
@@ -1104,12 +1104,12 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "shuffle_sharding_ingesters_lookback_period (20h0m0s) is less than query_store_after (24h0m0s)",
 		},
-		"valid: shuffleShardingLookback between queryStoreAfter and queryIngestersWithin": {
+		"invalid: shuffleShardingLookback < queryIngestersWithin": {
 			queryIngestersWithin:                   25 * time.Hour,
 			queryStoreAfter:                        20 * time.Hour,
 			shuffleShardingIngestersLookbackPeriod: 22 * time.Hour,
 			closeIdleTSDBTimeout:                   26 * time.Hour,
-			expectedError:                          "",
+			expectedError:                          "shuffle_sharding_ingesters_lookback_period (22h0m0s) is less than query_ingesters_within (25h0m0s)",
 		},
 		"boundary: queryIngestersWithin exactly 1ms less than closeIdleTSDBTimeout": {
 			queryIngestersWithin:                   25*time.Hour - time.Millisecond,
@@ -1125,10 +1125,10 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "",
 		},
-		"boundary: shuffleShardingLookback exactly equal to queryStoreAfter": {
+		"boundary: shuffleShardingLookback exactly equal to queryIngestersWithin": {
 			queryIngestersWithin:                   25 * time.Hour,
 			queryStoreAfter:                        24 * time.Hour,
-			shuffleShardingIngestersLookbackPeriod: 24 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "",
 		},
@@ -1254,16 +1254,16 @@ func TestQueryLimits_TenantOverridesValidation(t *testing.T) {
 			tenantID:      "invalid-tenant",
 			expectedError: "query_store_after (25h0m0s) must be less than query_ingesters_within (24h0m0s)",
 		},
-		"invalid tenant: queryIngestersWithin >= closeIdleTSDBTimeout": {
+		"invalid tenant: queryIngestersWithin > closeIdleTSDBTimeout": {
 			tenantLimits: map[string]*Limits{
 				"invalid-tenant": {
-					QueryIngestersWithin:                   model.Duration(26 * time.Hour),
+					QueryIngestersWithin:                   model.Duration(27 * time.Hour),
 					QueryStoreAfter:                        model.Duration(24 * time.Hour),
-					ShuffleShardingIngestersLookbackPeriod: model.Duration(26 * time.Hour),
+					ShuffleShardingIngestersLookbackPeriod: model.Duration(27 * time.Hour),
 				},
 			},
 			tenantID:      "invalid-tenant",
-			expectedError: "query_ingesters_within (26h0m0s) must be less than close_idle_tsdb_timeout (26h0m0s)",
+			expectedError: "query_ingesters_within (27h0m0s) must be less than or equal to close_idle_tsdb_timeout (26h0m0s)",
 		},
 		"invalid tenant: shuffleShardingLookback < queryStoreAfter": {
 			tenantLimits: map[string]*Limits{
@@ -1294,4 +1294,78 @@ func TestQueryLimits_TenantOverridesValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryLimits_PerTenantCloseIdleTSDBTimeout(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		tenantCloseIdleTSDBTimeout time.Duration
+		queryIngestersWithin       time.Duration
+		expectedError              string
+	}{
+		"tenant override allows larger query_ingesters_within": {
+			tenantCloseIdleTSDBTimeout: 30 * time.Hour,
+			queryIngestersWithin:       27 * time.Hour,
+			expectedError:              "",
+		},
+		"tenant override allows query_ingesters_within equal to close_idle_tsdb_timeout": {
+			tenantCloseIdleTSDBTimeout: 28 * time.Hour,
+			queryIngestersWithin:       28 * time.Hour,
+			expectedError:              "",
+		},
+		"tenant override is validated against its own close_idle_tsdb_timeout": {
+			tenantCloseIdleTSDBTimeout: 28 * time.Hour,
+			queryIngestersWithin:       29 * time.Hour,
+			expectedError:              "query_ingesters_within (29h0m0s) must be less than or equal to close_idle_tsdb_timeout (28h0m0s)",
+		},
+		"zero close_idle_tsdb_timeout skips validation": {
+			tenantCloseIdleTSDBTimeout: 0,
+			queryIngestersWithin:       100 * time.Hour,
+			expectedError:              "",
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			limits := Limits{
+				QueryIngestersWithin: model.Duration(testData.queryIngestersWithin),
+				CloseIdleTSDBTimeout: model.Duration(testData.tenantCloseIdleTSDBTimeout),
+			}
+
+			err := limits.ValidateQueryLimits("test-tenant", time.Duration(limits.CloseIdleTSDBTimeout))
+
+			if testData.expectedError == "" {
+				assert.NoError(t, err, "expected no error but got: %v", err)
+			} else {
+				assert.Error(t, err, "expected error but got none")
+				if err != nil {
+					assert.Contains(t, err.Error(), testData.expectedError, "error message mismatch")
+				}
+			}
+		})
+	}
+}
+
+func TestCloseIdleTSDBTimeout_OverridesAccessor(t *testing.T) {
+	t.Parallel()
+
+	tenantLimits := map[string]*Limits{
+		"tenant-with-override": {
+			CloseIdleTSDBTimeout: model.Duration(30 * time.Hour),
+		},
+		"tenant-with-zero": {
+			CloseIdleTSDBTimeout: 0,
+		},
+	}
+
+	defaults := Limits{
+		CloseIdleTSDBTimeout: 0,
+	}
+
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+
+	assert.Equal(t, 30*time.Hour, ov.CloseIdleTSDBTimeout("tenant-with-override"))
+	assert.Equal(t, time.Duration(0), ov.CloseIdleTSDBTimeout("tenant-with-zero"))
+	assert.Equal(t, time.Duration(0), ov.CloseIdleTSDBTimeout("unknown-tenant"))
 }

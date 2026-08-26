@@ -4738,8 +4738,9 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Per-tenant TTL for cached query results that overlap with the out-of-order
 # time window. These results may still receive out-of-order samples, so they
-# typically use a shorter TTL. 0 (default) means use the global cache backend
-# TTL configuration.
+# typically use a shorter TTL. 0 (default) means fall back to
+# frontend.results-cache-ttl, and if that is also 0, use the global cache
+# backend TTL configuration.
 # CLI flag: -frontend.out-of-order-results-cache-ttl
 [out_of_order_results_cache_ttl: <duration> | default = 0s]
 

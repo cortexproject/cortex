@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1877,62 +1878,110 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 	oneHourAgo := now.Add(-1 * time.Hour).UnixMilli()
 	twoHoursAgo := now.Add(-2 * time.Hour).UnixMilli()
 
+	// globalDefaultTTL is the cache backend's configured default validity, applied
+	// when the results cache passes a TTL of 0. A distinct, non-zero value lets us
+	// assert that the "fall back to global default" cases really land on it.
+	const globalDefaultTTL = 90 * time.Minute
+
 	tests := []struct {
-		name               string
-		extents            []tripperware.Extent
-		resultsCacheTTL    time.Duration
-		outOfOrderCacheTTL time.Duration
-		outOfOrderWindow   time.Duration
-		expectedTTL        time.Duration
+		name                      string
+		tenantIDs                 []string
+		extents                   []tripperware.Extent
+		resultsCacheTTL           map[string]time.Duration
+		outOfOrderResultsCacheTTL map[string]time.Duration
+		outOfOrderWindow          map[string]time.Duration
+		expectedTTL               time.Duration
 	}{
 		{
-			name: "old data uses results_cache_ttl",
+			name:      "old data uses results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: twoHoursAgo + 1000}, // 2 hours ago, no overlap
 			},
-			resultsCacheTTL:    24 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   1 * time.Hour,
-			expectedTTL:        24 * time.Hour,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               24 * time.Hour,
 		},
 		{
-			name: "recent data uses out_of_order_results_cache_ttl",
+			name:      "recent data uses out_of_order_results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
 			},
-			resultsCacheTTL:    24 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   1 * time.Hour,
-			expectedTTL:        5 * time.Minute,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               5 * time.Minute,
 		},
 		{
-			name: "zero out-of-order window uses results_cache_ttl",
+			name:      "zero out-of-order window uses results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: oneHourAgo},
 			},
-			resultsCacheTTL:    12 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   0, // no out-of-order support
-			expectedTTL:        12 * time.Hour,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 12 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 0}, // no out-of-order support
+			expectedTTL:               12 * time.Hour,
 		},
 		{
-			name: "zero TTLs use backend defaults",
+			name:      "recent data falls back to results_cache_ttl when out_of_order_results_cache_ttl is unset",
+			tenantIDs: []string{"tenant-a"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0}, // not set, should fall back to results_cache_ttl
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               24 * time.Hour,
+		},
+		{
+			name:      "recent data uses backend default when both TTLs are unset",
+			tenantIDs: []string{"tenant-a"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 0},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               globalDefaultTTL, // TTL of 0 falls back to the backend default
+		},
+		{
+			name:      "zero TTLs use backend defaults",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: twoHoursAgo + 1000},
 			},
-			resultsCacheTTL:    0,
-			outOfOrderCacheTTL: 0,
-			outOfOrderWindow:   0,
-			expectedTTL:        0, // backend default
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 0},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 0},
+			expectedTTL:               globalDefaultTTL, // TTL of 0 falls back to the backend default
+		},
+		{
+			// Federated query: tenant "a" leaves its OOO TTL unset, so it falls back to
+			// its own results_cache_ttl (30m); tenant "b" has 1h. The most restrictive is
+			// 30m. The fallback must be resolved per-tenant *before* aggregating across
+			// tenants — aggregating the raw configs first would instead yield 1h.
+			name:      "recent data resolves fallback per-tenant before aggregating",
+			tenantIDs: []string{"a", "b"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"a": 30 * time.Minute, "b": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"a": 0, "b": 1 * time.Hour},
+			outOfOrderWindow:          map[string]time.Duration{"a": 1 * time.Hour, "b": 1 * time.Hour},
+			expectedTTL:               30 * time.Minute,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockCache := cache.NewMockCache()
-			limits := mockLimits{
+			mockCache.(*cache.MockCache).DefaultTTL = globalDefaultTTL
+			limits := perTenantLimits{
 				resultsCacheTTL:           tc.resultsCacheTTL,
-				outOfOrderResultsCacheTTL: tc.outOfOrderCacheTTL,
+				outOfOrderResultsCacheTTL: tc.outOfOrderResultsCacheTTL,
 				outOfOrderWindow:          tc.outOfOrderWindow,
 			}
 
@@ -1956,13 +2005,33 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 			rc := rm.Wrap(nil).(*resultsCache)
 			rc.now = func() time.Time { return now }
 
-			ctx := user.InjectOrgID(context.Background(), "tenant-a")
-			tenantIDs, _ := users.TenantIDs(ctx)
-			rc.put(ctx, "test-key", tc.extents, tenantIDs)
+			ctx := user.InjectOrgID(context.Background(), strings.Join(tc.tenantIDs, "|"))
+			rc.put(ctx, "test-key", tc.extents, tc.tenantIDs)
 
 			assert.Equal(t, tc.expectedTTL, mockCache.(*cache.MockCache).GetLastTTL())
 		})
 	}
+}
+
+// perTenantLimits returns different TTL/window values per tenant so we can verify
+// that the out-of-order TTL fallback is resolved per-tenant before aggregating.
+type perTenantLimits struct {
+	mockLimits
+	resultsCacheTTL           map[string]time.Duration
+	outOfOrderResultsCacheTTL map[string]time.Duration
+	outOfOrderWindow          map[string]time.Duration
+}
+
+func (m perTenantLimits) ResultsCacheTTL(userID string) time.Duration {
+	return m.resultsCacheTTL[userID]
+}
+
+func (m perTenantLimits) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return m.outOfOrderResultsCacheTTL[userID]
+}
+
+func (m perTenantLimits) OutOfOrderTimeWindow(userID string) model.Duration {
+	return model.Duration(m.outOfOrderWindow[userID])
 }
 
 type mockResolver struct {

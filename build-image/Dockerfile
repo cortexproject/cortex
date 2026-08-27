@@ -23,7 +23,6 @@ RUN go install github.com/client9/misspell/cmd/misspell@v0.3.4 &&\
 	go install github.com/golang/protobuf/protoc-gen-go@v1.3.1 &&\
 	go install github.com/gogo/protobuf/protoc-gen-gogoslick@v1.3.0 &&\
 	go install github.com/weaveworks/tools/cover@bdd647e92546027e12cdde3ae0714bb495e43013 &&\
-	go install github.com/fatih/faillint@v1.15.0 &&\
 	go install github.com/campoy/embedmd@v1.0.0 &&\
 	rm -rf /go/pkg /go/src /root/.cache
 

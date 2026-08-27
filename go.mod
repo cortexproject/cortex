@@ -108,6 +108,7 @@ require (
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.56.0 // indirect
+	dmitri.shuralyov.com/go/generated v0.0.0-20170818220700-b1254a446363 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
@@ -156,6 +157,7 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/fatih/color v1.19.0 // indirect
+	github.com/fatih/faillint v1.15.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.10.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
@@ -354,3 +356,5 @@ exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3
 
 // Required by Prometheus v0.308+ config package for OTLP translation strategy types.
 replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
+
+tool github.com/fatih/faillint

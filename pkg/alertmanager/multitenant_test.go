@@ -713,11 +713,9 @@ receivers:
 
 				// Create an alert to push.
 				alerts := alert.Alerts(&alert.Alert{
-					Alert: model.Alert{
-						Labels:   map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
-						StartsAt: time.Now().Add(-time.Minute),
-						EndsAt:   time.Now().Add(time.Minute),
-					},
+					Labels:    map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
+					StartsAt:  time.Now().Add(-time.Minute),
+					EndsAt:    time.Now().Add(time.Minute),
 					UpdatedAt: time.Now(),
 					Timeout:   false,
 				})

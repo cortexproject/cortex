@@ -157,12 +157,10 @@ func TestFetchWithLazyMatchers(t *testing.T) {
 
 	// Build an in-memory head with known series
 	ir := &mockIndexReaderWithSeries{
-		mockIndexReader: mockIndexReader{
-			labelValues: map[string][]string{
-				"__name__": {"cpu"},
-				"pod":      {"web-1", "web-2", "worker-1", "worker-2", "api-1"},
-				"service":  {"frontend", "backend"},
-			},
+		labelValues: map[string][]string{
+			"__name__": {"cpu"},
+			"pod":      {"web-1", "web-2", "worker-1", "worker-2", "api-1"},
+			"service":  {"frontend", "backend"},
 		},
 		series: map[storage.SeriesRef]labels.Labels{
 			1: labels.FromStrings("__name__", "cpu", "pod", "web-1", "service", "frontend"),
@@ -199,10 +197,8 @@ func TestFetchWithLazyMatchers_FiltersCorrectly(t *testing.T) {
 	ctx := context.Background()
 
 	ir := &mockIndexReaderWithSeries{
-		mockIndexReader: mockIndexReader{
-			labelValues: map[string][]string{
-				"pod": {"web-1", "worker-1", "web-2"},
-			},
+		labelValues: map[string][]string{
+			"pod": {"web-1", "worker-1", "web-2"},
 		},
 		series: map[storage.SeriesRef]labels.Labels{
 			1: labels.FromStrings("pod", "web-1"),
@@ -281,12 +277,10 @@ func TestFetchWithLazyMatchers_SkipsGCdSeries(t *testing.T) {
 	ctx := context.Background()
 
 	ir := &mockIndexReaderWithError{
-		mockIndexReaderWithSeries: mockIndexReaderWithSeries{
-			mockIndexReader: mockIndexReader{},
-			series: map[storage.SeriesRef]labels.Labels{
-				1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
-				3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
-			},
+		mockIndexReader: mockIndexReader{},
+		series: map[storage.SeriesRef]labels.Labels{
+			1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
+			3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
 		},
 		errOnRef: 2,
 		err:      storage.ErrNotFound,
@@ -311,16 +305,12 @@ func TestFetchWithLazyMatchers_PropagatesSeriesError(t *testing.T) {
 	injectedErr := errors.New("injected disk error")
 
 	ir := &mockIndexReaderWithError{
-		mockIndexReaderWithSeries: mockIndexReaderWithSeries{
-			mockIndexReader: mockIndexReader{
-				labelValues:    map[string][]string{"pod": {"web-0", "web-1", "db-0"}},
-				postingsCounts: map[string]int{"__name__\xffcpu": 3},
-			},
-			series: map[storage.SeriesRef]labels.Labels{
-				1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
-				2: labels.FromStrings("__name__", "cpu", "pod", "db-0"),
-				3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
-			},
+		labelValues:    map[string][]string{"pod": {"web-0", "web-1", "db-0"}},
+		postingsCounts: map[string]int{"__name__\xffcpu": 3},
+		series: map[storage.SeriesRef]labels.Labels{
+			1: labels.FromStrings("__name__", "cpu", "pod", "web-0"),
+			2: labels.FromStrings("__name__", "cpu", "pod", "db-0"),
+			3: labels.FromStrings("__name__", "cpu", "pod", "web-1"),
 		},
 		errOnRef: 2,
 		err:      injectedErr,

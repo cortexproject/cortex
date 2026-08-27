@@ -1732,15 +1732,13 @@ func mockBlockMetaJSONWithTime(id string, orgID string, minTime int64, maxTime i
 			Labels: map[string]string{"__org_id__": orgID},
 		},
 
-		BlockMeta: tsdb.BlockMeta{
-			Version: 1,
-			ULID:    ulid.MustParse(id),
-			MinTime: minTime,
-			MaxTime: maxTime,
-			Compaction: tsdb.BlockMetaCompaction{
-				Level:   1,
-				Sources: []ulid.ULID{ulid.MustParse(id)},
-			},
+		Version: 1,
+		ULID:    ulid.MustParse(id),
+		MinTime: minTime,
+		MaxTime: maxTime,
+		Compaction: tsdb.BlockMetaCompaction{
+			Level:   1,
+			Sources: []ulid.ULID{ulid.MustParse(id)},
 		}}
 
 	content, err := json.Marshal(meta)

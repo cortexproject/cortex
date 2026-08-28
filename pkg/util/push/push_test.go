@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -819,6 +821,9 @@ func TestHandler_remoteWrite(t *testing.T) {
 		expectedStatus int
 		expectedBody   string
 		verifyResponse func(resp *httptest.ResponseRecorder)
+		// pushFunc overrides the default handler for cases where the Distributor is not
+		// called with the standard single series.
+		pushFunc Func
 	}{
 		{
 			name: "remote write v1",
@@ -865,6 +870,12 @@ func TestHandler_remoteWrite(t *testing.T) {
 			},
 			expectedStatus: http.StatusBadRequest,
 			expectedBody:   "TimeSeries must contain at least one sample or histogram for series {__name__=\"foo\"}",
+			// The only series is dropped during conversion, so the Distributor is still
+			// called, with an empty request.
+			pushFunc: func(_ context.Context, request *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				assert.Empty(t, request.Timeseries)
+				return &cortexpb.WriteResponse{}, nil
+			},
 		},
 		{
 			name: "remote write v1 with oversized histogram returns 400",
@@ -895,7 +906,11 @@ func TestHandler_remoteWrite(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = user.InjectOrgID(ctx, "user-1")
-			handler := Handler(true, false, 100000, overrides, nil, verifyWriteRequestHandler(t, cortexpb.API), nil)
+			pushFunc := test.pushFunc
+			if pushFunc == nil {
+				pushFunc = verifyWriteRequestHandler(t, cortexpb.API)
+			}
+			handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
 
 			body, isV2 := test.createBody()
 			req := createRequest(t, body, isV2)
@@ -1637,4 +1652,264 @@ func TestHandler_remoteWriteV2_UnauthorizedWithoutTenantID(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.Code)
 	assert.Contains(t, resp.Body.String(), user.ErrNoOrgID.Error())
 	assert.False(t, pushCalled, "push function must not be called when tenant ID is missing")
+}
+
+// metricNameOf returns the metric name of a series that reached the Distributor.
+func metricNameOf(lbs []cortexpb.LabelAdapter) string {
+	for _, l := range lbs {
+		if l.Name == labels.MetricName {
+			return l.Value
+		}
+	}
+	return ""
+}
+
+func TestHandler_remoteWriteV2_PartialWrite(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+
+	symbols := []string{
+		"",          // 0
+		"__name__",  // 1
+		"foo",       // 2
+		"bar",       // 3
+		"baz",       // 4
+		"trace_id",  // 5
+		"abc123",    // 6
+		"help text", // 7
+		"seconds",   // 8
+	}
+	// Any ref greater than or equal to the symbols table length is out of range.
+	const invalidRef = 9
+
+	validMetadata := writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: 8}
+	hist := writev2.FromIntHistogram(20, tsdbutil.GenerateTestHistogram(1))
+
+	tests := []struct {
+		name       string
+		timeseries []writev2.TimeSeries
+		// enableTypeAndUnitLabels turns the metadata unit into part of the series identity.
+		enableTypeAndUnitLabels bool
+		// The data expected to reach the Distributor. Samples, histograms and exemplars are
+		// listed as "<metric name>@<timestamp>", metadata as the metric family name.
+		pushedSamples    []string
+		pushedHistograms []string
+		pushedExemplars  []string
+		pushedMetadata   []string
+		expectedErrs     []string
+	}{
+		{
+			name: "an invalid series is skipped, the samples of the valid ones are pushed",
+			timeseries: []writev2.TimeSeries{
+				{LabelsRefs: []uint32{1, invalidRef}, Samples: []writev2.Sample{{Value: 1, Timestamp: 10}}},
+				{LabelsRefs: []uint32{1, 2}, Samples: []writev2.Sample{{Value: 1, Timestamp: 11}, {Value: 2, Timestamp: 12}}},
+			},
+			pushedSamples: []string{"foo@11", "foo@12"},
+			expectedErrs:  []string{"outside of symbols table"},
+		},
+		{
+			name: "an invalid series is skipped, the histograms of the valid ones are pushed",
+			timeseries: []writev2.TimeSeries{
+				{LabelsRefs: []uint32{1, invalidRef}, Histograms: []writev2.Histogram{hist}},
+				{LabelsRefs: []uint32{1, 2}, Histograms: []writev2.Histogram{hist}},
+			},
+			pushedHistograms: []string{"foo@20"},
+			expectedErrs:     []string{"outside of symbols table"},
+		},
+		{
+			name: "a malformed exemplar is dropped, the rest of its series is pushed",
+			timeseries: []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Samples:    []writev2.Sample{{Value: 1, Timestamp: 10}},
+					Exemplars: []writev2.Exemplar{
+						{LabelsRefs: []uint32{5, invalidRef}, Value: 1, Timestamp: 30},
+						{LabelsRefs: []uint32{5, 6}, Value: 2, Timestamp: 31},
+					},
+				},
+			},
+			pushedSamples:   []string{"foo@10"},
+			pushedExemplars: []string{"foo@31"},
+			expectedErrs:    []string{`parsing exemplar for series {__name__="foo"}`},
+		},
+		{
+			name: "an exemplar only series is rejected, the rest of the batch is pushed",
+			timeseries: []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Exemplars:  []writev2.Exemplar{{LabelsRefs: []uint32{5, 6}, Value: 1, Timestamp: 30}},
+				},
+				{LabelsRefs: []uint32{1, 3}, Samples: []writev2.Sample{{Value: 1, Timestamp: 10}}},
+			},
+			pushedSamples: []string{"bar@10"},
+			expectedErrs:  []string{`TimeSeries must contain at least one sample or histogram for series {__name__="foo"}`},
+		},
+		{
+			name: "an out of range help ref drops the metadata, the series is still pushed",
+			timeseries: []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Samples:    []writev2.Sample{{Value: 1, Timestamp: 10}},
+					Metadata:   writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER, HelpRef: invalidRef, UnitRef: 8},
+				},
+				{
+					LabelsRefs: []uint32{1, 3},
+					Samples:    []writev2.Sample{{Value: 1, Timestamp: 11}},
+					Metadata:   validMetadata,
+				},
+			},
+			pushedSamples:  []string{"foo@10", "bar@11"},
+			pushedMetadata: []string{"bar"},
+			expectedErrs:   []string{"invalid HelpRef 9: exceeds symbols length 9"},
+		},
+		{
+			name: "an out of range unit ref drops the metadata, the series is still pushed",
+			timeseries: []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Histograms: []writev2.Histogram{hist},
+					Metadata:   writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: invalidRef},
+				},
+			},
+			pushedHistograms: []string{"foo@20"},
+			expectedErrs:     []string{"invalid UnitRef 9: exceeds symbols length 9"},
+		},
+		{
+			name:                    "an out of range unit ref drops the series when the unit is part of its identity",
+			enableTypeAndUnitLabels: true,
+			timeseries: []writev2.TimeSeries{
+				{
+					LabelsRefs: []uint32{1, 2},
+					Samples:    []writev2.Sample{{Value: 1, Timestamp: 10}},
+					Metadata:   writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: invalidRef},
+				},
+				{LabelsRefs: []uint32{1, 3}, Samples: []writev2.Sample{{Value: 1, Timestamp: 11}}},
+			},
+			pushedSamples: []string{"bar@11"},
+			expectedErrs:  []string{"invalid UnitRef 9: exceeds symbols length 9"},
+		},
+		{
+			name: "a series holding no data at all is skipped, the rest of the batch is pushed",
+			timeseries: []writev2.TimeSeries{
+				{LabelsRefs: []uint32{1, 2}},
+				{LabelsRefs: []uint32{1, 3}, Samples: []writev2.Sample{{Value: 1, Timestamp: 10}}, Metadata: validMetadata},
+			},
+			pushedSamples:  []string{"bar@10"},
+			pushedMetadata: []string{"bar"},
+			expectedErrs:   []string{`TimeSeries must contain at least one sample or histogram for series {__name__="foo"}`},
+		},
+		{
+			name: "multiple invalid series produce a joined error",
+			timeseries: []writev2.TimeSeries{
+				{LabelsRefs: []uint32{1, 2}},
+				{LabelsRefs: []uint32{1, 3}, Samples: []writev2.Sample{{Value: 1, Timestamp: 10}}},
+				{LabelsRefs: []uint32{1, 4}},
+			},
+			pushedSamples: []string{"bar@10"},
+			expectedErrs: []string{
+				`TimeSeries must contain at least one sample or histogram for series {__name__="foo"}`,
+				`TimeSeries must contain at least one sample or histogram for series {__name__="baz"}`,
+			},
+		},
+		{
+			name: "every series is invalid, push is still called with an empty request",
+			timeseries: []writev2.TimeSeries{
+				{LabelsRefs: []uint32{1, 2}},
+			},
+			expectedErrs: []string{`TimeSeries must contain at least one sample or histogram for series {__name__="foo"}`},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var (
+				pushCalled       bool
+				pushedSamples    []string
+				pushedHistograms []string
+				pushedExemplars  []string
+				pushedMetadata   []string
+			)
+			pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				pushCalled = true
+				for _, ts := range req.Timeseries {
+					name := metricNameOf(ts.Labels)
+					for _, s := range ts.Samples {
+						pushedSamples = append(pushedSamples, fmt.Sprintf("%s@%d", name, s.TimestampMs))
+					}
+					for _, h := range ts.Histograms {
+						pushedHistograms = append(pushedHistograms, fmt.Sprintf("%s@%d", name, h.TimestampMs))
+					}
+					for _, e := range ts.Exemplars {
+						pushedExemplars = append(pushedExemplars, fmt.Sprintf("%s@%d", name, e.TimestampMs))
+					}
+				}
+				for _, m := range req.Metadata {
+					pushedMetadata = append(pushedMetadata, m.MetricFamilyName)
+				}
+				return &cortexpb.WriteResponse{
+					Samples:    int64(len(pushedSamples)),
+					Histograms: int64(len(pushedHistograms)),
+					Exemplars:  int64(len(pushedExemplars)),
+				}, nil
+			}
+
+			reqProto := writev2.Request{
+				Symbols:    symbols,
+				Timeseries: test.timeseries,
+			}
+			reqBytes, err := reqProto.Marshal()
+			require.NoError(t, err)
+
+			caseLimits := limits
+			caseLimits.EnableTypeAndUnitLabels = test.enableTypeAndUnitLabels
+			overrides := validation.NewOverrides(caseLimits, nil)
+
+			handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+			httpReq := createRequest(t, reqBytes, true).WithContext(user.InjectOrgID(context.Background(), "user-1"))
+
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, httpReq)
+
+			assert.Equal(t, http.StatusBadRequest, resp.Code)
+			for _, expectedErr := range test.expectedErrs {
+				assert.Contains(t, resp.Body.String(), expectedErr)
+			}
+
+			// The valid part of the request must still be written, down to the individual
+			// sample, histogram, exemplar and metadata.
+			assert.True(t, pushCalled, "push function must always be called")
+			assert.Equal(t, test.pushedSamples, pushedSamples, "samples")
+			assert.Equal(t, test.pushedHistograms, pushedHistograms, "histograms")
+			assert.Equal(t, test.pushedExemplars, pushedExemplars, "exemplars")
+			assert.Equal(t, test.pushedMetadata, pushedMetadata, "metadata")
+
+			// The written stats headers must be set even when responding with a 400.
+			respHeader := resp.Header()
+			assert.Equal(t, strconv.Itoa(len(test.pushedSamples)), respHeader.Get(rw20WrittenSamplesHeader))
+			assert.Equal(t, strconv.Itoa(len(test.pushedHistograms)), respHeader.Get(rw20WrittenHistogramsHeader))
+			assert.Equal(t, strconv.Itoa(len(test.pushedExemplars)), respHeader.Get(rw20WrittenExemplarsHeader))
+		})
+	}
+}
+
+func Test_convertV2RequestToV1_BoundsReportedErrors(t *testing.T) {
+	const badSeries = maxConversionErrs + 5
+
+	var v2Req cortexpb.PreallocWriteRequestV2
+	v2Req.Symbols = []string{"", "__name__", "test_metric"}
+	for range badSeries {
+		// A series holding no data at all.
+		v2Req.Timeseries = append(v2Req.Timeseries, cortexpb.PreallocTimeseriesV2{
+			TimeSeriesV2: &cortexpb.TimeSeriesV2{LabelsRefs: []uint32{1, 2}},
+		})
+	}
+
+	v1Req, err := convertV2RequestToV1(&v2Req, false, false)
+	require.Error(t, err)
+	assert.Empty(t, v1Req.Timeseries)
+
+	// Only maxConversionErrs errors are reported, the rest are summarized.
+	lines := strings.Split(err.Error(), "\n")
+	assert.Len(t, lines, maxConversionErrs+1)
+	assert.Equal(t, fmt.Sprintf("%d more errors omitted", badSeries-maxConversionErrs), lines[len(lines)-1])
 }

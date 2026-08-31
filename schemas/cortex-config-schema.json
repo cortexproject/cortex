@@ -7552,6 +7552,12 @@
           },
           "type": "object"
         },
+        "list_rules_max_rules": {
+          "default": 0,
+          "description": "Maximum number of rules returned by the Prometheus ListRules API. If there are more rulegroups, the response will include a pagination token which can be used to fetch the next set. The API will always return at least one rulegroup, even if it contains more rules than the limit. Defaults to 0, which is unlimited",
+          "type": "number",
+          "x-cli-flag": "ruler.list-rules-max-rules"
+        },
         "liveness_check_timeout": {
           "default": "1s",
           "description": "Timeout duration for non-primary rulers during liveness checks. If the check times out, the non-primary ruler will evaluate the rule group. Applicable when ruler.enable-ha-evaluation is true.",

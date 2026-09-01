@@ -20,6 +20,10 @@ import (
 	"github.com/prometheus/alertmanager/notify/jira"
 	"github.com/prometheus/alertmanager/notify/mattermost"
 	"github.com/prometheus/alertmanager/notify/msteams"
+	"github.com/prometheus/alertmanager/notify/msteamsv2"
+	"github.com/prometheus/alertmanager/notify/opsgenie"
+	"github.com/prometheus/alertmanager/notify/pagerduty"
+	"github.com/prometheus/alertmanager/notify/telegram"
 	"github.com/prometheus/alertmanager/notify/webhook"
 	"github.com/prometheus/alertmanager/template"
 	amtracing "github.com/prometheus/alertmanager/tracing"
@@ -354,15 +358,15 @@ var configValidators = map[reflect.Type]func(any) error{
 	reflect.TypeFor[config.GlobalConfig]():         func(v any) error { return validateGlobalConfig(v.(config.GlobalConfig)) },
 	reflect.TypeFor[commoncfg.HTTPClientConfig]():  func(v any) error { return validateReceiverHTTPConfig(v.(commoncfg.HTTPClientConfig)) },
 	reflect.TypeFor[commoncfg.TLSConfig]():         func(v any) error { return validateReceiverTLSConfig(v.(commoncfg.TLSConfig)) },
-	reflect.TypeFor[config.OpsGenieConfig]():       func(v any) error { return validateOpsGenieConfig(v.(config.OpsGenieConfig)) },
+	reflect.TypeFor[opsgenie.OpsGenieConfig]():     func(v any) error { return validateOpsGenieConfig(v.(opsgenie.OpsGenieConfig)) },
 	reflect.TypeFor[config.SlackConfig]():          func(v any) error { return validateSlackConfig(v.(config.SlackConfig)) },
 	reflect.TypeFor[config.VictorOpsConfig]():      func(v any) error { return validateVictorOpsConfig(v.(config.VictorOpsConfig)) },
-	reflect.TypeFor[config.PagerdutyConfig]():      func(v any) error { return validatePagerdutyConfig(v.(config.PagerdutyConfig)) },
+	reflect.TypeFor[pagerduty.PagerdutyConfig]():   func(v any) error { return validatePagerdutyConfig(v.(pagerduty.PagerdutyConfig)) },
 	reflect.TypeFor[webhook.WebhookConfig]():       func(v any) error { return validateWebhookConfig(v.(webhook.WebhookConfig)) },
 	reflect.TypeFor[config.PushoverConfig]():       func(v any) error { return validatePushOverConfig(v.(config.PushoverConfig)) },
-	reflect.TypeFor[config.TelegramConfig]():       func(v any) error { return validateTelegramConfig(v.(config.TelegramConfig)) },
+	reflect.TypeFor[telegram.TelegramConfig]():     func(v any) error { return validateTelegramConfig(v.(telegram.TelegramConfig)) },
 	reflect.TypeFor[msteams.MSTeamsConfig]():       func(v any) error { return validateMSTeamsConfig(v.(msteams.MSTeamsConfig)) },
-	reflect.TypeFor[config.MSTeamsV2Config]():      func(v any) error { return validateMSTeamsV2Config(v.(config.MSTeamsV2Config)) },
+	reflect.TypeFor[msteamsv2.MSTeamsV2Config]():   func(v any) error { return validateMSTeamsV2Config(v.(msteamsv2.MSTeamsV2Config)) },
 	reflect.TypeFor[config.RocketchatConfig]():     func(v any) error { return validateRocketChatConfig(v.(config.RocketchatConfig)) },
 	reflect.TypeFor[discord.DiscordConfig]():       func(v any) error { return validateDiscordConfig(v.(discord.DiscordConfig)) },
 	reflect.TypeFor[config.EmailConfig]():          func(v any) error { return validateEmailConfig(v.(config.EmailConfig)) },
@@ -555,7 +559,7 @@ func validateGlobalConfig(cfg config.GlobalConfig) error {
 
 // validateOpsGenieConfig validates the OpsGenie config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateOpsGenieConfig(cfg config.OpsGenieConfig) error {
+func validateOpsGenieConfig(cfg opsgenie.OpsGenieConfig) error {
 	if cfg.APIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}
@@ -585,7 +589,7 @@ func validateVictorOpsConfig(cfg config.VictorOpsConfig) error {
 
 // validatePagerdutyConfig validates the pager duty config and returns an error if it contains
 // settings not allowed by Cortex.
-func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
+func validatePagerdutyConfig(cfg pagerduty.PagerdutyConfig) error {
 	if cfg.RoutingKeyFile != "" {
 		return errPagerDutyRoutingKeyFileNotAllowed
 	}
@@ -622,7 +626,7 @@ func validatePushOverConfig(cfg config.PushoverConfig) error {
 
 // validateTelegramConfig validates the Telegram Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateTelegramConfig(cfg config.TelegramConfig) error {
+func validateTelegramConfig(cfg telegram.TelegramConfig) error {
 	if cfg.BotTokenFile != "" {
 		return errTelegramBotTokenFileNotAllowed
 	}
@@ -643,7 +647,7 @@ func validateMSTeamsConfig(cfg msteams.MSTeamsConfig) error {
 
 // validateMSTeamsV2Config validates the MSTeamsV2 Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateMSTeamsV2Config(cfg config.MSTeamsV2Config) error {
+func validateMSTeamsV2Config(cfg msteamsv2.MSTeamsV2Config) error {
 	if cfg.WebhookURLFile != "" {
 		return errMSTeamsV2WebhookUrlFileNotAllowed
 	}

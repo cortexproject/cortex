@@ -1,16 +1,5 @@
-// Copyright 2015 go-swagger maintainers
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-FileCopyrightText: Copyright 2015-2025 go-swagger maintainers
+// SPDX-License-Identifier: Apache-2.0
 
 package spec
 
@@ -40,7 +29,7 @@ const fileScheme = "file"
 //
 // The base path argument is assumed to be canonicalized (e.g. using normalizeBase()).
 func normalizeURI(refPath, base string) string {
-	refURL, err := url.Parse(refPath)
+	refURL, err := parseURL(refPath)
 	if err != nil {
 		specLogger.Printf("warning: invalid URI in $ref  %q: %v", refPath, err)
 		refURL, refPath = repairURI(refPath)
@@ -58,7 +47,7 @@ func normalizeURI(refPath, base string) string {
 		return refURL.String()
 	}
 
-	baseURL, _ := url.Parse(base)
+	baseURL, _ := parseURL(base)
 	if path.IsAbs(refURL.Path) {
 		baseURL.Path = refURL.Path
 	} else if refURL.Path != "" {
@@ -84,7 +73,6 @@ func normalizeURI(refPath, base string) string {
 // There is a special case for schemas that are anchored with an "id":
 // in that case, the rebasing is performed // against the id only if this is an anchor for the initial root document.
 // All other intermediate "id"'s found along the way are ignored for the purpose of rebasing.
-//
 func denormalizeRef(ref *Ref, originalRelativeBase, id string) Ref {
 	debugLog("denormalizeRef called:\n$ref: %q\noriginal: %s\nroot ID:%s", ref.String(), originalRelativeBase, id)
 
@@ -94,16 +82,16 @@ func denormalizeRef(ref *Ref, originalRelativeBase, id string) Ref {
 	}
 
 	if id != "" {
-		idBaseURL, err := url.Parse(id)
+		idBaseURL, err := parseURL(id)
 		if err == nil { // if the schema id is not usable as a URI, ignore it
-			if ref, ok := rebase(ref, idBaseURL, true); ok { // rebase, but keep references to root unchaged (do not want $ref: "")
+			if ref, ok := rebase(ref, idBaseURL, true); ok { // rebase, but keep references to root unchanged (do not want $ref: "")
 				// $ref relative to the ID of the schema in the root document
 				return ref
 			}
 		}
 	}
 
-	originalRelativeBaseURL, _ := url.Parse(originalRelativeBase)
+	originalRelativeBaseURL, _ := parseURL(originalRelativeBase)
 
 	r, _ := rebase(ref, originalRelativeBaseURL, false)
 
@@ -130,8 +118,8 @@ func rebase(ref *Ref, v *url.URL, notEqual bool) (Ref, bool) {
 
 	newBase.Fragment = u.Fragment
 
-	if strings.HasPrefix(u.Path, docPath) {
-		newBase.Path = strings.TrimPrefix(u.Path, docPath)
+	if after, ok := strings.CutPrefix(u.Path, docPath); ok {
+		newBase.Path = after
 	} else {
 		newBase.Path = strings.TrimPrefix(u.Path, v.Path)
 	}
@@ -150,7 +138,7 @@ func rebase(ref *Ref, v *url.URL, notEqual bool) (Ref, bool) {
 	return MustCreateRef(newBase.String()), true
 }
 
-// normalizeRef canonicalize a Ref, using a canonical relativeBase as its absolute anchor
+// normalizeRef canonicalize a Ref, using a canonical relativeBase as its absolute anchor.
 func normalizeRef(ref *Ref, relativeBase string) *Ref {
 	r := MustCreateRef(normalizeURI(ref.String(), relativeBase))
 	return &r
@@ -168,7 +156,7 @@ func normalizeRef(ref *Ref, relativeBase string) *Ref {
 //
 // See also: https://en.wikipedia.org/wiki/File_URI_scheme
 func normalizeBase(in string) string {
-	u, err := url.Parse(in)
+	u, err := parseURL(in)
 	if err != nil {
 		specLogger.Printf("warning: invalid URI in RelativeBase  %q: %v", in, err)
 		u, in = repairURI(in)

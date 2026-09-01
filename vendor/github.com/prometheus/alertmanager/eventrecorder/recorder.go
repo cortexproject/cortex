@@ -13,23 +13,12 @@
 
 // Package eventrecorder provides a structured event recorder for
 // significant Alertmanager events.  Events are serialized as JSON and
-// fanned out to one or more configured destinations (JSONL file,
-// webhook, kafka).
+// fanned out to one or more configured destinations.
 //
 // RecordEvent never blocks the caller: events are serialized and
 // placed on a bounded in-memory queue.  A background goroutine
 // drains the queue and sends to destinations.  If the queue is full,
 // events are dropped and a metric is incremented.
-//
-// Package layout:
-//
-//   - recorder.go    Recorder core: types, write loop, fan-out.
-//   - metrics.go     Prometheus metric definitions.
-//   - events.go      Pure proto-conversion helpers and event constructors.
-//   - config.go      Top-level Config: per-type output lists + equality.
-//   - file.go        File output and its config.
-//   - webhook.go     Webhook output and its config.
-//   - kafka.go       Kafka output and its config.
 package eventrecorder
 
 import (
@@ -194,7 +183,7 @@ func buildOutputs(cfg Config, instance string, m *metrics, logger *slog.Logger) 
 	for _, wc := range cfg.WebhookOutputs {
 		wo, err := NewWebhookOutput(wc, m.outputDrops, logger)
 		if err != nil {
-			logger.Error("Failed to create webhook event recorder output", "url", wc.URL, "err", err)
+			logger.Error("Failed to create webhook event recorder output", "url", sanitizeSecretURL(wc.URL), "err", err)
 			continue
 		}
 		outputs = append(outputs, wo)
@@ -206,6 +195,9 @@ func buildOutputs(cfg Config, instance string, m *metrics, logger *slog.Logger) 
 			continue
 		}
 		outputs = append(outputs, ko)
+	}
+	for range cfg.StdoutOutputs {
+		outputs = append(outputs, &StdoutOutput{})
 	}
 	return outputs
 }
@@ -302,10 +294,16 @@ func (c *sharedRecorder) marshalAndSend(req writeRequest, outputs []Destination)
 // event is dropped (never blocks the caller).  Recording only occurs
 // when the context has been decorated with WithEventRecording.
 //
+// The event is supplied as a builder function rather than a value so
+// that callers on hot read paths do not pay to construct an event
+// (protobuf conversions, fingerprint slices, etc.) that would only be
+// discarded when recording is disabled.  The builder is invoked only
+// after the recording gates pass, and exactly once.
+//
 // The expensive protojson.Marshal call is deferred to the write-loop
 // goroutine so that the caller's hot path only pays for the proto
 // wrapping and a channel send.
-func (r Recorder) RecordEvent(ctx context.Context, event *eventrecorderpb.EventData) {
+func (r Recorder) RecordEvent(ctx context.Context, build func() *eventrecorderpb.EventData) {
 	if r.core == nil || r.core.events == nil {
 		return
 	}
@@ -313,6 +311,7 @@ func (r Recorder) RecordEvent(ctx context.Context, event *eventrecorderpb.EventD
 		return
 	}
 
+	event := build()
 	eventType := extractEventType(event)
 
 	wrappedEvent := &eventrecorderpb.Event{

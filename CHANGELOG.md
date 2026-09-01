@@ -58,7 +58,8 @@
 * [ENHANCEMENT] Metrics: Add native histogram support to all remaining production histograms, enabling dual-format (classic + native) exposition across all Cortex components. #7636
 * [ENHANCEMENT] Ring: Cache `ShuffleShardWithLookback` subrings. The cached entry is invalidated on topology change or once `now` reaches the earliest `RegisteredTimestamp + lookbackPeriod` of any included instance. #7628
 * [ENHANCEMENT] Query Frontend: Rename `time_taken` field to `time_taken_ms` and make it return millisecond count. #7649
-* [ENHANCEMENT] Update prometheus alertmanager version to v0.33.0. #7647
+* [ENHANCEMENT] Update prometheus alertmanager version to v0.34.0. #7647 #7820
+  - The `reason` label on `cortex_alertmanager_notifications_failed_total` now reports `authError` for HTTP 401/403 and `rateLimited` for HTTP 429. These were previously counted as `clientError`.
 * [ENHANCEMENT] Querier/Ingester: Detach ingester series from gRPC buffers to reduce heap. #7670
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_max_timestamp` metric that re-exports the TSDB head max timestamp (`prometheus_tsdb_head_max_time`) per user, to help investigate ingestion issues like out-of-bounds (too old sample) errors. #7694
 * [ENHANCEMENT] Ingester: Include the TSDB head max time in the `out of bounds` and `too old sample` error messages, so that users can see how far behind the accepted time range a rejected sample is. #7695

@@ -13,7 +13,7 @@
   - `-blocks-storage.tsdb.wal-compression-enabled` (deprecated in 1.19.0; use `-blocks-storage.tsdb.wal-compression-type`)
   - `-ingester.max-series-per-query` (a chunks-storage limit, ignored since blocks storage; use `-querier.max-fetched-series-per-query`)
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
-* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
+* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, `close_idle_tsdb_timeout` and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7323 #7813
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
 * [FEATURE] Parquet: Support sharded parquet file conversion and querying. #7610

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -269,7 +270,7 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled, c.Distributor.HATrackerConfig.UpdateTimeout, c.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.LimitsConfig.ValidateQueryLimits("default", c.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {
+	if err := c.LimitsConfig.ValidateQueryLimits("default", time.Duration(c.LimitsConfig.CloseIdleTSDBTimeout)); err != nil {
 		return errors.Wrap(err, "invalid query routing config")
 	}
 	if err := c.ResourceMonitor.Validate(); err != nil {

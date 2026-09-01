@@ -2242,15 +2242,6 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
     [flush_blocks_on_shutdown: <boolean> | default = false]
 
-    # If TSDB has not received any data for this duration, and all blocks from
-    # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-    # to positive value, this value must be greater than
-    # -limits.query-ingesters-within flag to make sure that TSDB is not closed
-    # prematurely, which could cause partial query results. 0 or negative value
-    # disables closing of idle TSDB.
-    # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
-    [close_idle_tsdb_timeout: <duration> | default = 0s]
-
     # The size of the in-memory queue used before flushing chunks to the disk.
     # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
     [head_chunks_write_queue_size: <int> | default = 0]

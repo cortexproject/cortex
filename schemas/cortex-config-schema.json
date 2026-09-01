@@ -5670,7 +5670,7 @@
         },
         "enable_native_histograms": {
           "default": false,
-          "description": "[EXPERIMENTAL] True to enable native histogram.",
+          "description": "True to enable native histogram.",
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
         },

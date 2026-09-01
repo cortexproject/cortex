@@ -1599,10 +1599,10 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-ring.store":                                "consul",
-		"-consul.hostname":                           consul.NetworkHTTPEndpoint(),
-		"-store-gateway.sharding-enabled":            "false",
-		"-blocks-storage.bucket-store.sync-interval": "1s",
+		"-ring.store":                                                 "consul",
+		"-consul.hostname":                                            consul.NetworkHTTPEndpoint(),
+		"-store-gateway.sharding-enabled":                             "false",
+		"-blocks-storage.bucket-store.sync-interval":                  "1s",
 		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
 	})
 

@@ -111,7 +111,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-5607698940
+LATEST_BUILD_IMAGE_TAG ?= master-7bc8b2491b
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -223,7 +223,7 @@ check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
 modernize:
-	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0 -fix ./...
+	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 -fix ./...
 
 # Generates the config file documentation.
 doc: clean-doc

@@ -500,11 +500,9 @@ func (g *PartitionCompactionGrouper) partitionBlocksGroup(partitionCount int, bl
 	addToPartitionedGroups := func(blocks []*metadata.Meta, partitionID int) {
 		if _, ok := partitionedGroups[partitionID]; !ok {
 			partitionedGroups[partitionID] = blocksGroupWithPartition{
-				blocksGroup: blocksGroup{
-					rangeStart: rangeStart,
-					rangeEnd:   rangeEnd,
-					blocks:     []*metadata.Meta{},
-				},
+				rangeStart: rangeStart,
+				rangeEnd:   rangeEnd,
+				blocks:     []*metadata.Meta{},
 			}
 		}
 		partitionedGroup := partitionedGroups[partitionID]

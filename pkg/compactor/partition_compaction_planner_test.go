@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -49,18 +48,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -69,18 +64,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			},
 			expected: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 		},
@@ -88,18 +79,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 2 * time.Hour.Milliseconds(),
-						MaxTime: 4 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 2 * time.Hour.Milliseconds(),
+					MaxTime: 4 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 0 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 0 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -112,18 +99,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 0 * time.Hour.Milliseconds(),
-						MaxTime: 4 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 0 * time.Hour.Milliseconds(),
+					MaxTime: 4 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 0 * time.Hour.Milliseconds(),
-						MaxTime: 4 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 0 * time.Hour.Milliseconds(),
+					MaxTime: 4 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -136,18 +119,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 0 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 0 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 0 * time.Hour.Milliseconds(),
-						MaxTime: 4 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 0 * time.Hour.Milliseconds(),
+					MaxTime: 4 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -161,25 +140,19 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			noCompactBlocks: map[ulid.ULID]*metadata.NoCompactMark{block1ulid: {}},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block3ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block3ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -188,18 +161,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			},
 			expected: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block3ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block3ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 		},
@@ -208,11 +177,9 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			noCompactBlocks: map[ulid.ULID]*metadata.NoCompactMark{block1ulid: {}},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -225,18 +192,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -249,18 +212,14 @@ func TestPartitionCompactionPlanner_Plan(t *testing.T) {
 			ranges: []int64{2 * time.Hour.Milliseconds()},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block1ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block1ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID:    block2ulid,
-						MinTime: 1 * time.Hour.Milliseconds(),
-						MaxTime: 2 * time.Hour.Milliseconds(),
-					},
+					ULID:    block2ulid,
+					MinTime: 1 * time.Hour.Milliseconds(),
+					MaxTime: 2 * time.Hour.Milliseconds(),
 				},
 			},
 			visitedPartition: VisitedPartition{
@@ -460,8 +419,8 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
-			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
-			{BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
+			{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 		}
 
 		actual, err := p.Plan(context.Background(), blocks, nil, &cortextsdb.CortexMetaExtensions{
@@ -491,9 +450,9 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
-			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
-			{BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
-			{BlockMeta: tsdb.BlockMeta{ULID: block3ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
+			{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			{ULID: block3ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 		}
 
 		actual, err := p.Plan(context.Background(), blocks, nil, &cortextsdb.CortexMetaExtensions{
@@ -522,9 +481,9 @@ func TestPartitionCompactionPlanner_PlanWithDeletionMarkFilter(t *testing.T) {
 		p := createPlanner(bkt)
 
 		blocks := []*metadata.Meta{
-			{BlockMeta: tsdb.BlockMeta{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
-			{BlockMeta: tsdb.BlockMeta{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
-			{BlockMeta: tsdb.BlockMeta{ULID: block3ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()}},
+			{ULID: block1ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			{ULID: block2ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
+			{ULID: block3ulid, MinTime: 1 * time.Hour.Milliseconds(), MaxTime: 2 * time.Hour.Milliseconds()},
 		}
 
 		actual, err := p.Plan(context.Background(), blocks, nil, &cortextsdb.CortexMetaExtensions{

@@ -665,9 +665,9 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 		MaxSamples: 1e6,
 		Timeout:    1 * time.Minute,
 	}
-	cfg := Config{}
-	// Disable active query tracker to avoid mmap error.
-	cfg.ActiveQueryTrackerDir = ""
+	cfg := Config{
+		// Disable active query tracker to avoid mmap error.
+		ActiveQueryTrackerDir: ""}
 	for _, thanosEngine := range []bool{true, false} {
 		for _, encoding := range encodings {
 			for _, c := range testCases {

@@ -17,7 +17,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/frontend/transport"
 	"github.com/cortexproject/cortex/pkg/frontend/v1/frontendv1pb"
-	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 )
@@ -25,7 +24,7 @@ import (
 func setupFrontend(t *testing.T, maxOutstanding int, config Config) (*Frontend, error) {
 	logger := log.NewNopLogger()
 
-	limits := MockLimits{Queriers: 3, MockLimits: queue.MockLimits{MaxOutstanding: maxOutstanding}}
+	limits := MockLimits{Queriers: 3, MaxOutstanding: maxOutstanding}
 	frontend, err := New(config, limits, logger, nil, transport.NewRetry(0, nil))
 	require.NoError(t, err)
 

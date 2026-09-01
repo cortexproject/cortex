@@ -36,7 +36,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -587,49 +586,11 @@ func (d *Distributor) stopping(_ error) error {
 }
 
 func (d *Distributor) tokenForLabels(userID string, labels []cortexpb.LabelAdapter) (uint32, error) {
-	if d.cfg.ShardByAllLabels {
-		return shardByAllLabels(userID, labels), nil
-	}
-
-	unsafeMetricName, err := extract.UnsafeMetricNameFromLabelAdapters(labels)
-	if err != nil {
-		return 0, err
-	}
-	return shardByMetricName(userID, unsafeMetricName), nil
+	return ring.TokenForLabels(userID, labels, d.cfg.ShardByAllLabels)
 }
 
 func (d *Distributor) tokenForMetadata(userID string, metricName string) uint32 {
-	if d.cfg.ShardByAllLabels {
-		return shardByMetricName(userID, metricName)
-	}
-
-	return shardByUser(userID)
-}
-
-// shardByMetricName returns the token for the given metric. The provided metricName
-// is guaranteed to not be retained.
-func shardByMetricName(userID string, metricName string) uint32 {
-	h := shardByUser(userID)
-	h = ingester_client.HashAdd32(h, metricName)
-	return h
-}
-
-func shardByUser(userID string) uint32 {
-	h := ingester_client.HashNew32()
-	h = ingester_client.HashAdd32(h, userID)
-	return h
-}
-
-// This function generates different values for different order of same labels.
-func shardByAllLabels(userID string, labels []cortexpb.LabelAdapter) uint32 {
-	h := shardByUser(userID)
-	for _, label := range labels {
-		if len(label.Value) > 0 {
-			h = ingester_client.HashAdd32(h, label.Name)
-			h = ingester_client.HashAdd32(h, label.Value)
-		}
-	}
-	return h
+	return ring.TokenForMetadata(userID, metricName, d.cfg.ShardByAllLabels)
 }
 
 // Remove the label labelname from a slice of LabelPairs if it exists.

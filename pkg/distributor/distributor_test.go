@@ -3799,7 +3799,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 
 	for j := range req.Timeseries {
 		series := req.Timeseries[j]
-		hash := shardByAllLabels(orgid, series.Labels)
+		hash := ring.ShardByAllLabels(orgid, series.Labels)
 		existing, ok := i.timeseries[hash]
 		if !ok {
 			// Make a copy because the request Timeseries are reused
@@ -3818,7 +3818,7 @@ func (i *mockIngester) Push(ctx context.Context, req *cortexpb.WriteRequest, opt
 	}
 
 	for _, m := range req.Metadata {
-		hash := shardByMetricName(orgid, m.MetricFamilyName)
+		hash := ring.ShardByMetricName(orgid, m.MetricFamilyName)
 		set, ok := i.metadata[hash]
 		if !ok {
 			set = map[cortexpb.MetricMetadata]struct{}{}
@@ -4299,13 +4299,13 @@ func TestRemoveReplicaLabel(t *testing.T) {
 // This is not great, but we deal with unsorted labels when validating labels.
 func TestShardByAllLabelsReturnsWrongResultsForUnsortedLabels(t *testing.T) {
 	t.Parallel()
-	val1 := shardByAllLabels("test", []cortexpb.LabelAdapter{
+	val1 := ring.ShardByAllLabels("test", []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "bar", Value: "baz"},
 		{Name: "sample", Value: "1"},
 	})
 
-	val2 := shardByAllLabels("test", []cortexpb.LabelAdapter{
+	val2 := ring.ShardByAllLabels("test", []cortexpb.LabelAdapter{
 		{Name: "__name__", Value: "foo"},
 		{Name: "sample", Value: "1"},
 		{Name: "bar", Value: "baz"},

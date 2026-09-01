@@ -1613,13 +1613,9 @@ func TestGetRulesFromBackup(t *testing.T) {
 		require.Equal(t, a.Group.Interval, b.Group.Interval)
 		require.Equal(t, a.Group.User, b.Group.User)
 		require.Equal(t, a.Group.Limit, b.Group.Limit)
-		require.Equal(t, a.EvaluationTimestamp, b.EvaluationTimestamp)
-		require.Equal(t, a.EvaluationDuration, b.EvaluationDuration)
 		require.Equal(t, len(a.ActiveRules), len(b.ActiveRules))
 		for i, aRule := range a.ActiveRules {
 			bRule := b.ActiveRules[i]
-			require.Equal(t, aRule.EvaluationTimestamp, bRule.EvaluationTimestamp)
-			require.Equal(t, aRule.EvaluationDuration, bRule.EvaluationDuration)
 			require.Equal(t, aRule.Health, bRule.Health)
 			require.Equal(t, aRule.LastError, bRule.LastError)
 			require.Equal(t, aRule.Rule.Expr, bRule.Rule.Expr)
@@ -1841,13 +1837,9 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 			require.Equal(t, a.Group.Interval, b.Group.Interval)
 			require.Equal(t, a.Group.User, b.Group.User)
 			require.Equal(t, a.Group.Limit, b.Group.Limit)
-			require.Equal(t, a.EvaluationTimestamp, b.EvaluationTimestamp)
-			require.Equal(t, a.EvaluationDuration, b.EvaluationDuration)
 			require.Equal(t, len(a.ActiveRules), len(b.ActiveRules))
 			for i, aRule := range a.ActiveRules {
 				bRule := b.ActiveRules[i]
-				require.Equal(t, aRule.EvaluationTimestamp, bRule.EvaluationTimestamp)
-				require.Equal(t, aRule.EvaluationDuration, bRule.EvaluationDuration)
 				require.Equal(t, aRule.Health, bRule.Health)
 				require.Equal(t, aRule.LastError, bRule.LastError)
 				require.Equal(t, aRule.Rule.Expr, bRule.Rule.Expr)

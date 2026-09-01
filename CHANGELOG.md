@@ -29,6 +29,7 @@
 * [FEATURE] Querier: Add resource-based query eviction that automatically cancels the heaviest running query when CPU or heap utilization exceeds configured thresholds. #7488
 * [FEATURE] Storage: Add support for Oracle Cloud Infrastructure (OCI) Object Storage as a backend for blocks, ruler, and alertmanager storage. Configured via `-<prefix>.oci.*` flags with `backend: oci`. #7718
 * [FEATURE] StoreGateway: Add experimental optional limit `blocks-storage.bucket-store.max-concurrent-data-bytes` on the data bytes (postings, series and chunks) fetched via the Series() API call and processed concurrently across all queries per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
+* [FEATURE] StoreGateway: Implement a hybrid mode of the Store Gateway. #7689
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
 * [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455

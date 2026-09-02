@@ -8,6 +8,9 @@ Open it in a browser; `file://` works and there is no build step:
 open tools/diagram/cortex-architecture.html
 ```
 
+Its only dependency is D3, which is not committed here — see
+[below](#d3minjs--not-committed-comes-from-npm).
+
 It renders the write path, read path, blocks lifecycle and optional services as
 an interactive [D3](https://d3js.org/) node-link diagram. Hover a connector for
 its protocol and endpoint; select a component for its role, statefulness, hash
@@ -15,7 +18,9 @@ ring, endpoints and source file. There are toggles for the three places the
 topology genuinely forks — the query-scheduler vs. the query-frontend's own
 queue, the ruler's own querier stack vs. `-ruler.frontend-address`, and the
 parquet queryable off vs. on — plus guided walkthroughs of the write, read, rule-evaluation and
-blocks flows, a table view, and light/dark themes.
+blocks flows, a table view, and a dark-mode toggle. The page is light by
+default, matching the rest of cortexmetrics.io; the OS colour-scheme setting is
+deliberately not consulted.
 
 All seven caches are drawn separately because no two share a consumer set: the
 results cache belongs to the query-frontend; the index cache to the store-gateway
@@ -46,8 +51,9 @@ in mind when changing it:
 ### Where it is published
 
 `tools/diagram/` is the single source of truth.
-[`tools/website/web-pre.sh`](../website/web-pre.sh) copies the page and its D3
-copy into `website/static/diagrams/` at build time, so the page is served at
+[`tools/website/web-pre.sh`](../website/web-pre.sh) copies the page into
+`website/static/diagrams/` at build time, together with D3 from
+`website/node_modules/`, so the page is served at
 `/diagrams/cortex-architecture.html`. The `<script src="d3.min.js">` is
 relative and therefore resolves in both places. Files under `static/` bypass
 Hugo's asset pipeline, so `hugo --minify` does not touch the page.
@@ -57,16 +63,28 @@ sidebar entry that links to it. That link is written repo-relative so it works
 on GitHub, and [`tools/website/website.go`](../website/website.go) rewrites it
 to the site path — the same trick it already uses for images.
 
-## `d3.min.js` — vendored dependency
+## `d3.min.js` — not committed, comes from npm
 
-D3 **7.9.0**, ISC licensed (Copyright 2010-2023 Mike Bostock), taken verbatim
-from the `d3` npm package's `dist/d3.min.js`:
-<https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js> — 279,706 bytes, SHA-384
-`CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i`.
+The page's one dependency is [D3](https://d3js.org/), pinned to **7.9.0** in
+[`website/package.json`](../../website/package.json) (ISC, Copyright 2010-2023
+Mike Bostock). It is not committed to this repository:
+[`tools/website/web-pre.sh`](../website/web-pre.sh) copies
+`website/node_modules/d3/dist/d3.min.js` into `website/static/diagrams/` at
+build time, next to the page, so the published site loads it same-origin and
+makes no third-party request. To bump it, `npm install --save-exact d3@<version>`
+in `website/` and update the version in the CDN fallback below.
 
-It is committed rather than loaded from a CDN so an official documentation page
-makes no third-party request and the page still renders with no network access.
-To bump it, replace the file and update the version, size and hash above.
+Opening the file straight out of a checkout has no sibling copy, so it falls
+back to `https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js`, pinned and
+guarded by the subresource-integrity hash
+`sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i`. That
+fallback only ever fires locally. To preview with no network at all, drop the
+npm copy next to the page — `.gitignore` covers it, so it cannot be committed
+by accident:
+
+```sh
+(cd website && npm ci) && cp website/node_modules/d3/dist/d3.min.js tools/diagram/
+```
 
 ## `cortex-architecture.drawio` — stale, chunks-storage era
 

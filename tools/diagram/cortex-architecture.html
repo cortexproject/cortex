@@ -3,11 +3,11 @@
   Cortex architecture — interactive diagram.
 
   A self-contained successor to images/architecture.png. Open it directly in a
-  browser (file:// works); there is no build step and no npm dependency. D3 is
-  the vendored copy sitting next to this file, so the page renders offline and
-  an official docs page makes no third-party request. tools/website/web-pre.sh
-  copies both files to website/static/diagrams/ for the site build, which is
-  why the <script src> is relative.
+  browser; file:// works and there is no build step. Its one dependency is D3,
+  which the website build copies next to this file from the pinned `d3` entry in
+  website/package.json -- so the published page loads it same-origin and makes
+  no third-party request. Opening this file from a bare checkout falls back to
+  the pinned CDN build; see the <script> tags at the bottom.
 
   Everything the diagram renders lives in the NODES and EDGES arrays below, so
   the data can be lifted out to JSON and the render code dropped into a Hugo
@@ -39,10 +39,10 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23fcfcfb'/%3E%3Cg stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M7 9h18' stroke='%23eb6834'/%3E%3Cpath d='M7 16h18' stroke='%232a78d6'/%3E%3Cpath d='M7 23h18' stroke='%231baf7a'/%3E%3C/g%3E%3C/svg%3E">
 <style>
   /* ---------- tokens -------------------------------------------------------
-     Dark values are declared twice on purpose: once for the OS setting and
-     once for the in-page toggle, so the toggle wins in both directions. The
-     :not() guard lets an explicit light stamp beat OS dark; :where() keeps the
-     media block's specificity at zero so the toggle scope always outranks it. */
+     Light is the default unconditionally, including under an OS dark setting,
+     so the page matches the rest of cortexmetrics.io, which is light-only.
+     Dark is opt-in through the in-page toggle, which stamps data-theme on the
+     root element; there is deliberately no prefers-color-scheme rule. */
   :root {
     color-scheme: light;
     --surface-1: #fcfcfb;
@@ -59,25 +59,6 @@
     --path-read: #2a78d6;    /* categorical slot 1 */
     --path-blocks: #1baf7a;  /* categorical slot 3 */
     --path-ring: #898781;    /* neutral chrome, not a series colour */
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:where(:not([data-theme="light"])) {
-      color-scheme: dark;
-      --surface-1: #1a1a19;
-      --page: #0d0d0d;
-      --text-primary: #ffffff;
-      --text-secondary: #c3c2b7;
-      --muted: #898781;
-      --hairline: #2c2c2a;
-      --rule: #383835;
-      --border: rgba(255, 255, 255, 0.10);
-      --lane: rgba(255, 255, 255, 0.035);
-
-      --path-write: #d95926;
-      --path-read: #3987e5;
-      --path-blocks: #199e70;
-      --path-ring: #898781;
-    }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
@@ -353,11 +334,27 @@
   <footer id="footer"></footer>
 </div>
 
-<!-- Vendored D3 7.9.0, resolved relative to this file: tools/diagram/ locally,
-     /diagrams/ on the website. No integrity/crossorigin on purpose — under
-     file:// the response has an opaque origin, so SRI would block the script
-     rather than skip the check, and on the site the fetch is same-origin. -->
+<!-- D3 7.9.0, resolved relative to this file: /diagrams/ on the website,
+     tools/diagram/ locally. tools/website/web-pre.sh copies it there from the
+     pinned `d3` dependency in website/package.json, so the site loads it
+     same-origin and makes no third-party request. No integrity/crossorigin on
+     that tag on purpose: same-origin makes SRI redundant, and under file:// the
+     response has an opaque origin, so SRI would block the script outright
+     rather than skip the check.
+
+     A bare checkout has no sibling copy, so fall back to the pinned CDN build
+     for local preview -- that fetch is cross-origin, so SRI does apply. To
+     preview with no network at all, put the npm copy next to this file (it is
+     gitignored):
+       (cd website && npm ci) && cp website/node_modules/d3/dist/d3.min.js tools/diagram/ -->
 <script src="d3.min.js"></script>
+<script>
+if (!window.d3) {
+  document.write('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"' +
+    ' integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"' +
+    ' crossorigin="anonymous"><\/scr' + 'ipt>');
+}
+</script>
 <script>
 "use strict";
 
@@ -1304,18 +1301,15 @@ function buildTables() {
 }
 
 /* theme ---------------------------------------------------------------- */
+/* Light is the default on every load, matching the rest of cortexmetrics.io;
+   the OS setting is deliberately not consulted. Dark is a per-visit opt-in. */
 const themeBtn = d3.select("#toggle-theme");
-function isDark() {
-  const stamp = document.documentElement.getAttribute("data-theme");
-  if (stamp) return stamp === "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
+function isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
 function syncThemeLabel() { themeBtn.text(isDark() ? "Light mode" : "Dark mode"); }
 themeBtn.on("click", () => {
   document.documentElement.setAttribute("data-theme", isDark() ? "light" : "dark");
   syncThemeLabel();
 });
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncThemeLabel);
 
 /* legend --------------------------------------------------------------- */
 function buildLegend() {

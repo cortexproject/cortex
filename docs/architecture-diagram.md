@@ -21,7 +21,7 @@ versus a separate query-scheduler, the ruler evaluating rules in its own querier
 stack versus delegating to the query-frontend with `-ruler.frontend-address`, and
 the parquet queryable off versus on. There are also guided walkthroughs that step
 through the write, read, rule-evaluation and blocks flows one hop at a time, a
-table view of every component and flow, and a light/dark theme toggle.
+table view of every component and flow, and a dark-mode toggle.
 
 The diagram's metadata is hand-maintained against the Cortex source rather than
 generated from it, so the `src` path shown in each component's panel is the

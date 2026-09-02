@@ -1,26 +1,35 @@
 module github.com/cortexproject/cortex
 
-go 1.26.0
+go 1.27.0
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/VictoriaMetrics/fastcache v1.13.3
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/aws/aws-sdk-go-v2 v1.42.0
+	github.com/aws/aws-sdk-go-v2/config v1.32.26
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.1
+	github.com/axiomhq/hyperloglog v0.2.6
+	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
 	github.com/bradfitz/gomemcache v0.0.0-20250403215159-8d39553ac7cf
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cortexproject/promqlsmith v0.0.0-20260205231645-0c8ef5fe46a5
 	github.com/dustin/go-humanize v1.0.1
+	github.com/edsrzf/mmap-go v1.2.0
 	github.com/efficientgo/core v1.0.0-rc.3
 	github.com/facette/natsort v0.0.0-20181210072756-2cd4dd1e2dcb
 	github.com/felixge/fgprof v0.9.5
 	github.com/go-kit/log v0.2.1
 	github.com/go-openapi/strfmt v0.26.4
-	github.com/go-openapi/swag v0.26.0 // indirect
+	github.com/go-openapi/swag/jsonutils v0.27.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gogo/protobuf v1.3.2
 	github.com/gogo/status v1.1.1
 	github.com/golang-migrate/migrate/v4 v4.19.1
-	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v1.0.0
+	github.com/google/go-cmp v0.7.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/grafana/regexp v0.0.0-20250905093917-f7b3be9d1853
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
@@ -28,35 +37,44 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2
 	github.com/hashicorp/go-metrics v0.6.0
 	github.com/hashicorp/go-sockaddr v1.0.7
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.18.7
-	github.com/lib/pq v1.11.2 // indirect
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/mitchellh/go-wordwrap v1.0.1
+	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
 	github.com/oklog/ulid v1.3.1
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/opentracing-contrib/go-grpc v0.1.4
 	github.com/opentracing-contrib/go-stdlib v1.1.1
 	github.com/opentracing/opentracing-go v1.2.0
+	github.com/parquet-go/parquet-go v0.30.1
 	github.com/pkg/errors v0.9.1
+	github.com/prometheus-community/parquet-common v0.0.0-20260614025832-5f32460b5373
 	github.com/prometheus/alertmanager v0.33.0
 	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang/exp v0.0.0-20251212205219-7ba246a648ca
 	github.com/prometheus/client_model v0.6.2
 	github.com/prometheus/common v0.69.0
+	github.com/prometheus/procfs v0.21.0
 	// Prometheus maps version 3.x.y to tags v0.30x.y.
 	github.com/prometheus/prometheus v0.309.1
 	github.com/segmentio/fasthash v1.0.3
+	github.com/sercand/kuberesolver/v5 v5.1.1
 	github.com/sony/gobreaker v1.0.0
 	github.com/spf13/afero v1.15.0
 	github.com/stretchr/testify v1.11.1
 	github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488
 	github.com/thanos-io/promql-engine v0.0.0-20260729073658-f8bd3f940687
 	github.com/thanos-io/thanos v0.42.1-0.20260727122508-92397939e4cc
+	github.com/tjhop/slog-gokit v0.2.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17
 	go.etcd.io/etcd/client/pkg/v3 v3.5.17
 	go.etcd.io/etcd/client/v3 v3.5.17
+	go.opentelemetry.io/collector/pdata v1.61.0
 	go.opentelemetry.io/contrib/propagators/aws v1.44.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/bridge/opentracing v1.45.0
@@ -65,38 +83,14 @@ require (
 	go.opentelemetry.io/otel/sdk v1.44.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	go.uber.org/atomic v1.11.0
+	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/net v0.57.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.83.0
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.1
-)
-
-require (
-	github.com/VictoriaMetrics/fastcache v1.13.3
-	github.com/aws/aws-sdk-go-v2 v1.42.0
-	github.com/aws/aws-sdk-go-v2/config v1.32.26
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.59.1
-	github.com/axiomhq/hyperloglog v0.2.6
-	github.com/bboreham/go-loser v0.0.0-20230920113527-fcc2c21820a3
-	github.com/cespare/xxhash/v2 v2.3.0
-	github.com/edsrzf/mmap-go v1.2.0
-	github.com/go-openapi/swag/jsonutils v0.27.0
-	github.com/google/go-cmp v0.7.0
-	github.com/google/uuid v1.6.0
-	github.com/hashicorp/golang-lru/v2 v2.0.7
-	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
-	github.com/oklog/ulid/v2 v2.1.1
-	github.com/parquet-go/parquet-go v0.30.1
-	github.com/prometheus-community/parquet-common v0.0.0-20260614025832-5f32460b5373
-	github.com/prometheus/client_golang/exp v0.0.0-20251212205219-7ba246a648ca
-	github.com/prometheus/procfs v0.21.0
-	github.com/sercand/kuberesolver/v5 v5.1.1
-	github.com/tjhop/slog-gokit v0.2.0
-	go.opentelemetry.io/collector/pdata v1.61.0
-	go.uber.org/automaxprocs v1.6.0
-	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -108,6 +102,7 @@ require (
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.56.0 // indirect
+	dmitri.shuralyov.com/go/generated v0.0.0-20170818220700-b1254a446363 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.20.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.2 // indirect
@@ -156,6 +151,7 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/fatih/color v1.19.0 // indirect
+	github.com/fatih/faillint v1.15.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.10.0 // indirect
 	github.com/go-chi/chi/v5 v5.2.4 // indirect
@@ -170,6 +166,7 @@ require (
 	github.com/go-openapi/loads v0.23.3 // indirect
 	github.com/go-openapi/runtime v0.29.4 // indirect
 	github.com/go-openapi/spec v0.22.4 // indirect
+	github.com/go-openapi/swag v0.26.0 // indirect
 	github.com/go-openapi/swag/cmdutils v0.26.0 // indirect
 	github.com/go-openapi/swag/conv v0.27.0 // indirect
 	github.com/go-openapi/swag/fileutils v0.26.0 // indirect
@@ -187,6 +184,7 @@ require (
 	github.com/gogo/googleapis v1.4.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20251213031049-b05bdaca462f // indirect
@@ -217,6 +215,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
 	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
+	github.com/lib/pq v1.11.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
@@ -354,3 +353,5 @@ exclude github.com/envoyproxy/go-control-plane/envoy v1.32.3
 
 // Required by Prometheus v0.308+ config package for OTLP translation strategy types.
 replace github.com/prometheus/otlptranslator => github.com/prometheus/otlptranslator v1.0.0
+
+tool github.com/fatih/faillint

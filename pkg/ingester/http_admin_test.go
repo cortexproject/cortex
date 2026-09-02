@@ -13,15 +13,13 @@ func TestUserStatsPageRendered(t *testing.T) {
 	res := httptest.NewRecorder()
 	userStats := []UserIDStats{
 		{
-			UserID: "123",
-			UserStats: UserStats{
-				IngestionRate:     11.11,
-				NumSeries:         2222,
-				APIIngestionRate:  33.33,
-				RuleIngestionRate: 44.44,
-				ActiveSeries:      5555,
-				LoadedBlocks:      6666,
-			},
+			UserID:            "123",
+			IngestionRate:     11.11,
+			NumSeries:         2222,
+			APIIngestionRate:  33.33,
+			RuleIngestionRate: 44.44,
+			ActiveSeries:      5555,
+			LoadedBlocks:      6666,
 		},
 	}
 	AllUserStatsRender(res, req, userStats, 3, 3)

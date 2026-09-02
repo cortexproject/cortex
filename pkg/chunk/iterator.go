@@ -28,9 +28,9 @@ type Iterator interface {
 	Err() error
 }
 
-// BatchSize is samples per batch; this was choose by benchmarking all sizes from
-// 1 to 128.
-const BatchSize = 12
+// BatchSize is samples per batch; chosen by benchmarking all sizes from
+// 1 to 128. Reduced from 12 to 8 to lower per-iterator memory.
+const BatchSize = 8
 
 // Batch is a sorted set of (timestamp, value) pairs. They are intended to be small,
 // and passed by value. Value can vary depending on the chunk value type.

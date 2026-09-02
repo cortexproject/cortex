@@ -1,8 +1,13 @@
 # Changelog
 
 ## master / unreleased
-* [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
-* [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
+* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
+* [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
+* [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
+* [CHANGE] Query Frontend: Rename the slow query log `time_taken` field to `time_taken_ms` and make it return a millisecond count. Log parsers and dashboards reading `time_taken` need updating. #7649
+* [CHANGE] Security: Reject empty entries in `-distributor.sign-write-requests-keys` caused by stray or trailing commas (e.g. `newkey,`). Previously these were silently accepted and produced an empty signing key, which downgraded HMAC stream-push authentication to a forgeable signature. Misconfigured flags now fail at process startup; audit your configs before upgrading. #7587
+* [CHANGE] Alertmanager: Tighten per-tenant config validation to reject file-based settings, including the global `mattermost_webhook_url_file`, consistent with every other global `*_file` setting. Per-tenant configs that previously loaded are now rejected; audit your tenant configurations before upgrading. #7767 #7768
+* [CHANGE] Alertmanager: Remove the obsolete migration of legacy state files into per-tenant directories. Clusters upgrading from pre-1.9 releases must upgrade through an older version first. #7513
 * [CHANGE] Remove deprecated CLI flags that have been no-ops for at least two minor releases. All of them were flag-only (no YAML config option) and already had no effect, so the only impact is that passing them now fails at startup. Remove them from your command lines before upgrading. #7790
   - `-querier.ingester-streaming` (deprecated in 1.17.0)
   - `-querier.iterators` (deprecated in 1.17.0)
@@ -14,15 +19,13 @@
   - `-ingester.max-series-per-query` (a chunks-storage limit, ignored since blocks storage; use `-querier.max-fetched-series-per-query`)
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
 * [CHANGE] Ingester: Graduate native histogram ingestion (`-blocks-storage.tsdb.enable-native-histograms`) from experimental. #7789
-* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
-* [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
-* [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
+* [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
 * [FEATURE] Parquet: Support sharded parquet file conversion and querying. #7610
 * [FEATURE] Parquet Converter: Add experimental `-parquet-converter.max-num-columns` flag to automatically shard parquet files when the number of columns exceeds the configured limit. This prevents failures when a TSDB block has more unique label names than the parquet library's column limit (32767). #7624
 * [FEATURE] Distributor: Add experimental `-distributor.num-query-workers` flag to use a goroutine worker pool for query fan-out calls to ingesters. Reuses pre-grown goroutine stacks to eliminate the `runtime.copystack` overhead (~8% CPU) observed on rulers with wide ingester fan-out. Falls back to spawning a new goroutine when no worker is available. #7623
 * [FEATURE] Ingester: Add experimental active series tracker that counts active series by configurable label matchers (including regex) per tenant and exposes `cortex_ingester_active_series_per_tracker` metric. Configured via `active_series_trackers` in runtime config overrides. #7476
 * [FEATURE] Ingester: Add experimental head-only queried series metric. `cortex_ingester_queried_head_series` tracks unique series queried from head via HLL. Enabled via `-ingester.head-queried-series-metrics-enabled`. #7500
-* [FEATURE] Ruler: Add per-tenant `ruler_alert_generator_url_template` runtime config option to customize alert generator URLs using Go templates. Includes a `jsonEscape` template function for safely embedding expressions in JSON-encoded URL parameters (e.g., Grafana Explore panes). Supports Grafana Explore, Perses, and other UIs. #7302
+* [FEATURE] Ruler: Add per-tenant `ruler_alert_generator_url_template` runtime config option to customize alert generator URLs using Go templates. Includes a `jsonEscape` template function for safely embedding expressions in JSON-encoded URL parameters (e.g., Grafana Explore panes). Supports Grafana Explore, Perses, and other UIs. #7302 #7458
 * [FEATURE] Distributor: Add experimental `-distributor.enable-start-timestamp` flag for Prometheus Remote Write 2.0. When enabled, `StartTimestamp (ST)` is ingested. #7371
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
@@ -40,12 +43,12 @@
 * [ENHANCEMENT] Distributor: Introduce dynamic `Symbols` slice capacity pooling. #7398 #7401
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #7359
 * [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #7357
-* [ENHANCEMENT] Update build image and Go version to 1.26. #7437
-* [ENHANCEMENT] Upgraded container base images from `alpine:3.23` to `gcr.io/distroless/static-debian12`, reducing image size and attack surface. #7637
+* [ENHANCEMENT] Update build image and Go version to 1.27.0. #7437 #7434 #7716 #7726 #7807 #7814
+* [ENHANCEMENT] Upgraded container base images from `alpine:3.23` to `gcr.io/distroless/static-debian12`, reducing image size and attack surface. The image no longer contains a shell, so shell-based probes, init scripts and `kubectl exec` workflows need adjusting. #7637
 * [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
 * [ENHANCEMENT] Compactor: Prevent partition compaction to compact any blocks marked for deletion. #7391
 * [ENHANCEMENT] Distributor: Optimize memory allocations by reusing the existing capacity of these pooled slices in the Prometheus Remote Write 2.0 path. #7392
-* [ENHANCEMENT] Upgrade gRPC from v1.71.2 to v1.79.3 to address CVE-2026-33186. #7460
+* [ENHANCEMENT] Upgrade gRPC from v1.71.2 to v1.82.1 to address CVE-2026-33186. #7460 #7719
 * [ENHANCEMENT] Query Frontend: Add `query_too_expensive` reason to QFE and `reason` field to query stats. #7479
 * [ENHANCEMENT] Instrument Ingester CPU profile with source for read APIs. #7494
 * [ENHANCEMENT] Ingester: Convert expanded postings cache from FIFO to LRU eviction to retain frequently-queried entries under memory pressure. #7510
@@ -58,17 +61,16 @@
 * [ENHANCEMENT] Upgrade prometheus version to v3.9.1. #7535
 * [ENHANCEMENT] Metrics: Add native histogram support to all remaining production histograms, enabling dual-format (classic + native) exposition across all Cortex components. #7636
 * [ENHANCEMENT] Ring: Cache `ShuffleShardWithLookback` subrings. The cached entry is invalidated on topology change or once `now` reaches the earliest `RegisteredTimestamp + lookbackPeriod` of any included instance. #7628
-* [ENHANCEMENT] Query Frontend: Rename `time_taken` field to `time_taken_ms` and make it return millisecond count. #7649
 * [ENHANCEMENT] Update prometheus alertmanager version to v0.33.0. #7647
 * [ENHANCEMENT] Querier/Ingester: Detach ingester series from gRPC buffers to reduce heap. #7670
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_max_timestamp` metric that re-exports the TSDB head max timestamp (`prometheus_tsdb_head_max_time`) per user, to help investigate ingestion issues like out-of-bounds (too old sample) errors. #7694
 * [ENHANCEMENT] Ingester: Include the TSDB head max time in the `out of bounds` and `too old sample` error messages, so that users can see how far behind the accepted time range a rejected sample is. #7695
 * [ENHANCEMENT] Compactor: Reduce object storage GET calls when updating the bucket index by skipping re-reading parquet converter markers for blocks that already have a valid-version parquet entry in the previous index. #7669
-* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740
+* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7691 #7505 #7740
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
-* [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
-* [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
+* [ENHANCEMENT] Ingester: Add `cortex_ingester_head_metric_names` gauge exposing unique metric names per tenant in the head. #7514
+* [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
 * [BUGFIX] Packaging: Fix RPM and deb packages to install the binary to `/usr/bin`, install the systemd unit to the correct system path (`/usr/lib/systemd/system` for RPM, `/lib/systemd/system` for deb), and mark the sysconfig/default env file as a config file so it is not overwritten on upgrade. #7445
@@ -90,25 +92,21 @@
 * [BUGFIX] Query Frontend: Track data selection min and max time of query requests in query stats regardless of whether query priority and query rejection are enabled. #7724
 * [BUGFIX] Querier: Fix flake in integration tests TestQuerierWithStoreGatewayDataBytesLimits and TestQuerierWithBlocksStorageLimits by waiting for the querier to see the store-gateway ACTIVE in the ring before querying. #7614
 * [BUGFIX] Ruler: Register xfunctions (xincrease, xrate, xdelta) in the global parser before loading rule files. #7621
-* [BUGFIX] Security: Reject empty entries in `-distributor.sign-write-requests-keys` caused by stray or trailing commas (e.g. `newkey,`). Previously these were silently accepted and produced an empty signing key, which downgraded HMAC stream-push authentication to a forgeable signature. Misconfigured flags now fail at process startup; audit your configs before upgrading. #7587
-* [BUGFIX] Config: Fix validation of explicit zero values in non-empty YAML root sections, allowing configs such as `flusher: { exit_after_flush: false }` while continuing to reject empty root sections. #7700
-* [BUGFIX] Querier: Fix panic due to request tracker truncating multi-byte UTF-8 character #7640
+* [BUGFIX] Querier: Fix panics in the active request tracker when truncating a `match[]`/`query` value: one when the truncation point falls inside a multi-byte UTF-8 character, and one (`index out of range [-1]`) when the value is made entirely of invalid UTF-8 continuation bytes, where the backwards scan for a rune boundary underflowed past index 0. #7640 #7743
 * [BUGFIX] Ingester: Fix panic (`HistogramProtoToHistogram called with a float histogram`) when ingesting a float native histogram with a zero count (e.g. a staleness marker or empty histogram). The decoder is now selected by histogram type via `IsFloatHistogram()` instead of by count value. #7645
 * [BUGFIX] Querier: Fix parquet queryable fallback returning a nil error instead of the actual query error in `LabelValues` and `LabelNames`. #7638
-* [BUGFIX] Storage: Default the Azure `endpoint_suffix` to `blob.core.windows.net` instead of empty. Cortex builds the Thanos Azure config directly and bypasses Thanos' default, so an unset suffix produced an invalid FQDN (`<account>.`) and components hung on startup with DNS errors. #5449
+* [BUGFIX] Storage: Default the Azure `endpoint_suffix` to `blob.core.windows.net` instead of empty. Cortex builds the Thanos Azure config directly and bypasses Thanos' default, so an unset suffix produced an invalid FQDN (`<account>.`) and components hung on startup with DNS errors. #5449 #7687
 * [BUGFIX] Store Gateway: Fix misleading "no index cache backend addresses" validation error being reported for chunks-cache, metadata-cache, and parquet caches when their memcached or redis backend is configured without addresses. The message is now the cache-type-agnostic "no cache backend addresses". #7675
-* [BUGFIX] Querier/Query Frontend: Fix DNS watcher dropping all query-frontend/scheduler worker connections on a transient DNS lookup failure. #7698
+* [BUGFIX] Querier/Query Frontend: Fix DNS watcher dropping all query-frontend/scheduler worker connections on a transient DNS lookup failure. Covers both the plain A record path and the SRV record path, where an SRV query that succeeded while every target's A record lookup failed produced a non-nil empty result that was treated as authoritative. #7698 #7745
 * [BUGFIX] Ring: Fix DynamoDB KV CAS not retrying on transactional conditional check failures. `TransactWriteItems` reports condition failures as `TransactionCanceledException` with a `ConditionalCheckFailed` cancellation reason, which was not recognized as retryable, so any concurrent ring update conflict (e.g. many ingesters joining during a rolling update) failed immediately instead of re-reading and retrying. `TransactionConflict` cancellation reasons are also treated as retryable. #7706
-* [BUGFIX] Distributor: Return HTTP 499 (Client Closed Request) instead of 500 when a remote-write or OTLP push is canceled by the client, so client-side cancellations are no longer counted as server-side errors. #7717
+* [BUGFIX] Distributor: Return HTTP 499 (Client Closed Request) instead of 500 when a remote-write or OTLP push is canceled by the client, so client-side cancellations are no longer counted as server-side errors. This deflates `cortex_request_duration_seconds{status_code="500"}`; SLOs and alerts computed from 5xx rates need to account for the shift to 499 (see also #7738). #7717
 * [BUGFIX] Querier: Fix gRPC `codes.Canceled` errors being mapped to HTTP 500 instead of 499 when a client cancels a query. #7738
-* [BUGFIX] Fix the gRPC DNS watcher's SRV record path deleting all known endpoints when the SRV query succeeds but every target's A record lookup fails. #7745
 * [BUGFIX] Compactor: Fix spurious `bucket operation fail after retries` error logs emitted during partial block cleanup. #7749
 * [BUGFIX] Alertmanager: Fix panic in `validateAlertmanagerConfig` when receiver config traversal encounters nil interface values. #7751
 * [BUGFIX] Parquet Converter: Fix `auto_forget_delay` having no effect. The ring lifecycler was created without the auto-forget delegate, so unhealthy instances were never automatically removed from the ring. #7752
-* [BUGFIX] Compactor: Properly handle error from ReadPartitionedGroupInfo in UpdatePartitionedGroupInfo. #7766
-* [BUGFIX] Alertmanager: Reject the global `mattermost_webhook_url_file` setting in per-tenant configs, consistent with every other global `*_file` setting. #7768
-* [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
-* [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
+* [BUGFIX] Ring: Fix `DoBatch` cleanup callback blocked forever when a callback panics, leaking context timers and request buffers for all `DoBatch` callers. #7559
+* [BUGFIX] Config: Fix validation of explicit zero values in non-empty YAML root sections, allowing configs such as `flusher: { exit_after_flush: false }` while continuing to reject empty root sections. #7700
+* [BUGFIX] Compactor: Properly handle error from `ReadPartitionedGroupInfo` in `UpdatePartitionedGroupInfo`. #7766
 
 ## 1.21.1 2026-06-04
 

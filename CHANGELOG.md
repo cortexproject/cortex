@@ -69,6 +69,7 @@
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
+* [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389

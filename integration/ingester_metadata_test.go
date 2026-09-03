@@ -62,8 +62,8 @@ func TestIngesterMetadata(t *testing.T) {
 	metadataMetricNum := 5
 	metadataPerMetrics := 2
 	metadata := make([]prompb.MetricMetadata, 0, metadataMetricNum)
-	for i := 0; i < metadataMetricNum; i++ {
-		for j := 0; j < metadataPerMetrics; j++ {
+	for i := range metadataMetricNum {
+		for j := range metadataPerMetrics {
 			metadata = append(metadata, prompb.MetricMetadata{
 				MetricFamilyName: fmt.Sprintf("metadata_name_%d", i),
 				Help:             fmt.Sprintf("metadata_help_%d_%d", i, j),
@@ -127,8 +127,8 @@ func TestIngesterMetadataWithTenantFederation(t *testing.T) {
 	metadataMetricNum := 5
 	metadataPerMetrics := 2
 	metadata := make([]prompb.MetricMetadata, 0, metadataMetricNum)
-	for i := 0; i < metadataMetricNum; i++ {
-		for j := 0; j < metadataPerMetrics; j++ {
+	for i := range metadataMetricNum {
+		for j := range metadataPerMetrics {
 			metadata = append(metadata, prompb.MetricMetadata{
 				MetricFamilyName: fmt.Sprintf("metadata_name_%d", i),
 				Help:             fmt.Sprintf("metadata_help_%d_%d", i, j),
@@ -139,7 +139,7 @@ func TestIngesterMetadataWithTenantFederation(t *testing.T) {
 
 	numUsers := 2
 	tenantIDs := make([]string, numUsers)
-	for u := 0; u < numUsers; u++ {
+	for u := range numUsers {
 		tenantIDs[u] = fmt.Sprintf("user-%d", u)
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), querier.HTTPEndpoint(), "", "", tenantIDs[u])
 		require.NoError(t, err)

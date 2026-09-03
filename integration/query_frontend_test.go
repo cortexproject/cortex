@@ -327,7 +327,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	now := time.Now()
 	expectedVectors := make([]model.Vector, numUsers)
 
-	for u := 0; u < numUsers; u++ {
+	for u := range numUsers {
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", fmt.Sprintf("user-%d", u))
 		require.NoError(t, err)
 
@@ -343,7 +343,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 	wg := sync.WaitGroup{}
 	wg.Add(numUsers * numQueriesPerUser)
 
-	for u := 0; u < numUsers; u++ {
+	for u := range numUsers {
 		userID := u
 
 		c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", fmt.Sprintf("user-%d", userID))
@@ -411,7 +411,7 @@ func runQueryFrontendTest(t *testing.T, cfg queryFrontendTestConfig) {
 			require.Equal(t, apiErr.Type, v1.ErrBadData)
 		}
 
-		for q := 0; q < numQueriesPerUser; q++ {
+		for range numQueriesPerUser {
 			go func() {
 				defer wg.Done()
 
@@ -996,7 +996,7 @@ func TestQueryFrontendResponseSizeLimit(t *testing.T) {
 	require.NoError(t, err)
 
 	startTime := time.Now().Add(-1 * time.Hour)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ts := startTime.Add(time.Duration(i) * time.Minute)
 		longLabelValue1 := strings.Repeat("long_label_value_1_", 100)
 		longLabelValue2 := strings.Repeat("long_label_value_2_", 100)

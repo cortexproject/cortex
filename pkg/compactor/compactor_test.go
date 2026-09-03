@@ -1522,6 +1522,12 @@ func removeIgnoredLogs(input []string) []string {
 	ignoredLogStringsRegexList := []*regexp.Regexp{
 		regexp.MustCompile(`^level=(info|debug|warn) component=cleaner .+$`),
 		regexp.MustCompile(`^level=info component=compactor msg="set state" .+$`),
+		// The user index update loop ticks every UsersScanner.UpdateInterval (100ms in tests) and
+		// logs these whenever it runs while the ring has no healthy instance, which happens before
+		// the lifecycler is ACTIVE and again once it starts LEAVING. Both carry a variable err=
+		// payload, so they can't be matched exactly like the other lines this loop emits.
+		regexp.MustCompile(`^level=error component=compactor msg="failed to check if compactor owns updating user index" err=.+$`),
+		regexp.MustCompile(`^level=error component=compactor msg="failed to update user index" err=.+$`),
 	}
 
 	out := make([]string, 0, len(input))
@@ -1556,6 +1562,27 @@ main:
 	}
 
 	return out
+}
+
+func TestRemoveIgnoredLogs_UserIndexUpdateLoop(t *testing.T) {
+	t.Parallel()
+
+	// userIndexUpdateLoop runs in the background of every sharding-enabled compactor test and ticks
+	// every UsersScanner.UpdateInterval (100ms in tests), so any line it can emit must be ignored.
+	// Otherwise it non-deterministically leaks into the tests that assert the exact log output.
+	ignored := []string{
+		`level=error component=compactor msg="failed to check if compactor owns updating user index" err="at least 1 live replicas required, could only find 0 - unhealthy instances: 1.2.3.4:0"`,
+		`level=error component=compactor msg="failed to update user index" err="mocked error"`,
+		`level=error component=compactor msg="context timeout, exit user index update loop" err="context canceled"`,
+		`level=info component=compactor msg="successfully updated user index" duration_ms=1`,
+	}
+	assert.Empty(t, removeIgnoredLogs(ignored))
+
+	// Unrelated compactor errors must still come through.
+	kept := []string{
+		`level=error component=compactor msg="failed to compact user blocks" user=user-1 err="mocked error"`,
+	}
+	assert.Equal(t, kept, removeIgnoredLogs(kept))
 }
 
 func prepareConfig() Config {

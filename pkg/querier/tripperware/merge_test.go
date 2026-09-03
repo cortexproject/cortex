@@ -15,7 +15,7 @@ var (
 	testHistogram1 = SampleHistogram{
 		Count: 13.5,
 		Sum:   3897.1,
-		Buckets: []*HistogramBucket{
+		Buckets: []HistogramBucket{
 			{
 				Boundaries: 1,
 				Lower:      -4870.992343051145,

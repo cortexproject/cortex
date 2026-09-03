@@ -45,8 +45,6 @@ import (
 type Config struct {
 	MaxConcurrent                  int           `yaml:"max_concurrent"`
 	Timeout                        time.Duration `yaml:"timeout"`
-	IngesterStreaming              bool          `yaml:"ingester_streaming" doc:"hidden"`
-	IngesterMetadataStreaming      bool          `yaml:"ingester_metadata_streaming"`
 	IngesterLabelNamesWithMatchers bool          `yaml:"ingester_label_names_with_matchers"`
 	MaxSamples                     int           `yaml:"max_samples"`
 	EnablePerStepStats             bool          `yaml:"per_step_stats_enabled"`
@@ -133,7 +131,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", true, "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.")
 	f.BoolVar(&cfg.IngesterLabelNamesWithMatchers, "querier.ingester-label-names-with-matchers", false, "Use LabelNames ingester RPCs with match params.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
@@ -266,7 +263,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		)
 	}
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {

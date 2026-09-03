@@ -104,11 +104,6 @@ querier:
   # CLI flag: -querier.timeout
   [timeout: <duration> | default = 2m]
 
-  # Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-  # for metadata APIs from ingester.
-  # CLI flag: -querier.ingester-metadata-streaming
-  [ingester_metadata_streaming: <boolean> | default = true]
-
   # Use LabelNames ingester RPCs with match params.
   # CLI flag: -querier.ingester-label-names-with-matchers
   [ingester_label_names_with_matchers: <boolean> | default = false]

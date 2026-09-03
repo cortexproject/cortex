@@ -6670,7 +6670,7 @@ func TestExpendedPostingsCacheIsolation(t *testing.T) {
 	cfg.BlocksStorageConfig.TSDB.BlockRanges = []time.Duration{2 * time.Hour}
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.BlocksStorageConfig.TSDB.PostingsCache = cortex_tsdb.TSDBPostingsCacheConfig{
-		SeedSize: 3, // lets make sure all metric names collide
+		LabelCounterSize: 3, // lets make sure all metric names collide
 		Head: cortex_tsdb.PostingsCacheConfig{
 			Enabled:  true,
 			Ttl:      time.Hour,
@@ -7082,9 +7082,15 @@ func TestExpendedPostingsCache(t *testing.T) {
 			extraMatcher := []struct {
 				matchers       []*client.LabelMatcher
 				expectedLenght int
+				// invalidatedByPush is true if pushing a series with a="new" below should
+				// invalidate this matcher's cached head entry. Postings are invalidated per
+				// label: an equality matcher is keyed by value, so a="new" does not touch the
+				// a="aaa1" entry; a regex matcher is keyed by name, so a="new" invalidates it.
+				invalidatedByPush bool
 			}{
 				{
-					expectedLenght: 10,
+					expectedLenght:    10,
+					invalidatedByPush: true,
 					matchers: []*client.LabelMatcher{
 						{
 							Type:  client.REGEX_MATCH,
@@ -7094,7 +7100,8 @@ func TestExpendedPostingsCache(t *testing.T) {
 					},
 				},
 				{
-					expectedLenght: 1,
+					expectedLenght:    1,
+					invalidatedByPush: false,
 					matchers: []*client.LabelMatcher{
 						{
 							Type:  client.EQUAL,
@@ -7171,9 +7178,9 @@ func TestExpendedPostingsCache(t *testing.T) {
 			// Query block and head
 			require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedBlockPostingCall+c.expectedHeadPostingCall))
 
-			// Adding a metric for the first metric name so we expire all caches for that metric name
+			// Adding a series with the queried label "a" to expire the caches for that metric name and label
 			_, err = i.Push(ctx, cortexpb.ToWriteRequest(
-				[]labels.Labels{labels.FromStrings(labels.MetricName, metricNames[0], "extra", "1")}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
+				[]labels.Labels{labels.FromStrings(labels.MetricName, metricNames[0], "a", "new", "extra", "1")}, []cortexpb.Sample{{Value: 2, TimestampMs: 4 * 60 * 60 * 1000}}, nil, nil, cortexpb.API))
 			require.NoError(t, err)
 
 			for in, name := range metricNames {
@@ -7182,8 +7189,11 @@ func TestExpendedPostingsCache(t *testing.T) {
 
 					require.Len(t, runQuery(t, ctx, i, append(m.matchers, &client.LabelMatcher{Type: client.EQUAL, Name: labels.MetricName, Value: name})), m.expectedLenght)
 
-					// first metric name should be expired
-					if in == 0 {
+					// Only the first metric name had a series pushed, and only matchers whose
+					// tracked slot was bumped by that push are invalidated (see invalidatedByPush).
+					// An invalidated head entry refetches; the block stays cached, so everything
+					// else is served from cache.
+					if in == 0 && m.invalidatedByPush {
 						// Query only head as the block is already cached and the head was expired
 						require.Equal(t, postingsForMatchersCalls.Load(), int64(c.expectedHeadPostingCall))
 					} else {

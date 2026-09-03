@@ -137,7 +137,7 @@ func generateData(timeseries, datapoints int) (floatMatrix, histogramMatrix []*S
 				Histogram: SampleHistogram{
 					Count: 13.5 * f,
 					Sum:   .1 * f,
-					Buckets: []*HistogramBucket{
+					Buckets: []HistogramBucket{
 						{
 							Boundaries: 1,
 							Lower:      -4870.992343051145,

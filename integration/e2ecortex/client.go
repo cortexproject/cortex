@@ -818,12 +818,15 @@ func (c *Client) GetRuleGroups() (map[string][]rulefmt.RuleGroup, error) {
 
 // SetRuleGroup configures the provided rulegroup to the ruler.
 func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) error {
-	// Create write request
 	data, err := yaml.Marshal(rulegroup)
 	if err != nil {
 		return err
 	}
+	return c.SetRuleGroupYAML(data, namespace)
+}
 
+// SetRuleGroupYAML configures the provided YAML encoded rulegroup to the ruler.
+func (c *Client) SetRuleGroupYAML(data []byte, namespace string) error {
 	// Create HTTP request
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), bytes.NewReader(data))
 	if err != nil {

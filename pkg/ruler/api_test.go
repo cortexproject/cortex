@@ -786,3 +786,132 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 
 	return req.WithContext(ctx)
 }
+
+func TestRuler_CreateFederated(t *testing.T) {
+	const federatedGroup = `
+name: test
+interval: 15s
+src_tenants: [team-b, team-a, team-b]
+rules:
+- record: up_rule
+  expr: sum by (__tenant_id__) (up)
+`
+	const plainGroup = `
+name: test
+interval: 15s
+rules:
+- record: up_rule
+  expr: up
+`
+
+	tc := []struct {
+		name   string
+		cfg    func(cfg *Config)
+		user   string
+		input  string
+		status int
+		err    string
+		output string
+	}{
+		{
+			name:   "federated rules disabled",
+			cfg:    func(*Config) {},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 400,
+			err:    "federated rules are disabled\n",
+		},
+		{
+			name:   "plain group accepted when federated rules are disabled",
+			cfg:    func(*Config) {},
+			user:   "infra",
+			input:  plainGroup,
+			status: 202,
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up\n",
+		},
+		{
+			name: "tenant not allowed",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.AllowedFederatedTenants = []string{"infra"}
+			},
+			user:   "team-a",
+			input:  federatedGroup,
+			status: 403,
+			err:    "tenant is not allowed to create federated rule groups: team-a\n",
+		},
+		{
+			name: "invalid src tenant",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+			},
+			user:   "infra",
+			input:  strings.Replace(federatedGroup, "team-a", "team|a", 1),
+			status: 400,
+			err:    "invalid src tenant \"team|a\"",
+		},
+		{
+			name: "too many src tenants",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.TenantFederationMaxTenant = 1
+			},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 400,
+			err:    "too many src tenants (limit: 1 actual: 2)\n",
+		},
+		{
+			name: "stored with normalized src tenants",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.AllowedFederatedTenants = []string{"infra"}
+			},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 202,
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: sum by (__tenant_id__) (up)\nsrc_tenants:\n    - team-a\n    - team-b\n",
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
+			cfg := defaultRulerConfig(t)
+			tt.cfg(&cfg)
+
+			r := newTestRuler(t, cfg, store, nil)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			router := mux.NewRouter()
+			router.Path("/api/v1/rules").Methods("GET").HandlerFunc(a.ListRules)
+			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").HandlerFunc(a.GetRuleGroup)
+
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), tt.user)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+
+			if tt.err != "" {
+				require.Contains(t, w.Body.String(), tt.err)
+				return
+			}
+
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace/test", nil, tt.user)
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+
+			// The rule group listing exposes src_tenants as well.
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules", nil, tt.user)
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+			require.Equal(t, strings.Contains(tt.input, "src_tenants"), strings.Contains(w.Body.String(), "src_tenants"))
+		})
+	}
+}

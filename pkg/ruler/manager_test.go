@@ -8,17 +8,21 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestSyncRuleGroups(t *testing.T) {
@@ -451,4 +455,119 @@ func TestValidateRuleGroup_RejectsEmptyGroupName(t *testing.T) {
 	// Should have validation errors
 	require.NotEmpty(t, errs, "Expected validation errors for empty group name")
 	require.Contains(t, errs[0].Error(), "rule group name must not be empty", "Error should mention empty group name")
+}
+
+func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
+	const owner = "infra"
+
+	newGroup := func(file, name string) *promRules.Group {
+		return promRules.NewGroup(promRules.GroupOptions{
+			Name: name,
+			File: file,
+			Opts: &promRules.ManagerOptions{Logger: promslog.NewNopLogger()},
+		})
+	}
+	federated := &rulespb.RuleGroupDesc{
+		Name:       "federated",
+		Namespace:  "ns",
+		Interval:   time.Minute,
+		User:       owner,
+		SrcTenants: []string{"team-a", "team-b"},
+		Rules:      []*rulespb.RuleDesc{{Record: "federated_rule", Expr: "up"}},
+	}
+	plain := &rulespb.RuleGroupDesc{
+		Name:      "plain",
+		Namespace: "ns",
+		Interval:  time.Minute,
+		User:      owner,
+		Rules:     []*rulespb.RuleDesc{{Record: "plain_rule", Expr: "up"}},
+	}
+
+	// Federated rule groups require the multi tenant resolver, like in production.
+	users.WithDefaultResolver(users.NewMultiResolver())
+	t.Cleanup(func() { users.WithDefaultResolver(users.NewSingleResolver()) })
+
+	newFederatedManager := func(t *testing.T, cfg Config, captured map[string]string) *DefaultMultiTenantManager {
+		cfg.RulePath = t.TempDir()
+		iterFunc := func(ctx context.Context, g *promRules.Group, _ time.Time) {
+			tenantIDs, err := users.TenantIDs(ctx)
+			require.NoError(t, err)
+			captured[g.Name()] = users.JoinTenantIDs(tenantIDs)
+		}
+		waitDurations := []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+		m, err := NewDefaultMultiTenantManagerWithIterationFunc(iterFunc, cfg, &ruleLimits{}, RuleManagerFactory([][]*promRules.Group{{}, {}, {}}, waitDurations), nil, prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(m.Stop)
+		return m
+	}
+
+	evaluate := func(m *DefaultMultiTenantManager, name string) {
+		file := m.mapper.ruleFilePath(owner, "ns")
+		m.ruleGroupIterationFuncFor(owner)(user.InjectOrgID(context.Background(), owner), newGroup(file, name), time.Now())
+	}
+
+	readRuleFile := func(t *testing.T, m *DefaultMultiTenantManager) string {
+		content, err := afero.ReadFile(m.mapper.FS, m.mapper.ruleFilePath(owner, "ns"))
+		require.NoError(t, err)
+		return string(content)
+	}
+
+	t.Run("federated groups query their src tenants", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		require.NotNil(t, getManager(m, owner))
+		require.Contains(t, readRuleFile(t, m), "federated_rule")
+
+		evaluate(m, "federated")
+		evaluate(m, "plain")
+		require.Equal(t, "team-a|team-b", captured["federated"])
+		require.Equal(t, owner, captured["plain"])
+
+		// Storing the same group without src tenants stops the injection at the next
+		// evaluation, even though the prometheus manager keeps the existing group.
+		noSrcTenants := *federated
+		noSrcTenants.SrcTenants = nil
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&noSrcTenants, plain}})
+		require.Contains(t, readRuleFile(t, m), "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups are skipped when disabled", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		require.NotNil(t, getManager(m, owner))
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups are skipped when the owner is not allowed", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, AllowedFederatedTenants: []string{"other"}}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+	})
+
+	t.Run("federated groups are forgotten when the user is removed", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated}})
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{})
+		m.federatedGroupsMtx.RLock()
+		defer m.federatedGroupsMtx.RUnlock()
+		require.Empty(t, m.federatedGroups)
+	})
 }

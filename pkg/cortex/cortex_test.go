@@ -175,6 +175,25 @@ func TestConfigValidation(t *testing.T) {
 			expectedError: errInvalidHTTPPrefix,
 		},
 		{
+			name: "should fail validation if federated rules are enabled without tenant federation",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Ruler.EnableFederatedRules = true
+				return configuration
+			},
+			expectedError: errRulerFederatedRulesRequireTenantFederation,
+		},
+		{
+			name: "should pass validation if federated rules are enabled with tenant federation",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Ruler.EnableFederatedRules = true
+				configuration.TenantFederation.Enabled = true
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
 			name: "should fail validation for invalid resource to monitor",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()

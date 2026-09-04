@@ -168,11 +168,19 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
+	// Federated rule groups query data from the tenants listed in `src_tenants`.
+	EnableFederatedRules       bool                   `yaml:"enable_federated_rules"`
+	AllowedFederatedTenants    flagext.StringSliceCSV `yaml:"allowed_federated_tenants"`
+	DisallowedFederatedTenants flagext.StringSliceCSV `yaml:"disallowed_federated_tenants"`
+
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	// Field will be populated during runtime.
 	LookbackDelta        time.Duration `yaml:"-"`
 	PrometheusHTTPPrefix string        `yaml:"-"`
+	// Populated from the tenant federation config.
+	TenantFederationRegexMatcherEnabled bool `yaml:"-"`
+	TenantFederationMaxTenant           int  `yaml:"-"`
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
@@ -268,6 +276,10 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
+	f.BoolVar(&cfg.EnableFederatedRules, "ruler.enable-federated-rules", false, "[Experimental] Enable federated rule groups. A federated rule group lists the tenants to query in its `src_tenants` field, while the resulting series and alerts always belong to the tenant owning the rule group. Requires -tenant-federation.enabled=true.")
+	f.Var(&cfg.AllowedFederatedTenants, "ruler.allowed-federated-tenants", "[Experimental] Comma separated list of tenants allowed to create federated rule groups. If specified, only these tenants can create federated rule groups, otherwise all tenants can.")
+	f.Var(&cfg.DisallowedFederatedTenants, "ruler.disallowed-federated-tenants", "[Experimental] Comma separated list of tenants that cannot create federated rule groups. If specified, a tenant that would normally be allowed to create federated rule groups is denied instead.")
+
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
@@ -297,6 +309,9 @@ type MultiTenantManager interface {
 	Stop()
 	// ValidateRuleGroup validates a rulegroup
 	ValidateRuleGroup(rulefmt.RuleGroup) []error
+	// ValidateFederatedRuleGroup checks that userID may own a federated rule group
+	// and returns its source tenants sorted and de-duplicated.
+	ValidateFederatedRuleGroup(userID string, srcTenants []string) ([]string, error)
 }
 
 // Ruler evaluates rules.
@@ -1712,7 +1727,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		if userRules, err = r.store.LoadRuleGroups(ctx, userRules); err != nil {
 			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
 		}
-		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}
+		data := map[string]map[string][]rulespb.RuleGroup{userID: userRules[userID].FormattedRuleGroups()}
 
 		select {
 		case iter <- data:

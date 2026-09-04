@@ -186,7 +186,7 @@ func (l *Client) loadAllRulesGroupsForUserAndNamespace(_ context.Context, userID
 	var list rulespb.RuleGroupList
 
 	for _, group := range rulegroups.Groups {
-		desc := rulespb.ToProto(userID, namespace, group)
+		desc := rulespb.ToProto(userID, namespace, rulespb.RuleGroup{RuleGroup: group})
 		list = append(list, desc)
 	}
 

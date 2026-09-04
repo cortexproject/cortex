@@ -71,7 +71,7 @@ To support this we suggest an additional field `src_tenants` on the rule group c
 
 | Challenge                                                                | Status                                |
 |--------------------------------------------------------------------------|---------------------------------------|
-| Allow federated rules behind feature flag                                | Planned but not yet implemented       |
-| Allow federated rules only for select tenants                            | Planned but not yet implemented       |
-| Where to store resulting series of federated rules                       | Planned but not yet implemented       |
-| Which tenants to query from for federated rules                          | Planned but not yet implemented       |
+| Allow federated rules behind feature flag                                | Implemented                           |
+| Allow federated rules only for select tenants                            | Implemented                           |
+| Where to store resulting series of federated rules                       | Implemented                           |
+| Which tenants to query from for federated rules                          | Implemented                           |

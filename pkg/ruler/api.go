@@ -17,7 +17,6 @@ import (
 	"github.com/pkg/errors"
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v3"
 
@@ -527,7 +526,7 @@ func (a *API) ListRules(w http.ResponseWriter, req *http.Request) {
 
 	level.Debug(logger).Log("msg", "retrieved rule groups from rule store", "userID", userID, "num_namespaces", len(rgs))
 
-	formatted := rgs.Formatted()
+	formatted := rgs.FormattedRuleGroups()
 	marshalAndSend(formatted, w, logger)
 }
 
@@ -570,7 +569,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 	level.Debug(logger).Log("msg", "attempting to unmarshal rulegroup", "userID", userID, "group", string(payload))
 
-	rg := rulefmt.RuleGroup{}
+	rg := rulespb.RuleGroup{}
 	err = yaml.Unmarshal(payload, &rg)
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to unmarshal rule group payload", "err", err.Error())
@@ -578,7 +577,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	errs := a.ruler.manager.ValidateRuleGroup(rg)
+	errs := a.ruler.manager.ValidateRuleGroup(rg.RuleGroup)
 	if len(errs) > 0 {
 		e := []string{}
 		for _, err := range errs {
@@ -588,6 +587,20 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 
 		http.Error(w, strings.Join(e, ", "), http.StatusBadRequest)
 		return
+	}
+
+	if len(rg.SrcTenants) > 0 {
+		srcTenants, err := a.ruler.manager.ValidateFederatedRuleGroup(userID, rg.SrcTenants)
+		if err != nil {
+			level.Error(logger).Log("msg", "federated rule group validation failure", "err", err.Error(), "user", userID)
+			status := http.StatusBadRequest
+			if errors.Is(err, errFederatedRulesNotAllowed) {
+				status = http.StatusForbidden
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		rg.SrcTenants = srcTenants
 	}
 
 	if err := a.ruler.AssertMaxRulesPerRuleGroup(userID, len(rg.Rules)); err != nil {
@@ -615,7 +628,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 	loadedRg := rulespb.FromProto(rgProto)
 	rgYaml, err := yaml.Marshal(loadedRg)
 	if err == nil {
-		err = yaml.Unmarshal(rgYaml, &rulefmt.RuleGroup{})
+		err = yaml.Unmarshal(rgYaml, &rulespb.RuleGroup{})
 	}
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to load rule group from proto", "err", err.Error(), "user", userID)

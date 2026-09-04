@@ -53,12 +53,10 @@ func TestProto(t *testing.T) {
 
 func TestProtoRuleGroup(t *testing.T) {
 	rg := RuleGroup{
-		RuleGroup: rulefmt.RuleGroup{
-			Name:     "group1",
-			Interval: model.Duration(time.Minute),
-			Rules:    []rulefmt.Rule{{Record: "test_record", Expr: "test_expr", Labels: map[string]string{}, Annotations: map[string]string{}}},
-			Labels:   map[string]string{},
-		},
+		Name:       "group1",
+		Interval:   model.Duration(time.Minute),
+		Rules:      []rulefmt.Rule{{Record: "test_record", Expr: "test_expr", Labels: map[string]string{}, Annotations: map[string]string{}}},
+		Labels:     map[string]string{},
 		SrcTenants: []string{"team-a", "team-b"},
 	}
 

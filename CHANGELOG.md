@@ -110,6 +110,7 @@
 * [BUGFIX] Alertmanager: Reject the global `mattermost_webhook_url_file` setting in per-tenant configs, consistent with every other global `*_file` setting. #7768
 * [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
 * [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
+* [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
 
 ## 1.21.1 2026-06-04
 

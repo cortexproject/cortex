@@ -23,8 +23,23 @@ updates:
         exclude-patterns:
           - "github.com/thanos-io/thanos"
     ignore:
+      # The Prometheus and Thanos module families must be upgraded in lockstep with
+      # github.com/prometheus/prometheus and github.com/thanos-io/thanos, which we do
+      # manually — Dependabot bumping one of them alone breaks the build. See
+      # https://github.com/cortexproject/cortex/pull/7781, where client_golang v1.24
+      # changed api/prometheus/v1.LabelNames to return model.LabelNames.
+      #
+      # prometheus/prometheus itself is never auto-bumped. Note it maps Prometheus
+      # 3.x.y to tags v0.30x.y, so its "minor" bumps are real releases.
       - dependency-name: "github.com/prometheus/prometheus"
-        versions:
-          - ">=0.300.0-beta.0"
+      # For the rest of the Prometheus family, block major/minor (where the breaking
+      # changes land) but still allow patches, so security fixes land automatically.
+      - dependency-name: "github.com/prometheus/*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+      # All thanos-io modules are on pseudo-versions, which don't classify as
+      # major/minor/patch, so update-types wouldn't filter them — ignore outright.
+      - dependency-name: "github.com/thanos-io/*"
     schedule:
       interval: "daily"

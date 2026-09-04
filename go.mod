@@ -66,9 +66,15 @@ require (
 	github.com/spf13/afero v1.15.0
 	github.com/stretchr/testify v1.11.1
 	github.com/thanos-io/objstore v0.0.0-20250804093838-71d60dfee488
-	github.com/thanos-io/promql-engine v0.0.0-20260729073658-f8bd3f940687
-	github.com/thanos-io/thanos v0.42.1-0.20260727122508-92397939e4cc
-	github.com/tjhop/slog-gokit v0.2.0
+	// Pinned to main: promql-engine has never cut a tag, so a pseudo-version is the only
+	// option. We need thanosengine.Opts.SelectorBatchSize (-querier.selector-batch-size,
+	// #7763) and the logicalplan API that pkg/distributed_execution builds on.
+	github.com/thanos-io/promql-engine v0.0.0-20260817205454-68fb2c2c5d9b
+	// Pinned to main: promql-engine's api.RemoteEndpoints gained mint/maxt parameters on
+	// Engines(), and thanos/pkg/query implements that interface. The newest tag (v0.42.4,
+	// 146 commits behind main) predates the change, so downgrading breaks the build.
+	github.com/thanos-io/thanos v0.42.5-0.20260817064418-8908023d563b
+	github.com/tjhop/slog-gokit v0.2.2
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5
 	go.etcd.io/etcd/api/v3 v3.5.17

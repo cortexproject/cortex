@@ -12,13 +12,13 @@ import (
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/parse"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/schema"
 )
 
 func NewFunctionOperator(funcExpr *logicalplan.FunctionCall, nextOps []model.VectorOperator, stepsBatch int, opts *query.Options) (model.VectorOperator, error) {
@@ -234,9 +234,8 @@ func (o *functionOperator) loadSeries(ctx context.Context) error {
 		}
 		o.series = make([]labels.Labels, len(series))
 
-		var b labels.ScratchBuilder
 		for i, s := range series {
-			lbls := extlabels.DropReserved(s, b)
+			lbls := s.DropReserved(schema.IsMetadataLabel)
 			o.series[i] = lbls
 		}
 	})

@@ -47,7 +47,7 @@ func TestQuerierResponseCompression(t *testing.T) {
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", "user-1")
 	require.NoError(t, err)
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		series, _ := generateSeries(
 			fmt.Sprintf("series_%d", i),
 			now,
@@ -145,7 +145,7 @@ func TestQueryFrontendResponseCompression(t *testing.T) {
 	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), queryFrontend.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		series, _ := generateSeries(
 			fmt.Sprintf("series_%d", i),
 			now,

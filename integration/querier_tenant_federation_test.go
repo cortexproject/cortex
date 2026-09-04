@@ -453,7 +453,7 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 	expectedVectors := make([]model.Vector, numUsers)
 	tenantIDs := make([]string, numUsers)
 
-	for u := 0; u < numUsers; u++ {
+	for u := range numUsers {
 		tenantIDs[u] = fmt.Sprintf("user-%d", u)
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", tenantIDs[u])
 		require.NoError(t, err)
@@ -626,7 +626,7 @@ func runQuerierTenantFederationTest(t *testing.T, cfg querierTenantFederationCon
 	expectedVectors := make([]model.Vector, numUsers)
 	tenantIDs := make([]string, numUsers)
 
-	for u := 0; u < numUsers; u++ {
+	for u := range numUsers {
 		tenantIDs[u] = fmt.Sprintf("user-%d", u)
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", tenantIDs[u])
 		require.NoError(t, err)

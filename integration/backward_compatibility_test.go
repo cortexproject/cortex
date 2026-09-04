@@ -134,8 +134,8 @@ func TestMetadataAPIWhenDeployment(t *testing.T) {
 	metadataMetricNum := 5
 	metadataPerMetrics := 2
 	metadata := make([]prompb.MetricMetadata, 0, metadataMetricNum)
-	for i := 0; i < metadataMetricNum; i++ {
-		for j := 0; j < metadataPerMetrics; j++ {
+	for i := range metadataMetricNum {
+		for j := range metadataPerMetrics {
 			metadata = append(metadata, prompb.MetricMetadata{
 				MetricFamilyName: fmt.Sprintf("metadata_name_%d", i),
 				Help:             fmt.Sprintf("metadata_help_%d_%d", i, j),
@@ -220,7 +220,7 @@ func TestCanSupportHoltWintersFunc(t *testing.T) {
 	numSamples := 240
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 

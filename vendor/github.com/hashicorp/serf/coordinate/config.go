@@ -1,7 +1,12 @@
+// Copyright IBM Corp. 2013, 2026
+// SPDX-License-Identifier: MPL-2.0
+
 package coordinate
 
 import (
-	"github.com/armon/go-metrics"
+	"math/rand"
+
+	metrics "github.com/hashicorp/go-metrics/compat"
 )
 
 // Config is used to set the parameters of the Vivaldi-based coordinate mapping
@@ -11,12 +16,17 @@ import (
 // here:
 //
 // [1] Dabek, Frank, et al. "Vivaldi: A decentralized network coordinate system."
-//     ACM SIGCOMM Computer Communication Review. Vol. 34. No. 4. ACM, 2004.
+//
+//	ACM SIGCOMM Computer Communication Review. Vol. 34. No. 4. ACM, 2004.
+//
 // [2] Ledlie, Jonathan, Paul Gardner, and Margo I. Seltzer. "Network Coordinates
-//     in the Wild." NSDI. Vol. 7. 2007.
+//
+//	in the Wild." NSDI. Vol. 7. 2007.
+//
 // [3] Lee, Sanghwan, et al. "On suitability of Euclidean embedding for
-//     host-based network coordinate systems." Networking, IEEE/ACM Transactions
-//     on 18.1 (2010): 27-40.
+//
+//	host-based network coordinate systems." Networking, IEEE/ACM Transactions
+//	on 18.1 (2010): 27-40.
 type Config struct {
 	// The dimensionality of the coordinate system. As discussed in [2], more
 	// dimensions improves the accuracy of the estimates up to a point. Per [2]
@@ -59,6 +69,8 @@ type Config struct {
 
 	// metricLabels is the slice of labels to put on all emitted metrics
 	MetricLabels []metrics.Label
+
+	rand *rand.Rand
 }
 
 // DefaultConfig returns a Config that has some default values suitable for
@@ -73,5 +85,6 @@ func DefaultConfig() *Config {
 		HeightMin:            10.0e-6,
 		LatencyFilterSize:    3,
 		GravityRho:           150.0,
+		rand:                 nil,
 	}
 }

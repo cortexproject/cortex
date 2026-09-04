@@ -3844,11 +3844,6 @@ The `fifo_cache_config` configures the local in-memory cache.
 # The expiry duration for the cache.
 # CLI flag: -frontend.fifocache.duration
 [validity: <duration> | default = 0s]
-
-# Deprecated (use max-size-items or max-size-bytes instead): The number of
-# entries to cache.
-# CLI flag: -frontend.fifocache.size
-[size: <int> | default = 0]
 ```
 
 ### `flusher_config`
@@ -4832,12 +4827,6 @@ query_rejection:
   # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
-# Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0:
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
-
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # ruler. When this setting is specified in the per-tenant overrides, a value of
 # 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size
@@ -5275,11 +5264,6 @@ The `querier_config` configures the Cortex querier.
 # The timeout for a query.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
-
-# Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-# for metadata APIs from ingester.
-# CLI flag: -querier.ingester-metadata-streaming
-[ingester_metadata_streaming: <boolean> | default = true]
 
 # Use LabelNames ingester RPCs with match params.
 # CLI flag: -querier.ingester-label-names-with-matchers

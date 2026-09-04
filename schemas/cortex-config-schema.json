@@ -4710,12 +4710,6 @@
           "type": "number",
           "x-cli-flag": "frontend.fifocache.max-size-items"
         },
-        "size": {
-          "default": 0,
-          "description": "Deprecated (use max-size-items or max-size-bytes instead): The number of entries to cache. ",
-          "type": "number",
-          "x-cli-flag": "frontend.fifocache.size"
-        },
         "validity": {
           "default": "0s",
           "description": "The expiry duration for the cache.",
@@ -6129,13 +6123,6 @@
           "description": "Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. A jsonEscape function is also provided for embedding expressions inside JSON-encoded URL parameters. If empty, uses default Prometheus /graph format.",
           "type": "string"
         },
-        "ruler_evaluation_delay_duration": {
-          "default": "0s",
-          "description": "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.",
-          "type": "string",
-          "x-cli-flag": "ruler.evaluation-delay-duration",
-          "x-format": "duration"
-        },
         "ruler_external_labels": {
           "additionalProperties": true,
           "default": [],
@@ -6589,12 +6576,6 @@
           "description": "Use LabelNames ingester RPCs with match params.",
           "type": "boolean",
           "x-cli-flag": "querier.ingester-label-names-with-matchers"
-        },
-        "ingester_metadata_streaming": {
-          "default": true,
-          "description": "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.",
-          "type": "boolean",
-          "x-cli-flag": "querier.ingester-metadata-streaming"
         },
         "ingester_query_max_attempts": {
           "default": 1,

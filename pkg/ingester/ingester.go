@@ -1838,6 +1838,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 	ctx := srv.Context()
+	tracer := opentracing.GlobalTracer()
+	// Drop the span of the connection, which lives for as long as the connection does:
+	// requests are traced from the trace context carried by their own message.
+	baseCtx := opentracing.ContextWithSpan(ctx, nil)
 	for {
 		select {
 		case <-ctx.Done():
@@ -1865,7 +1869,16 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 			}
 		}
 
-		pushCtx := user.InjectOrgID(ctx, req.TenantID)
+		pushCtx := user.InjectOrgID(baseCtx, req.TenantID)
+
+		// Trace the push as part of its own write request, not of the connection it was
+		// sent on. Ignore errors: with no parent span we simply don't create one.
+		parentSpanContext, _ := cortexpb.GetParentSpanForStreamWriteRequest(tracer, req)
+		var requestSpan opentracing.Span
+		if parentSpanContext != nil {
+			requestSpan, pushCtx = opentracing.StartSpanFromContextWithTracer(pushCtx, tracer, "Ingester.PushStreamRequest", opentracing.ChildOf(parentSpanContext))
+		}
+
 		resp, err := i.Push(pushCtx, req.Request)
 		if resp == nil {
 			resp = &cortexpb.WriteResponse{}
@@ -1882,6 +1895,9 @@ func (i *Ingester) PushStream(srv client.Ingester_PushStreamServer) error {
 		}
 		err = srv.Send(resp)
 		req.Free()
+		if requestSpan != nil {
+			requestSpan.Finish()
+		}
 		if err != nil {
 			level.Error(logutil.WithContext(ctx, i.logger)).Log("msg", "error sending from PushStream", "err", err)
 		}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -36,20 +37,94 @@ func getCortexProjectDir() string {
 	return os.Getenv("GOPATH") + "/src/github.com/cortexproject/cortex"
 }
 
-// getLatestReleaseImage returns the Cortex image reference for the latest release,
-// derived from the VERSION file at the project root.
+// getLatestReleaseImage returns the Cortex image reference for the latest published
+// release, derived from the VERSION file at the project root.
+//
+// Set CORTEX_LATEST_RELEASE_IMAGE to override the resolution entirely.
+//
+// If you change how this resolves, remember to update the preloading done by GitHub
+// Actions too (see .github/workflows/test-build-deploy.yml).
 func getLatestReleaseImage() (string, error) {
+	if image := os.Getenv("CORTEX_LATEST_RELEASE_IMAGE"); image != "" {
+		return image, nil
+	}
+
 	content, err := os.ReadFile(filepath.Join(getCortexProjectDir(), "VERSION"))
 	if err != nil {
 		return "", errors.Wrap(err, "unable to read VERSION file")
 	}
 
-	version := strings.TrimSpace(string(content))
+	version, err := latestReleaseVersion(strings.TrimSpace(string(content)))
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("quay.io/cortexproject/cortex:v%s", version), nil
+}
+
+// latestReleaseVersion maps the contents of the VERSION file to a version that has
+// actually been published to the container registries.
+//
+// VERSION does not always name a published release. On a release branch it is bumped to
+// the version being prepared (e.g. "1.22.0-rc.0") long before the deploy job publishes
+// that tag, and the integration job runs before deploy. So a pre-release version resolves
+// to the release preceding it, which is always already published by then:
+//
+//	1.21.1      -> 1.21.1  (VERSION on master is the last GA, whose image exists)
+//	1.22.0-rc.0 -> 1.21.0  (the previous minor always shipped a .0)
+//	1.22.2-rc.1 -> 1.22.1  (the preceding patch of the same minor)
+func latestReleaseVersion(version string) (string, error) {
 	if version == "" {
 		return "", errors.New("VERSION file is empty")
 	}
 
-	return fmt.Sprintf("quay.io/cortexproject/cortex:v%s", version), nil
+	// Anything after the first "-" is a pre-release identifier (e.g. "-rc.0").
+	base, preRelease, isPreRelease := strings.Cut(version, "-")
+	if !isPreRelease {
+		return version, nil
+	}
+
+	major, minor, patch, err := parseVersion(base)
+	if err != nil {
+		return "", errors.Wrapf(err, "unable to resolve the release preceding pre-release version %q", version)
+	}
+
+	switch {
+	case patch > 0:
+		// A patch pre-release: the preceding patch of the same minor is published.
+		patch--
+	case minor > 0:
+		// A minor pre-release: the previous minor's initial release is published. Using
+		// .0 rather than its latest patch keeps this derivable from VERSION alone.
+		minor--
+		patch = 0
+	default:
+		// A major pre-release (e.g. "2.0.0-rc.0"). The last release of the previous major
+		// is not derivable from VERSION, so the maintainer has to say which one it is.
+		return "", errors.Errorf("cannot resolve the release preceding major pre-release version %q (base %q, pre-release %q):"+
+			" set CORTEX_LATEST_RELEASE_IMAGE to the latest published release image", version, base, preRelease)
+	}
+
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch), nil
+}
+
+func parseVersion(version string) (major, minor, patch int, err error) {
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return 0, 0, 0, errors.Errorf("expected a major.minor.patch version, got %q", version)
+	}
+
+	out := make([]int, len(parts))
+	for i, part := range parts {
+		if out[i], err = strconv.Atoi(part); err != nil {
+			return 0, 0, 0, errors.Wrapf(err, "invalid version %q", version)
+		}
+		if out[i] < 0 {
+			return 0, 0, 0, errors.Errorf("invalid version %q", version)
+		}
+	}
+
+	return out[0], out[1], out[2], nil
 }
 
 func writeFileToSharedDir(s *e2e.Scenario, dst string, content []byte) error {

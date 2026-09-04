@@ -7,6 +7,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestProto(t *testing.T) {
@@ -32,7 +34,7 @@ func TestProto(t *testing.T) {
 		Labels:      map[string]string{},
 	}
 
-	desc := ToProto("test", "namespace", rg)
+	desc := ToProto("test", "namespace", RuleGroup{RuleGroup: rg})
 
 	assert.Equal(t, len(rules), len(desc.Rules))
 	assert.Equal(t, 30*time.Second, *desc.QueryOffset)
@@ -45,5 +47,45 @@ func TestProto(t *testing.T) {
 	assert.Equal(t, time.Hour, ruleDesc.KeepFiringFor)
 
 	formatted := FromProto(desc)
-	assert.Equal(t, rg, formatted)
+	assert.Equal(t, rg, formatted.RuleGroup)
+	assert.Empty(t, formatted.SrcTenants)
+}
+
+func TestProtoRuleGroup(t *testing.T) {
+	rg := RuleGroup{
+		Name:       "group1",
+		Interval:   model.Duration(time.Minute),
+		Rules:      []rulefmt.Rule{{Record: "test_record", Expr: "test_expr", Labels: map[string]string{}, Annotations: map[string]string{}}},
+		Labels:     map[string]string{},
+		SrcTenants: []string{"team-a", "team-b"},
+	}
+
+	desc := ToProto("test", "namespace", rg)
+	assert.Equal(t, []string{"team-a", "team-b"}, desc.SrcTenants)
+	assert.True(t, desc.IsFederated())
+
+	assert.Equal(t, rg, FromProto(desc))
+
+	// Groups without src tenants are not federated.
+	plain := ToProto("test", "namespace", RuleGroup{RuleGroup: rg.RuleGroup})
+	assert.False(t, plain.IsFederated())
+	assert.Empty(t, FromProto(plain).SrcTenants)
+}
+
+func TestRuleGroupYAML(t *testing.T) {
+	in := "name: group1\ninterval: 1m\nsrc_tenants:\n    - team-a\n    - team-b\nrules:\n    - record: test_record\n      expr: test_expr\n"
+
+	rg := RuleGroup{}
+	require.NoError(t, yaml.Unmarshal([]byte(in), &rg))
+	assert.Equal(t, "group1", rg.Name)
+	assert.Equal(t, []string{"team-a", "team-b"}, rg.SrcTenants)
+
+	out, err := yaml.Marshal(rg)
+	require.NoError(t, err)
+	assert.Equal(t, "name: group1\ninterval: 1m\nrules:\n    - record: test_record\n      expr: test_expr\nsrc_tenants:\n    - team-a\n    - team-b\n", string(out))
+
+	// src_tenants is omitted when empty, keeping the output of plain groups unchanged.
+	out, err = yaml.Marshal(RuleGroup{RuleGroup: rg.RuleGroup})
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), "src_tenants")
 }

@@ -7351,6 +7351,11 @@
           "type": "string",
           "x-cli-flag": "ruler.alertmanager-url"
         },
+        "allowed_federated_tenants": {
+          "description": "[Experimental] Comma separated list of tenants allowed to create federated rule groups. If specified, only these tenants can create federated rule groups, otherwise all tenants can.",
+          "type": "string",
+          "x-cli-flag": "ruler.allowed-federated-tenants"
+        },
         "api_deduplicate_rules": {
           "default": false,
           "description": "EXPERIMENTAL: Remove duplicate rules in the prometheus rules and alerts API response. If there are duplicate rules the rule with the latest evaluation timestamp will be kept.",
@@ -7374,6 +7379,11 @@
           "type": "string",
           "x-cli-flag": "ruler.disabled-tenants"
         },
+        "disallowed_federated_tenants": {
+          "description": "[Experimental] Comma separated list of tenants that cannot create federated rule groups. If specified, a tenant that would normally be allowed to create federated rule groups is denied instead.",
+          "type": "string",
+          "x-cli-flag": "ruler.disallowed-federated-tenants"
+        },
         "enable_alertmanager_discovery": {
           "default": false,
           "description": "Use DNS SRV records to discover Alertmanager hosts.",
@@ -7385,6 +7395,12 @@
           "description": "Enable the ruler api",
           "type": "boolean",
           "x-cli-flag": "ruler.enable-api"
+        },
+        "enable_federated_rules": {
+          "default": false,
+          "description": "[Experimental] Enable federated rule groups. A federated rule group lists the tenants to query in its `src_tenants` field, while the resulting series and alerts always belong to the tenant owning the rule group. Requires -tenant-federation.enabled=true.",
+          "type": "boolean",
+          "x-cli-flag": "ruler.enable-federated-rules"
         },
         "enable_ha_evaluation": {
           "default": false,

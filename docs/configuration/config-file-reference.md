@@ -6243,6 +6243,25 @@ ring:
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
 
+# [Experimental] Enable federated rule groups. A federated rule group lists the
+# tenants to query in its `src_tenants` field, while the resulting series and
+# alerts always belong to the tenant owning the rule group. Requires
+# -tenant-federation.enabled=true.
+# CLI flag: -ruler.enable-federated-rules
+[enable_federated_rules: <boolean> | default = false]
+
+# [Experimental] Comma separated list of tenants allowed to create federated
+# rule groups. If specified, only these tenants can create federated rule
+# groups, otherwise all tenants can.
+# CLI flag: -ruler.allowed-federated-tenants
+[allowed_federated_tenants: <string> | default = ""]
+
+# [Experimental] Comma separated list of tenants that cannot create federated
+# rule groups. If specified, a tenant that would normally be allowed to create
+# federated rule groups is denied instead.
+# CLI flag: -ruler.disallowed-federated-tenants
+[disallowed_federated_tenants: <string> | default = ""]
+
 # Report query statistics for ruler queries to complete as a per user metric and
 # as an info level log message.
 # CLI flag: -ruler.query-stats-enabled

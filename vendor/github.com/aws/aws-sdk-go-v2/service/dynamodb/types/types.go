@@ -897,6 +897,11 @@ type ConsumedCapacity struct {
 	// in the response.
 	TableName *string
 
+	// The amount of throughput consumed on each vector index affected by the
+	// operation. Each entry contains VectorWriteRequestBytes (for write operations)
+	// or VectorSearchRequestBytes (for search operations).
+	VectorIndexes map[string]VectorCapacity
+
 	// The total number of write capacity units consumed by the operation.
 	WriteCapacityUnits *float64
 
@@ -1049,6 +1054,43 @@ type CreateReplicationGroupMemberAction struct {
 	noSmithyDocumentSerde
 }
 
+// A new vector index to be added to a table.
+type CreateVectorIndexAction struct {
+
+	// The number of dimensions in each vector.
+	//
+	// This member is required.
+	Dimensions *int64
+
+	// The distance function used to calculate similarity. Valid values: COSINE ,
+	// EUCLIDEAN , DOT_PRODUCT .
+	//
+	// This member is required.
+	DistanceFunction VectorDistanceFunction
+
+	// The name of the vector index. Must be unique within the table.
+	//
+	// This member is required.
+	IndexName *string
+
+	// Specifies attributes that are copied (projected) from the table into the vector
+	// index.
+	//
+	// This member is required.
+	Projection *Projection
+
+	// The attribute that contains vector embeddings. If multiple vector indexes
+	// reference the same attribute, they must all use the same number of dimensions.
+	//
+	// This member is required.
+	VectorAttribute *VectorAttributeDefinition
+
+	// The partition key and inline filter attribute definitions for the vector index.
+	SearchSchema []SearchSchemaElement
+
+	noSmithyDocumentSerde
+}
+
 // Processing options for the CSV file being imported.
 type CsvOptions struct {
 
@@ -1152,6 +1194,17 @@ type DeleteRequest struct {
 	//
 	// This member is required.
 	Key map[string]AttributeValue
+
+	noSmithyDocumentSerde
+}
+
+// A vector index to be removed from a table.
+type DeleteVectorIndexAction struct {
+
+	// The name of the vector index to delete.
+	//
+	// This member is required.
+	IndexName *string
 
 	noSmithyDocumentSerde
 }
@@ -1885,8 +1938,7 @@ type ImportSummary struct {
 	// this import task.
 	CloudWatchLogGroupArn *string
 
-	//  The time at which this import task ended. (Does this include the successful
-	// complete creation of the table it was imported to?)
+	//  The time at which this import task ended.
 	EndTime *time.Time
 
 	//  The Amazon Resource Number (ARN) corresponding to the import request.
@@ -2001,6 +2053,14 @@ type IncrementalExportSpecification struct {
 
 	// The view type that was chosen for the export. Valid values are
 	// NEW_AND_OLD_IMAGES and NEW_IMAGES . The default value is NEW_AND_OLD_IMAGES .
+	//
+	// NEW_AND_OLD_IMAGES exports both the new and old images of each changed item,
+	// while NEW_IMAGES exports only the new (latest) image. The view type you choose
+	// determines the structure of each item in the output for insert , update , and
+	// delete operations. For details and examples of how each view type shapes the
+	// export output, see [DynamoDB table export output format]in the Amazon DynamoDB Developer Guide.
+	//
+	// [DynamoDB table export output format]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/S3DataExport.Output.html
 	ExportViewType ExportViewType
 
 	noSmithyDocumentSerde
@@ -2488,10 +2548,18 @@ type ProvisionedThroughputDescription struct {
 	// DynamoDB returns a ThrottlingException . Eventually consistent reads require
 	// less effort than strongly consistent reads, so a setting of 50 ReadCapacityUnits
 	// per second provides 100 eventually consistent ReadCapacityUnits per second.
+	//
+	// For a table or global secondary index that uses on-demand capacity mode (
+	// PAY_PER_REQUEST ), this value is 0 , because on-demand mode does not use
+	// provisioned throughput.
 	ReadCapacityUnits *int64
 
 	// The maximum number of writes consumed per second before DynamoDB returns a
 	// ThrottlingException .
+	//
+	// For a table or global secondary index that uses on-demand capacity mode (
+	// PAY_PER_REQUEST ), this value is 0 , because on-demand mode does not use
+	// provisioned throughput.
 	WriteCapacityUnits *int64
 
 	noSmithyDocumentSerde
@@ -3006,6 +3074,44 @@ type S3BucketSource struct {
 	noSmithyDocumentSerde
 }
 
+// A single result from a SearchVectors operation.
+type SearchResultItem struct {
+
+	// A map of attribute names to AttributeValue objects, representing the projected
+	// attributes of the item returned by the vector search.
+	Item map[string]AttributeValue
+
+	// The similarity score for this item relative to the search vector. The
+	// interpretation depends on the distance function configured for the vector index.
+	Score float64
+
+	noSmithyDocumentSerde
+}
+
+// An element in the search schema of a vector index.
+type SearchSchemaElement struct {
+
+	// The name of the attribute.
+	//
+	// This member is required.
+	AttributeName *string
+
+	// The role of the attribute in the search schema. Valid values:
+	//
+	//   - HASH - A partition key that partitions the vector index for independent
+	//   scaling. When specified, you must provide this attribute's value in the
+	//   SearchConditionExpression .
+	//
+	//   - INLINE_FILTER - An attribute projected into the vector index for filtering
+	//   at the storage layer during search. Inline filters are optional in the
+	//   SearchConditionExpression .
+	//
+	// This member is required.
+	SearchSchemaElementType SearchSchemaElementType
+
+	noSmithyDocumentSerde
+}
+
 // Contains the details of the table when the backup was created.
 type SourceTableDetails struct {
 
@@ -3084,6 +3190,11 @@ type SourceTableFeatureDetails struct {
 
 	// Time to Live settings on the table when the backup was created.
 	TimeToLiveDescription *TimeToLiveDescription
+
+	// The vector index properties for the table at the time the backup was created,
+	// including the index name, vector attribute, dimensions, distance function,
+	// search schema, and projection.
+	VectorIndexes []VectorIndexInfo
 
 	noSmithyDocumentSerde
 }
@@ -3252,6 +3363,9 @@ type TableCreationParameters struct {
 
 	// Represents the settings used to enable server-side encryption.
 	SSESpecification *SSESpecification
+
+	// The vector indexes of the table to be created as part of the import operation.
+	VectorIndexes []VectorIndex
 
 	noSmithyDocumentSerde
 }
@@ -3512,7 +3626,8 @@ type TableDescription struct {
 	// Contains details of the table class.
 	TableClassSummary *TableClassSummary
 
-	// Unique identifier for the table for which the backup was created.
+	// A unique identifier for the table, in UUID format, generated by DynamoDB when
+	// the table is created.
 	TableId *string
 
 	// The name of the table.
@@ -3545,6 +3660,40 @@ type TableDescription struct {
 	//   - ARCHIVED - The table has been archived. See the ArchivalReason for more
 	//   information.
 	TableStatus TableStatus
+
+	// The vector indexes, if any, on the table. Each element is composed of:
+	//
+	//   - IndexName - The name of the vector index.
+	//
+	//   - IndexStatus - The current status of the vector index: CREATING , ACTIVE , or
+	//   DELETING .
+	//
+	//   - Backfilling - Specifies whether the index is currently backfilling. During
+	//   backfill, SearchVectors operations might return incomplete results.
+	//
+	//   - VectorAttribute - The attribute that contains vector embeddings.
+	//
+	//   - Dimensions - The number of dimensions in each vector.
+	//
+	//   - DistanceFunction - The distance function used to calculate similarity (
+	//   COSINE , EUCLIDEAN , or DOT_PRODUCT ).
+	//
+	//   - SearchSchema - The partition key and inline filter attributes for the vector
+	//   index.
+	//
+	//   - Projection - Specifies attributes that are copied (projected) from the table
+	//   into the vector index.
+	//
+	//   - IndexArn - The Amazon Resource Name (ARN) that uniquely identifies the index.
+	//
+	//   - IndexSizeBytes - The total size of the vector index, in bytes. Amazon
+	//   DynamoDB updates this value approximately every six hours. Recent changes might
+	//   not be reflected in this value.
+	//
+	//   - ItemCount - The number of items indexed in the vector index. Amazon DynamoDB
+	//   updates this value approximately every six hours. Recent changes might not be
+	//   reflected in this value.
+	VectorIndexes []VectorIndexDescription
 
 	// Describes the warm throughput value of the base table.
 	WarmThroughput *TableWarmThroughputDescription
@@ -3817,6 +3966,163 @@ type UpdateReplicationGroupMemberAction struct {
 	// Replica-specific table class. If not specified, uses the source table's table
 	// class.
 	TableClassOverride TableClass
+
+	noSmithyDocumentSerde
+}
+
+// The definition of a vector attribute for a vector index.
+type VectorAttributeDefinition struct {
+
+	// The name of the vector attribute.
+	//
+	// This member is required.
+	AttributeName *string
+
+	noSmithyDocumentSerde
+}
+
+// The consumed capacity for vector index operations, including vector search
+// request bytes and vector write request bytes.
+type VectorCapacity struct {
+
+	// The number of vector search request bytes consumed by a SearchVectors operation.
+	VectorSearchRequestBytes *float64
+
+	// The number of vector write request bytes consumed when writing to a vector
+	// index. Reported for write operations that modify attributes indexed by a vector
+	// index.
+	VectorWriteRequestBytes *float64
+
+	noSmithyDocumentSerde
+}
+
+// Contains the configuration settings for a vector index, including the index
+// name, vector attribute, dimensions, distance function, search schema, and
+// projection.
+type VectorIndex struct {
+
+	// The number of dimensions in each vector.
+	//
+	// This member is required.
+	Dimensions *int64
+
+	// The distance function used to calculate similarity between vectors. Valid
+	// values: COSINE , EUCLIDEAN , DOT_PRODUCT .
+	//
+	// This member is required.
+	DistanceFunction VectorDistanceFunction
+
+	// The name of the vector index.
+	//
+	// This member is required.
+	IndexName *string
+
+	// Specifies attributes that are copied (projected) from the table into the vector
+	// index.
+	//
+	// This member is required.
+	Projection *Projection
+
+	// The vector attribute configuration for the index.
+	//
+	// This member is required.
+	VectorAttribute *VectorAttributeDefinition
+
+	// The search schema that defines partition key and inline filter attributes for
+	// the vector index.
+	SearchSchema []SearchSchemaElement
+
+	noSmithyDocumentSerde
+}
+
+// Contains the current state and configuration of a vector index, including its
+// status, size, item count, and the settings specified when the index was created.
+type VectorIndexDescription struct {
+
+	// Specifies whether the index is currently backfilling. During backfill,
+	// SearchVectors operations might return incomplete results.
+	Backfilling *bool
+
+	// The number of dimensions in each vector.
+	Dimensions *int64
+
+	// The distance function used to calculate similarity between vectors.
+	DistanceFunction VectorDistanceFunction
+
+	// The Amazon Resource Name (ARN) that uniquely identifies the vector index.
+	IndexArn *string
+
+	// The name of the vector index.
+	IndexName *string
+
+	// The total size of the vector index, in bytes. Amazon DynamoDB updates this
+	// value approximately every six hours. Recent changes might not be reflected in
+	// this value.
+	IndexSizeBytes *int64
+
+	// The current state of the vector index:
+	//
+	//   - CREATING - The index is being created.
+	//
+	//   - ACTIVE - The index is ready for use.
+	//
+	//   - DELETING - The index is being deleted.
+	IndexStatus IndexStatus
+
+	// The number of items indexed in the vector index. Amazon DynamoDB updates this
+	// value approximately every six hours. Recent changes might not be reflected in
+	// this value.
+	ItemCount *int64
+
+	// Specifies attributes that are copied (projected) from the table into the vector
+	// index.
+	Projection *Projection
+
+	// The search schema that defines partition key and inline filter attributes for
+	// the vector index.
+	SearchSchema []SearchSchemaElement
+
+	// The vector attribute configuration for the index.
+	VectorAttribute *VectorAttributeDefinition
+
+	noSmithyDocumentSerde
+}
+
+// Contains the configuration of a vector index as it existed at the time a backup
+// was created.
+type VectorIndexInfo struct {
+
+	// The number of dimensions in each vector.
+	Dimensions *int64
+
+	// The distance function used to calculate similarity between vectors.
+	DistanceFunction VectorDistanceFunction
+
+	// The name of the vector index.
+	IndexName *string
+
+	// Specifies attributes that are copied (projected) from the table into the vector
+	// index.
+	Projection *Projection
+
+	// The search schema that defines partition key and inline filter attributes for
+	// the vector index.
+	SearchSchema []SearchSchemaElement
+
+	// The vector attribute configuration for the index.
+	VectorAttribute *VectorAttributeDefinition
+
+	noSmithyDocumentSerde
+}
+
+// A vector index to be added to or removed from a table.
+type VectorIndexUpdate struct {
+
+	// The configuration for creating a new vector index on the table.
+	Create *CreateVectorIndexAction
+
+	// The configuration for deleting an existing vector index from the table.
+	Delete *DeleteVectorIndexAction
 
 	noSmithyDocumentSerde
 }

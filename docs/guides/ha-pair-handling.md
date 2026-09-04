@@ -21,25 +21,43 @@ Now we do the same leader election process for T2.
 
 ### Client Side
 
-So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc.) and one identifier to identify the replica in the cluster (a or b). The easiest way to do this is by setting external labels; the default labels are `cluster` and `__replica__`. For example:
+So for Cortex to achieve this, we need 2 identifiers for each process, one identifier for the cluster (T1 or T2, etc.) and one identifier to identify the replica in the cluster (a or b). The easiest way to do this is by setting external labels; the default labels are `cluster` and `__replica__`.
 
+Deploy **two Prometheus servers** (or Prometheus pods) that scrape the same targets. Give them the **same** `cluster` value and a **different** `__replica__` value:
+
+Prometheus / replica A (`prometheus-a`):
+
+```yaml
+global:
+  external_labels:
+    cluster: prom-team1
+    __replica__: replica-a
 ```
-cluster: prom-team1
-__replica__: replica1 (or pod-name)
+
+Prometheus / replica B (`prometheus-b`):
+
+```yaml
+global:
+  external_labels:
+    cluster: prom-team1
+    __replica__: replica-b
 ```
 
-and
+Both should `remote_write` to the same Cortex distributor endpoint.
 
-```
-cluster: prom-team1
-__replica__: replica2
-```
+**Important:** Prometheus does **not** expand environment variables inside `external_labels`. A value like `$POD_NAME` or `${POD_NAME}` is taken literally unless your deployment injects the concrete value when rendering the config (for example via a Kubernetes Downward API + config template, or a config reloader). Setting `__replica__: $POD_NAME` in a static file will **not** give each pod a unique replica id.
 
-Note: These are external labels and have nothing to do with remote_write config.
+Practical ways to set a unique replica label:
 
-These two label names are configurable per-tenant within Cortex and should be set to something sensible. For example, the cluster label is already used by some workloads, and you should set the label to be something else that uniquely identifies the cluster. Good examples for this label-name would be `team`, `cluster`, `prometheus`, etc.
+* Hard-code a distinct value per Prometheus instance (`replica-a` / `replica-b`).
+* Template the config so the pod name or StatefulSet ordinal is written into `external_labels`.
+* Prefer attaching `__replica__` only on the remote_write path with `write_relabel_configs` (see [Remote Write replica label](#remote-write-replica-label) below). That avoids putting the replica label on local alerts and on `remote_read` queries.
 
-The replica label should be set so that the value for each prometheus is unique in that cluster. Note: Cortex drops this label when ingesting data but preserves the cluster label. This way, your timeseries won't change when replicas change.
+Note: These HA labels are Prometheus external labels (or write-relabel labels). They are separate from other `remote_write` settings such as URL, auth, and queue config.
+
+These two label names are configurable per-tenant within Cortex (`-distributor.ha-tracker.cluster` and `-distributor.ha-tracker.replica`, see [HA Tracker flags](../configuration/arguments.md#ha-tracker)) and should be set to something sensible. For example, the `cluster` label is already used by some workloads, and you should set the label name to something else that uniquely identifies the Prometheus HA pair. Good examples for this label name would be `team`, `cluster`, `prometheus`, etc.
+
+The replica label value must be unique among Prometheus servers in that HA pair. Cortex **drops** the replica label when ingesting samples but **keeps** the cluster label. This way, your time series identity does not change when the elected replica fails over.
 
 ### Server Side
 
@@ -73,41 +91,61 @@ For further configuration file documentation, see the [distributor section](../c
 
 For flag configuration, see the [distributor flags](../configuration/arguments.md#ha-tracker) having `ha-tracker` in them.
 
-## Remote Read
+## Remote Write replica label
 
-If you plan to use remote_read, you can't have the `__replica__` label in the
-external section. Instead, you will need to add it only on the remote_write
-section of your prometheus.yml.
+If you plan to use `remote_read`, or you want HA Prometheus pairs **without** duplicating Alertmanager notifications, do **not** put the `__replica__` label in `global.external_labels`. Add it only on the `remote_write` path via `write_relabel_configs`:
 
-```
+```yaml
 global:
   external_labels:
     cluster: prom-team1
 remote_write:
-- url: https://cortex/api/v1/push
-  write_relabel_configs:
-    - target_label: __replica__
-      replacement: 1
+  - url: https://cortex/api/v1/push
+    write_relabel_configs:
+      - target_label: __replica__
+        replacement: replica-a
 ```
 
-and
+and on the second Prometheus:
 
-```
+```yaml
 global:
   external_labels:
     cluster: prom-team1
 remote_write:
-- url: https://cortex/api/v1/push
-  write_relabel_configs:
-    - target_label: __replica__
-      replacement: replica2
+  - url: https://cortex/api/v1/push
+    write_relabel_configs:
+      - target_label: __replica__
+        replacement: replica-b
 ```
 
-When Prometheus is executing remote read queries, it will add the external
-labels to the query. In this case, if it asks for the `__replica__` label,
-Cortex will not return any data.
+When Prometheus runs `remote_read` queries, it attaches `global.external_labels` to the selectors. If `__replica__` is a global external label, the query includes that label, and Cortex will not return the deduplicated series (the replica label was dropped at ingest). Therefore `__replica__` should only be added for remote write.
 
-Therefore, the `__replica__` label should only be added for remote write.
+## Avoiding duplicate Alertmanager notifications
+
+Cortex HA deduplication applies to **samples ingested via remote_write**. It does **not** stop each Prometheus replica from evaluating rules and sending its own alerts.
+
+If both replicas send alerts to the same Alertmanager and their `external_labels` differ (for example different `__replica__` values in `global.external_labels`), Alertmanager treats them as distinct label sets and you get **duplicate notifications**.
+
+Mitigations:
+
+1. **Recommended:** keep a stable `cluster` (and any other shared labels) in `global.external_labels`, and attach `__replica__` only with `remote_write.write_relabel_configs` as shown above. Both replicas then send alerts with the same label set, so Alertmanager can deduplicate them.
+2. Send alerts from only one replica (or from the Cortex ruler) instead of from every Prometheus HA member.
+3. If replica labels must remain on alerts, configure Alertmanager inhibition / grouping so parallel notifications are suppressed — this is harder to get right than (1).
+
+## Verifying the HA tracker
+
+After enabling the tracker on distributors:
+
+1. Open the distributor HA status page: [`GET /distributor/ha_tracker`](../api/_index.md#ha-tracker-status) (also served at `/ha-tracker`). You should see one elected replica per user/cluster pair.
+2. Scrape distributor metrics (names may be prefixed depending on your registry configuration, commonly with `cortex_`):
+   * `ha_tracker_elected_replica_changes_total` — increases when leadership fails over.
+   * `ha_tracker_elected_replica_timestamp_seconds` — last update time for the elected replica.
+   * `ha_tracker_user_replica_group_count` — number of HA clusters tracked per tenant.
+   * `ha_tracker_kv_store_cas_total` — KV compare-and-swap traffic for elections.
+3. From a test query in Grafana/Cortex, confirm series do **not** include the replica label and that values are not roughly 2× what a single Prometheus would produce.
+
+If every sample is rejected or nothing is elected, check that both HA labels are present on written samples, the KV backend is shared by all distributors, and `accept_ha_samples` / `enable_ha_tracker` are enabled (see [Server Side](#server-side)).
 
 ## Accept multiple HA pairs in single request
 Let's assume there are two teams (T1 and T2), and each team operates two Prometheus for the HA (T1.a, T1.b for T1 and

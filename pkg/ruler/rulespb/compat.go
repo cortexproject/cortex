@@ -11,8 +11,8 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb" //lint:ignore faillint allowed to import other protobuf
 )
 
-// ToProto transforms a formatted prometheus rulegroup to a rule group protobuf
-func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc {
+// ToProto transforms a formatted rule group to a rule group protobuf
+func ToProto(user string, namespace string, rl RuleGroup) *RuleGroupDesc {
 	var queryOffset *time.Duration
 	if rl.QueryOffset != nil {
 		offset := time.Duration(*rl.QueryOffset)
@@ -27,6 +27,7 @@ func ToProto(user string, namespace string, rl rulefmt.RuleGroup) *RuleGroupDesc
 		Limit:       int64(rl.Limit),
 		QueryOffset: queryOffset,
 		Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
+		SrcTenants:  rl.SrcTenants,
 	}
 	return &rg
 }
@@ -48,8 +49,8 @@ func formattedRuleToProto(rls []rulefmt.Rule) []*RuleDesc {
 	return rules
 }
 
-// FromProto generates a rulefmt RuleGroup
-func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
+// FromProto generates a formatted rule group
+func FromProto(rg *RuleGroupDesc) RuleGroup {
 	var queryOffset *model.Duration
 	if rg.QueryOffset != nil {
 		offset := model.Duration(*rg.QueryOffset)
@@ -85,5 +86,8 @@ func FromProto(rg *RuleGroupDesc) rulefmt.RuleGroup {
 		formattedRuleGroup.Rules[i] = newRule
 	}
 
-	return formattedRuleGroup
+	return RuleGroup{
+		RuleGroup:  formattedRuleGroup,
+		SrcTenants: rg.GetSrcTenants(),
+	}
 }

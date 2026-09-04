@@ -19,7 +19,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -27,6 +27,7 @@ import (
 
 	"github.com/prometheus/alertmanager/alert"
 	"github.com/prometheus/alertmanager/eventrecorder"
+	"github.com/prometheus/alertmanager/eventrecorder/eventrecorderpb"
 )
 
 // RetryStage notifies via passed integration with exponential backoff until it
@@ -107,8 +108,9 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*alert.A
 		sent = alerts
 	}
 
+	// backoff/v5's ExponentialBackOff never returns Stop from NextBackOff, so
+	// the ticker retries indefinitely until the context is canceled.
 	b := backoff.NewExponentialBackOff()
-	b.MaxElapsedTime = 0 // Always retry.
 
 	tick := backoff.NewTicker(b)
 	defer tick.Stop()
@@ -178,7 +180,9 @@ func (r RetryStage) exec(ctx context.Context, l *slog.Logger, alerts ...*alert.A
 					l.Info("Notify success")
 				}
 
-				r.recorder.RecordEvent(ctx, NewNotificationEvent(ctx, sent, r.integration))
+				r.recorder.RecordEvent(ctx, func() *eventrecorderpb.EventData {
+					return NewNotificationEvent(ctx, sent, r.integration)
+				})
 				return ctx, alerts, nil
 			}
 		case <-ctx.Done():

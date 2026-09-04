@@ -695,6 +695,8 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	t.Cfg.Ruler.PrometheusHTTPPrefix = t.Cfg.API.PrometheusHTTPPrefix
 	t.Cfg.Ruler.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 	t.Cfg.Ruler.NameValidationScheme = t.Cfg.NameValidationScheme
+	t.Cfg.Ruler.TenantFederationRegexMatcherEnabled = t.Cfg.TenantFederation.RegexMatcherEnabled
+	t.Cfg.Ruler.TenantFederationMaxTenant = t.Cfg.TenantFederation.MaxTenant
 	metrics := ruler.NewRuleEvalMetrics(t.Cfg.Ruler, prometheus.DefaultRegisterer)
 
 	rulerRegisterer := prometheus.WrapRegistererWith(prometheus.Labels{"engine": "ruler"}, prometheus.DefaultRegisterer)
@@ -730,6 +732,14 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 	} else {
 		// TODO: Consider wrapping logger to differentiate from querier module logger
 		queryable, _, queryEngine, _ = querier.New(t.Cfg.Querier, t.OverridesConfig, t.Distributor, t.StoreQueryables, rulerRegisterer, util_log.Logger, t.OverridesConfig.RulesPartialData, nil)
+	}
+	if t.Cfg.Ruler.EnableFederatedRules {
+		util_log.WarnExperimentalUse("ruler.enable-federated-rules")
+		// Federated rule groups are evaluated with a multi-tenant org ID, so the
+		// queryable has to merge the results of every source tenant. Metrics are
+		// not registered because the querier registers the same ones when both
+		// run in a single process.
+		queryable = tenantfederation.NewQueryable(queryable, t.Cfg.TenantFederation, true, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)

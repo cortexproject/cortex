@@ -34,6 +34,9 @@ message RuleGroupDesc {
     (gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/cortexproject/cortex/pkg/cortexpb.LabelAdapter"
   ];
+  // Tenants whose data is queried when evaluating this group. Empty means the
+  // owning tenant only. Non-empty makes this a federated rule group.
+  repeated string src_tenants = 13;
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

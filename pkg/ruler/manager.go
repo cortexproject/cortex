@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 type DefaultMultiTenantManager struct {
@@ -71,6 +72,12 @@ type DefaultMultiTenantManager struct {
 	syncRuleMtx  sync.Mutex
 
 	ruleGroupIterationFunc promRules.GroupEvalIterationFunc
+
+	federatedRules *federatedRulesChecker
+	// Org ID to inject when evaluating a federated rule group, keyed by user
+	// and then by the prometheus rule group key.
+	federatedGroupsMtx sync.RWMutex
+	federatedGroups    map[string]map[string]string
 }
 
 func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory ManagerFactory, evalMetrics *RuleEvalMetrics, reg prometheus.Registerer, logger log.Logger) (*DefaultMultiTenantManager, error) {
@@ -133,6 +140,8 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 		registry:               reg,
 		logger:                 logger,
 		ruleGroupIterationFunc: defaultRuleGroupIterationFunc,
+		federatedRules:         newFederatedRulesChecker(cfg),
+		federatedGroups:        map[string]map[string]string{},
 	}
 	if cfg.RulesBackupEnabled() {
 		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
@@ -169,6 +178,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 
 			r.removeNotifier(userID)
 			r.mapper.cleanupUser(userID)
+			r.setFederatedGroups(userID, nil)
 			r.userExternalLabels.remove(userID)
 			r.userExternalURL.remove(userID)
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
@@ -206,6 +216,9 @@ func (r *DefaultMultiTenantManager) BackUpRuleGroups(ctx context.Context, ruleGr
 // syncRulesToManager maps the rule files to disk, detects any changes and will create/update the
 // users Prometheus Rules Manager.
 func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user string, groups rulespb.RuleGroupList) {
+	groups = r.filterFederatedRuleGroups(user, groups)
+	r.setFederatedGroups(user, r.federatedOrgIDs(user, groups))
+
 	// Map the files to disk and return the file names to be passed to the users manager if they
 	// have been updated
 	rulesUpdated, files, err := r.mapper.MapRules(user, groups.Formatted())
@@ -234,7 +247,7 @@ func (r *DefaultMultiTenantManager) syncRulesToManager(ctx context.Context, user
 		if (rulesUpdated || externalLabelsUpdated || externalURLUpdated) && existing {
 			r.updateRuleCache(user, manager.RuleGroups())
 		}
-		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, externalURL, r.ruleGroupIterationFunc)
+		err = manager.Update(r.cfg.EvaluationInterval, files, externalLabels, externalURL, r.ruleGroupIterationFuncFor(user))
 		r.deleteRuleCache(user)
 		if err != nil {
 			r.lastReloadSuccessful.WithLabelValues(user).Set(0)
@@ -275,6 +288,76 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 	go manager.Run()
 	r.userManagers[user] = manager
 	return manager
+}
+
+// ValidateFederatedRuleGroup implements MultiTenantManager.
+func (r *DefaultMultiTenantManager) ValidateFederatedRuleGroup(userID string, srcTenants []string) ([]string, error) {
+	if err := r.federatedRules.checkOwner(userID); err != nil {
+		return nil, err
+	}
+	return r.federatedRules.validateSrcTenants(srcTenants)
+}
+
+// filterFederatedRuleGroups drops the federated rule groups of a user that may
+// not own them, e.g. because the feature was disabled after they were stored.
+func (r *DefaultMultiTenantManager) filterFederatedRuleGroups(userID string, groups rulespb.RuleGroupList) rulespb.RuleGroupList {
+	ownerErr := r.federatedRules.checkOwner(userID)
+	if ownerErr == nil {
+		return groups
+	}
+
+	filtered := make(rulespb.RuleGroupList, 0, len(groups))
+	for _, g := range groups {
+		if g.IsFederated() {
+			level.Warn(r.logger).Log("msg", "skipping federated rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", ownerErr)
+			continue
+		}
+		filtered = append(filtered, g)
+	}
+	return filtered
+}
+
+// federatedOrgIDs returns the org ID to query for each federated rule group,
+// keyed by the prometheus rule group key.
+func (r *DefaultMultiTenantManager) federatedOrgIDs(userID string, groups rulespb.RuleGroupList) map[string]string {
+	orgIDs := map[string]string{}
+	for _, g := range groups {
+		if !g.IsFederated() {
+			continue
+		}
+		key := promRules.GroupKey(r.mapper.ruleFilePath(userID, g.Namespace), g.Name)
+		orgIDs[key] = users.JoinTenantIDs(g.SrcTenants)
+	}
+	return orgIDs
+}
+
+func (r *DefaultMultiTenantManager) setFederatedGroups(userID string, orgIDs map[string]string) {
+	r.federatedGroupsMtx.Lock()
+	defer r.federatedGroupsMtx.Unlock()
+	if len(orgIDs) == 0 {
+		delete(r.federatedGroups, userID)
+		return
+	}
+	r.federatedGroups[userID] = orgIDs
+}
+
+func (r *DefaultMultiTenantManager) federatedOrgID(userID string, g *promRules.Group) (string, bool) {
+	r.federatedGroupsMtx.RLock()
+	defer r.federatedGroupsMtx.RUnlock()
+	orgID, ok := r.federatedGroups[userID][promRules.GroupKey(g.File(), g.Name())]
+	return orgID, ok
+}
+
+// ruleGroupIterationFuncFor wraps the iteration func so that federated rule
+// groups query their source tenants. The appender re-injects the owner, so the
+// resulting series and alerts still belong to the user.
+func (r *DefaultMultiTenantManager) ruleGroupIterationFuncFor(userID string) promRules.GroupEvalIterationFunc {
+	return func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+		if orgID, ok := r.federatedOrgID(userID, g); ok {
+			ctx = user.InjectOrgID(ctx, orgID)
+		}
+		r.ruleGroupIterationFunc(ctx, g, evalTimestamp)
+	}
 }
 
 func defaultRuleGroupIterationFunc(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {

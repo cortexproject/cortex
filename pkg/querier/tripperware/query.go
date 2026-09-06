@@ -637,44 +637,44 @@ func UnmarshalSampleHistogramPairJSON(ptr unsafe.Pointer, iter *jsoniter.Iterato
 }
 
 // Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L252.
-func unmarshalHistogramBucket(iter *jsoniter.Iterator) (*HistogramBucket, error) {
+func unmarshalHistogramBucket(iter *jsoniter.Iterator) (HistogramBucket, error) {
 	b := HistogramBucket{}
 	if !iter.ReadArray() {
-		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+		return b, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
 	}
 	boundaries, err := iter.ReadNumber().Int64()
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	b.Boundaries = int32(boundaries)
 	if !iter.ReadArray() {
-		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+		return b, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
 	}
 	f, err := strconv.ParseFloat(iter.ReadString(), 64)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	b.Lower = f
 	if !iter.ReadArray() {
-		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+		return b, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
 	}
 	f, err = strconv.ParseFloat(iter.ReadString(), 64)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	b.Upper = f
 	if !iter.ReadArray() {
-		return nil, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
+		return b, errors.New("HistogramBucket must be [boundaries, lower, upper, count]")
 	}
 	f, err = strconv.ParseFloat(iter.ReadString(), 64)
 	if err != nil {
-		return nil, err
+		return b, err
 	}
 	b.Count = f
 	if iter.ReadArray() {
-		return nil, errors.New("HistogramBucket has too many values, must be [boundaries, lower, upper, count]")
+		return b, errors.New("HistogramBucket has too many values, must be [boundaries, lower, upper, count]")
 	}
-	return &b, nil
+	return b, nil
 }
 
 // Adapted from https://github.com/prometheus/client_golang/blob/4b158abea9470f75b6f07460cdc2189b91914562/api/prometheus/v1/api.go#L137.
@@ -731,7 +731,7 @@ func marshalHistogram(h SampleHistogram, stream *jsoniter.Stream) {
 			stream.WriteArrayStart()
 		}
 		bucketFound = true
-		marshalHistogramBucket(*bucket, stream)
+		marshalHistogramBucket(bucket, stream)
 	}
 
 	if bucketFound {

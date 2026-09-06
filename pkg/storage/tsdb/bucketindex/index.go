@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
@@ -137,12 +136,10 @@ func (m *Block) GetUploadedAt() time.Time {
 // of it.
 func (m *Block) ThanosMeta(userID string) *metadata.Meta {
 	return &metadata.Meta{
-		BlockMeta: tsdb.BlockMeta{
-			ULID:    m.ID,
-			MinTime: m.MinTime,
-			MaxTime: m.MaxTime,
-			Version: metadata.TSDBVersion1,
-		},
+		ULID:    m.ID,
+		MinTime: m.MinTime,
+		MaxTime: m.MaxTime,
+		Version: metadata.TSDBVersion1,
 		Thanos: metadata.Thanos{
 			Version: metadata.ThanosVersion1,
 			Labels: map[string]string{

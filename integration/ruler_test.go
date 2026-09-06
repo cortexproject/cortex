@@ -1126,8 +1126,6 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			"-blocks-storage.tsdb.block-ranges-period":   "1h",
 			"-blocks-storage.bucket-store.sync-interval": "1s",
@@ -1266,8 +1264,6 @@ func TestRulerMetricsWhenIngesterFails(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			// We run single ingester only, no replication.
 			"-distributor.replication-factor": "1",
@@ -1370,8 +1366,6 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			// We run single ingester only, no replication.
 			"-distributor.replication-factor": "1",
@@ -1628,8 +1622,6 @@ func TestRulerKeepFiring(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			"-blocks-storage.tsdb.block-ranges-period":   "1h",
 			"-blocks-storage.bucket-store.sync-interval": "1s",
@@ -1901,12 +1893,11 @@ func TestRulerXFunctionsWithThanosEngine(t *testing.T) {
 		BlocksStorageFlags(),
 		RulerFlags(),
 		map[string]string{
-			"-querier.thanos-engine":           "true",
-			"-querier.enable-x-functions":      "true",
-			"-ruler.evaluation-interval":       "2s",
-			"-ruler.poll-interval":             "2s",
-			"-ruler.evaluation-delay-duration": "0",
-			"-distributor.replication-factor":  "1",
+			"-querier.thanos-engine":          "true",
+			"-querier.enable-x-functions":     "true",
+			"-ruler.evaluation-interval":      "2s",
+			"-ruler.poll-interval":            "2s",
+			"-distributor.replication-factor": "1",
 		},
 	)
 

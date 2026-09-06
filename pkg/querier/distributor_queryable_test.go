@@ -80,50 +80,47 @@ func TestDistributorQuerier_SelectShouldHonorQueryIngestersWithin(t *testing.T) 
 		},
 	}
 
-	for _, streamingMetadataEnabled := range []bool{false, true} {
-		for testName, testData := range tests {
-			t.Run(fmt.Sprintf("%s (streaming metadata enabled: %t)", testName, streamingMetadataEnabled), func(t *testing.T) {
-				t.Parallel()
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
 
-				distributor := &MockDistributor{}
-				distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
-				distributor.On("MetricsForLabelMatchers", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
-				distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
+			distributor := &MockDistributor{}
+			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+			distributor.On("MetricsForLabelMatchersStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]labels.Labels{}, nil)
 
-				ctx := user.InjectOrgID(context.Background(), "test")
+			ctx := user.InjectOrgID(context.Background(), "test")
 
-				limits := DefaultLimitsConfig()
-				limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
-				overrides := validation.NewOverrides(limits, nil)
+			limits := DefaultLimitsConfig()
+			limits.QueryIngestersWithin = model.Duration(testData.queryIngestersWithin)
+			overrides := validation.NewOverrides(limits, nil)
 
-				queryable := newDistributorQueryable(distributor, streamingMetadataEnabled, true, nil, nil, 1, overrides, nil)
-				querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
-				require.NoError(t, err)
+			queryable := newDistributorQueryable(distributor, true, nil, nil, 1, overrides, nil)
+			querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
+			require.NoError(t, err)
 
-				start, end, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
-				require.NoError(t, err)
-				// Select hints are passed by Prometheus when querying /series.
-				var hints *storage.SelectHints
-				if testData.querySeries {
-					hints = &storage.SelectHints{
-						Start: start,
-						End:   end,
-						Func:  "series",
-					}
+			start, end, err := validateQueryTimeRange(ctx, "test", testData.queryMinT, testData.queryMaxT, overrides, 0)
+			require.NoError(t, err)
+			// Select hints are passed by Prometheus when querying /series.
+			var hints *storage.SelectHints
+			if testData.querySeries {
+				hints = &storage.SelectHints{
+					Start: start,
+					End:   end,
+					Func:  "series",
 				}
+			}
 
-				seriesSet := querier.Select(ctx, true, hints)
-				require.NoError(t, seriesSet.Err())
+			seriesSet := querier.Select(ctx, true, hints)
+			require.NoError(t, seriesSet.Err())
 
-				if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
-					assert.Len(t, distributor.Calls, 0)
-				} else {
-					require.Len(t, distributor.Calls, 1)
-					assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(15*time.Second.Milliseconds()))
-					assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)))
-				}
-			})
-		}
+			if testData.expectedMinT == 0 && testData.expectedMaxT == 0 {
+				assert.Len(t, distributor.Calls, 0)
+			} else {
+				require.Len(t, distributor.Calls, 1)
+				assert.InDelta(t, testData.expectedMinT, int64(distributor.Calls[0].Arguments.Get(1).(model.Time)), float64(15*time.Second.Milliseconds()))
+				assert.Equal(t, testData.expectedMaxT, int64(distributor.Calls[0].Arguments.Get(2).(model.Time)))
+			}
+		})
 	}
 }
 
@@ -136,7 +133,7 @@ func TestDistributorQueryableFilter(t *testing.T) {
 	limits.QueryIngestersWithin = model.Duration(1 * time.Hour)
 	overrides := validation.NewOverrides(limits, nil)
 
-	dq := newDistributorQueryable(d, false, true, nil, nil, 1, overrides, nil)
+	dq := newDistributorQueryable(d, true, nil, nil, 1, overrides, nil)
 
 	now := time.Now()
 
@@ -190,7 +187,7 @@ func TestIngesterStreaming(t *testing.T) {
 			limits.QueryIngestersWithin = model.Duration(0) // Disable time filtering for this test
 			overrides := validation.NewOverrides(limits, nil)
 
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
+			queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, func(string) bool {
 				return partialDataEnabled
 			}, 1, overrides, nil)
 			querier, err := queryable.Querier(mint, maxt)
@@ -345,13 +342,11 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 				res := []string{"foo"}
 				for _, err := range tc.errors {
 					d.On("LabelNamesStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
-					d.On("LabelNames", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 				}
 			case "LabelValues":
 				res := []string{"foo"}
 				for _, err := range tc.errors {
 					d.On("LabelValuesForLabelNameStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
-					d.On("LabelValuesForLabelName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(res, err).Once()
 				}
 			}
 
@@ -361,7 +356,7 @@ func TestDistributorQuerier_Retry(t *testing.T) {
 			limits.QueryIngestersWithin = model.Duration(0)
 			overrides := validation.NewOverrides(limits, nil)
 
-			queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
+			queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, func(string) bool {
 				return true
 			}, ingesterQueryMaxAttempts, overrides, nil)
 			querier, err := queryable.Querier(mint, maxt)
@@ -419,7 +414,7 @@ func TestDistributorQuerier_Select_CancelledContext_NoRetry(t *testing.T) {
 	ingesterQueryMaxAttempts := 1
 	limits := DefaultLimitsConfig()
 	overrides := validation.NewOverrides(limits, nil)
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
 	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
@@ -453,7 +448,7 @@ func TestDistributorQuerier_Select_CancelledContext(t *testing.T) {
 	ingesterQueryMaxAttempts := 2
 	limits := DefaultLimitsConfig()
 	overrides := validation.NewOverrides(limits, nil)
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
 	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
@@ -478,7 +473,7 @@ func TestDistributorQuerier_Labels_CancelledContext(t *testing.T) {
 	ingesterQueryMaxAttempts := 2
 	limits := DefaultLimitsConfig()
 	overrides := validation.NewOverrides(limits, nil)
-	queryable := newDistributorQueryable(d, true, true, batch.NewChunkMergeIterator, func(string) bool {
+	queryable := newDistributorQueryable(d, true, batch.NewChunkMergeIterator, func(string) bool {
 		return true
 	}, ingesterQueryMaxAttempts, overrides, nil)
 	querier, err := queryable.Querier(mint, maxt)
@@ -502,56 +497,49 @@ func TestDistributorQuerier_LabelNames(t *testing.T) {
 	labelNames := []string{"foo", "job"}
 
 	for _, labelNamesWithMatchers := range []bool{false, true} {
-		for _, streamingEnabled := range []bool{false, true} {
-			for _, partialDataEnabled := range []bool{false, true} {
-				streamingEnabled := streamingEnabled
-				labelNamesWithMatchers := labelNamesWithMatchers
-				t.Run("with matchers", func(t *testing.T) {
-					t.Parallel()
+		for _, partialDataEnabled := range []bool{false, true} {
+			labelNamesWithMatchers := labelNamesWithMatchers
+			t.Run("with matchers", func(t *testing.T) {
+				t.Parallel()
 
-					metrics := []labels.Labels{
-						labels.FromStrings("foo", "bar"),
-						labels.FromStrings("job", "baz"),
-						labels.FromStrings("job", "baz", "foo", "boom"),
-					}
-					d := &MockDistributor{}
+				metrics := []labels.Labels{
+					labels.FromStrings("foo", "bar"),
+					labels.FromStrings("job", "baz"),
+					labels.FromStrings("job", "baz", "foo", "boom"),
+				}
+				d := &MockDistributor{}
 
-					var partialDataErr error
-					if partialDataEnabled {
-						partialDataErr = partialdata.ErrPartialData
-					}
-					if labelNamesWithMatchers {
-						d.On("LabelNames", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-							Return(labelNames, partialDataErr)
-						d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-							Return(labelNames, partialDataErr)
-					} else {
-						d.On("MetricsForLabelMatchers", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-							Return(metrics, partialDataErr)
-						d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
-							Return(metrics, partialDataErr)
-					}
+				var partialDataErr error
+				if partialDataEnabled {
+					partialDataErr = partialdata.ErrPartialData
+				}
+				if labelNamesWithMatchers {
+					d.On("LabelNamesStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(labelNames, partialDataErr)
+				} else {
+					d.On("MetricsForLabelMatchersStream", mock.Anything, model.Time(mint), model.Time(maxt), mock.Anything, someMatchers).
+						Return(metrics, partialDataErr)
+				}
 
-					limits := DefaultLimitsConfig()
-					overrides := validation.NewOverrides(limits, nil)
+				limits := DefaultLimitsConfig()
+				overrides := validation.NewOverrides(limits, nil)
 
-					queryable := newDistributorQueryable(d, streamingEnabled, labelNamesWithMatchers, nil, func(string) bool {
-						return partialDataEnabled
-					}, 1, overrides, nil)
-					querier, err := queryable.Querier(mint, maxt)
-					require.NoError(t, err)
+				queryable := newDistributorQueryable(d, labelNamesWithMatchers, nil, func(string) bool {
+					return partialDataEnabled
+				}, 1, overrides, nil)
+				querier, err := queryable.Querier(mint, maxt)
+				require.NoError(t, err)
 
-					ctx := context.Background()
-					names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
-					require.NoError(t, err)
-					if partialDataEnabled {
-						assert.Contains(t, warnings, partialdata.ErrPartialData.Error())
-					} else {
-						assert.Empty(t, warnings)
-					}
-					assert.Equal(t, labelNames, names)
-				})
-			}
+				ctx := context.Background()
+				names, warnings, err := querier.LabelNames(ctx, nil, someMatchers...)
+				require.NoError(t, err)
+				if partialDataEnabled {
+					assert.Contains(t, warnings, partialdata.ErrPartialData.Error())
+				} else {
+					assert.Empty(t, warnings)
+				}
+				assert.Equal(t, labelNames, names)
+			})
 		}
 	}
 }
@@ -625,7 +613,7 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 			limits.QueryIngestersWithin = model.Duration(lookback)
 			overrides := validation.NewOverrides(limits, nil)
 
-			queryable := newDistributorQueryable(distributor, false, true, nil, nil, 1, overrides, func() time.Time { return now })
+			queryable := newDistributorQueryable(distributor, true, nil, nil, 1, overrides, func() time.Time { return now })
 			querier, err := queryable.Querier(testData.queryMinT, testData.queryMaxT)
 			require.NoError(t, err)
 

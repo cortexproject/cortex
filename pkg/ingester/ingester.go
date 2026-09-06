@@ -832,6 +832,11 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		matchersCache:                storecache.NoopMatchersCache,
 	}
 
+	if cfg.BlocksStorageConfig.TSDB.MaxExemplars != 0 {
+		flagext.DeprecatedFlagsUsed.Inc()
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag blocks-storage.tsdb.max-exemplars, use the per-tenant max_exemplars limit instead")
+	}
+
 	if cfg.ActiveQueriedSeriesMetricsEnabled || cfg.HeadQueriedSeriesMetricsEnabled {
 		i.activeQueriedSeriesService = NewActiveQueriedSeriesService(logger, registerer)
 	}

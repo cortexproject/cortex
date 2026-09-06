@@ -84,10 +84,8 @@ func makeV2ReqWithSeriesAndSymbols(seriesNum, symbolCount int) *cortexpb.Preallo
 	}
 
 	return &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols:    symbols,
-			Timeseries: ts,
-		},
+		Symbols:    symbols,
+		Timeseries: ts,
 	}
 }
 
@@ -114,10 +112,8 @@ func makeV2ReqWithSeries(num int) *cortexpb.PreallocWriteRequestV2 {
 	}
 
 	return &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols:    symbols,
-			Timeseries: ts,
-		},
+		Symbols:    symbols,
+		Timeseries: ts,
 	}
 }
 
@@ -311,16 +307,14 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 		{
 			desc: "should attach unit and type labels when the enableTypeAndUnitLabels is true",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Samples:    samples,
-								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
-								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
-							},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Samples:    samples,
+							Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
+							Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 						},
 					},
 				},
@@ -357,16 +351,14 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 		{
 			desc: "should be added from metadata when __type__ and __unit__ labels already exist.",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4, 18, 19, 20, 21},
-								Samples:    samples,
-								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
-								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
-							},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4, 18, 19, 20, 21},
+							Samples:    samples,
+							Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
+							Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 						},
 					},
 				},
@@ -403,16 +395,14 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 		{
 			desc: "should not attach unit and type labels when the enableTypeAndUnitLabels is false",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Samples:    samples,
-								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
-								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
-							},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Samples:    samples,
+							Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_COUNTER, HelpRef: 15, UnitRef: 16},
+							Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 						},
 					},
 				},
@@ -449,16 +439,14 @@ func Test_convertV2RequestToV1_WithEnableTypeAndUnitLabels(t *testing.T) {
 		{
 			desc: "should not attach when type is unknown and unit is empty although the enableTypeAndUnitLabels is true",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Samples:    samples,
-								Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_UNSPECIFIED, HelpRef: 15, UnitRef: 0},
-								Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
-							},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Samples:    samples,
+							Metadata:   cortexpb.MetadataV2{Type: cortexpb.METRIC_TYPE_UNSPECIFIED, HelpRef: 15, UnitRef: 0},
+							Exemplars:  []cortexpb.ExemplarV2{{LabelsRefs: []uint32{11, 12}, Value: 1, Timestamp: 1}},
 						},
 					},
 				},
@@ -587,10 +575,8 @@ func Test_convertV2RequestToV1_MetadataDedup(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			v2Req := cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols:    symbols,
-					Timeseries: test.timeseries,
-				},
+				Symbols:    symbols,
+				Timeseries: test.timeseries,
 			}
 
 			v1Req, err := convertV2RequestToV1(&v2Req, false, false)
@@ -680,19 +666,17 @@ func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
 		{
 			name: "invalid UnitRef out of bounds",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Metadata: cortexpb.MetadataV2{
-									Type:    cortexpb.METRIC_TYPE_COUNTER,
-									UnitRef: 1983,
-									HelpRef: 0,
-								},
-								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Metadata: cortexpb.MetadataV2{
+								Type:    cortexpb.METRIC_TYPE_COUNTER,
+								UnitRef: 1983,
+								HelpRef: 0,
 							},
+							Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
 						},
 					},
 				},
@@ -702,19 +686,17 @@ func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
 		{
 			name: "invalid HelpRef out of bounds in metadata conversion",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Metadata: cortexpb.MetadataV2{
-									Type:    cortexpb.METRIC_TYPE_GAUGE,
-									UnitRef: 0,
-									HelpRef: 9999,
-								},
-								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Metadata: cortexpb.MetadataV2{
+								Type:    cortexpb.METRIC_TYPE_GAUGE,
+								UnitRef: 0,
+								HelpRef: 9999,
 							},
+							Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
 						},
 					},
 				},
@@ -724,19 +706,17 @@ func Test_convertV2RequestToV1_InvalidSymbolRefs(t *testing.T) {
 		{
 			name: "valid symbol refs should not error",
 			v2Req: &cortexpb.PreallocWriteRequestV2{
-				WriteRequestV2: cortexpb.WriteRequestV2{
-					Symbols: symbols,
-					Timeseries: []cortexpb.PreallocTimeseriesV2{
-						{
-							TimeSeriesV2: &cortexpb.TimeSeriesV2{
-								LabelsRefs: []uint32{1, 2, 3, 4},
-								Metadata: cortexpb.MetadataV2{
-									Type:    cortexpb.METRIC_TYPE_COUNTER,
-									UnitRef: 3,
-									HelpRef: 4,
-								},
-								Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+				Symbols: symbols,
+				Timeseries: []cortexpb.PreallocTimeseriesV2{
+					{
+						TimeSeriesV2: &cortexpb.TimeSeriesV2{
+							LabelsRefs: []uint32{1, 2, 3, 4},
+							Metadata: cortexpb.MetadataV2{
+								Type:    cortexpb.METRIC_TYPE_COUNTER,
+								UnitRef: 3,
+								HelpRef: 4,
 							},
+							Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
 						},
 					},
 				},
@@ -1463,21 +1443,19 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 	ph := cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(4, fh))
 
 	v2Req := &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols: []string{"", "__name__", "test_metric"},
-			Timeseries: []cortexpb.PreallocTimeseriesV2{
-				{
-					TimeSeriesV2: &cortexpb.TimeSeriesV2{
-						LabelsRefs: []uint32{1, 2},
-						Samples: []cortexpb.Sample{
-							{Value: 1.0, TimestampMs: 1000},
-						},
-						Exemplars: []cortexpb.ExemplarV2{
-							{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
-						},
-						Histograms: []cortexpb.WrappedHistogram{
-							ph,
-						},
+		Symbols: []string{"", "__name__", "test_metric"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs: []uint32{1, 2},
+					Samples: []cortexpb.Sample{
+						{Value: 1.0, TimestampMs: 1000},
+					},
+					Exemplars: []cortexpb.ExemplarV2{
+						{LabelsRefs: []uint32{1, 2}, Value: 2.0, Timestamp: 1000},
+					},
+					Histograms: []cortexpb.WrappedHistogram{
+						ph,
 					},
 				},
 			},
@@ -1503,18 +1481,16 @@ func Test_convertV2RequestToV1_DeepCopy(t *testing.T) {
 
 func Test_convertV2RequestToV1_PreservesStartTimestamp(t *testing.T) {
 	v2Req := &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols: []string{"", "__name__", "test_metric"},
-			Timeseries: []cortexpb.PreallocTimeseriesV2{
-				{
-					TimeSeriesV2: &cortexpb.TimeSeriesV2{
-						LabelsRefs: []uint32{1, 2},
-						Samples: []cortexpb.Sample{
-							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
-						},
-						Histograms: []cortexpb.WrappedHistogram{
-							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
-						},
+		Symbols: []string{"", "__name__", "test_metric"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs: []uint32{1, 2},
+					Samples: []cortexpb.Sample{
+						{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+					},
+					Histograms: []cortexpb.WrappedHistogram{
+						{TimestampMs: 2000, StartTimestampMs: 200},
 					},
 				},
 			},
@@ -1542,16 +1518,14 @@ func Test_convertV2RequestToV1_PreservesStartTimestamp(t *testing.T) {
 
 func Test_convertV2RequestToV1_UsesCreatedTimestampAsFallback(t *testing.T) {
 	v2Req := &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols: []string{"", "__name__", "test_metric"},
-			Timeseries: []cortexpb.PreallocTimeseriesV2{
-				{
-					TimeSeriesV2: &cortexpb.TimeSeriesV2{
-						LabelsRefs:       []uint32{1, 2},
-						CreatedTimestamp: 777,
-						Samples:          []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
-						Histograms:       []cortexpb.WrappedHistogram{{Histogram: cortexpb.Histogram{TimestampMs: 2000}}},
-					},
+		Symbols: []string{"", "__name__", "test_metric"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs:       []uint32{1, 2},
+					CreatedTimestamp: 777,
+					Samples:          []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
+					Histograms:       []cortexpb.WrappedHistogram{{TimestampMs: 2000}},
 				},
 			},
 		},
@@ -1578,19 +1552,17 @@ func Test_convertV2RequestToV1_UsesCreatedTimestampAsFallback(t *testing.T) {
 
 func Test_convertV2RequestToV1_ExplicitStartTimestampTakesPrecedence(t *testing.T) {
 	v2Req := &cortexpb.PreallocWriteRequestV2{
-		WriteRequestV2: cortexpb.WriteRequestV2{
-			Symbols: []string{"", "__name__", "test_metric"},
-			Timeseries: []cortexpb.PreallocTimeseriesV2{
-				{
-					TimeSeriesV2: &cortexpb.TimeSeriesV2{
-						LabelsRefs:       []uint32{1, 2},
-						CreatedTimestamp: 777,
-						Samples: []cortexpb.Sample{
-							{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
-						},
-						Histograms: []cortexpb.WrappedHistogram{
-							{Histogram: cortexpb.Histogram{TimestampMs: 2000, StartTimestampMs: 200}},
-						},
+		Symbols: []string{"", "__name__", "test_metric"},
+		Timeseries: []cortexpb.PreallocTimeseriesV2{
+			{
+				TimeSeriesV2: &cortexpb.TimeSeriesV2{
+					LabelsRefs:       []uint32{1, 2},
+					CreatedTimestamp: 777,
+					Samples: []cortexpb.Sample{
+						{Value: 1, TimestampMs: 1000, StartTimestampMs: 100},
+					},
+					Histograms: []cortexpb.WrappedHistogram{
+						{TimestampMs: 2000, StartTimestampMs: 200},
 					},
 				},
 			},

@@ -95,8 +95,8 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 
 			test.otlpSeries.CopyTo(sm.Metrics().AppendEmpty())
 
-			limits := validation.Limits{}
-			limits.EnableTypeAndUnitLabels = test.enableTypeAndUnitLabels
+			limits := validation.Limits{
+				EnableTypeAndUnitLabels: test.enableTypeAndUnitLabels}
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.NoError(t, err)

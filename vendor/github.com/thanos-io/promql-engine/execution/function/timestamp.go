@@ -9,10 +9,10 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 )
 
 type timestampOperator struct {
@@ -54,9 +54,8 @@ func (o *timestampOperator) loadSeries(ctx context.Context) error {
 		}
 		o.series = make([]labels.Labels, len(series))
 
-		var b labels.ScratchBuilder
 		for i, s := range series {
-			lbls := extlabels.DropReserved(s, b)
+			lbls := s.DropReserved(schema.IsMetadataLabel)
 			o.series[i] = lbls
 		}
 	})

@@ -3579,7 +3579,7 @@
             },
             "max_exemplars": {
               "default": 0,
-              "description": "Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in limits is set to zero, cortex will fallback on this value. This setting enables support for exemplars in TSDB and sets the maximum number that will be stored. 0 or less means disabled.",
+              "description": "Deprecated (use the per-tenant max_exemplars limit instead) and will be removed in v1.24.0: the global fallback for the maximum number of exemplars stored in TSDB, used only when the per-tenant max_exemplars limit is 0. 0 or less means exemplars are disabled.",
               "type": "number",
               "x-cli-flag": "blocks-storage.tsdb.max-exemplars"
             },
@@ -4710,12 +4710,6 @@
           "type": "number",
           "x-cli-flag": "frontend.fifocache.max-size-items"
         },
-        "size": {
-          "default": 0,
-          "description": "Deprecated (use max-size-items or max-size-bytes instead): The number of entries to cache. ",
-          "type": "number",
-          "x-cli-flag": "frontend.fifocache.size"
-        },
         "validity": {
           "default": "0s",
           "description": "The expiry duration for the cache.",
@@ -5670,7 +5664,7 @@
         },
         "enable_native_histograms": {
           "default": false,
-          "description": "[EXPERIMENTAL] True to enable native histogram.",
+          "description": "True to enable native histogram.",
           "type": "boolean",
           "x-cli-flag": "blocks-storage.tsdb.enable-native-histograms"
         },
@@ -5770,7 +5764,7 @@
         },
         "max_exemplars": {
           "default": 0,
-          "description": "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to blocks-storage.tsdb.max-exemplars value.",
+          "description": "Enables support for exemplars in TSDB and sets the maximum number that will be stored. less than zero means disabled. If the value is set to zero, cortex will fallback to the deprecated blocks-storage.tsdb.max-exemplars value; that fallback is removed in v1.24.0.",
           "type": "number",
           "x-cli-flag": "ingester.max-exemplars"
         },
@@ -5975,7 +5969,7 @@
         },
         "out_of_order_results_cache_ttl": {
           "default": "0s",
-          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means use the global cache backend TTL configuration.",
+          "description": "Per-tenant TTL for cached query results that overlap with the out-of-order time window. These results may still receive out-of-order samples, so they typically use a shorter TTL. 0 (default) means fall back to frontend.results-cache-ttl, and if that is also 0, use the global cache backend TTL configuration.",
           "type": "string",
           "x-cli-flag": "frontend.out-of-order-results-cache-ttl",
           "x-format": "duration"
@@ -6134,13 +6128,6 @@
         "ruler_alert_generator_url_template": {
           "description": "Go text/template for alert generator URLs. Available variables: .ExternalURL (resolved external URL) and .Expression (PromQL expression). Built-in functions like urlquery are available. A jsonEscape function is also provided for embedding expressions inside JSON-encoded URL parameters. If empty, uses default Prometheus /graph format.",
           "type": "string"
-        },
-        "ruler_evaluation_delay_duration": {
-          "default": "0s",
-          "description": "Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0: Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.",
-          "type": "string",
-          "x-cli-flag": "ruler.evaluation-delay-duration",
-          "x-format": "duration"
         },
         "ruler_external_labels": {
           "additionalProperties": true,
@@ -6595,12 +6582,6 @@
           "description": "Use LabelNames ingester RPCs with match params.",
           "type": "boolean",
           "x-cli-flag": "querier.ingester-label-names-with-matchers"
-        },
-        "ingester_metadata_streaming": {
-          "default": true,
-          "description": "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.",
-          "type": "boolean",
-          "x-cli-flag": "querier.ingester-metadata-streaming"
         },
         "ingester_query_max_attempts": {
           "default": 1,

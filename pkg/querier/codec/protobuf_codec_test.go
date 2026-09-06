@@ -249,7 +249,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 												Histogram: tripperware.SampleHistogram{
 													Count: 10,
 													Sum:   20,
-													Buckets: []*tripperware.HistogramBucket{
+													Buckets: []tripperware.HistogramBucket{
 														{
 															Boundaries: 1,
 															Upper:      -1.414213562373095,
@@ -342,7 +342,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 												Histogram: tripperware.SampleHistogram{
 													Count:   0,
 													Sum:     1,
-													Buckets: []*tripperware.HistogramBucket{},
+													Buckets: []tripperware.HistogramBucket{},
 												},
 											},
 										},
@@ -386,7 +386,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 											Histogram: tripperware.SampleHistogram{
 												Count: 10,
 												Sum:   20,
-												Buckets: []*tripperware.HistogramBucket{
+												Buckets: []tripperware.HistogramBucket{
 													{
 														Boundaries: 1,
 														Upper:      -1.414213562373095,
@@ -478,7 +478,7 @@ func TestProtobufCodec_Encode(t *testing.T) {
 											Histogram: tripperware.SampleHistogram{
 												Count:   0,
 												Sum:     1,
-												Buckets: []*tripperware.HistogramBucket{},
+												Buckets: []tripperware.HistogramBucket{},
 											},
 										},
 									},

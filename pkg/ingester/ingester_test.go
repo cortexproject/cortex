@@ -1144,9 +1144,8 @@ func TestIngester_Push(t *testing.T) {
 						{MetricFamilyName: "metric_name_2", Help: "a help for metric_name_2", Unit: "", Type: cortexpb.GAUGE},
 					},
 					[]cortexpb.WrappedHistogram{
-						{Histogram: cortexpb.Histogram{
-							TimestampMs: 10,
-						}},
+						{
+							TimestampMs: 10},
 					},
 					cortexpb.API),
 			},
@@ -4463,9 +4462,9 @@ func writeRequestSingleSeries(lbls labels.Labels, samples []cortexpb.Sample) *co
 		Source: cortexpb.API,
 	}
 
-	ts := cortexpb.TimeSeries{}
-	ts.Labels = cortexpb.FromLabelsToLabelAdapters(lbls)
-	ts.Samples = samples
+	ts := cortexpb.TimeSeries{
+		Labels:  cortexpb.FromLabelsToLabelAdapters(lbls),
+		Samples: samples}
 	req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{TimeSeries: &ts})
 
 	return req
@@ -5920,26 +5919,22 @@ func Test_Ingester_AllUserStatsHandler(t *testing.T) {
 
 	expect := UserStatsByTimeseries{
 		{
-			UserID: "user-1",
-			UserStats: UserStats{
-				IngestionRate:     0.2,
-				NumSeries:         0,
-				APIIngestionRate:  0.2,
-				RuleIngestionRate: 0,
-				ActiveSeries:      3,
-				LoadedBlocks:      1,
-			},
+			UserID:            "user-1",
+			IngestionRate:     0.2,
+			NumSeries:         0,
+			APIIngestionRate:  0.2,
+			RuleIngestionRate: 0,
+			ActiveSeries:      3,
+			LoadedBlocks:      1,
 		},
 		{
-			UserID: "user-2",
-			UserStats: UserStats{
-				IngestionRate:     0.13333333333333333,
-				NumSeries:         0,
-				APIIngestionRate:  0.13333333333333333,
-				RuleIngestionRate: 0,
-				ActiveSeries:      2,
-				LoadedBlocks:      1,
-			},
+			UserID:            "user-2",
+			IngestionRate:     0.13333333333333333,
+			NumSeries:         0,
+			APIIngestionRate:  0.13333333333333333,
+			RuleIngestionRate: 0,
+			ActiveSeries:      2,
+			LoadedBlocks:      1,
 		},
 	}
 	assert.ElementsMatch(t, expect, resp)

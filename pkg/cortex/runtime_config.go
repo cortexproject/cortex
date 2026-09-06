@@ -145,8 +145,8 @@ func runtimeConfigHandler(runtimeCfgManager *runtimeconfig.Manager, defaultLimit
 		case "diff":
 			// Default runtime config is just empty struct, but to make diff work,
 			// we set defaultLimits for every tenant that exists in runtime config.
-			defaultCfg := RuntimeConfigValues{}
-			defaultCfg.TenantLimits = map[string]*validation.Limits{}
+			defaultCfg := RuntimeConfigValues{
+				TenantLimits: map[string]*validation.Limits{}}
 			for k, v := range cfg.TenantLimits {
 				if v != nil {
 					defaultCfg.TenantLimits[k] = &defaultLimits

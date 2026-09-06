@@ -13,18 +13,16 @@ import (
 
 // defaultConfig should match the default flag values defined in RegisterFlagsWithPrefix.
 var defaultConfig = Config{
-	Endpoint:   "blob.core.windows.net",
-	MaxRetries: 20,
-	Config: http.Config{
-		IdleConnTimeout:       90 * time.Second,
-		ResponseHeaderTimeout: 2 * time.Minute,
-		InsecureSkipVerify:    false,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   100,
-		MaxConnsPerHost:       0,
-	},
+	Endpoint:              "blob.core.windows.net",
+	MaxRetries:            20,
+	IdleConnTimeout:       90 * time.Second,
+	ResponseHeaderTimeout: 2 * time.Minute,
+	InsecureSkipVerify:    false,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   100,
+	MaxConnsPerHost:       0,
 }
 
 func TestConfig(t *testing.T) {

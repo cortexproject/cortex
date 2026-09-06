@@ -73,13 +73,11 @@ func v2alert(fingerprint, annotation, updatedAt string) *v2_models.GettableAlert
 				Name: &receiver,
 			},
 		},
-		StartsAt:  v2ParseTime("2020-01-01T12:00:00.000Z"),
-		Status:    &v2_models.AlertStatus{},
-		UpdatedAt: v2ParseTime(updatedAt),
-		Alert: v2_models.Alert{
-			GeneratorURL: strfmt.URI("something"),
-			Labels:       v2_models.LabelSet{"label1": "foo"},
-		},
+		StartsAt:     v2ParseTime("2020-01-01T12:00:00.000Z"),
+		Status:       &v2_models.AlertStatus{},
+		UpdatedAt:    v2ParseTime(updatedAt),
+		GeneratorURL: strfmt.URI("something"),
+		Labels:       v2_models.LabelSet{"label1": "foo"},
 	}
 }
 

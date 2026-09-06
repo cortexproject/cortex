@@ -11,13 +11,13 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 )
 
 const sampleLimitCheckPercentage = 0.05
@@ -316,11 +316,10 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		for i := range o.buffers {
 			o.buffers[i] = ringbuffer.New(ctx, 8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
 		}
-		var b labels.ScratchBuilder
 		for i, s := range series {
 			lbls := s
 			if o.funcExpr.Func.Name != "last_over_time" {
-				lbls = extlabels.DropReserved(s, b)
+				lbls = s.DropReserved(schema.IsMetadataLabel)
 			}
 			o.series[i] = lbls
 		}

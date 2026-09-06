@@ -111,7 +111,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-5607698940
+LATEST_BUILD_IMAGE_TAG ?= master-7bc8b2491b
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -158,7 +158,7 @@ lint:
 	golangci-lint run
 
 	# Ensure no blocklisted package is imported.
-	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_configs_db,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_configs_db,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" go tool faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
 		github.com/prometheus/client_golang/prometheus.{MultiError}=github.com/prometheus/prometheus/tsdb/errors.{NewMulti},\
@@ -166,20 +166,20 @@ lint:
 		github.com/weaveworks/common/user.{ExtractOrgIDFromHTTPRequest}=github.com/cortexproject/cortex/pkg/tenant.{ExtractTenantIDFromHTTPRequest}" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Ensure clean pkg structure.
-	faillint -paths "\
+	go tool faillint -paths "\
 		github.com/cortexproject/cortex/pkg/scheduler,\
 		github.com/cortexproject/cortex/pkg/frontend,\
 		github.com/cortexproject/cortex/pkg/frontend/transport,\
 		github.com/cortexproject/cortex/pkg/frontend/v1,\
 		github.com/cortexproject/cortex/pkg/frontend/v2" \
 		./pkg/querier/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/alertmanager/alertspb/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/ruler/rulespb/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/alertmanager/alertspb/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/ruler/rulespb/...
 
 	# Ensure the query path is supporting multiple tenants
-	faillint -paths "\
+	go tool faillint -paths "\
 		github.com/cortexproject/cortex/pkg/tenant.{TenantID}=github.com/cortexproject/cortex/pkg/tenant.{TenantIDs}" \
 		./pkg/scheduler/... \
 		./pkg/frontend/... \
@@ -189,7 +189,7 @@ lint:
 		./pkg/querier/tripperware/queryrange/...
 
 	# Ensure packages that no longer use a global logger don't reintroduce it
-	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
 		./pkg/alertmanager/alertstore/... \
 		./pkg/ingester/... \
 		./pkg/flusher/... \
@@ -223,7 +223,7 @@ check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
 
 modernize:
-	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0 -fix ./...
+	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 -fix ./...
 
 # Generates the config file documentation.
 doc: clean-doc

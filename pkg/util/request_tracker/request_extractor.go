@@ -83,7 +83,7 @@ func trimStringByBytes(str string, size int) string {
 	bytesStr := []byte(str)
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
-		for !utf8.RuneStart(bytesStr[size]) {
+		for size > 0 && !utf8.RuneStart(bytesStr[size]) {
 			size--
 		}
 		trimIndex = size

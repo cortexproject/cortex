@@ -1760,16 +1760,14 @@ func (d *Distributor) AllUserStats(ctx context.Context) ([]ingester.UserIDStats,
 	response := make([]ingester.UserIDStats, 0, len(perUserTotals))
 	for id, stats := range perUserTotals {
 		response = append(response, ingester.UserIDStats{
-			UserID: id,
-			UserStats: ingester.UserStats{
-				IngestionRate:     stats.IngestionRate,
-				APIIngestionRate:  stats.APIIngestionRate,
-				RuleIngestionRate: stats.RuleIngestionRate,
-				NumSeries:         stats.NumSeries,
-				ActiveSeries:      stats.ActiveSeries,
-				LoadedBlocks:      stats.LoadedBlocks,
-				QueriedIngesters:  stats.QueriedIngesters,
-			},
+			UserID:            id,
+			IngestionRate:     stats.IngestionRate,
+			APIIngestionRate:  stats.APIIngestionRate,
+			RuleIngestionRate: stats.RuleIngestionRate,
+			NumSeries:         stats.NumSeries,
+			ActiveSeries:      stats.ActiveSeries,
+			LoadedBlocks:      stats.LoadedBlocks,
+			QueriedIngesters:  stats.QueriedIngesters,
 		})
 	}
 

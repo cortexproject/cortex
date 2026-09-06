@@ -79,6 +79,11 @@ func TestFlagParsing(t *testing.T) {
 			stderrMessage: "the Querier configuration in YAML has been specified as an empty YAML node",
 		},
 
+		"root level configuration option specified with explicit zero values": {
+			yaml:           "flusher: { exit_after_flush: false }",
+			stderrExcluded: "empty YAML node",
+		},
+
 		"version": {
 			arguments:     []string{"-version"},
 			stdoutMessage: "Cortex, version",

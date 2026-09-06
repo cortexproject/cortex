@@ -12,7 +12,6 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -274,7 +273,7 @@ func TestDefaultShardingStrategy(t *testing.T) {
 			for instanceAddr, expectedBlocks := range testData.expectedBlocks {
 				filter := NewDefaultShardingStrategy(r, instanceAddr, log.NewNopLogger(), nil)
 				for _, block := range expectedBlocks {
-					owned, err := filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}})
+					owned, err := filter.OwnBlock("user-1", metadata.Meta{ULID: block})
 					require.NoError(t, err)
 					require.True(t, owned)
 				}
@@ -661,7 +660,7 @@ func TestShuffleShardingStrategy(t *testing.T) {
 				for _, expected := range testData.expectedBlocks {
 					filter := NewShuffleShardingStrategy(r, expected.instanceID, expected.instanceAddr, testData.limits, log.NewNopLogger(), allowedTenants, zoneStableShuffleSharding) //nolint:govet
 					for _, block := range expected.blocks {
-						owned, err := filter.OwnBlock(userID, metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}})
+						owned, err := filter.OwnBlock(userID, metadata.Meta{ULID: block})
 						require.NoError(t, err)
 						require.True(t, owned)
 					}
@@ -738,16 +737,16 @@ func TestDefaultShardingStrategy_OwnBlock(t *testing.T) {
 	// Wait until the ring client has synced.
 	require.NoError(t, ring.WaitInstanceState(ctx, r, "instance-1", ring.ACTIVE))
 	filter := NewDefaultShardingStrategy(r, "127.0.0.1", log.NewNopLogger(), nil)
-	owned, err := filter.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}})
+	owned, err := filter.OwnBlock("", metadata.Meta{ULID: block1})
 	require.NoError(t, err)
 	require.True(t, owned)
 	// Owned by 127.0.0.2
-	owned, err = filter.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	owned, err = filter.OwnBlock("", metadata.Meta{ULID: block2})
 	require.NoError(t, err)
 	require.False(t, owned)
 
 	filter2 := NewDefaultShardingStrategy(r, "127.0.0.2", log.NewNopLogger(), nil)
-	owned, err = filter2.OwnBlock("", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	owned, err = filter2.OwnBlock("", metadata.Meta{ULID: block2})
 	require.NoError(t, err)
 	require.True(t, owned)
 }
@@ -792,15 +791,15 @@ func TestShuffleShardingStrategy_OwnBlock(t *testing.T) {
 	filter := NewShuffleShardingStrategy(r, "instance-1", "127.0.0.1", limits, log.NewNopLogger(), nil, true)
 	filter2 := NewShuffleShardingStrategy(r, "instance-2", "127.0.0.2", limits, log.NewNopLogger(), nil, true)
 
-	owned, err := filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block1}})
+	owned, err := filter.OwnBlock("user-1", metadata.Meta{ULID: block1})
 	require.NoError(t, err)
 	require.True(t, owned)
 	// Owned by 127.0.0.2
-	owned, err = filter.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	owned, err = filter.OwnBlock("user-1", metadata.Meta{ULID: block2})
 	require.NoError(t, err)
 	require.False(t, owned)
 
-	owned, err = filter2.OwnBlock("user-1", metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block2}})
+	owned, err = filter2.OwnBlock("user-1", metadata.Meta{ULID: block2})
 	require.NoError(t, err)
 	require.True(t, owned)
 }
@@ -809,7 +808,7 @@ func TestShardingBlockLifecycleCallbackAdapter(t *testing.T) {
 	userID := "user-1"
 	logger := log.NewNopLogger()
 	block := ulid.MustNew(1, nil)
-	meta := metadata.Meta{BlockMeta: tsdb.BlockMeta{ULID: block}}
+	meta := metadata.Meta{ULID: block}
 
 	for _, tc := range []struct {
 		name             string

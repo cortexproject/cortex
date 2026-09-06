@@ -9,11 +9,11 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 	"gonum.org/v1/gonum/floats"
 )
 
@@ -55,9 +55,8 @@ func (u *unaryNegation) loadSeries(ctx context.Context) error {
 			return
 		}
 		u.series = make([]labels.Labels, len(series))
-		var b labels.ScratchBuilder
 		for i := range series {
-			lbls := extlabels.DropReserved(series[i], b)
+			lbls := series[i].DropReserved(schema.IsMetadataLabel)
 			u.series[i] = lbls
 		}
 	})

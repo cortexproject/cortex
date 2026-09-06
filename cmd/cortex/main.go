@@ -259,6 +259,11 @@ func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 		buf = expandEnv(buf)
 	}
 
+	err = cfg.SetYAMLRootNodeStates(buf)
+	if err != nil {
+		return errors.Wrap(err, "Error parsing config file")
+	}
+
 	err = yaml.UnmarshalStrict(buf, cfg)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing config file")

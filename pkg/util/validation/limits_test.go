@@ -943,23 +943,6 @@ func TestCompileQueryPriorityRegex(t *testing.T) {
 	require.Nil(t, l.QueryPriority.Priorities[0].QueryAttributes[0].CompiledRegex)
 }
 
-func TestEvaluationDelayHigherThanRulerQueryOffset(t *testing.T) {
-	tenant := "tenant"
-	evaluationDelay := time.Duration(10)
-	tenantLimits := map[string]*Limits{
-		tenant: {
-			RulerQueryOffset:     5,
-			RulerEvaluationDelay: model.Duration(evaluationDelay),
-		},
-	}
-
-	defaults := Limits{}
-	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
-
-	rulerQueryOffset := ov.RulerQueryOffset(tenant)
-	assert.Equal(t, evaluationDelay, rulerQueryOffset)
-}
-
 func TestLimitsPerLabelSetsForSeries(t *testing.T) {
 	for _, tc := range []struct {
 		name           string

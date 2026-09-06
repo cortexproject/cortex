@@ -17,7 +17,7 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -53,7 +53,7 @@ jobs:
     name: test (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -81,7 +81,7 @@ jobs:
     name: test-no-race (${{ matrix.name }})
     runs-on: ${{ matrix.runner }}
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -162,7 +162,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     outputs:
       image_tag: ${{ steps.image-tag.outputs.image_tag }}
     steps:
@@ -215,7 +215,7 @@ jobs:
     name: build-integration-tests (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -357,7 +357,7 @@ jobs:
     if: (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')) && github.repository == 'cortexproject/cortex'
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

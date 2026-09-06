@@ -1,4 +1,4 @@
-//go:build integration
+//go:build requires_docker
 
 package integration
 

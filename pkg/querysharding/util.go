@@ -82,6 +82,61 @@ func ExtractShardingMatchers(matchers []*labels.Matcher) ([]*labels.Matcher, *st
 	return r, shardInfo.Matcher(&Buffers), nil
 }
 
+type disableVectorFunctionAnalyzer struct {
+	analyzer querysharding.Analyzer
+}
+
+// NewDisableVectorFunctionAnalyzer is a wrapper around the analyzer that marks queries
+// using the `vector()` function as not shardable.
+//
+// Vertical sharding is implemented by appending a shard matcher to every vector
+// selector, so each shard only evaluates the query over the series it owns. That is
+// only correct as long as every output series of the query is derived from a selector,
+// because then the shard that owns the series is the only shard that can produce it.
+//
+// `vector(s)` breaks that invariant: it synthesises a series with an empty labelset out
+// of a scalar, with no selector behind it, so *every* shard produces it. When that
+// sample can reach the query result - most notably as the right hand side of `or`, the
+// idiomatic "default value" pattern - the shards where the left hand side is empty emit
+// the `vector()` sample, and merging the shards can pick it over the real sample
+// produced by the shard that does own the data. The result is that a sharded query
+// returns the `vector()` fallback where an unsharded query correctly returns the left
+// hand side.
+//
+// This mirrors the way the upstream Thanos analyzer already refuses to shard `absent`,
+// `absent_over_time` and `scalar`, whose results likewise depend on data a single shard
+// cannot see. See https://github.com/cortexproject/cortex/issues/7804.
+func NewDisableVectorFunctionAnalyzer(analyzer querysharding.Analyzer) *disableVectorFunctionAnalyzer {
+	return &disableVectorFunctionAnalyzer{analyzer: analyzer}
+}
+
+func (d *disableVectorFunctionAnalyzer) Analyze(query string) (querysharding.QueryAnalysis, error) {
+	analysis, err := d.analyzer.Analyze(query)
+	if err != nil || !analysis.IsShardable() {
+		return analysis, err
+	}
+
+	expr, err := cortexparser.ParseExpr(query)
+	if err != nil {
+		// The wrapped analyzer already parsed the query successfully, so this should not
+		// happen. Be conservative and keep the wrapped analyzer's answer.
+		return analysis, nil
+	}
+	isShardable := true
+	parser.Inspect(expr, func(node parser.Node, nodes []parser.Node) error {
+		if n, ok := node.(*parser.Call); ok && n.Func != nil && n.Func.Name == "vector" {
+			isShardable = false
+			return stop
+		}
+		return nil
+	})
+	if !isShardable {
+		// Mark as not shardable.
+		return querysharding.QueryAnalysis{}, nil
+	}
+	return analysis, nil
+}
+
 type disableBinaryExpressionAnalyzer struct {
 	analyzer querysharding.Analyzer
 }

@@ -47,6 +47,11 @@ type Options struct {
 	// clients initial default settings.
 	DefaultsMode aws.DefaultsMode
 
+	// Disables SDK clock skew correction. When set, the SDK will not adjust request
+	// signing timestamps to compensate for clock drift between the client and the
+	// service.
+	DisableClockSkewCorrection bool
+
 	// Allows you to disable the client's validation of response integrity using CRC32
 	// checksum. Enabled by default.
 	DisableValidateResponseChecksum bool

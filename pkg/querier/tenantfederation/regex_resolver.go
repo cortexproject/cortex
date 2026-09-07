@@ -106,9 +106,20 @@ func NewRegexResolver(cfg users.UsersScannerConfig, tenantFederationCfg Config, 
 		Help: "Number of discovered users.",
 	})
 
-	r.Service = services.NewBasicService(nil, r.running, nil)
+	r.Service = services.NewBasicService(r.starting, r.running, nil)
 
 	return r, nil
+}
+
+// starting discovers users before the service becomes running. Otherwise queries
+// served right after the startup would be matched against an empty user list until
+// the first sync happens.
+func (r *RegexResolver) starting(ctx context.Context) error {
+	if err := r.updateUsers(ctx); err != nil {
+		return errors.Wrap(err, "failed to discover users from bucket")
+	}
+
+	return nil
 }
 
 func (r *RegexResolver) running(ctx context.Context) error {
@@ -121,29 +132,37 @@ func (r *RegexResolver) running(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
-			// Active and deleting users are considered
-			active, deleting, _, err := r.userScanner.ScanUsers(ctx)
-			if err != nil {
+			if err := r.updateUsers(ctx); err != nil {
 				level.Error(r.logger).Log("msg", "failed to discover users from bucket", "err", err)
 				continue
 			}
-
-			newUsers := append(active, deleting...)
-			sort.Strings(newUsers)
-
-			r.Lock()
-			changed := !slices.Equal(r.knownUsers, newUsers)
-			r.knownUsers = newUsers
-			if changed && r.matchedCache != nil {
-				// Reset the cache when the set of available users has changed.
-				r.matchedCache.Purge()
-				r.matchedCacheSize.Set(0)
-			}
-			r.Unlock()
-			r.lastUpdateUserRun.SetToCurrentTime()
-			r.discoveredUsers.Set(float64(len(active) + len(deleting)))
 		}
 	}
+}
+
+func (r *RegexResolver) updateUsers(ctx context.Context) error {
+	// Active and deleting users are considered
+	active, deleting, _, err := r.userScanner.ScanUsers(ctx)
+	if err != nil {
+		return err
+	}
+
+	newUsers := append(active, deleting...)
+	sort.Strings(newUsers)
+
+	r.Lock()
+	changed := !slices.Equal(r.knownUsers, newUsers)
+	r.knownUsers = newUsers
+	if changed && r.matchedCache != nil {
+		// Reset the cache when the set of available users has changed.
+		r.matchedCache.Purge()
+		r.matchedCacheSize.Set(0)
+	}
+	r.Unlock()
+	r.lastUpdateUserRun.SetToCurrentTime()
+	r.discoveredUsers.Set(float64(len(active) + len(deleting)))
+
+	return nil
 }
 
 func (r *RegexResolver) TenantID(ctx context.Context) (string, error) {

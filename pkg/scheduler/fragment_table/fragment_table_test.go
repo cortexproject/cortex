@@ -27,6 +27,7 @@ func TestNewFragmentTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ft := NewFragmentTable(tt.expiration)
+			t.Cleanup(ft.Close)
 			require.NotNil(t, ft)
 			require.NotNil(t, ft.mappings)
 			assert.Equal(t, tt.expiration, ft.expiration)
@@ -36,6 +37,7 @@ func TestNewFragmentTable(t *testing.T) {
 
 func TestFragmentTable_AddAndGetAddress(t *testing.T) {
 	ft := NewFragmentTable(time.Hour)
+	t.Cleanup(ft.Close)
 
 	tests := []struct {
 		name      string
@@ -84,6 +86,7 @@ func TestFragmentTable_AddAndGetAddress(t *testing.T) {
 func TestFragmentTable_Expiration(t *testing.T) {
 	expiration := 100 * time.Millisecond
 	ft := NewFragmentTable(expiration)
+	t.Cleanup(ft.Close)
 
 	t.Run("entries expire after timeout", func(t *testing.T) {
 		ft.AddAddressByID(1, 1, "addr1")
@@ -106,6 +109,7 @@ func TestFragmentTable_Expiration(t *testing.T) {
 
 func TestFragmentTable_ConcurrentAccess(t *testing.T) {
 	ft := NewFragmentTable(time.Hour)
+	t.Cleanup(ft.Close)
 
 	const (
 		numGoroutines = 10
@@ -140,6 +144,7 @@ func TestFragmentTable_ConcurrentAccess(t *testing.T) {
 func TestFragmentTable_PeriodicCleanup(t *testing.T) {
 	expiration := 100 * time.Millisecond
 	ft := NewFragmentTable(expiration)
+	t.Cleanup(ft.Close)
 
 	ft.AddAddressByID(1, 1, "addr1")
 	ft.AddAddressByID(1, 2, "addr2")
@@ -162,4 +167,19 @@ func TestFragmentTable_PeriodicCleanup(t *testing.T) {
 
 	_, ok = ft.GetAddrByID(1, 2)
 	require.False(t, ok)
+}
+
+func TestFragmentTable_CloseStopsPeriodicCleanup(t *testing.T) {
+	expiration := 100 * time.Millisecond
+	ft := NewFragmentTable(expiration)
+	ft.Close()
+	ft.Close()
+
+	ft.AddAddressByID(1, 1, "addr1")
+
+	time.Sleep(expiration * 2)
+
+	addr, ok := ft.GetAddrByID(1, 1)
+	require.True(t, ok)
+	require.Equal(t, "addr1", addr)
 }

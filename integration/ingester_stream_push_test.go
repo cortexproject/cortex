@@ -204,10 +204,9 @@ func TestIngesterStreamPushConnectionWithMismatchedSigningKey(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		series, _ := generateSeries(fmt.Sprintf("test_signing_mismatch_%d", i), now)
 		res, err := client.Push(series)
-		if err == nil {
-			require.NotEqual(t, 200, res.StatusCode,
-				"push must fail when distributor and ingester use different signing keys")
-		}
+		require.NoError(t, err)
+		require.NotEqual(t, 200, res.StatusCode,
+			"push must fail when distributor and ingester use different signing keys")
 	}
 }
 

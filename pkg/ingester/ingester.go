@@ -3118,26 +3118,14 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		return nil, errors.Wrapf(err, "failed to compact TSDB: %s", udir)
 	}
 
-	userDB.db = db
-	// We set the limiter here because we don't want to limit
-	// series during WAL replay.
-	userDB.limiter = i.limiter
-
-	if db.Head().NumSeries() > 0 {
-		// If there are series in the head, use max time from head. If this time is too old,
-		// TSDB will be eligible for flushing and closing sooner, unless more data is pushed to it quickly.
-		userDB.setLastUpdate(util.TimeFromMillis(db.Head().MaxTime()))
-	} else {
-		// If head is empty (eg. new TSDB), don't close it right after.
-		userDB.setLastUpdate(time.Now())
-	}
-
 	// Thanos shipper requires at least 1 external label to be set. For this reason,
 	// we set the tenant ID as external label and we'll filter it out when reading
 	// the series from the storage.
 	l := labels.FromStrings(cortex_tsdb.TenantIDExternalLabel, userID, cortex_tsdb.IngesterIDExternalLabel, i.TSDBState.shipperIngesterID)
 
-	// Create a new shipper for this database
+	// Create a new shipper for this database before making the TSDB visible to
+	// callbacks. TSDB's reload goroutine can call blocksToDelete concurrently,
+	// and blocksToDelete reads userDB.shipper once userDB.db is set.
 	if i.cfg.BlocksStorageConfig.TSDB.IsBlocksShippingEnabled() {
 		udirRoot, err := os.OpenRoot(udir)
 		if err != nil {
@@ -3156,8 +3144,24 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 			shipper.WithAllowOutOfOrderUploads(true), // Allow out of order uploads. It's fine in Cortex's context.
 			shipper.WithSkipCorruptedBlocks(true),    // We allow out of order uploads. This is the same behavior. We should track error with metrics
 		)
-		userDB.shipperMetadataFilePath = filepath.Join(userDB.db.Dir(), filepath.Clean(shipper.DefaultMetaFilename))
+		userDB.shipperMetadataFilePath = filepath.Join(db.Dir(), filepath.Clean(shipper.DefaultMetaFilename))
+	}
 
+	userDB.db = db
+	// We set the limiter here because we don't want to limit
+	// series during WAL replay.
+	userDB.limiter = i.limiter
+
+	if db.Head().NumSeries() > 0 {
+		// If there are series in the head, use max time from head. If this time is too old,
+		// TSDB will be eligible for flushing and closing sooner, unless more data is pushed to it quickly.
+		userDB.setLastUpdate(util.TimeFromMillis(db.Head().MaxTime()))
+	} else {
+		// If head is empty (eg. new TSDB), don't close it right after.
+		userDB.setLastUpdate(time.Now())
+	}
+
+	if userDB.shipper != nil {
 		// Initialise the shipper blocks cache.
 		if err := userDB.updateCachedShippedBlocks(); err != nil {
 			level.Error(userLogger).Log("msg", "failed to update cached shipped blocks after shipper initialisation", "err", err)

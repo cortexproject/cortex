@@ -158,7 +158,9 @@ Currently experimental features are:
 - Parquet storage
   - Parquet Converter: the `-parquet-converter.*` CLI flags, including `-parquet-converter.enabled`,
     `-parquet-converter.max-num-columns` (automatically shards parquet files when the number of columns
-    exceeds the configured limit) and the `-parquet-converter.ring.*` ring configuration
+    exceeds the configured limit), `-parquet-converter.max-block-label-names` (if enabled, adds a
+    no-convert mark and skips blocks with too many label names) and the `-parquet-converter.ring.*`
+    ring configuration
   - Querier: `-querier.parquet-queryable-default-block-store`, `-querier.parquet-queryable-fallback-disabled`,
     the `-querier.parquet-queryable.max-fetched-*` limits and `-querier.parquet-shard-cache-*`
   - Store Gateway: `-blocks-storage.bucket-store.parquet-query-concurrency`,

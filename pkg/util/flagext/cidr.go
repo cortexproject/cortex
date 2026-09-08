@@ -46,17 +46,19 @@ func (c CIDRSliceCSV) String() string {
 
 // Set implements flag.Value
 func (c *CIDRSliceCSV) Set(s string) error {
-	parts := strings.SplitSeq(s, ",")
+	// Build into a fresh slice so the value replaces the previous one and a bad entry leaves it untouched.
+	var values CIDRSliceCSV
 
-	for part := range parts {
+	for part := range strings.SplitSeq(s, ",") {
 		cidr := &CIDR{}
 		if err := cidr.Set(part); err != nil {
 			return errors.Wrapf(err, "cidr: %s", part)
 		}
 
-		*c = append(*c, *cidr)
+		values = append(values, *cidr)
 	}
 
+	*c = values
 	return nil
 }
 

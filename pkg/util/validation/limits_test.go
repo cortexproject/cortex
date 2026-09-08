@@ -1278,3 +1278,25 @@ func TestQueryLimits_TenantOverridesValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestAlertmanagerReceiversBlockCIDRNetworksPerTenantOverrideReplacesDefault(t *testing.T) {
+	defaults := Limits{}
+	require.NoError(t, defaults.AlertmanagerReceiversBlockCIDRNetworks.Set("10.0.0.0/8,192.168.0.0/16"))
+	SetDefaultLimitsForYAMLUnmarshalling(defaults)
+	t.Cleanup(func() { SetDefaultLimitsForYAMLUnmarshalling(Limits{}) })
+
+	tenantLimits := map[string]*Limits{}
+	require.NoError(t, yaml.Unmarshal([]byte(`
+user1:
+  alertmanager_receivers_firewall_block_cidr_networks: 172.16.0.0/12
+`), &tenantLimits))
+
+	ov := NewOverrides(defaults, newMockTenantLimits(tenantLimits))
+
+	blocked := []string{}
+	for _, c := range ov.AlertmanagerReceiversBlockCIDRNetworks("user1") {
+		blocked = append(blocked, c.String())
+	}
+
+	assert.Equal(t, []string{"172.16.0.0/12"}, blocked)
+}

@@ -38,12 +38,15 @@ func getCortexProjectDir() string {
 }
 
 // getLatestReleaseImage returns the Cortex image reference for the latest published
-// release, derived from the VERSION file at the project root.
+// release.
 //
-// Set CORTEX_LATEST_RELEASE_IMAGE to override the resolution entirely.
+// CORTEX_LATEST_RELEASE_IMAGE short-circuits the resolution. CI always sets it: the
+// integration workflow asks quay.io which GA tags actually exist and picks the highest one
+// that does not exceed VERSION, because the registry is the only source of truth for what
+// is published (see .github/workflows/test-build-deploy.yml).
 //
-// If you change how this resolves, remember to update the preloading done by GitHub
-// Actions too (see .github/workflows/test-build-deploy.yml).
+// Without it — a local run — fall back to deriving the version from the VERSION file at the
+// project root, which needs no network but cannot see what the registry holds.
 func getLatestReleaseImage() (string, error) {
 	if image := os.Getenv("CORTEX_LATEST_RELEASE_IMAGE"); image != "" {
 		return image, nil
@@ -62,8 +65,9 @@ func getLatestReleaseImage() (string, error) {
 	return fmt.Sprintf("quay.io/cortexproject/cortex:v%s", version), nil
 }
 
-// latestReleaseVersion maps the contents of the VERSION file to a version that has
-// actually been published to the container registries.
+// latestReleaseVersion maps the contents of the VERSION file to a version that has very
+// likely been published to the container registries. It is the offline fallback for
+// getLatestReleaseImage; CI resolves against the registry instead.
 //
 // VERSION does not always name a published release. On a release branch it is bumped to
 // the version being prepared (e.g. "1.22.0-rc.0") long before the deploy job publishes
@@ -73,6 +77,10 @@ func getLatestReleaseImage() (string, error) {
 //	1.21.1      -> 1.21.1  (VERSION on master is the last GA, whose image exists)
 //	1.22.0-rc.0 -> 1.21.0  (the previous minor always shipped a .0)
 //	1.22.2-rc.1 -> 1.22.1  (the preceding patch of the same minor)
+//
+// A GA VERSION is assumed published, which holds everywhere except the GA tag build itself
+// — there v1.22.0 is only pushed by deploy, after this runs. That case is why CI consults
+// the registry rather than relying on this.
 func latestReleaseVersion(version string) (string, error) {
 	if version == "" {
 		return "", errors.New("VERSION file is empty")

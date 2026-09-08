@@ -168,7 +168,7 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
-	// Federated rule groups query data from the tenants listed in `src_tenants`.
+	// Federated rule groups query data from the tenants listed in `source_tenants`.
 	EnableFederatedRules       bool                   `yaml:"enable_federated_rules"`
 	AllowedFederatedTenants    flagext.StringSliceCSV `yaml:"allowed_federated_tenants"`
 	DisallowedFederatedTenants flagext.StringSliceCSV `yaml:"disallowed_federated_tenants"`
@@ -276,7 +276,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
-	f.BoolVar(&cfg.EnableFederatedRules, "ruler.enable-federated-rules", false, "[Experimental] Enable federated rule groups. A federated rule group lists the tenants to query in its `src_tenants` field, while the resulting series and alerts always belong to the tenant owning the rule group. Requires -tenant-federation.enabled=true.")
+	f.BoolVar(&cfg.EnableFederatedRules, "ruler.enable-federated-rules", false, "[Experimental] Enable federated rule groups. A federated rule group lists the tenants to query in its `source_tenants` field, while the resulting series and alerts always belong to the tenant owning the rule group. Requires -tenant-federation.enabled=true.")
 	f.Var(&cfg.AllowedFederatedTenants, "ruler.allowed-federated-tenants", "[Experimental] Comma separated list of tenants allowed to create federated rule groups. If specified, only these tenants can create federated rule groups, otherwise all tenants can.")
 	f.Var(&cfg.DisallowedFederatedTenants, "ruler.disallowed-federated-tenants", "[Experimental] Comma separated list of tenants that cannot create federated rule groups. If specified, a tenant that would normally be allowed to create federated rule groups is denied instead.")
 
@@ -311,7 +311,7 @@ type MultiTenantManager interface {
 	ValidateRuleGroup(rulefmt.RuleGroup) []error
 	// ValidateFederatedRuleGroup checks that userID may own a federated rule group
 	// and returns its source tenants sorted and de-duplicated.
-	ValidateFederatedRuleGroup(userID string, srcTenants []string) ([]string, error)
+	ValidateFederatedRuleGroup(userID string, sourceTenants []string) ([]string, error)
 }
 
 // Ruler evaluates rules.

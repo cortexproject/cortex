@@ -19,15 +19,15 @@ func ToProto(user string, namespace string, rl RuleGroup) *RuleGroupDesc {
 		queryOffset = &offset
 	}
 	rg := RuleGroupDesc{
-		Name:        rl.Name,
-		Namespace:   namespace,
-		Interval:    time.Duration(rl.Interval),
-		Rules:       formattedRuleToProto(rl.Rules),
-		User:        user,
-		Limit:       int64(rl.Limit),
-		QueryOffset: queryOffset,
-		Labels:      cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
-		SrcTenants:  rl.SrcTenants,
+		Name:          rl.Name,
+		Namespace:     namespace,
+		Interval:      time.Duration(rl.Interval),
+		Rules:         formattedRuleToProto(rl.Rules),
+		User:          user,
+		Limit:         int64(rl.Limit),
+		QueryOffset:   queryOffset,
+		Labels:        cortexpb.FromLabelsToLabelAdapters(labels.FromMap(rl.Labels)),
+		SourceTenants: rl.SourceTenants,
 	}
 	return &rg
 }
@@ -87,7 +87,7 @@ func FromProto(rg *RuleGroupDesc) RuleGroup {
 	}
 
 	return RuleGroup{
-		RuleGroup:  formattedRuleGroup,
-		SrcTenants: rg.GetSrcTenants(),
+		RuleGroup:     formattedRuleGroup,
+		SourceTenants: rg.GetSourceTenants(),
 	}
 }

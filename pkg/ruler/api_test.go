@@ -791,7 +791,7 @@ func TestRuler_CreateFederated(t *testing.T) {
 	const federatedGroup = `
 name: test
 interval: 15s
-src_tenants: [team-b, team-a, team-b]
+source_tenants: [team-b, team-a, team-b]
 rules:
 - record: up_rule
   expr: sum by (__tenant_id__) (up)
@@ -841,17 +841,17 @@ rules:
 			err:    "tenant is not allowed to create federated rule groups: team-a\n",
 		},
 		{
-			name: "invalid src tenant",
+			name: "invalid source tenant",
 			cfg: func(cfg *Config) {
 				cfg.EnableFederatedRules = true
 			},
 			user:   "infra",
 			input:  strings.Replace(federatedGroup, "team-a", "team|a", 1),
 			status: 400,
-			err:    "invalid src tenant \"team|a\"",
+			err:    "invalid source tenant \"team|a\"",
 		},
 		{
-			name: "too many src tenants",
+			name: "too many source tenants",
 			cfg: func(cfg *Config) {
 				cfg.EnableFederatedRules = true
 				cfg.TenantFederationMaxTenant = 1
@@ -859,10 +859,10 @@ rules:
 			user:   "infra",
 			input:  federatedGroup,
 			status: 400,
-			err:    "too many src tenants (limit: 1 actual: 2)\n",
+			err:    "too many source tenants (limit: 1 actual: 2)\n",
 		},
 		{
-			name: "stored with normalized src tenants",
+			name: "stored with normalized source tenants",
 			cfg: func(cfg *Config) {
 				cfg.EnableFederatedRules = true
 				cfg.AllowedFederatedTenants = []string{"infra"}
@@ -870,7 +870,7 @@ rules:
 			user:   "infra",
 			input:  federatedGroup,
 			status: 202,
-			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: sum by (__tenant_id__) (up)\nsrc_tenants:\n    - team-a\n    - team-b\n",
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: sum by (__tenant_id__) (up)\nsource_tenants:\n    - team-a\n    - team-b\n",
 		},
 	}
 
@@ -906,12 +906,12 @@ rules:
 			require.Equal(t, 200, w.Code)
 			require.Equal(t, tt.output, w.Body.String())
 
-			// The rule group listing exposes src_tenants as well.
+			// The rule group listing exposes source_tenants as well.
 			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules", nil, tt.user)
 			w = httptest.NewRecorder()
 			router.ServeHTTP(w, req)
 			require.Equal(t, 200, w.Code)
-			require.Equal(t, strings.Contains(tt.input, "src_tenants"), strings.Contains(w.Body.String(), "src_tenants"))
+			require.Equal(t, strings.Contains(tt.input, "source_tenants"), strings.Contains(w.Body.String(), "source_tenants"))
 		})
 	}
 }

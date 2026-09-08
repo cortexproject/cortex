@@ -156,7 +156,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help:                            "Delay in seconds between sample ingestion time and sample timestamp.",
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 1,
+			NativeHistogramMinResetDuration: 1 * time.Hour,
 			Buckets:                         []float64{1, 5, 10, 30, 60, 120, 300, 600}, // 1s, 5s, 10s, 30s, 1m, 2m, 5m, 10m
 		}, []string{"user"}),
 		oooLabelsTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{

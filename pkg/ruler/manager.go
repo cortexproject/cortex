@@ -291,11 +291,11 @@ func (r *DefaultMultiTenantManager) createRulesManager(user string, ctx context.
 }
 
 // ValidateFederatedRuleGroup implements MultiTenantManager.
-func (r *DefaultMultiTenantManager) ValidateFederatedRuleGroup(userID string, srcTenants []string) ([]string, error) {
+func (r *DefaultMultiTenantManager) ValidateFederatedRuleGroup(userID string, sourceTenants []string) ([]string, error) {
 	if err := r.federatedRules.checkOwner(userID); err != nil {
 		return nil, err
 	}
-	return r.federatedRules.validateSrcTenants(srcTenants)
+	return r.federatedRules.validateSourceTenants(sourceTenants)
 }
 
 // filterFederatedRuleGroups drops the federated rule groups of a user that may
@@ -326,7 +326,7 @@ func (r *DefaultMultiTenantManager) federatedOrgIDs(userID string, groups rulesp
 			continue
 		}
 		key := promRules.GroupKey(r.mapper.ruleFilePath(userID, g.Namespace), g.Name)
-		orgIDs[key] = users.JoinTenantIDs(g.SrcTenants)
+		orgIDs[key] = users.JoinTenantIDs(g.SourceTenants)
 	}
 	return orgIDs
 }

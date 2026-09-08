@@ -730,6 +730,10 @@ func generateStorageBlock(t *testing.T, storageDir, userID string, metricName st
 }
 
 func querySeries(stores BucketStores, userID, metricName string, minT, maxT int64, blockIDs ...string) ([]*storepb.Series, annotations.Annotations, error) {
+	return querySeriesWithBatchSize(stores, userID, metricName, minT, maxT, 0, blockIDs...)
+}
+
+func querySeriesWithBatchSize(stores BucketStores, userID, metricName string, minT, maxT, batchSize int64, blockIDs ...string) ([]*storepb.Series, annotations.Annotations, error) {
 	var (
 		anyHints *types.Any
 		err      error
@@ -760,6 +764,7 @@ func querySeries(stores BucketStores, userID, metricName string, minT, maxT int6
 		}},
 		PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
 		Hints:                   anyHints,
+		ResponseBatchSize:       batchSize,
 	}
 
 	ctx := setUserIDToGRPCContext(context.Background(), userID)

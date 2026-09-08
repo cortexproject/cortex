@@ -3,17 +3,26 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cortexproject/promqlsmith"
+	"github.com/prometheus-community/parquet-common/convert"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
+	prom_tsdb "github.com/prometheus/prometheus/tsdb"
+	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -610,6 +619,12 @@ func TestParquetMultiShardQuery(t *testing.T) {
 				return len(labelSets) == totalSeries
 			})
 
+			if tc.viaStoreGateway {
+				// wait until the parquet block is converted
+				require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_blocks_meta_synced"},
+					e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "parquet-converted"))))
+			}
+
 			rangeRes, err := c.QueryRange(`test_series_a`, start, end, scrapeInterval)
 			require.NoError(t, err)
 			rangeMatrix, ok := rangeRes.(model.Matrix)
@@ -636,4 +651,401 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParquetStoreGateway_HybridMode(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(baseFlags, map[string]string{
+		// No parquet-converter service: TSDB block will never be auto-converted.
+		"-target": "all",
+		"-blocks-storage.tsdb.block-ranges-period":                             "1m,24h",
+		"-blocks-storage.tsdb.ship-interval":                                   "1s",
+		"-blocks-storage.bucket-store.sync-interval":                           "1s",
+		"-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl": "1s",
+		"-blocks-storage.bucket-store.bucket-index.idle-timeout":               "1s",
+		"-blocks-storage.bucket-store.bucket-index.enabled":                    "true",
+		// Route reads through the store-gateway Parquet bucket store.
+		"-blocks-storage.bucket-store.bucket-store-type":  "parquet",
+		"-compactor.cleanup-interval":                     "1s",
+		"-ring.store":                                     "consul",
+		"-consul.hostname":                                consul.NetworkHTTPEndpoint(),
+		"-distributor.replication-factor":                 "1",
+		"-store-gateway.sharding-enabled":                 "true",
+		"-store-gateway.sharding-ring.store":              "consul",
+		"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
+		"-store-gateway.sharding-ring.replication-factor": "1",
+		"-querier.enable-parquet-queryable":               "false",
+		"-limits.query-ingesters-within":                  "2h",
+		"-alertmanager.web.external-url":                  "http://localhost/alertmanager",
+		"-parquet-converter.enabled":                      "true", // enables EnableParquet() in the compactor's bucket index updater
+	})
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	const (
+		userID        = "user-1"
+		metricParquet = "series_parquet"
+		metricTSDB    = "series_tsdb"
+		metricMerge   = "series_merge"
+		numSamples    = 60
+	)
+
+	ctx := context.Background()
+	rnd := newFuzzRand(t)
+	dir := filepath.Join(s.SharedDir(), "data")
+	scrapeInterval := time.Minute
+	now := time.Now()
+	// Both time ranges must be older than -limits.query-ingesters-within (2h).
+	midPoint := now.Add(-time.Hour * 10)
+	start := now.Add(-time.Hour * 24)
+	end := now.Add(-time.Hour * 3)
+
+	// Block A: series_parquet [start, midPoint) — will be converted to Parquet block.
+	// Also carries two series_merge series (labeled "pk", a Parquet-only label) to verify
+	// that Series/LabelNames/LabelValues correctly merge results across both blocks.
+	idA, err := e2e.CreateBlock(ctx, rnd, dir,
+		[]labels.Labels{
+			labels.FromStrings(labels.MetricName, metricParquet, "job", "test"),
+			labels.FromStrings(labels.MetricName, metricMerge, "job", "test", "series", "a", "pk", "1"),
+			labels.FromStrings(labels.MetricName, metricMerge, "job", "test", "series", "c", "pk", "1"),
+		},
+		numSamples, start.UnixMilli(), midPoint.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+
+	// Block B: series_tsdb [midPoint, end) — stays as TSDB block.
+	// Also carries three series_merge series (labeled "tk", a TSDB-only label). The "series"
+	// value "c" is shared with block A (under a different label set) to exercise
+	// de-duplication in the merged LabelValues response.
+	idB, err := e2e.CreateBlock(ctx, rnd, dir,
+		[]labels.Labels{
+			labels.FromStrings(labels.MetricName, metricTSDB, "job", "test"),
+			labels.FromStrings(labels.MetricName, metricMerge, "job", "test", "series", "b", "tk", "1"),
+			labels.FromStrings(labels.MetricName, metricMerge, "job", "test", "series", "c", "tk", "1"),
+			labels.FromStrings(labels.MetricName, metricMerge, "job", "test", "series", "d", "tk", "1"),
+		},
+		numSamples, midPoint.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	userBkt := bucket.NewUserBucketClient(userID, storage.GetBucket(), nil)
+
+	// Upload both TSDB blocks to object storage.
+	require.NoError(t, block.Upload(ctx, log.Logger, userBkt, filepath.Join(dir, idA.String()), metadata.NoneFunc))
+	require.NoError(t, block.Upload(ctx, log.Logger, userBkt, filepath.Join(dir, idB.String()), metadata.NoneFunc))
+
+	// Manually convert block A to Parquet in object storage.
+	{
+		tsdbBlock, openErr := prom_tsdb.OpenBlock(nil, filepath.Join(dir, idA.String()), chunkenc.NewPool(), prom_tsdb.DefaultPostingsDecoderFactory)
+		require.NoError(t, openErr)
+		numShards, convertErr := convert.ConvertTSDBBlock(ctx, userBkt,
+			tsdbBlock.MinTime(), tsdbBlock.MaxTime(),
+			[]convert.Convertible{tsdbBlock}, promslog.NewNopLogger(),
+			convert.WithName(idA.String()))
+		require.NoError(t, tsdbBlock.Close())
+		require.NoError(t, convertErr)
+		marker := cortex_parquet.ConverterMark{
+			Version: cortex_parquet.CurrentVersion,
+			Shards:  numShards,
+		}
+		markerBytes, marshalErr := json.Marshal(marker)
+		require.NoError(t, marshalErr)
+		markerPath := path.Join(idA.String(), cortex_parquet.ConverterMarkerFileName)
+		require.NoError(t, userBkt.Upload(ctx, markerPath, bytes.NewReader(markerBytes)))
+		// Upload at the global marker path so the bucket index updater discovers it.
+		require.NoError(t, userBkt.Upload(ctx, bucketindex.ConverterMarkFilePath(idA), strings.NewReader("{}")))
+	}
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", userID)
+	require.NoError(t, err)
+
+	// Wait until the compactor has built the bucket index with the correct state:
+	// block A must be tagged as Parquet, block B must be TSDB.
+	cortex_testutil.Poll(t, 60*time.Second, true, func() any {
+		idx, idxErr := bucketindex.ReadIndex(ctx, storage.GetBucket(), userID, nil, log.Logger)
+		if idxErr != nil {
+			return false
+		}
+		foundParquetBlock, foundTSDBBlock := false, false
+		for _, b := range idx.Blocks {
+			switch b.ID {
+			case idA:
+				if b.Parquet != nil {
+					foundParquetBlock = true
+				}
+			case idB:
+				if b.Parquet == nil {
+					foundTSDBBlock = true
+				}
+			}
+		}
+		return foundParquetBlock && foundTSDBBlock
+	})
+
+	// Wait until both metrics are queryable via the store-gateway.
+	cortex_testutil.Poll(t, 120*time.Second, true, func() any {
+		labelSets, err := c.Series([]string{`{job="test"}`}, start, end)
+		if err != nil {
+			return false
+		}
+		foundParquet, foundTSDB := false, false
+		for _, ls := range labelSets {
+			switch string(ls[model.MetricNameLabel]) {
+			case metricParquet:
+				foundParquet = true
+			case metricTSDB:
+				foundTSDB = true
+			}
+		}
+		return foundParquet && foundTSDB
+	})
+
+	// series_parquet must be served by the Parquet store.
+	resParquet, err := c.QueryRange(metricParquet, start, midPoint, scrapeInterval)
+	require.NoError(t, err)
+	matrixParquet, ok := resParquet.(model.Matrix)
+	require.True(t, ok)
+	require.Len(t, matrixParquet, 1, "series_parquet must return one series (served from Parquet store)")
+
+	// series_tsdb must be served by the TSDB store.
+	resTSDB, err := c.QueryRange(metricTSDB, midPoint, end, scrapeInterval)
+	require.NoError(t, err)
+	matrixTSDB, ok := resTSDB.(model.Matrix)
+	require.True(t, ok)
+	require.Len(t, matrixTSDB, 1, "series_tsdb must return one series (served from TSDB store)")
+
+	// Series() must return the union of series_merge series from both the Parquet block
+	// (pk-labeled: a, c) and the TSDB block (tk-labeled: b, c, d).
+	mergeMatcher := fmt.Sprintf(`{__name__=%q}`, metricMerge)
+	mergedSeries, err := c.Series([]string{mergeMatcher}, start, end)
+	require.NoError(t, err)
+	require.Len(t, mergedSeries, 5, "series_merge must return the union of series from both stores")
+	var gotSeriesValues []string
+	for _, ls := range mergedSeries {
+		gotSeriesValues = append(gotSeriesValues, string(ls["series"]))
+	}
+	sort.Strings(gotSeriesValues)
+	require.Equal(t, []string{"a", "b", "c", "c", "d"}, gotSeriesValues,
+		"series_merge series values must include both blocks' series (c appears twice, once per block)")
+
+	// LabelNames() must merge label names from both stores: "pk" only exists in the Parquet
+	// block, "tk" only in the TSDB block.
+	names, err := c.LabelNames(start, end, mergeMatcher)
+	require.NoError(t, err)
+	require.Equal(t, []string{labels.MetricName, "job", "pk", "series", "tk"}, names,
+		"LabelNames must merge Parquet-only and TSDB-only label names")
+
+	// LabelValues() must merge and de-duplicate values from both stores: "c" is present in
+	// both blocks but must appear only once in the merged, sorted result.
+	values, err := c.LabelValues("series", start, end, []string{mergeMatcher})
+	require.NoError(t, err)
+	require.Equal(t, model.LabelValues{"a", "b", "c", "d"}, values,
+		"LabelValues must merge and de-duplicate values across both stores")
+
+	// TSDB sub-store must have loaded only block B (loaded=1) and excluded block A (parquet-converted=1).
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_blocks_meta_synced"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "loaded"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_blocks_meta_synced"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "parquet-converted"))))
+}
+
+func TestParquetStoreGateway_HybridModeFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	baseFlags := mergeFlags(AlertmanagerLocalFlags(), BlocksStorageFlags())
+	flags := mergeFlags(baseFlags, map[string]string{
+		// No parquet-converter service: the second block will never be auto-converted, so the
+		// store-gateway keeps serving it from the TSDB sub-store (hybrid).
+		"-target": "all",
+		"-blocks-storage.tsdb.block-ranges-period":                             "1m,24h",
+		"-blocks-storage.tsdb.ship-interval":                                   "1s",
+		"-blocks-storage.bucket-store.sync-interval":                           "1s",
+		"-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl": "1s",
+		"-blocks-storage.bucket-store.bucket-index.idle-timeout":               "1s",
+		"-blocks-storage.bucket-store.bucket-index.enabled":                    "true",
+		"-blocks-storage.bucket-store.index-cache.backend":                     tsdb.IndexCacheBackendInMemory,
+		// Route reads through the store-gateway Parquet (hybrid) bucket store.
+		"-blocks-storage.bucket-store.bucket-store-type":  "parquet",
+		"-compactor.cleanup-interval":                     "1s",
+		"-ring.store":                                     "consul",
+		"-consul.hostname":                                consul.NetworkHTTPEndpoint(),
+		"-distributor.replication-factor":                 "1",
+		"-store-gateway.sharding-enabled":                 "true",
+		"-store-gateway.sharding-ring.store":              "consul",
+		"-store-gateway.sharding-ring.consul.hostname":    consul.NetworkHTTPEndpoint(),
+		"-store-gateway.sharding-ring.replication-factor": "1",
+		"-querier.enable-parquet-queryable":               "false",
+		// Keep the queried range older than this so all data is served from blocks, not ingesters.
+		"-limits.query-ingesters-within": "2h",
+		"-alertmanager.web.external-url": "http://localhost/alertmanager",
+		// Enables EnableParquet() in the compactor's bucket index updater so the manually-created
+		// Parquet marker is honoured in the bucket index.
+		"-parquet-converter.enabled":          "true",
+		"-frontend.query-vertical-shard-size": "3",
+	})
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	const (
+		userID     = "user-1"
+		numShared  = 6 // series present in both blocks
+		numPOnly   = 4 // series present only in the Parquet block
+		numTOnly   = 4 // series present only in the TSDB block
+		numSamples = 60
+	)
+
+	ctx := context.Background()
+	rnd := newFuzzRand(t)
+	dir := filepath.Join(s.SharedDir(), "data")
+	scrapeInterval := time.Minute
+	statusCodes := []string{"200", "400", "404", "500", "502"}
+
+	now := time.Now()
+	// The whole range must be older than -limits.query-ingesters-within (2h). Block A covers
+	// [start, mid) and is converted to Parquet; block B covers [mid, end) and stays TSDB.
+	start := now.Add(-time.Hour * 24)
+	mid := now.Add(-time.Hour * 13)
+	end := now.Add(-time.Hour * 3)
+
+	// shared: same series in both blocks. In the store-gateway these are served by the Parquet
+	// store (block A) and the TSDB store (block B) and their chunks are merged for the same
+	// series.
+	sharedLbls := make([]labels.Labels, 0, numShared)
+	for i := 0; i < numShared; i++ {
+		sharedLbls = append(sharedLbls, labels.FromStrings(
+			labels.MetricName, "test_shared", "job", "test",
+			"series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
+	}
+	// parquet-only: only in block A. Carries a Parquet-only label name "pk".
+	parquetOnlyLbls := make([]labels.Labels, 0, numPOnly)
+	for i := 0; i < numPOnly; i++ {
+		parquetOnlyLbls = append(parquetOnlyLbls, labels.FromStrings(
+			labels.MetricName, "test_parquet_only", "job", "test",
+			"series", strconv.Itoa(i%3), "pk", strconv.Itoa(i)))
+	}
+	// tsdb-only: only in block B. Carries a TSDB-only label name "tk".
+	tsdbOnlyLbls := make([]labels.Labels, 0, numTOnly)
+	for i := 0; i < numTOnly; i++ {
+		tsdbOnlyLbls = append(tsdbOnlyLbls, labels.FromStrings(
+			labels.MetricName, "test_tsdb_only", "job", "test",
+			"series", strconv.Itoa(i%3), "tk", strconv.Itoa(i)))
+	}
+
+	// Block A (Parquet) gets shared + parquet-only, block B (TSDB) gets shared + tsdb-only.
+	lblsA := append(append([]labels.Labels{}, sharedLbls...), parquetOnlyLbls...)
+	lblsB := append(append([]labels.Labels{}, sharedLbls...), tsdbOnlyLbls...)
+	lblsAll := append(append(append([]labels.Labels{}, sharedLbls...), parquetOnlyLbls...), tsdbOnlyLbls...)
+
+	// Block A [start, mid): converted to Parquet. Block B [mid, end): stays TSDB.
+	idA, err := e2e.CreateBlock(ctx, rnd, dir, lblsA, numSamples, start.UnixMilli(), mid.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+	idB, err := e2e.CreateBlock(ctx, rnd, dir, lblsB, numSamples, mid.UnixMilli(), end.UnixMilli(), scrapeInterval.Milliseconds(), 10)
+	require.NoError(t, err)
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, err)
+	userBkt := bucket.NewUserBucketClient(userID, storage.GetBucket(), nil)
+
+	// Upload both TSDB blocks to object storage.
+	require.NoError(t, block.Upload(ctx, log.Logger, userBkt, filepath.Join(dir, idA.String()), metadata.NoneFunc))
+	require.NoError(t, block.Upload(ctx, log.Logger, userBkt, filepath.Join(dir, idB.String()), metadata.NoneFunc))
+
+	// Manually convert block A to Parquet in object storage (block B is left as TSDB).
+	{
+		tsdbBlock, openErr := prom_tsdb.OpenBlock(nil, filepath.Join(dir, idA.String()), chunkenc.NewPool(), prom_tsdb.DefaultPostingsDecoderFactory)
+		require.NoError(t, openErr)
+		numShards, convertErr := convert.ConvertTSDBBlock(ctx, userBkt,
+			tsdbBlock.MinTime(), tsdbBlock.MaxTime(),
+			[]convert.Convertible{tsdbBlock}, promslog.NewNopLogger(),
+			convert.WithName(idA.String()))
+		require.NoError(t, tsdbBlock.Close())
+		require.NoError(t, convertErr)
+		marker := cortex_parquet.ConverterMark{
+			Version: cortex_parquet.CurrentVersion,
+			Shards:  numShards,
+		}
+		markerBytes, marshalErr := json.Marshal(marker)
+		require.NoError(t, marshalErr)
+		markerPath := path.Join(idA.String(), cortex_parquet.ConverterMarkerFileName)
+		require.NoError(t, userBkt.Upload(ctx, markerPath, bytes.NewReader(markerBytes)))
+		// Upload at the global marker path so the bucket index updater discovers it.
+		require.NoError(t, userBkt.Upload(ctx, bucketindex.ConverterMarkFilePath(idA), strings.NewReader("{}")))
+	}
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Wait until the bucket index reflects the hybrid state: block A tagged Parquet, block B TSDB.
+	cortex_testutil.Poll(t, 60*time.Second, true, func() any {
+		idx, idxErr := bucketindex.ReadIndex(ctx, storage.GetBucket(), userID, nil, log.Logger)
+		if idxErr != nil {
+			return false
+		}
+		foundParquetBlock, foundTSDBBlock := false, false
+		for _, b := range idx.Blocks {
+			switch b.ID {
+			case idA:
+				if b.Parquet != nil {
+					foundParquetBlock = true
+				}
+			case idB:
+				if b.Parquet == nil {
+					foundTSDBBlock = true
+				}
+			}
+		}
+		return foundParquetBlock && foundTSDBBlock
+	})
+
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_blocks_meta_synced"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "loaded"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_blocks_meta_synced"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "parquet-converted"))))
+
+	c1, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", userID)
+	require.NoError(t, err)
+
+	// Prometheus reads both blocks directly from the shared data dir, giving it the same data.
+	require.NoError(t, writeFileToSharedDir(s, "prometheus.yml", []byte("")))
+	prom := e2edb.NewPrometheus("", nil)
+	require.NoError(t, s.StartAndWaitReady(prom))
+
+	c2, err := e2ecortex.NewPromQueryClient(prom.HTTPEndpoint())
+	require.NoError(t, err)
+	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
+
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnabledFunctions(enabledFunctions),
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
+	}
+	ps := promqlsmith.New(rnd, lblsAll, opts...)
+
+	runQueryFuzzTestCases(t, ps, c1, c2, end, start, end, scrapeInterval, 500, true)
+
+	// Confirm the hybrid path actually routed blocks to both sub-stores.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_hybrid_bucket_stores_blocks_routed_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "store", "parquet"))))
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_hybrid_bucket_stores_blocks_routed_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "store", "tsdb"))))
 }

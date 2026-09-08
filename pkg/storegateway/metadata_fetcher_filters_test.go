@@ -22,6 +22,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_testutil "github.com/cortexproject/cortex/pkg/util/testutil"
 )
@@ -173,4 +174,49 @@ func TestIgnoreNonQueryableBlocksFilter(t *testing.T) {
 
 	require.NoError(t, f.Filter(ctx, inputMetas, synced, modified))
 	assert.Equal(t, expectedMetas, inputMetas)
+}
+
+func TestIgnoreParquetBlocksFilter_FilterWithBucketIndex_DropsAndRecords(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	var (
+		parquetInMetas    = ulid.MustNew(1, nil) // parquet + in metas -> dropped, recorded, counted
+		parquetNotInMetas = ulid.MustNew(2, nil) // parquet but not in metas -> recorded only
+		plainTSDB         = ulid.MustNew(3, nil) // not converted -> always kept, not recorded
+	)
+
+	idx := &bucketindex.Index{
+		Blocks: bucketindex.Blocks{
+			{ID: parquetInMetas, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.CurrentVersion}},
+			{ID: parquetNotInMetas, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.CurrentVersion}},
+			{ID: plainTSDB},
+		},
+	}
+
+	metas := map[ulid.ULID]*metadata.Meta{
+		parquetInMetas: {},
+		plainTSDB:      {},
+	}
+	synced := extprom.NewTxGaugeVec(nil, prometheus.GaugeOpts{Name: "synced"}, []string{"state"})
+
+	f := NewIgnoreParquetBlocksFilter(logger)
+	require.NoError(t, f.FilterWithBucketIndex(ctx, metas, idx, synced))
+
+	// All Parquet blocks are dropped from the TSDB metas; the plain TSDB block is kept.
+	assert.NotContains(t, metas, parquetInMetas, "parquet block must be dropped from the TSDB store")
+	assert.Contains(t, metas, plainTSDB, "non-parquet block must always be kept")
+
+	// Only blocks actually present in metas increment the synced counter.
+	assert.Equal(t, 1.0, promtest.ToFloat64(synced.WithLabelValues(parquetConvertedMeta)))
+
+	// The drop set records every Parquet block, even one that was never
+	// in the TSDB metas, and excludes non-parquet blocks.
+	dropped := f.DroppedBlocks()
+	assert.Contains(t, dropped, parquetInMetas.String())
+	assert.Contains(t, dropped, parquetNotInMetas.String())
+	assert.NotContains(t, dropped, plainTSDB.String())
+	assert.Len(t, dropped, 2)
 }

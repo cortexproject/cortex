@@ -21,6 +21,7 @@ const (
 	corruptedBucketIndex = "corrupted-bucket-index"
 	keyAccessDenied      = "key-access-denied"
 	noBucketIndex        = "no-bucket-index"
+	parquetConvertedMeta = "parquet-converted"
 )
 
 // BucketIndexMetadataFetcher is a Thanos MetadataFetcher implementation leveraging on the Cortex bucket index.
@@ -50,7 +51,7 @@ func NewBucketIndexMetadataFetcher(
 		cfgProvider: cfgProvider,
 		logger:      logger,
 		filters:     filters,
-		metrics:     block.NewFetcherMetrics(reg, [][]string{{corruptedBucketIndex}, {noBucketIndex}}, nil),
+		metrics:     block.NewFetcherMetrics(reg, [][]string{{corruptedBucketIndex}, {noBucketIndex}, {parquetConvertedMeta}}, nil),
 	}
 }
 

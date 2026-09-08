@@ -44,28 +44,28 @@ func (c *federatedRulesChecker) checkOwner(userID string) error {
 	return nil
 }
 
-// validateSrcTenants validates the source tenants of a rule group and returns
+// validateSourceTenants validates the source tenants of a rule group and returns
 // them sorted and de-duplicated.
-func (c *federatedRulesChecker) validateSrcTenants(srcTenants []string) ([]string, error) {
-	for _, id := range srcTenants {
+func (c *federatedRulesChecker) validateSourceTenants(sourceTenants []string) ([]string, error) {
+	for _, id := range sourceTenants {
 		// ValidTenantID accepts the empty string, which would produce an org ID
 		// that fails at every evaluation.
 		if id == "" {
-			return nil, errors.New("src tenant must not be empty")
+			return nil, errors.New("source tenant must not be empty")
 		}
 		if err := users.ValidTenantID(id); err != nil {
-			return nil, errors.Wrapf(err, "invalid src tenant %q", id)
+			return nil, errors.Wrapf(err, "invalid source tenant %q", id)
 		}
 		// The querier interprets the joined org ID as a regex when the regex
 		// matcher is enabled, so only literal tenant IDs are accepted then.
 		if c.regexMatcherEnabled && regexp.QuoteMeta(id) != id {
-			return nil, fmt.Errorf("src tenant %q contains regex metacharacters, which are not supported when -tenant-federation.regex-matcher-enabled is set", id)
+			return nil, fmt.Errorf("source tenant %q contains regex metacharacters, which are not supported when -tenant-federation.regex-matcher-enabled is set", id)
 		}
 	}
 
-	normalized := users.NormalizeTenantIDs(slices.Clone(srcTenants))
+	normalized := users.NormalizeTenantIDs(slices.Clone(sourceTenants))
 	if c.maxTenant > 0 && len(normalized) > c.maxTenant {
-		return nil, fmt.Errorf("too many src tenants (limit: %d actual: %d)", c.maxTenant, len(normalized))
+		return nil, fmt.Errorf("too many source tenants (limit: %d actual: %d)", c.maxTenant, len(normalized))
 	}
 	return normalized, nil
 }

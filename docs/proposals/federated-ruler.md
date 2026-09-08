@@ -13,7 +13,7 @@ slug: "ruler-tenant-federation"
 
 This document aims to describe how to implement the ability to allow rules to cover data from more than a single Cortex tenant, here after referred to as federated rules. Since currently rules are owned by, query data from and save resulting series in the same tenant, this document aims to provide clear delineation of who owns a federated rule, what tenants the federated rule queries data from and where the federated rule saves resulting series.
 
-A federated rule is any rule which contains the `src_tenants` field.
+A federated rule is any rule which contains the `source_tenants` field.
 
 ## Reasoning
 
@@ -65,7 +65,7 @@ A single tenant rule always queries the tenant which owns the rule. This 1 -> 1 
 
 As some use cases will demand that a specific federated rule, querying tenant B and C, is stored in the owning teams tenant A, an option to allow explicit assignment of source tenants for a federated rule is needed.
 
-To support this we suggest an additional field `src_tenants` on the rule group containing an array of OrgIDs e.g. `[t0,t1,...,ti]` which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.
+To support this we suggest an additional field `source_tenants` on the rule group containing an array of OrgIDs e.g. `[t0,t1,...,ti]` which when present determines which tenants to query for the given rule. Rule group is chosen as it reduces repetition between rules.
 
 ## Conclusion
 

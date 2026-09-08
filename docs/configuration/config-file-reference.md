@@ -6247,7 +6247,7 @@ ring:
 [list_rules_max_rules: <int> | default = 0]
 
 # [Experimental] Enable federated rule groups. A federated rule group lists the
-# tenants to query in its `src_tenants` field, while the resulting series and
+# tenants to query in its `source_tenants` field, while the resulting series and
 # alerts always belong to the tenant owning the rule group. Requires
 # -tenant-federation.enabled=true.
 # CLI flag: -ruler.enable-federated-rules

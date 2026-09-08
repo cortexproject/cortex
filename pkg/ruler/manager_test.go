@@ -468,12 +468,12 @@ func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
 		})
 	}
 	federated := &rulespb.RuleGroupDesc{
-		Name:       "federated",
-		Namespace:  "ns",
-		Interval:   time.Minute,
-		User:       owner,
-		SrcTenants: []string{"team-a", "team-b"},
-		Rules:      []*rulespb.RuleDesc{{Record: "federated_rule", Expr: "up"}},
+		Name:          "federated",
+		Namespace:     "ns",
+		Interval:      time.Minute,
+		User:          owner,
+		SourceTenants: []string{"team-a", "team-b"},
+		Rules:         []*rulespb.RuleDesc{{Record: "federated_rule", Expr: "up"}},
 	}
 	plain := &rulespb.RuleGroupDesc{
 		Name:      "plain",
@@ -512,7 +512,7 @@ func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
 		return string(content)
 	}
 
-	t.Run("federated groups query their src tenants", func(t *testing.T) {
+	t.Run("federated groups query their source tenants", func(t *testing.T) {
 		captured := map[string]string{}
 		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)
 
@@ -525,11 +525,11 @@ func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
 		require.Equal(t, "team-a|team-b", captured["federated"])
 		require.Equal(t, owner, captured["plain"])
 
-		// Storing the same group without src tenants stops the injection at the next
+		// Storing the same group without source tenants stops the injection at the next
 		// evaluation, even though the prometheus manager keeps the existing group.
-		noSrcTenants := *federated
-		noSrcTenants.SrcTenants = nil
-		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&noSrcTenants, plain}})
+		noSourceTenants := *federated
+		noSourceTenants.SourceTenants = nil
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&noSourceTenants, plain}})
 		require.Contains(t, readRuleFile(t, m), "federated_rule")
 
 		evaluate(m, "federated")

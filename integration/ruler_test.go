@@ -1969,7 +1969,7 @@ func TestRulerFederatedRules(t *testing.T) {
 		namespace = "test"
 		owner     = "infra"
 	)
-	srcTenants := []string{"team-a", "team-b"}
+	sourceTenants := []string{"team-a", "team-b"}
 
 	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), baseFlags, "")
 	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), baseFlags, "")
@@ -1977,7 +1977,7 @@ func TestRulerFederatedRules(t *testing.T) {
 	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	// Push one series per source tenant.
-	for _, tenant := range srcTenants {
+	for _, tenant := range sourceTenants {
 		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", tenant)
 		require.NoError(t, err)
 
@@ -2043,13 +2043,13 @@ func TestRulerFederatedRules(t *testing.T) {
 				Labels: map[string]string{"severity": "warning"},
 			})
 			federatedGroup, err := yaml.Marshal(rulespb.RuleGroup{
-				RuleGroup:  ruleGroup,
-				SrcTenants: srcTenants,
+				RuleGroup:     ruleGroup,
+				SourceTenants: sourceTenants,
 			})
 			require.NoError(t, err)
 
 			// A tenant that is not allowed to create federated rule groups is rejected.
-			teamA, err := e2ecortex.NewClient("", queryAddress, "", ruler.HTTPEndpoint(), srcTenants[0])
+			teamA, err := e2ecortex.NewClient("", queryAddress, "", ruler.HTTPEndpoint(), sourceTenants[0])
 			require.NoError(t, err)
 			require.ErrorContains(t, teamA.SetRuleGroupYAML(federatedGroup, namespace), "403")
 
@@ -2064,7 +2064,7 @@ func TestRulerFederatedRules(t *testing.T) {
 			require.NoError(t, res.Body.Close())
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, res.StatusCode)
-			require.Contains(t, string(body), "src_tenants:\n    - team-a\n    - team-b\n")
+			require.Contains(t, string(body), "source_tenants:\n    - team-a\n    - team-b\n")
 
 			// Wait until the ruler has loaded and successfully evaluated the group.
 			rgMatcher := ruleGroupMatcher(owner, namespace, groupName)
@@ -2089,7 +2089,7 @@ func TestRulerFederatedRules(t *testing.T) {
 					return false
 				}
 				result = value.(model.Vector)
-				return len(result) == len(srcTenants)
+				return len(result) == len(sourceTenants)
 			}, 30*time.Second, time.Second)
 
 			resultTenants := make([]string, 0, len(result))
@@ -2098,7 +2098,7 @@ func TestRulerFederatedRules(t *testing.T) {
 				resultTenants = append(resultTenants, string(sample.Metric["__tenant_id__"]))
 			}
 			sort.Strings(resultTenants)
-			require.Equal(t, srcTenants, resultTenants)
+			require.Equal(t, sourceTenants, resultTenants)
 
 			// The source tenants do not get the result.
 			value, err := teamA.Query(recordName, time.Now())
@@ -2114,7 +2114,7 @@ func TestRulerFederatedRules(t *testing.T) {
 				}
 				rule := parseAlertFromRule(t, groups[0].Rules[0])
 				alerts = rule.Alerts
-				return rule.State == "firing" && len(alerts) == len(srcTenants)
+				return rule.State == "firing" && len(alerts) == len(sourceTenants)
 			}, 30*time.Second, time.Second)
 
 			alertTenants := make([]string, 0, len(alerts))
@@ -2125,7 +2125,7 @@ func TestRulerFederatedRules(t *testing.T) {
 				alertTenants = append(alertTenants, alert.Labels.Get("__tenant_id__"))
 			}
 			sort.Strings(alertTenants)
-			require.Equal(t, srcTenants, alertTenants)
+			require.Equal(t, sourceTenants, alertTenants)
 
 			// The source tenants do not see the rule group nor its alerts.
 			groups, _, err := teamA.GetPrometheusRules(e2ecortex.RuleFilter{RuleNames: []string{alertName}})

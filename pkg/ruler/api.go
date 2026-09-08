@@ -589,8 +589,8 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if len(rg.SrcTenants) > 0 {
-		srcTenants, err := a.ruler.manager.ValidateFederatedRuleGroup(userID, rg.SrcTenants)
+	if len(rg.SourceTenants) > 0 {
+		sourceTenants, err := a.ruler.manager.ValidateFederatedRuleGroup(userID, rg.SourceTenants)
 		if err != nil {
 			level.Error(logger).Log("msg", "federated rule group validation failure", "err", err.Error(), "user", userID)
 			status := http.StatusBadRequest
@@ -600,7 +600,7 @@ func (a *API) CreateRuleGroup(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), status)
 			return
 		}
-		rg.SrcTenants = srcTenants
+		rg.SourceTenants = sourceTenants
 	}
 
 	if err := a.ruler.AssertMaxRulesPerRuleGroup(userID, len(rg.Rules)); err != nil {

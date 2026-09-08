@@ -10,12 +10,12 @@ type RuleGroupList []*RuleGroupDesc
 type RuleGroup struct {
 	rulefmt.RuleGroup `yaml:",inline"`
 	// Tenants queried when evaluating the group. Empty means the owning tenant only.
-	SrcTenants []string `yaml:"src_tenants,omitempty"`
+	SourceTenants []string `yaml:"source_tenants,omitempty"`
 }
 
 // IsFederated returns true if the group queries data from explicitly listed tenants.
 func (m *RuleGroupDesc) IsFederated() bool {
-	return len(m.GetSrcTenants()) > 0
+	return len(m.GetSourceTenants()) > 0
 }
 
 // Formatted returns the rule group list as prometheus rule groups mapped by

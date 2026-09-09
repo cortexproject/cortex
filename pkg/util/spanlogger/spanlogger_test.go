@@ -60,6 +60,22 @@ func TestSpanCreatedWithoutTenantTag(t *testing.T) {
 	require.False(t, exist)
 }
 
+func TestSpanLogger_Log_SetsErrorTagOnErrorLevel(t *testing.T) {
+	mockTracer := mocktracer.New()
+	opentracing.SetGlobalTracer(mockTracer)
+
+	logger, _ := New(context.Background(), "test")
+	mockSpan := logger.Span.(*mocktracer.MockSpan)
+
+	// Non-error level should NOT set the error tag.
+	_ = logger.Log("level", "info", "msg", "hello")
+	require.Nil(t, mockSpan.Tag("error"))
+
+	// level=error SHOULD set the span error tag.
+	_ = logger.Log("level", "error", "msg", "something failed")
+	require.Equal(t, true, mockSpan.Tag("error"))
+}
+
 func createSpan(ctx context.Context) *mocktracer.MockSpan {
 	mockTracer := mocktracer.New()
 	opentracing.SetGlobalTracer(mockTracer)

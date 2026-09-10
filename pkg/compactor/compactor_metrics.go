@@ -120,7 +120,7 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 	// Copied from Thanos, pkg/compact/compact.go.
 	m.syncerGarbageCollectedBlocks = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collected_blocks_total",
-		Help: "Total number of blocks marked for deletion by compactor.",
+		Help: "Total number of blocks garbage collected (deleted after being marked) by the compactor syncer.",
 	}, nil)
 	m.syncerGarbageCollections = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: "cortex_compactor_garbage_collection_total",

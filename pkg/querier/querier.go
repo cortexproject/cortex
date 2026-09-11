@@ -110,6 +110,10 @@ type Config struct {
 
 	// Query protection: resource-based rejection.
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
+
+	// Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+	// allocating one per iterator.
+	PoolIteratorBatchesBuf bool `yaml:"pool_iterator_batches_buf"`
 }
 
 var (
@@ -160,6 +164,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TimeoutClassificationDeadline, "querier.timeout-classification-deadline", time.Minute+59*time.Second, "The total time before the querier proactively cancels a query for timeout classification. Set this a few seconds less than the querier timeout.")
 	f.DurationVar(&cfg.TimeoutClassificationEvalThreshold, "querier.timeout-classification-eval-threshold", time.Minute+30*time.Second, "Eval time threshold above which a timeout is classified as user error (4XX).")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "querier.")
+	f.BoolVar(&cfg.PoolIteratorBatchesBuf, "querier.pool-iterator-batches-buf", false, "Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of allocating one per iterator.")
 }
 
 // Validate the config
@@ -228,6 +233,7 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 // New builds a queryable and promql engine.
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc, resourceMonitor resource.IMonitor) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine, services.Service) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
+	batch.SetPoolBatchesBuf(cfg.PoolIteratorBatchesBuf)
 
 	// Create resource-based limiter if resource monitor is available and thresholds are configured.
 	var resourceBasedLimiter *limiter.ResourceBasedLimiter

@@ -71,6 +71,7 @@
 * [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740 #7788
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
+* [ENHANCEMENT] Querier: Add `-querier.pool-iterator-batches-buf` flag to pool mergeIterator scratch buffers via sync.Pool, reducing per-iterator memory allocation. #7765
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823

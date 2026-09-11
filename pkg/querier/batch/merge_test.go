@@ -28,6 +28,25 @@ func TestMergeIter(t *testing.T) {
 	})
 }
 
+func TestMergeIterPooled(t *testing.T) {
+	poolBatchesBuf = true
+	defer func() { poolBatchesBuf = false }()
+
+	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
+		chunk1 := mkGenericChunk(t, 0, 100, enc)
+		chunk2 := mkGenericChunk(t, model.TimeFromUnix(25), 100, enc)
+		chunk3 := mkGenericChunk(t, model.TimeFromUnix(50), 100, enc)
+		chunk4 := mkGenericChunk(t, model.TimeFromUnix(75), 100, enc)
+		chunk5 := mkGenericChunk(t, model.TimeFromUnix(100), 100, enc)
+
+		iter := newMergeIterator(nil, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5})
+		testIter(t, 200, newIteratorAdapter(iter), enc)
+
+		iter = newMergeIterator(iter, []GenericChunk{chunk1, chunk2, chunk3, chunk4, chunk5})
+		testSeek(t, 200, newIteratorAdapter(iter), enc)
+	})
+}
+
 func BenchmarkMergeIterator(b *testing.B) {
 	chunks := make([]GenericChunk, 0, 10)
 	for i := range 10 {
@@ -55,6 +74,30 @@ func BenchmarkMergeIterator(b *testing.B) {
 
 func TestMergeHarder(t *testing.T) {
 	t.Parallel()
+	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
+		var (
+			numChunks = 24 * 15
+			chunks    = make([]GenericChunk, 0, numChunks)
+			from      = model.Time(0)
+			offset    = 30
+			samples   = 100
+		)
+		for range numChunks {
+			chunks = append(chunks, mkGenericChunk(t, from, samples, enc))
+			from = from.Add(time.Duration(offset) * time.Second)
+		}
+		iter := newMergeIterator(nil, chunks)
+		testIter(t, offset*numChunks+samples-offset, newIteratorAdapter(iter), enc)
+
+		iter = newMergeIterator(iter, chunks)
+		testSeek(t, offset*numChunks+samples-offset, newIteratorAdapter(iter), enc)
+	})
+}
+
+func TestMergeHarderPooled(t *testing.T) {
+	poolBatchesBuf = true
+	defer func() { poolBatchesBuf = false }()
+
 	forEncodings(t, func(t *testing.T, enc encoding.Encoding) {
 		var (
 			numChunks = 24 * 15

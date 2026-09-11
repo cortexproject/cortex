@@ -372,6 +372,11 @@ querier:
       # when resource thresholds are breached.
       # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
       [max_evictions_per_cycle: <int> | default = 1]
+
+  # Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+  # allocating one per iterator.
+  # CLI flag: -querier.pool-iterator-batches-buf
+  [pool_iterator_batches_buf: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`

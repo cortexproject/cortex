@@ -70,7 +70,7 @@ func (c *ConfigRuleStore) ListAllRuleGroups(ctx context.Context) (map[string]rul
 		}
 		for file, rgs := range rMap {
 			for _, rg := range rgs.Groups {
-				userRules = append(userRules, rulespb.ToProto(user, file, rg))
+				userRules = append(userRules, rulespb.ToProto(user, file, rulespb.RuleGroup{RuleGroup: rg}))
 			}
 		}
 		c.ruleGroupList[user] = userRules

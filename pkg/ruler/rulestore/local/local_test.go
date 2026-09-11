@@ -79,7 +79,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 		require.Equal(t, 2, len(actual))
 		// We rely on the fact that files are parsed in alphabetical order, and our namespace1 < namespace2.
-		require.Equal(t, rulespb.ToProto(u, namespace1, ruleGroups.Groups[0]), actual[0])
-		require.Equal(t, rulespb.ToProto(u, namespace2, ruleGroups.Groups[0]), actual[1])
+		require.Equal(t, rulespb.ToProto(u, namespace1, rulespb.RuleGroup{RuleGroup: ruleGroups.Groups[0]}), actual[0])
+		require.Equal(t, rulespb.ToProto(u, namespace2, rulespb.RuleGroup{RuleGroup: ruleGroups.Groups[0]}), actual[1])
 	}
 }

@@ -10,7 +10,12 @@ import (
 	promchunk "github.com/cortexproject/cortex/pkg/chunk"
 )
 
-const maxPooledBatchesBufCap = 32
+// poolBatchesBuf controls whether buildNextBatch uses sync.Pool or per-iterator batchesBuf.
+var poolBatchesBuf bool
+
+func SetPoolBatchesBuf(enabled bool) {
+	poolBatchesBuf = enabled
+}
 
 var batchesBufPool = sync.Pool{
 	New: func() any {
@@ -26,9 +31,12 @@ type mergeIterator struct {
 	// Store the current sorted batchStream
 	batches batchStream
 
+	// Buffers to merge in.
+	batchesBuf   batchStream
 	nextBatchBuf [1]promchunk.Batch
 
 	numPartitions int
+	usePool       bool
 
 	currErr error
 }
@@ -45,6 +53,11 @@ func newMergeIterator(it iterator, cs []GenericChunk) *mergeIterator {
 			h:             make(iteratorHeap, 0, len(css)),
 			batches:       make(batchStream, 0, len(css)),
 			numPartitions: len(css),
+			usePool:       poolBatchesBuf,
+		}
+
+		if !poolBatchesBuf {
+			c.batchesBuf = make(batchStream, len(css))
 		}
 	}
 
@@ -76,6 +89,17 @@ func (c *mergeIterator) Reset(size int) *mergeIterator {
 	c.h = c.h[:0]
 	c.batches = c.batches[:0]
 	c.numPartitions = size
+
+	if !c.usePool {
+		if size > cap(c.batchesBuf) {
+			c.batchesBuf = make(batchStream, size)
+		} else {
+			c.batchesBuf = c.batchesBuf[:size]
+			for i := range size {
+				c.batchesBuf[i] = promchunk.Batch{}
+			}
+		}
+	}
 
 	for i := range len(c.nextBatchBuf) {
 		c.nextBatchBuf[i] = promchunk.Batch{}
@@ -150,34 +174,41 @@ func (c *mergeIterator) buildNextBatch(size int) chunkenc.ValueType {
 		return chunkenc.ValNone
 	}
 
-	bp := batchesBufPool.Get().(*batchStream)
-	defer func() {
-		for i := range *bp {
-			(*bp)[i] = promchunk.Batch{}
-		}
-		if cap(*bp) <= maxPooledBatchesBufCap {
+	var buf batchStream
+	if c.usePool {
+		bp := batchesBufPool.Get().(*batchStream)
+		defer func() {
+			for i := range *bp {
+				(*bp)[i] = promchunk.Batch{}
+			}
 			batchesBufPool.Put(bp)
+		}()
+		if cap(*bp) < c.numPartitions {
+			*bp = make(batchStream, c.numPartitions)
+		} else {
+			*bp = (*bp)[:c.numPartitions]
 		}
-	}()
-
-	if cap(*bp) < c.numPartitions {
-		*bp = make(batchStream, c.numPartitions)
+		buf = *bp
 	} else {
-		*bp = (*bp)[:c.numPartitions]
+		buf = c.batchesBuf
 	}
 
 	// All we need to do is get enough batches that our first batch's last entry
 	// is before all iterators next entry.
 	for len(c.h) > 0 && (len(c.batches) == 0 || c.nextBatchEndTime() >= c.h[0].AtTime()) {
 		c.nextBatchBuf[0] = c.h[0].Batch()
-		*bp = mergeStreams(c.batches, c.nextBatchBuf[:], *bp, size)
-		c.batches = append(c.batches[:0], *bp...)
+		buf = mergeStreams(c.batches, c.nextBatchBuf[:], buf, size)
+		c.batches = append(c.batches[:0], buf...)
 
 		if valType := c.h[0].Next(size); valType != chunkenc.ValNone {
 			heap.Fix(&c.h, 0)
 		} else {
 			heap.Pop(&c.h)
 		}
+	}
+
+	if !c.usePool {
+		c.batchesBuf = buf
 	}
 
 	if len(c.batches) > 0 {

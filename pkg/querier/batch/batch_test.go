@@ -187,31 +187,38 @@ func BenchmarkNewChunkMergeIterator_NoReuse(b *testing.B) {
 		{numChunks: 10, numSamplesPerChunk: 100, duplicationFactor: 3, enc: promchunk.PrometheusHistogramChunk},
 	}
 
-	for _, scenario := range scenarios {
-		name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d encoding: %s",
-			scenario.numChunks,
-			scenario.numSamplesPerChunk,
-			scenario.duplicationFactor,
-			scenario.enc.String())
+	for _, usePool := range []bool{false, true} {
+		b.Run(fmt.Sprintf("pool=%t", usePool), func(b *testing.B) {
+			poolBatchesBuf = usePool
+			defer func() { poolBatchesBuf = false }()
 
-		chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
+			for _, scenario := range scenarios {
+				name := fmt.Sprintf("chunks: %d samples per chunk: %d duplication factor: %d encoding: %s",
+					scenario.numChunks,
+					scenario.numSamplesPerChunk,
+					scenario.duplicationFactor,
+					scenario.enc.String())
 
-		b.Run(name, func(b *testing.B) {
-			b.ReportAllocs()
+				chunks := createChunks(b, step, scenario.numChunks, scenario.numSamplesPerChunk, scenario.duplicationFactor, scenario.enc)
 
-			for b.Loop() {
-				iters := make([]chunkenc.Iterator, numSeries)
-				for i := range numSeries {
-					iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
-				}
-				for _, it := range iters {
-					for it.Next() != chunkenc.ValNone {
-						it.At()
+				b.Run(name, func(b *testing.B) {
+					b.ReportAllocs()
+
+					for b.Loop() {
+						iters := make([]chunkenc.Iterator, numSeries)
+						for i := range numSeries {
+							iters[i] = NewChunkMergeIterator(nil, chunks, 0, 0)
+						}
+						for _, it := range iters {
+							for it.Next() != chunkenc.ValNone {
+								it.At()
+							}
+							if it.Err() != nil {
+								b.Fatal(it.Err().Error())
+							}
+						}
 					}
-					if it.Err() != nil {
-						b.Fatal(it.Err().Error())
-					}
-				}
+				})
 			}
 		})
 	}

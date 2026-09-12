@@ -294,6 +294,81 @@ jobs:
           name: integration-tests-${{ matrix.arch }}
       - name: Extract Integration Tests Archive
         run: tar -xzvf integration-tests-${{ matrix.arch }}.tar.gz
+      - name: Resolve Latest Release Image
+        # The query fuzz tests compare the build under test against the latest *published* release.
+        # VERSION cannot answer "what is published" on its own: on a release branch it is bumped to
+        # the version being prepared (e.g. 1.22.0-rc.0) long before anything pushes that tag, and
+        # even on the GA tag push the v1.22.0 image is only pushed by `deploy`, which needs this job
+        # to pass first. The registry is the only source of truth, so ask it which GA tags exist and
+        # take the highest one that does not exceed VERSION.
+        #
+        # The <= bound (rather than simply "the highest published GA tag") only changes the result
+        # when a newer release already exists on quay than the branch being tested, e.g. preparing
+        # 1.21.2 on release-1.21 after v1.22.0 has shipped.
+        #
+        # Set the CORTEX_LATEST_RELEASE_IMAGE repository variable to bypass the lookup entirely.
+        if: matrix.tags == 'integration_query_fuzz'
+        env:
+          CORTEX_LATEST_RELEASE_IMAGE: ${{ vars.CORTEX_LATEST_RELEASE_IMAGE }}
+        run: |
+          if [ -n "${CORTEX_LATEST_RELEASE_IMAGE:-}" ]; then
+            echo "Using the CORTEX_LATEST_RELEASE_IMAGE override: ${CORTEX_LATEST_RELEASE_IMAGE}"
+            echo "CORTEX_LATEST_RELEASE_IMAGE=${CORTEX_LATEST_RELEASE_IMAGE}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          version=$(tr -d '[:space:]' < testdata/VERSION)
+          base=${version%%-*}
+          if ! printf '%s' "$base" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: VERSION '${version}' does not begin with a major.minor.patch version." >&2
+            exit 1
+          fi
+
+          # List the GA tags published to quay.io. filter_tag_name keeps the release tags and drops
+          # the per-commit master-* ones; the API pages at 100 tags, so follow has_additional.
+          tags_file=$(mktemp)
+          page=1
+          while [ "$page" -le 20 ]; do
+            body=""
+            for attempt in 1 2 3; do
+              if body=$(curl -sSf --max-time 30 \
+                "https://quay.io/api/v1/repository/cortexproject/cortex/tag/?onlyActiveTags=true&limit=100&page=${page}&filter_tag_name=like:v"); then
+                break
+              fi
+              echo "WARNING: listing quay.io tags page ${page} failed (attempt ${attempt}/3); retrying..." >&2
+              body=""
+              sleep $((attempt * 5))
+            done
+            if [ -z "$body" ]; then
+              echo "ERROR: unable to list the published tags from quay.io." >&2
+              exit 1
+            fi
+            printf '%s' "$body" | jq -r '.tags[].name' >> "$tags_file"
+            [ "$(printf '%s' "$body" | jq -r '.has_additional')" = "true" ] || break
+            page=$((page + 1))
+          done
+
+          published=$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' "$tags_file" | sed 's/^v//' | sort -u -V)
+          if [ -z "$published" ]; then
+            echo "ERROR: quay.io reported no published GA release tags." >&2
+            exit 1
+          fi
+
+          if printf '%s\n' "$published" | grep -qxF "$base"; then
+            # VERSION itself names a published release, which is the steady state on master.
+            resolved="$base"
+          else
+            # Splice the (unpublished) base into the sorted list and take the entry just below it.
+            resolved=$(printf '%s\n%s\n' "$published" "$base" | sort -V |
+              awk -v base="$base" '$0 == base { exit } { previous = $0 } END { print previous }')
+          fi
+          if [ -z "$resolved" ]; then
+            echo "ERROR: quay.io has no published GA release at or below ${base}." >&2
+            exit 1
+          fi
+
+          echo "VERSION is ${version}; the latest release published at or below ${base} is v${resolved}."
+          echo "CORTEX_LATEST_RELEASE_IMAGE=quay.io/cortexproject/cortex:v${resolved}" >> "$GITHUB_ENV"
       - name: Preload Images
         # We download docker images used by integration tests so that all images are available
         # locally and the download time doesn't account in the test execution time, which is subject
@@ -329,7 +404,7 @@ jobs:
             retry docker pull quay.io/cortexproject/cortex:v1.21.0
             retry docker pull quay.io/cortexproject/cortex:v1.21.1
           elif [ "$TEST_TAGS" = "integration_query_fuzz" ]; then
-            retry docker pull quay.io/cortexproject/cortex:v$(cat testdata/VERSION)
+            retry docker pull "$CORTEX_LATEST_RELEASE_IMAGE"
             retry docker pull quay.io/prometheus/prometheus:v3.9.1
           elif [ "$TEST_TAGS" = "integration_configs_db" ]; then
             retry docker pull postgres:9.6.16

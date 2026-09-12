@@ -1,8 +1,8 @@
 # Changelog
 
 ## master / unreleased
-* [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
-* [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
+
+## 1.22.0 in progress
 * [CHANGE] Ruler: Remove the deprecated `-ruler.evaluation-delay-duration` flag and its `ruler_evaluation_delay_duration` per-tenant limit. Use `-ruler.query-offset` / `ruler_query_offset`, which no longer takes the higher of the two values. Cortex decodes the runtime config strictly, so a leftover `ruler_evaluation_delay_duration` override makes the runtime config fail to load: Cortex **exits at startup** (`module failed`, `module=runtime-config`), and on an already-running process every reload fails, pinning the last good overrides and dropping `cortex_runtime_config_last_reload_successful` to 0. Run `grep -r ruler_evaluation_delay_duration` over your runtime configs before upgrading. #7792
 * [CHANGE] Remove the deprecated `-<prefix>.fifocache.size` flag and its `size` YAML field (deprecated in 1.1.0). Use `-<prefix>.fifocache.max-size-items` or `-<prefix>.fifocache.max-size-bytes`; a cache configured only via `size` now starts with no capacity. #7791
 * [CHANGE] Querier: Remove the deprecated `-querier.ingester-metadata-streaming` flag and its `ingester_metadata_streaming` YAML field (deprecated in 1.18.0, default `true`). Streaming RPCs are now always used for the metadata APIs. Also removes the dead hidden `ingester_streaming` YAML field left over from `-querier.ingester-streaming`. #7791
@@ -17,7 +17,8 @@
   - `-ingester.max-series-per-query` (a chunks-storage limit, ignored since blocks storage; use `-querier.max-fetched-series-per-query`)
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
 * [CHANGE] Ingester: Graduate native histogram ingestion (`-blocks-storage.tsdb.enable-native-histograms`) from experimental. #7789
-* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
+* [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160 #7323
+* [CHANGE] Alertmanager: Remove the obsolete startup migration of local state files into per-tenant directories (scheduled for removal in 1.11.0). Upgrading from a release older than 1.9.0 with a persisted local state directory now requires upgrading to an intermediate release first, so the migration can run. #7513
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
 * [FEATURE] Parquet: Support sharded parquet file conversion and querying. #7610
@@ -25,7 +26,7 @@
 * [FEATURE] Distributor: Add experimental `-distributor.num-query-workers` flag to use a goroutine worker pool for query fan-out calls to ingesters. Reuses pre-grown goroutine stacks to eliminate the `runtime.copystack` overhead (~8% CPU) observed on rulers with wide ingester fan-out. Falls back to spawning a new goroutine when no worker is available. #7623
 * [FEATURE] Ingester: Add experimental active series tracker that counts active series by configurable label matchers (including regex) per tenant and exposes `cortex_ingester_active_series_per_tracker` metric. Configured via `active_series_trackers` in runtime config overrides. #7476
 * [FEATURE] Ingester: Add experimental head-only queried series metric. `cortex_ingester_queried_head_series` tracks unique series queried from head via HLL. Enabled via `-ingester.head-queried-series-metrics-enabled`. #7500
-* [FEATURE] Ruler: Add per-tenant `ruler_alert_generator_url_template` runtime config option to customize alert generator URLs using Go templates. Includes a `jsonEscape` template function for safely embedding expressions in JSON-encoded URL parameters (e.g., Grafana Explore panes). Supports Grafana Explore, Perses, and other UIs. #7302
+* [FEATURE] Ruler: Add per-tenant `ruler_alert_generator_url_template` runtime config option to customize alert generator URLs using Go templates. Includes a `jsonEscape` template function for safely embedding expressions in JSON-encoded URL parameters (e.g., Grafana Explore panes). Supports Grafana Explore, Perses, and other UIs. #7302 #7458
 * [FEATURE] Distributor: Add experimental `-distributor.enable-start-timestamp` flag for Prometheus Remote Write 2.0. When enabled, `StartTimestamp (ST)` is ingested. #7371
 * [FEATURE] Memberlist: Add `-memberlist.cluster-label` and `-memberlist.cluster-label-verification-disabled` to prevent accidental cross-cluster gossip joins and support rolling label rollout. #7385
 * [FEATURE] Querier: Add timeout classification to classify query timeouts as 4XX (user error) or 5XX (system error) based on phase timing. When enabled, queries that spend most of their time in PromQL evaluation return `422 Unprocessable Entity` instead of `503 Service Unavailable`. #7374
@@ -33,6 +34,7 @@
 * [FEATURE] Querier: Add resource-based query eviction that automatically cancels the heaviest running query when CPU or heap utilization exceeds configured thresholds. #7488
 * [FEATURE] Storage: Add support for Oracle Cloud Infrastructure (OCI) Object Storage as a backend for blocks, ruler, and alertmanager storage. Configured via `-<prefix>.oci.*` flags with `backend: oci`. #7718
 * [FEATURE] StoreGateway: Add experimental optional limit `blocks-storage.bucket-store.max-concurrent-data-bytes` on the data bytes (postings, series and chunks) fetched via the Series() API call and processed concurrently across all queries per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
+* [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
 * [ENHANCEMENT] Parquet Converter: Add `parquet-converter.max-block-label-names` limit to skip conversion of TSDB blocks with too many label names. #7625
@@ -43,13 +45,13 @@
 * [ENHANCEMENT] Ingester: Add WAL record metrics to help evaluate the effectiveness of WAL compression type (e.g. snappy, zstd): `cortex_ingester_tsdb_wal_record_part_writes_total`, `cortex_ingester_tsdb_wal_record_parts_bytes_written_total`, and `cortex_ingester_tsdb_wal_record_bytes_saved_total`. #7420
 * [ENHANCEMENT] Distributor: Introduce dynamic `Symbols` slice capacity pooling. #7398 #7401
 * [ENHANCEMENT] Metrics Helper: Add native histogram support for aggregating and merging, including dual-format histogram handling that exposes both native and classic bucket formats. #7359
-* [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. #7357
-* [ENHANCEMENT] Update build image and Go version to 1.26. #7437
+* [ENHANCEMENT] Cache: Add per-tenant TTL configuration for query results cache to control cache expiration on a per-tenant basis with separate TTLs for regular and out-of-order data. `-frontend.out-of-order-results-cache-ttl` falls back to `-frontend.results-cache-ttl` when unset, and then to the global cache backend TTL. #7357 #7775
+* [ENHANCEMENT] Update build image and Go version to 1.26. #7434 #7437 #7716 #7726
 * [ENHANCEMENT] Upgraded container base images from `alpine:3.23` to `gcr.io/distroless/static-debian12`, reducing image size and attack surface. #7637
 * [ENHANCEMENT] Query Scheduler: Add `cortex_query_scheduler_tracked_requests` metric to track the current number of requests held by the scheduler. #7355
 * [ENHANCEMENT] Compactor: Prevent partition compaction to compact any blocks marked for deletion. #7391
 * [ENHANCEMENT] Distributor: Optimize memory allocations by reusing the existing capacity of these pooled slices in the Prometheus Remote Write 2.0 path. #7392
-* [ENHANCEMENT] Upgrade gRPC from v1.71.2 to v1.79.3 to address CVE-2026-33186. #7460
+* [ENHANCEMENT] Upgrade gRPC from v1.71.2 to v1.79.3 to address CVE-2026-33186. #7460 #7463
 * [ENHANCEMENT] Query Frontend: Add `query_too_expensive` reason to QFE and `reason` field to query stats. #7479
 * [ENHANCEMENT] Instrument Ingester CPU profile with source for read APIs. #7494
 * [ENHANCEMENT] Ingester: Convert expanded postings cache from FIFO to LRU eviction to retain frequently-queried entries under memory pressure. #7510
@@ -68,18 +70,20 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_max_timestamp` metric that re-exports the TSDB head max timestamp (`prometheus_tsdb_head_max_time`) per user, to help investigate ingestion issues like out-of-bounds (too old sample) errors. #7694
 * [ENHANCEMENT] Ingester: Include the TSDB head max time in the `out of bounds` and `too old sample` error messages, so that users can see how far behind the accepted time range a rejected sample is. #7695
 * [ENHANCEMENT] Compactor: Reduce object storage GET calls when updating the bucket index by skipping re-reading parquet converter markers for blocks that already have a valid-version parquet entry in the previous index. #7669
-* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740 #7788
+* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7505 #7691 #7740 #7788
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
+* [ENHANCEMENT] Ingester: Add `cortex_ingester_head_metric_names` gauge exposing the number of unique metric names in the TSDB head per tenant. Registered when `-ingester.active-series-metrics-enabled` is true. #7514
+* [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
-* [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
+* [ENHANCEMENT] Update build image and Go version to 1.27.0. #7807 #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
 * [BUGFIX] Packaging: Fix RPM and deb packages to install the binary to `/usr/bin`, install the systemd unit to the correct system path (`/usr/lib/systemd/system` for RPM, `/lib/systemd/system` for deb), and mark the sysconfig/default env file as a config file so it is not overwritten on upgrade. #7445
 * [BUGFIX] Compactor: Handle not-found and access-denied errors from `Attributes()` in bucket index updater, preventing a stale cached `Get()` from causing the entire cleanup cycle to fail when `meta.json` has been deleted from object storage. #7454
-* [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7485
+* [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7485 #7487
 * [BUGFIX] Compactor: Fix flake in `TestCompactor_DeleteLocalSyncFiles` and `TestPartitionCompactor_DeleteLocalSyncFiles` by polling on user ownership rather than just the `CompactionRunsCompleted` counter, which increments even when the second compactor sees zero owned users due to a transient ring-view skew at startup. #7565
 * [BUGFIX] Ingester: Close TSDB when compaction fails during `createTSDB`, preventing resource leaks (file descriptors, mmap handles) that could lead to ingester instability. #7560
 * [BUGFIX] Tenant Federation: Fix result cache returning stale data after a new tenant is added when `-tenant-federation.regex-matcher-enabled=true`. The resolved tenant set is now hashed and included in the cache key so that any change to the matched tenant list automatically invalidates cached entries. Non-regex users are unaffected. #7562
@@ -88,6 +92,7 @@
 * [BUGFIX] Ingester: Release the TSDB appender on every early-return path in `Push` (e.g. out-of-order label set) by deferring `Rollback`. Previously such requests leaked TSDB head series references, mmap'd chunks and pending state per request, causing the `cortex_ingester_tsdb_head_active_appenders` gauge to grow unbounded. #7528
 * [BUGFIX] Ingester: Fix `panic: send on closed channel` in `ActiveQueriedSeriesService` on shutdown by removing the redundant channel close in `stopping()` and relying on `ctx.Done()` to signal worker exit. #7533
 * [BUGFIX] Ring: Fix ring token conflict resolution only applied to updated instance and make constantly token conflict check during instance observe period. #7554
+* [BUGFIX] Ring: Fix `DoBatch` never running its cleanup callback when a per-instance callback panics. `wg.Done()` is now deferred, so `wg.Wait()` no longer blocks forever and the context timers and request buffers owned by the cleanup function are released. #7559
 * [BUGFIX] Query Frontend: Fix native histogram responses not being handled correctly in `minTime()` sort ordering for split_by_interval merge. #7555
 * [BUGFIX] Compactor: Ensure visit marker heartbeat goroutine completes before blocks cleaner returns. #7386
 * [BUGFIX] Querier: Fix unbounded resource leak in the bucket-scan blocks finder (used when the bucket index is disabled). Per-tenant metadata fetchers, their Prometheus registries, and on-disk meta caches are now evicted once a tenant is no longer active, instead of being retained for the lifetime of the process. #7573
@@ -101,7 +106,7 @@
 * [BUGFIX] Querier: Fix panic due to request tracker truncating multi-byte UTF-8 character #7640
 * [BUGFIX] Ingester: Fix panic (`HistogramProtoToHistogram called with a float histogram`) when ingesting a float native histogram with a zero count (e.g. a staleness marker or empty histogram). The decoder is now selected by histogram type via `IsFloatHistogram()` instead of by count value. #7645
 * [BUGFIX] Querier: Fix parquet queryable fallback returning a nil error instead of the actual query error in `LabelValues` and `LabelNames`. #7638
-* [BUGFIX] Storage: Default the Azure `endpoint_suffix` to `blob.core.windows.net` instead of empty. Cortex builds the Thanos Azure config directly and bypasses Thanos' default, so an unset suffix produced an invalid FQDN (`<account>.`) and components hung on startup with DNS errors. #5449
+* [BUGFIX] Storage: Default the Azure `endpoint_suffix` to `blob.core.windows.net` instead of empty. Cortex builds the Thanos Azure config directly and bypasses Thanos' default, so an unset suffix produced an invalid FQDN (`<account>.`) and components hung on startup with DNS errors. #5449 #7687
 * [BUGFIX] Store Gateway: Fix misleading "no index cache backend addresses" validation error being reported for chunks-cache, metadata-cache, and parquet caches when their memcached or redis backend is configured without addresses. The message is now the cache-type-agnostic "no cache backend addresses". #7675
 * [BUGFIX] Querier/Query Frontend: Fix DNS watcher dropping all query-frontend/scheduler worker connections on a transient DNS lookup failure. #7698
 * [BUGFIX] Ring: Fix DynamoDB KV CAS not retrying on transactional conditional check failures. `TransactWriteItems` reports condition failures as `TransactionCanceledException` with a `ConditionalCheckFailed` cancellation reason, which was not recognized as retryable, so any concurrent ring update conflict (e.g. many ingesters joining during a rolling update) failed immediately instead of re-reading and retrying. `TransactionConflict` cancellation reasons are also treated as retryable. #7706

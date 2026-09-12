@@ -1,4 +1,4 @@
-//go:build integration
+//go:build integration_query_fuzz
 
 package integration
 
@@ -74,6 +74,10 @@ func TestLatestReleaseVersion(t *testing.T) {
 }
 
 func TestGetLatestReleaseImage(t *testing.T) {
+	// CI exports CORTEX_LATEST_RELEASE_IMAGE for this build tag, which would short-circuit the
+	// resolution we are trying to exercise. Clear it so the fallback path is what runs.
+	t.Setenv("CORTEX_LATEST_RELEASE_IMAGE", "")
+
 	// Point getCortexProjectDir() at a scratch checkout so we can exercise the VERSION file
 	// contents a release branch would actually have.
 	dir := t.TempDir()

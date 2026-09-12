@@ -186,7 +186,7 @@ blocks_storage:
 	})
 )
 
-func buildConfigFromTemplate(tmpl string, data interface{}) string {
+func buildConfigFromTemplate(tmpl string, data any) string {
 	t, err := template.New("config").Parse(tmpl)
 	if err != nil {
 		panic(err)

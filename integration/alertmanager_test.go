@@ -639,12 +639,7 @@ func TestAlertmanagerShardingScaling(t *testing.T) {
 
 				// If the number of instances has not yet reached the replication
 				// factor, then effective replication will be reduced.
-				var expectedReplication int
-				if len(instances) <= testCfg.replicationFactor {
-					expectedReplication = len(instances)
-				} else {
-					expectedReplication = testCfg.replicationFactor
-				}
+				expectedReplication := min(len(instances), testCfg.replicationFactor)
 
 				require.NoError(t, ams.WaitSumMetrics(
 					e2e.Equals(float64(numUsers*expectedReplication)),

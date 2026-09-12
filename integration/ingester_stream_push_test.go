@@ -150,7 +150,7 @@ func TestIngesterStreamPushConnectionWithMatchingSigningKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push a few series; all should succeed because the signing key matches.
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		series, _ := generateSeries(fmt.Sprintf("test_signing_ok_%d", i), now)
 		res, err := client.Push(series)
 		require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestIngesterStreamPushConnectionWithMismatchedSigningKey(t *testing.T) {
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
 	require.NoError(t, err)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		series, _ := generateSeries(fmt.Sprintf("test_signing_mismatch_%d", i), now)
 		res, err := client.Push(series)
 		if err == nil {
@@ -259,7 +259,7 @@ func TestIngesterStreamPushConnectionWithError(t *testing.T) {
 	client, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", userID)
 	require.NoError(t, err)
 
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		series, _ := generateSeries("test_limit_per_metric", now,
 			prompb.Label{
 				Name:  "cardinality",

@@ -268,16 +268,18 @@ HA tracking has two of its own flags:
 - `distributor.ha-tracker.replica`
    Prometheus label to look for in samples to identify a Prometheus HA replica. (default "`__replica__`")
 
-It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. If you stick to these default values, your Prometheus config could look like this (`POD_NAME` is an environment variable which must be set by you):
+It's reasonable to assume people probably already have a `cluster` label, or something similar. If not, they should add one along with `__replica__` via external labels in their Prometheus config. Prometheus does **not** expand environment variables in `external_labels`; `$POD_NAME` is only useful if your config management substitutes it before Prometheus loads the file. Prefer a concrete per-instance value, or set `__replica__` only on `remote_write` via `write_relabel_configs` (see [HA pair handling](../guides/ha-pair-handling.md)).
+
+Example with static replica ids:
 
 ```yaml
 global:
   external_labels:
     cluster: clustername
-    __replica__: $POD_NAME
+    __replica__: replica-a
 ```
 
-HA Tracking looks for the two labels (which can be overridden per user).
+HA Tracking looks for the two labels (which can be overridden per user). For a full setup guide including Alertmanager deduplication and verification metrics, see [Config for sending HA Pairs data to Cortex](../guides/ha-pair-handling.md).
 
 It also talks to a KVStore and has its own copies of the same flags used by the Distributor to connect to the ring.
 - `distributor.ha-tracker.failover-timeout`

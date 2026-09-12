@@ -294,6 +294,23 @@ jobs:
           name: integration-tests-${{ matrix.arch }}
       - name: Extract Integration Tests Archive
         run: tar -xzvf integration-tests-${{ matrix.arch }}.tar.gz
+      - name: Login to Docker Hub
+        # Preload Images still pulls consul, memcached, redis and postgres from Docker Hub. #7464
+        # dropped the Install Docker Client step from this job, and with it the `docker login` that
+        # script performs, so those pulls have been anonymous ever since and are exposed to the
+        # anonymous rate limit. Authenticate here, as the build job already does.
+        #
+        # The secret is empty on pull requests from forks, so skip the login there and let the pulls
+        # stay anonymous rather than failing the step outright.
+        env:
+          DOCKER_REGISTRY_USER: ${{ secrets.DOCKER_REGISTRY_USER }}
+          DOCKER_REGISTRY_PASSWORD: ${{ secrets.DOCKER_REGISTRY_PASSWORD }}
+        run: |
+          if [ -z "${DOCKER_REGISTRY_PASSWORD:-}" ]; then
+            echo "No Docker Hub credentials available (fork pull request); pulling anonymously."
+            exit 0
+          fi
+          docker login -u "$DOCKER_REGISTRY_USER" -p "$DOCKER_REGISTRY_PASSWORD"
       - name: Preload Images
         # We download docker images used by integration tests so that all images are available
         # locally and the download time doesn't account in the test execution time, which is subject

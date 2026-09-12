@@ -10,13 +10,26 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-const GlobalMarkersDir = "__markers__"
+const (
+	GlobalMarkersDir = "__markers__"
+
+	// QuerierMetaCacheDirName is the reserved name of the directory, inside the bucket store
+	// sync directory (-blocks-storage.bucket-store.sync-dir), where the querier's bucket-scan
+	// blocks finder keeps its own on-disk block-meta caches
+	// (<sync-dir>/__querier__/<tenant>/). The querier and the store-gateway can share the sync
+	// directory when running in the same process, and each reconciles its own on-disk state
+	// against a different view of which tenants are live, so their per-tenant caches must not
+	// overlap. Like GlobalMarkersDir, the name is rejected as a tenant ID and skipped by the
+	// users scanner, so nothing can treat it as a tenant.
+	QuerierMetaCacheDirName = "__querier__"
+)
 
 var (
-	errTenantIDTooLong   = errors.New("tenant ID is too long: max 150 characters")
-	errTenantIDUnsafe    = errors.New("tenant ID is '.' or '..'")
-	errTenantIDMarkers   = errors.New("tenant ID '__markers__' is not allowed")
-	errTenantIDUserIndex = errors.New("tenant ID 'user-index.json.gz' is not allowed")
+	errTenantIDTooLong        = errors.New("tenant ID is too long: max 150 characters")
+	errTenantIDUnsafe         = errors.New("tenant ID is '.' or '..'")
+	errTenantIDMarkers        = errors.New("tenant ID '__markers__' is not allowed")
+	errTenantIDUserIndex      = errors.New("tenant ID 'user-index.json.gz' is not allowed")
+	errTenantIDQuerierMetaDir = errors.New("tenant ID '__querier__' is not allowed")
 )
 
 type errTenantIDUnsupportedCharacter struct {
@@ -93,6 +106,11 @@ func CheckTenantIDIsSupported(s string) error {
 
 	if s == "user-index.json.gz" {
 		return errTenantIDUserIndex
+	}
+
+	// check tenantID is the querier's reserved meta cache directory
+	if s == QuerierMetaCacheDirName {
+		return errTenantIDQuerierMetaDir
 	}
 
 	// check tenantID is "." or ".."

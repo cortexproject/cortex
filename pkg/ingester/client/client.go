@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -113,6 +114,10 @@ func (c *closableHealthAndIngesterClient) PushStreamConnection(ctx context.Conte
 		streamReq := &cortexpb.StreamWriteRequest{
 			TenantID: tenantID,
 			Request:  in,
+		}
+
+		if err := cortexpb.InjectSpanIntoStreamWriteRequest(opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx), streamReq); err != nil {
+			return nil, err
 		}
 
 		job := &streamWriteJob{

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 )
 
@@ -48,4 +49,21 @@ func Test_CIDRSliceCSV_YamlMarshalling(t *testing.T) {
 			assert.Equal(t, tc.input, string(out))
 		})
 	}
+}
+
+func Test_CIDRSliceCSV_SetReplacesPreviousValue(t *testing.T) {
+	c := CIDRSliceCSV{}
+	require.NoError(t, c.Set("10.0.0.0/8,192.168.0.0/16"))
+	require.NoError(t, c.Set("172.16.0.0/12"))
+
+	assert.Equal(t, "172.16.0.0/12", c.String())
+}
+
+func Test_CIDRSliceCSV_SetDoesNotMutateOnError(t *testing.T) {
+	c := CIDRSliceCSV{}
+	require.NoError(t, c.Set("10.0.0.0/8"))
+
+	// The first entry parses, the second one doesn't: the value must be left untouched.
+	require.Error(t, c.Set("192.168.0.0/16,not-a-cidr"))
+	assert.Equal(t, "10.0.0.0/8", c.String())
 }

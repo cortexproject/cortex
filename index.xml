@@ -974,6 +974,7 @@ service:
 &lt;li&gt;[BUGFIX] Querier: Fix panic (&lt;code&gt;index out of range [-1]&lt;/code&gt;) in the active request tracker when truncating a &lt;code&gt;match[]&lt;/code&gt;/&lt;code&gt;query&lt;/code&gt; value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. &lt;a href="https://github.com/cortexproject/cortex/pull/7743"&gt;#7743&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Config: Fix CSV-list flags/YAML fields (e.g. &lt;code&gt;-compactor.enabled-tenants&lt;/code&gt;) treating an explicitly empty string as a one-element list containing an empty tenant name instead of an empty list. &lt;a href="https://github.com/cortexproject/cortex/pull/7714"&gt;#7714&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;[BUGFIX] Tenant Federation: Fix regex tenant federation dropping tenants when &lt;code&gt;-blocks-storage.users-scanner.cache-ttl&lt;/code&gt; is set. The regex resolver sorted the user list returned by the users scanner in place, corrupting the scanner cache and progressively losing tenants on every sync until the cache expired. &lt;a href="https://github.com/cortexproject/cortex/pull/7812"&gt;#7812&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;[BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. &lt;a href="https://github.com/cortexproject/cortex/pull/7811"&gt;#7811&lt;/a&gt;&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h2 id="1211-2026-06-04"&gt;1.21.1 2026-06-04&lt;/h2&gt;
 &lt;ul&gt;

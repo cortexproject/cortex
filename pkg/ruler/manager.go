@@ -300,17 +300,23 @@ func (r *DefaultMultiTenantManager) ValidateFederatedRuleGroup(userID string, so
 
 // filterFederatedRuleGroups drops the federated rule groups of a user that may
 // not own them, e.g. because the feature was disabled after they were stored.
+// The source tenants are re-validated against the current tenant federation
+// config as well, since the limits may have changed since the group was stored.
 func (r *DefaultMultiTenantManager) filterFederatedRuleGroups(userID string, groups rulespb.RuleGroupList) rulespb.RuleGroupList {
 	ownerErr := r.federatedRules.checkOwner(userID)
-	if ownerErr == nil {
-		return groups
-	}
 
 	filtered := make(rulespb.RuleGroupList, 0, len(groups))
 	for _, g := range groups {
 		if g.IsFederated() {
-			level.Warn(r.logger).Log("msg", "skipping federated rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", ownerErr)
-			continue
+			err := ownerErr
+			if err == nil {
+				_, err = r.federatedRules.validateSourceTenants(g.SourceTenants)
+			}
+
+			if err != nil {
+				level.Warn(r.logger).Log("msg", "skipping federated rule group", "user", userID, "namespace", g.Namespace, "group", g.Name, "err", err)
+				continue
+			}
 		}
 		filtered = append(filtered, g)
 	}

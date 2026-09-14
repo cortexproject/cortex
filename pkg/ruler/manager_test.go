@@ -560,6 +560,36 @@ func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
 		require.NotContains(t, content, "federated_rule")
 	})
 
+	t.Run("federated groups are skipped when they exceed the current max tenant", func(t *testing.T) {
+		captured := map[string]string{}
+		// The group was stored with two source tenants before the limit was lowered.
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, TenantFederationMaxTenant: 1}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups with regex metacharacters are skipped when the regex matcher is enabled", func(t *testing.T) {
+		captured := map[string]string{}
+		// The group was stored while the regex matcher was disabled.
+		regexTenant := *federated
+		regexTenant.SourceTenants = []string{"team.a", "team-b"}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, TenantFederationRegexMatcherEnabled: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&regexTenant, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
 	t.Run("federated groups are forgotten when the user is removed", func(t *testing.T) {
 		captured := map[string]string{}
 		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)

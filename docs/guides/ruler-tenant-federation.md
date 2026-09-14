@@ -101,6 +101,7 @@ The checks apply when a rule group is created and again when the ruler loads the
 
 - `-tenant-federation.max-tenant` also limits the number of tenants listed in `source_tenants`.
 - When `-tenant-federation.regex-matcher-enabled` is set, the joined tenant IDs are resolved as a regular expression against the tenants discovered in the blocks storage. Tenant IDs containing regex metacharacters (`.`, `*`, `(`, `)`) are therefore rejected in `source_tenants`, and a source tenant that has not uploaded any block yet is silently ignored.
+- These limits are checked when a rule group is created and again on every rule group poll (`-ruler.poll-interval`).
 
 ## Deployment notes
 

@@ -1687,8 +1687,10 @@ func (d *Distributor) UserStats(ctx context.Context) (*ingester.UserStats, error
 		return nil, err
 	}
 
-	// Make sure we get a successful response from all of them.
-	replicationSet.MaxErrors = 0
+	// Allow a subset of ingesters to fail (e.g. during a rolling update where
+	// some are LEAVING). MaxErrors is already set by the ring to the quorum
+	// tolerance; overriding it to 0 caused the endpoint to error whenever a
+	// LEAVING ingester was in the set and returned an error (issue #4936).
 
 	req := &ingester_client.UserStatsRequest{}
 	resps, err := d.ForReplicationSet(ctx, replicationSet, false, false, func(ctx context.Context, client ingester_client.IngesterClient) (any, error) {

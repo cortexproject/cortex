@@ -434,7 +434,8 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	// Start dependencies.
 	consul1 := e2edb.NewConsulWithName("consul1")
 	consul2 := e2edb.NewConsulWithName("consul2")
-	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
+	consul3 := e2edb.NewConsulWithName("consul3")
+	require.NoError(t, s.StartAndWaitReady(consul1, consul2, consul3))
 
 	flags1 := mergeFlags(
 		AlertmanagerLocalFlags(),
@@ -482,7 +483,9 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			// Store-gateway.
 			"-store-gateway.sharding-enabled": "false",
 			// alert manager
-			"-alertmanager.web.external-url": "http://localhost/alertmanager",
+			"-alertmanager.web.external-url":          "http://localhost/alertmanager",
+			"-alertmanager.cluster.listen-address":    "127.0.0.1:9094",
+			"-alertmanager.cluster.advertise-address": "127.0.0.1:9094",
 		},
 	)
 	// make alert manager config dir
@@ -490,25 +493,46 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 
 	path1 := path.Join(s.SharedDir(), "cortex-1")
 	path2 := path.Join(s.SharedDir(), "cortex-2")
+	path3 := path.Join(s.SharedDir(), "cortex-3")
 
 	flags1 = mergeFlags(flags1, map[string]string{"-blocks-storage.filesystem.dir": path1})
 	flags2 = mergeFlags(flags2, map[string]string{"-blocks-storage.filesystem.dir": path2})
+	// cortex-3 matches cortex-2 but squashes the label counter to a single slot, so
+	// every (tenant, label) collides.
+	flags3 := mergeFlags(flags2, map[string]string{
+		"-blocks-storage.filesystem.dir": path3,
+		"-consul.hostname":               consul3.NetworkHTTPEndpoint(),
+		"-blocks-storage.expanded_postings_cache.head.label-counter-size": "1",
+	})
 	// Start Cortex replicas.
 	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, stableCortexImage)
 	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
-	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
+	cortex3 := e2ecortex.NewSingleBinary("cortex-3", flags3, "")
+	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2, cortex3))
 
 	// Wait until Cortex replicas have updated the ring state.
 	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
 	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex3.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
 
 	var clients []*e2ecortex.Client
 	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
+	c3, err := e2ecortex.NewClient(cortex3.HTTPEndpoint(), cortex3.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
 
-	clients = append(clients, c1, c2)
+	clients = append(clients, c1, c2, c3)
+
+	// c1 (no postings cache) is the oracle; every candidate must agree with it.
+	candidates := []struct {
+		name   string
+		client *e2ecortex.Client
+	}{
+		{"postings-cache", c2},
+		{"postings-cache-colliding-counter", c3},
+	}
 
 	now := time.Now()
 	// Push some series to Cortex.
@@ -518,27 +542,46 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	numSeries := 10
 	numberOfLabelsPerSeries := 5
 	numSamples := 10
-	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
-	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
+	numIterations := 5
 
-	for i := 0; i < numSeries; i++ {
-		for j := 0; j < numberOfLabelsPerSeries; j++ {
-			series := e2e.GenerateSeriesWithSamples(
-				fmt.Sprintf("test_series_%d", i),
-				start,
-				scrapeInterval,
-				i*numSamples,
-				numSamples,
-				prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
-			)
-			ss[i*numberOfLabelsPerSeries+j] = series
+	// Names and values that only exist from iteration k onwards, so entries cached
+	// earlier (including empty ones) invalidate only if a value-keyed slot moves.
+	lateSeriesName := func(k int) string { return fmt.Sprintf("test_series_late_%d", k) }
+	lateLabelValue := func(k int) string { return fmt.Sprintf("test_label_value_late_%d", k) }
 
-			builder := labels.NewBuilder(labels.EmptyLabels())
-			for _, lbl := range series.Labels {
-				builder.Set(lbl.Name, lbl.Value)
+	// "k" is the only label that churns, so it has to be in promqlsmith's vocabulary
+	// or no generated matcher ever constrains it.
+	lbls := make([]labels.Labels, 0, numSeries*numberOfLabelsPerSeries*numIterations+3*numIterations)
+	for i := range numSeries {
+		for j := range numberOfLabelsPerSeries {
+			for k := range numIterations {
+				lbls = append(lbls, labels.FromStrings(
+					model.MetricNameLabel, fmt.Sprintf("test_series_%d", i),
+					"test_label", fmt.Sprintf("test_label_value_%d", j),
+					"k", fmt.Sprintf("%d", k),
+				))
 			}
-			lbls[i*numberOfLabelsPerSeries+j] = builder.Labels()
 		}
+	}
+	// Late names/values need to be in the vocabulary too. The third shape omits
+	// test_label, so only matchers that can match an absent label select it.
+	for k := range numIterations {
+		lbls = append(lbls,
+			labels.FromStrings(
+				model.MetricNameLabel, lateSeriesName(k),
+				"test_label", fmt.Sprintf("test_label_value_%d", k%numberOfLabelsPerSeries),
+				"k", fmt.Sprintf("%d", k),
+			),
+			labels.FromStrings(
+				model.MetricNameLabel, fmt.Sprintf("test_series_%d", k%numSeries),
+				"test_label", lateLabelValue(k),
+				"k", fmt.Sprintf("%d", k),
+			),
+			labels.FromStrings(
+				model.MetricNameLabel, fmt.Sprintf("test_series_%d", k%numSeries),
+				"k", fmt.Sprintf("%d", k),
+			),
+		)
 	}
 
 	rnd := newFuzzRand(t)
@@ -552,7 +595,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	testRun := 300
 	queries := make([]string, 0, testRun)
 	matchers := make([]string, 0, testRun)
-	for i := 0; i < testRun; i++ {
+	for i := range testRun {
 		var expr parser.Expr
 		for {
 			expr = ps.WalkRangeQuery()
@@ -569,12 +612,17 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	}
 
 	// Lets run multiples iterations and create new series every iteration
-	for k := 0; k < 5; k++ {
+	for k := range numIterations {
 
-		nss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
-		for i := 0; i < numSeries; i++ {
-			for j := 0; j < numberOfLabelsPerSeries; j++ {
-				nss[i*numberOfLabelsPerSeries+j] = e2e.GenerateSeriesWithSamples(
+		// Churn a subset only. Rewriting every combination moves every snapshotted
+		// slot, so entries would always invalidate and never stay valid.
+		timeSeries := make([]prompb.TimeSeries, 0, numSeries*numberOfLabelsPerSeries+numSeries+2)
+		for i := range numSeries {
+			for j := range numberOfLabelsPerSeries {
+				if (i+j+k)%3 == 0 {
+					continue
+				}
+				timeSeries = append(timeSeries, e2e.GenerateSeriesWithSamples(
 					fmt.Sprintf("test_series_%d", i),
 					start.Add(scrapeInterval*time.Duration(numSamples*j)),
 					scrapeInterval,
@@ -582,12 +630,50 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 					numSamples,
 					prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
 					prompb.Label{Name: "k", Value: fmt.Sprintf("%d", k)},
-				)
+				))
 			}
 		}
 
+		// First appearance of this iteration's late metric name and test_label value.
+		timeSeries = append(timeSeries,
+			e2e.GenerateSeriesWithSamples(
+				lateSeriesName(k),
+				start,
+				scrapeInterval,
+				k*numSamples,
+				numSamples,
+				prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", k%numberOfLabelsPerSeries)},
+				prompb.Label{Name: "k", Value: fmt.Sprintf("%d", k)},
+			),
+			e2e.GenerateSeriesWithSamples(
+				fmt.Sprintf("test_series_%d", k%numSeries),
+				start,
+				scrapeInterval,
+				k*numSamples,
+				numSamples,
+				prompb.Label{Name: "test_label", Value: lateLabelValue(k)},
+				prompb.Label{Name: "k", Value: fmt.Sprintf("%d", k)},
+			),
+		)
+
+		// Series that omit test_label. They never bump the test_label slots, which is
+		// why absent-label matchers cannot vouch for an entry.
+		for i := range numSeries {
+			if (i+k)%2 != 0 {
+				continue
+			}
+			timeSeries = append(timeSeries, e2e.GenerateSeriesWithSamples(
+				fmt.Sprintf("test_series_%d", i),
+				start,
+				scrapeInterval,
+				i*numSamples,
+				numSamples,
+				prompb.Label{Name: "k", Value: fmt.Sprintf("%d", k)},
+			))
+		}
+
 		for _, client := range clients {
-			res, err := client.Push(nss)
+			res, err := client.Push(timeSeries)
 			require.NoError(t, err)
 			require.Equal(t, 200, res.StatusCode)
 		}
@@ -595,36 +681,42 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		type testCase struct {
 			query        string
 			qt           string
+			instance     string
 			res1, res2   model.Value
 			sres1, sres2 []model.LabelSet
 			err1, err2   error
 		}
 
-		cases := make([]*testCase, 0, len(queries)*3)
+		cases := make([]*testCase, 0, len(queries)*3*len(candidates))
 
 		for _, query := range queries {
 			fuzzyTime := time.Duration(rand.Int63n(time.Now().UnixMilli() - start.UnixMilli()))
 			queryEnd := start.Add(fuzzyTime * time.Millisecond)
-			res1, err1 := c1.Query(query, queryEnd)
-			res2, err2 := c2.Query(query, queryEnd)
-			cases = append(cases, &testCase{
-				query: query,
-				qt:    "instant",
-				res1:  res1,
-				res2:  res2,
-				err1:  err1,
-				err2:  err2,
-			})
-			res1, err1 = c1.QueryRange(query, start, queryEnd, scrapeInterval)
-			res2, err2 = c2.QueryRange(query, start, queryEnd, scrapeInterval)
-			cases = append(cases, &testCase{
-				query: query,
-				qt:    "range query",
-				res1:  res1,
-				res2:  res2,
-				err1:  err1,
-				err2:  err2,
-			})
+			// Resolve the oracle once per query and compare every candidate to it.
+			oracleInstant, oracleInstantErr := c1.Query(query, queryEnd)
+			oracleRange, oracleRangeErr := c1.QueryRange(query, start, queryEnd, scrapeInterval)
+			for _, cand := range candidates {
+				res2, err2 := cand.client.Query(query, queryEnd)
+				cases = append(cases, &testCase{
+					query:    query,
+					qt:       "instant",
+					instance: cand.name,
+					res1:     oracleInstant,
+					res2:     res2,
+					err1:     oracleInstantErr,
+					err2:     err2,
+				})
+				res2, err2 = cand.client.QueryRange(query, start, queryEnd, scrapeInterval)
+				cases = append(cases, &testCase{
+					query:    query,
+					qt:       "range query",
+					instance: cand.name,
+					res1:     oracleRange,
+					res2:     res2,
+					err1:     oracleRangeErr,
+					err2:     err2,
+				})
+			}
 		}
 
 		for _, m := range matchers {
@@ -632,33 +724,36 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			queryEnd := start.Add(fuzzyTime * time.Millisecond)
 			res1, err := c1.Series([]string{m}, start, queryEnd)
 			require.NoError(t, err)
-			res2, err := c2.Series([]string{m}, start, queryEnd)
-			require.NoError(t, err)
-			cases = append(cases, &testCase{
-				query: m,
-				qt:    "get series",
-				sres1: res1,
-				sres2: res2,
-			})
+			for _, cand := range candidates {
+				res2, err := cand.client.Series([]string{m}, start, queryEnd)
+				require.NoError(t, err)
+				cases = append(cases, &testCase{
+					query:    m,
+					qt:       "get series",
+					instance: cand.name,
+					sres1:    res1,
+					sres2:    res2,
+				})
+			}
 		}
 
 		failures := 0
 		for i, tc := range cases {
 			if tc.err1 != nil || tc.err2 != nil {
 				if !sameErrorClass(tc.err1, tc.err2) {
-					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
+					t.Logf("case %d [%s] error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.instance, tc.qt, tc.query, tc.err1, tc.err2)
 					failures++
 				}
 			} else if shouldUseSampleNumComparer(tc.query) {
 				if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
-					t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+					t.Logf("case %d [%s] # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.instance, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 					failures++
 				}
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
-				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+				t.Logf("case %d [%s] results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.instance, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 				failures++
 			} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
-				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
+				t.Logf("case %d [%s] results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.instance, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}
 		}

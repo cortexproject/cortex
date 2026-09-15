@@ -133,6 +133,7 @@
 * [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
 * [BUGFIX] Ingester: Don't count a forced head compaction skipped because blocks shipping is in progress as a failure. Previously such skips incremented `cortex_ingester_tsdb_compactions_failed_total`, producing spurious alerts. #7842
 * [BUGFIX] Compactor: Fix the final cleanup of a tenant marked for deletion being reported as failed on object stores that return an error when deleting a missing object (GCS, Azure, Swift, OCI). #7861
+* [BUGFIX] Ingester Client: Fix `MakeIngesterClient` leaking the `grpc.ClientConn` and stream-push worker goroutines when starting stream workers fails (`-distributor.use-stream-push=true`). Also fix a data race on the collected worker error, and stop already-started workers instead of leaving them running when a sibling worker fails. #7839
 
 ## 1.21.1 2026-06-04
 

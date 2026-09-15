@@ -3,16 +3,21 @@ package client
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
@@ -127,7 +132,8 @@ func (m *mockIngester) Push(_ context.Context, _ *cortexpb.WriteRequest, _ ...gr
 
 func (m *mockIngester) PushStream(ctx context.Context, opts ...grpc.CallOption) (Ingester_PushStreamClient, error) {
 	args := m.Called(ctx, opts)
-	return args.Get(0).(Ingester_PushStreamClient), nil
+	stream, _ := args.Get(0).(Ingester_PushStreamClient)
+	return stream, args.Error(1)
 }
 
 type mockClientConn struct {
@@ -392,4 +398,105 @@ func TestClosableHealthAndIngesterClient_ShouldNotPanicWhenClose(t *testing.T) {
 	require.NoError(t, client.Close())
 
 	time.Sleep(100 * time.Millisecond)
+}
+
+// noopPushStreamClient is a minimal Ingester_PushStreamClient whose Send/Recv
+// are never expected to be called by these tests (no jobs are pushed).
+type noopPushStreamClient struct {
+	grpc.ClientStream
+}
+
+func (noopPushStreamClient) Send(*cortexpb.StreamWriteRequest) error { return nil }
+func (noopPushStreamClient) Recv() (*cortexpb.WriteResponse, error) {
+	return &cortexpb.WriteResponse{}, nil
+}
+
+// partialFailIngester simulates a subset of PushStream() calls failing, as
+// happens in production when an ingester address is still in the ring but no
+// longer reachable: some workers manage to open a stream, others don't.
+type partialFailIngester struct {
+	IngesterClient
+	calls atomic.Int32
+}
+
+func (p *partialFailIngester) PushStream(context.Context, ...grpc.CallOption) (Ingester_PushStreamClient, error) {
+	n := p.calls.Add(1)
+	if n%2 == 0 {
+		return nil, errors.New("injected PushStream failure")
+	}
+	return noopPushStreamClient{}, nil
+}
+
+// TestClosableHealthAndIngesterClient_Run_PartialFailureCancelsSiblingsAndReturnsError
+// is a regression test for #7759: when a subset of the stream-push workers
+// fail to open their PushStream, Run() must still return an error (safely,
+// without a data race on the collected error) and must cancel streamCtx so
+// that the job-processing goroutines started by the workers that *did*
+// succeed are not orphaned.
+func TestClosableHealthAndIngesterClient_Run_PartialFailureCancelsSiblingsAndReturnsError(t *testing.T) {
+	streamCtx, streamCancel := context.WithCancel(context.Background())
+	defer streamCancel()
+
+	client := &closableHealthAndIngesterClient{
+		IngesterClient:       &partialFailIngester{},
+		conn:                 &mockClientConn{},
+		addr:                 "test-addr",
+		inflightPushRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{}, []string{"ingester"}),
+	}
+
+	streamChan := make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT)
+	err := client.Run(streamChan, streamCtx, streamCancel)
+	require.Error(t, err)
+
+	// streamCtx must have been cancelled by the failing worker(s) so the
+	// job-processing goroutines spawned by the workers that succeeded exit
+	// instead of leaking forever.
+	select {
+	case <-streamCtx.Done():
+	default:
+		t.Fatal("expected streamCtx to be cancelled after a worker failure")
+	}
+}
+
+// TestMakeIngesterClient_StreamFailure_ClosesConnAndDoesNotLeak is an
+// end-to-end regression test for #7759. It reproduces the reported scenario:
+// the target address is dialable (grpc.NewClient is lazy and never errors up
+// front) but unreachable, so every eagerly-opened PushStream fails once the
+// connection reaches TRANSIENT_FAILURE. MakeIngesterClient must return the
+// error without leaking the grpc.ClientConn or its reconnect/stream
+// goroutines.
+func TestMakeIngesterClient_StreamFailure_ClosesConnAndDoesNotLeak(t *testing.T) {
+	// Reserve a local port and then stop listening on it, so connections to
+	// it are refused immediately (fast, deterministic "unreachable" target)
+	// instead of relying on an external address.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	addr := l.Addr().String()
+	require.NoError(t, l.Close())
+
+	countRelevantGoroutines := func() int {
+		buf := make([]byte, 4<<20)
+		n := runtime.Stack(buf, true)
+		stacks := string(buf[:n])
+		count := 0
+		for _, frame := range strings.Split(stacks, "\n\n") {
+			// Same signatures used in the issue's own reproduction to detect
+			// leaked reconnect loops and leaked/idle push streams.
+			if strings.Contains(frame, "resetTransportAndUnlock") || strings.Contains(frame, "newClientStreamWithParams") {
+				count++
+			}
+		}
+		return count
+	}
+
+	baseline := countRelevantGoroutines()
+
+	var cfg Config
+	client, err := MakeIngesterClient(addr, cfg, true)
+	require.Error(t, err)
+	require.Nil(t, client)
+
+	require.Eventually(t, func() bool {
+		return countRelevantGoroutines() <= baseline
+	}, 10*time.Second, 50*time.Millisecond, "expected no leaked ingester-client goroutines (reconnect loop or idle streams) after MakeIngesterClient failed")
 }

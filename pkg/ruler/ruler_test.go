@@ -2643,7 +2643,7 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*objstore.In
 
 	// "upload" rule groups
 	for _, key := range ruleGroups {
-		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		desc := rulespb.ToProto(key.user, key.namespace, rulespb.RuleGroup{Name: key.group})
 		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
 	}
 

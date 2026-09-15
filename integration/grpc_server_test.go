@@ -160,7 +160,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				wg := sync.WaitGroup{}
 				n := 10000
 				wg.Add(n)
-				for i := 0; i < n; i++ {
+				for i := range n {
 					go func(i int) {
 						defer wg.Done()
 						ctx := context.Background()
@@ -185,7 +185,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				wg := sync.WaitGroup{}
 				n := 10000
 				wg.Add(n)
-				for i := 0; i < n; i++ {
+				for i := range n {
 					go func(i int) {
 						defer wg.Done()
 						stream, err := client.PushStream(ctx)
@@ -216,7 +216,7 @@ func TestConcurrentGrpcCalls(t *testing.T) {
 				wg := sync.WaitGroup{}
 				n := 10000
 				wg.Add(n)
-				for i := 0; i < n; i++ {
+				for i := range n {
 					go func(i int) {
 						defer wg.Done()
 						ctx := context.Background()
@@ -284,7 +284,7 @@ func createRequest(i int) *cortexpb.WriteRequest {
 
 func createLabels(i int) []cortexpb.LabelAdapter {
 	labels := make([]cortexpb.LabelAdapter, 0, 100)
-	for j := 0; j < 100; j++ {
+	for j := range 100 {
 		labels = append(labels, cortexpb.LabelAdapter{
 			Name:  fmt.Sprintf("test%d_%d", i, j),
 			Value: fmt.Sprintf("test%d_%d", i, j),

@@ -38,8 +38,6 @@ jobs:
         run: make BUILD_IN_CONTAINER=false mod-check
       - name: Check Protos
         run: make BUILD_IN_CONTAINER=false check-protos
-      - name: Check Modernize
-        run: make BUILD_IN_CONTAINER=false check-modernize
 
   test:
     strategy:

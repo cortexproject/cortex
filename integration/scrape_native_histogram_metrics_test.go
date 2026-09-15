@@ -93,7 +93,7 @@ func setupCortexWithNativeHistograms(t *testing.T) (*e2e.Scenario, *e2ecortex.Co
 	require.NoError(t, err)
 
 	baseTime := time.Now()
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		series := []prompb.TimeSeries{{
 			Labels: []prompb.Label{
 				{Name: "__name__", Value: "test_metric"},

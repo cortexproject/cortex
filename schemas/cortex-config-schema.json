@@ -6652,6 +6652,12 @@
           "type": "boolean",
           "x-cli-flag": "querier.per-step-stats-enabled"
         },
+        "pool_iterator_batches_buf": {
+          "default": false,
+          "description": "Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of allocating one per iterator.",
+          "type": "boolean",
+          "x-cli-flag": "querier.pool-iterator-batches-buf"
+        },
         "query_protection": {
           "properties": {
             "eviction": {

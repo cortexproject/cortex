@@ -75,6 +75,7 @@
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_head_metric_names` gauge exposing the number of unique metric names in the TSDB head per tenant. Registered when `-ingester.active-series-metrics-enabled` is true. #7514
 * [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
+* [ENHANCEMENT] Querier: Add `-querier.pool-iterator-batches-buf` flag to pool mergeIterator scratch buffers via sync.Pool, reducing per-iterator memory allocation. #7765
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7807 #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823
@@ -121,6 +122,8 @@
 * [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
 * [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
 * [BUGFIX] Config: Fix CSV-list flags/YAML fields (e.g. `-compactor.enabled-tenants`) treating an explicitly empty string as a one-element list containing an empty tenant name instead of an empty list. #7714
+* [BUGFIX] Tenant Federation: Fix regex tenant federation dropping tenants when `-blocks-storage.users-scanner.cache-ttl` is set. The regex resolver sorted the user list returned by the users scanner in place, corrupting the scanner cache and progressively losing tenants on every sync until the cache expired. #7812
+* [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
 
 ## 1.21.1 2026-06-04
 

@@ -104,11 +104,6 @@ querier:
   # CLI flag: -querier.timeout
   [timeout: <duration> | default = 2m]
 
-  # Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-  # for metadata APIs from ingester.
-  # CLI flag: -querier.ingester-metadata-streaming
-  [ingester_metadata_streaming: <boolean> | default = true]
-
   # Use LabelNames ingester RPCs with match params.
   # CLI flag: -querier.ingester-label-names-with-matchers
   [ingester_label_names_with_matchers: <boolean> | default = false]
@@ -377,6 +372,11 @@ querier:
       # when resource thresholds are breached.
       # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
       [max_evictions_per_cycle: <int> | default = 1]
+
+  # Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+  # allocating one per iterator.
+  # CLI flag: -querier.pool-iterator-batches-buf
+  [pool_iterator_batches_buf: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`

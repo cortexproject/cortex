@@ -3844,11 +3844,6 @@ The `fifo_cache_config` configures the local in-memory cache.
 # The expiry duration for the cache.
 # CLI flag: -frontend.fifocache.duration
 [validity: <duration> | default = 0s]
-
-# Deprecated (use max-size-items or max-size-bytes instead): The number of
-# entries to cache.
-# CLI flag: -frontend.fifocache.size
-[size: <int> | default = 0]
 ```
 
 ### `flusher_config`
@@ -4623,7 +4618,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # series matching its matchers and exposes the count as a metric.
 [active_series_trackers: <list of ActiveSeriesTrackerConfig> | default = []]
 
-# [EXPERIMENTAL] True to enable native histogram.
+# True to enable native histogram.
 # CLI flag: -blocks-storage.tsdb.enable-native-histograms
 [enable_native_histograms: <boolean> | default = false]
 
@@ -4832,12 +4827,6 @@ query_rejection:
   # them.
   [query_attributes: <list of QueryAttribute> | default = []]
 
-# Deprecated(use ruler.query-offset instead) and will be removed in v1.19.0:
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
-# CLI flag: -ruler.evaluation-delay-duration
-[ruler_evaluation_delay_duration: <duration> | default = 0s]
-
 # The default tenant's shard size when the shuffle-sharding strategy is used by
 # ruler. When this setting is specified in the per-tenant overrides, a value of
 # 0 disables shuffle sharding for the tenant. If the value is < 1 the shard size
@@ -4924,6 +4913,12 @@ query_rejection:
 # order of precedence. These are applied during Parquet file generation.
 # CLI flag: -parquet-converter.sort-columns
 [parquet_converter_sort_columns: <list of string> | default = []]
+
+# [Experimental] Maximum number of distinct label names allowed in a TSDB block
+# for parquet conversion. If exceeded, the converter writes a no-convert marker.
+# 0 to disable.
+# CLI flag: -parquet-converter.max-block-label-names
+[parquet_converter_max_block_label_names: <int> | default = 0]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -5276,11 +5271,6 @@ The `querier_config` configures the Cortex querier.
 # CLI flag: -querier.timeout
 [timeout: <duration> | default = 2m]
 
-# Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-# for metadata APIs from ingester.
-# CLI flag: -querier.ingester-metadata-streaming
-[ingester_metadata_streaming: <boolean> | default = true]
-
 # Use LabelNames ingester RPCs with match params.
 # CLI flag: -querier.ingester-label-names-with-matchers
 [ingester_label_names_with_matchers: <boolean> | default = false]
@@ -5548,6 +5538,11 @@ query_protection:
     # when resource thresholds are breached.
     # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
     [max_evictions_per_cycle: <int> | default = 1]
+
+# Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+# allocating one per iterator.
+# CLI flag: -querier.pool-iterator-batches-buf
+[pool_iterator_batches_buf: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`

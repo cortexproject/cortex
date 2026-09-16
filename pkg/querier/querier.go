@@ -45,8 +45,6 @@ import (
 type Config struct {
 	MaxConcurrent                  int           `yaml:"max_concurrent"`
 	Timeout                        time.Duration `yaml:"timeout"`
-	IngesterStreaming              bool          `yaml:"ingester_streaming" doc:"hidden"`
-	IngesterMetadataStreaming      bool          `yaml:"ingester_metadata_streaming"`
 	IngesterLabelNamesWithMatchers bool          `yaml:"ingester_label_names_with_matchers"`
 	MaxSamples                     int           `yaml:"max_samples"`
 	EnablePerStepStats             bool          `yaml:"per_step_stats_enabled"`
@@ -110,6 +108,10 @@ type Config struct {
 
 	// Query protection: resource-based rejection.
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
+
+	// Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+	// allocating one per iterator.
+	PoolIteratorBatchesBuf bool `yaml:"pool_iterator_batches_buf"`
 }
 
 var (
@@ -133,7 +135,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.StoreGatewayClient.RegisterFlagsWithPrefix("querier.store-gateway-client", f)
 	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 20, "The maximum number of concurrent queries.")
 	f.DurationVar(&cfg.Timeout, "querier.timeout", 2*time.Minute, "The timeout for a query.")
-	f.BoolVar(&cfg.IngesterMetadataStreaming, "querier.ingester-metadata-streaming", true, "Deprecated (This feature will be always on after v1.18): Use streaming RPCs for metadata APIs from ingester.")
 	f.BoolVar(&cfg.IngesterLabelNamesWithMatchers, "querier.ingester-label-names-with-matchers", false, "Use LabelNames ingester RPCs with match params.")
 	f.IntVar(&cfg.MaxSamples, "querier.max-samples", 50e6, "Maximum number of samples a single query can load into memory.")
 	f.BoolVar(&cfg.EnablePerStepStats, "querier.per-step-stats-enabled", false, "Enable returning samples stats per steps in query response.")
@@ -160,6 +161,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.TimeoutClassificationDeadline, "querier.timeout-classification-deadline", time.Minute+59*time.Second, "The total time before the querier proactively cancels a query for timeout classification. Set this a few seconds less than the querier timeout.")
 	f.DurationVar(&cfg.TimeoutClassificationEvalThreshold, "querier.timeout-classification-eval-threshold", time.Minute+30*time.Second, "Eval time threshold above which a timeout is classified as user error (4XX).")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "querier.")
+	f.BoolVar(&cfg.PoolIteratorBatchesBuf, "querier.pool-iterator-batches-buf", false, "Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of allocating one per iterator.")
 }
 
 // Validate the config
@@ -228,6 +230,7 @@ func getChunksIteratorFunction(_ Config) chunkIteratorFunc {
 // New builds a queryable and promql engine.
 func New(cfg Config, limits *validation.Overrides, distributor Distributor, stores []QueryableWithFilter, reg prometheus.Registerer, logger log.Logger, isPartialDataEnabled partialdata.IsCfgEnabledFunc, resourceMonitor resource.IMonitor) (storage.SampleAndChunkQueryable, storage.ExemplarQueryable, engine.QueryEngine, services.Service) {
 	iteratorFunc := getChunksIteratorFunction(cfg)
+	batch.SetPoolBatchesBuf(cfg.PoolIteratorBatchesBuf)
 
 	// Create resource-based limiter if resource monitor is available and thresholds are configured.
 	var resourceBasedLimiter *limiter.ResourceBasedLimiter
@@ -266,7 +269,7 @@ func New(cfg Config, limits *validation.Overrides, distributor Distributor, stor
 		)
 	}
 
-	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterMetadataStreaming, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
+	distributorQueryable := newDistributorQueryable(distributor, cfg.IngesterLabelNamesWithMatchers, iteratorFunc, isPartialDataEnabled, cfg.IngesterQueryMaxAttempts, limits, nil)
 
 	ns := make([]QueryableWithFilter, len(stores))
 	for ix, s := range stores {

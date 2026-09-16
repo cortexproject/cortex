@@ -3,6 +3,9 @@
 ## master / unreleased
 * [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [FEATURE] Engine: Add `-querier.selector-batch-size` and `-ruler.selector-batch-size` flags to configure series batching in the Thanos promQL engine. 0 disables batching. #7763
+* [CHANGE] Ruler: Remove the deprecated `-ruler.evaluation-delay-duration` flag and its `ruler_evaluation_delay_duration` per-tenant limit. Use `-ruler.query-offset` / `ruler_query_offset`, which no longer takes the higher of the two values. Cortex decodes the runtime config strictly, so a leftover `ruler_evaluation_delay_duration` override makes the runtime config fail to load: Cortex **exits at startup** (`module failed`, `module=runtime-config`), and on an already-running process every reload fails, pinning the last good overrides and dropping `cortex_runtime_config_last_reload_successful` to 0. Run `grep -r ruler_evaluation_delay_duration` over your runtime configs before upgrading. #7792
+* [CHANGE] Remove the deprecated `-<prefix>.fifocache.size` flag and its `size` YAML field (deprecated in 1.1.0). Use `-<prefix>.fifocache.max-size-items` or `-<prefix>.fifocache.max-size-bytes`; a cache configured only via `size` now starts with no capacity. #7791
+* [CHANGE] Querier: Remove the deprecated `-querier.ingester-metadata-streaming` flag and its `ingester_metadata_streaming` YAML field (deprecated in 1.18.0, default `true`). Streaming RPCs are now always used for the metadata APIs. Also removes the dead hidden `ingester_streaming` YAML field left over from `-querier.ingester-streaming`. #7791
 * [CHANGE] Remove deprecated CLI flags that have been no-ops for at least two minor releases. All of them were flag-only (no YAML config option) and already had no effect, so the only impact is that passing them now fails at startup. Remove them from your command lines before upgrading. #7790
   - `-querier.ingester-streaming` (deprecated in 1.17.0)
   - `-querier.iterators` (deprecated in 1.17.0)
@@ -13,6 +16,7 @@
   - `-blocks-storage.tsdb.wal-compression-enabled` (deprecated in 1.19.0; use `-blocks-storage.tsdb.wal-compression-type`)
   - `-ingester.max-series-per-query` (a chunks-storage limit, ignored since blocks storage; use `-querier.max-fetched-series-per-query`)
 * [CHANGE] Ingester: Formally deprecate `-blocks-storage.tsdb.max-exemplars`, scheduled for removal in v1.24.0. Use the per-tenant `max_exemplars` limit instead. The flag still works as the global fallback when `max_exemplars` is 0, but setting it now logs a warning and increments `deprecated_flags_inuse_total`. #7793
+* [CHANGE] Ingester: Graduate native histogram ingestion (`-blocks-storage.tsdb.enable-native-histograms`) from experimental. #7789
 * [CHANGE] Querier: Make query time range configurations per-tenant: `query_ingesters_within`, `query_store_after`, and `shuffle_sharding_ingesters_lookback_period`. Uses `model.Duration` instead of `time.Duration` to support serialization but has minimum unit of 1ms (nanoseconds/microseconds not supported). #7160
 * [CHANGE] Cache: Setting `-blocks-storage.bucket-store.metadata-cache.bucket-index-content-ttl` to 0 will disable the bucket-index cache. #7446
 * [CHANGE] HA Tracker: Move `-distributor.ha-tracker.failover-timeout` from a global config to a per-tenant runtime config. The flag name and default value (30s) remain the same. #7481
@@ -31,6 +35,7 @@
 * [FEATURE] StoreGateway: Add experimental optional limit `blocks-storage.bucket-store.max-concurrent-data-bytes` on the data bytes (postings, series and chunks) fetched via the Series() API call and processed concurrently across all queries per store gateway to protect from oomkill. This returns an error that is retryable at querier level. #7271
 * [ENHANCEMENT] Upgrade prometheus alertmanager version to v0.32.1. #7462
 * [ENHANCEMENT] Tenant Federation: Avoid purging the regex resolver LRU cache on user-sync ticks when the set of known users has not changed. #7489
+* [ENHANCEMENT] Parquet Converter: Add `parquet-converter.max-block-label-names` limit to skip conversion of TSDB blocks with too many label names. #7625
 * [ENHANCEMENT] Parquet Converter: Add a ring status page to expose the ring status. #7455
 * [ENHANCEMENT] Parquet: Add `-blocks-storage.bucket-store.parquet-query-concurrency` flag to configure the maximum number of concurrent goroutines applied at each level of parquet query processing in store-gateway: shard querying, row group processing, and column materialization. #7613
 * [ENHANCEMENT] Parquet: Add a row ranges cache for parquet query filtering in querier and store-gateway. #7478
@@ -63,10 +68,13 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_tsdb_head_max_timestamp` metric that re-exports the TSDB head max timestamp (`prometheus_tsdb_head_max_time`) per user, to help investigate ingestion issues like out-of-bounds (too old sample) errors. #7694
 * [ENHANCEMENT] Ingester: Include the TSDB head max time in the `out of bounds` and `too old sample` error messages, so that users can see how far behind the accepted time range a rejected sample is. #7695
 * [ENHANCEMENT] Compactor: Reduce object storage GET calls when updating the bucket index by skipping re-reading parquet converter markers for blocks that already have a valid-version parquet entry in the previous index. #7669
-* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740
+* [ENHANCEMENT] Upgrade Thanos and promql-engine to latest. #7740 #7788
 * [ENHANCEMENT] Ruler: Adjust ruler frontend decoder to not wrap query error messages with execution prefix, this makes error responses consistent between internal and external ruler paths. #7741
 * [ENHANCEMENT] Distributor: Deduplicate metric metadata when converting PRW 2.0 requests. PRW 2.0 attaches metadata to every series, so a metric family was previously expanded into one `MetricMetadata` per series. #7760
+* [ENHANCEMENT] Querier: Add `-querier.pool-iterator-batches-buf` flag to pool mergeIterator scratch buffers via sync.Pool, reducing per-iterator memory allocation. #7765
+* [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7814
+* [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
@@ -109,6 +117,9 @@
 * [BUGFIX] Alertmanager: Tighten per-tenant config validation to reject additional file-based settings. #7767
 * [BUGFIX] Querier: Fix panic (`index out of range [-1]`) in the active request tracker when truncating a `match[]`/`query` value made entirely of invalid UTF-8 continuation bytes. The backwards scan for a rune boundary now stops at index 0 instead of underflowing. #7743
 * [BUGFIX] Query Frontend: Disable vertical sharding for queries using `vector()`. `vector()` is not backed by any series selector, so every shard produced its sample and a query such as `<expr> or vector(0)` could return the `vector()` fallback instead of the left-hand side. #7806
+* [BUGFIX] Config: Fix CSV-list flags/YAML fields (e.g. `-compactor.enabled-tenants`) treating an explicitly empty string as a one-element list containing an empty tenant name instead of an empty list. #7714
+* [BUGFIX] Tenant Federation: Fix regex tenant federation dropping tenants when `-blocks-storage.users-scanner.cache-ttl` is set. The regex resolver sorted the user list returned by the users scanner in place, corrupting the scanner cache and progressively losing tenants on every sync until the cache expired. #7812
+* [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
 
 ## 1.21.1 2026-06-04
 

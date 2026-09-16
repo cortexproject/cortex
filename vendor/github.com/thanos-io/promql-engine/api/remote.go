@@ -6,6 +6,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
 
@@ -47,6 +48,61 @@ type RemoteEngine interface {
 	PartitionLabelSets() []labels.Labels
 
 	NewRangeQuery(ctx context.Context, opts promql.QueryOpts, plan RemoteQuery, start, end time.Time, interval time.Duration) (promql.Query, error)
+}
+
+type memoizedRemoteEngine struct {
+	RemoteEngine
+	mint               int64
+	maxt               int64
+	labelSets          []labels.Labels
+	partitionLabelSets []labels.Labels
+}
+
+func (e memoizedRemoteEngine) MinT() int64 {
+	return e.mint
+}
+
+func (e memoizedRemoteEngine) MaxT() int64 {
+	return e.maxt
+}
+
+func (e memoizedRemoteEngine) LabelSets() []labels.Labels {
+	return e.labelSets
+}
+
+func (e memoizedRemoteEngine) PartitionLabelSets() []labels.Labels {
+	return e.partitionLabelSets
+}
+
+// NewMemoizedRemoteEngine returns an engine with a stable snapshot of the
+// supplied engine's metadata. Query creation is delegated to the supplied engine.
+func NewMemoizedRemoteEngine(engine RemoteEngine) RemoteEngine {
+	return &memoizedRemoteEngine{
+		RemoteEngine:       engine,
+		mint:               engine.MinT(),
+		maxt:               engine.MaxT(),
+		labelSets:          slices.Clone(engine.LabelSets()),
+		partitionLabelSets: slices.Clone(engine.PartitionLabelSets()),
+	}
+}
+
+type memoizedEndpoints struct {
+	endpoints RemoteEndpoints
+}
+
+func (m memoizedEndpoints) Engines(mint, maxt int64) []RemoteEngine {
+	remoteEngines := m.endpoints.Engines(mint, maxt)
+	engines := make([]RemoteEngine, 0, len(remoteEngines))
+	for _, engine := range remoteEngines {
+		engines = append(engines, NewMemoizedRemoteEngine(engine))
+	}
+	return engines
+}
+
+// NewMemoizedEndpoints returns endpoints that provide a fresh, stable metadata
+// snapshot of each remote engine on every Engines call.
+func NewMemoizedEndpoints(endpoints RemoteEndpoints) RemoteEndpoints {
+	return &memoizedEndpoints{endpoints: endpoints}
 }
 
 type staticEndpoints struct {

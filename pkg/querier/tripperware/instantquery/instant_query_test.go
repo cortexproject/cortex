@@ -252,7 +252,7 @@ func TestResponse(t *testing.T) {
 											Histogram: tripperware.SampleHistogram{
 												Count: 6342,
 												Sum:   43.31319875499995,
-												Buckets: []*tripperware.HistogramBucket{
+												Buckets: []tripperware.HistogramBucket{
 													{Boundaries: 0, Upper: 0.0015060652591874421, Lower: 0.0013810679320049755, Count: 1},
 													{Boundaries: 0, Upper: 0.001642375811042411, Lower: 0.0015060652591874421, Count: 7},
 													{Boundaries: 0, Upper: 0.0017910235218841233, Lower: 0.001642375811042411, Count: 5},

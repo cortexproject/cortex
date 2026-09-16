@@ -1291,7 +1291,7 @@ github.com/thanos-io/objstore/providers/oss
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20260729073658-f8bd3f940687
+# github.com/thanos-io/promql-engine v0.0.0-20260817205454-68fb2c2c5d9b
 ## explicit; go 1.24.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/compute
@@ -1316,7 +1316,7 @@ github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 github.com/thanos-io/promql-engine/warnings
-# github.com/thanos-io/thanos v0.42.1-0.20260727122508-92397939e4cc
+# github.com/thanos-io/thanos v0.42.5-0.20260817064418-8908023d563b
 ## explicit; go 1.26.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block
@@ -1381,7 +1381,7 @@ github.com/thanos-io/thanos/pkg/tracing/util/metautils
 ## explicit; go 1.24
 github.com/tinylib/msgp/msgp
 github.com/tinylib/msgp/msgp/setof
-# github.com/tjhop/slog-gokit v0.2.0
+# github.com/tjhop/slog-gokit v0.2.2
 ## explicit; go 1.21
 github.com/tjhop/slog-gokit
 # github.com/twmb/franz-go v1.21.2

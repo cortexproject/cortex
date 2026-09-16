@@ -479,7 +479,7 @@ func TestMakeIngesterClient_StreamFailure_ClosesConnAndDoesNotLeak(t *testing.T)
 		n := runtime.Stack(buf, true)
 		stacks := string(buf[:n])
 		count := 0
-		for _, frame := range strings.Split(stacks, "\n\n") {
+		for frame := range strings.SplitSeq(stacks, "\n\n") {
 			// Same signatures used in the issue's own reproduction to detect
 			// leaked reconnect loops and leaked/idle push streams.
 			if strings.Contains(frame, "resetTransportAndUnlock") || strings.Contains(frame, "newClientStreamWithParams") {

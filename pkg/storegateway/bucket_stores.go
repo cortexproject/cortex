@@ -759,6 +759,14 @@ func (u *ThanosBucketStores) deleteLocalFilesForExcludedTenants(includeUserIDs m
 			continue
 		}
 
+		// Not a tenant directory: it's the cache root of a querier co-located in the same process
+		// and sharing the sync dir (single-binary mode with the bucket index disabled). That querier
+		// is not sharded, so it caches block metas for tenants outside this shard too, and reclaims
+		// them on its own once a tenant is gone from the bucket.
+		if userID == users.QuerierMetaCacheDirName {
+			continue
+		}
+
 		err := u.closeEmptyBucketStore(userID)
 		switch {
 		case errors.Is(err, errBucketStoreNotEmpty):

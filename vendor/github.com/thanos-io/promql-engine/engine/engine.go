@@ -556,6 +556,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}
 
 	buf := make([]model.StepVector, q.opts.StepsBatch)
+	var batchSamples int
 loop:
 	for {
 		select {
@@ -578,6 +579,7 @@ loop:
 
 			for i := range n {
 				vector := &buf[i]
+				batchSamples += len(vector.SampleIDs)
 				for j, s := range vector.SampleIDs {
 					if series[s].Floats == nil {
 						series[s].Floats = make([]promql.FPoint, 0, totalSteps)
@@ -595,7 +597,13 @@ loop:
 						T: vector.T,
 						H: vector.Histograms[j],
 					})
+					batchSamples += telemetry.CalculateHistogramSampleCount(vector.Histograms[j])
 				}
+			}
+			q.opts.SampleTracker.Add(batchSamples)
+			batchSamples = 0
+			if err := q.opts.SampleTracker.CheckLimit(); err != nil {
+				return newErrResult(ret, err)
 			}
 		}
 	}

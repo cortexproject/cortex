@@ -134,6 +134,9 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 		logger:                 logger,
 		ruleGroupIterationFunc: defaultRuleGroupIterationFunc,
 	}
+	if cfg.SelectMergerEnabled {
+		m.ruleGroupIterationFunc = mergedSelectIterationFunc(cfg.SelectMergerMinRules)
+	}
 	if cfg.RulesBackupEnabled() {
 		m.rulesBackupManager = newRulesBackupManager(cfg, logger, reg)
 	}
@@ -290,6 +293,19 @@ func defaultRuleGroupIterationFunc(ctx context.Context, g *promRules.Group, eval
 
 	g.Logger().Info("evaluating rule group", logMessage...)
 	promRules.DefaultEvalIterationFunc(ctx, g, evalTimestamp)
+}
+
+// mergedSelectIterationFunc returns a GroupEvalIterationFunc that pre-fetches
+// merged selectors before evaluating the group, injecting the cache into
+// context so the selectMergerQueryFunc wrapper can serve from it.
+func mergedSelectIterationFunc(minRules int) promRules.GroupEvalIterationFunc {
+	return func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {
+		plan := planMergedSelects(g.Rules(), minRules)
+		if len(plan) > 0 {
+			ctx = withSelectMergerPlan(ctx, plan)
+		}
+		defaultRuleGroupIterationFunc(ctx, g, evalTimestamp)
+	}
 }
 
 // newManager creates a prometheus rule manager wrapped with a user id

@@ -119,6 +119,7 @@
 * [BUGFIX] Config: Fix CSV-list flags/YAML fields (e.g. `-compactor.enabled-tenants`) treating an explicitly empty string as a one-element list containing an empty tenant name instead of an empty list. #7714
 * [BUGFIX] Tenant Federation: Fix regex tenant federation dropping tenants when `-blocks-storage.users-scanner.cache-ttl` is set. The regex resolver sorted the user list returned by the users scanner in place, corrupting the scanner cache and progressively losing tenants on every sync until the cache expired. #7812
 * [BUGFIX] Tenant Federation: Fix regex tenant federation resolving to an empty user list right after startup. #7811
+* [BUGFIX] Ingester Client: Fix `grpc.ClientConn` and goroutine leak in `MakeIngesterClient` when `-distributor.use-stream-push=true` and starting the stream-push workers fails (e.g. the ingester address is in the ring but unreachable). The connection is now closed and the stream context cancelled on that error path. #7759
 
 ## 1.21.1 2026-06-04
 

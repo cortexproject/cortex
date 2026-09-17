@@ -115,7 +115,7 @@ func TestParquetConverter_NoConvertMarkWithTooManyLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for the converter to write the no-convert marker
-	cortex_testutil.Poll(t, 30*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 30*time.Second, true, func() any {
 		noConvertMarkerPath := fmt.Sprintf("%s/parquet-no-convert-mark.json", id.String())
 		found := false
 		err := bkt.Iter(ctx, "", func(name string) error {

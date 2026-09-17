@@ -918,6 +918,35 @@ func TestBucketStores_deleteLocalFilesForExcludedTenants(t *testing.T) {
 	`), metricNames...))
 }
 
+// TestBucketStores_deleteLocalFilesForExcludedTenantsPreservesQuerierMetaCache pins that the
+// per-shard cleanup of the sync dir doesn't reach into the cache of a co-located querier. In
+// single-binary mode with the bucket index disabled, the querier's bucket-scan blocks finder shares
+// the sync dir but is not sharded, so it caches block metas for every tenant, including the ones
+// this store-gateway instance doesn't own.
+func TestBucketStores_deleteLocalFilesForExcludedTenantsPreservesQuerierMetaCache(t *testing.T) {
+	t.Parallel()
+
+	cfg := prepareStorageConfig(t)
+	stores := &ThanosBucketStores{cfg: cfg, logger: log.NewNopLogger()}
+
+	ownedDir := filepath.Join(cfg.BucketStore.SyncDir, "user-1")
+	excludedDir := filepath.Join(cfg.BucketStore.SyncDir, "user-2")
+	require.NoError(t, os.MkdirAll(ownedDir, 0o755))
+	require.NoError(t, os.MkdirAll(excludedDir, 0o755))
+
+	querierMetaFile := filepath.Join(cfg.BucketStore.SyncDir, users.QuerierMetaCacheDirName, "user-2", "meta-syncer", "01DTVP434PA9VFXSW2JKB3392D", "meta.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(querierMetaFile), 0o755))
+	require.NoError(t, os.WriteFile(querierMetaFile, []byte("{}"), 0o644))
+
+	stores.deleteLocalFilesForExcludedTenants(map[string]struct{}{"user-1": {}})
+
+	// The sync dir of the tenant outside the shard is reclaimed, the owned one is kept...
+	assert.DirExists(t, ownedDir)
+	assert.NoDirExists(t, excludedDir)
+	// ...and the co-located querier's own cache root is never a tenant directory to reclaim.
+	assert.FileExists(t, querierMetaFile)
+}
+
 func TestBucketStores_tokenBuckets(t *testing.T) {
 	const (
 		user1 = "user-1"

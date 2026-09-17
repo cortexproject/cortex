@@ -28,7 +28,7 @@ func TestKVList(t *testing.T) {
 		// Create keys to list back
 		keysToCreate := []string{"key-a", "key-b", "key-c"}
 		for _, key := range keysToCreate {
-			err := client.CAS(context.Background(), key, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := client.CAS(context.Background(), key, func(in any) (out any, retry bool, err error) {
 				return key, false, nil
 			})
 			require.NoError(t, err, "could not create key")
@@ -50,7 +50,7 @@ func TestKVList(t *testing.T) {
 func TestKVDelete(t *testing.T) {
 	testKVs(t, func(t *testing.T, client kv.Client, reg *prometheus.Registry) {
 		// Create a key
-		err := client.CAS(context.Background(), "key-to-delete", func(in interface{}) (out interface{}, retry bool, err error) {
+		err := client.CAS(context.Background(), "key-to-delete", func(in any) (out any, retry bool, err error) {
 			return "key-to-delete", false, nil
 		})
 		require.NoError(t, err, "object could not be created")
@@ -77,20 +77,18 @@ func TestKVWatchAndDelete(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		err := client.CAS(context.Background(), "key-before-watch", func(in interface{}) (out interface{}, retry bool, err error) {
+		err := client.CAS(context.Background(), "key-before-watch", func(in any) (out any, retry bool, err error) {
 			return "value-before-watch", false, nil
 		})
 		require.NoError(t, err)
 
 		w := &watcher{}
 		wg := &sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			w.watch(ctx, client)
-		}()
+		})
 
-		err = client.CAS(context.Background(), "key-to-delete", func(in interface{}) (out interface{}, retry bool, err error) {
+		err = client.CAS(context.Background(), "key-to-delete", func(in any) (out any, retry bool, err error) {
 			return "value-to-delete", false, nil
 		})
 		require.NoError(t, err, "object could not be created")
@@ -127,12 +125,10 @@ func setupEtcd(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer, 
 	etcdKv, err := kv.NewClient(kv.Config{
 		Store:  "etcd",
 		Prefix: "keys/",
-		StoreConfig: kv.StoreConfig{
-			Etcd: etcd.Config{
-				Endpoints:   []string{etcdSvc.HTTPEndpoint()},
-				DialTimeout: time.Minute,
-				MaxRetries:  5,
-			},
+		Etcd: etcd.Config{
+			Endpoints:   []string{etcdSvc.HTTPEndpoint()},
+			DialTimeout: time.Minute,
+			MaxRetries:  5,
 		},
 	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
@@ -149,13 +145,11 @@ func setupConsul(t *testing.T, scenario *e2e.Scenario, reg prometheus.Registerer
 	consulKv, err := kv.NewClient(kv.Config{
 		Store:  "consul",
 		Prefix: "keys/",
-		StoreConfig: kv.StoreConfig{
-			Consul: consul.Config{
-				Host:              consulSvc.HTTPEndpoint(),
-				HTTPClientTimeout: time.Minute,
-				WatchKeyBurstSize: 5,
-				WatchKeyRateLimit: 1,
-			},
+		Consul: consul.Config{
+			Host:              consulSvc.HTTPEndpoint(),
+			HTTPClientTimeout: time.Minute,
+			WatchKeyBurstSize: 5,
+			WatchKeyRateLimit: 1,
 		},
 	}, stringCodec{}, reg, logger)
 	require.NoError(t, err)
@@ -219,30 +213,30 @@ func verifyClientMetricsHistogram(t *testing.T, reg *prometheus.Registry, metric
 
 type stringCodec struct{}
 
-func (c stringCodec) Decode(bb []byte) (interface{}, error) {
+func (c stringCodec) Decode(bb []byte) (any, error) {
 	if bb == nil {
 		return "<nil>", nil
 	}
 	return string(bb), nil
 }
-func (c stringCodec) Encode(v interface{}) ([]byte, error) { return []byte(v.(string)), nil }
-func (c stringCodec) CodecID() string                      { return "stringCodec" }
+func (c stringCodec) Encode(v any) ([]byte, error) { return []byte(v.(string)), nil }
+func (c stringCodec) CodecID() string              { return "stringCodec" }
 
-func (stringCodec) EncodeMultiKey(msg interface{}) (map[string][]byte, error) {
+func (stringCodec) EncodeMultiKey(msg any) (map[string][]byte, error) {
 	return nil, errors.New("String codec does not support EncodeMultiKey")
 }
 
-func (stringCodec) DecodeMultiKey(map[string][]byte) (interface{}, error) {
+func (stringCodec) DecodeMultiKey(map[string][]byte) (any, error) {
 	return nil, errors.New("String codec does not support DecodeMultiKey")
 }
 
 type watcher struct {
-	values map[string][]interface{}
+	values map[string][]any
 }
 
 func (w *watcher) watch(ctx context.Context, client kv.Client) {
-	w.values = map[string][]interface{}{}
-	client.WatchPrefix(ctx, "", func(key string, value interface{}) bool {
+	w.values = map[string][]any{}
+	client.WatchPrefix(ctx, "", func(key string, value any) bool {
 		w.values[key] = append(w.values[key], value)
 		return true
 	})

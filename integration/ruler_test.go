@@ -273,7 +273,7 @@ func TestRulerSharding(t *testing.T) {
 	// Generate multiple rule groups, with 1 rule each.
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -373,7 +373,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		"rule_label_2":    "val2",
 		"duplicate_label": "rule_val",
 	}
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 		expectedNames[i] = ruleName
@@ -490,7 +490,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 				}
@@ -503,7 +503,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				ruleNames := []string{}
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleName := rule["name"]
 					ruleNames = append(ruleNames, ruleName.(string))
 
@@ -519,9 +519,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -537,9 +537,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -553,7 +553,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 					responseJson, err := json.Marshal(rule)
@@ -609,7 +609,7 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -775,7 +775,7 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1156,7 +1156,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push some series to Cortex -- enough so that we can hit some limits.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: fmt.Sprintf("%d", i)})
 
 		res, err := c.Push(series)
@@ -1470,7 +1470,7 @@ func TestRulerHAEvaluation(t *testing.T) {
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
 	evalInterval, _ := model.ParseDuration("2s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(10)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1802,7 +1802,7 @@ func TestRulerEvalWithQueryFrontend(t *testing.T) {
 	}
 }
 
-func parseAlertFromRule(t *testing.T, rules interface{}) *alertingRule {
+func parseAlertFromRule(t *testing.T, rules any) *alertingRule {
 	responseJson, err := json.Marshal(rules)
 	require.NoError(t, err)
 

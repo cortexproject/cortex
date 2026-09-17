@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // The BatchWriteItem operation puts or deletes multiple items in one or more
@@ -32,12 +31,12 @@ import (
 // iteration would check for unprocessed items and submit a new BatchWriteItem
 // request with those unprocessed items until all items have been processed.
 //
-// For tables and indexes with provisioned capacity, if none of the items can be
-// processed due to insufficient provisioned throughput on all of the tables in the
-// request, then BatchWriteItem returns a ProvisionedThroughputExceededException .
-// For all tables and indexes, if none of the items can be processed due to other
-// throttling scenarios (such as exceeding partition level limits), then
-// BatchWriteItem returns a ThrottlingException .
+// If BatchWriteItem cannot process any items due to throttling (for example,
+// insufficient provisioned throughput on the tables in the request, or
+// partition-level or account-level limits), it returns a
+// ProvisionedThroughputExceededException or a ThrottlingException . Both indicate
+// that the request was throttled; check the ThrottlingReason field in the
+// returned exception for details.
 //
 // If DynamoDB returns any unprocessed items, you should retry the batch operation
 // on those items. However, we strongly recommend that you use an exponential
@@ -191,6 +190,9 @@ type BatchWriteItemOutput struct {
 	//   - TableName - The table that consumed the provisioned throughput.
 	//
 	//   - CapacityUnits - The total number of capacity units consumed.
+	//
+	// If the table has vector indexes, each element also includes a VectorIndexes
+	// field with VectorWriteRequestBytes consumed for each affected vector index.
 	ConsumedCapacity []types.ConsumedCapacity
 
 	// A list of tables that were processed by BatchWriteItem and, for each table,
@@ -260,25 +262,13 @@ func (c *Client) addOperationBatchWriteItemMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpBatchWriteItemDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -291,9 +281,6 @@ func (c *Client) addOperationBatchWriteItemMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addOpBatchWriteItemValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "BatchWriteItem"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

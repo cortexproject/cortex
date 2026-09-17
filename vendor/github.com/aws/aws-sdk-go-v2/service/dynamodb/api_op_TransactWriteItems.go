@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // TransactWriteItems is a synchronous write operation that groups up to 100
@@ -194,6 +193,9 @@ type TransactWriteItemsOutput struct {
 	// The capacity units consumed by the entire TransactWriteItems operation. The
 	// values of the list are ordered according to the ordering of the TransactItems
 	// request parameter.
+	//
+	// If the table has vector indexes, each element also includes a VectorIndexes
+	// field with VectorWriteRequestBytes consumed for each affected vector index.
 	ConsumedCapacity []types.ConsumedCapacity
 
 	// A list of tables that were processed by TransactWriteItems and, for each table,
@@ -217,25 +219,13 @@ func (c *Client) addOperationTransactWriteItemsMiddlewares(stack *middleware.Sta
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpTransactWriteItemsDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -251,9 +241,6 @@ func (c *Client) addOperationTransactWriteItemsMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addOpTransactWriteItemsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "TransactWriteItems"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

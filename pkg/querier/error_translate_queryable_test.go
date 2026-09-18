@@ -19,10 +19,13 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"github.com/prometheus/prometheus/util/features"
 	v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -125,6 +128,16 @@ func TestApiStatusCodes(t *testing.T) {
 			expectedString: limiter.ErrResourceLimitReachedStr,
 			expectedCode:   500,
 		},
+		{
+			err:            status.Error(codes.Canceled, "context canceled"),
+			expectedString: "query was canceled",
+			expectedCode:   499,
+		},
+		{
+			err:            errors.Wrap(status.Error(codes.Canceled, "context canceled"), "wrapped grpc error"),
+			expectedString: "query was canceled",
+			expectedCode:   499,
+		},
 	} {
 		for k, q := range map[string]storage.SampleAndChunkQueryable{
 			"error from queryable": errorTestQueryable{err: tc.err},
@@ -193,6 +206,7 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		false,
 		false,
 		nil,
+		features.NewRegistry(),
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

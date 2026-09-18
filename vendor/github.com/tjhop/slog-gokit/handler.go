@@ -4,6 +4,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/go-kit/log"
 )
@@ -12,12 +16,32 @@ var _ slog.Handler = (*GoKitHandler)(nil)
 
 var defaultGoKitLogger = log.NewLogfmtLogger(os.Stderr)
 
+// Pay boxing cost once at package init, save 3 heap escapes per Handle() call.
+var (
+	timeKey   any = slog.TimeKey
+	msgKey    any = slog.MessageKey
+	callerKey any = "caller"
+)
+
+// callerCache memoizes resolved caller strings keyed by record PC. A PC's
+// file:line mapping is fixed for the process lifetime and log call sites are
+// static, so the cache is write-once, read-many and bounded by the number of
+// distinct call sites. 
+//
+// Kubernetes's klog does something similar to cache per-call-site verbosity
+// levels by PC (`vmap` in
+// https://github.com/kubernetes/klog/blob/main/klog.go).
+//
+// Values are stored pre-boxed as `any` so cache hits append into the pairs
+// slice with zero allocations, and no need to walk the call stack.
+var callerCache sync.Map // map[uintptr]any, values are `file:line` strings.
+
 // GoKitHandler implements the slog.Handler interface. It holds an internal
 // go-kit logger that is used to perform the true logging.
 type GoKitHandler struct {
 	level        slog.Leveler
 	logger       log.Logger
-	preformatted []slog.Attr
+	preformatted []any // pre-flattened key-value pairs, ready to pass directly to logger.Log()
 	group        string
 }
 
@@ -25,29 +49,29 @@ type GoKitHandler struct {
 // logger. Calls to the slog logger are chained to the handler's internal
 // go-kit logger. If provided a level, it will be used to filter log events in
 // the handler's Enabled() method.
+//
+// The handler adds a `caller` key to each record, resolved from the program
+// counter that slog captured at the log call site. Records handled directly
+// (without going through an slog.Logger) have no PC set, and thus omit the
+// caller.
 func NewGoKitHandler(logger log.Logger, level slog.Leveler) slog.Handler {
 	if logger == nil {
 		logger = defaultGoKitLogger
 	}
 
-	// Adjust runtime call depth to compensate for the adapter and point to
-	// the appropriate source line.
-	logger = log.With(logger, "caller", log.Caller(6))
-
 	if level == nil {
 		level = &slog.LevelVar{} // Info level by default.
 	}
 
-	return &GoKitHandler{logger: logger, level: level}
+	return &GoKitHandler{
+		logger: logger,
+		level:  level,
+	}
 }
 
 // Enabled returns true if the internal slog.Leveler is enabled for the
 // provided log level. It implements slog.Handler.
 func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
-	if h.level == nil {
-		h.level = &slog.LevelVar{} // Info level by default.
-	}
-
 	return level >= h.level.Level()
 }
 
@@ -56,51 +80,91 @@ func (h *GoKitHandler) Enabled(_ context.Context, level slog.Level) bool {
 // are formatted and added to the log call as individual key/value pairs. It
 // implements slog.Handler.
 func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
-	if h.logger == nil {
-		h.logger = defaultGoKitLogger
-	}
-
-	logger := goKitLevelFunc(h.logger, record.Level)
-
-	// 1 slog.Attr == 1 key and 1 value, set capacity >= (2 * num attrs).
+	// Pre-compute slice capacity, sized exactly for records with flat attrs
+	// (the common shape):
+	// - 2 for level (key + value)
+	// - 2 for caller (key + value)
+	// - 2 for timestamp (key + value)
+	// - 2 for message (key + value)
+	// - len(h.preformatted) exact items (pre-flattened at WithAttrs time)
+	// - 2 * record.NumAttrs() for record attrs
 	//
-	// Note: this could probably be (micro)-optimized further -- we know we
-	// need to also append on a timestamp from the record, the message, the
-	// preformatted vals, all things we more or less know the size of at
-	// creation time here.
-	pairs := make([]any, 0, (2 * record.NumAttrs()))
+	// Group attrs expand beyond 2 items per attr (a group with n items
+	// counts as one attr but flattens to 2n entries), so they'll need to
+	// be grown anyway.
+	numAttrs := record.NumAttrs()
+	capacity := 8 + len(h.preformatted) + (2 * numAttrs)
+	pairs := make([]any, 0, capacity)
+
+	// Append the level directly as the first pair. Matches how the log
+	// message is constructed through level.Info()/level.Debug()/etc
+	// wrappers, but without the extra allocation/copy per call.
+	pairs = append(pairs, levelKey, gokitLevelValue(record.Level))
+
+	// Resolve the log call site from the PC that slog captured when the
+	// record was created. Cheaper and more accurate to do it here since
+	// it's already captured, vs relying on setting `log.Caller()` depth
+	// and hoping it unwinds correctly.
+	if record.PC != 0 {
+		if caller, ok := callerCache.Load(record.PC); ok {
+			pairs = append(pairs, callerKey, caller)
+		} else {
+			fs := runtime.CallersFrames([]uintptr{record.PC})
+			f, _ := fs.Next()
+			if f.File != "" {
+				// Trim to basename:line with the same logic as
+				// go-kit's log.Caller:
+				// https://github.com/go-kit/log/blob/v0.2.1/value.go#L84-L93
+				//
+				// path.Base() would work, opting for direct compatibility.
+				idx := strings.LastIndexByte(f.File, '/')
+				caller := any(f.File[idx+1:] + ":" + strconv.Itoa(f.Line))
+				callerCache.Store(record.PC, caller)
+				pairs = append(pairs, callerKey, caller)
+			}
+		}
+	}
+
 	if !record.Time.IsZero() {
-		pairs = append(pairs, slog.TimeKey, record.Time)
+		pairs = append(pairs, timeKey, record.Time)
 	}
-	pairs = append(pairs, slog.MessageKey, record.Message)
+	pairs = append(pairs, msgKey, record.Message)
 
-	// preformatted attributes have already had their group prefix applied in WithAttr
-	for _, a := range h.preformatted {
-		pairs = appendPair(pairs, "", a)
+	// Bulk-append pre-flattened attrs, group prefixes were resolved at
+	// WithAttrs() call.
+	pairs = append(pairs, h.preformatted...)
+
+	// Skip the Attrs() call entirely when there are no attrs.
+	if numAttrs > 0 {
+		record.Attrs(func(a slog.Attr) bool {
+			pairs = appendPair(pairs, h.group, a)
+			return true
+		})
 	}
 
-	record.Attrs(func(a slog.Attr) bool {
-		pairs = appendPair(pairs, h.group, a)
-		return true
-	})
-
-	return logger.Log(pairs...)
+	return h.logger.Log(pairs...)
 }
 
 // WithAttrs formats the provided attributes and caches them in the handler to
 // attach to all future log calls. It implements slog.Handler.
 func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	pairs := make([]slog.Attr, 0, len(attrs)+len(h.preformatted))
-	for _, attr := range attrs {
-		// preresolve the group to simplify attr tracking
-		if h.group != "" {
-			attr.Key = h.group + "." + attr.Key
-		}
-		pairs = append(pairs, attr)
+	// No attrs, return it untouched. 
+	if len(attrs) == 0 {
+		return h
 	}
 
-	if h.preformatted != nil {
-		pairs = append(h.preformatted, pairs...)
+	// Make a defensive copy of preformatted attrs to avoid race conditions
+	// when multiple goroutines call WithAttrs concurrently on the same handler.
+	// Attrs are pre-flattened to []any key-value pairs here so that Handle()
+	// can bulk-copy them without per-attr processing on every log call.
+	//
+	// Capacity estimate: existing items + 2 per new attr (minimum, more if
+	// attrs contain groups that expand to multiple pairs).
+	pairs := make([]any, len(h.preformatted), len(h.preformatted)+(len(attrs)*2))
+	copy(pairs, h.preformatted)
+
+	for _, attr := range attrs {
+		pairs = appendPair(pairs, h.group, attr)
 	}
 
 	return &GoKitHandler{
@@ -132,6 +196,14 @@ func (h *GoKitHandler) WithGroup(name string) slog.Handler {
 }
 
 func appendPair(pairs []any, groupPrefix string, attr slog.Attr) []any {
+	// Resolve LogValuers before the kind switch so value that resolves to
+	// a group is expanded into individual pairs. Aligns with how the
+	// stdlib handlers resolve before expanding, and also avoids the
+	// defer/recover that `Resolve()` incurs.
+	if attr.Value.Kind() == slog.KindLogValuer {
+		attr.Value = attr.Value.Resolve()
+	}
+
 	if attr.Equal(slog.Attr{}) {
 		return pairs
 	}
@@ -164,7 +236,14 @@ func appendPair(pairs []any, groupPrefix string, attr slog.Attr) []any {
 			key = groupPrefix + "." + key
 		}
 
-		pairs = append(pairs, key, attr.Value.Resolve())
+		// Append string values as raw strings rather than boxed
+		// slog.Values, lean on string path optimizations in slog and
+		// go-kit/log.
+		if attr.Value.Kind() == slog.KindString {
+			pairs = append(pairs, key, attr.Value.String())
+		} else {
+			pairs = append(pairs, key, attr.Value)
+		}
 	}
 
 	return pairs

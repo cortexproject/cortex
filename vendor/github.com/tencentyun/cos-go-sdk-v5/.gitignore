@@ -1,0 +1,39 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+_obj
+_test
+.idea
+.DS_Store
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+*.cgo1.go
+*.cgo2.c
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+_testmain.go
+
+*.exe
+*.test
+*.prof
+dist/
+cover.html
+cover.out
+covprofile
+coverage.html
+example/CI/media_process/test*
+example/CI/workflow_and_job/test*
+example/CI/metainsight/test*
+example/CI/ai_recognition/test*
+example/CI/image_process/test*
+example/CI/doc_preview/test*
+example/CI/content_auditing/test*
+.vscode

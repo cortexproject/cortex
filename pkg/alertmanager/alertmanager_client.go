@@ -73,9 +73,12 @@ func newAlertmanagerClientsPool(discovery client.PoolServiceDiscovery, amClientC
 	}
 
 	requestDuration := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_alertmanager_distributor_client_request_duration_seconds",
-		Help:    "Time spent executing requests from an alertmanager to another alertmanager.",
-		Buckets: prometheus.ExponentialBuckets(0.008, 4, 7),
+		Name:                            "cortex_alertmanager_distributor_client_request_duration_seconds",
+		Help:                            "Time spent executing requests from an alertmanager to another alertmanager.",
+		Buckets:                         prometheus.ExponentialBuckets(0.008, 4, 7),
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "status_code"})
 
 	factory := func(addr string) (client.PoolClient, error) {

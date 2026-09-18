@@ -80,8 +80,8 @@ func Test_ShouldFetchPromiseOnlyOnce(t *testing.T) {
 }
 
 func TestFifoCacheDisabled(t *testing.T) {
-	cfg := PostingsCacheConfig{}
-	cfg.Enabled = false
+	cfg := PostingsCacheConfig{
+		Enabled: false}
 	m := NewPostingCacheMetrics(prometheus.NewPedanticRegistry())
 	timeNow := time.Now
 	cache := newLruCache[int](cfg, "test", m, timeNow)

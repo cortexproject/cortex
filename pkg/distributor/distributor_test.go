@@ -20,6 +20,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -3220,12 +3221,12 @@ func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 func mockWriteRequest(lbls []labels.Labels, value int64, timestampMs int64, histogram bool) *cortexpb.WriteRequest {
 	var (
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 	)
 	if histogram {
-		histograms = make([]cortexpb.Histogram, len(lbls))
+		histograms = make([]cortexpb.WrappedHistogram, len(lbls))
 		for i := range lbls {
-			histograms[i] = cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value))
+			histograms[i] = cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(timestampMs, tsdbutil.GenerateTestHistogram(value)))
 		}
 	} else {
 		samples = make([]cortexpb.Sample, len(lbls))
@@ -3496,7 +3497,7 @@ func makeWriteRequestTimeseries(labels []cortexpb.LabelAdapter, ts, value int64,
 		},
 	}
 	if histogram {
-		t.Histograms = append(t.Histograms, cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value)))
+		t.Histograms = append(t.Histograms, cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestHistogram(value))))
 	} else {
 		t.Samples = append(t.Samples, cortexpb.Sample{
 			TimestampMs: ts,
@@ -3510,7 +3511,7 @@ func makeWriteRequestTimeseriesNHCB(labels []cortexpb.LabelAdapter, ts, value in
 	return cortexpb.PreallocTimeseries{
 		TimeSeries: &cortexpb.TimeSeries{
 			Labels:     labels,
-			Histograms: []cortexpb.Histogram{cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value))},
+			Histograms: []cortexpb.WrappedHistogram{cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(ts, tsdbutil.GenerateTestCustomBucketsHistogram(value)))},
 		},
 	}
 }
@@ -3530,8 +3531,8 @@ func makeWriteRequestHA(samples int, replica, cluster string, histogram bool) *c
 			},
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(i), tsdbutil.GenerateTestHistogram(int64(i)))),
 			}
 		} else {
 			ts.Samples = []cortexpb.Sample{
@@ -3627,8 +3628,8 @@ func makeWriteRequestHAMixedSamples(samples int, histogram bool) *cortexpb.Write
 			}
 		}
 		if histogram {
-			ts.Histograms = []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples))),
+			ts.Histograms = []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(samples), tsdbutil.GenerateTestHistogram(int64(samples)))),
 			}
 		} else {
 			var s = make([]cortexpb.Sample, 0)
@@ -4098,7 +4099,7 @@ func TestDistributorValidation(t *testing.T) {
 		metadata   []*cortexpb.MetricMetadata
 		labels     []labels.Labels
 		samples    []cortexpb.Sample
-		histograms []cortexpb.Histogram
+		histograms []cortexpb.WrappedHistogram
 		err        error
 	}{
 		// Test validation passes.
@@ -4111,8 +4112,8 @@ func TestDistributorValidation(t *testing.T) {
 				TimestampMs: int64(now),
 				Value:       1,
 			}},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 		},
 		// Test validation fails for very old samples.
@@ -4200,8 +4201,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar", "foo2", "bar2"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(now), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(now), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `series has too many labels (actual: 3, limit: 2) series: 'testmetric{foo2="bar2", foo="bar"}'`),
 		},
@@ -4210,8 +4211,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.HistogramToHistogramProto(int64(past), testHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(past), testHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past),
 		},
@@ -4220,8 +4221,8 @@ func TestDistributorValidation(t *testing.T) {
 			labels: []labels.Labels{
 				labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
 			},
-			histograms: []cortexpb.Histogram{
-				cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram),
+			histograms: []cortexpb.WrappedHistogram{
+				cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(int64(future), testFloatHistogram)),
 			},
 			err: httpgrpc.Errorf(http.StatusBadRequest, `timestamp too new: %d metric: "testmetric"`, future),
 		},
@@ -4937,4 +4938,36 @@ func TestDistributor_ShuffleShardingIngestersLookbackPeriod_Validation(t *testin
 			}
 		})
 	}
+}
+
+func TestDistributor_ReceivedHistogramBucketsMetric(t *testing.T) {
+	t.Parallel()
+
+	limits := &validation.Limits{}
+	flagext.DefaultValues(limits)
+	// Set a bucket limit so resolution reduction kicks in, but the metric should still capture the original count.
+	limits.MaxNativeHistogramBuckets = 4
+
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           limits,
+	})
+
+	// Push a native histogram sample. GenerateTestHistogram produces 4 positive + 4 negative buckets + zero bucket = 9 buckets.
+	ctx := user.InjectOrgID(context.Background(), "user")
+	req := makeWriteRequest(0, 0, 0, 1)
+	_, err := ds[0].Push(ctx, req)
+	require.NoError(t, err)
+
+	// Verify the receivedHistogramBuckets metric observed the pre-validation bucket count.
+	m := &dto.Metric{}
+	observer, err := ds[0].receivedHistogramBuckets.GetMetricWithLabelValues("user")
+	require.NoError(t, err)
+	require.NoError(t, observer.(prometheus.Metric).Write(m))
+	require.Equal(t, uint64(1), m.GetHistogram().GetSampleCount())
+	// GenerateTestHistogram(0): 4 positive + 4 negative + 1 zero = 9 buckets
+	require.Equal(t, float64(9), m.GetHistogram().GetSampleSum())
 }

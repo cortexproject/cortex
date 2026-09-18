@@ -36,6 +36,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 		blocksShardingEnabled bool
 		indexCacheBackend     string
 		parquetLabelsCache    string
+		parquetRowRangesCache string
 	}{
 		// tsdb bucket storage
 		"[TSDB] blocks sharding enabled, memcached index cache, bucket index enabled": {
@@ -49,15 +50,17 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 			indexCacheBackend:     tsdb.IndexCacheBackendRedis,
 		},
 		// parquet bucket storage
-		"[Parquet] blocks sharding enabled, memcached parquet labels cache, bucket index enabled": {
+		"[Parquet] blocks sharding enabled, memcached parquet cache, bucket index enabled": {
 			bucketStorageType:     "parquet",
 			blocksShardingEnabled: true,
 			parquetLabelsCache:    tsdb.CacheBackendMemcached,
+			parquetRowRangesCache: tsdb.CacheBackendMemcached,
 		},
-		"[Parquet] blocks sharding enabled, redis parquet labels cache, bucket index enabled": {
+		"[Parquet] blocks sharding enabled, redis parquet cache, bucket index enabled": {
 			bucketStorageType:     "parquet",
 			blocksShardingEnabled: true,
 			parquetLabelsCache:    tsdb.CacheBackendRedis,
+			parquetRowRangesCache: tsdb.CacheBackendMemcached,
 		},
 	}
 
@@ -131,6 +134,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					flags["-parquet-converter.conversion-interval"] = "1s"
 					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
 					flags["-blocks-storage.bucket-store.parquet-labels-cache.backend"] = testCfg.parquetLabelsCache
+					flags["-blocks-storage.bucket-store.parquet-row-ranges-cache.backend"] = testCfg.parquetRowRangesCache
 					flags["-compactor.block-ranges"] = "1ms,12h"
 				}
 
@@ -148,6 +152,14 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 				}
 				if strings.Contains(testCfg.parquetLabelsCache, tsdb.CacheBackendRedis) {
 					flags["-blocks-storage.bucket-store.parquet-labels-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
+				}
+
+				// Add the parquet row ranges cache address
+				if strings.Contains(testCfg.parquetRowRangesCache, tsdb.CacheBackendMemcached) {
+					flags["-blocks-storage.bucket-store.parquet-row-ranges-cache.memcached.addresses"] = "dns+" + memcached.NetworkEndpoint(e2ecache.MemcachedPort)
+				}
+				if strings.Contains(testCfg.parquetRowRangesCache, tsdb.CacheBackendRedis) {
+					flags["-blocks-storage.bucket-store.parquet-row-ranges-cache.redis.addresses"] = redis.NetworkEndpoint(e2ecache.RedisPort)
 				}
 
 				// Start Cortex replicas.
@@ -253,6 +265,10 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(0), "thanos_store_index_cache_hits_total"))                                            // no cache hit cause the cache was empty
 				}
 
+				if testCfg.bucketStorageType == "parquet" {
+					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_misses_total"}, e2e.SkipMissingMetrics))
+				}
+
 				if testCfg.indexCacheBackend == tsdb.IndexCacheBackendMemcached {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(21*seriesReplicationFactor)), "thanos_memcached_operations_total")) // 14 gets + 7 sets
 				}
@@ -268,6 +284,7 @@ func TestQuerierWithBlocksStorageRunningInSingleBinaryMode(t *testing.T) {
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64((12+2)*seriesReplicationFactor)), "thanos_store_index_cache_requests_total"))
 					require.NoError(t, cluster.WaitSumMetrics(e2e.Equals(float64(2*seriesReplicationFactor)), "thanos_store_index_cache_hits_total")) // this time has used the index cache
 				case "parquet":
+					require.NoError(t, cluster.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_parquet_row_ranges_cache_hits_total"}, e2e.SkipMissingMetrics))
 					switch testCfg.parquetLabelsCache {
 					case tsdb.CacheBackendInMemory:
 						require.NoError(t, cluster.WaitSumMetrics(e2e.Greater(float64(0)), "thanos_cache_inmemory_requests_total"))
@@ -358,6 +375,15 @@ func TestQuerierWithBlocksStorageOnMissingBlocksFromStorage(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+
+	// Wait until the querier observes the store-gateway as ACTIVE in its view of the store-gateway
+	// ring: the store-gateway registers as JOINING and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can all pass while queries would still fail with
+	// "at least 1 healthy replica required, could only find 0" (500). Keep after the tokens wait.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"),
+	)))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
@@ -457,6 +483,14 @@ func TestQuerierWithBlocksStorageLimits(t *testing.T) {
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
 
+	// Wait until the store-gateway is ACTIVE in the querier's view of the store-gateway ring. The
+	// store-gateway registers JOINING (with tokens) and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can pass while the querier would still fail queries with
+	// "at least 1 healthy replica required, could only find 0" (HTTP 500) instead of the expected 422.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
+
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
@@ -553,6 +587,14 @@ func TestQuerierWithStoreGatewayDataBytesLimits(t *testing.T) {
 	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(1), "cortex_bucket_store_blocks_loaded"))
+
+	// Wait until the store-gateway is ACTIVE in the querier's view of the store-gateway ring. The
+	// store-gateway registers JOINING (with tokens) and switches to ACTIVE only after the initial
+	// blocks sync, so the waits above can pass while the querier would still fail queries with
+	// "at least 1 healthy replica required, could only find 0" (HTTP 500) instead of the expected 422.
+	require.NoError(t, querier.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ring_members"}, e2e.WithLabelMatchers(
+		labels.MustNewMatcher(labels.MatchEqual, "name", "store-gateway-client"),
+		labels.MustNewMatcher(labels.MatchEqual, "state", "ACTIVE"))))
 
 	// Query back the series.
 	c, err = e2ecortex.NewClient("", querier.HTTPEndpoint(), "", "", "user-1")

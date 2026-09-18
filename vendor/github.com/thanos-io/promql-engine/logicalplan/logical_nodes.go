@@ -31,7 +31,7 @@ const (
 	UnaryNode          = "unary"
 
 	RemoteExecutionNode = "remote_exec"
-	DeduplicateNode     = "dedup"
+	RemoteMergeNode     = "remote_merge"
 	NoopNode            = "noop"
 )
 

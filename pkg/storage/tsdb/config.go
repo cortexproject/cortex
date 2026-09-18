@@ -16,8 +16,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/store"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
-	"github.com/cortexproject/cortex/pkg/util/flagext"
-	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
@@ -49,21 +47,23 @@ const (
 
 // Validation errors
 var (
-	errInvalidShipConcurrency        = errors.New("invalid TSDB ship concurrency")
-	errInvalidOpeningConcurrency     = errors.New("invalid TSDB opening concurrency")
-	errInvalidCompactionInterval     = errors.New("invalid TSDB compaction interval")
-	errInvalidCompactionConcurrency  = errors.New("invalid TSDB compaction concurrency")
-	errInvalidWALSegmentSizeBytes    = errors.New("invalid TSDB WAL segment size bytes")
-	errInvalidStripeSize             = errors.New("invalid TSDB stripe size")
-	errInvalidOutOfOrderCapMax       = errors.New("invalid TSDB OOO chunks capacity (in samples)")
-	errEmptyBlockranges              = errors.New("empty block ranges for TSDB")
-	errUnSupportedWALCompressionType = errors.New("unsupported WAL compression type, valid types are (zstd, snappy and '')")
+	errInvalidShipConcurrency         = errors.New("invalid TSDB ship concurrency")
+	errInvalidOpeningConcurrency      = errors.New("invalid TSDB opening concurrency")
+	errInvalidCompactionInterval      = errors.New("invalid TSDB compaction interval")
+	errInvalidCompactionConcurrency   = errors.New("invalid TSDB compaction concurrency")
+	errInvalidWALSegmentSizeBytes     = errors.New("invalid TSDB WAL segment size bytes")
+	errInvalidStripeSize              = errors.New("invalid TSDB stripe size")
+	errInvalidOutOfOrderCapMax        = errors.New("invalid TSDB OOO chunks capacity (in samples)")
+	errEmptyBlockranges               = errors.New("empty block ranges for TSDB")
+	errUnSupportedWALCompressionType  = errors.New("unsupported WAL compression type, valid types are (zstd, snappy and '')")
+	errInvalidParquetQueryConcurrency = errors.New("invalid parquet query concurrency, the value must be greater than 0")
 
 	ErrInvalidBucketIndexBlockDiscoveryStrategy         = errors.New("bucket index block discovery strategy can only be enabled when bucket index is enabled")
 	ErrBlockDiscoveryStrategy                           = errors.New("invalid block discovery strategy")
 	ErrInvalidTokenBucketBytesLimiterMode               = errors.New("invalid token bucket bytes limiter mode")
 	ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio = errors.New("lazy expanded posting group max key series ratio needs to be equal or greater than 0")
 	ErrInvalidBucketStoreType                           = errors.New("invalid bucket store type")
+	ErrInvalidMaxConcurrentDataBytes                    = errors.New("max concurrent data bytes must be non-negative")
 )
 
 // BlocksStorageConfig holds the config information for the blocks storage.
@@ -207,11 +207,9 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
 	f.DurationVar(&cfg.CloseIdleTSDBTimeout, "blocks-storage.tsdb.close-idle-tsdb-timeout", 0, "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. If set to positive value, this value must be greater than -limits.query-ingesters-within flag to make sure that TSDB is not closed prematurely, which could cause partial query results. 0 or negative value disables closing of idle TSDB.")
 	f.IntVar(&cfg.HeadChunksWriteQueueSize, "blocks-storage.tsdb.head-chunks-write-queue-size", chunks.DefaultWriteQueueSize, "The size of the in-memory queue used before flushing chunks to the disk.")
-	f.IntVar(&cfg.MaxExemplars, "blocks-storage.tsdb.max-exemplars", 0, "Deprecated, use maxExemplars in limits instead. If the MaxExemplars value in limits is set to zero, cortex will fallback on this value. This setting enables support for exemplars in TSDB and sets the maximum number that will be stored. 0 or less means disabled.")
+	f.IntVar(&cfg.MaxExemplars, "blocks-storage.tsdb.max-exemplars", 0, "Deprecated (use the per-tenant max_exemplars limit instead) and will be removed in v1.24.0: the global fallback for the maximum number of exemplars stored in TSDB, used only when the per-tenant max_exemplars limit is 0. 0 or less means exemplars are disabled.")
 	f.BoolVar(&cfg.MemorySnapshotOnShutdown, "blocks-storage.tsdb.memory-snapshot-on-shutdown", false, "True to enable snapshotting of in-memory TSDB data on disk when shutting down.")
 	f.Int64Var(&cfg.OutOfOrderCapMax, "blocks-storage.tsdb.out-of-order-cap-max", tsdb.DefaultOutOfOrderCapMax, "[EXPERIMENTAL] Configures the maximum number of samples per chunk that can be out-of-order.")
-
-	flagext.DeprecatedFlag(f, "blocks-storage.tsdb.wal-compression-enabled", "Deprecated (use blocks-storage.tsdb.wal-compression-type instead): True to enable TSDB WAL compression.", util_log.Logger)
 
 	cfg.PostingsCache.RegisterFlagsWithPrefix("blocks-storage.", f)
 }
@@ -277,25 +275,27 @@ func (cfg *TSDBConfig) IsBlocksShippingEnabled() bool {
 
 // BucketStoreConfig holds the config information for Bucket Stores used by the querier and store-gateway.
 type BucketStoreConfig struct {
-	SyncDir                  string                   `yaml:"sync_dir"`
-	SyncInterval             time.Duration            `yaml:"sync_interval"`
-	MaxConcurrent            int                      `yaml:"max_concurrent"`
-	MaxInflightRequests      int                      `yaml:"max_inflight_requests"`
-	TenantSyncConcurrency    int                      `yaml:"tenant_sync_concurrency"`
-	BlockSyncConcurrency     int                      `yaml:"block_sync_concurrency"`
-	MetaSyncConcurrency      int                      `yaml:"meta_sync_concurrency"`
-	ConsistencyDelay         time.Duration            `yaml:"consistency_delay"`
-	IndexCache               IndexCacheConfig         `yaml:"index_cache"`
-	ChunksCache              ChunksCacheConfig        `yaml:"chunks_cache"`
-	MetadataCache            MetadataCacheConfig      `yaml:"metadata_cache"`
-	ParquetLabelsCache       ParquetLabelsCacheConfig `yaml:"parquet_labels_cache"`
-	MatchersCacheMaxItems    int                      `yaml:"matchers_cache_max_items"`
-	IgnoreDeletionMarksDelay time.Duration            `yaml:"ignore_deletion_mark_delay"`
-	IgnoreBlocksWithin       time.Duration            `yaml:"ignore_blocks_within"`
-	IgnoreBlocksBefore       time.Duration            `yaml:"ignore_blocks_before"`
-	BucketIndex              BucketIndexConfig        `yaml:"bucket_index"`
-	BlockDiscoveryStrategy   string                   `yaml:"block_discovery_strategy"`
-	BucketStoreType          string                   `yaml:"bucket_store_type"`
+	SyncDir                  string                      `yaml:"sync_dir"`
+	SyncInterval             time.Duration               `yaml:"sync_interval"`
+	MaxConcurrent            int                         `yaml:"max_concurrent"`
+	MaxInflightRequests      int                         `yaml:"max_inflight_requests"`
+	MaxConcurrentDataBytes   int64                       `yaml:"max_concurrent_data_bytes"`
+	TenantSyncConcurrency    int                         `yaml:"tenant_sync_concurrency"`
+	BlockSyncConcurrency     int                         `yaml:"block_sync_concurrency"`
+	MetaSyncConcurrency      int                         `yaml:"meta_sync_concurrency"`
+	ConsistencyDelay         time.Duration               `yaml:"consistency_delay"`
+	IndexCache               IndexCacheConfig            `yaml:"index_cache"`
+	ChunksCache              ChunksCacheConfig           `yaml:"chunks_cache"`
+	MetadataCache            MetadataCacheConfig         `yaml:"metadata_cache"`
+	ParquetLabelsCache       ParquetLabelsCacheConfig    `yaml:"parquet_labels_cache"`
+	ParquetRowRangesCache    ParquetRowRangesCacheConfig `yaml:"parquet_row_ranges_cache"`
+	MatchersCacheMaxItems    int                         `yaml:"matchers_cache_max_items"`
+	IgnoreDeletionMarksDelay time.Duration               `yaml:"ignore_deletion_mark_delay"`
+	IgnoreBlocksWithin       time.Duration               `yaml:"ignore_blocks_within"`
+	IgnoreBlocksBefore       time.Duration               `yaml:"ignore_blocks_before"`
+	BucketIndex              BucketIndexConfig           `yaml:"bucket_index"`
+	BlockDiscoveryStrategy   string                      `yaml:"block_discovery_strategy"`
+	BucketStoreType          string                      `yaml:"bucket_store_type"`
 
 	// Chunk pool.
 	MaxChunkPoolBytes           uint64 `yaml:"max_chunk_pool_bytes"`
@@ -335,6 +335,11 @@ type BucketStoreConfig struct {
 	TokenBucketBytesLimiter TokenBucketBytesLimiterConfig `yaml:"token_bucket_bytes_limiter"`
 	// Parquet shard cache config
 	ParquetShardCache parquetutil.CacheConfig `yaml:",inline"`
+
+	// ParquetQueryConcurrency controls the maximum number of concurrent goroutines
+	// per query at each level of parquet processing: shard querying, row group
+	// processing, and column materialization.
+	ParquetQueryConcurrency int `yaml:"parquet_query_concurrency"`
 }
 
 type TokenBucketBytesLimiterConfig struct {
@@ -356,6 +361,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunksCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.chunks-cache.")
 	cfg.MetadataCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.metadata-cache.")
 	cfg.ParquetLabelsCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.parquet-labels-cache.")
+	cfg.ParquetRowRangesCache.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.parquet-row-ranges-cache.")
 	cfg.BucketIndex.RegisterFlagsWithPrefix(f, "blocks-storage.bucket-store.bucket-index.")
 
 	f.StringVar(&cfg.SyncDir, "blocks-storage.bucket-store.sync-dir", "tsdb-sync", "Directory to store synchronized TSDB index headers.")
@@ -365,6 +371,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.ChunkPoolMaxBucketSizeBytes, "blocks-storage.bucket-store.chunk-pool-max-bucket-size-bytes", ChunkPoolDefaultMaxBucketSize, "Size - in bytes - of the largest chunks pool bucket.")
 	f.IntVar(&cfg.MaxConcurrent, "blocks-storage.bucket-store.max-concurrent", 100, "Max number of concurrent queries to execute against the long-term storage. The limit is shared across all tenants.")
 	f.IntVar(&cfg.MaxInflightRequests, "blocks-storage.bucket-store.max-inflight-requests", 0, "Max number of inflight queries to execute against the long-term storage. The limit is shared across all tenants. 0 to disable.")
+	f.Int64Var(&cfg.MaxConcurrentDataBytes, "blocks-storage.bucket-store.max-concurrent-data-bytes", 0, "[Experimental] Max number of data bytes (postings, series and chunks) fetched from object storage via the Series() API call and processed concurrently across all queries. The limit is shared across all tenants. When the limit is reached, new requests are rejected with HTTP 503. 0 to disable.")
 	f.IntVar(&cfg.TenantSyncConcurrency, "blocks-storage.bucket-store.tenant-sync-concurrency", 10, "Maximum number of concurrent tenants syncing blocks.")
 	f.IntVar(&cfg.BlockSyncConcurrency, "blocks-storage.bucket-store.block-sync-concurrency", 20, "Maximum number of concurrent blocks syncing per tenant.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "blocks-storage.bucket-store.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from object storage per tenant.")
@@ -396,6 +403,7 @@ func (cfg *BucketStoreConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.FetchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.fetched-chunks-token-factor", 0, "Multiplication factor used for fetched chunks token")
 	f.Float64Var(&cfg.TokenBucketBytesLimiter.TouchedChunksTokenFactor, "blocks-storage.bucket-store.token-bucket-bytes-limiter.touched-chunks-token-factor", 1, "Multiplication factor used for touched chunks token")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "blocks-storage.bucket-store.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
+	f.IntVar(&cfg.ParquetQueryConcurrency, "blocks-storage.bucket-store.parquet-query-concurrency", 4, "Maximum number of concurrent goroutines per query applied at each level of parquet processing: shard querying, row group processing, and column materialization. Note: this limit is applied independently at each level, so the total goroutines per query can grow multiplicatively (up to N^3 in the worst case).")
 	cfg.ParquetShardCache.RegisterFlagsWithPrefix("blocks-storage.bucket-store.", f)
 }
 
@@ -417,6 +425,10 @@ func (cfg *BucketStoreConfig) Validate() error {
 	if err != nil {
 		return errors.Wrap(err, "parquet-labels-cache configuration")
 	}
+	err = cfg.ParquetRowRangesCache.Validate()
+	if err != nil {
+		return errors.Wrap(err, "parquet-row-ranges-cache configuration")
+	}
 	if !slices.Contains(supportedBlockDiscoveryStrategies, cfg.BlockDiscoveryStrategy) {
 		return ErrInvalidBucketIndexBlockDiscoveryStrategy
 	}
@@ -428,6 +440,12 @@ func (cfg *BucketStoreConfig) Validate() error {
 	}
 	if cfg.LazyExpandedPostingGroupMaxKeySeriesRatio < 0 {
 		return ErrInvalidLazyExpandedPostingGroupMaxKeySeriesRatio
+	}
+	if cfg.ParquetQueryConcurrency <= 0 {
+		return errInvalidParquetQueryConcurrency
+	}
+	if cfg.MaxConcurrentDataBytes < 0 {
+		return ErrInvalidMaxConcurrentDataBytes
 	}
 	return nil
 }
@@ -441,8 +459,8 @@ type BucketIndexConfig struct {
 
 func (cfg *BucketIndexConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	f.BoolVar(&cfg.Enabled, prefix+"enabled", true, "True to enable querier and store-gateway to discover blocks in the storage via bucket index instead of bucket scanning. Disabling the bucket index is not recommended for production.")
-	f.DurationVar(&cfg.UpdateOnErrorInterval, prefix+"update-on-error-interval", time.Minute, "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used only by querier.")
-	f.DurationVar(&cfg.IdleTimeout, prefix+"idle-timeout", time.Hour, "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used only by querier.")
+	f.DurationVar(&cfg.UpdateOnErrorInterval, prefix+"update-on-error-interval", time.Minute, "How frequently a bucket index, which previously failed to load, should be tried to load again. This option is used by querier and store-gateway parquet mode.")
+	f.DurationVar(&cfg.IdleTimeout, prefix+"idle-timeout", time.Hour, "How long a unused bucket index should be cached. Once this timeout expires, the unused bucket index is removed from the in-memory cache. This option is used by querier and store-gateway parquet mode.")
 	f.DurationVar(&cfg.MaxStalePeriod, prefix+"max-stale-period", time.Hour, "The maximum allowed age of a bucket index (last updated) before queries start failing because the bucket index is too old. The bucket index is periodically updated by the compactor, while this check is enforced in the querier (at query time).")
 }
 

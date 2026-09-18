@@ -45,14 +45,19 @@ Currently experimental features are:
 - TLS configuration in gRPC and HTTP clients.
 - TLS configuration in Etcd client.
 - OpenStack Swift storage support.
+- Oracle Cloud Infrastructure (OCI) Object Storage support.
 - Metric relabeling in the distributor.
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor:
   - Do not extend writes on unhealthy ingesters (`-distributor.extend-writes=false`)
   - Accept multiple HA pairs in the same request (enabled via `-experimental.distributor.ha-tracker.mixed-ha-samples=true`)
   - Accept Prometheus remote write 2.0 request (`-distributor.remote-writev2-enabled=true`)
+  - Use a goroutine worker pool for query fan-out calls to ingesters (`-distributor.num-query-workers`)
 - Tenant Deletion in Purger, for blocks storage.
 - Blocks storage user index
+- Store Gateway max concurrent fetched data bytes limit
+  - `-blocks-storage.bucket-store.max-concurrent-data-bytes` (int) CLI flag
+  - `max_concurrent_data_bytes` (int) field in config file
 - Querier: tenant federation
   - `-tenant-federation.regex-matcher-enabled`
   - `-tenant-federation.regex-cache-size`
@@ -99,8 +104,6 @@ Currently experimental features are:
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
-- Native Histograms
-  - Ingestion can be enabled by setting `-blocks-storage.tsdb.enable-native-histograms=true` on Ingester.
 - String interning for metrics labels
   - Enable string interning for metrics labels by setting `-ingester.labels-string-interning-enabled` on Ingester.
 - Query-frontend: query rejection (`-frontend.query-rejection.enabled`)
@@ -109,9 +112,10 @@ Currently experimental features are:
 - Query-frontend: dynamic query splits
   - `querier.max-shards-per-query` (int) CLI flag
   - `querier.max-fetched-data-duration-per-query` (duration) CLI flag
-- Ingester/Store-Gateway: Query rejection
+- Ingester/Store-Gateway/Querier: Query rejection
   - `-ingester.query-protection.rejection`
   - `-store-gateway.query-protection.rejection`
+  - `-querier.query-protection.rejection`
 - Distributor/Ingester: Stream push connection
   - Enable stream push connection between distributor and ingester by setting `-distributor.use-stream-push=true` on Distributor.
   - Enable stream push authentication on Distributor/Ingester. (`-distributor.sign-write-requests-keys`)
@@ -130,6 +134,42 @@ Currently experimental features are:
     - `-validation.max-label-cardinality-for-unoptimized-regex` (int) - maximum label cardinality
     - `-validation.max-total-label-value-length-for-unoptimized-regex` (int) - maximum total length of all label values in bytes
 - HATracker: `-distributor.ha-tracker.enable-startup-sync` (bool) - If enabled, fetches all tracked keys on startup to populate the local cache.
+- Querier: Resource-based query eviction
+  - `-querier.query-protection.eviction.threshold.cpu-utilization` (float)
+  - `-querier.query-protection.eviction.threshold.heap-utilization` (float)
+  - `-querier.query-protection.eviction.check-interval` (duration)
+  - `-querier.query-protection.eviction.cooldown-period` (int)
+  - `-querier.query-protection.eviction.eviction-metric` (string)
+  - `-querier.query-protection.eviction.min-query-age` (duration)
+  - `-querier.query-protection.eviction.max-evictions-per-cycle` (int)
 - Ingester: Active Series Tracker
   - Per-tenant `active_series_trackers` configuration in runtime config overrides
   - Counts active series matching PromQL label matchers and exposes `cortex_ingester_active_series_per_tracker` metric
+- Ingester: Lazy regex evaluation on head postings cache miss
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio` (int) CLI flag
+  - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio` (int) CLI flag
+- Ingester: Head Queried Series Metrics
+  - Enable on Ingester via `-ingester.head-queried-series-metrics-enabled=true`
+  - Tracks unique series queried from head only (not blocks) using HLL
+  - `-ingester.head-queried-series-metrics-windows` time windows to report (default: 2h)
+  - `-ingester.head-queried-series-metrics-window-duration` HLL sub-window size
+  - `-ingester.head-queried-series-metrics-sample-rate` query sampling rate
+- Parquet storage
+  - Parquet Converter: the `-parquet-converter.*` CLI flags, including `-parquet-converter.enabled`,
+    `-parquet-converter.max-num-columns` (automatically shards parquet files when the number of columns
+    exceeds the configured limit), `-parquet-converter.max-block-label-names` (if enabled, adds a
+    no-convert mark and skips blocks with too many label names) and the `-parquet-converter.ring.*`
+    ring configuration
+  - Querier: `-querier.parquet-queryable-default-block-store`, `-querier.parquet-queryable-fallback-disabled`,
+    the `-querier.parquet-queryable.max-fetched-*` limits and `-querier.parquet-shard-cache-*`
+  - Store Gateway: `-blocks-storage.bucket-store.parquet-query-concurrency`,
+    `-blocks-storage.bucket-store.parquet-shard-cache-*` and the
+    `-blocks-storage.bucket-store.parquet-labels-cache.*` /
+    `-blocks-storage.bucket-store.parquet-row-ranges-cache.*` cache configuration
+- Querier/Ruler: Thanos PromQL engine
+  - `-querier.thanos-engine` / `-ruler.thanos-engine` (boolean) CLI flags
+  - `-querier.enable-x-functions` / `-ruler.enable-x-functions` (boolean) CLI flags
+  - `-querier.optimizers` / `-ruler.optimizers` (string) CLI flags
+  - `-querier.decoding-concurrency` / `-ruler.decoding-concurrency` (int) CLI flags
+  - `-querier.selector-batch-size` / `-ruler.selector-batch-size` (int) CLI flags

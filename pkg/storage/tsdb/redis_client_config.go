@@ -67,7 +67,7 @@ func (cfg *RedisClientConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix st
 // Validate the config.
 func (cfg *RedisClientConfig) Validate() error {
 	if cfg.Addresses == "" {
-		return errNoIndexCacheAddresses
+		return errNoCacheAddresses
 	}
 
 	if cfg.TLSEnabled {

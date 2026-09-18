@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -313,6 +315,7 @@ func TestStatsCacheQuerySamples(t *testing.T) {
 				mockLimits{},
 				PrometheusCodec,
 				PrometheusResponseExtractor{},
+				nil,
 				nil,
 				nil,
 			)
@@ -1281,6 +1284,7 @@ func TestResultsCache(t *testing.T) {
 		PrometheusResponseExtractor{},
 		nil,
 		nil,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -1320,6 +1324,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1386,6 +1391,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 
@@ -1422,6 +1428,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		mockLimits{},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1538,6 +1545,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				PrometheusResponseExtractor{},
 				tc.shouldCache,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, req tripperware.Request) (tripperware.Response, error) {
@@ -1568,6 +1576,7 @@ func TestResultsCacheFillCompatibility(t *testing.T) {
 		mockLimits{maxCacheFreshness: 10 * time.Minute},
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)
@@ -1852,6 +1861,7 @@ func TestExtentsOverlapOutOfOrderWindow(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
@@ -1868,62 +1878,110 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 	oneHourAgo := now.Add(-1 * time.Hour).UnixMilli()
 	twoHoursAgo := now.Add(-2 * time.Hour).UnixMilli()
 
+	// globalDefaultTTL is the cache backend's configured default validity, applied
+	// when the results cache passes a TTL of 0. A distinct, non-zero value lets us
+	// assert that the "fall back to global default" cases really land on it.
+	const globalDefaultTTL = 90 * time.Minute
+
 	tests := []struct {
-		name               string
-		extents            []tripperware.Extent
-		resultsCacheTTL    time.Duration
-		outOfOrderCacheTTL time.Duration
-		outOfOrderWindow   time.Duration
-		expectedTTL        time.Duration
+		name                      string
+		tenantIDs                 []string
+		extents                   []tripperware.Extent
+		resultsCacheTTL           map[string]time.Duration
+		outOfOrderResultsCacheTTL map[string]time.Duration
+		outOfOrderWindow          map[string]time.Duration
+		expectedTTL               time.Duration
 	}{
 		{
-			name: "old data uses results_cache_ttl",
+			name:      "old data uses results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: twoHoursAgo + 1000}, // 2 hours ago, no overlap
 			},
-			resultsCacheTTL:    24 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   1 * time.Hour,
-			expectedTTL:        24 * time.Hour,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               24 * time.Hour,
 		},
 		{
-			name: "recent data uses out_of_order_results_cache_ttl",
+			name:      "recent data uses out_of_order_results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
 			},
-			resultsCacheTTL:    24 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   1 * time.Hour,
-			expectedTTL:        5 * time.Minute,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               5 * time.Minute,
 		},
 		{
-			name: "zero out-of-order window uses results_cache_ttl",
+			name:      "zero out-of-order window uses results_cache_ttl",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: oneHourAgo},
 			},
-			resultsCacheTTL:    12 * time.Hour,
-			outOfOrderCacheTTL: 5 * time.Minute,
-			outOfOrderWindow:   0, // no out-of-order support
-			expectedTTL:        12 * time.Hour,
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 12 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 5 * time.Minute},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 0}, // no out-of-order support
+			expectedTTL:               12 * time.Hour,
 		},
 		{
-			name: "zero TTLs use backend defaults",
+			name:      "recent data falls back to results_cache_ttl when out_of_order_results_cache_ttl is unset",
+			tenantIDs: []string{"tenant-a"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0}, // not set, should fall back to results_cache_ttl
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               24 * time.Hour,
+		},
+		{
+			name:      "recent data uses backend default when both TTLs are unset",
+			tenantIDs: []string{"tenant-a"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 0},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 1 * time.Hour},
+			expectedTTL:               globalDefaultTTL, // TTL of 0 falls back to the backend default
+		},
+		{
+			name:      "zero TTLs use backend defaults",
+			tenantIDs: []string{"tenant-a"},
 			extents: []tripperware.Extent{
 				{Start: twoHoursAgo, End: twoHoursAgo + 1000},
 			},
-			resultsCacheTTL:    0,
-			outOfOrderCacheTTL: 0,
-			outOfOrderWindow:   0,
-			expectedTTL:        0, // backend default
+			resultsCacheTTL:           map[string]time.Duration{"tenant-a": 0},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"tenant-a": 0},
+			outOfOrderWindow:          map[string]time.Duration{"tenant-a": 0},
+			expectedTTL:               globalDefaultTTL, // TTL of 0 falls back to the backend default
+		},
+		{
+			// Federated query: tenant "a" leaves its OOO TTL unset, so it falls back to
+			// its own results_cache_ttl (30m); tenant "b" has 1h. The most restrictive is
+			// 30m. The fallback must be resolved per-tenant *before* aggregating across
+			// tenants — aggregating the raw configs first would instead yield 1h.
+			name:      "recent data resolves fallback per-tenant before aggregating",
+			tenantIDs: []string{"a", "b"},
+			extents: []tripperware.Extent{
+				{Start: twoHoursAgo, End: oneHourAgo}, // overlaps with 1h window
+			},
+			resultsCacheTTL:           map[string]time.Duration{"a": 30 * time.Minute, "b": 24 * time.Hour},
+			outOfOrderResultsCacheTTL: map[string]time.Duration{"a": 0, "b": 1 * time.Hour},
+			outOfOrderWindow:          map[string]time.Duration{"a": 1 * time.Hour, "b": 1 * time.Hour},
+			expectedTTL:               30 * time.Minute,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			mockCache := cache.NewMockCache()
-			limits := mockLimits{
+			mockCache.(*cache.MockCache).DefaultTTL = globalDefaultTTL
+			limits := perTenantLimits{
 				resultsCacheTTL:           tc.resultsCacheTTL,
-				outOfOrderResultsCacheTTL: tc.outOfOrderCacheTTL,
+				outOfOrderResultsCacheTTL: tc.outOfOrderResultsCacheTTL,
 				outOfOrderWindow:          tc.outOfOrderWindow,
 			}
 
@@ -1941,18 +1999,226 @@ func TestResultsCachePutTTLSelection(t *testing.T) {
 				PrometheusResponseExtractor{},
 				nil,
 				nil,
+				nil,
 			)
 			require.NoError(t, err)
 			rc := rm.Wrap(nil).(*resultsCache)
 			rc.now = func() time.Time { return now }
 
-			ctx := user.InjectOrgID(context.Background(), "tenant-a")
-			tenantIDs, _ := users.TenantIDs(ctx)
-			rc.put(ctx, "test-key", tc.extents, tenantIDs)
+			ctx := user.InjectOrgID(context.Background(), strings.Join(tc.tenantIDs, "|"))
+			rc.put(ctx, "test-key", tc.extents, tc.tenantIDs)
 
 			assert.Equal(t, tc.expectedTTL, mockCache.(*cache.MockCache).GetLastTTL())
 		})
 	}
+}
+
+// perTenantLimits returns different TTL/window values per tenant so we can verify
+// that the out-of-order TTL fallback is resolved per-tenant before aggregating.
+type perTenantLimits struct {
+	mockLimits
+	resultsCacheTTL           map[string]time.Duration
+	outOfOrderResultsCacheTTL map[string]time.Duration
+	outOfOrderWindow          map[string]time.Duration
+}
+
+func (m perTenantLimits) ResultsCacheTTL(userID string) time.Duration {
+	return m.resultsCacheTTL[userID]
+}
+
+func (m perTenantLimits) OutOfOrderResultsCacheTTL(userID string) time.Duration {
+	return m.outOfOrderResultsCacheTTL[userID]
+}
+
+func (m perTenantLimits) OutOfOrderTimeWindow(userID string) model.Duration {
+	return model.Duration(m.outOfOrderWindow[userID])
+}
+
+type mockResolver struct {
+	tenantIDs []string
+	err       error
+}
+
+func (m *mockResolver) TenantID(_ context.Context) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	if len(m.tenantIDs) == 1 {
+		return m.tenantIDs[0], nil
+	}
+	return "", user.ErrTooManyOrgIDs
+}
+
+func (m *mockResolver) TenantIDs(_ context.Context) ([]string, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.tenantIDs, nil
+}
+
+func newResultsCacheWithResolver(t *testing.T, resolverFn func() users.Resolver) tripperware.Middleware {
+	t.Helper()
+	cfg := ResultsCacheConfig{
+		CacheConfig: cache.Config{
+			Cache: cache.NewMockCache(),
+		},
+	}
+	rcm, _, err := NewResultsCacheMiddleware(
+		log.NewNopLogger(),
+		cfg,
+		splitter(day),
+		mockLimits{},
+		PrometheusCodec,
+		PrometheusResponseExtractor{},
+		nil,
+		nil,
+		resolverFn,
+	)
+	require.NoError(t, err)
+	return rcm
+}
+
+func TestResultsCacheTenantFingerprint(t *testing.T) {
+	useRegexResolver := func(t *testing.T) {
+		t.Helper()
+		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
+		t.Cleanup(func() {
+			users.WithDefaultResolver(users.NewSingleResolver())
+		})
+	}
+
+	t.Run("nil resolver preserves existing cache key format - cache hit on second call", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, nil) // legacy behaviour
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), "tenant1")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "first request must reach upstream")
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "second identical request must be served from cache")
+	})
+
+	t.Run("resolver present - same tenant set produces cache hit", func(t *testing.T) {
+		// Uses ".+" as org ID – requires RegexValidator as the global resolver.
+		// Not parallel because it mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		// Inject the regex pattern exactly as the query frontend does.
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "first request must reach upstream")
+
+		// Same resolver result → same fingerprint → cache hit.
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "same tenant set must produce a cache hit")
+	})
+
+	t.Run("new tenant added - fingerprint changes so stale cache is bypassed", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// Simulate a new tenant joining: the resolver now returns three IDs.
+		resolver.tenantIDs = []string{"t1", "t2", "t3"}
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 2, calls, "adding a tenant must change the fingerprint and trigger a cache miss")
+	})
+
+	t.Run("tenant swap with same count - hash fingerprint still changes", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{tenantIDs: []string{"t1", "t2"}}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// Replace t2 with t3 – tenant count stays at 2, but the FNV64a hash
+		// of "t1|t3" differs from "t1|t2" so the key must change.
+		resolver.tenantIDs = []string{"t1", "t3"}
+
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 2, calls, "swapping a tenant (same count) must change the fingerprint hash and cause a cache miss")
+	})
+
+	t.Run("resolver returns error - falls back to plain cache key", func(t *testing.T) {
+		// Not parallel – mutates global resolver state.
+		useRegexResolver(t)
+
+		resolver := &mockResolver{err: fmt.Errorf("resolving error")}
+		resolverFn := func() users.Resolver { return resolver }
+
+		calls := 0
+		rcm := newResultsCacheWithResolver(t, resolverFn)
+		rc := rcm.Wrap(tripperware.HandlerFunc(func(_ context.Context, _ tripperware.Request) (tripperware.Response, error) {
+			calls++
+			return parsedResponse, nil
+		}))
+
+		ctx := user.InjectOrgID(context.Background(), ".+")
+
+		// The resolver fails – fall back to the plain key.
+		_, err := rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls)
+
+		// A second request with the same failing resolver should still hit the
+		// plain-key cache entry written by the first call.
+		_, err = rc.Do(ctx, parsedRequest)
+		require.NoError(t, err)
+		require.Equal(t, 1, calls, "failed resolver must fall back to plain key, which is still cacheable")
+	})
 }
 
 func TestResultsCacheWithPerTenantTTL(t *testing.T) {
@@ -1980,6 +2246,7 @@ func TestResultsCacheWithPerTenantTTL(t *testing.T) {
 		limits,
 		PrometheusCodec,
 		PrometheusResponseExtractor{},
+		nil,
 		nil,
 		nil,
 	)

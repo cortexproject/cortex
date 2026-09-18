@@ -49,7 +49,7 @@ type PusherAppender struct {
 	labels          []labels.Labels
 	samples         []cortexpb.Sample
 	histogramLabels []labels.Labels
-	histograms      []cortexpb.Histogram
+	histograms      []cortexpb.WrappedHistogram
 	userID          string
 	opts            *storage.AppendOptions
 }
@@ -59,9 +59,9 @@ func (a *PusherAppender) AppendHistogram(_ storage.SeriesRef, l labels.Labels, t
 		return 0, errors.New("no histogram")
 	}
 	if h != nil {
-		a.histograms = append(a.histograms, cortexpb.HistogramToHistogramProto(t, h))
+		a.histograms = append(a.histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.HistogramToHistogramProto(t, h)})
 	} else {
-		a.histograms = append(a.histograms, cortexpb.FloatHistogramToHistogramProto(t, fh))
+		a.histograms = append(a.histograms, cortexpb.WrappedHistogram{Histogram: cortexpb.FloatHistogramToHistogramProto(t, fh)})
 	}
 	a.histogramLabels = append(a.histogramLabels, l)
 	return 0, nil
@@ -80,13 +80,13 @@ func (a *PusherAppender) SetOptions(opts *storage.AppendOptions) {
 	a.opts = opts
 }
 
-func (a *PusherAppender) AppendHistogramCTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
-	// AppendHistogramCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+func (a *PusherAppender) AppendHistogramSTZeroSample(ref storage.SeriesRef, l labels.Labels, t, ct int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// AppendHistogramSTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
 }
 
-func (a *PusherAppender) AppendCTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
-	// AppendCTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
+func (a *PusherAppender) AppendSTZeroSample(_ storage.SeriesRef, _ labels.Labels, _, _ int64) (storage.SeriesRef, error) {
+	// AppendSTZeroSample is a no-op for PusherAppender as it happens during scrape time only.
 	return 0, nil
 }
 

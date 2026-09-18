@@ -20,7 +20,7 @@ import (
 
 // ToWriteRequest converts matched slices of Labels, Samples, Metadata and Histograms into a WriteRequest proto.
 // It gets timeseries from the pool, so ReuseSlice() should be called when done.
-func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, histograms []Histogram, source SourceEnum) *WriteRequest {
+func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMetadata, histograms []WrappedHistogram, source SourceEnum) *WriteRequest {
 	req := &WriteRequest{
 		Timeseries: PreallocTimeseriesSliceFromPool(),
 		Metadata:   metadata,
@@ -44,7 +44,7 @@ func ToWriteRequest(lbls []labels.Labels, samples []Sample, metadata []*MetricMe
 	return req
 }
 
-func (w *WriteRequest) AddHistogramTimeSeries(lbls []labels.Labels, histograms []Histogram) {
+func (w *WriteRequest) AddHistogramTimeSeries(lbls []labels.Labels, histograms []WrappedHistogram) {
 	for i := range lbls {
 		ts := TimeseriesFromPool()
 		ts.Labels = append(ts.Labels, FromLabelsToLabelAdapters(lbls[i])...)

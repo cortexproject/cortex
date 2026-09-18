@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/storage/bucket/azure"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/gcs"
+	"github.com/cortexproject/cortex/pkg/storage/bucket/oci"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/s3"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/swift"
 )
@@ -34,12 +35,15 @@ const (
 	// Swift is the value for the Openstack Swift storage backend.
 	Swift = "swift"
 
+	// OCI is the value for the Oracle Cloud Infrastructure storage backend.
+	OCI = "oci"
+
 	// Filesystem is the value for the filesystem storage backend.
 	Filesystem = "filesystem"
 )
 
 var (
-	SupportedBackends = []string{S3, GCS, Azure, Swift, Filesystem}
+	SupportedBackends = []string{S3, GCS, Azure, Swift, OCI, Filesystem}
 
 	ErrUnsupportedStorageBackend = errors.New("unsupported storage backend")
 
@@ -54,6 +58,7 @@ type Config struct {
 	GCS        gcs.Config        `yaml:"gcs"`
 	Azure      azure.Config      `yaml:"azure"`
 	Swift      swift.Config      `yaml:"swift"`
+	OCI        oci.Config        `yaml:"oci"`
 	Filesystem filesystem.Config `yaml:"filesystem"`
 
 	// Not used internally, meant to allow callers to wrap Buckets
@@ -84,6 +89,7 @@ func (cfg *Config) RegisterFlagsWithPrefixAndBackend(prefix string, f *flag.Flag
 	cfg.GCS.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Azure.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Swift.RegisterFlagsWithPrefix(prefix, f)
+	cfg.OCI.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Filesystem.RegisterFlagsWithPrefix(prefix, f)
 
 	f.StringVar(&cfg.Backend, prefix+"backend", defaultBackend, fmt.Sprintf("Backend storage to use. Supported backends are: %s.", strings.Join(cfg.supportedBackends(), ", ")))
@@ -115,6 +121,8 @@ func NewClient(ctx context.Context, cfg Config, hedgedRoundTripper func(rt http.
 		client, err = azure.NewBucketClient(cfg.Azure, hedgedRoundTripper, name, logger)
 	case Swift:
 		client, err = swift.NewBucketClient(cfg.Swift, hedgedRoundTripper, name, logger)
+	case OCI:
+		client, err = oci.NewBucketClient(cfg.OCI, hedgedRoundTripper, name, logger)
 	case Filesystem:
 		client, err = filesystem.NewBucketClient(cfg.Filesystem)
 	default:

@@ -13,15 +13,15 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 )
 
+// Buffer owns sample admission for a range window. Reset establishes the
+// window for an evaluation step, then Push decides whether each candidate
+// belongs in that window.
 type Buffer interface {
 	MaxT() int64
 	Push(t int64, v Value)
 	Reset(mint int64, evalt int64)
-	Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error)
+	Eval(ctx context.Context, _, _ float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error)
 	SampleCount() int
-
-	// to handle extlookback properly, only used by buffers that implement xincrease or xrate
-	ReadIntoLast(f func(*Sample))
 }
 
 func Empty(b Buffer) bool { return b.MaxT() == math.MinInt64 }
@@ -41,24 +41,19 @@ type GenericRingBuffer struct {
 	items []Sample
 	tail  []Sample
 
-	currentStep int64
-	offset      int64
-	selectRange int64
-	extLookback int64
-	call        FunctionCall
+	currentStep       int64
+	currentRangeStart int64
+	offset            int64
+	selectRange       int64
+	call              FunctionCall
 }
 
 func New(ctx context.Context, size int, selectRange, offset int64, call FunctionCall) *GenericRingBuffer {
-	return NewWithExtLookback(ctx, size, selectRange, offset, 0, call)
-}
-
-func NewWithExtLookback(ctx context.Context, size int, selectRange, offset, extLookback int64, call FunctionCall) *GenericRingBuffer {
 	return &GenericRingBuffer{
 		ctx:         ctx,
 		items:       make([]Sample, 0, size),
 		selectRange: selectRange,
 		offset:      offset,
-		extLookback: extLookback,
 		call:        call,
 	}
 }
@@ -84,47 +79,53 @@ func (r *GenericRingBuffer) MaxT() int64 {
 	return r.items[len(r.items)-1].T
 }
 
-// ReadIntoLast reads a sample into the last slot in the buffer, replacing the existing sample.
-func (r *GenericRingBuffer) ReadIntoLast(f func(*Sample)) {
-	f(&r.items[len(r.items)-1])
+// Push considers a sample for the current range.
+func (r *GenericRingBuffer) Push(t int64, v Value) {
+	if t <= r.currentRangeStart {
+		return
+	}
+	r.push(t, v)
 }
 
-// Push adds a new sample to the buffer.
-func (r *GenericRingBuffer) Push(t int64, v Value) {
+// push adds a sample without applying the current range boundary.
+func (r *GenericRingBuffer) push(t int64, v Value) {
 	n := len(r.items)
 	if n < cap(r.items) {
 		r.items = r.items[:n+1]
 	} else {
 		r.items = append(r.items, Sample{})
 	}
+	setSample(&r.items[n], t, v)
+}
 
-	r.items[n].T = t
-	r.items[n].V.F = v.F
-	if v.H != nil {
-		if r.items[n].V.H == nil {
-			h := v.H.Copy()
-			r.items[n].V.H = h
-		} else {
-			v.H.CopyTo(r.items[n].V.H)
-		}
-	} else {
-		r.items[n].V.H = nil
+func setSample(dst *Sample, t int64, v Value) {
+	dst.T = t
+	dst.V.F = v.F
+	if v.H == nil {
+		dst.V.H = nil
+		return
 	}
+	if dst.V.H == nil {
+		dst.V.H = v.H.Copy()
+		return
+	}
+	v.H.CopyTo(dst.V.H)
 }
 
 func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.currentStep = evalt
-	if r.extLookback == 0 && (len(r.items) == 0 || r.items[len(r.items)-1].T < mint) {
+	r.currentRangeStart = mint
+	if len(r.items) == 0 || r.items[len(r.items)-1].T < mint {
 		r.items = r.items[:0]
 		return
 	}
 	var drop int
 	for drop = 0; drop < len(r.items) && r.items[drop].T <= mint; drop++ {
 	}
-	if r.extLookback > 0 && drop > 0 && r.items[drop-1].T >= mint-r.extLookback {
-		drop--
-	}
+	r.drop(drop)
+}
 
+func (r *GenericRingBuffer) drop(drop int) {
 	keep := len(r.items) - drop
 	r.tail = resize(r.tail, drop)
 	copy(r.tail, r.items[:drop])
@@ -133,7 +134,11 @@ func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.items = r.items[:keep]
 }
 
-func (r *GenericRingBuffer) Eval(ctx context.Context, scalarArg float64, scalarArg2 float64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+func (r *GenericRingBuffer) Eval(ctx context.Context, scalarArg float64, scalarArg2 float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+	return r.eval(scalarArg, scalarArg2, math.MinInt64)
+}
+
+func (r *GenericRingBuffer) eval(scalarArg float64, scalarArg2 float64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	return r.call(FunctionArgs{
 		Samples:          r.items,
 		StepTime:         r.currentStep,

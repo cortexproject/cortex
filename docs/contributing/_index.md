@@ -21,6 +21,8 @@ a piece of work is finished it should:
 * Include a CHANGELOG message if users of Cortex need to hear about what you did.
 * If you have made any changes to flags or config, run `make doc` and commit the changed files to update the config file documentation.
 
+Once a pull request is marked ready for review, a maintainer is automatically requested as reviewer, so there's no need to hunt for one. Draft pull requests are skipped until you mark them ready.
+
 ## Use of AI Tools
 
 Cortex permits the use of generative AI tools to assist with contributions. Contributors remain

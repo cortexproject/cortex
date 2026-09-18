@@ -289,7 +289,17 @@ func (d *Desc) mergeWithTime(mergeable memberlist.Mergeable, localCAS bool, now 
 	}
 
 	// resolveConflicts allocates lot of memory, so if we can avoid it, do that.
-	if tokensChanged && conflictingTokensExist(thisIngesterMap) {
+	// Check when tokens changed or any ingester is in JOINING state (observe period).
+	shouldCheckConflicts := tokensChanged
+	if !shouldCheckConflicts {
+		for _, ing := range thisIngesterMap {
+			if ing.State == JOINING {
+				shouldCheckConflicts = true
+				break
+			}
+		}
+	}
+	if shouldCheckConflicts && conflictingTokensExist(thisIngesterMap) {
 		resolveConflicts(thisIngesterMap)
 	}
 
@@ -781,22 +791,39 @@ func (d *Desc) FindDifference(o codec.MultiKey) (any, []string, error) {
 			} else if oing.Timestamp == ing.Timestamp && ing.State != LEFT && oing.State == LEFT {
 				// we accept LEFT even if timestamp hasn't changed
 				toUpdated.Ingesters[name] = oing
-				if !tokensEqual(ing.Tokens, oing.Tokens) {
-					tokensChanged = true
-				}
+			}
+		}
+	}
+
+	// Check for token conflicts when tokens changed or when any ingester is still
+	// in JOINING state (observe period). During the observe period, concurrent joins
+	// may have produced duplicate tokens that need resolution.
+	shouldCheckConflicts := tokensChanged
+	if !shouldCheckConflicts {
+		for _, ing := range out.Ingesters {
+			if ing.State == JOINING {
+				shouldCheckConflicts = true
+				break
 			}
 		}
 	}
 
 	// resolveConflicts allocates a lot of memory, so if we can avoid it, do that.
-	if tokensChanged && conflictingTokensExist(out.Ingesters) {
+	if shouldCheckConflicts && conflictingTokensExist(out.Ingesters) {
 		resolveConflicts(out.Ingesters)
 
-		//Recheck if any instance was updated by the resolveConflict
-		//All ingesters in toUpdated have already passed the timestamp check, so we can skip checking again
+		// Refresh all entries already in toUpdated (their tokens may have changed).
 		for name := range toUpdated.Ingesters {
-			//name must appear in out Ingesters, so we can skip the contains key check
 			toUpdated.Ingesters[name] = out.Ingesters[name]
+		}
+		// Also include any existing ingester whose tokens were changed by resolveConflicts.
+		for name, oing := range out.Ingesters {
+			if _, alreadyUpdated := toUpdated.Ingesters[name]; alreadyUpdated {
+				continue
+			}
+			if ing, ok := d.Ingesters[name]; ok && !tokensEqual(ing.Tokens, oing.Tokens) {
+				toUpdated.Ingesters[name] = oing
+			}
 		}
 	}
 

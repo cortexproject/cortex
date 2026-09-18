@@ -162,7 +162,7 @@ func mergeExemplarSets(a, b []cortexpb.Exemplar) []cortexpb.Exemplar {
 func (d *Distributor) queryIngestersExemplars(ctx context.Context, replicationSet ring.ReplicationSet, req *ingester_client.ExemplarQueryRequest) (*ingester_client.ExemplarQueryResponse, error) {
 	// Fetch exemplars from multiple ingesters in parallel, using the replicationSet
 	// to deal with consistency.
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, false, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
+	results, err := replicationSet.DoWithExecutor(ctx, d.cfg.ExtraQueryDelay, false, false, d.queryWorkers, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err
@@ -229,7 +229,7 @@ func (d *Distributor) queryIngesterStream(ctx context.Context, replicationSet ri
 	)
 
 	// Fetch samples from multiple ingesters
-	results, err := replicationSet.Do(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
+	results, err := replicationSet.DoWithExecutor(ctx, d.cfg.ExtraQueryDelay, false, partialDataEnabled, d.queryWorkers, func(ctx context.Context, ing *ring.InstanceDesc) (any, error) {
 		client, err := d.ingesterPool.GetClientFor(ing.Addr)
 		if err != nil {
 			return nil, err

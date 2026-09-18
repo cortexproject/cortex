@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
+	"google.golang.org/grpc/codes"
 
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -46,7 +47,7 @@ func TranslateToPromqlAPIError(err error) error {
 		return err
 	default:
 		if errors.Is(err, context.Canceled) {
-			return err // 422
+			return err // 499
 		}
 
 		if search.IsResourceExhausted(err) {
@@ -62,6 +63,12 @@ func TranslateToPromqlAPIError(err error) error {
 
 		if ok {
 			code := s.Code()
+
+			// gRPC context cancellation (codes.Canceled) should be treated as a canceled query,
+			// not as a storage error (500).
+			if code == codes.Canceled {
+				return promql.ErrQueryCanceled("grpc context canceled")
+			}
 
 			// Treat these as HTTP status codes, even though they are supposed to be grpc codes.
 			if code >= 400 && code < 500 {

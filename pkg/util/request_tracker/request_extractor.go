@@ -83,7 +83,7 @@ func trimStringByBytes(str string, size int) string {
 	bytesStr := []byte(str)
 	trimIndex := len(bytesStr)
 	if size < len(bytesStr) {
-		for !utf8.RuneStart(bytesStr[size]) {
+		for size > 0 && !utf8.RuneStart(bytesStr[size]) {
 			size--
 		}
 		trimIndex = size
@@ -99,6 +99,9 @@ func trimForJsonMarshal(field string, size int) string {
 func trimForJsonMarshalRecursive(field string, size int, repeatCount int, repeatSize int) string {
 	//Should only repeat once since were over slightly over cutting based on the encoded size if we miss once
 	if repeatCount > 1 {
+		return ""
+	}
+	if repeatSize <= 0 {
 		return ""
 	}
 

@@ -2,6 +2,7 @@ package push
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -73,6 +75,9 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 			}
 
 			if _, err := push(ctx, &req.WriteRequest); err != nil {
+				if errors.Is(err, context.Canceled) {
+					err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
+				}
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
 				if !ok {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -80,7 +85,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
-				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
@@ -123,6 +128,9 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 			}
 
 			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+				if errors.Is(err, context.Canceled) {
+					err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
+				}
 				resp, ok := httpgrpc.HTTPResponseFromError(err)
 				if !ok {
 					setPRW2RespHeader(w, 0, 0, 0)
@@ -137,7 +145,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				}
 				if resp.GetCode()/100 == 5 {
 					level.Error(logger).Log("msg", "push error", "err", err)
-				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests {
+				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
 				http.Error(w, string(resp.Body), int(resp.Code))
@@ -206,9 +214,19 @@ func setPRW2RespHeader(w http.ResponseWriter, samples, histograms, exemplars int
 	w.Header().Set(rw20WrittenExemplarsHeader, strconv.FormatInt(exemplars, 10))
 }
 
+// v2MetadataKey identifies a unique piece of metadata within a v2 request.
+type v2MetadataKey struct {
+	metricFamilyName string
+	metricType       cortexpb.MetadataV2_MetricType
+	helpRef          uint32
+	unitRef          uint32
+}
+
 func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (v1Req cortexpb.PreallocWriteRequest, err error) {
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
+	// v2 attaches metadata to every series, so a metric family repeats once per series.
+	seenMetadata := make(map[v2MetadataKey]struct{})
 
 	// Release any pulled TimeSeries back to the pool to prevent memory leaks in case of an error.
 	defer func() {
@@ -300,12 +318,21 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 				return v1Req, err
 			}
 
-			var metadata *cortexpb.MetricMetadata
-			metadata, err = convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
-			if err != nil {
-				return v1Req, err
+			key := v2MetadataKey{
+				metricFamilyName: metricName,
+				metricType:       v2Ts.Metadata.Type,
+				helpRef:          v2Ts.Metadata.HelpRef,
+				unitRef:          v2Ts.Metadata.UnitRef,
 			}
-			v1Metadata = append(v1Metadata, metadata)
+			if _, ok := seenMetadata[key]; !ok {
+				var metadata *cortexpb.MetricMetadata
+				metadata, err = convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+				if err != nil {
+					return v1Req, err
+				}
+				seenMetadata[key] = struct{}{}
+				v1Metadata = append(v1Metadata, metadata)
+			}
 		}
 	}
 

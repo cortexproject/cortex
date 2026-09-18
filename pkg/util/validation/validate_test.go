@@ -509,33 +509,49 @@ func TestValidateNativeHistogram(t *testing.T) {
 			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 		{
-			name:                      "exceed limit and reduce resolution for 1 level, histogram",
-			bucketLimit:               6,
-			histogram:                 cortexpb.HistogramToHistogramProto(0, h.Copy()),
-			expectedHistogram:         cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(0)),
+			name:        "exceed limit and reduce resolution for 1 level, histogram",
+			bucketLimit: 6,
+			histogram:   cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: func() cortexpb.Histogram {
+				hc := h.Copy()
+				require.NoError(t, hc.ReduceResolution(0))
+				return cortexpb.HistogramToHistogramProto(0, hc)
+			}(),
 			resolutionReduced:         true,
 			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 		{
-			name:                      "exceed limit and reduce resolution for 1 level, float histogram",
-			bucketLimit:               6,
-			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
-			expectedHistogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(0)),
+			name:        "exceed limit and reduce resolution for 1 level, float histogram",
+			bucketLimit: 6,
+			histogram:   cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: func() cortexpb.Histogram {
+				fhc := fh.Copy()
+				require.NoError(t, fhc.ReduceResolution(0))
+				return cortexpb.FloatHistogramToHistogramProto(0, fhc)
+			}(),
 			resolutionReduced:         true,
 			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 		{
-			name:                      "exceed limit and reduce resolution for 2 levels, histogram",
-			bucketLimit:               4,
-			histogram:                 cortexpb.HistogramToHistogramProto(0, h.Copy()),
-			expectedHistogram:         cortexpb.HistogramToHistogramProto(0, h.Copy().ReduceResolution(-1)),
+			name:        "exceed limit and reduce resolution for 2 levels, histogram",
+			bucketLimit: 4,
+			histogram:   cortexpb.HistogramToHistogramProto(0, h.Copy()),
+			expectedHistogram: func() cortexpb.Histogram {
+				hc := h.Copy()
+				require.NoError(t, hc.ReduceResolution(-1))
+				return cortexpb.HistogramToHistogramProto(0, hc)
+			}(),
 			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 		{
-			name:                      "exceed limit and reduce resolution for 2 levels, float histogram",
-			bucketLimit:               4,
-			histogram:                 cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
-			expectedHistogram:         cortexpb.FloatHistogramToHistogramProto(0, fh.Copy().ReduceResolution(-1)),
+			name:        "exceed limit and reduce resolution for 2 levels, float histogram",
+			bucketLimit: 4,
+			histogram:   cortexpb.FloatHistogramToHistogramProto(0, fh.Copy()),
+			expectedHistogram: func() cortexpb.Histogram {
+				fhc := fh.Copy()
+				require.NoError(t, fhc.ReduceResolution(-1))
+				return cortexpb.FloatHistogramToHistogramProto(0, fhc)
+			}(),
 			discardedSampleLabelValue: nativeHistogramBucketCountLimitExceeded,
 		},
 		{

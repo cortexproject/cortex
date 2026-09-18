@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -97,10 +98,13 @@ func NewMergeQueryable(idLabelName string, maxConcurrent int, callback MergeQuer
 		allowPartialData:        allowPartialData,
 
 		tenantsPerQuery: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "querier_federated_tenants_per_query",
-			Help:      "Number of tenants per query.",
-			Buckets:   []float64{1, 2, 4, 8, 16, 32, 64},
+			Namespace:                       "cortex",
+			Name:                            "querier_federated_tenants_per_query",
+			Help:                            "Number of tenants per query.",
+			Buckets:                         []float64{1, 2, 4, 8, 16, 32, 64},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }

@@ -49,14 +49,21 @@ const (
 	ringKey = "parquet-converter"
 
 	converterMetaPrefix = "converter-meta-"
+
+	parquetConverterDataColumnDuration = time.Hour * 8
+	parquetConverterSystemColumnCount  = 2 // s_col_indexes and s_series_hash.
 )
 
 var RingOp = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+
+var errInvalidNumRowGroups = errors.New("invalid -parquet-converter.num-row-groups: must be greater than or equal to 0")
 
 type Config struct {
 	MetaSyncConcurrency int           `yaml:"meta_sync_concurrency"`
 	ConversionInterval  time.Duration `yaml:"conversion_interval"`
 	MaxRowsPerRowGroup  int           `yaml:"max_rows_per_row_group"`
+	NumRowGroups        int           `yaml:"num_row_groups"`
+	MaxNumColumns       int           `yaml:"max_num_columns"`
 	FileBufferEnabled   bool          `yaml:"file_buffer_enabled"`
 
 	DataDir string `yaml:"data_dir"`
@@ -107,8 +114,17 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.DataDir, "parquet-converter.data-dir", "./data", "Local directory path for caching TSDB blocks during parquet conversion.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "parquet-converter.meta-sync-concurrency", 20, "Maximum concurrent goroutines for downloading block metadata from object storage.")
 	f.IntVar(&cfg.MaxRowsPerRowGroup, "parquet-converter.max-rows-per-row-group", 1e6, "Maximum number of time series per parquet row group. Larger values improve compression but may reduce performance during reads.")
+	f.IntVar(&cfg.NumRowGroups, "parquet-converter.num-row-groups", 0, "Maximum number of row groups per parquet shard. Each shard holds at most num-row-groups * max-rows-per-row-group series, so lowering this value splits a block into more parquet shards for better read parallelization. 0 means unlimited (single shard).")
 	f.DurationVar(&cfg.ConversionInterval, "parquet-converter.conversion-interval", time.Minute, "How often to check for new TSDB blocks to convert to parquet format.")
+	f.IntVar(&cfg.MaxNumColumns, "parquet-converter.max-num-columns", 0, "Maximum number of columns per Parquet file. When exceeded, conversion will automatically shard the data into multiple files. 0 uses the library default (32767).")
 	f.BoolVar(&cfg.FileBufferEnabled, "parquet-converter.file-buffer-enabled", true, "Enable disk-based write buffering to reduce memory consumption during parquet file generation.")
+}
+
+func (cfg *Config) Validate() error {
+	if cfg.NumRowGroups < 0 {
+		return errInvalidNumRowGroups
+	}
+	return nil
 }
 
 func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides) (*Converter, error) {
@@ -126,22 +142,32 @@ func NewConverter(cfg Config, storageCfg cortex_tsdb.BlocksStorageConfig, blockR
 }
 
 func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex_tsdb.BlocksStorageConfig, blockRanges []int64, logger log.Logger, registerer prometheus.Registerer, limits *validation.Overrides, usersScanner users.Scanner) *Converter {
+	baseConverterOptions := []convert.ConvertOption{
+		convert.WithColDuration(time.Hour * 8),
+		convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
+	}
+
+	if cfg.NumRowGroups > 0 {
+		baseConverterOptions = append(baseConverterOptions, convert.WithNumRowGroups(cfg.NumRowGroups))
+	}
+
 	c := &Converter{
-		cfg:            cfg,
-		reg:            registerer,
-		storageCfg:     storageCfg,
-		logger:         logger,
-		limits:         limits,
-		usersScanner:   usersScanner,
-		pool:           chunkenc.NewPool(),
-		blockRanges:    blockRanges,
-		fetcherMetrics: block.NewFetcherMetrics(registerer, nil, nil),
-		metrics:        newMetrics(registerer),
-		bkt:            bkt,
-		baseConverterOptions: []convert.ConvertOption{
-			convert.WithColDuration(time.Hour * 8),
-			convert.WithRowGroupSize(cfg.MaxRowsPerRowGroup),
-		},
+		cfg:                  cfg,
+		reg:                  registerer,
+		storageCfg:           storageCfg,
+		logger:               logger,
+		limits:               limits,
+		usersScanner:         usersScanner,
+		pool:                 chunkenc.NewPool(),
+		blockRanges:          blockRanges,
+		fetcherMetrics:       block.NewFetcherMetrics(registerer, nil, nil),
+		metrics:              newMetrics(registerer),
+		bkt:                  bkt,
+		baseConverterOptions: baseConverterOptions,
+	}
+
+	if cfg.MaxNumColumns > 0 {
+		c.baseConverterOptions = append(c.baseConverterOptions, convert.WithMaxNumColumns(cfg.MaxNumColumns))
 	}
 
 	c.Service = services.NewBasicService(c.starting, c.running, c.stopping)
@@ -151,7 +177,12 @@ func newConverter(cfg Config, bkt objstore.InstrumentedBucket, storageCfg cortex
 func (c *Converter) starting(ctx context.Context) error {
 	lifecyclerCfg := c.cfg.Ring.ToLifecyclerConfig()
 	var err error
-	c.ringLifecycler, err = ring.NewLifecycler(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg))
+	var delegate ring.LifecyclerDelegate
+	delegate = &ring.DefaultLifecyclerDelegate{}
+	if c.cfg.Ring.AutoForgetDelay > 0 {
+		delegate = ring.NewLifecyclerAutoForgetDelegate(c.cfg.Ring.AutoForgetDelay, delegate, c.logger)
+	}
+	c.ringLifecycler, err = ring.NewLifecyclerWithDelegate(lifecyclerCfg, ring.NewNoopFlushTransferer(), "parquet-converter", ringKey, true, false, c.logger, prometheus.WrapRegistererWithPrefix("cortex_", c.reg), delegate)
 	if err != nil {
 		return errors.Wrap(err, "unable to initialize converter ring lifecycler")
 	}
@@ -396,6 +427,29 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
+		configuredMaxBlockLabelNames := c.limits.ParquetConverterMaxBlockLabelNames(userID)
+		maxBlockLabelNames := effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames, b.MinTime, b.MaxTime)
+
+		noConvertMark, err := cortex_parquet.ReadNoConvertMark(ctx, b.ULID, uBucket, logger)
+		if err != nil {
+			level.Error(logger).Log("msg", "failed to read parquet no-convert marker", "block", b.ULID.String(), "err", err)
+			continue
+		}
+
+		if cortex_parquet.ValidNoConvertMarkVersion(noConvertMark.Version) {
+			if noConvertMark.Reason != cortex_parquet.NoConvertReasonTooManyLabels {
+				level.Debug(logger).Log("msg", "skipping block, no-convert marker already exists", "block", b.ULID.String())
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonMarkerExists).Inc()
+				continue
+			}
+
+			if noConvertMark.ShouldSkipBlock(maxBlockLabelNames) {
+				level.Debug(logger).Log("msg", "skipping block because label count still exceeds current limit", "block", b.ULID.String(), "label_names_count", noConvertMark.LabelNamesCount, "current_limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
+				continue
+			}
+		}
+
 		if err := os.RemoveAll(c.compactRootDir()); err != nil {
 			level.Error(logger).Log("msg", "failed to remove work directory", "path", c.compactRootDir(), "err", err)
 			if c.checkConvertError(userID, err) {
@@ -423,6 +477,33 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 				return err
 			}
 			continue
+		}
+
+		if configuredMaxBlockLabelNames > 0 {
+			labelNames, err := tsdbBlock.LabelNames(ctx)
+			if err != nil {
+				_ = tsdbBlock.Close()
+				level.Error(logger).Log("msg", "failed to get label names", "block", b.ULID.String(), "err", err)
+				if c.checkConvertError(userID, err) {
+					return err
+				}
+				continue
+			}
+			labelNamesCount := len(labelNames)
+			if labelNamesCount > maxBlockLabelNames {
+				if err := cortex_parquet.WriteNoConvertMark(ctx, b.ULID, uBucket, labelNamesCount, maxBlockLabelNames); err != nil {
+					_ = tsdbBlock.Close()
+					level.Error(logger).Log("msg", "failed to write parquet no-convert marker", "block", b.ULID.String(), "err", err)
+					if c.checkConvertError(userID, err) {
+						return err
+					}
+					continue
+				}
+				level.Debug(logger).Log("msg", "skipping parquet conversion for block with too many label names", "block", b.ULID.String(), "label_names", labelNamesCount, "limit", maxBlockLabelNames)
+				c.metrics.skippedBlocks.WithLabelValues(userID, cortex_parquet.NoConvertReasonTooManyLabels).Inc()
+				_ = tsdbBlock.Close()
+				continue
+			}
 		}
 
 		level.Info(logger).Log("msg", "converting block", "block", b.ULID.String(), "dir", bdir)
@@ -484,6 +565,25 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 	}
 
 	return nil
+}
+
+func effectiveMaxBlockLabelNames(configuredMaxBlockLabelNames int, mint, maxt int64) int {
+	if configuredMaxBlockLabelNames <= 0 {
+		return configuredMaxBlockLabelNames
+	}
+
+	dataColumnCount := 0
+	if maxt >= mint {
+		dataColumnCount = int((maxt-mint)/parquetConverterDataColumnDuration.Milliseconds()) + 1
+	}
+
+	// Reserve for s_col_indexes, s_series_hash, and generated s_data_* columns.
+	maxBlockLabelNames := max(parquet.MaxColumnIndex-parquetConverterSystemColumnCount-dataColumnCount, 0)
+
+	if configuredMaxBlockLabelNames > maxBlockLabelNames {
+		return maxBlockLabelNames
+	}
+	return configuredMaxBlockLabelNames
 }
 
 func (c *Converter) checkConvertError(userID string, err error) (terminate bool) {

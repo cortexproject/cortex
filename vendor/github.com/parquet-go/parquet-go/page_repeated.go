@@ -123,7 +123,7 @@ func (r *repeatedPageValues) ReadValues(values []Value) (n int, err error) {
 	maxDefinitionLevel := r.page.maxDefinitionLevel
 	definitionLevels := r.page.definitionLevels
 	repetitionLevels := r.page.repetitionLevels
-	columnIndex := ^int16(r.page.Column())
+	columnIndex := ^uint16(r.page.Column())
 
 	// While we haven't exceeded the output buffer and we haven't exceeded the page size.
 	for n < len(values) && r.offset < len(definitionLevels) {
@@ -152,7 +152,12 @@ func (r *repeatedPageValues) ReadValues(values []Value) (n int, err error) {
 
 		// Copy all the non-zero values in this run.
 		if n < i {
-			for j, err = r.values.ReadValues(values[n:i]); j > 0; j-- {
+			j, err := r.values.ReadValues(values[n:i])
+			if j == 0 && err == io.EOF {
+				// Underlying page exhausted before definitionLevels - corrupted file
+				return n, io.EOF
+			}
+			for ; j > 0; j-- {
 				values[n].repetitionLevel = repetitionLevels[r.offset]
 				values[n].definitionLevel = maxDefinitionLevel
 				r.offset++

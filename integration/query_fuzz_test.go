@@ -4,6 +4,7 @@ package integration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -20,6 +21,7 @@ import (
 	"github.com/cortexproject/promqlsmith"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
@@ -115,13 +117,13 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -216,13 +218,13 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -336,7 +338,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	numSamples := 240
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 
@@ -357,7 +359,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, now)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -379,7 +381,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		expr  parser.Expr
 		query string
 	)
-	for i := 0; i < testRun; i++ {
+	for range testRun {
 		for {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
@@ -403,7 +405,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	for i, tc := range cases {
 		qt := "range query"
 		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
+			if !sameErrorClass(tc.err1, tc.err2) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
@@ -423,7 +425,8 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 }
 
 func TestExpandedPostingsCacheFuzz(t *testing.T) {
-	stableCortexImage := "quay.io/cortexproject/cortex:v1.18.0"
+	stableCortexImage, err := getLatestReleaseImage()
+	require.NoError(t, err)
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -518,8 +521,8 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
 	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
 
-	for i := 0; i < numSeries; i++ {
-		for j := 0; j < numberOfLabelsPerSeries; j++ {
+	for i := range numSeries {
+		for j := range numberOfLabelsPerSeries {
 			series := e2e.GenerateSeriesWithSamples(
 				fmt.Sprintf("test_series_%d", i),
 				start,
@@ -538,7 +541,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		}
 	}
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledAggrs(enabledAggrs),
@@ -549,10 +552,13 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	testRun := 300
 	queries := make([]string, 0, testRun)
 	matchers := make([]string, 0, testRun)
-	for i := 0; i < testRun; i++ {
-		expr := ps.WalkRangeQuery()
-		if isValidQuery(expr, true) {
-			break
+	for i := range testRun {
+		var expr parser.Expr
+		for {
+			expr = ps.WalkRangeQuery()
+			if isValidQuery(expr, true) {
+				break
+			}
 		}
 		queries = append(queries, expr.Pretty(0))
 		matchers = append(matchers, storepb.PromMatchersToString(
@@ -563,11 +569,11 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	}
 
 	// Lets run multiples iterations and create new series every iteration
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 
 		nss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
-		for i := 0; i < numSeries; i++ {
-			for j := 0; j < numberOfLabelsPerSeries; j++ {
+		for i := range numSeries {
+			for j := range numberOfLabelsPerSeries {
 				nss[i*numberOfLabelsPerSeries+j] = e2e.GenerateSeriesWithSamples(
 					fmt.Sprintf("test_series_%d", i),
 					start.Add(scrapeInterval*time.Duration(numSamples*j)),
@@ -639,7 +645,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		failures := 0
 		for i, tc := range cases {
 			if tc.err1 != nil || tc.err2 != nil {
-				if !cmp.Equal(tc.err1, tc.err2) {
+				if !sameErrorClass(tc.err1, tc.err2) {
 					t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
 					failures++
 				}
@@ -651,7 +657,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 			} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
 				failures++
-			} else if !cmp.Equal(tc.sres1, tc.sres1, labelSetsComparer) {
+			} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
 				t.Logf("case %d results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
 				failures++
 			}
@@ -659,6 +665,280 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 		if failures > 0 {
 			require.Failf(t, "finished query fuzzing tests", "%d test cases failed", failures)
 		}
+	}
+}
+
+// TestLazyMatchersFuzz fuzzes PromQL queries against two cortex instances with
+// identical data:
+//   - cortex-1: head expanded-postings cache enabled, lazy matcher DISABLED
+//     (the eager path - regex applied during postings lookup).
+//   - cortex-2: head expanded-postings cache enabled, lazy matcher ENABLED
+//     with aggressive thresholds (cardinality=1, both cost ratios=1) so the
+//     optimization fires on every regex matcher.
+//
+// The test verifies:
+//  1. Query results match between the two instances (correctness).
+//  2. The cortex_ingester_expanded_postings_lazy_matcher_queries_total counter
+//     is incremented on cortex-2 (the optimization actually triggers).
+func TestLazyMatchersFuzz(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul1 := e2edb.NewConsulWithName("consul1")
+	consul2 := e2edb.NewConsulWithName("consul2")
+	require.NoError(t, s.StartAndWaitReady(consul1, consul2))
+
+	baseFlags := mergeFlags(
+		AlertmanagerLocalFlags(),
+		map[string]string{
+			"-store.engine":                                         blocksStorageEngine,
+			"-blocks-storage.backend":                               "filesystem",
+			"-blocks-storage.tsdb.head-compaction-interval":         "4m",
+			"-blocks-storage.tsdb.block-ranges-period":              "2h",
+			"-blocks-storage.tsdb.ship-interval":                    "1h",
+			"-blocks-storage.bucket-store.sync-interval":            "15m",
+			"-blocks-storage.tsdb.retention-period":                 "2h",
+			"-blocks-storage.bucket-store.index-cache.backend":      tsdb.IndexCacheBackendInMemory,
+			"-blocks-storage.bucket-store.bucket-index.enabled":     "true",
+			"-blocks-storage.expanded_postings_cache.head.enabled":  "true",
+			"-blocks-storage.expanded_postings_cache.block.enabled": "true",
+			"-distributor.replication-factor":                       "1",
+			"-store-gateway.sharding-enabled":                       "false",
+			"-alertmanager.web.external-url":                        "http://localhost/alertmanager",
+			// The alertmanager initializes a memberlist gossip ring that auto-
+			// detects a private RFC1918 IP. On Docker networks where containers
+			// get non-private IPs (e.g. the 240.0.0.0/4 reserved range), this
+			// detection hard-fails. Setting an explicit advertise address skips
+			// the autodetection — the value is unused since we don't enable HA
+			// peers, but presence of the flag is enough.
+			"-alertmanager.cluster.advertise-address": "127.0.0.1:9094",
+		},
+	)
+
+	// cortex-1: eager path. Lazy matcher disabled (default).
+	flags1 := mergeFlags(baseFlags, map[string]string{
+		"-ring.store":                        "consul",
+		"-consul.hostname":                   consul1.NetworkHTTPEndpoint(),
+		"-ingester.matchers-cache-max-items": "10000",
+	})
+
+	// cortex-2: lazy path. Aggressive thresholds force the optimization to
+	// fire on essentially every regex matcher, so we exercise the lazy code
+	// path repeatedly for correctness verification.
+	flags2 := mergeFlags(baseFlags, map[string]string{
+		"-ring.store":                        "consul",
+		"-consul.hostname":                   consul2.NetworkHTTPEndpoint(),
+		"-ingester.matchers-cache-max-items": "10000",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality":    "1",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio":  "1",
+		"-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio": "1",
+	})
+
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	path1 := path.Join(s.SharedDir(), "cortex-1")
+	path2 := path.Join(s.SharedDir(), "cortex-2")
+	flags1 = mergeFlags(flags1, map[string]string{"-blocks-storage.filesystem.dir": path1})
+	flags2 = mergeFlags(flags2, map[string]string{"-blocks-storage.filesystem.dir": path2})
+
+	// Both instances use the local build.
+	cortex1 := e2ecortex.NewSingleBinary("cortex-1", flags1, "")
+	cortex2 := e2ecortex.NewSingleBinary("cortex-2", flags2, "")
+	require.NoError(t, s.StartAndWaitReady(cortex1, cortex2))
+
+	require.NoError(t, cortex1.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Equals(float64(512)), "cortex_ring_tokens_total"))
+
+	c1, err := e2ecortex.NewClient(cortex1.HTTPEndpoint(), cortex1.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+	c2, err := e2ecortex.NewClient(cortex2.HTTPEndpoint(), cortex2.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	now := time.Now()
+	start := now.Add(-24 * time.Hour)
+	scrapeInterval := 30 * time.Second
+
+	// Build a fixture with multiple labels, including a high-cardinality
+	// "pod"-style label so regex matchers from promqlsmith actually exercise
+	// the deferral path. With lazy-matcher-max-cardinality=1, any label with
+	// >1 unique value is eligible.
+	numSeries := 10
+	numberOfLabelsPerSeries := 5
+	numSamples := 10
+	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
+	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
+
+	for i := range numSeries {
+		for j := range numberOfLabelsPerSeries {
+			series := e2e.GenerateSeriesWithSamples(
+				fmt.Sprintf("test_series_%d", i),
+				start,
+				scrapeInterval,
+				i*numSamples,
+				numSamples,
+				prompb.Label{Name: "test_label", Value: fmt.Sprintf("test_label_value_%d", j)},
+				prompb.Label{Name: "pod", Value: fmt.Sprintf("test_pod_%d_%d", i, j)},
+			)
+			ss[i*numberOfLabelsPerSeries+j] = series
+
+			builder := labels.NewBuilder(labels.EmptyLabels())
+			for _, lbl := range series.Labels {
+				builder.Set(lbl.Name, lbl.Value)
+			}
+			lbls[i*numberOfLabelsPerSeries+j] = builder.Labels()
+		}
+	}
+
+	for _, client := range []*e2ecortex.Client{c1, c2} {
+		res, err := client.Push(ss)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	rnd := rand.New(rand.NewSource(now.Unix()))
+	opts := []promqlsmith.Option{
+		promqlsmith.WithEnabledAggrs(enabledAggrs),
+	}
+	ps := promqlsmith.New(rnd, lbls, opts...)
+
+	// Regex patterns that exercise different cost classes in the lazy matcher gate.
+	// Each pattern matches a SUBSET of pods (not all), so both =~ and !~ queries
+	// return non-empty results, verifying correctness with actual data.
+	regexPatterns := []string{
+		".*_0_.*",                    // single contains (simple) — 5/50 pods
+		".*_[0-4]_[0-2]",             // character class (complex) — 15/50 pods
+		"test_pod_[5-9]_.*",          // prefix + class (complex) — 25/50 pods
+		".*pod_3.*",                  // single contains (simple) — 5/50 pods
+		"(test_pod_1|test_pod_2)_.*", // alternation (complex) — 10/50 pods
+	}
+
+	testRun := 300
+	queries := make([]string, 0, testRun*2)
+	matchers := make([]string, 0, testRun)
+	for i := range testRun {
+		expr := ps.WalkRangeQuery()
+		if !isValidQuery(expr, true) {
+			continue
+		}
+		queries = append(queries, expr.Pretty(0))
+
+		// Each matcher set includes a __name__= anchor + a regex on pod,
+		// guaranteeing the lazy matcher optimization fires on every cache miss.
+		regex := regexPatterns[i%len(regexPatterns)]
+		matchers = append(matchers, storepb.PromMatchersToString(
+			append(
+				ps.WalkSelectors(),
+				labels.MustNewMatcher(labels.MatchEqual, "__name__", fmt.Sprintf("test_series_%d", i%numSeries)),
+				labels.MustNewMatcher(labels.MatchRegexp, "pod", regex),
+			)...))
+
+		// Also generate a direct PromQL query with the regex so the instant/range
+		// query path exercises the lazy matcher too. Include iteration index in
+		// a != matcher to force unique cache keys (cache miss on every query).
+		queries = append(queries, fmt.Sprintf(`test_series_%d{pod=~"%s",test_label!="iter_%d"}`, i%numSeries, regex, i))
+		// Also test negative regex (!~) to exercise that code path.
+		queries = append(queries, fmt.Sprintf(`test_series_%d{pod!~"%s",test_label!="iter_%d_neg"}`, i%numSeries, regex, i))
+	}
+
+	type testCase struct {
+		query        string
+		qt           string
+		res1, res2   model.Value
+		sres1, sres2 []model.LabelSet
+		err1, err2   error
+	}
+
+	cases := make([]*testCase, 0, len(queries)*2+len(matchers))
+
+	// Data spans [start, start + (numSamples-1)*scrapeInterval]. Constrain
+	// fuzzed timestamps to this window so queries actually hit the head block.
+	dataEnd := start.Add(scrapeInterval * time.Duration(numSamples-1))
+	dataWindowMs := dataEnd.Sub(start).Milliseconds()
+
+	for _, query := range queries {
+		fuzzyTime := time.Duration(rand.Int63n(dataWindowMs))
+		queryEnd := start.Add(fuzzyTime * time.Millisecond)
+		res1, err1 := c1.Query(query, queryEnd)
+		res2, err2 := c2.Query(query, queryEnd)
+		cases = append(cases, &testCase{
+			query: query, qt: "instant",
+			res1: res1, res2: res2, err1: err1, err2: err2,
+		})
+		res1, err1 = c1.QueryRange(query, start, queryEnd, scrapeInterval)
+		res2, err2 = c2.QueryRange(query, start, queryEnd, scrapeInterval)
+		cases = append(cases, &testCase{
+			query: query, qt: "range query",
+			res1: res1, res2: res2, err1: err1, err2: err2,
+		})
+	}
+
+	for _, m := range matchers {
+		fuzzyTime := time.Duration(rand.Int63n(dataWindowMs))
+		queryEnd := start.Add(fuzzyTime * time.Millisecond)
+		res1, err := c1.Series([]string{m}, start, queryEnd)
+		require.NoError(t, err)
+		res2, err := c2.Series([]string{m}, start, queryEnd)
+		require.NoError(t, err)
+		cases = append(cases, &testCase{
+			query: m, qt: "get series",
+			sres1: res1, sres2: res2,
+		})
+	}
+
+	failures := 0
+	for i, tc := range cases {
+		if tc.err1 != nil || tc.err2 != nil {
+			if !sameErrorClass(tc.err1, tc.err2) {
+				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, tc.qt, tc.query, tc.err1, tc.err2)
+				failures++
+			}
+		} else if shouldUseSampleNumComparer(tc.query) {
+			if !cmp.Equal(tc.res1, tc.res2, sampleNumComparer) {
+				t.Logf("case %d # of samples mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+				failures++
+			}
+		} else if !cmp.Equal(tc.res1, tc.res2, comparer) {
+			t.Logf("case %d results mismatch.\n%s: %s\nres1: %s\nres2: %s\n", i, tc.qt, tc.query, tc.res1.String(), tc.res2.String())
+			failures++
+		} else if !cmp.Equal(tc.sres1, tc.sres2, labelSetsComparer) {
+			t.Logf("case %d series results mismatch.\n%s: %s\nsres1: %s\nsres2: %s\n", i, tc.qt, tc.query, tc.sres1, tc.sres2)
+			failures++
+		}
+	}
+	if failures > 0 {
+		require.Failf(t, "finished lazy matcher fuzzing tests", "%d test cases failed", failures)
+	}
+
+	// Verify the lazy-matcher optimization was actually triggered on cortex-2.
+	// If the gate is misconfigured or the test fixture doesn't exercise the
+	// path, this guards against silent regressions where the optimization
+	// becomes a no-op.
+
+	// Diagnostic: print related counters before the assertion so failures
+	// can be debugged from the test output.
+	for _, m := range []string{
+		"cortex_ingester_queries",
+		"cortex_ingester_queried_series",
+		"cortex_ingester_queried_chunks",
+		"cortex_ingester_expanded_postings_cache_requests_total",
+		"cortex_ingester_expanded_postings_cache_hits_total",
+		"cortex_ingester_expanded_postings_non_cacheable_queries_total",
+		"cortex_ingester_expanded_postings_lazy_matcher_queries_total",
+	} {
+		v, _ := cortex2.SumMetrics([]string{m})
+		t.Logf("cortex-2 %s = %v", m, v)
+	}
+
+	require.NoError(t, cortex2.WaitSumMetrics(e2e.Greater(0),
+		"cortex_ingester_expanded_postings_lazy_matcher_queries_total"))
+
+	// Sanity check: cortex-1 (eager) should NEVER increment this counter.
+	c1Lazy, err := cortex1.SumMetrics([]string{"cortex_ingester_expanded_postings_lazy_matcher_queries_total"})
+	if err == nil && len(c1Lazy) > 0 {
+		require.Equal(t, float64(0), c1Lazy[0],
+			"cortex-1 has lazy matcher disabled but the metric is non-zero")
 	}
 }
 
@@ -730,7 +1010,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := 30 * time.Second
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -767,7 +1047,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -846,7 +1126,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := 30 * time.Second
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -883,7 +1163,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 
 	waitUntilReady(t, context.Background(), c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -913,10 +1193,10 @@ var sampleNumComparer = cmp.Comparer(func(x, y model.Value) bool {
 	mySamples := 0
 
 	if xmat && ymat {
-		for i := 0; i < len(mx); i++ {
+		for i := range mx {
 			mxSamples += len(mx[i].Values)
 		}
-		for i := 0; i < len(my); i++ {
+		for i := range my {
 			mySamples += len(my[i].Values)
 		}
 	}
@@ -1064,7 +1344,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		sort.Sort(vx)
 		sort.Sort(vy)
 
-		for i := 0; i < len(vx); i++ {
+		for i := range vx {
 			if !compareMetrics(vx[i].Metric, vy[i].Metric) {
 				return false
 			}
@@ -1091,7 +1371,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		// Sort matrix before comparing.
 		sort.Sort(mx)
 		sort.Sort(my)
-		for i := 0; i < len(mx); i++ {
+		for i := range mx {
 			mxs := mx[i]
 			mys := my[i]
 
@@ -1105,7 +1385,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 			if len(xps) != len(yps) {
 				return false
 			}
-			for j := 0; j < len(xps); j++ {
+			for j := range xps {
 				if xps[j].Timestamp != yps[j].Timestamp {
 					return false
 				}
@@ -1120,7 +1400,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 			if len(xhs) != len(yhs) {
 				return false
 			}
-			for j := 0; j < len(xhs); j++ {
+			for j := range xhs {
 				if xhs[j].Timestamp != yhs[j].Timestamp {
 					return false
 				}
@@ -1198,11 +1478,11 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	scrapeInterval := (10 * time.Second).Milliseconds()
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := t.TempDir()
 	storage, err := e2ecortex.NewS3ClientForMinio(minio, flags["-blocks-storage.s3.bucket-name"])
@@ -1265,7 +1545,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	}
 
 	cases := make([]*testCase, 0, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
@@ -1353,11 +1633,11 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	scrapeInterval := (10 * time.Second).Milliseconds()
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1426,7 +1706,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	}
 
 	cases := make([]*testCase, 0, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
@@ -1473,7 +1753,7 @@ var labelSetsComparer = cmp.Comparer(func(x, y []model.LabelSet) bool {
 	if len(x) != len(y) {
 		return false
 	}
-	for i := 0; i < len(x); i++ {
+	for i := range x {
 		if !x[i].Equal(y[i]) {
 			return false
 		}
@@ -1483,8 +1763,8 @@ var labelSetsComparer = cmp.Comparer(func(x, y []model.LabelSet) bool {
 
 // TestBackwardCompatibilityQueryFuzz compares query results with the latest Cortex release.
 func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
-	// TODO: expose the image tag to be passed from Makefile or Github Action Config.
-	previousCortexReleaseImage := "quay.io/cortexproject/cortex:v1.18.1"
+	previousCortexReleaseImage, err := getLatestReleaseImage()
+	require.NoError(t, err)
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
 	defer s.Close()
@@ -1552,7 +1832,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := time.Minute
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -1590,7 +1870,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
 
-	rnd := rand.New(rand.NewSource(now.Unix()))
+	rnd := newFuzzRand(t)
 	opts := []promqlsmith.Option{
 		// @ modifier and offset disabled: known bug in Prometheus (e.g. predict_linear with @/offset can panic).
 		promqlsmith.WithEnabledFunctions(enabledFunctions),
@@ -1656,13 +1936,13 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
 
 	ctx := context.Background()
-	rnd := rand.New(rand.NewSource(time.Now().Unix()))
+	rnd := newFuzzRand(t)
 
 	dir := filepath.Join(s.SharedDir(), "data")
 	err = os.MkdirAll(dir, os.ModePerm)
@@ -1772,7 +2052,7 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples,
 			prompb.Label{Name: "job", Value: "test"},
 			prompb.Label{Name: "series", Value: strconv.Itoa(i)},
@@ -1816,8 +2096,7 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	_, err = c2.PushV2(symbols, v2Series)
 	require.NoError(t, err)
 
-	seed := now.Unix()
-	rnd := rand.New(rand.NewSource(seed))
+	rnd := newFuzzRand(t)
 
 	ctx := context.Background()
 	waitUntilReady(t, ctx, c1, c2, `{job="test"}`, start, end)
@@ -1905,7 +2184,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 		expr  parser.Expr
 		query string
 	)
-	for i := 0; i < run; i++ {
+	for range run {
 		for {
 			expr = ps.WalkInstantQuery()
 			if isValidQuery(expr, skipStdAggregations) {
@@ -1926,7 +2205,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 		})
 	}
 
-	for i := 0; i < run; i++ {
+	for range run {
 		for {
 			expr = ps.WalkRangeQuery()
 			if isValidQuery(expr, skipStdAggregations) {
@@ -1954,7 +2233,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 			qt = "range query"
 		}
 		if tc.err1 != nil || tc.err2 != nil {
-			if !cmp.Equal(tc.err1, tc.err2) {
+			if !sameErrorClass(tc.err1, tc.err2) {
 				t.Logf("case %d error mismatch.\n%s: %s\nerr1: %v\nerr2: %v\n", i, qt, tc.query, tc.err1, tc.err2)
 				failures++
 			}
@@ -2029,6 +2308,222 @@ func TestHasOrVectorFallback(t *testing.T) {
 	}
 }
 
+// newFuzzRand returns a *rand.Rand whose seed is logged via t.Logf so failing
+// fuzz cases can be reproduced. By default the seed is time.Now().Unix();
+// setting FUZZ_SEED to a base-10 int64 overrides the default and pins the
+// run to a specific seed.
+func newFuzzRand(t *testing.T) *rand.Rand {
+	seed := time.Now().Unix()
+	if v := os.Getenv("FUZZ_SEED"); v != "" {
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			t.Logf("integration fuzz random seed: overridden to %d via FUZZ_SEED", parsed)
+			seed = parsed
+		} else {
+			t.Logf("integration fuzz random seed: ignoring invalid FUZZ_SEED=%q: %v", v, err)
+		}
+	}
+	t.Logf("integration fuzz random seed: %d (override with FUZZ_SEED env var)", seed)
+	return rand.New(rand.NewSource(seed))
+}
+
+// duplicateSeriesRE matches the non-deterministic two-element series list emitted
+// by the PromQL "found duplicate series for the match group" many-to-many error.
+// Both the Prometheus engine
+// (vendor/github.com/prometheus/prometheus/promql/engine.go) and the Thanos
+// PromQL engine (vendor/github.com/thanos-io/promql-engine/execution/binary/utils.go)
+// build the two labelsets from Go map iteration, so the pair can appear in either
+// order across two processes even when the underlying error is identical, which
+// flakes a strict string comparison.
+//
+// The pattern is deliberately anchored to this one error: it only fires after the
+// literal "found duplicate series for the match group {...} ... hand-side of the
+// operation: " prefix - the match group and both list entries are matched as
+// whole labelsets ({...}), so a "," inside any labelset is never mistaken for the
+// entry separator and a "[" inside a label value cannot make the pattern fire.
+// The exact two-element [{...}, {...}] shape is hard-coded: if either
+// engine changes the element count, separator, or brackets, this stops matching
+// and the strict comparator fails loudly instead of silently absorbing the change.
+//
+// Remove this workaround (revert sameErrorClass to a direct comparison) once both
+// upstream fixes have landed and been vendored:
+//   - https://github.com/prometheus/prometheus/pull/18810
+//   - https://github.com/thanos-io/promql-engine/pull/711
+var duplicateSeriesRE = regexp.MustCompile(
+	`(found duplicate series for the match group \{(?:[^"{}]|"(?:\\.|[^"\\])*")*\} on the (?:left|right) hand-side of the operation: )` +
+		`\[(\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\}), (\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\})\]`,
+)
+
+// canonicalizeDuplicateSeriesErr rewrites the two-element series list in a
+// "found duplicate series for the match group" error into a deterministic order
+// so the message compares equal across PromQL engines regardless of the upstream
+// map-iteration order. Any other text, including bracketed content elsewhere in
+// the message, is left untouched.
+func canonicalizeDuplicateSeriesErr(msg string) string {
+	return duplicateSeriesRE.ReplaceAllStringFunc(msg, func(m string) string {
+		sub := duplicateSeriesRE.FindStringSubmatch(m)
+		a, b := sub[2], sub[3]
+		if a > b {
+			a, b = b, a
+		}
+		return sub[1] + "[" + a + ", " + b + "]"
+	})
+}
+
+// sameErrorClass reports whether two errors returned by the Prometheus HTTP query
+// API should be treated as equivalent by the fuzz tests. Both-nil is equal;
+// exactly-one-nil is not. When both are typed *promv1.Error values they must agree
+// on Type, on Detail, and on a canonicalized Msg; otherwise the canonicalized
+// Error() strings are compared. Canonicalization only normalizes the known
+// non-deterministic duplicate-series ordering (see canonicalizeDuplicateSeriesErr),
+// so two genuinely different errors of the same Type still diverge.
+func sameErrorClass(err1, err2 error) bool {
+	if err1 == nil && err2 == nil {
+		return true
+	}
+	if err1 == nil || err2 == nil {
+		return false
+	}
+	var pErr1, pErr2 *promv1.Error
+	ok1 := errors.As(err1, &pErr1)
+	ok2 := errors.As(err2, &pErr2)
+	if ok1 && ok2 {
+		return pErr1.Type == pErr2.Type &&
+			pErr1.Detail == pErr2.Detail &&
+			canonicalizeDuplicateSeriesErr(pErr1.Msg) == canonicalizeDuplicateSeriesErr(pErr2.Msg)
+	}
+	return canonicalizeDuplicateSeriesErr(err1.Error()) == canonicalizeDuplicateSeriesErr(err2.Error())
+}
+
+func TestSameErrorClass(t *testing.T) {
+	dupMsg := func(group, side, a, b string) string {
+		return "execution: found duplicate series for the match group " + group + " on the " + side + " hand-side of the operation: [" + a + ", " + b + "];many-to-many matching not allowed: matching labels must be unique on one side"
+	}
+
+	for _, tc := range []struct {
+		name string
+		err1 error
+		err2 error
+		want bool
+	}{
+		{
+			name: "both nil",
+			want: true,
+		},
+		{
+			name: "only err1 nil",
+			err2: errors.New("execution: division by zero"),
+			want: false,
+		},
+		{
+			name: "only err2 nil",
+			err1: errors.New("execution: division by zero"),
+			want: false,
+		},
+		{
+			name: "typed ErrExec dup-series multi-label labelsets reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="x", series="2"}`, `{__name__="y", series="2"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="y", series="2"}`, `{__name__="x", series="2"}`)},
+			want: true,
+		},
+		{
+			name: "typed ErrExec dup-series single-label reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="x"}`, `{__name__="y"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "right", `{__name__="y"}`, `{__name__="x"}`)},
+			want: true,
+		},
+		{
+			name: "typed ErrExec dup-series three labels each reordered",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "left", `{__name__="x", instance="a", series="2"}`, `{__name__="y", instance="b", series="2"}`)},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: dupMsg(`{series="2"}`, "left", `{__name__="y", instance="b", series="2"}`, `{__name__="x", instance="a", series="2"}`)},
+			want: true,
+		},
+		{
+			name: "typed different Type same Msg",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: division by zero"},
+			err2: &promv1.Error{Type: promv1.ErrBadData, Msg: "execution: division by zero"},
+			want: false,
+		},
+		{
+			name: "typed same Type and Msg different Detail",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "boom", Detail: "detail A"},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: "boom", Detail: "detail B"},
+			want: false,
+		},
+		{
+			name: "typed same Type materially different msgs",
+			err1: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: division by zero"},
+			err2: &promv1.Error{Type: promv1.ErrExec, Msg: "execution: parse error: unexpected token"},
+			want: false,
+		},
+		{
+			name: "untyped dup-series reordered",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{__name__="x", series="2"}`, `{__name__="y", series="2"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{__name__="y", series="2"}`, `{__name__="x", series="2"}`)),
+			want: true,
+		},
+		{
+			name: "untyped different messages",
+			err1: errors.New("one"),
+			err2: errors.New("two"),
+			want: false,
+		},
+		{
+			name: "dup-series label values contain brackets commas braces",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="[1,2]", b="{x}"}`, `{c="3"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c="3"}`, `{a="[1,2]", b="{x}"}`)),
+			want: true,
+		},
+		{
+			name: "dup-series label value with escaped quote",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="say \"hi\""}`, `{c="3"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c="3"}`, `{a="say \"hi\""}`)),
+			want: true,
+		},
+		{
+			name: "dup-series label value with nested brackets",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a="[[1],[2]]"}`, `{z="ok"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{z="ok"}`, `{a="[[1],[2]]"}`)),
+			want: true,
+		},
+		{
+			name: "dup-series same bracket list different surrounding text",
+			err1: errors.New(dupMsg(`{series="2"}`, "left", `{a="1"}`, `{b="2"}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{b="2"}`, `{a="1"}`)),
+			want: false,
+		},
+		{
+			name: "unrelated bracket list outside dup prefix",
+			err1: errors.New(`oops: [{a="1", b="2"}, {c="3"}]`),
+			err2: errors.New(`oops: [{c="3"}, {a="1", b="2"}]`),
+			want: false,
+		},
+		{
+			name: "dup-series with third element",
+			err1: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{a}, {b}, {c}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			err2: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{b}, {a}, {c}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			want: false,
+		},
+		{
+			name: "dup-series separator changed is not canonicalized (loud break)",
+			err1: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{a="1"},{b="2"}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			err2: errors.New(`execution: found duplicate series for the match group {series="2"} on the right hand-side of the operation: [{b="2"},{a="1"}];many-to-many matching not allowed: matching labels must be unique on one side`),
+			want: false,
+		},
+		{
+			name: "dup-series genuinely different labelset values",
+			err1: errors.New(dupMsg(`{series="2"}`, "right", `{a}`, `{b}`)),
+			err2: errors.New(dupMsg(`{series="2"}`, "right", `{c}`, `{d}`)),
+			want: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sameErrorClass(tc.err1, tc.err2); got != tc.want {
+				t.Fatalf("sameErrorClass(%v, %v) = %v, want %v", tc.err1, tc.err2, got, tc.want)
+			}
+		})
+	}
+}
+
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 	isValid := true
 	queryStr := generatedQuery.String()
@@ -2069,8 +2564,41 @@ func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 		if strings.Contains(queryStr, "atan2") {
 			return false
 		}
+		if containsLogicalOr(generatedQuery) {
+			// Prometheus 3.9 changed how a result whose series collide after __name__
+			// removal is handled: cleanupMetricLabels used to fail the whole query with
+			// "vector cannot contain metrics with the same labelset", and now merges
+			// series that have non-overlapping timestamps instead (see
+			// mergeSeriesWithSameLabelset, vendored by #7535).
+			//
+			// `or` is what builds such a result, by unioning series that only differ by
+			// __name__ and are then name-dropped by an enclosing operation, e.g.
+			// `-(rate({__name__="a"}[4m]) or {__name__="a"})`. The older Prometheus in
+			// the latest released Cortex image errors where HEAD returns data, which is a
+			// legitimate cross-version difference and not a Cortex bug. Whether a given
+			// `or` actually collides can only be known by evaluating it, so skip `or`
+			// entirely for cross-version comparisons. `or` stays covered by the fuzz
+			// tests that compare two instances of the same build.
+			//
+			// See https://github.com/cortexproject/cortex/issues/7803.
+			return false
+		}
 	}
 	return isValid
+}
+
+// containsLogicalOr reports whether the expression uses the `or` set operator anywhere.
+// `and` and `unless` are excluded on purpose: they only ever return series taken from
+// the left hand side, so they cannot union series that differ only by __name__.
+func containsLogicalOr(expr parser.Expr) bool {
+	found := false
+	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
+		if n, ok := node.(*parser.BinaryExpr); ok && n.Op == parser.LOR {
+			found = true
+		}
+		return nil
+	})
+	return found
 }
 
 func resultLength(x model.Value) int {

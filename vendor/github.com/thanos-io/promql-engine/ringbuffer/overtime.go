@@ -130,6 +130,9 @@ func (r *OverTimeBuffer) SampleCount() int {
 func (r *OverTimeBuffer) MaxT() int64 { return r.lastTimestamp }
 
 func (r *OverTimeBuffer) Push(t int64, v Value) {
+	if t <= r.stepRanges[0].mint {
+		return
+	}
 	// Set the lastSample sample for the current evaluation step.
 	r.lastTimestamp = t
 
@@ -186,9 +189,7 @@ func (r *OverTimeBuffer) Reset(mint int64, evalt int64) {
 	r.firstTimestamps[lastSample] = math.MaxInt64
 }
 
-func (r *OverTimeBuffer) ReadIntoLast(func(*Sample)) {}
-
-func (r *OverTimeBuffer) Eval(ctx context.Context, _, _ float64, _ int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
+func (r *OverTimeBuffer) Eval(ctx context.Context, _, _ float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	var warn warnings.Warnings
 
 	if r.stepStates[0].warn != nil {

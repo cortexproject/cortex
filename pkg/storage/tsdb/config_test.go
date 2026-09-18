@@ -145,6 +145,42 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectedErr: errUnSupportedWALCompressionType,
 		},
+		"should fail on parquet query concurrency set to 0": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = 0
+			},
+			expectedErr: errInvalidParquetQueryConcurrency,
+		},
+		"should fail on negative parquet query concurrency": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = -1
+			},
+			expectedErr: errInvalidParquetQueryConcurrency,
+		},
+		"should pass on valid parquet query concurrency": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.ParquetQueryConcurrency = 4
+			},
+			expectedErr: nil,
+		},
+		"should fail on negative max concurrent data bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = -1
+			},
+			expectedErr: ErrInvalidMaxConcurrentDataBytes,
+		},
+		"should pass on zero max concurrent data bytes (disabled)": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = 0
+			},
+			expectedErr: nil,
+		},
+		"should pass on positive max concurrent data bytes": {
+			setup: func(cfg *BlocksStorageConfig) {
+				cfg.BucketStore.MaxConcurrentDataBytes = 1024 * 1024 * 1024 // 1GB
+			},
+			expectedErr: nil,
+		},
 	}
 
 	for testName, testData := range tests {

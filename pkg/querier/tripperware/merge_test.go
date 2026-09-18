@@ -15,7 +15,7 @@ var (
 	testHistogram1 = SampleHistogram{
 		Count: 13.5,
 		Sum:   3897.1,
-		Buckets: []*HistogramBucket{
+		Buckets: []HistogramBucket{
 			{
 				Boundaries: 1,
 				Lower:      -4870.992343051145,
@@ -678,6 +678,111 @@ func Test_sortPlanForQuery(t *testing.T) {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expectedPlan, p)
 			}
+		})
+	}
+}
+
+func TestMinTime(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		resp     *PrometheusResponse
+		expected int64
+	}{
+		{
+			name: "empty matrix",
+			resp: &PrometheusResponse{
+				Data: PrometheusData{
+					ResultType: "matrix",
+					Result: PrometheusQueryResult{
+						Result: &PrometheusQueryResult_Matrix{
+							Matrix: &Matrix{SampleStreams: []SampleStream{}},
+						},
+					},
+				},
+			},
+			expected: -1,
+		},
+		{
+			name: "float samples only",
+			resp: &PrometheusResponse{
+				Data: PrometheusData{
+					ResultType: "matrix",
+					Result: PrometheusQueryResult{
+						Result: &PrometheusQueryResult_Matrix{
+							Matrix: &Matrix{SampleStreams: []SampleStream{
+								{
+									Labels:  cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{"foo": "bar"})),
+									Samples: []cortexpb.Sample{{TimestampMs: 1000}, {TimestampMs: 2000}},
+								},
+							}},
+						},
+					},
+				},
+			},
+			expected: 1000,
+		},
+		{
+			name: "histograms only",
+			resp: &PrometheusResponse{
+				Data: PrometheusData{
+					ResultType: "matrix",
+					Result: PrometheusQueryResult{
+						Result: &PrometheusQueryResult_Matrix{
+							Matrix: &Matrix{SampleStreams: []SampleStream{
+								{
+									Labels:     cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{"foo": "bar"})),
+									Histograms: []SampleHistogramPair{{TimestampMs: 3000, Histogram: testHistogram1}, {TimestampMs: 4000, Histogram: testHistogram1}},
+								},
+							}},
+						},
+					},
+				},
+			},
+			expected: 3000,
+		},
+		{
+			name: "both samples and histograms - samples first",
+			resp: &PrometheusResponse{
+				Data: PrometheusData{
+					ResultType: "matrix",
+					Result: PrometheusQueryResult{
+						Result: &PrometheusQueryResult_Matrix{
+							Matrix: &Matrix{SampleStreams: []SampleStream{
+								{
+									Labels:     cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{"foo": "bar"})),
+									Samples:    []cortexpb.Sample{{TimestampMs: 1000}},
+									Histograms: []SampleHistogramPair{{TimestampMs: 5000, Histogram: testHistogram1}},
+								},
+							}},
+						},
+					},
+				},
+			},
+			expected: 1000,
+		},
+		{
+			name: "stream with empty samples and empty histograms",
+			resp: &PrometheusResponse{
+				Data: PrometheusData{
+					ResultType: "matrix",
+					Result: PrometheusQueryResult{
+						Result: &PrometheusQueryResult_Matrix{
+							Matrix: &Matrix{SampleStreams: []SampleStream{
+								{
+									Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromMap(map[string]string{"foo": "bar"})),
+								},
+							}},
+						},
+					},
+				},
+			},
+			expected: -1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.expected, tc.resp.minTime())
 		})
 	}
 }

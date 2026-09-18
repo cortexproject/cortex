@@ -95,8 +95,8 @@ func TestOTLP_EnableTypeAndUnitLabels(t *testing.T) {
 
 			test.otlpSeries.CopyTo(sm.Metrics().AppendEmpty())
 
-			limits := validation.Limits{}
-			limits.EnableTypeAndUnitLabels = test.enableTypeAndUnitLabels
+			limits := validation.Limits{
+				EnableTypeAndUnitLabels: test.enableTypeAndUnitLabels}
 			overrides := validation.NewOverrides(limits, nil)
 			promSeries, metadata, err := convertToPromTS(ctx, metrics, cfg, overrides, "user-1", logger)
 			require.NoError(t, err)
@@ -1046,6 +1046,41 @@ func TestOTLPHandler_MetricCollection(t *testing.T) {
 
 	val := testutil.ToFloat64(counter.WithLabelValues("otlp"))
 	assert.Equal(t, 1.0, val)
+}
+
+func TestOTLPHandler_ClientCancellation(t *testing.T) {
+	cfg := distributor.OTLPConfig{
+		ConvertAllAttributes: false,
+		DisableTargetInfo:    false,
+	}
+	overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+	exportRequest := generateOTLPWriteRequest()
+
+	// A client-canceled push (bare or wrapped context.Canceled) should return 499
+	// (Client Closed Request) instead of 500, matching the remote-write handlers.
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "bare cancellation", err: context.Canceled},
+		{name: "wrapped cancellation", err: fmt.Errorf("send failed: %w", context.Canceled)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pushErr := tc.err
+			pushFunc := func(ctx context.Context, req *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				return nil, pushErr
+			}
+
+			req, err := getOTLPHttpRequest(&exportRequest, pbContentType, "")
+			require.NoError(t, err)
+
+			handler := OTLPHandler(100000, overrides, cfg, nil, pushFunc, nil)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, 499, recorder.Result().StatusCode)
+		})
+	}
 }
 
 func TestOTLPWriteHandler(t *testing.T) {

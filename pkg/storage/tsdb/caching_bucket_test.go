@@ -75,6 +75,18 @@ func Test_BucketCacheBackendValidation(t *testing.T) {
 			},
 			expectedErr: errUnsupportedBucketCacheBackend,
 		},
+		"memcached backend without addresses": {
+			cfg: BucketCacheBackend{
+				Backend: CacheBackendMemcached,
+			},
+			expectedErr: errNoCacheAddresses,
+		},
+		"redis backend without addresses": {
+			cfg: BucketCacheBackend{
+				Backend: CacheBackendRedis,
+			},
+			expectedErr: errNoCacheAddresses,
+		},
 		"valid multi bucket cache type": {
 			cfg: BucketCacheBackend{
 				Backend: fmt.Sprintf("%s,%s,%s", CacheBackendInMemory, CacheBackendMemcached, CacheBackendRedis),
@@ -155,6 +167,19 @@ func Test_BucketCacheBackendValidation(t *testing.T) {
 	}
 }
 
+func Test_BucketCacheBackendValidation_MissingAddressesErrorIsGeneric(t *testing.T) {
+	// A bucket cache (e.g. chunks-cache) is not an index cache, so the missing
+	// addresses error must not mention "index cache". See issue #6804.
+	for _, cfg := range []BucketCacheBackend{
+		{Backend: CacheBackendMemcached},
+		{Backend: CacheBackendRedis},
+	} {
+		err := cfg.Validate()
+		require.Error(t, err)
+		assert.Equal(t, "no cache backend addresses", err.Error())
+	}
+}
+
 func Test_BucketIndexCache(t *testing.T) {
 	const bucketIndexFile = "user1/bucket-index.json.gz"
 	const fileContent = "test-content"
@@ -181,10 +206,8 @@ func Test_BucketIndexCache(t *testing.T) {
 
 			wrappedBucket := &countingBucket{Bucket: inmem}
 			metadataCfg := MetadataCacheConfig{
-				BucketCacheBackend: BucketCacheBackend{
-					Backend:  CacheBackendInMemory,
-					InMemory: InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
-				},
+				Backend:               CacheBackendInMemory,
+				InMemory:              InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
 				BucketIndexContentTTL: tc.ttl,
 				BucketIndexMaxSize:    1024 * 1024,
 			}
@@ -238,10 +261,8 @@ func Test_BucketIndexCacheForCompactor(t *testing.T) {
 
 			wrappedBucket := &countingBucket{Bucket: inmem}
 			metadataCfg := MetadataCacheConfig{
-				BucketCacheBackend: BucketCacheBackend{
-					Backend:  CacheBackendInMemory,
-					InMemory: InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
-				},
+				Backend:               CacheBackendInMemory,
+				InMemory:              InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
 				BucketIndexContentTTL: tc.ttl,
 				BucketIndexMaxSize:    1024 * 1024,
 			}

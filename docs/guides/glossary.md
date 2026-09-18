@@ -5,6 +5,12 @@ weight: 999
 slug: glossary
 ---
 
+### Active series
+
+An active series is a [series](#series) held in an ingester that has received at least one [sample](#sample) within the active-series idle timeout window (configured via `-ingester.active-series-metrics-idle-timeout`, default `10m`). Active series are a subset of [memory series](#memory-series): once a series stops receiving samples for longer than the idle timeout, it is no longer counted as active, even if it remains in the ingester's memory until the TSDB head garbage-collects it.
+
+Active series are tracked per-tenant and exposed via the `cortex_ingester_active_series` metric. The `max_global_series_per_user` and `max_global_series_per_metric` limits are enforced against this count. The feature is enabled by default and controlled by `-ingester.active-series-metrics-enabled`.
+
 ### Blocks storage
 
 The blocks storage is a Cortex storage engine based on Prometheus TSDB, which only requires an object store (eg. AWS S3, Google GCS, ...) as backend storage.
@@ -38,6 +44,12 @@ For more information, please refer to the guide "[Config for sending HA Pairs da
 The hash ring is a distributed data structure used by Cortex for sharding, replication, and service discovery. The hash ring data structure gets shared across Cortex replicas via gossip or a key-value store.
 
 For more information, please refer to the [Architecture](../architecture.md#the-hash-ring) documentation.
+
+### Memory series
+
+A memory series is a [series](#series) currently held in an ingester's in-memory TSDB head block. Memory series include both [active series](#active-series) and recently-idle series that the TSDB head has not yet garbage-collected.
+
+Memory series are exposed via the `cortex_ingester_memory_series` metric and drive ingester memory sizing (see [Capacity planning](capacity-planning.md)). The per-instance `-ingester.instance-limits.max-series` flag caps the total number of memory series an ingester will accept across all tenants.
 
 ### Org
 

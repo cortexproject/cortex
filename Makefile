@@ -104,7 +104,6 @@ pkg/alertmanager/alertspb/alerts.pb.go: pkg/alertmanager/alertspb/alerts.proto
 all: $(UPTODATE_FILES)
 test: protos
 mod-check: protos
-configs-integration-test: protos
 lint: protos
 build-image/$(UPTODATE): build-image/*
 
@@ -112,7 +111,7 @@ build-image/$(UPTODATE): build-image/*
 SUDO := $(shell docker info >/dev/null 2>&1 || echo "sudo -E")
 BUILD_IN_CONTAINER := true
 BUILD_IMAGE ?= $(IMAGE_PREFIX)build-image
-LATEST_BUILD_IMAGE_TAG ?= master-ee0b97cc37
+LATEST_BUILD_IMAGE_TAG ?= master-7bc8b2491b
 
 # TTY is parameterized to allow Google Cloud Builder to run builds,
 # as it currently disallows TTY devices. This value needs to be overridden
@@ -126,28 +125,12 @@ GOVOLUMES=	-v $(shell pwd)/.cache:/go/cache:delegated,z \
 			-v $(shell pwd)/.pkg:/go/pkg:delegated,z \
 			-v $(shell pwd):/go/src/github.com/cortexproject/cortex:delegated,z
 
-exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc modernize: build-image/$(UPTODATE)
+exes $(EXES) protos $(PROTO_GOS) lint test cover shell mod-check check-protos doc: build-image/$(UPTODATE)
 	@mkdir -p $(shell pwd)/.pkg
 	@mkdir -p $(shell pwd)/.cache
 	@echo
 	@echo ">>>> Entering build container: $@"
 	@$(SUDO) time docker run --rm $(TTY) -i $(GOVOLUMES) $(BUILD_IMAGE) $@;
-
-configs-integration-test: build-image/$(UPTODATE)
-	@mkdir -p $(shell pwd)/.pkg
-	@mkdir -p $(shell pwd)/.cache
-	@DB_CONTAINER="$$(docker run -d -e 'POSTGRES_DB=configs_test' postgres:9.6.16)"; \
-	echo ; \
-	echo ">>>> Entering build container: $@"; \
-	$(SUDO) docker run --rm $(TTY) -i $(GOVOLUMES) \
-		-v $(shell pwd)/cmd/cortex/migrations:/migrations:z \
-		--workdir /go/src/github.com/cortexproject/cortex \
-		--link "$$DB_CONTAINER":configs-db.cortex.local \
-		-e DB_ADDR=configs-db.cortex.local \
-		$(BUILD_IMAGE) $@; \
-	status=$$?; \
-	docker rm -f "$$DB_CONTAINER"; \
-	exit $$status
 
 else
 
@@ -175,7 +158,7 @@ lint:
 	golangci-lint run
 
 	# Ensure no blocklisted package is imported.
-	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
+	GOFLAGS="-tags=requires_docker,integration,integration_alertmanager,integration_backward_compatibility,integration_configs_db,integration_memberlist,integration_querier,integration_ruler,integration_query_fuzz,integration_remote_write_v2" go tool faillint -paths "github.com/bmizerany/assert=github.com/stretchr/testify/assert,\
 		golang.org/x/net/context=context,\
 		sync/atomic=go.uber.org/atomic,\
 		github.com/prometheus/client_golang/prometheus.{MultiError}=github.com/prometheus/prometheus/tsdb/errors.{NewMulti},\
@@ -183,20 +166,20 @@ lint:
 		github.com/weaveworks/common/user.{ExtractOrgIDFromHTTPRequest}=github.com/cortexproject/cortex/pkg/tenant.{ExtractTenantIDFromHTTPRequest}" ./pkg/... ./cmd/... ./tools/... ./integration/...
 
 	# Ensure clean pkg structure.
-	faillint -paths "\
+	go tool faillint -paths "\
 		github.com/cortexproject/cortex/pkg/scheduler,\
 		github.com/cortexproject/cortex/pkg/frontend,\
 		github.com/cortexproject/cortex/pkg/frontend/transport,\
 		github.com/cortexproject/cortex/pkg/frontend/v1,\
 		github.com/cortexproject/cortex/pkg/frontend/v2" \
 		./pkg/querier/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/alertmanager/alertspb/...
-	faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/ruler/rulespb/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/querier/..." ./pkg/scheduler/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/storage/tsdb/..." ./pkg/storage/bucket/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/alertmanager/alertspb/...
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/..." ./pkg/ruler/rulespb/...
 
 	# Ensure the query path is supporting multiple tenants
-	faillint -paths "\
+	go tool faillint -paths "\
 		github.com/cortexproject/cortex/pkg/tenant.{TenantID}=github.com/cortexproject/cortex/pkg/tenant.{TenantIDs}" \
 		./pkg/scheduler/... \
 		./pkg/frontend/... \
@@ -206,7 +189,7 @@ lint:
 		./pkg/querier/tripperware/queryrange/...
 
 	# Ensure packages that no longer use a global logger don't reintroduce it
-	faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
+	go tool faillint -paths "github.com/cortexproject/cortex/pkg/util/log.{Logger}" \
 		./pkg/alertmanager/alertstore/... \
 		./pkg/ingester/... \
 		./pkg/flusher/... \
@@ -229,9 +212,6 @@ cover:
 shell:
 	bash
 
-configs-integration-test:
-	/bin/bash -c "go test -v -tags 'netgo integration slicelabels' -timeout 10m ./pkg/configs/... ./pkg/ruler/..."
-
 mod-check:
 	GO111MODULE=on go mod download
 	GO111MODULE=on go mod verify
@@ -241,9 +221,6 @@ mod-check:
 
 check-protos: clean-protos protos
 	@git diff --exit-code -- $(PROTO_GOS)
-
-modernize:
-	GOTOOLCHAIN=auto go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0 -fix ./...
 
 # Generates the config file documentation.
 doc: clean-doc
@@ -302,9 +279,6 @@ clean-white-noise:
 
 check-white-noise: clean-white-noise
 	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)
-
-check-modernize: modernize
-	@git diff --exit-code -- . || (echo "Please modernize running 'make modernize'" && false)
 
 web-serve:
 	cd website && hugo --config config.toml --minify -v server

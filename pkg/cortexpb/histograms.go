@@ -14,6 +14,8 @@
 package cortexpb
 
 import (
+	"fmt"
+
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/prompb"
 )
@@ -175,4 +177,52 @@ func (h Histogram) BucketCount() int {
 		}
 	}
 	return count
+}
+
+// MaxWrappedHistogramSizeBytes is the maximum allowed size of a single native histogram in raw protobuf
+// bytes before unmarshalling. A value of 0 disables the limit.
+var maxWrappedHistogramSizeBytes = 16 * 1024
+
+// WrappedHistogram is a Histogram with a size check on Unmarshal.
+// Used only on the ingestion path, not on the query path.
+type WrappedHistogram struct {
+	Histogram
+}
+
+// Unmarshal implements proto.Message.
+func (p *WrappedHistogram) Unmarshal(dAtA []byte) error {
+	if maxWrappedHistogramSizeBytes > 0 && len(dAtA) > maxWrappedHistogramSizeBytes {
+		return fmt.Errorf("native histogram size %d bytes exceeds limit %d bytes", len(dAtA), maxWrappedHistogramSizeBytes)
+	}
+	return p.Histogram.Unmarshal(dAtA)
+}
+
+// Marshal implements proto.Marshaler.
+func (p *WrappedHistogram) Marshal() (dAtA []byte, err error) {
+	return p.Histogram.Marshal()
+}
+
+// MarshalTo implements proto.Marshaler.
+func (p *WrappedHistogram) MarshalTo(dAtA []byte) (int, error) {
+	return p.Histogram.MarshalTo(dAtA)
+}
+
+// MarshalToSizedBuffer implements proto.Marshaler.
+func (p *WrappedHistogram) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	return p.Histogram.MarshalToSizedBuffer(dAtA)
+}
+
+// Size implements proto.Sizer.
+func (p *WrappedHistogram) Size() int {
+	return p.Histogram.Size()
+}
+
+// Equal implements proto.Equal.
+func (p WrappedHistogram) Equal(other WrappedHistogram) bool {
+	return p.Histogram.Equal(&other.Histogram)
+}
+
+// WrapHistogram wraps a Histogram into a WrappedHistogram.
+func WrapHistogram(h Histogram) WrappedHistogram {
+	return WrappedHistogram{Histogram: h}
 }

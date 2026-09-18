@@ -30,9 +30,12 @@ func newFrontendPool(cfg Config, log log.Logger, reg prometheus.Registerer) *cli
 		prometheusHTTPPrefix: cfg.PrometheusHTTPPrefix,
 		grpcConfig:           cfg.GRPCClientConfig,
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_ruler_query_frontend_request_duration_seconds",
-			Help:    "Time spend doing requests to frontend.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+			Name:                            "cortex_ruler_query_frontend_request_duration_seconds",
+			Help:                            "Time spend doing requests to frontend.",
+			Buckets:                         prometheus.ExponentialBuckets(0.001, 4, 6),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operation", "status_code"}),
 	}
 

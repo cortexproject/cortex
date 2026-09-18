@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 
 	"github.com/parquet-go/parquet-go/compress"
@@ -33,10 +34,10 @@ type Column struct {
 	encoding    encoding.Encoding
 	compression compress.Codec
 
-	depth              int8
+	depth              byte
 	maxRepetitionLevel byte
 	maxDefinitionLevel byte
-	index              int16
+	index              uint16
 }
 
 // Type returns the type of the column.
@@ -99,7 +100,7 @@ func (c *Column) Pages() Pages {
 }
 
 func (c *Column) PagesFrom(reader io.ReaderAt) Pages {
-	if c.index < 0 || c.file == nil {
+	if c.index == math.MaxUint16 || c.file == nil {
 		return emptyPages{}
 	}
 	r := &columnPages{
@@ -178,7 +179,12 @@ func (c *Column) MaxDefinitionLevel() int { return int(c.maxDefinitionLevel) }
 
 // Index returns the position of the column in a row. Only leaf columns have a
 // column index, the method returns -1 when called on non-leaf columns.
-func (c *Column) Index() int { return int(c.index) }
+func (c *Column) Index() int {
+	if c.index == math.MaxUint16 {
+		return -1
+	}
+	return int(c.index)
+}
 
 // GoType returns the Go type that best represents the parquet column.
 func (c *Column) GoType() reflect.Type { return goTypeOf(c) }
@@ -238,26 +244,29 @@ func (c *Column) setLevels(depth, repetition, definition, index int) (int, error
 		return -1, fmt.Errorf("cannot represent parquet columns with more than %d definition levels: %s", MaxDefinitionLevel, c.path)
 	}
 
-	switch schemaRepetitionTypeOf(c.schema) {
-	case format.Optional:
-		definition++
-	case format.Repeated:
-		repetition++
-		definition++
+	// Only non-root columns have a well defined repetition_type
+	if depth > 0 {
+		switch schemaRepetitionTypeOf(c.schema) {
+		case format.Optional:
+			definition++
+		case format.Repeated:
+			repetition++
+			definition++
+		}
 	}
 
-	c.depth = int8(depth)
+	c.depth = byte(depth)
 	c.maxRepetitionLevel = byte(repetition)
 	c.maxDefinitionLevel = byte(definition)
 	depth++
 
 	// Only leaf columns get a column index.
 	if isLeafSchemaElement(c.schema) {
-		c.index = int16(index)
+		c.index = uint16(index)
 		index++
 	} else {
 		// Groups (including empty groups) don't get a column index
-		c.index = -1
+		c.index = math.MaxUint16
 	}
 
 	var err error
@@ -284,8 +293,8 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 
 	cl.schemaIndex++
 	numChildren := 0
-	if c.schema.NumChildren != nil {
-		numChildren = int(*c.schema.NumChildren)
+	if c.schema.NumChildren.Valid {
+		numChildren = int(c.schema.NumChildren.V)
 	}
 
 	if isLeafSchemaElement(c.schema) {
@@ -357,12 +366,19 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 	}
 
 	c.typ = &groupType{}
-	if lt := c.schema.LogicalType; lt != nil && lt.Map != nil {
+	if lt := c.schema.LogicalType; lt.Valid && lt.V.Map != nil {
 		c.typ = &mapType{}
-	} else if lt != nil && lt.List != nil {
+	} else if lt.Valid && lt.V.List != nil {
 		c.typ = &listType{}
-	} else if lt != nil && lt.Variant != nil {
+	} else if lt.Valid && lt.V.Variant != nil {
 		c.typ = &variantType{}
+	} else if ct := c.schema.ConvertedType; ct.Valid {
+		switch ct.V {
+		case deprecated.Map:
+			c.typ = &mapType{}
+		case deprecated.List:
+			c.typ = &listType{}
+		}
 	}
 	c.columns = make([]*Column, numChildren)
 
@@ -394,11 +410,12 @@ func (cl *columnLoader) open(file *File, metadata *format.FileMetaData, columnIn
 //   - Leaf nodes: Type != nil (has column data)
 //   - Group nodes: Type == nil (including empty groups with NumChildren == 0)
 func isLeafSchemaElement(element *format.SchemaElement) bool {
-	return element.Type != nil
+	return element.Type.Valid
 }
 
 func schemaElementTypeOf(s *format.SchemaElement) Type {
-	if lt := s.LogicalType; lt != nil {
+	if s.LogicalType.Valid {
+		lt := &s.LogicalType.V
 		// A logical type exists, the Type interface implementations in this
 		// package are all based on the logical parquet types declared in the
 		// format sub-package so we can return them directly via a pointer type
@@ -414,9 +431,9 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 			return (*enumType)(lt.Enum)
 		case lt.Decimal != nil:
 			// A parquet decimal can be one of several different physical types.
-			if t := s.Type; t != nil {
+			if s.Type.Valid {
 				var typ Type
-				switch kind := Kind(*s.Type); kind {
+				switch kind := Kind(s.Type.V); kind {
 				case Int32:
 					typ = Int32Type
 				case Int64:
@@ -424,10 +441,10 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 				case ByteArray:
 					typ = ByteArrayType
 				case FixedLenByteArray:
-					if s.TypeLength == nil {
+					if !s.TypeLength.Valid {
 						panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 					}
-					typ = FixedLenByteArrayType(int(*s.TypeLength))
+					typ = FixedLenByteArrayType(int(s.TypeLength.V))
 				default:
 					panic("DECIMAL must be of type INT32, INT64, BYTE_ARRAY or FIXED_LEN_BYTE_ARRAY but got " + kind.String())
 				}
@@ -452,14 +469,19 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 			return (*bsonType)(lt.Bson)
 		case lt.UUID != nil:
 			return (*uuidType)(lt.UUID)
+		case lt.Geometry != nil:
+			return (*geometryType)(lt.Geometry)
+		case lt.Geography != nil:
+			return (*geographyType)(lt.Geography)
 		}
 	}
 
-	if ct := s.ConvertedType; ct != nil {
+	if s.ConvertedType.Valid {
+		ct := s.ConvertedType.V
 		// This column contains no logical type but has a converted type, it
 		// was likely created by an older parquet writer. Convert the legacy
 		// type representation to the equivalent logical parquet type.
-		switch *ct {
+		switch ct {
 		case deprecated.UTF8:
 			return &stringType{}
 		case deprecated.Map:
@@ -471,20 +493,20 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case deprecated.Enum:
 			return &enumType{}
 		case deprecated.Decimal:
-			if s.Scale != nil && s.Precision != nil {
+			if s.Scale.Valid && s.Precision.Valid {
 				// A parquet decimal can be one of several different physical types.
-				if t := s.Type; t != nil {
+				if s.Type.Valid {
 					var typ Type
-					switch kind := Kind(*s.Type); kind {
+					switch kind := Kind(s.Type.V); kind {
 					case Int32:
 						typ = Int32Type
 					case Int64:
 						typ = Int64Type
 					case FixedLenByteArray:
-						if s.TypeLength == nil {
+						if !s.TypeLength.Valid {
 							panic("DECIMAL using FIXED_LEN_BYTE_ARRAY must specify a length")
 						}
-						typ = FixedLenByteArrayType(int(*s.TypeLength))
+						typ = FixedLenByteArrayType(int(s.TypeLength.V))
 					case ByteArray:
 						typ = ByteArrayType
 					default:
@@ -492,8 +514,8 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 					}
 					return &decimalType{
 						decimal: format.DecimalType{
-							Scale:     *s.Scale,
-							Precision: *s.Precision,
+							Scale:     s.Scale.V,
+							Precision: s.Precision.V,
 						},
 						Type: typ,
 					}
@@ -530,14 +552,14 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case deprecated.Bson:
 			return &bsonType{}
 		case deprecated.Interval:
-			// TODO
+			return &intervalType{}
 		}
 	}
 
-	if t := s.Type; t != nil {
+	if s.Type.Valid {
 		// The column only has a physical type, convert it to one of the
 		// primitive types supported by this package.
-		switch kind := Kind(*t); kind {
+		switch kind := Kind(s.Type.V); kind {
 		case Boolean:
 			return BooleanType
 		case Int32:
@@ -553,8 +575,8 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 		case ByteArray:
 			return ByteArrayType
 		case FixedLenByteArray:
-			if s.TypeLength != nil {
-				return FixedLenByteArrayType(int(*s.TypeLength))
+			if s.TypeLength.Valid {
+				return FixedLenByteArrayType(int(s.TypeLength.V))
 			}
 		}
 	}
@@ -566,8 +588,8 @@ func schemaElementTypeOf(s *format.SchemaElement) Type {
 }
 
 func schemaRepetitionTypeOf(s *format.SchemaElement) format.FieldRepetitionType {
-	if s.RepetitionType != nil {
-		return *s.RepetitionType
+	if s.RepetitionType.Valid {
+		return s.RepetitionType.V
 	}
 	return format.Required
 }

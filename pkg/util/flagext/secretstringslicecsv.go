@@ -1,6 +1,9 @@
 package flagext
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 // SecretStringSliceCSV is a slice of strings that is parsed from a comma-separated string.
 // It implements flag.Value and yaml Marshalers, but masks the value when marshaled to YAML
@@ -15,12 +18,25 @@ func (v SecretStringSliceCSV) String() string {
 }
 
 // Set implements flag.Value
+// Each comma-separated entry is trimmed of surrounding whitespace.
+// Empty entries (after trimming) are rejected with an error.
 func (v *SecretStringSliceCSV) Set(s string) error {
 	if s == "" {
 		v.values = nil
 		return nil
 	}
-	v.values = strings.Split(s, ",")
+	parts := strings.Split(s, ",")
+	values := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			// Do not include the original input value in the error message
+			// to avoid accidentally exposing secret values.
+			return errors.New("invalid value: empty entry after trimming")
+		}
+		values = append(values, p)
+	}
+	v.values = values
 	return nil
 }
 

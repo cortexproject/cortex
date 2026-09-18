@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -23,6 +24,7 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -30,9 +32,11 @@ import (
 	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	cortex_util "github.com/cortexproject/cortex/pkg/util"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	"github.com/cortexproject/cortex/pkg/util/parquetutil"
+	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -56,8 +60,13 @@ type ParquetBucketStores struct {
 
 	matcherCache      storecache.MatchersCache
 	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	rowRangesCache    search.RowRangesForConstraintsCache
 
 	inflightRequests *cortex_util.InflightRequestTracker
+
+	// indexLoader lazily loads and caches the per-tenant bucket index in memory
+	// It is non-nil only when BucketIndex.Enabled.
+	indexLoader *bucketindex.Loader
 }
 
 // newParquetBucketStores creates a new multi-tenant parquet bucket stores
@@ -73,6 +82,15 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		return nil, err
 	}
 
+	rowRangesCacheBackend, err := tsdb.CreateParquetRowRangesCache(cfg.BucketStore.ParquetRowRangesCache, logger, reg)
+	if err != nil {
+		return nil, err
+	}
+	var rowRangesCache search.RowRangesForConstraintsCache
+	if rowRangesCacheBackend != nil {
+		rowRangesCache = parquetutil.NewRowRangesCache(rowRangesCacheBackend, "parquet-row-ranges", cfg.BucketStore.ParquetRowRangesCache.TTL, reg)
+	}
+
 	u := &ParquetBucketStores{
 		logger:            logger,
 		cfg:               cfg,
@@ -83,6 +101,7 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		chunksDecoder:     schema.NewPrometheusParquetChunksDecoder(chunkenc.NewPool()),
 		inflightRequests:  cortex_util.NewInflightRequestTracker(),
 		parquetShardCache: parquetShardCache,
+		rowRangesCache:    rowRangesCache,
 	}
 
 	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
@@ -94,6 +113,15 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		}
 	} else {
 		u.matcherCache = storecache.NoopMatchersCache
+	}
+
+	if cfg.BucketStore.BucketIndex.Enabled {
+		u.indexLoader = bucketindex.NewLoader(bucketindex.LoaderConfig{
+			CheckInterval:         time.Minute,
+			UpdateOnStaleInterval: cfg.BucketStore.SyncInterval,
+			UpdateOnErrorInterval: cfg.BucketStore.BucketIndex.UpdateOnErrorInterval,
+			IdleTimeout:           cfg.BucketStore.BucketIndex.IdleTimeout,
+		}, bucketClient, limits, logger, reg)
 	}
 
 	return u, nil
@@ -109,6 +137,7 @@ func (u *ParquetBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Sto
 		return fmt.Errorf("no userID")
 	}
 
+	spanCtx = user.InjectOrgID(spanCtx, userID)
 	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 	if err != nil {
@@ -149,6 +178,7 @@ func (u *ParquetBucketStores) LabelNames(ctx context.Context, req *storepb.Label
 	if userID == "" {
 		return nil, fmt.Errorf("no userID")
 	}
+	spanCtx = user.InjectOrgID(spanCtx, userID)
 
 	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
@@ -165,7 +195,7 @@ func (u *ParquetBucketStores) LabelNames(ctx context.Context, req *storepb.Label
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return store.LabelNames(ctx, req)
+	return store.LabelNames(spanCtx, req)
 }
 
 // LabelValues implements BucketStores
@@ -177,6 +207,7 @@ func (u *ParquetBucketStores) LabelValues(ctx context.Context, req *storepb.Labe
 	if userID == "" {
 		return nil, fmt.Errorf("no userID")
 	}
+	spanCtx = user.InjectOrgID(spanCtx, userID)
 
 	err := u.getStoreError(userID)
 	userBkt := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
@@ -193,7 +224,7 @@ func (u *ParquetBucketStores) LabelValues(ctx context.Context, req *storepb.Labe
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return store.LabelValues(ctx, req)
+	return store.LabelValues(spanCtx, req)
 }
 
 // SyncBlocks implements BucketStores
@@ -203,6 +234,18 @@ func (u *ParquetBucketStores) SyncBlocks(ctx context.Context) error {
 
 // InitialSync implements BucketStores
 func (u *ParquetBucketStores) InitialSync(ctx context.Context) error {
+	if u.indexLoader != nil {
+		// Start indexLoader
+		return services.StartAndAwaitRunning(ctx, u.indexLoader)
+	}
+	return nil
+}
+
+// Stop implements BucketStores
+func (u *ParquetBucketStores) Stop() error {
+	if u.indexLoader != nil {
+		return services.StopAndAwaitTerminated(context.Background(), u.indexLoader)
+	}
 	return nil
 }
 
@@ -255,26 +298,31 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 	userBucket := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 
 	store := &parquetBucketStore{
-		logger:            userLogger,
-		bucket:            userBucket,
-		limits:            u.limits,
-		concurrency:       4, // TODO: make this configurable
-		chunksDecoder:     u.chunksDecoder,
-		matcherCache:      u.matcherCache,
-		parquetShardCache: u.parquetShardCache,
+		logger:             userLogger,
+		bucket:             userBucket,
+		indexLoader:        u.indexLoader,
+		limits:             u.limits,
+		userID:             userID,
+		bucketIndexEnabled: u.cfg.BucketStore.BucketIndex.Enabled,
+		concurrency:        u.cfg.BucketStore.ParquetQueryConcurrency,
+		chunksDecoder:      u.chunksDecoder,
+		matcherCache:       u.matcherCache,
+		parquetShardCache:  u.parquetShardCache,
+		rowRangesCache:     u.rowRangesCache,
 	}
 
 	return store, nil
 }
 
 type parquetBlock struct {
-	name        string
-	shard       parquet_storage.ParquetShard
-	m           *search.Materializer
-	concurrency int
+	name           string
+	shard          parquet_storage.ParquetShard
+	m              *search.Materializer
+	concurrency    int
+	rowRangesCache search.RowRangesForConstraintsCache
 }
 
-func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, shardID int, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
+func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, shardID int, labelsFileOpener, chunksFileOpener parquet_storage.ParquetOpener, d *schema.PrometheusParquetChunksDecoder, rowRangesCache search.RowRangesForConstraintsCache, rowCountQuota *search.Quota, chunkBytesQuota *search.Quota, dataBytesQuota *search.Quota) (*parquetBlock, error) {
 	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -290,7 +338,7 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, s
 			name,
 			labelsFileOpener,
 			chunksFileOpener,
-			0, // we always only have 1 shard - shard 0
+			shardID,
 			parquet_storage.WithFileOptions(
 				parquet.SkipMagicBytes(true),
 				parquet.ReadBufferSize(100*1024),
@@ -316,10 +364,11 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, s
 	}
 
 	return &parquetBlock{
-		shard:       shard,
-		m:           m,
-		concurrency: p.concurrency,
-		name:        name,
+		shard:          shard,
+		m:              m,
+		concurrency:    p.concurrency,
+		name:           name,
+		rowRangesCache: rowRangesCache,
 	}, nil
 }
 
@@ -385,8 +434,8 @@ func (b *parquetBlock) Query(ctx context.Context, mint, maxt int64, skipChunks b
 			if err != nil {
 				return err
 			}
-			// TODO: Add cache.
-			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
+
+			rr, err := search.Filter(ctx, b.shard, rgi, b.rowRangesCache, cs...)
 			if err != nil {
 				return err
 			}
@@ -446,8 +495,8 @@ func (b *parquetBlock) LabelNames(ctx context.Context, limit int64, matchers []*
 			if err != nil {
 				return err
 			}
-			// TODO: Add cache.
-			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
+
+			rr, err := search.Filter(ctx, b.shard, rgi, b.rowRangesCache, cs...)
 			if err != nil {
 				return err
 			}
@@ -487,8 +536,8 @@ func (b *parquetBlock) LabelValues(ctx context.Context, name string, limit int64
 			if err != nil {
 				return err
 			}
-			// TODO: Add cache.
-			rr, err := search.Filter(ctx, b.shard, rgi, nil, cs...)
+
+			rr, err := search.Filter(ctx, b.shard, rgi, b.rowRangesCache, cs...)
 			if err != nil {
 				return err
 			}

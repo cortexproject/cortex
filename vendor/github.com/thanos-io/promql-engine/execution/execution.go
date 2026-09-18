@@ -71,8 +71,8 @@ func newOperator(ctx context.Context, expr logicalplan.Node, storage storage.Sca
 		return newUnaryExpression(ctx, e, storage, opts, hints)
 	case *logicalplan.StepInvariantExpr:
 		return newStepInvariantExpression(ctx, e, storage, opts, hints)
-	case logicalplan.Deduplicate:
-		return newDeduplication(ctx, e, storage, opts, hints)
+	case logicalplan.RemoteMerge:
+		return newRemoteMerge(ctx, e, storage, opts, hints)
 	case logicalplan.RemoteExecution:
 		return newRemoteExecution(ctx, e, opts, hints)
 	case *logicalplan.CheckDuplicateLabels:
@@ -363,8 +363,8 @@ func newStepInvariantExpression(ctx context.Context, e *logicalplan.StepInvarian
 	return step_invariant.NewStepInvariantOperator(next, e.Expr, opts)
 }
 
-func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
-	// The Deduplicate operator will deduplicate samples using a last-sample-wins strategy.
+func newRemoteMerge(ctx context.Context, e logicalplan.RemoteMerge, scanners storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
+	// When deduplication is enabled, samples are merged using a last-sample-wins strategy.
 	// Sorting engines by MaxT ensures that samples produced due to
 	// staleness will be overwritten and corrected by samples coming from
 	// engines with a higher max time.
@@ -380,9 +380,11 @@ func newDeduplication(ctx context.Context, e logicalplan.Deduplicate, scanners s
 		}
 		operators[i] = operator
 	}
-	coalesce := exchange.NewCoalesce(opts, 0, operators...)
-	dedup := exchange.NewDedupOperator(coalesce, opts)
-	return exchange.NewConcurrent(dedup, 2, opts), nil
+	operator := exchange.NewCoalesce(opts, 0, operators...)
+	if !e.SkipDedup {
+		operator = exchange.NewDedupOperator(operator, opts)
+	}
+	return exchange.NewConcurrent(operator, 2, opts), nil
 }
 
 func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {

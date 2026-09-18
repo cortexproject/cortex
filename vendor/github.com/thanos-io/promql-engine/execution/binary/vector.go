@@ -43,7 +43,13 @@ type vectorOperator struct {
 	series       []labels.Labels
 	lhsSampleIDs []labels.Labels
 	rhsSampleIDs []labels.Labels
-	outputMap    map[uint64]uint64
+
+	// output series indices, keyed by input series id.
+	// arithmetic: output is hcOutputBase[hc]+lcOutputOffset[lc] (offset is 0
+	// without group_left/group_right includes). "or": rhs uses lcOutputBase.
+	hcOutputBase   []uint64
+	lcOutputBase   []uint64
+	lcOutputOffset []uint64
 
 	lcJoinBuckets []*joinBucket
 	hcJoinBuckets []*joinBucket
@@ -238,14 +244,14 @@ func (o *vectorOperator) execBinaryAnd(lhs, rhs model.StepVector, step *model.St
 	sampleHint := len(lhs.Samples)
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats == ts {
-			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
+			step.AppendSampleWithSizeHint(o.hcOutputBase[sampleID], lhs.Samples[i], sampleHint)
 		}
 	}
 
 	histogramHint := len(lhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats == ts {
-			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
+			step.AppendHistogramWithSizeHint(o.hcOutputBase[histogramID], lhs.Histograms[i], histogramHint)
 		}
 	}
 	return nil
@@ -259,25 +265,25 @@ func (o *vectorOperator) execBinaryOr(lhs, rhs model.StepVector, step *model.Ste
 	for i, sampleID := range lhs.SampleIDs {
 		jp := o.hcJoinBuckets[sampleID]
 		jp.ats = ts
-		step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
+		step.AppendSampleWithSizeHint(o.hcOutputBase[sampleID], lhs.Samples[i], sampleHint)
 	}
 
 	histogramHint := len(lhs.Histograms) + len(rhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		jp := o.hcJoinBuckets[histogramID]
 		jp.ats = ts
-		step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
+		step.AppendHistogramWithSizeHint(o.hcOutputBase[histogramID], lhs.Histograms[i], histogramHint)
 	}
 
 	for i, sampleID := range rhs.SampleIDs {
 		if jp := o.lcJoinBuckets[sampleID]; jp.ats != ts {
-			step.AppendSampleWithSizeHint(o.outputSeriesID(0, sampleID+1), rhs.Samples[i], sampleHint)
+			step.AppendSampleWithSizeHint(o.lcOutputBase[sampleID], rhs.Samples[i], sampleHint)
 		}
 	}
 
 	for i, histogramID := range rhs.HistogramIDs {
 		if jp := o.lcJoinBuckets[histogramID]; jp.ats != ts {
-			step.AppendHistogramWithSizeHint(o.outputSeriesID(0, histogramID+1), rhs.Histograms[i], histogramHint)
+			step.AppendHistogramWithSizeHint(o.lcOutputBase[histogramID], rhs.Histograms[i], histogramHint)
 		}
 	}
 
@@ -300,13 +306,13 @@ func (o *vectorOperator) execBinaryUnless(lhs, rhs model.StepVector, step *model
 	sampleHint := len(lhs.Samples)
 	for i, sampleID := range lhs.SampleIDs {
 		if jp := o.hcJoinBuckets[sampleID]; jp.ats != ts {
-			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, 0), lhs.Samples[i], sampleHint)
+			step.AppendSampleWithSizeHint(o.hcOutputBase[sampleID], lhs.Samples[i], sampleHint)
 		}
 	}
 	histogramHint := len(lhs.Histograms)
 	for i, histogramID := range lhs.HistogramIDs {
 		if jp := o.hcJoinBuckets[histogramID]; jp.ats != ts {
-			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, 0), lhs.Histograms[i], histogramHint)
+			step.AppendHistogramWithSizeHint(o.hcOutputBase[histogramID], lhs.Histograms[i], histogramHint)
 		}
 	}
 	return nil
@@ -403,16 +409,16 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 		case o.returnBool:
 			h = nil
 			if keep {
-				step.AppendSampleWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), 1.0, sampleHint)
+				step.AppendSampleWithSizeHint(o.hcOutputBase[histogramID]+o.lcOutputOffset[jp.sid], 1.0, sampleHint)
 			} else {
-				step.AppendSampleWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), 0.0, sampleHint)
+				step.AppendSampleWithSizeHint(o.hcOutputBase[histogramID]+o.lcOutputOffset[jp.sid], 0.0, sampleHint)
 			}
 		case !keep:
 			continue
 		}
 
 		if h != nil {
-			step.AppendHistogramWithSizeHint(o.outputSeriesID(histogramID+1, jp.sid+1), h, histogramHint)
+			step.AppendHistogramWithSizeHint(o.hcOutputBase[histogramID]+o.lcOutputOffset[jp.sid], h, histogramHint)
 		}
 	}
 
@@ -445,7 +451,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			if !keep {
 				continue
 			}
-			step.AppendHistogramWithSizeHint(o.outputSeriesID(sampleID+1, jp.sid+1), h, histogramHint)
+			step.AppendHistogramWithSizeHint(o.hcOutputBase[sampleID]+o.lcOutputOffset[jp.sid], h, histogramHint)
 		} else {
 			val, _, keep, warn, err = o.computeBinaryPairing(hcs.Samples[i], jp.val, nil, nil)
 			if err != nil {
@@ -463,7 +469,7 @@ func (o *vectorOperator) execBinaryArithmetic(ctx context.Context, lhs, rhs mode
 			} else if !keep {
 				continue
 			}
-			step.AppendSampleWithSizeHint(o.outputSeriesID(sampleID+1, jp.sid+1), val, sampleHint)
+			step.AppendSampleWithSizeHint(o.hcOutputBase[sampleID]+o.lcOutputOffset[jp.sid], val, sampleHint)
 		}
 	}
 	return nil
@@ -484,8 +490,15 @@ func (o *vectorOperator) newImplicitManyToOneError() error {
 	return errors.New("multiple matches for labels: many-to-one matching must be explicit (group_left/group_right)")
 }
 
-func (o *vectorOperator) outputSeriesID(hc, lc uint64) uint64 {
-	return o.outputMap[cantorPairing(hc, lc)]
+func (o *vectorOperator) includedLabelsHash(lset labels.Labels, b *labels.ScratchBuilder) uint64 {
+	b.Reset()
+	for _, name := range o.matching.Include {
+		if v := lset.Get(name); v != "" {
+			b.Add(name, v)
+		}
+	}
+	b.Sort()
+	return b.Labels().Hash()
 }
 
 func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Labels) {
@@ -494,11 +507,8 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 		lcJoinBuckets         = make([]*joinBucket, len(lowCardSide))
 		hcJoinBuckets         = make([]*joinBucket, len(highCardSide))
 		lcHashToSeriesIDs     = make(map[uint64][]uint64, len(lowCardSide))
-		hcHashToSeriesIDs     = make(map[uint64][]uint64, len(highCardSide))
-		lcSampleIdToSignature = make(map[int]uint64, len(lowCardSide))
-		hcSampleIdToSignature = make(map[int]uint64, len(highCardSide))
-
-		outputMap = make(map[uint64]uint64, len(highCardSide))
+		lcSampleIdToSignature = make([]uint64, len(lowCardSide))
+		hcSampleIdToSignature = make([]uint64, len(highCardSide))
 	)
 
 	// initialize join bucket mappings
@@ -517,7 +527,6 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 	for i := range highCardSide {
 		sig := o.sigFunc(highCardSide[i])
 		hcSampleIdToSignature[i] = sig
-		hcHashToSeriesIDs[sig] = append(hcHashToSeriesIDs[sig], uint64(i))
 		if jb, ok := joinBucketsByHash[sig]; ok {
 			hcJoinBuckets[i] = jb
 		} else {
@@ -529,44 +538,71 @@ func (o *vectorOperator) initJoinTables(highCardSide, lowCardSide []labels.Label
 
 	// initialize series
 	h := &joinHelper{seen: make(map[uint64]int)}
+	hcOutputBase := make([]uint64, len(highCardSide))
 	switch o.opType {
 	case parser.LAND:
 		// "and" can only have matches if lhs and rhs have collision, so we only need to populate
-		// the output map for lhs series that have corresponding hash collision
+		// the output index for lhs series that have corresponding hash collision
 		for i := range highCardSide {
-			sig := hcSampleIdToSignature[i]
-			if lcs := lcHashToSeriesIDs[sig]; len(lcs) == 0 {
+			if len(lcHashToSeriesIDs[hcSampleIdToSignature[i]]) == 0 {
 				continue
 			}
-			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
+			hcOutputBase[i] = uint64(h.append(highCardSide[i]))
 		}
 	case parser.LOR:
 		for i := range highCardSide {
-			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
+			hcOutputBase[i] = uint64(h.append(highCardSide[i]))
 		}
+		lcOutputBase := make([]uint64, len(lowCardSide))
 		for i := range lowCardSide {
-			outputMap[cantorPairing(0, uint64(i+1))] = uint64(h.append(lowCardSide[i]))
+			lcOutputBase[i] = uint64(h.append(lowCardSide[i]))
 		}
+		o.lcOutputBase = lcOutputBase
 	case parser.LUNLESS:
 		for i := range highCardSide {
-			outputMap[cantorPairing(uint64(i+1), 0)] = uint64(h.append(highCardSide[i]))
+			hcOutputBase[i] = uint64(h.append(highCardSide[i]))
 		}
 	default:
+		// rank low card series sharing a signature by their distinct included
+		// labels (a single rank 0 without includes), then give each high card
+		// series a contiguous output block indexed by that rank.
 		b := labels.NewBuilder(labels.EmptyLabels())
+		lcOutputOffset := make([]uint64, len(lowCardSide))
+		rankByHashBySig := make(map[uint64]map[uint64]uint64, len(lcHashToSeriesIDs))
+		repsBySig := make(map[uint64][]uint64, len(lcHashToSeriesIDs))
+		var includeLabels labels.ScratchBuilder
+		for i := range lowCardSide {
+			sig := lcSampleIdToSignature[i]
+			rankByHash, ok := rankByHashBySig[sig]
+			if !ok {
+				rankByHash = make(map[uint64]uint64)
+				rankByHashBySig[sig] = rankByHash
+			}
+			includeHash := o.includedLabelsHash(lowCardSide[i], &includeLabels)
+			rank, ok := rankByHash[includeHash]
+			if !ok {
+				rank = uint64(len(repsBySig[sig]))
+				rankByHash[includeHash] = rank
+				repsBySig[sig] = append(repsBySig[sig], uint64(i))
+			}
+			lcOutputOffset[i] = rank
+		}
+
 		for i := range highCardSide {
-			sig := hcSampleIdToSignature[i]
-			lcs, ok := lcHashToSeriesIDs[sig]
+			reps, ok := repsBySig[hcSampleIdToSignature[i]]
 			if !ok {
 				continue
 			}
-			for _, lc := range lcs {
-				n := h.append(o.resultMetric(b, highCardSide[i], lowCardSide[lc]))
-				outputMap[cantorPairing(uint64(i+1), uint64(lc+1))] = uint64(n)
+			// append consecutively so ranks land at base, base+1, ...
+			hcOutputBase[i] = uint64(h.append(o.resultMetric(b, highCardSide[i], lowCardSide[reps[0]])))
+			for _, lc := range reps[1:] {
+				h.append(o.resultMetric(b, highCardSide[i], lowCardSide[lc]))
 			}
 		}
+		o.lcOutputOffset = lcOutputOffset
 	}
 	o.series = h.ls
-	o.outputMap = outputMap
+	o.hcOutputBase = hcOutputBase
 	o.lcJoinBuckets = lcJoinBuckets
 	o.hcJoinBuckets = hcJoinBuckets
 }
@@ -575,10 +611,6 @@ type joinHelper struct {
 	seen map[uint64]int
 	ls   []labels.Labels
 	n    int
-}
-
-func cantorPairing(hc, lc uint64) uint64 {
-	return (hc+lc)*(hc+lc+1)/2 + lc
 }
 
 func (h *joinHelper) append(ls labels.Labels) int {

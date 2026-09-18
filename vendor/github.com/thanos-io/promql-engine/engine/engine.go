@@ -500,10 +500,7 @@ func (q *Query) Explain() *ExplainOutputNode {
 }
 
 func (q *Query) Analyze() *AnalyzeOutputNode {
-	if observableRoot, ok := model.Unwrap(q.exec).(telemetry.ObservableVectorOperator); ok {
-		return analyzeQuery(observableRoot)
-	}
-	return nil
+	return analyzeQuery(q.exec)
 }
 
 type compatibilityQuery struct {
@@ -559,6 +556,7 @@ func (q *compatibilityQuery) Exec(ctx context.Context) (ret *promql.Result) {
 	}
 
 	buf := make([]model.StepVector, q.opts.StepsBatch)
+	var batchSamples int
 loop:
 	for {
 		select {
@@ -581,6 +579,7 @@ loop:
 
 			for i := range n {
 				vector := &buf[i]
+				batchSamples += len(vector.SampleIDs)
 				for j, s := range vector.SampleIDs {
 					if series[s].Floats == nil {
 						series[s].Floats = make([]promql.FPoint, 0, totalSteps)
@@ -598,7 +597,13 @@ loop:
 						T: vector.T,
 						H: vector.Histograms[j],
 					})
+					batchSamples += telemetry.CalculateHistogramSampleCount(vector.Histograms[j])
 				}
+			}
+			q.opts.SampleTracker.Add(batchSamples)
+			batchSamples = 0
+			if err := q.opts.SampleTracker.CheckLimit(); err != nil {
+				return newErrResult(ret, err)
 			}
 		}
 	}

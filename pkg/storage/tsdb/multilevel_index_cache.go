@@ -5,6 +5,7 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -226,14 +227,20 @@ func newMultiLevelCache(reg prometheus.Registerer, cfg MultiLevelIndexCacheConfi
 		expandedPostingCaches: filterCachesByItem(enabledItems, storecache.CacheTypeExpandedPostings, c...),
 		backfillProcessor:     cacheutil.NewAsyncOperationProcessor(cfg.MaxAsyncBufferSize, cfg.MaxAsyncConcurrency),
 		fetchLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_store_multilevel_index_cache_fetch_duration_seconds",
-			Help:    "Histogram to track latency to fetch items from multi level index cache",
-			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			Name:                            "cortex_store_multilevel_index_cache_fetch_duration_seconds",
+			Help:                            "Histogram to track latency to fetch items from multi level index cache",
+			Buckets:                         []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"item_type"}),
 		backFillLatency: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_store_multilevel_index_cache_backfill_duration_seconds",
-			Help:    "Histogram to track latency to backfill items from multi level index cache",
-			Buckets: []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			Name:                            "cortex_store_multilevel_index_cache_backfill_duration_seconds",
+			Help:                            "Histogram to track latency to backfill items from multi level index cache",
+			Buckets:                         []float64{0.01, 0.1, 0.3, 0.6, 1, 3, 6, 10, 15, 20, 25, 30, 40, 50, 60, 90},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"item_type"}),
 		backfillDroppedItems: map[string]prometheus.Counter{
 			storecache.CacheTypePostings:         backfillDroppedItems.WithLabelValues(storecache.CacheTypePostings),

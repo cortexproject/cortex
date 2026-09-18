@@ -42,9 +42,18 @@ func newManyToManyMatchError(matching *parser.VectorMatching, original, duplicat
 
 func (e *errManyToManyMatch) Error() string {
 	group := e.original.MatchLabels(e.matching.On, e.matching.MatchingLabels...)
+	// The choice of which series is reported as "original" vs "duplicate" is
+	// driven by upstream StepVector / map iteration order and is therefore
+	// non-deterministic across runs. Sort the rendered label-set strings so
+	// the error message is stable; downstream consumers (e.g. Cortex,
+	// see cortexproject/cortex#7546) compare these messages.
+	original, duplicate := e.original.String(), e.duplicate.String()
+	if duplicate < original {
+		original, duplicate = duplicate, original
+	}
 	msg := "found duplicate series for the match group %s on the %s hand-side of the operation: [%s, %s]" +
 		";many-to-many matching not allowed: matching labels must be unique on one side"
-	return fmt.Sprintf(msg, group, e.side, e.original.String(), e.duplicate.String())
+	return fmt.Sprintf(msg, group, e.side, original, duplicate)
 }
 
 func shouldDropMetricName(op parser.ItemType, returnBool bool) bool {

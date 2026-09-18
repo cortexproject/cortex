@@ -27,7 +27,7 @@ var (
 			return &TimeSeriesV2{
 				LabelsRefs: make([]uint32, 0, expectedLabels),
 				Samples:    make([]Sample, 0, expectedSamplesPerSeries),
-				Histograms: make([]Histogram, 0, expectedHistogramsPerSeries),
+				Histograms: make([]WrappedHistogram, 0, expectedHistogramsPerSeries),
 				Exemplars:  make([]ExemplarV2, 0, expectedExemplarsPerSeries),
 				Metadata:   MetadataV2{},
 			}
@@ -37,9 +37,7 @@ var (
 	writeRequestPoolV2 = sync.Pool{
 		New: func() any {
 			return &PreallocWriteRequestV2{
-				WriteRequestV2: WriteRequestV2{
-					Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
-				},
+				Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
 			}
 		},
 	}

@@ -13,15 +13,21 @@ type byteArrayPage struct {
 	typ         Type
 	values      memory.SliceBuffer[byte]
 	offsets     memory.SliceBuffer[uint32]
-	columnIndex int16
+	columnIndex uint16
 }
 
-func newByteArrayPage(typ Type, columnIndex int16, numValues int32, values encoding.Values) *byteArrayPage {
+func newByteArrayPage(typ Type, columnIndex uint16, numValues int32, values encoding.Values) *byteArrayPage {
 	data, offsets := values.ByteArray()
+	if len(offsets) != int(numValues)+1 {
+		println("parquet: warning: column", columnIndex, "byte array page has", len(offsets), "offsets but numValues is", numValues, "(expected", numValues+1, "offsets)")
+	}
+	if int(numValues)+1 <= len(offsets) {
+		offsets = offsets[:numValues+1]
+	}
 	return &byteArrayPage{
 		typ:         typ,
 		values:      memory.SliceBufferFrom(data),
-		offsets:     memory.SliceBufferFrom(offsets[:numValues+1]),
+		offsets:     memory.SliceBufferFrom(offsets),
 		columnIndex: ^columnIndex,
 	}
 }

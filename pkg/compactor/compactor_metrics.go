@@ -1,6 +1,8 @@
 package compactor
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/thanos/pkg/block"
@@ -89,9 +91,12 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Help: "Total blocks metadata synchronization failures.",
 	}, nil)
 	m.metaFetcherSyncDuration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "cortex_compactor_meta_sync_duration_seconds",
-		Help:    "Duration of the blocks metadata synchronization in seconds.",
-		Buckets: []float64{0.01, 1, 10, 100, 300, 600, 1000},
+		Name:                            "cortex_compactor_meta_sync_duration_seconds",
+		Help:                            "Duration of the blocks metadata synchronization in seconds.",
+		Buckets:                         []float64{0.01, 1, 10, 100, 300, 600, 1000},
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, nil)
 	m.metaFetcherSynced = extprom.NewTxGaugeVec(
 		reg,
@@ -126,8 +131,12 @@ func newCompactorMetricsWithLabels(reg prometheus.Registerer, commonLabels []str
 		Help: "Total number of failed garbage collection operations.",
 	}, nil)
 	m.syncerGarbageCollectionDuration = promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-		Name: "cortex_compactor_garbage_collection_duration_seconds",
-		Help: "Time it took to perform garbage collection iteration.",
+		Name:                            "cortex_compactor_garbage_collection_duration_seconds",
+		Help:                            "Time it took to perform garbage collection iteration.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, nil)
 	m.syncerBlocksMarkedForDeletion = promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 		Name: blocksMarkedForDeletionName,

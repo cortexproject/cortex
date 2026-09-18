@@ -6,6 +6,8 @@ package api
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,8 +18,20 @@ type RemoteQuery interface {
 	fmt.Stringer
 }
 
+// RemoteEndpoints returns remote engines.
+//
+// Implementations should use mint and maxt to prune engine metadata
+// (e.g., filter TSDBInfos to only those overlapping the time range),
+// reducing unnecessary computations in subsequent calls to methods like
+// RemoteEngine.LabelSets().
+//
+// All available engines should be returned regardless of pruning.
 type RemoteEndpoints interface {
-	Engines() []RemoteEngine
+	// Engines returns remote engines.
+	//
+	// If mint and/or maxt of the query is unknown, the caller must pass
+	// math.MinInt64 and math.MaxInt64 respectively to retrieve unpruned engines.
+	Engines(mint, maxt int64) []RemoteEngine
 }
 
 type RemoteEngine interface {
@@ -36,14 +50,100 @@ type RemoteEngine interface {
 	NewRangeQuery(ctx context.Context, opts promql.QueryOpts, plan RemoteQuery, start, end time.Time, interval time.Duration) (promql.Query, error)
 }
 
+type memoizedRemoteEngine struct {
+	RemoteEngine
+	mint               int64
+	maxt               int64
+	labelSets          []labels.Labels
+	partitionLabelSets []labels.Labels
+}
+
+func (e memoizedRemoteEngine) MinT() int64 {
+	return e.mint
+}
+
+func (e memoizedRemoteEngine) MaxT() int64 {
+	return e.maxt
+}
+
+func (e memoizedRemoteEngine) LabelSets() []labels.Labels {
+	return e.labelSets
+}
+
+func (e memoizedRemoteEngine) PartitionLabelSets() []labels.Labels {
+	return e.partitionLabelSets
+}
+
+// NewMemoizedRemoteEngine returns an engine with a stable snapshot of the
+// supplied engine's metadata. Query creation is delegated to the supplied engine.
+func NewMemoizedRemoteEngine(engine RemoteEngine) RemoteEngine {
+	return &memoizedRemoteEngine{
+		RemoteEngine:       engine,
+		mint:               engine.MinT(),
+		maxt:               engine.MaxT(),
+		labelSets:          slices.Clone(engine.LabelSets()),
+		partitionLabelSets: slices.Clone(engine.PartitionLabelSets()),
+	}
+}
+
+type memoizedEndpoints struct {
+	endpoints RemoteEndpoints
+}
+
+func (m memoizedEndpoints) Engines(mint, maxt int64) []RemoteEngine {
+	remoteEngines := m.endpoints.Engines(mint, maxt)
+	engines := make([]RemoteEngine, 0, len(remoteEngines))
+	for _, engine := range remoteEngines {
+		engines = append(engines, NewMemoizedRemoteEngine(engine))
+	}
+	return engines
+}
+
+// NewMemoizedEndpoints returns endpoints that provide a fresh, stable metadata
+// snapshot of each remote engine on every Engines call.
+func NewMemoizedEndpoints(endpoints RemoteEndpoints) RemoteEndpoints {
+	return &memoizedEndpoints{endpoints: endpoints}
+}
+
 type staticEndpoints struct {
 	engines []RemoteEngine
 }
 
-func (m staticEndpoints) Engines() []RemoteEngine {
+func (m staticEndpoints) Engines(mint, maxt int64) []RemoteEngine {
 	return m.engines
 }
 
 func NewStaticEndpoints(engines []RemoteEngine) RemoteEndpoints {
 	return &staticEndpoints{engines: engines}
+}
+
+type cachedEndpoints struct {
+	endpoints RemoteEndpoints
+
+	enginesOnce sync.Once
+	engines     []RemoteEngine
+}
+
+func (l *cachedEndpoints) Engines(mint, maxt int64) []RemoteEngine {
+	l.enginesOnce.Do(func() {
+		l.engines = l.endpoints.Engines(mint, maxt)
+	})
+	return l.engines
+}
+
+// NewCachedEndpoints returns an endpoints wrapper that
+// resolves and caches engines on first access.
+//
+// All subsequent Engines calls return cached engines, ignoring any query
+// parameters.
+func NewCachedEndpoints(endpoints RemoteEndpoints) RemoteEndpoints {
+	if endpoints == nil {
+		panic("api.NewCachedEndpoints: endpoints is nil")
+	}
+
+	if le, ok := endpoints.(*cachedEndpoints); ok {
+		return le
+	}
+
+	return &cachedEndpoints{endpoints: endpoints}
 }

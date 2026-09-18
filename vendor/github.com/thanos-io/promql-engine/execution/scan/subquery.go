@@ -11,13 +11,13 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/ringbuffer"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/schema"
 )
 
 const sampleLimitCheckPercentage = 0.05
@@ -150,10 +150,16 @@ func (o *subqueryOperator) Next(ctx context.Context, buf []model.StepVector) (in
 	maxSteps := min(o.stepsBatch, len(buf))
 
 	for i := 0; o.currentStep <= o.maxt && i < maxSteps; i++ {
-		mint := o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds() + 1
-		maxt := o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
+		var (
+			rangeStart = o.currentStep - o.subQuery.Range.Milliseconds() - o.subQuery.OriginalOffset.Milliseconds()
+			mint       = rangeStart + 1
+			maxt       = o.currentStep - o.subQuery.OriginalOffset.Milliseconds()
+		)
+		// Ring buffers use an exclusive lower boundary. mint is the first
+		// millisecond included by the subquery and remains the lower bound used
+		// while collecting vectors; Reset therefore receives rangeStart.
 		for _, b := range o.buffers {
-			b.Reset(mint, maxt+o.subQuery.Offset.Milliseconds())
+			b.Reset(rangeStart, maxt+o.subQuery.Offset.Milliseconds())
 		}
 		o.currentTrackedSamples = 0
 		o.lastTrackedSamples = 0
@@ -209,7 +215,7 @@ func (o *subqueryOperator) Next(ctx context.Context, buf []model.StepVector) (in
 		buf[n].Reset(o.currentStep)
 		hint := len(o.buffers)
 		for sampleId, rangeSamples := range o.buffers {
-			f, h, ok, _, err := rangeSamples.Eval(ctx, o.params[i], o.params2[i], math.MinInt64)
+			f, h, ok, _, err := rangeSamples.Eval(ctx, o.params[i], o.params2[i])
 			if err != nil {
 				return 0, err
 			}
@@ -310,11 +316,10 @@ func (o *subqueryOperator) initSeries(ctx context.Context) error {
 		for i := range o.buffers {
 			o.buffers[i] = ringbuffer.New(ctx, 8, o.subQuery.Range.Milliseconds(), o.subQuery.Offset.Milliseconds(), o.call)
 		}
-		var b labels.ScratchBuilder
 		for i, s := range series {
 			lbls := s
 			if o.funcExpr.Func.Name != "last_over_time" {
-				lbls = extlabels.DropReserved(s, b)
+				lbls = s.DropReserved(schema.IsMetadataLabel)
 			}
 			o.series[i] = lbls
 		}

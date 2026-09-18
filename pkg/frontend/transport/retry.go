@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
+	"github.com/cortexproject/cortex/pkg/storegateway"
 )
 
 type Retry struct {
@@ -24,10 +26,13 @@ func NewRetry(maxRetries int, reg prometheus.Registerer) *Retry {
 	return &Retry{
 		maxRetries: maxRetries,
 		retriesCount: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace: "cortex",
-			Name:      "query_frontend_retries",
-			Help:      "Number of times a request is retried.",
-			Buckets:   []float64{0, 1, 2, 3, 4, 5},
+			Namespace:                       "cortex",
+			Name:                            "query_frontend_retries",
+			Help:                            "Number of times a request is retried.",
+			Buckets:                         []float64{0, 1, 2, 3, 4, 5},
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 	}
 }
@@ -78,9 +83,12 @@ func (r *Retry) Do(ctx context.Context, f func() (*httpgrpc.HTTPResponse, error)
 }
 
 func isBodyRetryable(body string) bool {
-	// If pool exhausted, retry at query frontend might make things worse.
-	// Rely on retries at querier level only.
+	// If pool exhausted or concurrent data bytes limit exceeded, retry at query frontend
+	// might make things worse. Rely on retries at querier level only.
 	if strings.Contains(body, pool.ErrPoolExhausted.Error()) {
+		return false
+	}
+	if strings.Contains(body, storegateway.ErrMaxConcurrentDataBytesLimitExceeded.Error()) {
 		return false
 	}
 

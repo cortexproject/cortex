@@ -497,6 +497,83 @@ func TestUpdater_UpdateParquetBlockIndexEntry(t *testing.T) {
 	}
 }
 
+func TestUpdater_UpdateParquetBlocks_SkipsReadingExistingMarker(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	fsBkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	// Generate the initial index with a block that has a valid parquet marker.
+	gBkt := BucketWithGlobalMarkers(fsBkt)
+	block1 := testutil.MockStorageBlock(t, gBkt, userID, 10, 20)
+	block1Mark := testutil.MockStorageParquetConverterMark(t, gBkt, userID, block1, 3)
+
+	w := NewUpdater(gBkt, userID, nil, logger).EnableParquet()
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+
+	// Wrap the bucket so that any GET on the block's parquet marker fails. Since
+	// the marker is already present and valid in the previous index, the updater
+	// must skip re-reading it and therefore must not perform any GET.
+	markerPath := path.Join(userID, block1.ULID.String(), parquet.ConverterMarkerFileName)
+	mock := &testutil.MockBucketFailure{
+		Bucket:      fsBkt,
+		GetFailures: map[string]error{markerPath: errors.New("unexpected GET on parquet marker")},
+	}
+	iMock := objstore.WrapWithMetrics(mock, nil, "")
+	wFail := NewUpdater(BucketWithGlobalMarkers(iMock), userID, nil, logger).EnableParquet()
+
+	idx, _, _, err = wFail.UpdateIndex(ctx, idx)
+	require.NoError(t, err)
+	// No GET should have been performed since the marker read was skipped.
+	assert.Equal(t, int32(0), mock.GetCalls.Load())
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+}
+
+func TestUpdater_UpdateParquetBlocks_ResetsFieldWhenMarkerRemoved(t *testing.T) {
+	const userID = "user-1"
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	fsBkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	// Generate the initial index with a block that has a valid parquet marker.
+	gBkt := BucketWithGlobalMarkers(fsBkt)
+	block1 := testutil.MockStorageBlock(t, gBkt, userID, 10, 20)
+	block1Mark := testutil.MockStorageParquetConverterMark(t, gBkt, userID, block1, 3)
+
+	w := NewUpdater(gBkt, userID, nil, logger).EnableParquet()
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{
+			block1.ULID.String(): {Version: block1Mark.Version, Shards: block1Mark.Shards},
+		})
+
+	// Remove the parquet marker (both the per-block and global location) and
+	// update the index. The parquet field must be reset to nil.
+	require.NoError(t, gBkt.Delete(ctx, path.Join(userID, block1.ULID.String(), parquet.ConverterMarkerFileName)))
+
+	idx, _, _, err = w.UpdateIndex(ctx, idx)
+	require.NoError(t, err)
+	assertBucketIndexEqualWithParquet(t, idx, gBkt, userID,
+		[]tsdb.BlockMeta{block1},
+		nil, map[string]*parquet.ConverterMarkMeta{})
+}
+
 func getBlockUploadedAt(t testing.TB, bkt objstore.Bucket, userID string, blockID ulid.ULID) int64 {
 	metaFile := path.Join(userID, blockID.String(), block.MetaFilename)
 

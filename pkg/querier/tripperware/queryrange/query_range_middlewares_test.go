@@ -70,6 +70,7 @@ func TestRoundTrip(t *testing.T) {
 		time.Minute,
 		false,
 		logicalplan.DefaultOptimizers,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -195,6 +196,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 				time.Minute,
 				tc.distributedEnabled,
 				logicalplan.DefaultOptimizers,
+				nil,
 			)
 			require.NoError(t, err)
 

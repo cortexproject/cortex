@@ -44,4 +44,32 @@ func TestSecretStringSliceCSV(t *testing.T) {
 		require.NoError(t, s.Keys.Set(""))
 		assert.Equal(t, []string(nil), s.Keys.Value())
 	})
+
+	t.Run("trailing comma is rejected", func(t *testing.T) {
+		var s TestStruct
+		err := s.Keys.Set("newkey,")
+		require.Error(t, err, "trailing comma must produce an error")
+		assert.Nil(t, s.Keys.Value(), "values must not be updated on error")
+	})
+
+	t.Run("leading comma is rejected", func(t *testing.T) {
+		var s TestStruct
+		require.Error(t, s.Keys.Set(",newkey"))
+	})
+
+	t.Run("double comma is rejected", func(t *testing.T) {
+		var s TestStruct
+		require.Error(t, s.Keys.Set("newkey,,oldkey"))
+	})
+
+	t.Run("whitespace-only entry is rejected", func(t *testing.T) {
+		var s TestStruct
+		require.Error(t, s.Keys.Set("newkey, ,oldkey"))
+	})
+
+	t.Run("surrounding whitespace is trimmed from valid entries", func(t *testing.T) {
+		var s TestStruct
+		require.NoError(t, s.Keys.Set(" key1 , key2 "))
+		assert.Equal(t, []string{"key1", "key2"}, s.Keys.Value())
+	})
 }

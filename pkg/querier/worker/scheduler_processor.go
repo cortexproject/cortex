@@ -43,9 +43,12 @@ func newSchedulerProcessor(cfg Config, handler RequestHandler, log log.Logger, r
 			return schedulerpb.NewSchedulerForQuerierClient(conn)
 		},
 		frontendClientRequestDuration: promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{
-			Name:    "cortex_querier_query_frontend_request_duration_seconds",
-			Help:    "Time spend doing requests to frontend.",
-			Buckets: prometheus.ExponentialBuckets(0.001, 4, 6),
+			Name:                            "cortex_querier_query_frontend_request_duration_seconds",
+			Help:                            "Time spend doing requests to frontend.",
+			Buckets:                         prometheus.ExponentialBuckets(0.001, 4, 6),
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: time.Hour,
 		}, []string{"operation", "status_code"}),
 		querierAddress: querierAddress,
 	}

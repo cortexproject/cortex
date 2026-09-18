@@ -30,7 +30,6 @@ var DefaultOptimizers = []Optimizer{
 type Plan interface {
 	Optimize([]Optimizer) (Plan, annotations.Annotations)
 	Root() Node
-	MinMaxTime(*query.Options) (int64, int64)
 }
 
 type Optimizer interface {
@@ -152,14 +151,18 @@ func extractFuncFromPath(p []*Node) string {
 	return extractFuncFromPath(p[:len(p)-1])
 }
 
-func (p *plan) MinMaxTime(qOpts *query.Options) (int64, int64) {
+func (p *plan) Root() Node {
+	return p.expr
+}
+
+// MinMaxTime returns the min and max timestamp that any selector in the query
+// can read.
+func MinMaxTime(root Node, qOpts *query.Options) (int64, int64) {
 	var minTimestamp, maxTimestamp int64 = math.MaxInt64, math.MinInt64
 	// Whenever a MatrixSelector is evaluated, evalRange is set to the corresponding range.
 	// The evaluation of the VectorSelector inside then evaluates the given range and unsets
 	// the variable.
 	var evalRange time.Duration
-
-	root := p.Root()
 
 	TraverseWithParents(nil, &root, func(parents []*Node, node *Node) {
 		switch n := (*node).(type) {
@@ -205,10 +208,6 @@ func (p *plan) Optimize(optimizers []Optimizer) (Plan, annotations.Annotations) 
 	return &plan{expr: expr, opts: p.opts}, *annos
 }
 
-func (p *plan) Root() Node {
-	return p.expr
-}
-
 func Traverse(expr *Node, transform func(*Node)) {
 	children := (*expr).Children()
 	transform(expr)
@@ -230,10 +229,7 @@ func TraverseBottomUp(parent *Node, current *Node, transform func(parent *Node, 
 	for _, c := range (*current).Children() {
 		stop = TraverseBottomUp(current, c, transform) || stop
 	}
-	if stop {
-		return stop
-	}
-	return transform(parent, current)
+	return stop || transform(parent, current)
 }
 
 func replacePrometheusNodes(plan parser.Expr) Node {

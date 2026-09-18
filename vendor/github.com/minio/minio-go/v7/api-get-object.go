@@ -46,6 +46,22 @@ func (c *Client) GetObject(ctx context.Context, bucketName, objectName string, o
 		}
 	}
 
+	if opts.RDMABuffer != nil && c.rdmaEnabled {
+		n, err := c.getObjectRDMA(ctx, bucketName, objectName, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &Object{
+			mutex:    &sync.Mutex{},
+			isClosed: true,
+			objectInfo: ObjectInfo{
+				Key:  objectName,
+				Size: n,
+			},
+			objectInfoSet: true,
+		}, nil
+	}
+
 	gctx, cancel := context.WithCancel(ctx)
 
 	// Detect if snowball is server location we are talking to.
@@ -458,7 +474,14 @@ func (o *Object) ReadAt(b []byte, offset int64) (n int, err error) {
 		return 0, o.prevErr
 	}
 
-	// Set the current offset to ReadAt offset, because the current offset will be shifted at the end of this method.
+	// Save and restore currOffset so ReadAt doesn't affect sequential Read operations.
+	// Per io.ReaderAt: "ReadAt should not affect nor be affected by the underlying seek offset."
+	savedOffset := o.currOffset
+	defer func() {
+		o.currOffset = savedOffset
+		o.seekData = true // Force next Read to re-establish stream at correct position
+	}()
+
 	o.currOffset = offset
 
 	// Can only compare offsets to size when size has been set.

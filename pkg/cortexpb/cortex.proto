@@ -47,7 +47,7 @@ message TimeSeriesV2 {
   //
   // Samples and histograms are sorted by timestamp (older first).
   repeated Sample samples = 2 [(gogoproto.nullable) = false];
-  repeated Histogram histograms = 3 [(gogoproto.nullable) = false];
+  repeated Histogram histograms = 3 [(gogoproto.nullable) = false, (gogoproto.customtype) = "WrappedHistogram"];
 
   // exemplars represents an optional set of exemplars attached to this series' samples.
   repeated ExemplarV2 exemplars = 4 [(gogoproto.nullable) = false];
@@ -140,7 +140,7 @@ message TimeSeries {
   // Sorted by time, oldest sample first.
   repeated Sample samples = 2 [(gogoproto.nullable) = false];
   repeated Exemplar exemplars = 3 [(gogoproto.nullable) = false];
-  repeated Histogram histograms = 4 [(gogoproto.nullable) = false];
+  repeated Histogram histograms = 4 [(gogoproto.nullable) = false, (gogoproto.customtype) = "WrappedHistogram"];
 }
 
 message LabelPair {

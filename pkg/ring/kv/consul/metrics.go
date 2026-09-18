@@ -2,6 +2,7 @@ package consul
 
 import (
 	"context"
+	"time"
 
 	consul "github.com/hashicorp/consul/api"
 	"github.com/prometheus/client_golang/prometheus"
@@ -20,9 +21,12 @@ type consulMetrics struct {
 
 func newConsulMetrics(registerer prometheus.Registerer) *consulMetrics {
 	consulRequestDurationCollector := instrument.NewHistogramCollector(promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "consul_request_duration_seconds",
-		Help:    "Time spent on consul requests.",
-		Buckets: prometheus.DefBuckets,
+		Name:                            "consul_request_duration_seconds",
+		Help:                            "Time spent on consul requests.",
+		Buckets:                         prometheus.DefBuckets,
+		NativeHistogramBucketFactor:     1.1,
+		NativeHistogramMaxBucketNumber:  100,
+		NativeHistogramMinResetDuration: time.Hour,
 	}, []string{"operation", "status_code"}))
 	consulMetrics := consulMetrics{consulRequestDurationCollector}
 	return &consulMetrics

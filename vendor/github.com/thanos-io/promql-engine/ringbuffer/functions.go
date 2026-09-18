@@ -18,10 +18,12 @@ import (
 type SamplesBuffer GenericRingBuffer
 
 type FunctionArgs struct {
-	Samples          []Sample
-	StepTime         int64
-	SelectRange      int64
-	Offset           int64
+	Samples     []Sample
+	StepTime    int64
+	SelectRange int64
+	Offset      int64
+	// MetricAppearedTs is the earliest sample timestamp observed for an
+	// extended range function. xincrease uses it to limit initial-zero injection.
 	MetricAppearedTs int64
 
 	// quantile_over_time and predict_linear use one, so we only use one here.
@@ -386,8 +388,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h := extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		return v, h, true, 0, nil
+		return extendedRate(f.Samples, true, true, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 	},
 	"xdelta": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 		if len(f.Samples) == 0 {
@@ -396,8 +397,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h := extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		return v, h, true, 0, nil
+		return extendedRate(f.Samples, false, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 	},
 	"xincrease": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 		if len(f.Samples) == 0 {
@@ -406,8 +406,7 @@ var rangeVectorFuncs = map[string]FunctionCall{
 		if f.MetricAppearedTs == math.MinInt64 {
 			panic("BUG: we got some Samples but metric still hasn't appeared")
 		}
-		v, h := extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
-		return v, h, true, 0, nil
+		return extendedRate(f.Samples, true, false, f.StepTime, f.SelectRange, f.Offset, f.MetricAppearedTs)
 	},
 	"predict_linear": func(f FunctionArgs) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 		v, ok, warn := predictLinear(f.Samples, f.ScalarPoint, f.StepTime)
@@ -555,18 +554,121 @@ func extrapolatedRate(samples []Sample, numSamples int, isCounter, isRate bool, 
 // It calculates the rate (allowing for counter resets if isCounter is true),
 // taking into account the last sample before the range start, and returns
 // the result as either per-second (if isRate is true) or overall.
-func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram) {
+func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, selectRange int64, offset int64, metricAppearedTs int64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	var (
-		rangeStart      = stepTime - (selectRange + offset)
-		rangeEnd        = stepTime - offset
-		resultValue     float64
-		resultHistogram *histogram.FloatHistogram
+		rangeStart  = stepTime - (selectRange + offset)
+		rangeEnd    = stepTime - offset
+		resultValue float64
 	)
 
+	// A range mixing float and histogram samples has no meaningful extended
+	// rate, so bail out early for parity with extrapolatedRate. Without this
+	// guard a float-first range would fall into the float branch below and read
+	// .V.F (== 0) from the histogram samples, emitting a bogus zero float with
+	// no warning and inconsistently with rate/increase/delta on identical input.
+	var fd, hd bool
+	for _, s := range samples {
+		hd = hd || s.V.H != nil
+		fd = fd || s.V.H == nil
+	}
+	if fd && hd {
+		return 0, nil, false, warnings.WarnMixedFloatsHistograms, nil
+	}
+
+	// Of the extended functions only xincrease is a non-rate counter; xrate and
+	// xdelta take the windowing and adjust-to-range branches.
+	isXIncrease := isCounter && !isRate
+
 	if samples[0].V.H != nil {
-		// TODO - support extended rate for histograms
-		resultHistogram, _, _ = histogramRate(samples, isCounter)
-		return resultValue, resultHistogram
+		// This effectively injects a "zero" histogram for xincrease if all the
+		// samples in the range are identical (e.g. a single sample). Only do it
+		// for some time after the metric appears the first time, mirroring the
+		// float path below.
+		if isXIncrease && sameHistogramValues(samples) {
+			until := selectRange + metricAppearedTs
+			// Make sure we are not at the end of the range.
+			if stepTime-offset <= until {
+				var warn warnings.Warnings
+				// sameHistogramValues uses FloatHistogram.Equals, which ignores
+				// CounterResetHint, so equal-valued samples may still carry
+				// different hints. Scan every sample the way histogramRate would,
+				// otherwise a trailing GaugeType sample silently drops the warning.
+				for i := range samples {
+					if samples[i].V.H != nil && samples[i].V.H.CounterResetHint == histogram.GaugeType {
+						warn |= warnings.WarnNotCounter
+						break
+					}
+				}
+				h := samples[0].V.H.Copy()
+				h.CounterResetHint = histogram.GaugeType
+				return 0, h.Compact(0), true, warn, nil
+			}
+		}
+
+		if len(samples) < 2 {
+			// A rate/delta over a single histogram is undefined: unlike the
+			// float path (which emits 0), there is no meaningful zero-shaped
+			// histogram to return, so emit no sample. This matches Prometheus'
+			// histogramRate, which returns nil for fewer than two points. Note
+			// single-sample xincrease is already handled by the zero injection
+			// above; only xrate/xdelta and post-window xincrease reach here.
+			return 0, nil, false, 0, nil
+		}
+
+		sampledInterval := float64(samples[len(samples)-1].T - samples[0].T)
+		if sampledInterval <= 0 {
+			return 0, nil, false, 0, nil
+		}
+		averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
+
+		firstPoint := 0
+		if !isXIncrease {
+			// If the point before the range is too far from rangeStart, drop it.
+			if float64(rangeStart-samples[0].T) > averageDurationBetweenSamples {
+				if len(samples) < 3 {
+					return 0, nil, false, 0, nil
+				}
+				firstPoint = 1
+				sampledInterval = float64(samples[len(samples)-1].T - samples[firstPoint].T)
+				if sampledInterval <= 0 {
+					return 0, nil, false, 0, nil
+				}
+				averageDurationBetweenSamples = sampledInterval / float64(len(samples)-1-firstPoint)
+			}
+		}
+
+		resultHistogram, warn, err := histogramRate(samples[firstPoint:], isCounter)
+		if err != nil {
+			return 0, nil, false, warn, err
+		}
+		if resultHistogram == nil {
+			// histogramRate returns nil for a single sample or a range that
+			// mixes floats and histograms; emit no sample to avoid appending a
+			// bogus zero float into an otherwise-histogram series.
+			return 0, nil, false, warn, nil
+		}
+
+		// Scale the delta histogram using the same factor model as the float
+		// path: an optional adjust-to-range factor for xrate/xdelta, then a
+		// per-second division for xrate. Note we intentionally avoid the float
+		// path's integer truncation of selectRange (see the isRate branch below).
+		factor := 1.0
+		if !isXIncrease {
+			durationToEnd := float64(rangeEnd - samples[len(samples)-1].T)
+			// If the points cover the whole range (i.e. they start just before
+			// the range start and end just before the range end) adjust the
+			// value from the sampled range to the requested range.
+			if samples[firstPoint].T <= rangeStart && durationToEnd < averageDurationBetweenSamples {
+				factor *= float64(selectRange) / sampledInterval
+			}
+		}
+		if isRate {
+			// Convert to per-second.
+			factor /= float64(selectRange) / 1000
+		}
+		resultHistogram.Mul(factor)
+
+		return 0, resultHistogram, true, warn, nil
 	}
 
 	sameVals := true
@@ -580,10 +682,10 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 	// This effectively injects a "zero" series for xincrease if we only have one sample.
 	// Only do it for some time when the metric appears the first time.
 	until := selectRange + metricAppearedTs
-	if isCounter && !isRate && sameVals {
+	if isXIncrease && sameVals {
 		// Make sure we are not at the end of the range.
 		if stepTime-offset <= until {
-			return samples[0].V.F, nil
+			return samples[0].V.F, nil, true, 0, nil
 		}
 	}
 
@@ -591,12 +693,11 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 	averageDurationBetweenSamples := sampledInterval / float64(len(samples)-1)
 
 	firstPoint := 0
-	// Only do this for not xincrease
-	if !(isCounter && !isRate) {
+	if !isXIncrease {
 		// If the point before the range is too far from rangeStart, drop it.
 		if float64(rangeStart-samples[0].T) > averageDurationBetweenSamples {
 			if len(samples) < 3 {
-				return resultValue, nil
+				return resultValue, nil, true, 0, nil
 			}
 			firstPoint = 1
 			sampledInterval = float64(samples[len(samples)-1].T - samples[1].T)
@@ -624,8 +725,7 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 	// If the points cover the whole range (i.e. they start just before the
 	// range start and end just before the range end) adjust the value from
 	// the sampled range to the requested range.
-	// Only do this for not xincrease.
-	if !(isCounter && !isRate) {
+	if !isXIncrease {
 		if samples[firstPoint].T <= rangeStart && durationToEnd < averageDurationBetweenSamples {
 			adjustToRange := float64(selectRange / 1000)
 			resultValue = resultValue * (adjustToRange / (sampledInterval / 1000))
@@ -636,7 +736,24 @@ func extendedRate(samples []Sample, isCounter, isRate bool, stepTime int64, sele
 		resultValue = resultValue / float64(selectRange/1000)
 	}
 
-	return resultValue, nil
+	return resultValue, nil, true, 0, nil
+}
+
+// sameHistogramValues reports whether every sample in the range is a histogram
+// equal to the first one. It is the histogram analog of the float path's
+// sameVals check and gates xincrease's "zero" injection for a newly-appeared
+// series.
+func sameHistogramValues(samples []Sample) bool {
+	if len(samples) == 0 || samples[0].V.H == nil {
+		return false
+	}
+	first := samples[0].V.H
+	for _, sample := range samples[1:] {
+		if sample.V.H == nil || !first.Equals(sample.V.H) {
+			return false
+		}
+	}
+	return true
 }
 
 // histogramRate is a helper function for extrapolatedRate. It requires

@@ -147,11 +147,8 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 
 	// Run all queries concurrently to get better distribution of requests between queriers.
 	for _, concurrentQueries := range batches {
-		for i := 0; i < concurrentQueries; i++ {
-			wg.Add(1)
-
-			go func() {
-				defer wg.Done()
+		for range concurrentQueries {
+			wg.Go(func() {
 				c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", userID)
 				require.NoError(t, err)
 
@@ -159,7 +156,7 @@ func runQuerierShardingTest(t *testing.T, cfg querierShardingTestConfig) {
 				require.NoError(t, err)
 				require.Equal(t, model.ValVector, result.Type())
 				assert.Equal(t, expectedVector, result.(model.Vector))
-			}()
+			})
 		}
 
 		wg.Wait()

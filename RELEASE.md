@@ -4,7 +4,7 @@ This page describes the release process and the currently planned schedule for u
 
 ## Release schedule
 
-Our goal is to provide a new minor release every 6 weeks. This is a new process and everything in this document is subject to change.
+Our goal is to provide a new minor release every 6 months. This is a new process and everything in this document is subject to change.
 
 | release series | date of first pre-release (year-month-day) | release shepherd                            |
 |----------------|--------------------------------------------|---------------------------------------------|
@@ -37,6 +37,7 @@ Our goal is to provide a new minor release every 6 weeks. This is a new process 
 | v1.19.0        | 2025-01-22                                 | Charlie Le (@charlietle)                    |
 | v1.20.0        | 2025-10-31                                 | Ben Ye (@yeya24)                            |
 | v1.21.0        | 2026-03-12                                 | Friedrich Gonzalez (@friedrichg)            |
+| v1.22.0        | 2026-09-12                                 | Charlie Le (@charlietle)                    |
 
 ## Release shepherd responsibilities
 

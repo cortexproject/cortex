@@ -142,8 +142,8 @@ func TestPusherAppendable(t *testing.T) {
 					{
 						TimeSeries: &cortexpb.TimeSeries{
 							Labels: lbls1,
-							Histograms: []cortexpb.Histogram{
-								cortexpb.HistogramToHistogramProto(120_000, testHistogram),
+							Histograms: []cortexpb.WrappedHistogram{
+								cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(120_000, testHistogram)),
 							},
 						},
 					},
@@ -160,8 +160,8 @@ func TestPusherAppendable(t *testing.T) {
 					{
 						TimeSeries: &cortexpb.TimeSeries{
 							Labels: lbls1,
-							Histograms: []cortexpb.Histogram{
-								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							Histograms: []cortexpb.WrappedHistogram{
+								cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram)),
 							},
 						},
 					},
@@ -187,8 +187,8 @@ func TestPusherAppendable(t *testing.T) {
 					{
 						TimeSeries: &cortexpb.TimeSeries{
 							Labels: lbls1,
-							Histograms: []cortexpb.Histogram{
-								cortexpb.HistogramToHistogramProto(120_000, testHistogram),
+							Histograms: []cortexpb.WrappedHistogram{
+								cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(120_000, testHistogram)),
 							},
 						},
 					},
@@ -214,8 +214,8 @@ func TestPusherAppendable(t *testing.T) {
 					{
 						TimeSeries: &cortexpb.TimeSeries{
 							Labels: lbls1,
-							Histograms: []cortexpb.Histogram{
-								cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram),
+							Histograms: []cortexpb.WrappedHistogram{
+								cortexpb.WrapHistogram(cortexpb.FloatHistogramToHistogramProto(120_000, testFloatHistogram)),
 							},
 						},
 					},

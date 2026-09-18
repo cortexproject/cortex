@@ -86,6 +86,17 @@ func (m *metricCounter) increaseSeriesForMetric(metric string) {
 	shard.mtx.Unlock()
 }
 
+// ActiveMetricNames returns the total number of unique metric names tracked across all shards.
+func (m *metricCounter) ActiveMetricNames() int {
+	total := 0
+	for i := range m.shards {
+		m.shards[i].mtx.Lock()
+		total += len(m.shards[i].m)
+		m.shards[i].mtx.Unlock()
+	}
+	return total
+}
+
 type labelSetCounterEntry struct {
 	count  int
 	labels labels.Labels

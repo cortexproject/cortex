@@ -273,7 +273,7 @@ func TestRulerSharding(t *testing.T) {
 	// Generate multiple rule groups, with 1 rule each.
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -373,7 +373,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		"rule_label_2":    "val2",
 		"duplicate_label": "rule_val",
 	}
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 		expectedNames[i] = ruleName
@@ -490,7 +490,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 				}
@@ -503,7 +503,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				ruleNames := []string{}
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleName := rule["name"]
 					ruleNames = append(ruleNames, ruleName.(string))
 
@@ -519,9 +519,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -537,9 +537,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -553,7 +553,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 					responseJson, err := json.Marshal(rule)
@@ -609,7 +609,7 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -775,7 +775,7 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1126,8 +1126,6 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			"-blocks-storage.tsdb.block-ranges-period":   "1h",
 			"-blocks-storage.bucket-store.sync-interval": "1s",
@@ -1158,7 +1156,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push some series to Cortex -- enough so that we can hit some limits.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: fmt.Sprintf("%d", i)})
 
 		res, err := c.Push(series)
@@ -1266,8 +1264,6 @@ func TestRulerMetricsWhenIngesterFails(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			// We run single ingester only, no replication.
 			"-distributor.replication-factor": "1",
@@ -1370,8 +1366,6 @@ func TestRulerDisablesRuleGroups(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			// We run single ingester only, no replication.
 			"-distributor.replication-factor": "1",
@@ -1476,7 +1470,7 @@ func TestRulerHAEvaluation(t *testing.T) {
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
 	evalInterval, _ := model.ParseDuration("2s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(10)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1628,8 +1622,6 @@ func TestRulerKeepFiring(t *testing.T) {
 			// Evaluate rules often, so that we don't need to wait for metrics to show up.
 			"-ruler.evaluation-interval": "2s",
 			"-ruler.poll-interval":       "2s",
-			// No delay
-			"-ruler.evaluation-delay-duration": "0",
 
 			"-blocks-storage.tsdb.block-ranges-period":   "1h",
 			"-blocks-storage.bucket-store.sync-interval": "1s",
@@ -1810,7 +1802,7 @@ func TestRulerEvalWithQueryFrontend(t *testing.T) {
 	}
 }
 
-func parseAlertFromRule(t *testing.T, rules interface{}) *alertingRule {
+func parseAlertFromRule(t *testing.T, rules any) *alertingRule {
 	responseJson, err := json.Marshal(rules)
 	require.NoError(t, err)
 
@@ -1886,4 +1878,57 @@ func createTestRuleGroup(t *testing.T) rulefmt.RuleGroup {
 			},
 		},
 	}
+}
+
+func TestRulerXFunctionsWithThanosEngine(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	flags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			"-querier.thanos-engine":          "true",
+			"-querier.enable-x-functions":     "true",
+			"-ruler.evaluation-interval":      "2s",
+			"-ruler.poll-interval":            "2s",
+			"-distributor.replication-factor": "1",
+		},
+	)
+
+	const namespace = "test"
+	const user = "user-1"
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester, ruler))
+
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", ruler.HTTPEndpoint(), user)
+	require.NoError(t, err)
+
+	series, _ := generateSeries("metric_total", time.Now(), prompb.Label{Name: "job", Value: "test"})
+	res, err := c.Push(series)
+	require.NoError(t, err)
+	require.Equal(t, 200, res.StatusCode)
+
+	ruleGroup := ruleGroupWithRule("xfunctions_group", "xincrease_rule", `xincrease(metric_total{job="test"}[5m])`)
+	require.NoError(t, c.SetRuleGroup(ruleGroup, namespace))
+
+	m := ruleGroupMatcher(user, namespace, "xfunctions_group")
+
+	// Wait until ruler has loaded the rule group.
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+
+	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 }

@@ -19,19 +19,19 @@ func TestV2AlertGroups(t *testing.T) {
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.161+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.163Z","labels":{"group":"group_1","name":"alert_1"}}],` +
-			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}},` +
+			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}},` +
 			`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.165+02:00","fingerprint":"465de60f606461c3",` +
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.165+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.167Z","labels":{"group":"group_2","name":"alert_3"}}],` +
-			`"labels":{"group":"group_2"},"receiver":{"name":"dummy"}}` +
+			`"labels":{"group":"group_2"},"receiver":{"name":"dummy"},"routeLabels":{}}` +
 			`]`),
 		[]byte(`[` +
 			`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.163+02:00","fingerprint":"c4b8b79a607bee77",` +
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.163+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.165Z","labels":{"group":"group_1","name":"alert_2"}}],` +
-			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}}` +
+			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}}` +
 			`]`),
 		[]byte(`[]`),
 	}
@@ -45,12 +45,12 @@ func TestV2AlertGroups(t *testing.T) {
 		`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.163+02:00",` +
 		`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 		`"updatedAt":"2021-04-21T07:47:32.165Z","labels":{"group":"group_1","name":"alert_2"}}],` +
-		`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}},` +
+		`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}},` +
 		`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.165+02:00","fingerprint":"465de60f606461c3",` +
 		`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.165+02:00",` +
 		`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 		`"updatedAt":"2021-04-21T07:47:32.167Z","labels":{"group":"group_2","name":"alert_3"}}],` +
-		`"labels":{"group":"group_2"},"receiver":{"name":"dummy"}}]`)
+		`"labels":{"group":"group_2"},"receiver":{"name":"dummy"},"routeLabels":{}}]`)
 
 	out, err := V2AlertGroups{}.MergeResponses(in)
 	require.NoError(t, err)

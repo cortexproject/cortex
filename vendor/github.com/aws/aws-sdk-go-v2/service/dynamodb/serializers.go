@@ -2702,6 +2702,67 @@ func (m *awsAwsjson10_serializeOpScan) HandleSerialize(ctx context.Context, in m
 	return next.HandleSerialize(ctx, in)
 }
 
+type awsAwsjson10_serializeOpSearchVectors struct {
+}
+
+func (*awsAwsjson10_serializeOpSearchVectors) ID() string {
+	return "OperationSerializer"
+}
+
+func (m *awsAwsjson10_serializeOpSearchVectors) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
+	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
+) {
+	_, span := tracing.StartSpan(ctx, "OperationSerializer")
+	endTimer := startMetricTimer(ctx, "client.call.serialization_duration")
+	defer endTimer()
+	defer span.End()
+	request, ok := in.Request.(*smithyhttp.Request)
+	if !ok {
+		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown transport type %T", in.Request)}
+	}
+
+	input, ok := in.Parameters.(*SearchVectorsInput)
+	_ = input
+	if !ok {
+		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown input parameters type %T", in.Parameters)}
+	}
+
+	operationPath := "/"
+	if len(request.Request.URL.Path) == 0 {
+		request.Request.URL.Path = operationPath
+	} else {
+		request.Request.URL.Path = path.Join(request.Request.URL.Path, operationPath)
+		if request.Request.URL.Path != "/" && operationPath[len(operationPath)-1] == '/' {
+			request.Request.URL.Path += "/"
+		}
+	}
+	request.Request.Method = "POST"
+	httpBindingEncoder, err := httpbinding.NewEncoder(request.URL.Path, request.URL.RawQuery, request.Header)
+	if err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+	httpBindingEncoder.SetHeader("Content-Type").String("application/x-amz-json-1.0")
+	httpBindingEncoder.SetHeader("X-Amz-Target").String("DynamoDB_20120810.SearchVectors")
+
+	jsonEncoder := smithyjson.NewEncoder()
+	if err := awsAwsjson10_serializeOpDocumentSearchVectorsInput(input, jsonEncoder.Value); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+
+	if request, err = request.SetStream(bytes.NewReader(jsonEncoder.Bytes())); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+
+	if request.Request, err = httpBindingEncoder.Encode(request.Request); err != nil {
+		return out, metadata, &smithy.SerializationError{Err: err}
+	}
+	in.Request = request
+
+	endTimer()
+	span.End()
+	return next.HandleSerialize(ctx, in)
+}
+
 type awsAwsjson10_serializeOpTagResource struct {
 }
 
@@ -3988,6 +4049,49 @@ func awsAwsjson10_serializeDocumentCreateReplicationGroupMemberAction(v *types.C
 	return nil
 }
 
+func awsAwsjson10_serializeDocumentCreateVectorIndexAction(v *types.CreateVectorIndexAction, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Dimensions != nil {
+		ok := object.Key("Dimensions")
+		ok.Long(*v.Dimensions)
+	}
+
+	if len(v.DistanceFunction) > 0 {
+		ok := object.Key("DistanceFunction")
+		ok.String(string(v.DistanceFunction))
+	}
+
+	if v.IndexName != nil {
+		ok := object.Key("IndexName")
+		ok.String(*v.IndexName)
+	}
+
+	if v.Projection != nil {
+		ok := object.Key("Projection")
+		if err := awsAwsjson10_serializeDocumentProjection(v.Projection, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.SearchSchema != nil {
+		ok := object.Key("SearchSchema")
+		if err := awsAwsjson10_serializeDocumentSearchSchema(v.SearchSchema, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.VectorAttribute != nil {
+		ok := object.Key("VectorAttribute")
+		if err := awsAwsjson10_serializeDocumentVectorAttributeDefinition(v.VectorAttribute, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func awsAwsjson10_serializeDocumentCsvHeaderList(v []string, value smithyjson.Value) error {
 	array := value.Array()
 	defer array.Close()
@@ -4118,6 +4222,18 @@ func awsAwsjson10_serializeDocumentDeleteRequest(v *types.DeleteRequest, value s
 		if err := awsAwsjson10_serializeDocumentKey(v.Key, ok); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentDeleteVectorIndexAction(v *types.DeleteVectorIndexAction, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.IndexName != nil {
+		ok := object.Key("IndexName")
+		ok.String(*v.IndexName)
 	}
 
 	return nil
@@ -5250,6 +5366,52 @@ func awsAwsjson10_serializeDocumentS3BucketSource(v *types.S3BucketSource, value
 	return nil
 }
 
+func awsAwsjson10_serializeDocumentSearchSchema(v []types.SearchSchemaElement, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson10_serializeDocumentSearchSchemaElement(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentSearchSchemaElement(v *types.SearchSchemaElement, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.AttributeName != nil {
+		ok := object.Key("AttributeName")
+		ok.String(*v.AttributeName)
+	}
+
+	if len(v.SearchSchemaElementType) > 0 {
+		ok := object.Key("SearchSchemaElementType")
+		ok.String(string(v.SearchSchemaElementType))
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentSearchVectorList(v []types.AttributeValue, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if vv := v[i]; vv == nil {
+			continue
+		}
+		if err := awsAwsjson10_serializeDocumentAttributeValue(v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func awsAwsjson10_serializeDocumentSSESpecification(v *types.SSESpecification, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -5354,6 +5516,13 @@ func awsAwsjson10_serializeDocumentTableCreationParameters(v *types.TableCreatio
 	if v.TableName != nil {
 		ok := object.Key("TableName")
 		ok.String(*v.TableName)
+	}
+
+	if v.VectorIndexes != nil {
+		ok := object.Key("VectorIndexes")
+		if err := awsAwsjson10_serializeDocumentVectorIndexList(v.VectorIndexes, ok); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -5628,6 +5797,108 @@ func awsAwsjson10_serializeDocumentUpdateReplicationGroupMemberAction(v *types.U
 	return nil
 }
 
+func awsAwsjson10_serializeDocumentVectorAttributeDefinition(v *types.VectorAttributeDefinition, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.AttributeName != nil {
+		ok := object.Key("AttributeName")
+		ok.String(*v.AttributeName)
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentVectorIndex(v *types.VectorIndex, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Dimensions != nil {
+		ok := object.Key("Dimensions")
+		ok.Long(*v.Dimensions)
+	}
+
+	if len(v.DistanceFunction) > 0 {
+		ok := object.Key("DistanceFunction")
+		ok.String(string(v.DistanceFunction))
+	}
+
+	if v.IndexName != nil {
+		ok := object.Key("IndexName")
+		ok.String(*v.IndexName)
+	}
+
+	if v.Projection != nil {
+		ok := object.Key("Projection")
+		if err := awsAwsjson10_serializeDocumentProjection(v.Projection, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.SearchSchema != nil {
+		ok := object.Key("SearchSchema")
+		if err := awsAwsjson10_serializeDocumentSearchSchema(v.SearchSchema, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.VectorAttribute != nil {
+		ok := object.Key("VectorAttribute")
+		if err := awsAwsjson10_serializeDocumentVectorAttributeDefinition(v.VectorAttribute, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentVectorIndexList(v []types.VectorIndex, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson10_serializeDocumentVectorIndex(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentVectorIndexUpdate(v *types.VectorIndexUpdate, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Create != nil {
+		ok := object.Key("Create")
+		if err := awsAwsjson10_serializeDocumentCreateVectorIndexAction(v.Create, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Delete != nil {
+		ok := object.Key("Delete")
+		if err := awsAwsjson10_serializeDocumentDeleteVectorIndexAction(v.Delete, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentVectorIndexUpdateList(v []types.VectorIndexUpdate, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson10_serializeDocumentVectorIndexUpdate(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func awsAwsjson10_serializeDocumentWarmThroughput(v *types.WarmThroughput, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -5875,6 +6146,13 @@ func awsAwsjson10_serializeOpDocumentCreateTableInput(v *CreateTableInput, value
 	if v.Tags != nil {
 		ok := object.Key("Tags")
 		if err := awsAwsjson10_serializeDocumentTagList(v.Tags, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.VectorIndexes != nil {
+		ok := object.Key("VectorIndexes")
+		if err := awsAwsjson10_serializeDocumentVectorIndexList(v.VectorIndexes, ok); err != nil {
 			return err
 		}
 	}
@@ -6848,6 +7126,13 @@ func awsAwsjson10_serializeOpDocumentRestoreTableFromBackupInput(v *RestoreTable
 		ok.String(*v.TargetTableName)
 	}
 
+	if v.VectorIndexOverride != nil {
+		ok := object.Key("VectorIndexOverride")
+		if err := awsAwsjson10_serializeDocumentVectorIndexList(v.VectorIndexOverride, ok); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -6918,6 +7203,13 @@ func awsAwsjson10_serializeOpDocumentRestoreTableToPointInTimeInput(v *RestoreTa
 	if v.UseLatestRestorableTime != nil {
 		ok := object.Key("UseLatestRestorableTime")
 		ok.Boolean(*v.UseLatestRestorableTime)
+	}
+
+	if v.VectorIndexOverride != nil {
+		ok := object.Key("VectorIndexOverride")
+		if err := awsAwsjson10_serializeDocumentVectorIndexList(v.VectorIndexOverride, ok); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -7015,6 +7307,64 @@ func awsAwsjson10_serializeOpDocumentScanInput(v *ScanInput, value smithyjson.Va
 	if v.TotalSegments != nil {
 		ok := object.Key("TotalSegments")
 		ok.Integer(*v.TotalSegments)
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeOpDocumentSearchVectorsInput(v *SearchVectorsInput, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.ExpressionAttributeNames != nil {
+		ok := object.Key("ExpressionAttributeNames")
+		if err := awsAwsjson10_serializeDocumentExpressionAttributeNameMap(v.ExpressionAttributeNames, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.ExpressionAttributeValues != nil {
+		ok := object.Key("ExpressionAttributeValues")
+		if err := awsAwsjson10_serializeDocumentExpressionAttributeValueMap(v.ExpressionAttributeValues, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.IndexName != nil {
+		ok := object.Key("IndexName")
+		ok.String(*v.IndexName)
+	}
+
+	if v.ProjectionExpression != nil {
+		ok := object.Key("ProjectionExpression")
+		ok.String(*v.ProjectionExpression)
+	}
+
+	if len(v.ReturnConsumedCapacity) > 0 {
+		ok := object.Key("ReturnConsumedCapacity")
+		ok.String(string(v.ReturnConsumedCapacity))
+	}
+
+	if v.SearchConditionExpression != nil {
+		ok := object.Key("SearchConditionExpression")
+		ok.String(*v.SearchConditionExpression)
+	}
+
+	if v.SearchVector != nil {
+		ok := object.Key("SearchVector")
+		if err := awsAwsjson10_serializeDocumentSearchVectorList(v.SearchVector, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.TableName != nil {
+		ok := object.Key("TableName")
+		ok.String(*v.TableName)
+	}
+
+	if v.TopK != nil {
+		ok := object.Key("TopK")
+		ok.Integer(*v.TopK)
 	}
 
 	return nil
@@ -7408,6 +7758,13 @@ func awsAwsjson10_serializeOpDocumentUpdateTableInput(v *UpdateTableInput, value
 	if v.TableName != nil {
 		ok := object.Key("TableName")
 		ok.String(*v.TableName)
+	}
+
+	if v.VectorIndexUpdates != nil {
+		ok := object.Key("VectorIndexUpdates")
+		if err := awsAwsjson10_serializeDocumentVectorIndexUpdateList(v.VectorIndexUpdates, ok); err != nil {
+			return err
+		}
 	}
 
 	if v.WarmThroughput != nil {

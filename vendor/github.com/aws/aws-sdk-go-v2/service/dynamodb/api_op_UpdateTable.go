@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Modifies the provisioned throughput settings, global secondary indexes, or
@@ -170,6 +169,14 @@ type UpdateTableInput struct {
 	// STANDARD_INFREQUENT_ACCESS .
 	TableClass types.TableClass
 
+	// A list of vector indexes to be added to or removed from the table. You can add
+	// or remove one vector index for each UpdateTable operation.
+	//
+	// To add a vector index, specify IndexName , VectorAttribute , Dimensions ,
+	// DistanceFunction , and Projection . To remove a vector index, specify only the
+	// IndexName .
+	VectorIndexUpdates []types.VectorIndexUpdate
+
 	// Represents the warm throughput (in read units per second and write units per
 	// second) for updating a table.
 	WarmThroughput *types.WarmThroughput
@@ -205,25 +212,13 @@ func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateTableDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -236,9 +231,6 @@ func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 	if err = addOpUpdateTableValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UpdateTable"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

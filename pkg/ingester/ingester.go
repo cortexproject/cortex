@@ -578,6 +578,8 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
 	u.trackerCounter.increase(metric)
 
+	// Expiring here is only safe because the head adds the series to the postings before invoking
+	// this callback (prometheus/prometheus#15579); preserve that ordering when upgrading Prometheus.
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
 	}
@@ -1545,8 +1547,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		app.SetOptions(&storage.AppendOptions{DiscardOutOfOrder: true})
 	}
 
-	var newSeries []labels.Labels
-
 	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
 	nowMs := time.Now().UnixMilli()
 	observeDelay := func(timestampMs int64) {
@@ -1603,10 +1603,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			} else {
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
-					// Keep track of what series needs to be expired on the postings cache
-					if db.postingCache != nil {
-						newSeries = append(newSeries, copiedLabels)
-					}
 					succeededSamplesCount++
 					continue
 				}
@@ -1664,10 +1660,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						// Keep track of what series needs to be expired on the postings cache
-						if db.postingCache != nil {
-							newSeries = append(newSeries, copiedLabels)
-						}
 						succeededHistogramsCount++
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
@@ -1749,16 +1741,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	committed = true
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
-	}
-
-	// This is a workaround of https://github.com/prometheus/prometheus/pull/15579
-	// Calling expire here may result in the series names being expired multiple times,
-	// as there may be multiple Push operations concurrently for the same new timeseries.
-	// TODO: alanprot remove this when/if the PR is merged
-	if db.postingCache != nil {
-		for _, s := range newSeries {
-			db.postingCache.ExpireSeries(s)
-		}
 	}
 
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())

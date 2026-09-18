@@ -3,7 +3,7 @@
 
 // Package xray provides an OpenTelemetry propagator for the AWS XRAY
 // propagation format.
-package xray // import "go.opentelemetry.io/contrib/propagators/aws/xray"
+package xray
 
 import (
 	"context"

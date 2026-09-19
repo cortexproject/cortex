@@ -38,6 +38,7 @@ Currently experimental features are:
 - Ruler
   - Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address`).
   - When `-ruler.frontend-address` is specified, the response format can be specified (via `-ruler.query-response-format`).
+  - Federated rule groups (`-ruler.enable-federated-rules`, `-ruler.allowed-federated-tenants`, `-ruler.disallowed-federated-tenants`).
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Alertmanager:
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)

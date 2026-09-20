@@ -29,8 +29,8 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [OTLP receiver](#otlp-receiver) | Distributor || `POST /api/v1/otlp/v1/metrics` |
 | [Tenants stats](#tenants-stats) | Distributor || `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor || `GET /distributor/ha_tracker` |
-| [Flush blocks](#flush-blocks) | Ingester || `GET,POST /ingester/flush` |
-| [Shutdown](#shutdown) | Ingester || `GET,POST /ingester/shutdown` |
+| [Flush blocks](#flush-blocks) | Ingester || `POST /ingester/flush` |
+| [Shutdown](#shutdown) | Ingester || `POST /ingester/shutdown` |
 | [Ingesters ring status](#ingesters-ring-status) | Ingester || `GET /ingester/ring` |
 | [Ingester tenants stats](#ingester-tenants-stats) | Ingester || `GET /ingester/all_user_stats` |
 | [Ingester mode](#ingester-mode) | Ingester || `GET,POST /ingester/mode` |
@@ -268,10 +268,10 @@ Displays a web page with the current status of the HA tracker, including the ele
 ### Flush blocks
 
 ```
-GET,POST /ingester/flush
+POST /ingester/flush
 
 # Legacy
-GET,POST /flush
+POST /flush
 ```
 
 Triggers a flush of the in-memory time series data to the long-term storage. This endpoint triggers the flush also when `-ingester.flush-on-shutdown-with-wal-enabled` or `-blocks-storage.tsdb.flush-blocks-on-shutdown` are disabled.
@@ -283,10 +283,10 @@ Flush endpoint now also accepts `wait=true` parameter, which makes the call sync
 ### Shutdown
 
 ```
-GET,POST /ingester/shutdown
+POST /ingester/shutdown
 
 # Legacy
-GET,POST /shutdown
+POST /shutdown
 ```
 
 Flushes in-memory time series data from ingester to the long-term storage, and shuts down the ingester service. Notice that the other Cortex services are still running, and the operator (or any automation) is expected to terminate the process with a `SIGINT` / `SIGTERM` signal after the shutdown endpoint returns. In the meantime, `/ready` will not return 200. This endpoint will unregister the ingester from the ring even if `-ingester.unregister-on-shutdown` is disabled.

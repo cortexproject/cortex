@@ -65,6 +65,13 @@ func v2group(label, receiver string, alerts ...*v2_models.GettableAlert) *v2_mod
 	}
 }
 
+// v2routedGroup is v2group with route labels, as returned by routes that set `labels`.
+func v2routedGroup(label, receiver, routeLabel string, alerts ...*v2_models.GettableAlert) *v2_models.AlertGroup {
+	group := v2group(label, receiver, alerts...)
+	group.RouteLabels = v2_models.LabelSet{"owner": routeLabel}
+	return group
+}
+
 func v2groups(groups ...*v2_models.AlertGroup) v2_models.AlertGroups {
 	return groups
 }
@@ -125,6 +132,25 @@ func TestMergeV2AlertGroups(t *testing.T) {
 			out: v2groups(
 				v2group("g1", "r1", alert1, alert2),
 				v2group("g2", "r1", alert1, alert3)),
+		},
+		{
+			name: "two groups with same labels and receiver but different route labels, should return two groups",
+			in:   v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
+			out:  v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
+		},
+		{
+			name: "same routed groups from multiple replicas, should merge per route",
+			in: v2groups(
+				v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2),
+				v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert3)),
+			out: v2groups(
+				v2routedGroup("g1", "r1", "a", alert1),
+				v2routedGroup("g1", "r1", "b", alert2, alert3)),
+		},
+		{
+			name: "unordered groups with same labels and receiver, should return groups ordered by route labels",
+			in:   v2groups(v2routedGroup("g1", "r1", "b", alert2), v2routedGroup("g1", "r1", "a", alert1)),
+			out:  v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
 		},
 		{
 			name: "many unordered groups, should return groups ordered by labels then receiver",

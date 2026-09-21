@@ -30,6 +30,19 @@ const simpleAlertmanagerConfig = `route:
 receivers:
   - name: dummy`
 
+// routeLabelsAlertmanagerConfig adds two child routes that only differ in their route labels,
+// so alerts with the same group labels and receiver can land in distinct alert groups.
+const routeLabelsAlertmanagerConfig = `route:
+  receiver: dummy
+  group_by: [group]
+  routes:
+    - matchers: [team="a"]
+      labels: {owner: team-a}
+    - matchers: [team="b"]
+      labels: {owner: team-b}
+receivers:
+  - name: dummy`
+
 func TestAlertmanager(t *testing.T) {
 	s, err := e2e.NewScenario(networkName)
 	require.NoError(t, err)
@@ -259,7 +272,7 @@ func TestAlertmanagerSharding(t *testing.T) {
 			for i := 1; i <= 30; i++ {
 				user := fmt.Sprintf("user-%d", i)
 				desc := alertspb.AlertConfigDesc{
-					RawConfig: simpleAlertmanagerConfig,
+					RawConfig: routeLabelsAlertmanagerConfig,
 					User:      user,
 					Templates: []*alertspb.TemplateDesc{},
 				}
@@ -542,6 +555,47 @@ func TestAlertmanagerSharding(t *testing.T) {
 				e2e.Equals(float64(3*testCfg.replicationFactor)),
 				[]string{"cortex_alertmanager_alerts_received_total"},
 				e2e.SkipMissingMetrics))
+
+			// Endpoint: GET /v2/alerts/groups with route labels
+			{
+				// Both alerts share the group labels and receiver, but match different
+				// child routes
+				routedAlert := func(i int, team string) *model.Alert {
+					a := alert(i, 3)
+					a.Labels["team"] = model.LabelValue(team)
+					return a
+				}
+				err = c1.SendAlertToAlermanager(context.Background(), routedAlert(4, "a"))
+				require.NoError(t, err)
+				err = c2.SendAlertToAlermanager(context.Background(), routedAlert(5, "b"))
+				require.NoError(t, err)
+
+				require.NoError(t, alertmanagers.WaitSumMetricsWithOptions(
+					e2e.Equals(float64(5*testCfg.replicationFactor)),
+					[]string{"cortex_alertmanager_alerts_received_total"},
+					e2e.SkipMissingMetrics))
+
+				for _, c := range clients {
+					list, err := c.GetAlertGroups(context.Background())
+					require.NoError(t, err)
+
+					assert.Equal(t, 4, len(list))
+					groups := make(map[string][]model.Alert)
+					for _, g := range list {
+						key := fmt.Sprintf("%s/%s", g.Labels["group"], g.RouteLabels["owner"])
+						groups[key] = g.Alerts
+					}
+
+					require.Contains(t, groups, "group_1/")
+					assert.ElementsMatch(t, []string{"alert_1", "alert_2"}, alertNames(groups["group_1/"]))
+					require.Contains(t, groups, "group_2/")
+					assert.ElementsMatch(t, []string{"alert_3"}, alertNames(groups["group_2/"]))
+					require.Contains(t, groups, "group_3/team-a")
+					assert.ElementsMatch(t, []string{"alert_4"}, alertNames(groups["group_3/team-a"]))
+					require.Contains(t, groups, "group_3/team-b")
+					assert.ElementsMatch(t, []string{"alert_5"}, alertNames(groups["group_3/team-b"]))
+				}
+			}
 		})
 	}
 }

@@ -1095,8 +1095,9 @@ func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
 }
 
 type AlertGroup struct {
-	Labels model.LabelSet `json:"labels"`
-	Alerts []model.Alert  `json:"alerts"`
+	Labels      model.LabelSet `json:"labels"`
+	RouteLabels model.LabelSet `json:"routeLabels"`
+	Alerts      []model.Alert  `json:"alerts"`
 }
 
 func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {

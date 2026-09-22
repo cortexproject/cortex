@@ -59,7 +59,7 @@ func TestGettingStartedSingleProcessConfigWithFilesystem(t *testing.T) {
 
 	labelNames, err := c.LabelNames(time.Time{}, time.Time{})
 	require.NoError(t, err)
-	require.Equal(t, []string{"__name__", "foo"}, labelNames)
+	require.Equal(t, model.LabelNames{"__name__", "foo"}, labelNames)
 
 	// Check that a range query does not return an error to sanity check the queryrange tripperware.
 	_, err = c.QueryRange("series_1", now.Add(-15*time.Minute), now, 15*time.Second)

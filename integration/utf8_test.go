@@ -252,7 +252,7 @@ func Test_PushQuery_UTF8(t *testing.T) {
 	end := now.Add(time.Minute * 5)
 	labelNames, err := c.LabelNames(start, end)
 	require.NoError(t, err)
-	require.Equal(t, []string{"__name__", "job", "test.utf8.metric"}, labelNames)
+	require.Equal(t, model.LabelNames{"__name__", "job", "test.utf8.metric"}, labelNames)
 
 	// series
 	series, err := c.Series([]string{`{"test.utf8.metric"="😄"}`}, start, end)

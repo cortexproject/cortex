@@ -713,11 +713,9 @@ receivers:
 
 				// Create an alert to push.
 				alerts := alert.Alerts(&alert.Alert{
-					Alert: model.Alert{
-						Labels:   map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
-						StartsAt: time.Now().Add(-time.Minute),
-						EndsAt:   time.Now().Add(time.Minute),
-					},
+					Labels:    map[model.LabelName]model.LabelValue{model.AlertNameLabel: "test"},
+					StartsAt:  time.Now().Add(-time.Minute),
+					EndsAt:    time.Now().Add(time.Minute),
 					UpdatedAt: time.Now(),
 					Timeout:   false,
 				})
@@ -861,6 +859,15 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 	am1ZoneA := createInstance(1, "zoneA", registriesZoneA)
 	am2ZoneA := createInstance(2, "zoneA", registriesZoneA)
 	am1ZoneB := createInstance(3, "zoneB", registriesZoneB)
+
+	// Wait until every instance's ring client sees all the instances, otherwise
+	// ownership is computed against a partial ring view and tenants may get
+	// double-counted.
+	for _, am := range []*MultitenantAlertmanager{am1ZoneA, am2ZoneA, am1ZoneB} {
+		test.Poll(t, 5*time.Second, 3, func() any {
+			return am.ring.InstancesCount()
+		})
+	}
 
 	{
 		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{

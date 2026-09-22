@@ -168,6 +168,8 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
+	ListRulesMaxRules uint `yaml:"list_rules_max_rules"`
+
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	// Field will be populated during runtime.
@@ -267,6 +269,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
+
+	f.UintVar(&cfg.ListRulesMaxRules, "ruler.list-rules-max-rules", 0, "Maximum number of rules returned by the Prometheus ListRules API. If there are more rulegroups, the response will include a pagination token which can be used to fetch the next set. The API will always return at least one rulegroup, even if it contains more rules than the limit. Defaults to 0, which is unlimited")
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
@@ -1192,14 +1196,14 @@ func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.Rule
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest, maxRules uint) (*RulesResponse, error) {
 	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		resp, err := r.getShardedRules(ctx, userID, rulesRequest)
+		resp, err := r.getShardedRules(ctx, userID, rulesRequest, maxRules)
 		if resp == nil {
 			return &RulesResponse{
 				Groups:    make([]*GroupStateDesc, 0),
@@ -1209,11 +1213,11 @@ func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*Rules
 		return resp, err
 	}
 
-	response, err := r.getLocalRules(userID, rulesRequest, false)
+	response, err := r.getLocalRules(userID, rulesRequest, maxRules, false)
 	return &response, err
 }
 
-func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) (RulesResponse, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, maxRules uint, includeBackups bool) (RulesResponse, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
@@ -1375,7 +1379,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		combinedRuleStateDescs = append(combinedRuleStateDescs, backupGroupDescs...)
 	}
 
-	if rulesRequest.MaxRuleGroups <= 0 {
+	if rulesRequest.MaxRuleGroups <= 0 && maxRules == 0 {
 		return RulesResponse{
 			Groups:    combinedRuleStateDescs,
 			NextToken: "",
@@ -1398,7 +1402,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 	}
 
-	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
+	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups), maxRules)
 	return RulesResponse{
 		Groups:    resultingGroupDescs,
 		NextToken: nextToken,
@@ -1519,7 +1523,7 @@ func (r *Ruler) getShardSizeForUser(userID string) int {
 	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest, maxRules uint) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -1598,17 +1602,15 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		return nil
 	})
 
-	if err == nil {
-		if r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules {
-			return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, true), nil
-		}
-		return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, false), nil
+	if err != nil {
+		return &RulesResponse{
+			Groups:    make([]*GroupStateDesc, 0),
+			NextToken: "",
+		}, err
 	}
 
-	return &RulesResponse{
-		Groups:    make([]*GroupStateDesc, 0),
-		NextToken: "",
-	}, err
+	backup := r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules
+	return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, maxRules, backup), nil
 }
 
 // Rules implements the rules service
@@ -1619,7 +1621,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	response, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
+	response, err := r.getLocalRules(userID, *in, 0, r.cfg.RulesBackupEnabled())
 	if err != nil {
 		return nil, err
 	}

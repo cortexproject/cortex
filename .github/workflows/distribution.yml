@@ -10,7 +10,7 @@ jobs:
   build-dist:
     runs-on: ubuntu-24.04
     container:
-      image: quay.io/cortexproject/build-image:master-5607698940
+      image: quay.io/cortexproject/build-image:master-7bc8b2491b
     steps:
       - name: Checkout Repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

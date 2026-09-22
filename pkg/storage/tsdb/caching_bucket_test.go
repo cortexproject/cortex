@@ -206,10 +206,8 @@ func Test_BucketIndexCache(t *testing.T) {
 
 			wrappedBucket := &countingBucket{Bucket: inmem}
 			metadataCfg := MetadataCacheConfig{
-				BucketCacheBackend: BucketCacheBackend{
-					Backend:  CacheBackendInMemory,
-					InMemory: InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
-				},
+				Backend:               CacheBackendInMemory,
+				InMemory:              InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
 				BucketIndexContentTTL: tc.ttl,
 				BucketIndexMaxSize:    1024 * 1024,
 			}
@@ -263,10 +261,8 @@ func Test_BucketIndexCacheForCompactor(t *testing.T) {
 
 			wrappedBucket := &countingBucket{Bucket: inmem}
 			metadataCfg := MetadataCacheConfig{
-				BucketCacheBackend: BucketCacheBackend{
-					Backend:  CacheBackendInMemory,
-					InMemory: InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
-				},
+				Backend:               CacheBackendInMemory,
+				InMemory:              InMemoryBucketCacheConfig{MaxSizeBytes: 1024 * 1024},
 				BucketIndexContentTTL: tc.ttl,
 				BucketIndexMaxSize:    1024 * 1024,
 			}

@@ -367,6 +367,8 @@ Valid per-tenant limits are (with their corresponding flags for default values):
 
   The `global` strategy requires the distributors to form their own ring, which is used to keep track of the current number of healthy distributor replicas. The ring is configured by `distributor: { ring: {}}` / `-distributor.ring.*`.
 
+  For a deeper walkthrough of the per-tenant and per-instance ingestion limiters, the native histogram limiter, error responses and related metrics, see the [Rate Limiting](../guides/rate-limiting.md) guide.
+
 - `max_label_name_length` / `-validation.max-length-label-name`
 - `max_label_value_length` / `-validation.max-length-label-value`
 - `max_label_names_per_series` / `-validation.max-label-names-per-series`

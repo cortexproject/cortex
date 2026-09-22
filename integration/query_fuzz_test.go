@@ -117,7 +117,7 @@ func TestNativeHistogramFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
@@ -218,7 +218,7 @@ func TestExperimentalPromQLFuncsWithPrometheus(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
@@ -338,7 +338,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 	numSamples := 240
 	serieses := make([]prompb.TimeSeries, numSeries)
 	lbls := make([]labels.Labels, numSeries)
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 
@@ -381,7 +381,7 @@ func TestDisableChunkTrimmingFuzz(t *testing.T) {
 		expr  parser.Expr
 		query string
 	)
-	for i := 0; i < testRun; i++ {
+	for range testRun {
 		for {
 			expr = ps.WalkRangeQuery()
 			query = expr.Pretty(0)
@@ -521,8 +521,8 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
 	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
 
-	for i := 0; i < numSeries; i++ {
-		for j := 0; j < numberOfLabelsPerSeries; j++ {
+	for i := range numSeries {
+		for j := range numberOfLabelsPerSeries {
 			series := e2e.GenerateSeriesWithSamples(
 				fmt.Sprintf("test_series_%d", i),
 				start,
@@ -552,7 +552,7 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	testRun := 300
 	queries := make([]string, 0, testRun)
 	matchers := make([]string, 0, testRun)
-	for i := 0; i < testRun; i++ {
+	for i := range testRun {
 		var expr parser.Expr
 		for {
 			expr = ps.WalkRangeQuery()
@@ -569,11 +569,11 @@ func TestExpandedPostingsCacheFuzz(t *testing.T) {
 	}
 
 	// Lets run multiples iterations and create new series every iteration
-	for k := 0; k < 5; k++ {
+	for k := range 5 {
 
 		nss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
-		for i := 0; i < numSeries; i++ {
-			for j := 0; j < numberOfLabelsPerSeries; j++ {
+		for i := range numSeries {
+			for j := range numberOfLabelsPerSeries {
 				nss[i*numberOfLabelsPerSeries+j] = e2e.GenerateSeriesWithSamples(
 					fmt.Sprintf("test_series_%d", i),
 					start.Add(scrapeInterval*time.Duration(numSamples*j)),
@@ -770,8 +770,8 @@ func TestLazyMatchersFuzz(t *testing.T) {
 	ss := make([]prompb.TimeSeries, numSeries*numberOfLabelsPerSeries)
 	lbls := make([]labels.Labels, numSeries*numberOfLabelsPerSeries)
 
-	for i := 0; i < numSeries; i++ {
-		for j := 0; j < numberOfLabelsPerSeries; j++ {
+	for i := range numSeries {
+		for j := range numberOfLabelsPerSeries {
 			series := e2e.GenerateSeriesWithSamples(
 				fmt.Sprintf("test_series_%d", i),
 				start,
@@ -817,7 +817,7 @@ func TestLazyMatchersFuzz(t *testing.T) {
 	testRun := 300
 	queries := make([]string, 0, testRun*2)
 	matchers := make([]string, 0, testRun)
-	for i := 0; i < testRun; i++ {
+	for i := range testRun {
 		expr := ps.WalkRangeQuery()
 		if !isValidQuery(expr, true) {
 			continue
@@ -1010,7 +1010,7 @@ func TestVerticalShardingFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := 30 * time.Second
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -1126,7 +1126,7 @@ func TestProtobufCodecFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := 30 * time.Second
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -1193,10 +1193,10 @@ var sampleNumComparer = cmp.Comparer(func(x, y model.Value) bool {
 	mySamples := 0
 
 	if xmat && ymat {
-		for i := 0; i < len(mx); i++ {
+		for i := range mx {
 			mxSamples += len(mx[i].Values)
 		}
-		for i := 0; i < len(my); i++ {
+		for i := range my {
 			mySamples += len(my[i].Values)
 		}
 	}
@@ -1344,7 +1344,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		sort.Sort(vx)
 		sort.Sort(vy)
 
-		for i := 0; i < len(vx); i++ {
+		for i := range vx {
 			if !compareMetrics(vx[i].Metric, vy[i].Metric) {
 				return false
 			}
@@ -1371,7 +1371,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 		// Sort matrix before comparing.
 		sort.Sort(mx)
 		sort.Sort(my)
-		for i := 0; i < len(mx); i++ {
+		for i := range mx {
 			mxs := mx[i]
 			mys := my[i]
 
@@ -1385,7 +1385,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 			if len(xps) != len(yps) {
 				return false
 			}
-			for j := 0; j < len(xps); j++ {
+			for j := range xps {
 				if xps[j].Timestamp != yps[j].Timestamp {
 					return false
 				}
@@ -1400,7 +1400,7 @@ var comparer = cmp.Comparer(func(x, y model.Value) bool {
 			if len(xhs) != len(yhs) {
 				return false
 			}
-			for j := 0; j < len(xhs); j++ {
+			for j := range xhs {
 				if xhs[j].Timestamp != yhs[j].Timestamp {
 					return false
 				}
@@ -1478,7 +1478,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	scrapeInterval := (10 * time.Second).Milliseconds()
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
@@ -1545,7 +1545,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzz(t *testing.T) {
 	}
 
 	cases := make([]*testCase, 0, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
@@ -1599,10 +1599,10 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 
 	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
 		"-blocks-storage.bucket-store.index-cache.backend": tsdb.IndexCacheBackendInMemory,
-		"-ring.store":                                "consul",
-		"-consul.hostname":                           consul.NetworkHTTPEndpoint(),
-		"-store-gateway.sharding-enabled":            "false",
-		"-blocks-storage.bucket-store.sync-interval": "1s",
+		"-ring.store":                                                 "consul",
+		"-consul.hostname":                                            consul.NetworkHTTPEndpoint(),
+		"-store-gateway.sharding-enabled":                             "false",
+		"-blocks-storage.bucket-store.sync-interval":                  "1s",
 		"-blocks-storage.bucket-store.lazy-expanded-postings-enabled": "true",
 	})
 
@@ -1633,7 +1633,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	scrapeInterval := (10 * time.Second).Milliseconds()
 	metricName := "http_requests_total"
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, metricName, "job", "test", "series", strconv.Itoa(i%200), "status_code", statusCodes[i%5]))
 	}
 	ctx := context.Background()
@@ -1706,7 +1706,7 @@ func TestStoreGatewayLazyExpandedPostingsSeriesFuzzWithPrometheus(t *testing.T) 
 	}
 
 	cases := make([]*testCase, 0, 1000)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		matchers := ps.WalkSelectors()
 		matcherStrings := storepb.PromMatchersToString(matchers...)
 		minT := e2e.RandRange(rnd, startMs, endMs)
@@ -1753,7 +1753,7 @@ var labelSetsComparer = cmp.Comparer(func(x, y []model.LabelSet) bool {
 	if len(x) != len(y) {
 		return false
 	}
-	for i := 0; i < len(x); i++ {
+	for i := range x {
 		if !x[i].Equal(y[i]) {
 			return false
 		}
@@ -1832,7 +1832,7 @@ func TestBackwardCompatibilityQueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 	scrapeInterval := time.Minute
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples, prompb.Label{Name: "job", Value: "test"}, prompb.Label{Name: "series", Value: strconv.Itoa(i)})
 		serieses[i] = series
 		builder := labels.NewBuilder(labels.EmptyLabels())
@@ -1936,7 +1936,7 @@ func TestPrometheusCompatibilityQueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, 0, numSeries*2)
 	scrapeInterval := time.Minute
 	statusCodes := []string{"200", "400", "404", "500", "502"}
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
@@ -2052,7 +2052,7 @@ func TestRW1vsRW2QueryFuzz(t *testing.T) {
 	lbls := make([]labels.Labels, numSeries*2)
 	serieses := make([]prompb.TimeSeries, numSeries*2)
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		series := e2e.GenerateSeriesWithSamples("test_series_a", start, scrapeInterval, i*numSamples, numSamples,
 			prompb.Label{Name: "job", Value: "test"},
 			prompb.Label{Name: "series", Value: strconv.Itoa(i)},
@@ -2184,7 +2184,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 		expr  parser.Expr
 		query string
 	)
-	for i := 0; i < run; i++ {
+	for range run {
 		for {
 			expr = ps.WalkInstantQuery()
 			if isValidQuery(expr, skipStdAggregations) {
@@ -2205,7 +2205,7 @@ func runQueryFuzzTestCases(t *testing.T, ps *promqlsmith.PromQLSmith, c1, c2 *e2
 		})
 	}
 
-	for i := 0; i < run; i++ {
+	for range run {
 		for {
 			expr = ps.WalkRangeQuery()
 			if isValidQuery(expr, skipStdAggregations) {
@@ -2475,6 +2475,55 @@ func TestSameErrorClass(t *testing.T) {
 	}
 }
 
+// hasOrVectorFallback reports whether expr contains a sub-expression of the
+// shape `<lhs> or vector(<rhs>)`. Such queries diverge between Cortex's
+// sharded and unsharded query paths when the LHS has partial time coverage:
+// the unsharded engine sees the gap and falls through to vector(...), while
+// individual shards may each see (different) coverage and skip the fallback.
+// This is the same class of semantic-divergence bug already known for
+// `absent`/`absent_over_time`/`scalar` (see #5203, #5204, #5205).
+func hasOrVectorFallback(expr parser.Expr) bool {
+	found := false
+	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
+		be, ok := node.(*parser.BinaryExpr)
+		if !ok || be.Op != parser.LOR {
+			return nil
+		}
+		call, ok := be.RHS.(*parser.Call)
+		if !ok || call.Func == nil {
+			return nil
+		}
+		if call.Func.Name == "vector" {
+			found = true
+		}
+		return nil
+	})
+	return found
+}
+
+func TestHasOrVectorFallback(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  bool
+	}{
+		{`up`, false},
+		{`vector(1)`, false},
+		{`up or up`, false},
+		{`up or vector(1)`, true},
+		{`(sum(rate(up[1m])) == bool 0) or vector(0)`, true},
+		// The actual failing case from issue #7547, simplified.
+		{`(sum without (job) (stddev_over_time(up[4m]) == -up)) or vector(2.0099)`, true},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			expr, err := parser.ParseExpr(tc.query)
+			require.NoError(t, err)
+			if got := hasOrVectorFallback(expr); got != tc.want {
+				t.Fatalf("hasOrVectorFallback(%q) = %v, want %v", tc.query, got, tc.want)
+			}
+		})
+	}
+}
+
 func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 	isValid := true
 	queryStr := generatedQuery.String()
@@ -2491,6 +2540,11 @@ func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 		// The query fuzzer can generate nested unary negation operators (e.g. --0.5)
 		// which are evaluated differently between Cortex versions. Skip these queries
 		// to avoid false positives in backward compatibility tests.
+		return false
+	}
+	if hasOrVectorFallback(generatedQuery) {
+		// `or vector(...)` falls through at different timestamps in sharded vs
+		// unsharded engines when the LHS has partial time coverage; see #7547.
 		return false
 	}
 	if skipBackwardIncompat {
@@ -2510,8 +2564,41 @@ func isValidQuery(generatedQuery parser.Expr, skipBackwardIncompat bool) bool {
 		if strings.Contains(queryStr, "atan2") {
 			return false
 		}
+		if containsLogicalOr(generatedQuery) {
+			// Prometheus 3.9 changed how a result whose series collide after __name__
+			// removal is handled: cleanupMetricLabels used to fail the whole query with
+			// "vector cannot contain metrics with the same labelset", and now merges
+			// series that have non-overlapping timestamps instead (see
+			// mergeSeriesWithSameLabelset, vendored by #7535).
+			//
+			// `or` is what builds such a result, by unioning series that only differ by
+			// __name__ and are then name-dropped by an enclosing operation, e.g.
+			// `-(rate({__name__="a"}[4m]) or {__name__="a"})`. The older Prometheus in
+			// the latest released Cortex image errors where HEAD returns data, which is a
+			// legitimate cross-version difference and not a Cortex bug. Whether a given
+			// `or` actually collides can only be known by evaluating it, so skip `or`
+			// entirely for cross-version comparisons. `or` stays covered by the fuzz
+			// tests that compare two instances of the same build.
+			//
+			// See https://github.com/cortexproject/cortex/issues/7803.
+			return false
+		}
 	}
 	return isValid
+}
+
+// containsLogicalOr reports whether the expression uses the `or` set operator anywhere.
+// `and` and `unless` are excluded on purpose: they only ever return series taken from
+// the left hand side, so they cannot union series that differ only by __name__.
+func containsLogicalOr(expr parser.Expr) bool {
+	found := false
+	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
+		if n, ok := node.(*parser.BinaryExpr); ok && n.Op == parser.LOR {
+			found = true
+		}
+		return nil
+	})
+	return found
 }
 
 func resultLength(x model.Value) int {

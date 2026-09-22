@@ -188,6 +188,10 @@ func (w *dnsWatcher) compileUpdate(newAddrs map[string]*Update) []*Update {
 	return res
 }
 
+// lookupSRV resolves the SRV record of the watched service and then the A
+// records of every SRV target. It returns nil when the lookup failed; a
+// non-nil empty map is an authoritative result meaning the service has no
+// endpoints.
 func (w *dnsWatcher) lookupSRV() map[string]*Update {
 	if w.service == "" {
 		return nil
@@ -199,7 +203,15 @@ func (w *dnsWatcher) lookupSRV() map[string]*Update {
 		level.Info(w.logger).Log("msg", "failed DNS SRV record lookup", "err", err)
 		return nil
 	}
+	resolvableTargets := 0
 	for _, s := range srvs {
+		if s.Target == "." {
+			// RFC 2782: a target of "." means the service is decidedly not
+			// available at this domain. It contributes no addresses, but it
+			// is an authoritative answer, not a lookup failure.
+			continue
+		}
+		resolvableTargets++
 		addrs, err := lookupHost(w.ctx, s.Target)
 		if err != nil {
 			level.Warn(w.logger).Log("msg", "failed SRV target DNS lookup", "target", s.Target, "err", err)
@@ -208,16 +220,32 @@ func (w *dnsWatcher) lookupSRV() map[string]*Update {
 		for _, a := range addrs {
 			a, ok := formatIP(a)
 			if !ok {
-				level.Error(w.logger).Log("failed IP parsing", "err", err)
+				level.Error(w.logger).Log("msg", "failed IP parsing", "err", err)
 				continue
 			}
 			addr := a + ":" + strconv.Itoa(int(s.Port))
 			newAddrs[addr] = &Update{Addr: addr}
 		}
 	}
+	if resolvableTargets > 0 && len(newAddrs) == 0 {
+		// The SRV query returned resolvable targets, but none of them yielded
+		// a usable address. Return nil to signal a failed lookup, honouring
+		// the same nil-means-failure contract as lookupHost(), so that
+		// lookup() falls back to the plain A record lookup of the watched
+		// host (note: that fallback uses the watcher's port, which may not
+		// match the SRV-advertised ports) and, failing that too, retains the
+		// previously resolved addresses instead of deleting them all. A
+		// non-nil empty map remains reserved for an authoritative empty
+		// answer — an SRV query returning zero records or only "." targets —
+		// which still propagates as a deletion of all known addresses.
+		return nil
+	}
 	return newAddrs
 }
 
+// lookupHost resolves the A records of the watched host. It returns nil when
+// the lookup failed; a non-nil empty map is an authoritative result meaning
+// the host has no addresses.
 func (w *dnsWatcher) lookupHost() map[string]*Update {
 	newAddrs := make(map[string]*Update)
 	addrs, err := lookupHost(w.ctx, w.host)

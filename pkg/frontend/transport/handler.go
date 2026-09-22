@@ -372,12 +372,17 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func formatGrafanaStatsFields(r *http.Request) []any {
 	// NOTE(GiedriusS): see https://github.com/grafana/grafana/pull/60301 for more info.
 
-	fields := make([]any, 0, 4)
+	fields := make([]any, 0, 6)
 	if dashboardUID := r.Header.Get("X-Dashboard-Uid"); dashboardUID != "" {
 		fields = append(fields, "X-Dashboard-Uid", dashboardUID)
 	}
 	if panelID := r.Header.Get("X-Panel-Id"); panelID != "" {
 		fields = append(fields, "X-Panel-Id", panelID)
+	}
+	// X-Grafana-User is sent by Grafana when [dataproxy] send_user_header is enabled.
+	// See https://github.com/grafana/grafana/pull/15998 for more info.
+	if grafanaUser := r.Header.Get("X-Grafana-User"); grafanaUser != "" {
+		fields = append(fields, "X-Grafana-User", grafanaUser)
 	}
 	return fields
 }

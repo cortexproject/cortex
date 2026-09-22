@@ -19,7 +19,6 @@ import (
 	"net/textproto"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	commoncfg "github.com/prometheus/common/config"
@@ -51,24 +50,6 @@ var (
 	// DefaultEmailSubject defines the default Subject header of an Email.
 	DefaultEmailSubject = `{{ template "email.default.subject" . }}`
 
-	// DefaultPagerdutyDetails defines the default values for PagerDuty details.
-	DefaultPagerdutyDetails = map[string]any{
-		"firing":       `{{ .Alerts.Firing | toJson }}`,
-		"resolved":     `{{ .Alerts.Resolved | toJson }}`,
-		"num_firing":   `{{ .Alerts.Firing | len }}`,
-		"num_resolved": `{{ .Alerts.Resolved | len }}`,
-	}
-
-	// DefaultPagerdutyConfig defines default values for PagerDuty configurations.
-	DefaultPagerdutyConfig = PagerdutyConfig{
-		NotifierConfig: amcommoncfg.NotifierConfig{
-			VSendResolved: true,
-		},
-		Description: `{{ template "pagerduty.default.description" .}}`,
-		Client:      `{{ template "pagerduty.default.client" . }}`,
-		ClientURL:   `{{ template "pagerduty.default.clientURL" . }}`,
-	}
-
 	// DefaultSlackConfig defines default values for Slack configurations.
 	DefaultSlackConfig = SlackConfig{
 		NotifierConfig: amcommoncfg.NotifierConfig{
@@ -97,17 +78,6 @@ var (
 		Text:      `{{ template "rocketchat.default.text" . }}`,
 		Title:     `{{ template "rocketchat.default.title" . }}`,
 		TitleLink: `{{ template "rocketchat.default.titlelink" . }}`,
-	}
-
-	// DefaultOpsGenieConfig defines default values for OpsGenie configurations.
-	DefaultOpsGenieConfig = OpsGenieConfig{
-		NotifierConfig: amcommoncfg.NotifierConfig{
-			VSendResolved: true,
-		},
-		Message:     `{{ template "opsgenie.default.message" . }}`,
-		Description: `{{ template "opsgenie.default.description" . }}`,
-		Source:      `{{ template "opsgenie.default.source" . }}`,
-		// TODO: Add a details field with all the alerts.
 	}
 
 	// DefaultWechatConfig defines default values for wechat configurations.
@@ -154,23 +124,6 @@ var (
 		},
 		Subject: `{{ template "sns.default.subject" . }}`,
 		Message: `{{ template "sns.default.message" . }}`,
-	}
-
-	DefaultTelegramConfig = TelegramConfig{
-		NotifierConfig: amcommoncfg.NotifierConfig{
-			VSendResolved: true,
-		},
-		DisableNotifications: false,
-		Message:              `{{ template "telegram.default.message" . }}`,
-		ParseMode:            "HTML",
-	}
-
-	DefaultMSTeamsV2Config = MSTeamsV2Config{
-		NotifierConfig: amcommoncfg.NotifierConfig{
-			VSendResolved: true,
-		},
-		Title: `{{ template "msteamsv2.default.title" . }}`,
-		Text:  `{{ template "msteamsv2.default.text" . }}`,
 	}
 )
 
@@ -270,76 +223,6 @@ func (c *EmailConfig) UnmarshalYAML(unmarshal func(any) error) error {
 		}
 	}
 
-	return nil
-}
-
-// PagerdutyConfig configures notifications via PagerDuty.
-type PagerdutyConfig struct {
-	amcommoncfg.NotifierConfig `yaml:",inline" json:",inline"`
-
-	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
-
-	ServiceKey     commoncfg.Secret `yaml:"service_key,omitempty" json:"service_key,omitempty"`
-	ServiceKeyFile string           `yaml:"service_key_file,omitempty" json:"service_key_file,omitempty"`
-	RoutingKey     commoncfg.Secret `yaml:"routing_key,omitempty" json:"routing_key,omitempty"`
-	RoutingKeyFile string           `yaml:"routing_key_file,omitempty" json:"routing_key_file,omitempty"`
-	URL            *amcommoncfg.URL `yaml:"url,omitempty" json:"url,omitempty"`
-	Client         string           `yaml:"client,omitempty" json:"client,omitempty"`
-	ClientURL      string           `yaml:"client_url,omitempty" json:"client_url,omitempty"`
-	Description    string           `yaml:"description,omitempty" json:"description,omitempty"`
-	Details        map[string]any   `yaml:"details,omitempty" json:"details,omitempty"`
-	Images         []PagerdutyImage `yaml:"images,omitempty" json:"images,omitempty"`
-	Links          []PagerdutyLink  `yaml:"links,omitempty" json:"links,omitempty"`
-	Source         string           `yaml:"source,omitempty" json:"source,omitempty"`
-	Severity       string           `yaml:"severity,omitempty" json:"severity,omitempty"`
-	Class          string           `yaml:"class,omitempty" json:"class,omitempty"`
-	Component      string           `yaml:"component,omitempty" json:"component,omitempty"`
-	Group          string           `yaml:"group,omitempty" json:"group,omitempty"`
-	// Timeout is the maximum time allowed to invoke the pagerduty. Setting this to 0
-	// does not impose a timeout.
-	Timeout time.Duration `yaml:"timeout" json:"timeout"`
-}
-
-// PagerdutyLink is a link.
-type PagerdutyLink struct {
-	Href string `yaml:"href,omitempty" json:"href,omitempty"`
-	Text string `yaml:"text,omitempty" json:"text,omitempty"`
-}
-
-// PagerdutyImage is an image.
-type PagerdutyImage struct {
-	Src  string `yaml:"src,omitempty" json:"src,omitempty"`
-	Alt  string `yaml:"alt,omitempty" json:"alt,omitempty"`
-	Href string `yaml:"href,omitempty" json:"href,omitempty"`
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *PagerdutyConfig) UnmarshalYAML(unmarshal func(any) error) error {
-	*c = DefaultPagerdutyConfig
-	type plain PagerdutyConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-	if c.RoutingKey == "" && c.ServiceKey == "" && c.RoutingKeyFile == "" && c.ServiceKeyFile == "" {
-		return errors.New("missing service or routing key in PagerDuty config")
-	}
-	if len(c.RoutingKey) > 0 && len(c.RoutingKeyFile) > 0 {
-		return errors.New("at most one of routing_key & routing_key_file must be configured")
-	}
-	if len(c.ServiceKey) > 0 && len(c.ServiceKeyFile) > 0 {
-		return errors.New("at most one of service_key & service_key_file must be configured")
-	}
-	if c.Details == nil {
-		c.Details = make(map[string]any)
-	}
-	if c.Source == "" {
-		c.Source = c.Client
-	}
-	for k, v := range DefaultPagerdutyDetails {
-		if _, ok := c.Details[k]; !ok {
-			c.Details[k] = v
-		}
-	}
 	return nil
 }
 
@@ -542,74 +425,6 @@ func (c *WechatConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-// OpsGenieConfig configures notifications via OpsGenie.
-type OpsGenieConfig struct {
-	amcommoncfg.NotifierConfig `yaml:",inline" json:",inline"`
-
-	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
-
-	APIKey       commoncfg.Secret          `yaml:"api_key,omitempty" json:"api_key,omitempty"`
-	APIKeyFile   string                    `yaml:"api_key_file,omitempty" json:"api_key_file,omitempty"`
-	APIURL       *amcommoncfg.URL          `yaml:"api_url,omitempty" json:"api_url,omitempty"`
-	Message      string                    `yaml:"message,omitempty" json:"message,omitempty"`
-	Description  string                    `yaml:"description,omitempty" json:"description,omitempty"`
-	Source       string                    `yaml:"source,omitempty" json:"source,omitempty"`
-	Details      map[string]string         `yaml:"details,omitempty" json:"details,omitempty"`
-	Entity       string                    `yaml:"entity,omitempty" json:"entity,omitempty"`
-	Responders   []OpsGenieConfigResponder `yaml:"responders,omitempty" json:"responders,omitempty"`
-	Actions      string                    `yaml:"actions,omitempty" json:"actions,omitempty"`
-	Tags         string                    `yaml:"tags,omitempty" json:"tags,omitempty"`
-	Note         string                    `yaml:"note,omitempty" json:"note,omitempty"`
-	Priority     string                    `yaml:"priority,omitempty" json:"priority,omitempty"`
-	UpdateAlerts bool                      `yaml:"update_alerts,omitempty" json:"update_alerts,omitempty"`
-}
-
-const opsgenieValidTypesRe = `^(team|teams|user|escalation|schedule)$`
-
-var opsgenieTypeMatcher = regexp.MustCompile(opsgenieValidTypesRe)
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *OpsGenieConfig) UnmarshalYAML(unmarshal func(any) error) error {
-	*c = DefaultOpsGenieConfig
-	type plain OpsGenieConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-
-	if c.APIKey != "" && len(c.APIKeyFile) > 0 {
-		return errors.New("at most one of api_key & api_key_file must be configured")
-	}
-
-	for _, r := range c.Responders {
-		if r.ID == "" && r.Username == "" && r.Name == "" {
-			return fmt.Errorf("opsGenieConfig responder %v has to have at least one of id, username or name specified", r)
-		}
-
-		isTemplated, err := containsTemplating(r.Type)
-		if err != nil {
-			return fmt.Errorf("opsGenieConfig responder %v type contains invalid template syntax: %w", r, err)
-		}
-		if !isTemplated {
-			r.Type = strings.ToLower(r.Type)
-			if !opsgenieTypeMatcher.MatchString(r.Type) {
-				return fmt.Errorf("opsGenieConfig responder %v type does not match valid options %s", r, opsgenieValidTypesRe)
-			}
-		}
-	}
-
-	return nil
-}
-
-type OpsGenieConfigResponder struct {
-	// One of those 3 should be filled.
-	ID       string `yaml:"id,omitempty" json:"id,omitempty"`
-	Name     string `yaml:"name,omitempty" json:"name,omitempty"`
-	Username string `yaml:"username,omitempty" json:"username,omitempty"`
-
-	// team, user, escalation, schedule etc.
-	Type string `yaml:"type,omitempty" json:"type,omitempty"`
-}
-
 // VictorOpsConfig configures notifications via VictorOps.
 type VictorOpsConfig struct {
 	amcommoncfg.NotifierConfig `yaml:",inline" json:",inline"`
@@ -743,76 +558,6 @@ func (c *SNSConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	if (c.TargetARN == "") != (c.TopicARN == "") != (c.PhoneNumber == "") {
 		return errors.New("must provide either a Target ARN, Topic ARN, or Phone Number for SNS config")
 	}
-	return nil
-}
-
-// TelegramConfig configures notifications via Telegram.
-type TelegramConfig struct {
-	amcommoncfg.NotifierConfig `yaml:",inline" json:",inline"`
-
-	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
-
-	APIUrl               *amcommoncfg.URL `yaml:"api_url" json:"api_url,omitempty"`
-	BotToken             commoncfg.Secret `yaml:"bot_token,omitempty" json:"token,omitempty"`
-	BotTokenFile         string           `yaml:"bot_token_file,omitempty" json:"token_file,omitempty"`
-	ChatID               int64            `yaml:"chat_id,omitempty" json:"chat,omitempty"`
-	ChatIDFile           string           `yaml:"chat_id_file,omitempty" json:"chat_file,omitempty"`
-	MessageThreadID      int              `yaml:"message_thread_id,omitempty" json:"message_thread_id,omitempty"`
-	Message              string           `yaml:"message,omitempty" json:"message,omitempty"`
-	DisableNotifications bool             `yaml:"disable_notifications,omitempty" json:"disable_notifications,omitempty"`
-	ParseMode            string           `yaml:"parse_mode,omitempty" json:"parse_mode,omitempty"`
-}
-
-// UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *TelegramConfig) UnmarshalYAML(unmarshal func(any) error) error {
-	*c = DefaultTelegramConfig
-	type plain TelegramConfig
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-	if c.BotToken != "" && c.BotTokenFile != "" {
-		return errors.New("at most one of bot_token & bot_token_file must be configured")
-	}
-	if c.ChatID == 0 && c.ChatIDFile == "" {
-		return errors.New("missing chat_id or chat_id_file on telegram_config")
-	}
-	if c.ChatID != 0 && c.ChatIDFile != "" {
-		return errors.New("at most one of chat_id & chat_id_file must be configured")
-	}
-	if c.ParseMode != "" &&
-		c.ParseMode != "Markdown" &&
-		c.ParseMode != "MarkdownV2" &&
-		c.ParseMode != "HTML" {
-		return errors.New("unknown parse_mode on telegram_config, must be Markdown, MarkdownV2, HTML or empty string")
-	}
-	return nil
-}
-
-type MSTeamsV2Config struct {
-	amcommoncfg.NotifierConfig `yaml:",inline" json:",inline"`
-	HTTPConfig                 *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
-	WebhookURL                 *amcommoncfg.SecretURL      `yaml:"webhook_url,omitempty" json:"webhook_url,omitempty"`
-	WebhookURLFile             string                      `yaml:"webhook_url_file,omitempty" json:"webhook_url_file,omitempty"`
-
-	Title string `yaml:"title,omitempty" json:"title,omitempty"`
-	Text  string `yaml:"text,omitempty" json:"text,omitempty"`
-}
-
-func (c *MSTeamsV2Config) UnmarshalYAML(unmarshal func(any) error) error {
-	*c = DefaultMSTeamsV2Config
-	type plain MSTeamsV2Config
-	if err := unmarshal((*plain)(c)); err != nil {
-		return err
-	}
-
-	if c.WebhookURL == nil && c.WebhookURLFile == "" {
-		return errors.New("one of webhook_url or webhook_url_file must be configured")
-	}
-
-	if c.WebhookURL != nil && len(c.WebhookURLFile) > 0 {
-		return errors.New("at most one of webhook_url & webhook_url_file must be configured")
-	}
-
 	return nil
 }
 

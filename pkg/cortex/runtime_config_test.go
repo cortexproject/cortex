@@ -207,12 +207,12 @@ overrides:
     max_global_series_per_user: 15000
 `)
 
-			loader := runtimeConfigLoader{}
-			loader.cfg = Config{
-				Target:      tc.target,
-				Distributor: distributor.Config{ShardByAllLabels: tc.shardByAllLabels},
-				Ingester:    ingester.Config{ActiveSeriesMetricsEnabled: true},
-			}
+			loader := runtimeConfigLoader{
+				cfg: Config{
+					Target:      tc.target,
+					Distributor: distributor.Config{ShardByAllLabels: tc.shardByAllLabels},
+					Ingester:    ingester.Config{ActiveSeriesMetricsEnabled: true},
+				}}
 
 			_, err := loader.load(yamlFile)
 			if tc.isErr {

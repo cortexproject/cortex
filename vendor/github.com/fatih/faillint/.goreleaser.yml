@@ -1,0 +1,37 @@
+project_name: faillint
+release:
+  prerelease: auto # don't publish release with -rc1,-pre, etc suffixes
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    ldflags:
+     - -s -w -X main.version={{.Version}} -X main.date={{.Date}}
+    binary: "faillint"   
+nfpms:
+  - maintainer: Fatih Arslan
+    description: Report unwanted Go import path and declaration usages
+    homepage: https://github.com/fatih/faillint
+    license: BSD 3-Clause
+    formats:
+    - deb
+    - rpm
+    replacements:
+      darwin: macOS
+archives:
+  - replacements:
+      darwin: macOS
+    format_overrides:
+      - goos: windows
+        format: zip
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

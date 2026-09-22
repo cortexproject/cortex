@@ -117,7 +117,7 @@ func TestFrontendPropagateTrace(t *testing.T) {
 }
 
 func TestFrontendCheckReady(t *testing.T) {
-	limits := MockLimits{MockLimits: queue.MockLimits{MaxOutstanding: 100}}
+	limits := MockLimits{MaxOutstanding: 100}
 	for _, tt := range []struct {
 		name             string
 		connectedClients int
@@ -247,7 +247,7 @@ func testFrontend(t *testing.T, config Config, handler http.Handler, test func(a
 	httpListen, err := net.Listen("tcp", "localhost:0")
 	require.NoError(t, err)
 
-	limits := MockLimits{MockLimits: queue.MockLimits{MaxOutstanding: 100}}
+	limits := MockLimits{MaxOutstanding: 100}
 	v1, err := New(config, limits, logger, reg, transport.NewRetry(0, nil))
 	require.NoError(t, err)
 	require.NotNil(t, v1)

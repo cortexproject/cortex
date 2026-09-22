@@ -9,6 +9,8 @@
 | Friedrich Gonzalez | friedrichg@gmail.com  | @friedrichg   | Apple               |
 | Sungjin Lee        | tjdwls1201@gmail.com  | @SungJin1212  | KakaoEnterprise     |
 
+This table, the [`@cortexproject/maintainers` GitHub team](https://github.com/orgs/cortexproject/teams/maintainers) and `CODEOWNERS` must be kept in sync. The team is the code owner for the whole repository, and GitHub's team code review assignment requests a single maintainer per pull request from it.
+
 ### Triagers
 
 

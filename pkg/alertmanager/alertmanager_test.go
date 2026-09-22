@@ -143,33 +143,29 @@ route:
 
 		inputAlerts := []*alert.Alert{
 			{
-				Alert: model.Alert{
-					Labels: model.LabelSet{
-						"alertname": alertName,
-						"a":         "b",
-					},
-					Annotations:  model.LabelSet{"foo": "bar"},
-					StartsAt:     now,
-					EndsAt:       now.Add(5 * time.Minute),
-					GeneratorURL: "http://example.com/prometheus",
+				Labels: model.LabelSet{
+					"alertname": alertName,
+					"a":         "b",
 				},
-				UpdatedAt: now,
-				Timeout:   false,
+				Annotations:  model.LabelSet{"foo": "bar"},
+				StartsAt:     now,
+				EndsAt:       now.Add(5 * time.Minute),
+				GeneratorURL: "http://example.com/prometheus",
+				UpdatedAt:    now,
+				Timeout:      false,
 			},
 
 			{
-				Alert: model.Alert{
-					Labels: model.LabelSet{
-						"alertname": alertName,
-						"z":         "y",
-					},
-					Annotations:  model.LabelSet{"foo": "bar"},
-					StartsAt:     now,
-					EndsAt:       now.Add(5 * time.Minute),
-					GeneratorURL: "http://example.com/prometheus",
+				Labels: model.LabelSet{
+					"alertname": alertName,
+					"z":         "y",
 				},
-				UpdatedAt: now,
-				Timeout:   false,
+				Annotations:  model.LabelSet{"foo": "bar"},
+				StartsAt:     now,
+				EndsAt:       now.Add(5 * time.Minute),
+				GeneratorURL: "http://example.com/prometheus",
+				UpdatedAt:    now,
+				Timeout:      false,
 			},
 		}
 		require.NoError(t, am.alerts.Put(context.Background(), inputAlerts...))

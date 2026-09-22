@@ -5,9 +5,10 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Removes the association of tags from an Amazon DynamoDB resource. You can call
@@ -60,6 +61,18 @@ type UntagResourceInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UntagResourceInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UntagResourceInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UntagResourceInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ResourceArn != nil {
+		s.WriteString(schemas.UntagResourceInput_ResourceArn, *v.ResourceArn)
+	}
+	serializeTagKeyList(s, schemas.UntagResourceInput_TagKeys, v.TagKeys)
+}
 func (in *UntagResourceInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.ResourceArn
@@ -73,35 +86,36 @@ type UntagResourceOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UntagResourceOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(nil)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UntagResourceOutput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+func (v *UntagResourceOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, nil, func(s *smithy.Schema) error {
+		switch s {
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUntagResourceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpUntagResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UntagResource, schemas.UntagResourceInput, nil)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpUntagResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UntagResource, schemas.UntagResourceInput, nil), output: &UntagResourceOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUntagResourceDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -114,9 +128,6 @@ func (c *Client) addOperationUntagResourceMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addOpUntagResourceValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UntagResource"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

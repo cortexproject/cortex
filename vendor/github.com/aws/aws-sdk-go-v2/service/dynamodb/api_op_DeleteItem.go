@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Deletes a single item in a table by primary key. You can perform a conditional
@@ -202,6 +203,39 @@ type DeleteItemInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteItemInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteItemInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteItemInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConditionExpression != nil {
+		s.WriteString(schemas.DeleteItemInput_ConditionExpression, *v.ConditionExpression)
+	}
+	if v.ConditionalOperator != "" {
+		s.WriteString(schemas.DeleteItemInput_ConditionalOperator, string(v.ConditionalOperator))
+	}
+	serializeExpectedAttributeMap(s, schemas.DeleteItemInput_Expected, v.Expected)
+	serializeExpressionAttributeNameMap(s, schemas.DeleteItemInput_ExpressionAttributeNames, v.ExpressionAttributeNames)
+	serializeExpressionAttributeValueMap(s, schemas.DeleteItemInput_ExpressionAttributeValues, v.ExpressionAttributeValues)
+	serializeKey(s, schemas.DeleteItemInput_Key, v.Key)
+	if v.ReturnConsumedCapacity != "" {
+		s.WriteString(schemas.DeleteItemInput_ReturnConsumedCapacity, string(v.ReturnConsumedCapacity))
+	}
+	if v.ReturnItemCollectionMetrics != "" {
+		s.WriteString(schemas.DeleteItemInput_ReturnItemCollectionMetrics, string(v.ReturnItemCollectionMetrics))
+	}
+	if v.ReturnValues != "" {
+		s.WriteString(schemas.DeleteItemInput_ReturnValues, string(v.ReturnValues))
+	}
+	if v.ReturnValuesOnConditionCheckFailure != "" {
+		s.WriteString(schemas.DeleteItemInput_ReturnValuesOnConditionCheckFailure, string(v.ReturnValuesOnConditionCheckFailure))
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.DeleteItemInput_TableName, *v.TableName)
+	}
+}
 func (in *DeleteItemInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -221,6 +255,9 @@ type DeleteItemOutput struct {
 	// the table and any indexes involved in the operation. ConsumedCapacity is only
 	// returned if the ReturnConsumedCapacity parameter was specified. For more
 	// information, see [Provisioned capacity mode]in the Amazon DynamoDB Developer Guide.
+	//
+	// If the table has vector indexes, the response includes a VectorIndexes field
+	// with VectorWriteRequestBytes consumed for each affected vector index.
 	//
 	// [Provisioned capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html
 	ConsumedCapacity *types.ConsumedCapacity
@@ -252,35 +289,55 @@ type DeleteItemOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DeleteItemOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DeleteItemOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DeleteItemOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeAttributeMap(s, schemas.DeleteItemOutput_Attributes, v.Attributes)
+	if v.ConsumedCapacity != nil {
+		s.WriteStruct(schemas.DeleteItemOutput_ConsumedCapacity)
+		v.ConsumedCapacity.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.ItemCollectionMetrics != nil {
+		s.WriteStruct(schemas.DeleteItemOutput_ItemCollectionMetrics)
+		v.ItemCollectionMetrics.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DeleteItemOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DeleteItemOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DeleteItemOutput_Attributes:
+			return deserializeAttributeMap(d, schemas.DeleteItemOutput_Attributes, &v.Attributes)
+		case schemas.DeleteItemOutput_ConsumedCapacity:
+			v.ConsumedCapacity = &types.ConsumedCapacity{}
+			return v.ConsumedCapacity.Deserialize(d)
+		case schemas.DeleteItemOutput_ItemCollectionMetrics:
+			v.ItemCollectionMetrics = &types.ItemCollectionMetrics{}
+			return v.ItemCollectionMetrics.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDeleteItemMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDeleteItem{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteItem, schemas.DeleteItemInput, schemas.DeleteItemOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDeleteItem{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DeleteItem, schemas.DeleteItemInput, schemas.DeleteItemOutput), output: &DeleteItemOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDeleteItemDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -293,9 +350,6 @@ func (c *Client) addOperationDeleteItemMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addOpDeleteItemValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DeleteItem"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

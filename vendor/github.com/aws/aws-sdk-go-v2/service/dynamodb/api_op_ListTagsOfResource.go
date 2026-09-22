@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // List all tags on an Amazon DynamoDB resource. You can call ListTagsOfResource
@@ -49,6 +50,20 @@ type ListTagsOfResourceInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListTagsOfResourceInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListTagsOfResourceInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListTagsOfResourceInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListTagsOfResourceInput_NextToken, *v.NextToken)
+	}
+	if v.ResourceArn != nil {
+		s.WriteString(schemas.ListTagsOfResourceInput_ResourceArn, *v.ResourceArn)
+	}
+}
 func (in *ListTagsOfResourceInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.ResourceArn
@@ -70,35 +85,45 @@ type ListTagsOfResourceOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListTagsOfResourceOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListTagsOfResourceOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListTagsOfResourceOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListTagsOfResourceOutput_NextToken, *v.NextToken)
+	}
+	serializeTagList(s, schemas.ListTagsOfResourceOutput_Tags, v.Tags)
+}
+func (v *ListTagsOfResourceOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListTagsOfResourceOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListTagsOfResourceOutput_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListTagsOfResourceOutput_NextToken, v.NextToken)
+		case schemas.ListTagsOfResourceOutput_Tags:
+			return deserializeTagList(d, schemas.ListTagsOfResourceOutput_Tags, &v.Tags)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListTagsOfResourceMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpListTagsOfResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListTagsOfResource, schemas.ListTagsOfResourceInput, schemas.ListTagsOfResourceOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpListTagsOfResource{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListTagsOfResource, schemas.ListTagsOfResourceInput, schemas.ListTagsOfResourceOutput), output: &ListTagsOfResourceOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListTagsOfResourceDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -111,9 +136,6 @@ func (c *Client) addOperationListTagsOfResourceMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addOpListTagsOfResourceValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ListTagsOfResource"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

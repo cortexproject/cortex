@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Checks the status of continuous backups and point in time recovery on the
@@ -54,6 +55,17 @@ type DescribeContinuousBackupsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeContinuousBackupsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeContinuousBackupsInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeContinuousBackupsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableName != nil {
+		s.WriteString(schemas.DescribeContinuousBackupsInput_TableName, *v.TableName)
+	}
+}
 func (in *DescribeContinuousBackupsInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -72,35 +84,44 @@ type DescribeContinuousBackupsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeContinuousBackupsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeContinuousBackupsOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeContinuousBackupsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ContinuousBackupsDescription != nil {
+		s.WriteStruct(schemas.DescribeContinuousBackupsOutput_ContinuousBackupsDescription)
+		v.ContinuousBackupsDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DescribeContinuousBackupsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeContinuousBackupsOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeContinuousBackupsOutput_ContinuousBackupsDescription:
+			v.ContinuousBackupsDescription = &types.ContinuousBackupsDescription{}
+			return v.ContinuousBackupsDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeContinuousBackupsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDescribeContinuousBackups{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeContinuousBackups, schemas.DescribeContinuousBackupsInput, schemas.DescribeContinuousBackupsOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDescribeContinuousBackups{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeContinuousBackups, schemas.DescribeContinuousBackupsInput, schemas.DescribeContinuousBackupsOutput), output: &DescribeContinuousBackupsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeContinuousBackupsDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -113,9 +134,6 @@ func (c *Client) addOperationDescribeContinuousBackupsMiddlewares(stack *middlew
 		return err
 	}
 	if err = addOpDescribeContinuousBackupsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DescribeContinuousBackups"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

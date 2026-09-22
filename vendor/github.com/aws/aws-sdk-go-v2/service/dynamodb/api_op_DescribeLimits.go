@@ -5,9 +5,10 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns the current provisioned-capacity quotas for your Amazon Web Services
@@ -90,6 +91,15 @@ type DescribeLimitsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeLimitsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeLimitsInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeLimitsInput) SerializeMembers(s smithy.ShapeSerializer) {
+}
+
 // Represents the output of a DescribeLimits operation.
 type DescribeLimitsOutput struct {
 
@@ -117,35 +127,60 @@ type DescribeLimitsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeLimitsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeLimitsOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeLimitsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.AccountMaxReadCapacityUnits != nil {
+		s.WriteInt64(schemas.DescribeLimitsOutput_AccountMaxReadCapacityUnits, *v.AccountMaxReadCapacityUnits)
+	}
+	if v.AccountMaxWriteCapacityUnits != nil {
+		s.WriteInt64(schemas.DescribeLimitsOutput_AccountMaxWriteCapacityUnits, *v.AccountMaxWriteCapacityUnits)
+	}
+	if v.TableMaxReadCapacityUnits != nil {
+		s.WriteInt64(schemas.DescribeLimitsOutput_TableMaxReadCapacityUnits, *v.TableMaxReadCapacityUnits)
+	}
+	if v.TableMaxWriteCapacityUnits != nil {
+		s.WriteInt64(schemas.DescribeLimitsOutput_TableMaxWriteCapacityUnits, *v.TableMaxWriteCapacityUnits)
+	}
+}
+func (v *DescribeLimitsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeLimitsOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeLimitsOutput_AccountMaxReadCapacityUnits:
+			v.AccountMaxReadCapacityUnits = new(int64)
+			return d.ReadInt64(schemas.DescribeLimitsOutput_AccountMaxReadCapacityUnits, v.AccountMaxReadCapacityUnits)
+		case schemas.DescribeLimitsOutput_AccountMaxWriteCapacityUnits:
+			v.AccountMaxWriteCapacityUnits = new(int64)
+			return d.ReadInt64(schemas.DescribeLimitsOutput_AccountMaxWriteCapacityUnits, v.AccountMaxWriteCapacityUnits)
+		case schemas.DescribeLimitsOutput_TableMaxReadCapacityUnits:
+			v.TableMaxReadCapacityUnits = new(int64)
+			return d.ReadInt64(schemas.DescribeLimitsOutput_TableMaxReadCapacityUnits, v.TableMaxReadCapacityUnits)
+		case schemas.DescribeLimitsOutput_TableMaxWriteCapacityUnits:
+			v.TableMaxWriteCapacityUnits = new(int64)
+			return d.ReadInt64(schemas.DescribeLimitsOutput_TableMaxWriteCapacityUnits, v.TableMaxWriteCapacityUnits)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeLimitsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDescribeLimits{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeLimits, schemas.DescribeLimitsInput, schemas.DescribeLimitsOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDescribeLimits{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeLimits, schemas.DescribeLimitsInput, schemas.DescribeLimitsOutput), output: &DescribeLimitsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeLimitsDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -155,9 +190,6 @@ func (c *Client) addOperationDescribeLimitsMiddlewares(stack *middleware.Stack, 
 		return err
 	}
 	if err = addCredentialSource(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DescribeLimits"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

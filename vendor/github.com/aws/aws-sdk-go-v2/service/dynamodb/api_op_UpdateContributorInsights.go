@@ -4,9 +4,10 @@ package dynamodb
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Updates the status for contributor insights for a specific table or index.
@@ -54,6 +55,26 @@ type UpdateContributorInsightsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateContributorInsightsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateContributorInsightsInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateContributorInsightsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ContributorInsightsAction != "" {
+		s.WriteString(schemas.UpdateContributorInsightsInput_ContributorInsightsAction, string(v.ContributorInsightsAction))
+	}
+	if v.ContributorInsightsMode != "" {
+		s.WriteString(schemas.UpdateContributorInsightsInput_ContributorInsightsMode, string(v.ContributorInsightsMode))
+	}
+	if v.IndexName != nil {
+		s.WriteString(schemas.UpdateContributorInsightsInput_IndexName, *v.IndexName)
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.UpdateContributorInsightsInput_TableName, *v.TableName)
+	}
+}
 func (in *UpdateContributorInsightsInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -82,35 +103,68 @@ type UpdateContributorInsightsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateContributorInsightsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateContributorInsightsOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateContributorInsightsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ContributorInsightsMode != "" {
+		s.WriteString(schemas.UpdateContributorInsightsOutput_ContributorInsightsMode, string(v.ContributorInsightsMode))
+	}
+	if v.ContributorInsightsStatus != "" {
+		s.WriteString(schemas.UpdateContributorInsightsOutput_ContributorInsightsStatus, string(v.ContributorInsightsStatus))
+	}
+	if v.IndexName != nil {
+		s.WriteString(schemas.UpdateContributorInsightsOutput_IndexName, *v.IndexName)
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.UpdateContributorInsightsOutput_TableName, *v.TableName)
+	}
+}
+func (v *UpdateContributorInsightsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateContributorInsightsOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UpdateContributorInsightsOutput_ContributorInsightsMode:
+			var ev string
+			if err := d.ReadString(schemas.UpdateContributorInsightsOutput_ContributorInsightsMode, &ev); err != nil {
+				return err
+			}
+			v.ContributorInsightsMode = types.ContributorInsightsMode(ev)
+			return nil
+		case schemas.UpdateContributorInsightsOutput_ContributorInsightsStatus:
+			var ev string
+			if err := d.ReadString(schemas.UpdateContributorInsightsOutput_ContributorInsightsStatus, &ev); err != nil {
+				return err
+			}
+			v.ContributorInsightsStatus = types.ContributorInsightsStatus(ev)
+			return nil
+		case schemas.UpdateContributorInsightsOutput_IndexName:
+			v.IndexName = new(string)
+			return d.ReadString(schemas.UpdateContributorInsightsOutput_IndexName, v.IndexName)
+		case schemas.UpdateContributorInsightsOutput_TableName:
+			v.TableName = new(string)
+			return d.ReadString(schemas.UpdateContributorInsightsOutput_TableName, v.TableName)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateContributorInsightsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpUpdateContributorInsights{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateContributorInsights, schemas.UpdateContributorInsightsInput, schemas.UpdateContributorInsightsOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpUpdateContributorInsights{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateContributorInsights, schemas.UpdateContributorInsightsInput, schemas.UpdateContributorInsightsOutput), output: &UpdateContributorInsightsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
@@ -120,9 +174,6 @@ func (c *Client) addOperationUpdateContributorInsightsMiddlewares(stack *middlew
 		return err
 	}
 	if err = addOpUpdateContributorInsightsValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UpdateContributorInsights"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

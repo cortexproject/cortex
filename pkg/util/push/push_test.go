@@ -1864,6 +1864,90 @@ func TestHandler_remoteWriteV2_PartialWrite(t *testing.T) {
 	}
 }
 
+func TestHandler_remoteWriteV2_PartialWriteWithPushError(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	const convertErrMsg = `TimeSeries must contain at least one sample or histogram for series {__name__="foo"}`
+
+	tests := []struct {
+		name           string
+		pushErr        error
+		pushResp       *cortexpb.WriteResponse
+		expectedStatus int
+		// expectConvertErr tells whether the conversion error is reported alongside the push error.
+		expectConvertErr bool
+		expectedBody     string
+		expectedSamples  string
+	}{
+		{
+			name:             "a 400 from the Distributor is reported together with the conversion error",
+			pushErr:          httpgrpc.Errorf(http.StatusBadRequest, "invalid label on series bar"),
+			pushResp:         &cortexpb.WriteResponse{Samples: 1},
+			expectedStatus:   http.StatusBadRequest,
+			expectConvertErr: true,
+			expectedBody:     "invalid label on series bar",
+			expectedSamples:  "1",
+		},
+		{
+			name:            "a 5xx from the Distributor takes precedence so the client retries",
+			pushErr:         httpgrpc.Errorf(http.StatusInternalServerError, "ingester unavailable"),
+			expectedStatus:  http.StatusInternalServerError,
+			expectedBody:    "ingester unavailable",
+			expectedSamples: "0",
+		},
+		{
+			name:            "a 429 from the Distributor takes precedence so the client retries",
+			pushErr:         httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit exceeded"),
+			expectedStatus:  http.StatusTooManyRequests,
+			expectedBody:    "ingestion rate limit exceeded",
+			expectedSamples: "0",
+		},
+		{
+			name:            "a non httpgrpc error from the Distributor takes precedence",
+			pushErr:         fmt.Errorf("unexpected failure"),
+			expectedStatus:  http.StatusInternalServerError,
+			expectedBody:    "unexpected failure",
+			expectedSamples: "0",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			pushFunc := func(_ context.Context, _ *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				return test.pushResp, test.pushErr
+			}
+
+			reqProto := writev2.Request{
+				Symbols: []string{"", "__name__", "foo", "bar"},
+				Timeseries: []writev2.TimeSeries{
+					// Dropped during conversion.
+					{LabelsRefs: []uint32{1, 2}},
+					{LabelsRefs: []uint32{1, 3}, Samples: []writev2.Sample{{Value: 1, Timestamp: 10}}},
+				},
+			}
+			reqBytes, err := reqProto.Marshal()
+			require.NoError(t, err)
+
+			handler := Handler(true, false, 100000, overrides, nil, pushFunc, nil)
+			httpReq := createRequest(t, reqBytes, true).WithContext(user.InjectOrgID(context.Background(), "user-1"))
+
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, httpReq)
+
+			assert.Equal(t, test.expectedStatus, resp.Code)
+			assert.Contains(t, resp.Body.String(), test.expectedBody)
+			if test.expectConvertErr {
+				assert.Contains(t, resp.Body.String(), convertErrMsg)
+			} else {
+				assert.NotContains(t, resp.Body.String(), convertErrMsg)
+			}
+			assert.Equal(t, test.expectedSamples, resp.Header().Get(rw20WrittenSamplesHeader))
+		})
+	}
+}
+
 func Test_convertV2RequestToV1_BoundsReportedErrors(t *testing.T) {
 	const badSeries = maxConversionErrs + 5
 

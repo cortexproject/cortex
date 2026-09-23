@@ -151,8 +151,13 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
-				// The push error takes precedence over convertErr: a 5xx must be retried.
-				http.Error(w, string(resp.Body), int(resp.Code))
+				body := string(resp.Body)
+				// Any other status takes precedence over convertErr (e.g. a 5xx must be retried),
+				// but on a 400 both are reported so the client sees every rejected series.
+				if resp.GetCode() == http.StatusBadRequest && convertErr != nil {
+					body = convertErr.Error() + "\n" + body
+				}
+				http.Error(w, body, int(resp.Code))
 				return
 			}
 

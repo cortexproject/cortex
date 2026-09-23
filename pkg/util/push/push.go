@@ -115,11 +115,11 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				req.Source = cortexpb.API
 			}
 
-			v1Req, err := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
-			if err != nil {
-				level.Error(logger).Log("err", err.Error())
-				http.Error(w, err.Error(), http.StatusBadRequest)
-				return
+			// convertErr is a non-retriable bad request error. The series that converted
+			// successfully are still pushed, so the request is partially written.
+			v1Req, convertErr := convertV2RequestToV1(req, overrides.EnableTypeAndUnitLabels(userID), overrides.EnableStartTimestamp(userID))
+			if convertErr != nil {
+				level.Warn(logger).Log("msg", "remote write v2 request partially converted", "err", convertErr)
 			}
 
 			v1Req.SkipLabelNameValidation = false
@@ -127,7 +127,10 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				v1Req.Source = cortexpb.API
 			}
 
-			if writeResp, err := push(ctx, &v1Req.WriteRequest); err != nil {
+			// The Distributor owns the pooled TimeSeries, so push must be called even when
+			// every series was skipped.
+			writeResp, err := push(ctx, &v1Req.WriteRequest)
+			if err != nil {
 				if errors.Is(err, context.Canceled) {
 					err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
 				}
@@ -148,11 +151,17 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				} else if resp.GetCode() != http.StatusAccepted && resp.GetCode() != http.StatusTooManyRequests && resp.GetCode() != util_api.StatusClientClosedRequest {
 					level.Warn(logger).Log("msg", "push refused", "err", err)
 				}
+				// The push error takes precedence over convertErr: a 5xx must be retried.
 				http.Error(w, string(resp.Body), int(resp.Code))
-			} else {
-				setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
-				w.WriteHeader(http.StatusNoContent)
+				return
 			}
+
+			setPRW2RespHeader(w, writeResp.Samples, writeResp.Histograms, writeResp.Exemplars)
+			if convertErr != nil {
+				http.Error(w, convertErr.Error(), http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		}
 
 		// follow Prometheus https://github.com/prometheus/prometheus/blob/v3.3.1/storage/remote/write_handler.go#L121
@@ -222,40 +231,75 @@ type v2MetadataKey struct {
 	unitRef          uint32
 }
 
-func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (v1Req cortexpb.PreallocWriteRequest, err error) {
+// maxConversionErrs is the maximum number of per-series conversion errors reported back
+// to the client.
+const maxConversionErrs = 10
+
+// conversionErrs collects per-series conversion errors, keeping at most maxConversionErrs
+// of them while still reporting the total count.
+type conversionErrs struct {
+	errs  []error
+	count int
+}
+
+func (c *conversionErrs) add(err error) {
+	c.count++
+	if len(c.errs) < maxConversionErrs {
+		c.errs = append(c.errs, err)
+	}
+}
+
+// err joins the collected errors, summarizing the ones that were left out.
+func (c *conversionErrs) err() error {
+	if c.count == 0 {
+		return nil
+	}
+	if omitted := c.count - len(c.errs); omitted > 0 {
+		return errors.Join(append(c.errs, fmt.Errorf("%d more errors omitted", omitted))...)
+	}
+	return errors.Join(c.errs...)
+}
+
+// convertV2RequestToV1 converts a remote write v2 request into a v1 one.
+//
+// Malformed series are skipped and their errors are joined into the returned error,
+// which is always a non-retriable bad request error. Series that converted successfully
+// are still returned, so the request can be partially written, following the Prometheus
+// receiver behavior.
+func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUnitLabels bool, enableStartTimestamp bool) (cortexpb.PreallocWriteRequest, error) {
+	var v1Req cortexpb.PreallocWriteRequest
 	v1Timeseries := make([]cortexpb.PreallocTimeseries, 0, len(req.Timeseries))
 	var v1Metadata []*cortexpb.MetricMetadata
 	// v2 attaches metadata to every series, so a metric family repeats once per series.
 	seenMetadata := make(map[v2MetadataKey]struct{})
-
-	// Release any pulled TimeSeries back to the pool to prevent memory leaks in case of an error.
-	defer func() {
-		if err != nil {
-			for _, pts := range v1Timeseries {
-				if pts.TimeSeries != nil {
-					cortexpb.ReuseTimeseries(pts.TimeSeries)
-				}
-			}
-		}
-	}()
+	var badRequestErrs conversionErrs
 
 	b := labels.NewScratchBuilder(0)
 	symbols := req.Symbols
 	for _, v2Ts := range req.Timeseries {
 		lbs, err := v2Ts.ToLabels(&b, symbols)
 		if err != nil {
-			return v1Req, err
+			badRequestErrs.add(err)
+			continue
 		}
 
 		if len(v2Ts.Samples) == 0 && len(v2Ts.Histograms) == 0 {
-			return v1Req, fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String())
+			badRequestErrs.add(fmt.Errorf("TimeSeries must contain at least one sample or histogram for series %v", lbs.String()))
+			continue
 		}
 
-		if int(v2Ts.Metadata.UnitRef) >= len(symbols) {
-			return v1Req, fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", v2Ts.Metadata.UnitRef, len(symbols))
+		// An out of range UnitRef only invalidates the metadata, so keep the series and
+		// let convertV2ToV1Metadata report it.
+		var unit string
+		if int(v2Ts.Metadata.UnitRef) < len(symbols) {
+			unit = symbols[v2Ts.Metadata.UnitRef]
+		} else if enableTypeAndUnitLabels {
+			// The unit is part of the series identity here, so keeping the series would
+			// store it under a label set the sender never sent.
+			badRequestErrs.add(fmt.Errorf("invalid UnitRef %d: exceeds symbols length %d", v2Ts.Metadata.UnitRef, len(symbols)))
+			continue
 		}
 
-		unit := symbols[v2Ts.Metadata.UnitRef]
 		metricType := v2Ts.Metadata.Type
 		shouldAttachTypeAndUnitLabels := enableTypeAndUnitLabels && (metricType != cortexpb.METRIC_TYPE_UNSPECIFIED || unit != "")
 		if shouldAttachTypeAndUnitLabels {
@@ -287,12 +331,7 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 			ts.Samples = append(ts.Samples, sample)
 		}
 
-		ts.Exemplars, err = convertV2ToV1Exemplars(&b, symbols, v2Ts.Exemplars, ts.Exemplars[:0])
-		if err != nil {
-			// Current ts is not appended to the v1Timeseries, so we should call reuse here.
-			cortexpb.ReuseTimeseries(ts)
-			return v1Req, err
-		}
+		ts.Exemplars = convertV2ToV1Exemplars(&b, symbols, lbs, v2Ts.Exemplars, ts.Exemplars[:0], &badRequestErrs)
 
 		ts.Histograms = ts.Histograms[:0]
 		for _, histogram := range v2Ts.Histograms {
@@ -312,10 +351,11 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 		})
 
 		if shouldConvertV2Metadata(v2Ts.Metadata) {
-			var metricName string
-			metricName, err = extract.MetricNameFromLabels(lbs)
+			// The series has already been appended above, so only its metadata is dropped here.
+			metricName, err := extract.MetricNameFromLabels(lbs)
 			if err != nil {
-				return v1Req, err
+				badRequestErrs.add(err)
+				continue
 			}
 
 			key := v2MetadataKey{
@@ -325,10 +365,10 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 				unitRef:          v2Ts.Metadata.UnitRef,
 			}
 			if _, ok := seenMetadata[key]; !ok {
-				var metadata *cortexpb.MetricMetadata
-				metadata, err = convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
+				metadata, err := convertV2ToV1Metadata(metricName, symbols, v2Ts.Metadata)
 				if err != nil {
-					return v1Req, err
+					badRequestErrs.add(err)
+					continue
 				}
 				seenMetadata[key] = struct{}{}
 				v1Metadata = append(v1Metadata, metadata)
@@ -339,7 +379,7 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 	v1Req.Timeseries = v1Timeseries
 	v1Req.Metadata = v1Metadata
 
-	return v1Req, nil
+	return v1Req, badRequestErrs.err()
 }
 
 func shouldConvertV2Metadata(metadata cortexpb.MetadataV2) bool {
@@ -381,11 +421,14 @@ func convertV2ToV1Metadata(name string, symbols []string, metadata cortexpb.Meta
 	}, nil
 }
 
-func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exemplars []cortexpb.ExemplarV2, v1Exemplars []cortexpb.Exemplar) ([]cortexpb.Exemplar, error) {
+// convertV2ToV1Exemplars converts the exemplars of a single series. A malformed exemplar is
+// skipped and reported, following the Prometheus receiver behavior.
+func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, seriesLabels labels.Labels, v2Exemplars []cortexpb.ExemplarV2, v1Exemplars []cortexpb.Exemplar, badRequestErrs *conversionErrs) []cortexpb.Exemplar {
 	for _, e := range v2Exemplars {
 		lbs, err := e.ToLabels(b, symbols)
 		if err != nil {
-			return v1Exemplars, err
+			badRequestErrs.add(fmt.Errorf("parsing exemplar for series %v: %w", seriesLabels.String(), err))
+			continue
 		}
 		v1Exemplars = append(v1Exemplars, cortexpb.Exemplar{
 			Labels:      cortexpb.FromLabelsToLabelAdapters(lbs),
@@ -393,7 +436,7 @@ func convertV2ToV1Exemplars(b *labels.ScratchBuilder, symbols []string, v2Exempl
 			TimestampMs: e.Timestamp,
 		})
 	}
-	return v1Exemplars, nil
+	return v1Exemplars
 }
 
 func getTypeLabel(msgType remote.WriteMessageType, unknownOrInvalidContentType bool) string {

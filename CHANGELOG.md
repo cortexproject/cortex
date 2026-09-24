@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] Compactor: Fix the final cleanup of a tenant marked for deletion being reported as failed on object stores that return an error when deleting a missing object (GCS, Azure, Swift, OCI). #7861
 
 ## 1.22.0 in progress
 * [CHANGE] Ruler: Remove the deprecated `-ruler.evaluation-delay-duration` flag and its `ruler_evaluation_delay_duration` per-tenant limit. Use `-ruler.query-offset` / `ruler_query_offset`, which no longer takes the higher of the two values. Cortex decodes the runtime config strictly, so a leftover `ruler_evaluation_delay_duration` override makes the runtime config fail to load: Cortex **exits at startup** (`module failed`, `module=runtime-config`), and on an already-running process every reload fails, pinning the last good overrides and dropping `cortex_runtime_config_last_reload_successful` to 0. Run `grep -r ruler_evaluation_delay_duration` over your runtime configs before upgrading. #7792

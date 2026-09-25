@@ -61,6 +61,7 @@ type ingesterMetrics struct {
 	activeSeriesPerUser        *prometheus.GaugeVec
 	activeNHSeriesPerUser      *prometheus.GaugeVec
 	headMetricNamesPerUser     *prometheus.GaugeVec
+	ownedSeriesPerUser         *prometheus.GaugeVec
 	activeQueriedSeriesPerUser *prometheus.GaugeVec
 	headQueriedSeriesPerUser   *prometheus.GaugeVec
 	limitsPerLabelSet          *prometheus.GaugeVec
@@ -330,6 +331,11 @@ func newIngesterMetrics(r prometheus.Registerer,
 			Help: "Number of unique metric names in the TSDB head per user.",
 		}, []string{"user"}),
 
+		ownedSeriesPerUser: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_owned_series",
+			Help: "Number of series this ingester currently owns per user according to the ring.",
+		}, []string{"user"}),
+
 		// Not registered automatically, but only if activeSeriesEnabled is true.
 		activeSeriesPerTracker: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: "cortex_ingester_active_series_per_tracker",
@@ -388,6 +394,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 		r.MustRegister(m.activeSeriesPerUser)
 		r.MustRegister(m.activeNHSeriesPerUser)
 		r.MustRegister(m.headMetricNamesPerUser)
+		r.MustRegister(m.ownedSeriesPerUser)
 		r.MustRegister(m.activeSeriesPerTracker)
 	}
 

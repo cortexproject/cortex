@@ -111,6 +111,7 @@ var (
 	errIngesterStopping = errors.New("ingester stopping")
 	errNoUserDb         = errors.New("no user db")
 	errLabelsOutOfOrder = errors.New("labels out of order")
+	errTsdbShipping     = errors.New("tsdb is in state activeShipping")
 
 	tsChunksPool zeropool.Pool[[]client.TimeSeriesChunk]
 
@@ -471,21 +472,24 @@ func (u *userTSDB) StartTime() (int64, error) {
 	return u.db.StartTime()
 }
 
-func (u *userTSDB) casState(from, to tsdbState) bool {
+func (u *userTSDB) casState(from, to tsdbState) (bool, tsdbState) {
 	u.stateMtx.Lock()
 	defer u.stateMtx.Unlock()
 
 	if u.state != from {
-		return false
+		return false, u.state
 	}
 	u.state = to
-	return true
+	return true, u.state
 }
 
 // compactHead compacts the Head block at specified block durations avoiding a single huge block.
 func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
-	if !u.casState(active, forceCompacting) {
-		return errors.New("TSDB head cannot be compacted because it is not in active state (possibly being closed or blocks shipping in progress)")
+	if success, state := u.casState(active, forceCompacting); !success {
+		if state == activeShipping {
+			return errTsdbShipping
+		}
+		return fmt.Errorf("TSDB head cannot be compacted because it is not in active state (state: %d)", state)
 	}
 
 	defer u.casState(forceCompacting, active)
@@ -574,6 +578,8 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 	u.labelSetCounter.increaseSeriesLabelSet(u, metric)
 	u.trackerCounter.increase(metric)
 
+	// Expiring here is only safe because the head adds the series to the postings before invoking
+	// this callback (prometheus/prometheus#15579); preserve that ordering when upgrading Prometheus.
 	if u.postingCache != nil {
 		u.postingCache.ExpireSeries(metric)
 	}
@@ -1541,8 +1547,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		app.SetOptions(&storage.AppendOptions{DiscardOutOfOrder: true})
 	}
 
-	var newSeries []labels.Labels
-
 	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
 	nowMs := time.Now().UnixMilli()
 	observeDelay := func(timestampMs int64) {
@@ -1599,10 +1603,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			} else {
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
-					// Keep track of what series needs to be expired on the postings cache
-					if db.postingCache != nil {
-						newSeries = append(newSeries, copiedLabels)
-					}
 					succeededSamplesCount++
 					continue
 				}
@@ -1660,10 +1660,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						// Keep track of what series needs to be expired on the postings cache
-						if db.postingCache != nil {
-							newSeries = append(newSeries, copiedLabels)
-						}
 						succeededHistogramsCount++
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
@@ -1745,16 +1741,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	committed = true
 	if err := app.Commit(); err != nil {
 		return nil, wrapWithUser(err, userID)
-	}
-
-	// This is a workaround of https://github.com/prometheus/prometheus/pull/15579
-	// Calling expire here may result in the series names being expired multiple times,
-	// as there may be multiple Push operations concurrently for the same new timeseries.
-	// TODO: alanprot remove this when/if the PR is merged
-	if db.postingCache != nil {
-		for _, s := range newSeries {
-			db.postingCache.ExpireSeries(s)
-		}
 	}
 
 	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
@@ -3409,7 +3395,7 @@ func (i *Ingester) shipBlocks(ctx context.Context, allowed *users.AllowedTenants
 
 		// Run the shipper's Sync() to upload unshipped blocks. Make sure the TSDB state is active, in order to
 		// avoid any race condition with closing idle TSDBs.
-		if !userDB.casState(active, activeShipping) {
+		if success, _ := userDB.casState(active, activeShipping); !success {
 			level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "shipper skipped because the TSDB is not active", "user", userID)
 			return nil
 		}
@@ -3523,8 +3509,13 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 		}
 
 		if err != nil {
-			i.TSDBState.compactionsFailed.Inc()
-			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
+			// Don't treat blocks shipping as a failure
+			if errors.Is(err, errTsdbShipping) {
+				level.Info(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction for user was skipped", "user", userID, "err", err, "compactReason", reason)
+			} else {
+				i.TSDBState.compactionsFailed.Inc()
+				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction for user has failed", "user", userID, "err", err, "compactReason", reason)
+			}
 		} else {
 			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 		}
@@ -3574,7 +3565,7 @@ func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckRes
 	}
 
 	// This disables pushes and force-compactions. Not allowed to close while shipping is in progress.
-	if !userDB.casState(active, closing) {
+	if success, _ := userDB.casState(active, closing); !success {
 		return tsdbNotActive
 	}
 

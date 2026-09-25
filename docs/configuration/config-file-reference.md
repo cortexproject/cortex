@@ -5538,6 +5538,11 @@ query_protection:
     # when resource thresholds are breached.
     # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
     [max_evictions_per_cycle: <int> | default = 1]
+
+# Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+# allocating one per iterator.
+# CLI flag: -querier.pool-iterator-batches-buf
+[pool_iterator_batches_buf: <boolean> | default = false]
 ```
 
 ### `query_frontend_config`
@@ -6232,6 +6237,14 @@ ring:
 # processing will ignore them instead. Subject to sharding.
 # CLI flag: -ruler.disabled-tenants
 [disabled_tenants: <string> | default = ""]
+
+# Maximum number of rules returned by the Prometheus ListRules API. If there are
+# more rulegroups, the response will include a pagination token which can be
+# used to fetch the next set. The API will always return at least one rulegroup,
+# even if it contains more rules than the limit. Defaults to 0, which is
+# unlimited
+# CLI flag: -ruler.list-rules-max-rules
+[list_rules_max_rules: <int> | default = 0]
 
 # Report query statistics for ruler queries to complete as a per user metric and
 # as an info level log message.

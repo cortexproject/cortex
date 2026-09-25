@@ -292,7 +292,7 @@ func TestSingleBinaryWithMemberlistScaling(t *testing.T) {
 	minCortex := 3
 	instances := make([]*e2ecortex.CortexService, 0)
 
-	for i := 0; i < maxCortex; i++ {
+	for i := range maxCortex {
 		name := fmt.Sprintf("cortex-%d", i+1)
 		join := ""
 		if i > 0 {

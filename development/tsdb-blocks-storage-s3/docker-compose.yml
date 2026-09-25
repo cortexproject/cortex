@@ -8,7 +8,7 @@ services:
       - 8500:8500
 
   minio:
-    image: quay.io/minio/minio
+    image: docker.io/cortexproject/minio:RELEASE.2024-07-04T14-25-45Z
     command: [ "server", "/data" ]
     environment:
       - MINIO_ACCESS_KEY=cortex

@@ -407,7 +407,7 @@ jobs:
             done
           }
 
-          retry docker pull quay.io/minio/minio:RELEASE.2024-05-28T17-19-04Z
+          retry docker pull docker.io/cortexproject/minio:RELEASE.2024-07-04T14-25-45Z
           retry docker pull consul:1.8.4
           retry docker pull quay.io/coreos/etcd:v3.5.29
           if [ "$TEST_TAGS" = "integration_backward_compatibility" ]; then

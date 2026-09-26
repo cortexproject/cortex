@@ -937,8 +937,8 @@ func TestBucketStores_tokenBuckets(t *testing.T) {
 		generateStorageBlock(t, storageDir, userID, metricName, 10, 100, 15)
 	}
 
-	sharding := userShardingStrategy{}
-	sharding.users = []string{user1, user2}
+	sharding := userShardingStrategy{
+		users: []string{user1, user2}}
 
 	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	assert.NoError(t, err)

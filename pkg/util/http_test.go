@@ -142,21 +142,19 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 func TestParseProtoReader(t *testing.T) {
 	// 47 bytes compressed and 53 uncompressed
 	req := &cortexpb.PreallocWriteRequest{
-		WriteRequest: cortexpb.WriteRequest{
-			Timeseries: []cortexpb.PreallocTimeseries{
-				{
-					TimeSeries: &cortexpb.TimeSeries{
-						Labels: []cortexpb.LabelAdapter{
-							{Name: "foo", Value: "bar"},
-						},
-						Samples: []cortexpb.Sample{
-							{Value: 10, TimestampMs: 1},
-							{Value: 20, TimestampMs: 2},
-							{Value: 30, TimestampMs: 3},
-						},
-						Exemplars:  []cortexpb.Exemplar{},
-						Histograms: []cortexpb.WrappedHistogram{},
+		Timeseries: []cortexpb.PreallocTimeseries{
+			{
+				TimeSeries: &cortexpb.TimeSeries{
+					Labels: []cortexpb.LabelAdapter{
+						{Name: "foo", Value: "bar"},
 					},
+					Samples: []cortexpb.Sample{
+						{Value: 10, TimestampMs: 1},
+						{Value: 20, TimestampMs: 2},
+						{Value: 30, TimestampMs: 3},
+					},
+					Exemplars:  []cortexpb.Exemplar{},
+					Histograms: []cortexpb.WrappedHistogram{},
 				},
 			},
 		},

@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -997,18 +996,14 @@ func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	tsdbPlanner.On("Plan", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]*metadata.Meta{
 		{
-			BlockMeta: tsdb.BlockMeta{
-				ULID:    b1,
-				MinTime: 10,
-				MaxTime: 20,
-			},
+			ULID:    b1,
+			MinTime: 10,
+			MaxTime: 20,
 		},
 		{
-			BlockMeta: tsdb.BlockMeta{
-				ULID:    b2,
-				MinTime: 20,
-				MaxTime: 30,
-			},
+			ULID:    b2,
+			MinTime: 20,
+			MaxTime: 30,
 		},
 	}, nil)
 
@@ -1016,13 +1011,14 @@ func TestPartitionCompactor_ShouldSkipOutOrOrderBlocks(t *testing.T) {
 
 	defer services.StopAndAwaitTerminated(context.Background(), c) //nolint:errcheck
 
-	// Wait until a run has completed.
-	cortex_testutil.Poll(t, 20*time.Second, true, func() any {
-		if _, err := os.Stat(path.Join(dir, "no-compact-mark.json")); err == nil {
-			return true
-		}
-		return false
+	// Wait until the block has been marked for no compaction. Poll on the counter that is
+	// asserted below rather than on the marker file: the file is written before the counter
+	// is incremented, so waiting on the file can let the assertion observe a stale 0.
+	cortex_testutil.Poll(t, 20*time.Second, 1.0, func() any {
+		return prom_testutil.ToFloat64(c.BlocksMarkedForNoCompaction)
 	})
+
+	assert.FileExists(t, path.Join(dir, "no-compact-mark.json"))
 
 	assert.NoError(t, prom_testutil.GatherAndCompare(registry, strings.NewReader(`
 			# HELP cortex_compactor_blocks_marked_for_no_compaction_total Total number of blocks marked for no compact during a compaction run.
@@ -2030,11 +2026,9 @@ func (s *raceConditionTestSetup) createCortexMetaExtensions(creationTime int64) 
 func (s *raceConditionTestSetup) createTestMetadata() []*metadata.Meta {
 	return []*metadata.Meta{
 		{
-			BlockMeta: tsdb.BlockMeta{
-				ULID:    ulid.MustNew(ulid.Now(), nil),
-				MinTime: 0,
-				MaxTime: 2 * 60 * 60 * 1000,
-			},
+			ULID:    ulid.MustNew(ulid.Now(), nil),
+			MinTime: 0,
+			MaxTime: 2 * 60 * 60 * 1000,
 		},
 	}
 }

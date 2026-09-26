@@ -1308,9 +1308,9 @@ func TestMessageBuffer(t *testing.T) {
 func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 	codec := dataCodec{}
 
-	cfg := KVConfig{}
-	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
-	cfg.RetransmitMult = 1
+	cfg := KVConfig{
+		// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+		RetransmitMult: 1}
 	cfg.Codecs = append(cfg.Codecs, codec)
 
 	kv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -1370,10 +1370,10 @@ func TestNotifyMsgResendsOnlyChanges(t *testing.T) {
 func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 	codec := dataCodec{}
 
-	cfg := KVConfig{}
-	// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
-	cfg.RetransmitMult = 1
-	cfg.LeftIngestersTimeout = 5 * time.Minute
+	cfg := KVConfig{
+		// We will be checking for number of messages in the broadcast queue, so make sure to use known retransmit factor.
+		RetransmitMult:       1,
+		LeftIngestersTimeout: 5 * time.Minute}
 	cfg.Codecs = append(cfg.Codecs, codec)
 
 	kv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -1462,8 +1462,8 @@ func TestSendingOldTombstoneShouldNotForwardMessage(t *testing.T) {
 func TestDeleteIsPropagatedToOtherNodes(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{}
-	cfg.RetransmitMult = 1
+	cfg := KVConfig{
+		RetransmitMult: 1}
 	cfg.Codecs = append(cfg.Codecs, c)
 
 	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -1517,8 +1517,8 @@ func TestDeleteIsPropagatedToOtherNodes(t *testing.T) {
 func TestResurrectDeletedKeyWithNewerMetadata(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{}
-	cfg.RetransmitMult = 1
+	cfg := KVConfig{
+		RetransmitMult: 1}
 	cfg.Codecs = append(cfg.Codecs, c)
 
 	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -1569,8 +1569,8 @@ func TestResurrectDeletedKeyWithNewerMetadata(t *testing.T) {
 func TestDeleteIdempotencyAndList(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{}
-	cfg.RetransmitMult = 1
+	cfg := KVConfig{
+		RetransmitMult: 1}
 	cfg.Codecs = append(cfg.Codecs, c)
 
 	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())
@@ -1621,8 +1621,8 @@ func TestDeleteIdempotencyAndList(t *testing.T) {
 func TestDeleteTriggersWatchKeyNotification(t *testing.T) {
 	c := dataCodec{}
 
-	cfg := KVConfig{}
-	cfg.RetransmitMult = 1
+	cfg := KVConfig{
+		RetransmitMult: 1}
 	cfg.Codecs = append(cfg.Codecs, c)
 
 	mkv := NewKV(cfg, log.NewNopLogger(), &dnsProviderMock{}, prometheus.NewPedanticRegistry())

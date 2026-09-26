@@ -69,6 +69,7 @@ func New(opts promql.EngineOpts, thanosEngineCfg ThanosEngineConfig, reg prometh
 			EnableAnalysis:      true,
 			EnableXFunctions:    thanosEngineCfg.EnableXFunctions,
 			DecodingConcurrency: thanosEngineCfg.DecodingConcurrency,
+			SelectorBatchSize:   thanosEngineCfg.SelectorBatchSize,
 		})
 	}
 

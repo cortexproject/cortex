@@ -58,7 +58,7 @@ message SampleHistogramPair {
 message SampleHistogram {
   double count = 1;
   double sum = 2;
-  repeated HistogramBucket buckets = 3;
+  repeated HistogramBucket buckets = 3 [(gogoproto.nullable) = false];
 }
 
 message HistogramBucket {

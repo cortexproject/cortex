@@ -76,20 +76,18 @@ func v2silence(id, endsAt, updatedAt string) *v2_models.GettableSilence {
 			State: &active,
 		},
 		UpdatedAt: v2ParseTime(updatedAt),
-		Silence: v2_models.Silence{
-			Comment:   &comment,
-			CreatedBy: &createdBy,
-			EndsAt:    v2ParseTime(endsAt),
-			Matchers: v2_models.Matchers{
-				&v2_models.Matcher{
-					IsEqual: &isEqual,
-					IsRegex: &isRegex,
-					Name:    &name,
-					Value:   &value,
-				},
+		Comment:   &comment,
+		CreatedBy: &createdBy,
+		EndsAt:    v2ParseTime(endsAt),
+		Matchers: v2_models.Matchers{
+			&v2_models.Matcher{
+				IsEqual: &isEqual,
+				IsRegex: &isRegex,
+				Name:    &name,
+				Value:   &value,
 			},
-			StartsAt: v2ParseTime("2020-01-01T12:00:00.000Z"),
 		},
+		StartsAt: v2ParseTime("2020-01-01T12:00:00.000Z"),
 	}
 }
 

@@ -7,7 +7,6 @@ import (
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
 	"github.com/stretchr/testify/assert"
@@ -19,7 +18,7 @@ func TestCollectingAppender_AppendSample_SingleSeries(t *testing.T) {
 	ls := labels.FromStrings("__name__", "cpu_usage", "job", "test")
 
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeGauge, Help: "CPU usage", Unit: "percent"},
+		Type: model.MetricTypeGauge, Help: "CPU usage", Unit: "percent",
 		MetricFamilyName: "cpu_usage",
 	}
 
@@ -48,7 +47,7 @@ func TestCollectingAppender_AppendSample_MultipleSamplesSameSeries(t *testing.T)
 	ls := labels.FromStrings("__name__", "requests_total")
 
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeCounter},
+		Type:             model.MetricTypeCounter,
 		MetricFamilyName: "requests_total",
 	}
 
@@ -69,7 +68,7 @@ func TestCollectingAppender_AppendSample_MultipleSamplesSameSeries(t *testing.T)
 func TestCollectingAppender_AppendSample_MultipleSeries(t *testing.T) {
 	c := newCollectingAppender()
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeGauge},
+		Type:             model.MetricTypeGauge,
 		MetricFamilyName: "metric",
 	}
 
@@ -99,7 +98,7 @@ func TestCollectingAppender_AppendSample_WithExemplars(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "latency")
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeHistogram},
+		Type:             model.MetricTypeHistogram,
 		MetricFamilyName: "latency",
 	}
 	exemplars := []exemplar.Exemplar{
@@ -121,7 +120,7 @@ func TestCollectingAppender_AppendHistogram(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "request_duration_seconds")
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeHistogram, Help: "Request latency", Unit: "seconds"},
+		Type: model.MetricTypeHistogram, Help: "Request latency", Unit: "seconds",
 		MetricFamilyName: "request_duration_seconds",
 	}
 
@@ -171,7 +170,7 @@ func TestCollectingAppender_Metadata_EmptyMetricFamilyNameIgnored(t *testing.T) 
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "y")
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeGauge},
+		Type:             model.MetricTypeGauge,
 		MetricFamilyName: "",
 	}
 
@@ -185,7 +184,7 @@ func TestCollectingAppender_Metadata_EmptyMetricFamilyNameIgnored(t *testing.T) 
 func TestCollectingAppender_Metadata_DeduplicatedByFamilyName(t *testing.T) {
 	c := newCollectingAppender()
 	meta := prometheusremotewrite.Metadata{
-		Metadata:         metadata.Metadata{Type: model.MetricTypeCounter, Help: "help", Unit: "bytes"},
+		Type: model.MetricTypeCounter, Help: "help", Unit: "bytes",
 		MetricFamilyName: "http_requests_total",
 	}
 
@@ -206,7 +205,7 @@ func TestCollectingAppender_TimeSeries_EmptyInitially(t *testing.T) {
 func TestCollectingAppender_MixedSamplesAndHistograms(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "mixed")
-	meta := prometheusremotewrite.Metadata{MetricFamilyName: "mixed", Metadata: metadata.Metadata{Type: model.MetricTypeGauge}}
+	meta := prometheusremotewrite.Metadata{MetricFamilyName: "mixed", Type: model.MetricTypeGauge}
 
 	require.NoError(t, c.AppendSample(ls, meta, 0, 1000, 1.0, nil))
 

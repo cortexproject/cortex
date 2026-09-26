@@ -161,6 +161,20 @@ func TestTrimForJsonMarshalMultiByteUTF8(t *testing.T) {
 	}
 }
 
+// TestTrimForJsonMarshalInvalidUTF8 reproduces a panic where a string made
+// entirely of UTF-8 continuation bytes (0x80-0xBF, no valid rune-start byte)
+// caused the backwards scan for a rune boundary to underflow past index 0
+// and index the byte slice with a negative index.
+func TestTrimForJsonMarshalInvalidUTF8(t *testing.T) {
+	invalid := strings.Repeat("\x80", 1200)
+
+	require.NotPanics(t, func() {
+		out := trimForJsonMarshal(invalid, 800)
+		assert.True(t, utf8.ValidString(out), "result should be valid UTF-8")
+		assert.Equal(t, "", out)
+	})
+}
+
 // TestGenerateJSONEntryWithTruncatedFieldNegativeSize reproduces the request
 // tracker panic where a multi-byte UTF-8 field had to be truncated to a
 // negative remaining size because the rest of the entry already consumed the

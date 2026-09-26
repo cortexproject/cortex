@@ -21,6 +21,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/schema"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -338,7 +339,7 @@ func (o *histogramOperator) loadSeries(ctx context.Context) error {
 		// We check for duplicate series after dropped labels when
 		// showing the result of the query. Series that are equal after
 		// dropping name should not hash to the same bucket here.
-		lbls = extlabels.DropReserved(lbls, b)
+		lbls = lbls.DropReserved(schema.IsMetadataLabel)
 
 		seriesHash := hasher.Sum64()
 		seriesID, ok := seriesHashes[seriesHash]

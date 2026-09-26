@@ -231,14 +231,16 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 }
 
 func (o *vectorSelector) updateSampleTracker(totalSamples int) error {
-	if o.lastTrackedSamples > 0 {
-		o.opts.SampleTracker.Remove(o.lastTrackedSamples)
-	}
-	if totalSamples > 0 {
-		o.opts.SampleTracker.Add(totalSamples)
+	delta := totalSamples - o.lastTrackedSamples
+	if delta > 0 {
+		o.opts.SampleTracker.Add(delta)
+		o.lastTrackedSamples = totalSamples
+		return o.opts.SampleTracker.CheckLimit()
+	} else if delta < 0 {
+		o.opts.SampleTracker.Remove(-delta)
 	}
 	o.lastTrackedSamples = totalSamples
-	return o.opts.SampleTracker.CheckLimit()
+	return nil
 }
 
 func (o *vectorSelector) shouldCheckSampleLimit(fromSeries int64) bool {

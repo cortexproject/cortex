@@ -126,9 +126,7 @@ func TestPreallocWriteRequestV2Reset(t *testing.T) {
 	t.Run("preserves Symbols capacity", func(t *testing.T) {
 		const symbolsCap = 100
 		req := &PreallocWriteRequestV2{
-			WriteRequestV2: WriteRequestV2{
-				Symbols: make([]string, 0, symbolsCap),
-			},
+			Symbols: make([]string, 0, symbolsCap),
 		}
 		req.Symbols = append(req.Symbols, "a", "b", "c")
 
@@ -144,12 +142,10 @@ func TestPreallocWriteRequestV2Reset(t *testing.T) {
 	t.Run("clears non-Symbols WriteRequestV2 fields", func(t *testing.T) {
 		b := []byte{1, 2, 3}
 		req := &PreallocWriteRequestV2{
-			WriteRequestV2: WriteRequestV2{
-				Source:                  RULE,
-				SkipLabelNameValidation: true,
-				Timeseries:              []PreallocTimeseriesV2{{TimeSeriesV2: &TimeSeriesV2{}}},
-			},
-			data: &b,
+			Source:                  RULE,
+			SkipLabelNameValidation: true,
+			Timeseries:              []PreallocTimeseriesV2{{TimeSeriesV2: &TimeSeriesV2{}}},
+			data:                    &b,
 		}
 
 		req.Reset()
@@ -170,9 +166,7 @@ func TestPreallocWriteRequestV2Reset(t *testing.T) {
 		require.NoError(t, err)
 
 		req := &PreallocWriteRequestV2{
-			WriteRequestV2: WriteRequestV2{
-				Symbols: make([]string, 0, symbolsCount*2),
-			},
+			Symbols: make([]string, 0, symbolsCount*2),
 		}
 
 		// Simulate Reset in util.ParseProtoReader()
@@ -308,9 +302,7 @@ func BenchmarkWriteRequestV2Pool_CompareFixedSymbolCapaWithDynamic(b *testing.B)
 				fixedPool := sync.Pool{
 					New: func() any {
 						return &PreallocWriteRequestV2{
-							WriteRequestV2: WriteRequestV2{
-								Symbols: make([]string, 0, initialSymbolsCapacity),
-							},
+							Symbols: make([]string, 0, initialSymbolsCapacity),
 						}
 					},
 				}
@@ -351,9 +343,7 @@ func BenchmarkWriteRequestV2Pool_CompareFixedSymbolCapaWithDynamic(b *testing.B)
 				fixedPool2048 := sync.Pool{
 					New: func() any {
 						return &PreallocWriteRequestV2{
-							WriteRequestV2: WriteRequestV2{
-								Symbols: make([]string, 0, 2048),
-							},
+							Symbols: make([]string, 0, 2048),
 						}
 					},
 				}

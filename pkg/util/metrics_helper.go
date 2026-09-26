@@ -673,20 +673,18 @@ func (d *HistogramData) Metric(desc *prometheus.Desc, labelValues ...string) pro
 
 		// Construct histogram in-place within the struct (no intermediate copy)
 		return &nativeHistogramMetric{
-			desc: desc,
-			Histogram: dto.Histogram{
-				Schema:        &schema,
-				ZeroThreshold: &zt,
-				SampleCount:   &sc,
-				SampleSum:     &ss,
-				ZeroCount:     &zc,
-				PositiveSpan:  posSpans,
-				PositiveDelta: posDeltas,
-				NegativeSpan:  negSpans,
-				NegativeDelta: negDeltas,
-				Bucket:        buckets,
-			},
-			labelPairs: prometheus.MakeLabelPairs(desc, labelValues),
+			desc:          desc,
+			Schema:        &schema,
+			ZeroThreshold: &zt,
+			SampleCount:   &sc,
+			SampleSum:     &ss,
+			ZeroCount:     &zc,
+			PositiveSpan:  posSpans,
+			PositiveDelta: posDeltas,
+			NegativeSpan:  negSpans,
+			NegativeDelta: negDeltas,
+			Bucket:        buckets,
+			labelPairs:    prometheus.MakeLabelPairs(desc, labelValues),
 		}
 	}
 	return prometheus.MustNewConstHistogram(desc, d.sampleCount, d.sampleSum, d.buckets, labelValues...)

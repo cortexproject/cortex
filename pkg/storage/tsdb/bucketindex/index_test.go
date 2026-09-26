@@ -305,12 +305,10 @@ func TestBlock_ThanosMeta(t *testing.T) {
 				SegmentsNum:    3,
 			},
 			expected: &metadata.Meta{
-				BlockMeta: tsdb.BlockMeta{
-					ULID:    blockID,
-					MinTime: 10,
-					MaxTime: 20,
-					Version: metadata.TSDBVersion1,
-				},
+				ULID:    blockID,
+				MinTime: 10,
+				MaxTime: 20,
+				Version: metadata.TSDBVersion1,
 				Thanos: metadata.Thanos{
 					Version: metadata.ThanosVersion1,
 					Labels: map[string]string{
@@ -333,12 +331,10 @@ func TestBlock_ThanosMeta(t *testing.T) {
 				SegmentsNum:    0,
 			},
 			expected: &metadata.Meta{
-				BlockMeta: tsdb.BlockMeta{
-					ULID:    blockID,
-					MinTime: 10,
-					MaxTime: 20,
-					Version: metadata.TSDBVersion1,
-				},
+				ULID:    blockID,
+				MinTime: 10,
+				MaxTime: 20,
+				Version: metadata.TSDBVersion1,
 				Thanos: metadata.Thanos{
 					Version: metadata.ThanosVersion1,
 					Labels: map[string]string{
@@ -358,12 +354,10 @@ func TestBlock_ThanosMeta(t *testing.T) {
 				ChunkMaxSize:   500,
 			},
 			expected: &metadata.Meta{
-				BlockMeta: tsdb.BlockMeta{
-					ULID:    blockID,
-					MinTime: 10,
-					MaxTime: 20,
-					Version: metadata.TSDBVersion1,
-				},
+				ULID:    blockID,
+				MinTime: 10,
+				MaxTime: 20,
+				Version: metadata.TSDBVersion1,
 				Thanos: metadata.Thanos{
 					Version: metadata.ThanosVersion1,
 					Labels: map[string]string{

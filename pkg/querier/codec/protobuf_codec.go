@@ -209,8 +209,8 @@ func getVectorSamples(data *v1.QueryData, cortexInternal bool) *[]tripperware.Sa
 	return &vectorSamples
 }
 
-func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []*tripperware.HistogramBucket {
-	buckets := make([]*tripperware.HistogramBucket, bucketsLen)
+func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []tripperware.HistogramBucket {
+	buckets := make([]tripperware.HistogramBucket, bucketsLen)
 	bucketIdx := 0
 	for it.Next() {
 		bucket := it.At()
@@ -229,7 +229,7 @@ func getBuckets(bucketsLen int, it histogram.BucketIterator[float64]) []*tripper
 				boundaries = 0 // Inclusive only on upper end AKA left open.
 			}
 		}
-		buckets[bucketIdx] = &tripperware.HistogramBucket{
+		buckets[bucketIdx] = tripperware.HistogramBucket{
 			Boundaries: int32(boundaries),
 			Lower:      bucket.Lower,
 			Upper:      bucket.Upper,

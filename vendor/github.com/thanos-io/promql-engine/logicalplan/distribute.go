@@ -157,6 +157,14 @@ type DistributedExecutionOptimizer struct {
 	SkipDedup          bool
 }
 
+// Optimize distributes a plan in three phases:
+//
+//  1. Classify each subtree as non-distributive, distributable as-is, or
+//     distributable through an aggregation, avg, or absent rewrite. A parent
+//     can absorb only children that are distributable as-is.
+//  2. Select the roots of maximal distributable subtrees. These are nodes with
+//     a distribution strategy whose parent has none.
+//  3. Replace each selected subtree with the remote plan for its strategy.
 func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) (Node, annotations.Annotations) {
 	engines := m.Endpoints.Engines(MinMaxTime(plan, opts))
 	sort.Slice(engines, func(i, j int) bool {
@@ -181,38 +189,25 @@ func (m DistributedExecutionOptimizer) Optimize(plan Node, opts *query.Options) 
 	warns := annotations.New()
 
 	parents := computeParents(&plan)
-	distributionPoints := m.computeDistributionPoints(&plan, parents, engineLabels, warns)
+	distributionPoints := m.computeDistributionPoints(&plan, engineLabels, warns)
 
-	TraverseBottomUp(nil, &plan, func(parent, current *Node) (stop bool) {
-		if _, distributeNow := distributionPoints[current]; !distributeNow {
+	TraverseBottomUp(nil, &plan, func(_ *Node, current *Node) (stop bool) {
+		strategy, distributeNow := distributionPoints[current]
+		if !distributeNow {
 			return false
 		}
 
-		if isAvgAggregation(current) && !preservesPartitionLabels(*current, engineLabels) {
-			// avg without partition labels: rewrite as sum/count.
-			*current = m.distributeAvg(*current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
-			return true
+		subqueryOpts := m.subqueryOpts(parents, current, opts)
+		switch strategy {
+		case rewriteAvg:
+			*current = m.distributeAvg(*current, engines, subqueryOpts, labelRanges)
+		case rewriteAbsent:
+			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), subqueryOpts)
+		case rewriteAggregation:
+			*current = m.distributeAggregation((*current).(*Aggregation), engines, subqueryOpts, labelRanges)
+		case distributeAsIs:
+			*current = m.distributeQuery(current, engines, subqueryOpts, labelRanges)
 		}
-
-		if isAbsent(current) {
-			*current = m.distributeAbsent(*current, engines, calculateStartOffset(current, opts.LookbackDelta), m.subqueryOpts(parents, current, opts))
-			return true
-		}
-
-		if isAggregation(current) {
-			if preservesPartitionLabels(*current, engineLabels) {
-				// Partition-preserving aggregation: push as-is since each engine
-				// computes over disjoint partition values.
-				*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
-			} else {
-				// Distributive aggregation that drops partition labels: use a
-				// two-level split with local_agg(remote_agg(X)).
-				*current = m.distributeAggregation((*current).(*Aggregation), engines, m.subqueryOpts(parents, current, opts), labelRanges)
-			}
-			return true
-		}
-
-		*current = m.distributeQuery(current, engines, m.subqueryOpts(parents, current, opts), labelRanges)
 		return true
 	})
 	return plan, *warns
@@ -243,93 +238,76 @@ func computeParents(plan *Node) map[*Node]*Node {
 	return parents
 }
 
-func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, parents map[*Node]*Node, engineLabels map[string]struct{}, warns *annotations.Annotations) map[*Node]struct{} {
-	marks := make(map[*Node]struct{})
+// A rewrite strategy can absorb only children that distribute as-is.
+type distributionStrategy uint8
 
-	// First pass: mark distribution points (aggregations, absent functions).
-	Traverse(plan, func(current *Node) {
-		// Skip subtrees that are already distributed (e.g. by a previous
-		// distributed optimizer). This lets multiple distributed optimizers
-		// be chained: once the plan is distributed, subsequent optimizers
-		// fall through instead of re-distributing.
-		if isDistributed(current) {
-			return
+const (
+	cannotDistribute distributionStrategy = iota
+	distributeAsIs
+	rewriteAggregation
+	rewriteAvg
+	rewriteAbsent
+)
+
+func (m DistributedExecutionOptimizer) computeDistributionPoints(plan *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) map[*Node]distributionStrategy {
+	strategies := make(map[*Node]distributionStrategy)
+	m.classifyDistribution(plan, strategies, engineLabels, warns)
+
+	// Select roots of maximal distributable subtrees.
+	points := make(map[*Node]distributionStrategy)
+	TraverseBottomUp(nil, plan, func(parent, current *Node) bool {
+		strategy := strategies[current]
+		if strategy == cannotDistribute || IsConstantExpr(*current) {
+			return false
 		}
-		if isAbsent(current) {
-			if m.isDistributive(current, engineLabels, warns) {
-				marks[current] = struct{}{}
-			}
-			return
+		if parent != nil && strategies[parent] != cannotDistribute {
+			return false
 		}
-		if isAggregation(current) {
-			// Non-distributive aggregations that don't preserve partition labels
-			// cannot be distributed, except for avg which gets rewritten as sum/count.
-			if !m.isDistributive(current, engineLabels, warns) {
-				if isAvgAggregation(current) {
-					marks[current] = struct{}{}
-				}
-				return
-			}
-			// Distributive aggregations (standard or partition-preserving):
-			// defer to ancestor if possible.
-			if preservesPartitionLabels(*current, engineLabels) {
-				if m.hasDistributiveAncestor(parents, current, engineLabels, warns) {
-					return
-				}
-			}
-			marks[current] = struct{}{}
-		}
+		points[current] = strategy
+		return false
 	})
-
-	// Second pass: for nodes whose siblings have marks, mark them too so both
-	// sides of a binary expression get distributed.
-	Traverse(plan, func(current *Node) {
-		if _, ok := marks[current]; ok {
-			return
-		}
-		if isDistributed(current) {
-			return
-		}
-		if subtreeHasMark(current, marks) {
-			return
-		}
-		if !m.isDistributive(current, engineLabels, warns) {
-			return
-		}
-		parent := parents[current]
-		if parent != nil && (m.isDistributive(parent, engineLabels, warns) || isAvgAggregation(parent)) {
-			if !subtreeHasMark(parent, marks) {
-				return
-			}
-		}
-		marks[current] = struct{}{}
-	})
-
-	return marks
+	return points
 }
 
-// isDistributed reports whether the subtree rooted at node has already been
-// processed by a distributed optimizer, i.e. it contains a Deduplicate,
-// RemoteExecution or Noop node (Noop is the terminal result of distributing a
-// subtree that matched no engines). Such subtrees must not be distributed again.
-func isDistributed(node *Node) bool {
+// classifyDistribution records how each subtree can be distributed.
+func (m DistributedExecutionOptimizer) classifyDistribution(node *Node, strategies map[*Node]distributionStrategy, engineLabels map[string]struct{}, warns *annotations.Annotations) distributionStrategy {
 	switch (*node).(type) {
 	case RemoteMerge, RemoteExecution, Noop:
-		return true
+		strategies[node] = cannotDistribute
+		return cannotDistribute
 	}
-	return slices.ContainsFunc((*node).Children(), isDistributed)
-}
 
-func subtreeHasMark(node *Node, marks map[*Node]struct{}) bool {
+	childrenCanPushDown := true
 	for _, child := range (*node).Children() {
-		if _, ok := marks[child]; ok {
-			return true
-		}
-		if subtreeHasMark(child, marks) {
-			return true
+		if m.classifyDistribution(child, strategies, engineLabels, warns) != distributeAsIs {
+			childrenCanPushDown = false
 		}
 	}
-	return false
+
+	distributive := m.isDistributiveOperation(node, engineLabels, warns)
+	strategy := cannotDistribute
+	if childrenCanPushDown {
+		switch {
+		case isAbsent(node):
+			if distributive {
+				strategy = rewriteAbsent
+			}
+		case isAvgAggregation(node) && !preservesPartitionLabels(*node, engineLabels):
+			strategy = rewriteAvg
+		case isAggregation(node):
+			if distributive {
+				strategy = distributeAsIs
+				if !preservesPartitionLabels(*node, engineLabels) {
+					strategy = rewriteAggregation
+				}
+			}
+		case distributive:
+			strategy = distributeAsIs
+		}
+	}
+
+	strategies[node] = strategy
+	return strategy
 }
 
 func (m DistributedExecutionOptimizer) subqueryOpts(parents map[*Node]*Node, current *Node, opts *query.Options) *query.Options {
@@ -722,7 +700,7 @@ func preservesPartitionLabels(expr Node, partitionLabels map[string]struct{}) bo
 	}
 }
 
-func (m DistributedExecutionOptimizer) isDistributive(expr *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
+func (m DistributedExecutionOptimizer) isDistributiveOperation(expr *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
 	if expr == nil {
 		return false
 	}
@@ -734,10 +712,7 @@ func (m DistributedExecutionOptimizer) isDistributive(expr *Node, engineLabels m
 		if isBinaryExpressionWithOneScalarSide(e) {
 			return true
 		}
-		return !m.SkipBinaryPushdown &&
-			isBinaryExpressionWithDistributableMatching(e, engineLabels) &&
-			m.isDistributive(&e.LHS, engineLabels, warns) &&
-			m.isDistributive(&e.RHS, engineLabels, warns)
+		return !m.SkipBinaryPushdown && isBinaryExpressionWithDistributableMatching(e, engineLabels)
 	case *Aggregation:
 		switch e.Op {
 		// Mathematically distributive: can be split into local_agg(remote_agg(X))
@@ -925,23 +900,6 @@ func matchesExternalLabels(ms []*labels.Matcher, externalLabels labels.Labels) b
 		}
 	}
 	return true
-}
-
-// hasDistributiveAncestor checks if there's a distributive node somewhere up the
-// parent chain from the current node that can handle distribution.
-// We must have an unbroken chain of distributive nodes to the ancestor for it to
-// be able to handle distribution on our behalf.
-func (m DistributedExecutionOptimizer) hasDistributiveAncestor(parents map[*Node]*Node, current *Node, engineLabels map[string]struct{}, warns *annotations.Annotations) bool {
-	for p := parents[current]; p != nil; p = parents[p] {
-		if !m.isDistributive(p, engineLabels, warns) {
-			// We hit a non-distributive node, so we can't push through it.
-			// No ancestor can help us distribute.
-			return false
-		}
-	}
-	// All ancestors are distributive, so the root (or the point where we
-	// stop traversing) can handle distribution.
-	return parents[current] != nil
 }
 
 func maxTime(a, b time.Time) time.Time {

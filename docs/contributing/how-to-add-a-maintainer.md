@@ -9,6 +9,7 @@ New maintainers are proposed by an existing maintainer and are elected by [major
 
 1. Submit a PR to add the new member to `MAINTAINERS`
 1. Invite to [GitHub organization](https://github.com/orgs/cortexproject/people)
+1. Add to the [`maintainers` GitHub team](https://github.com/orgs/cortexproject/teams/maintainers) — this is what makes them a code owner via `CODEOWNERS` and puts them in the review rotation
 1. Invite to [`cortex-team` group](https://groups.google.com/forum/#!forum/cortex-team)
 1. Invite to [Quay.io repository](https://quay.io/organization/cortexproject?tab=teams)
 1. Invite to [Docker Hub organization](https://hub.docker.com/u/cortexproject)
@@ -18,3 +19,5 @@ New maintainers are proposed by an existing maintainer and are elected by [major
 1. Invite to [maintainer's Google Docs](https://drive.google.com/drive/folders/1aT7-rx4hvYoB3EjvOeX1LHJhgH0Sawzb)
 1. Add to the Google Analytics property used for the website statistics
 1. Invite to credentials vault
+
+When a maintainer steps down, remove them from the [`maintainers` GitHub team](https://github.com/orgs/cortexproject/teams/maintainers) as well as from `MAINTAINERS`, so that the review rotation and the published list stay in sync.

@@ -78,8 +78,8 @@ func (api *TenantDeletionAPI) DeleteTenantStatus(w http.ResponseWriter, r *http.
 		return
 	}
 
-	result := DeleteTenantStatusResponse{}
-	result.TenantID = userID
+	result := DeleteTenantStatusResponse{
+		TenantID: userID}
 	result.BlocksDeleted, err = api.isBlocksForUserDeleted(ctx, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

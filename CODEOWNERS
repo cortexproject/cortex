@@ -1,0 +1,11 @@
+# Code owners for the Cortex repository.
+#
+# Please keep this file in sync with MAINTAINERS.md and with membership of the
+# @cortexproject/maintainers GitHub team.
+#
+# The maintainers team is the default owner for the whole repository. GitHub's
+# team code review assignment picks a single maintainer per pull request, so a
+# PR does not notify everyone on the team.
+# See https://cortexmetrics.io/docs/contributing/how-to-add-a-maintainer/
+
+* @cortexproject/maintainers

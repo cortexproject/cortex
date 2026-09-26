@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -36,19 +35,13 @@ func TestMarkBlocksVisited(t *testing.T) {
 			},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid0,
-					},
+					ULID: ulid0,
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid1,
-					},
+					ULID: ulid1,
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid2,
-					},
+					ULID: ulid2,
 				},
 			},
 		},
@@ -61,19 +54,13 @@ func TestMarkBlocksVisited(t *testing.T) {
 			},
 			blocks: []*metadata.Meta{
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid0,
-					},
+					ULID: ulid0,
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid1,
-					},
+					ULID: ulid1,
 				},
 				{
-					BlockMeta: tsdb.BlockMeta{
-						ULID: ulid2,
-					},
+					ULID: ulid2,
 				},
 			},
 		},

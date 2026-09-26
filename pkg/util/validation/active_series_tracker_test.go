@@ -69,10 +69,10 @@ func TestActiveSeriesTrackersConfig_Validate(t *testing.T) {
 }
 
 func TestOverrides_ActiveSeriesTrackers_PerTenant(t *testing.T) {
-	defaults := Limits{}
-	defaults.ActiveSeriesTrackers = ActiveSeriesTrackersConfig{
-		{Name: "default_tracker", Matchers: `{__name__=~".*"}`},
-	}
+	defaults := Limits{
+		ActiveSeriesTrackers: ActiveSeriesTrackersConfig{
+			{Name: "default_tracker", Matchers: `{__name__=~".*"}`},
+		}}
 	require.NoError(t, defaults.ActiveSeriesTrackers.Validate())
 
 	SetDefaultLimitsForYAMLUnmarshalling(defaults)

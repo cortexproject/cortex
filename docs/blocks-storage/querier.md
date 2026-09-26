@@ -104,11 +104,6 @@ querier:
   # CLI flag: -querier.timeout
   [timeout: <duration> | default = 2m]
 
-  # Deprecated (This feature will be always on after v1.18): Use streaming RPCs
-  # for metadata APIs from ingester.
-  # CLI flag: -querier.ingester-metadata-streaming
-  [ingester_metadata_streaming: <boolean> | default = true]
-
   # Use LabelNames ingester RPCs with match params.
   # CLI flag: -querier.ingester-label-names-with-matchers
   [ingester_label_names_with_matchers: <boolean> | default = false]
@@ -256,6 +251,11 @@ querier:
     # CLI flag: -querier.decoding-concurrency
     [decoding_concurrency: <int> | default = 0]
 
+    # Maximum number of series processed per batch in selectors. 0 disables
+    # batching.
+    # CLI flag: -querier.selector-batch-size
+    [selector_batch_size: <int> | default = 0]
+
   # If enabled, ignore max query length check at Querier select method. Users
   # can choose to ignore it since the validation can be done before Querier
   # evaluation like at Query Frontend or Ruler.
@@ -372,6 +372,11 @@ querier:
       # when resource thresholds are breached.
       # CLI flag: -querier.query-protection.eviction.max-evictions-per-cycle
       [max_evictions_per_cycle: <int> | default = 1]
+
+  # Pool the merge iterator scratch buffer (batchesBuf) via sync.Pool instead of
+  # allocating one per iterator.
+  # CLI flag: -querier.pool-iterator-batches-buf
+  [pool_iterator_batches_buf: <boolean> | default = false]
 ```
 
 ### `blocks_storage_config`
@@ -2254,10 +2259,10 @@ blocks_storage:
     # CLI flag: -blocks-storage.tsdb.max-tsdb-opening-concurrency-on-startup
     [max_tsdb_opening_concurrency_on_startup: <int> | default = 10]
 
-    # Deprecated, use maxExemplars in limits instead. If the MaxExemplars value
-    # in limits is set to zero, cortex will fallback on this value. This setting
-    # enables support for exemplars in TSDB and sets the maximum number that
-    # will be stored. 0 or less means disabled.
+    # Deprecated (use the per-tenant max_exemplars limit instead) and will be
+    # removed in v1.24.0: the global fallback for the maximum number of
+    # exemplars stored in TSDB, used only when the per-tenant max_exemplars
+    # limit is 0. 0 or less means exemplars are disabled.
     # CLI flag: -blocks-storage.tsdb.max-exemplars
     [max_exemplars: <int> | default = 0]
 

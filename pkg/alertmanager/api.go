@@ -20,6 +20,10 @@ import (
 	"github.com/prometheus/alertmanager/notify/jira"
 	"github.com/prometheus/alertmanager/notify/mattermost"
 	"github.com/prometheus/alertmanager/notify/msteams"
+	"github.com/prometheus/alertmanager/notify/msteamsv2"
+	"github.com/prometheus/alertmanager/notify/opsgenie"
+	"github.com/prometheus/alertmanager/notify/pagerduty"
+	"github.com/prometheus/alertmanager/notify/telegram"
 	"github.com/prometheus/alertmanager/notify/webhook"
 	"github.com/prometheus/alertmanager/template"
 	amtracing "github.com/prometheus/alertmanager/tracing"
@@ -58,6 +62,7 @@ var (
 	errOAuth2CertificateKeyFileNotAllowed       = errors.New("setting OAuth2 client_certificate_key_file is not allowed")
 	errOAuth2SecretFileNotAllowed               = errors.New("setting OAuth2 client_secret_file is not allowed")
 	errTLSFileNotAllowed                        = errors.New("setting TLS ca_file, cert_file and key_file is not allowed")
+	errHTTPHeadersFilesNotAllowed               = errors.New("setting http_headers files is not allowed")
 	errSlackAPIURLFileNotAllowed                = errors.New("setting Slack api_url_file and global slack_api_url_file is not allowed")
 	errSlackAppTokenFileNotAllowed              = errors.New("setting Slack slack_app_token_file and global slack_app_token_file is not allowed")
 	errVictorOpsAPIKeyFileNotAllowed            = errors.New("setting VictorOps api_key_file and global victorops_api_key_file is not allowed")
@@ -78,7 +83,7 @@ var (
 	errEmailAuthSecretFileNotAllowed            = errors.New("setting Email auth_secret_file and global smtp_auth_secret_file is not allowed")
 	errIncidentIOURLFileNotAllowed              = errors.New("setting IncidentIO url_file is not allowed")
 	errIncidentIOAlertSourceTokenFileNotAllowed = errors.New("setting IncidentIO alert_source_token_file is not allowed")
-	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file is not allowed")
+	errMatterMostWebhookUrlFileNotAllowed       = errors.New("setting Mattermost webhook_url_file and global mattermost_webhook_url_file is not allowed")
 	errWeChatAPISecretFileNotAllowed            = errors.New("setting Wechat api_secret_file and global wechat_api_secret_file is not allowed")
 )
 
@@ -353,15 +358,15 @@ var configValidators = map[reflect.Type]func(any) error{
 	reflect.TypeFor[config.GlobalConfig]():         func(v any) error { return validateGlobalConfig(v.(config.GlobalConfig)) },
 	reflect.TypeFor[commoncfg.HTTPClientConfig]():  func(v any) error { return validateReceiverHTTPConfig(v.(commoncfg.HTTPClientConfig)) },
 	reflect.TypeFor[commoncfg.TLSConfig]():         func(v any) error { return validateReceiverTLSConfig(v.(commoncfg.TLSConfig)) },
-	reflect.TypeFor[config.OpsGenieConfig]():       func(v any) error { return validateOpsGenieConfig(v.(config.OpsGenieConfig)) },
+	reflect.TypeFor[opsgenie.OpsGenieConfig]():     func(v any) error { return validateOpsGenieConfig(v.(opsgenie.OpsGenieConfig)) },
 	reflect.TypeFor[config.SlackConfig]():          func(v any) error { return validateSlackConfig(v.(config.SlackConfig)) },
 	reflect.TypeFor[config.VictorOpsConfig]():      func(v any) error { return validateVictorOpsConfig(v.(config.VictorOpsConfig)) },
-	reflect.TypeFor[config.PagerdutyConfig]():      func(v any) error { return validatePagerdutyConfig(v.(config.PagerdutyConfig)) },
+	reflect.TypeFor[pagerduty.PagerdutyConfig]():   func(v any) error { return validatePagerdutyConfig(v.(pagerduty.PagerdutyConfig)) },
 	reflect.TypeFor[webhook.WebhookConfig]():       func(v any) error { return validateWebhookConfig(v.(webhook.WebhookConfig)) },
 	reflect.TypeFor[config.PushoverConfig]():       func(v any) error { return validatePushOverConfig(v.(config.PushoverConfig)) },
-	reflect.TypeFor[config.TelegramConfig]():       func(v any) error { return validateTelegramConfig(v.(config.TelegramConfig)) },
+	reflect.TypeFor[telegram.TelegramConfig]():     func(v any) error { return validateTelegramConfig(v.(telegram.TelegramConfig)) },
 	reflect.TypeFor[msteams.MSTeamsConfig]():       func(v any) error { return validateMSTeamsConfig(v.(msteams.MSTeamsConfig)) },
-	reflect.TypeFor[config.MSTeamsV2Config]():      func(v any) error { return validateMSTeamsV2Config(v.(config.MSTeamsV2Config)) },
+	reflect.TypeFor[msteamsv2.MSTeamsV2Config]():   func(v any) error { return validateMSTeamsV2Config(v.(msteamsv2.MSTeamsV2Config)) },
 	reflect.TypeFor[config.RocketchatConfig]():     func(v any) error { return validateRocketChatConfig(v.(config.RocketchatConfig)) },
 	reflect.TypeFor[discord.DiscordConfig]():       func(v any) error { return validateDiscordConfig(v.(discord.DiscordConfig)) },
 	reflect.TypeFor[config.EmailConfig]():          func(v any) error { return validateEmailConfig(v.(config.EmailConfig)) },
@@ -475,7 +480,33 @@ func validateReceiverHTTPConfig(cfg commoncfg.HTTPClientConfig) error {
 	if cfg.OAuth2 != nil && cfg.OAuth2.ClientSecretFile != "" {
 		return errOAuth2SecretFileNotAllowed
 	}
+	if err := validateReceiverHTTPHeaders(cfg.HTTPHeaders); err != nil {
+		return err
+	}
 	return validateReceiverTLSConfig(cfg.TLSConfig)
+}
+
+// validateReceiverHTTPHeaders validates the configured HTTP headers and returns an error
+// if any of them sources its value from a file on the Alertmanager host.
+//
+// commoncfg.Header.Files is a list of paths that headersRoundTripper.RoundTrip os.ReadFile()s
+// at notification time, injecting the contents into an outbound request whose URL the tenant
+// also controls. That is the same "tenant config reads a host file" primitive the rest of the
+// *_file denylist in this file exists to block, originally added for CVE-2021-31232 (#4129)
+// and extended per-receiver for CVE-2022-23536, so it has to be blocked here too.
+//
+// Only Files is rejected. Values and Secrets are literals supplied inline by the tenant; they
+// read nothing from the host and remain allowed, so ordinary header use keeps working.
+func validateReceiverHTTPHeaders(headers *commoncfg.Headers) error {
+	if headers == nil {
+		return nil
+	}
+	for _, header := range headers.Headers {
+		if len(header.Files) > 0 {
+			return errHTTPHeadersFilesNotAllowed
+		}
+	}
+	return nil
 }
 
 // validateReceiverTLSConfig validates the TLS config and returns an error if it contains
@@ -490,6 +521,9 @@ func validateReceiverTLSConfig(cfg commoncfg.TLSConfig) error {
 // validateGlobalConfig validates the Global config and returns an error if it contains
 // settings not allowed by Cortex.
 func validateGlobalConfig(cfg config.GlobalConfig) error {
+	if cfg.MattermostWebhookURLFile != "" {
+		return errMatterMostWebhookUrlFileNotAllowed
+	}
 	if cfg.OpsGenieAPIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}
@@ -525,7 +559,7 @@ func validateGlobalConfig(cfg config.GlobalConfig) error {
 
 // validateOpsGenieConfig validates the OpsGenie config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateOpsGenieConfig(cfg config.OpsGenieConfig) error {
+func validateOpsGenieConfig(cfg opsgenie.OpsGenieConfig) error {
 	if cfg.APIKeyFile != "" {
 		return errOpsGenieAPIKeyFileNotAllowed
 	}
@@ -555,7 +589,7 @@ func validateVictorOpsConfig(cfg config.VictorOpsConfig) error {
 
 // validatePagerdutyConfig validates the pager duty config and returns an error if it contains
 // settings not allowed by Cortex.
-func validatePagerdutyConfig(cfg config.PagerdutyConfig) error {
+func validatePagerdutyConfig(cfg pagerduty.PagerdutyConfig) error {
 	if cfg.RoutingKeyFile != "" {
 		return errPagerDutyRoutingKeyFileNotAllowed
 	}
@@ -592,7 +626,7 @@ func validatePushOverConfig(cfg config.PushoverConfig) error {
 
 // validateTelegramConfig validates the Telegram Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateTelegramConfig(cfg config.TelegramConfig) error {
+func validateTelegramConfig(cfg telegram.TelegramConfig) error {
 	if cfg.BotTokenFile != "" {
 		return errTelegramBotTokenFileNotAllowed
 	}
@@ -613,7 +647,7 @@ func validateMSTeamsConfig(cfg msteams.MSTeamsConfig) error {
 
 // validateMSTeamsV2Config validates the MSTeamsV2 Config and returns an error if it contains
 // settings not allowed by Cortex.
-func validateMSTeamsV2Config(cfg config.MSTeamsV2Config) error {
+func validateMSTeamsV2Config(cfg msteamsv2.MSTeamsV2Config) error {
 	if cfg.WebhookURLFile != "" {
 		return errMSTeamsV2WebhookUrlFileNotAllowed
 	}

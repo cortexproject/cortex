@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/scheduler/queue"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
@@ -38,7 +37,7 @@ const testMaxOutstandingPerTenant = 5
 func setupScheduler(t *testing.T, reg prometheus.Registerer, distributedExecEnabled bool) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), reg, distributedExecEnabled)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), reg, distributedExecEnabled)
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
@@ -703,7 +702,7 @@ func (f *frontendMock) getRequest(queryID uint64) *httpgrpc.HTTPResponse {
 func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, false)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, false)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"
@@ -750,7 +749,7 @@ func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
 func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, true)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, true)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"
@@ -842,7 +841,7 @@ func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
 func TestQueryFragmentRegistryNoLeak(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MockLimits: queue.MockLimits{MaxOutstanding: testMaxOutstandingPerTenant}}, log.NewNopLogger(), nil, false)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, false)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"

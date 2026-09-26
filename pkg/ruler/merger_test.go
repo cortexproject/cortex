@@ -72,6 +72,7 @@ func TestMergeGroupStateDesc(t *testing.T) {
 		input          []*RulesResponse
 		expectedOutput *RulesResponse
 		maxRuleGroups  int32
+		maxRules       uint
 	}
 
 	testCases := map[string]testCase{
@@ -189,12 +190,52 @@ func TestMergeGroupStateDesc(t *testing.T) {
 			},
 			maxRuleGroups: 1,
 		},
+		// gs1 (ns1/g1) sorts before gs2 (ns1/g2) in token order, and both hold two
+		// active rules, so a maxRules of 2 keeps gs1 and pages at gs1.
+		"maxRules truncates the merged page without maxRuleGroups": {
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1},
+				NextToken: GetRuleGroupNextToken(gs1.Group.Namespace, gs1.Group.Name),
+			},
+			maxRules: 2,
+		},
+		"maxRules leaves the merged page intact when the total fits": {
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs2},
+				NextToken: "",
+			},
+			maxRules: 4,
+		},
+		"both limits disabled returns everything untruncated": {
+			input: []*RulesResponse{
+				{
+					Groups:    []*GroupStateDesc{&gs1, &gs2},
+					NextToken: "",
+				},
+			},
+			expectedOutput: &RulesResponse{
+				Groups:    []*GroupStateDesc{&gs1, &gs2},
+				NextToken: "",
+			},
+		},
 	}
 
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 
-			out := mergeGroupStateDesc(tc.input, tc.maxRuleGroups, true)
+			out := mergeGroupStateDesc(tc.input, tc.maxRuleGroups, tc.maxRules, true)
 			slices.SortFunc(out.Groups, func(a, b *GroupStateDesc) int {
 				fileCompare := strings.Compare(a.Group.Namespace, b.Group.Namespace)
 				if fileCompare != 0 {
@@ -202,7 +243,7 @@ func TestMergeGroupStateDesc(t *testing.T) {
 				}
 				return strings.Compare(a.Group.Name, b.Group.Name)
 			})
-			require.Equal(t, int(tc.maxRuleGroups), len(out.Groups))
+			require.Len(t, out.Groups, len(tc.expectedOutput.Groups))
 			t.Log(tc.expectedOutput)
 			t.Log(out)
 			require.True(t, reflect.DeepEqual(tc.expectedOutput, out))

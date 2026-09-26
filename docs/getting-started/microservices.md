@@ -34,7 +34,7 @@ This guide will help you run Cortex in microservices mode using Kubernetes (Kind
 
 ### Optional Tools
 
-- [cortextool](https://github.com/cortexproject/cortex-tools/) - For managing rules and alerts
+- [cortextool](https://github.com/cortexproject/cortex-tools/) - For managing rules and alerts (install with `brew install cortexproject/tap/cortextool`)
 - [jq](https://jqlang.github.io/jq/) - For parsing JSON responses
 
 ## Architecture
@@ -373,24 +373,18 @@ kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &
 
 ### Install cortextool (if needed)
 
-**macOS:**
 ```sh
-wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_mac-os_x86_64 -O cortextool
-chmod +x cortextool
-sudo mv cortextool /usr/local/bin/
+brew install cortexproject/tap/cortextool
 ```
 
-**Linux:**
-```sh
-wget https://github.com/cortexproject/cortex-tools/releases/download/v0.17.0/cortextool_0.17.0_linux_x86_64 -O cortextool
-chmod +x cortextool
-sudo mv cortextool /usr/local/bin/
-```
+Works on macOS and Linux (including WSL2), builds from source, takes about a minute.
 
 **Or use Docker:**
 ```sh
-alias cortextool="docker run --rm --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.17.0"
+alias cortextool="docker run --rm --network host -v $(pwd):/workspace -w /workspace quay.io/cortexproject/cortex-tools:v0.21.1"
 ```
+
+The Docker alias needs `--network host` to reach the `kubectl port-forward` on your host, which only works on Linux. On macOS and Windows, install cortextool with Homebrew instead.
 
 ### Load Recording and Alerting Rules
 
@@ -594,6 +588,7 @@ Kind requires Docker to have enough resources:
 ### cortextool commands fail
 - Make sure port-forward is running: `kubectl --namespace cortex port-forward svc/cortex-nginx 8080:80 &`
 - Verify Cortex is responding: `curl http://localhost:8080/ready`
+- If you're using the Docker alias, note that `--network host` only works on Linux. Install cortextool with `brew install cortexproject/tap/cortextool` to run it directly against the port-forward on any platform.
 
 ## Clean Up
 

@@ -10,7 +10,6 @@ import (
 
 	"github.com/thanos-io/promql-engine/execution/model"
 	"github.com/thanos-io/promql-engine/execution/telemetry"
-	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/thanos-io/promql-engine/warnings"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/schema"
 )
 
 // scalarOperator evaluates expressions where one operand is a scalarOperator.
@@ -143,12 +143,11 @@ func (o *scalarOperator) loadSeries(ctx context.Context) error {
 	}
 
 	series := make([]labels.Labels, len(vectorSeries))
-	var b labels.ScratchBuilder
 	for i := range vectorSeries {
 		if !vectorSeries[i].IsEmpty() {
 			lbls := vectorSeries[i]
 			if shouldDropMetricName(o.opType, o.returnBool) {
-				lbls = extlabels.DropReserved(lbls, b)
+				lbls = lbls.DropReserved(schema.IsMetadataLabel)
 			}
 			series[i] = lbls
 		} else {

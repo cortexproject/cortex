@@ -7,9 +7,7 @@ slug: architecture
 
 Cortex consists of multiple horizontally scalable microservices. Each microservice uses the most appropriate technique for horizontal scaling; most are stateless and can handle requests for any users while some (namely the [ingesters](#ingester)) are semi-stateful and depend on consistent hashing. This document provides a basic overview of Cortex's architecture.
 
-The following diagram does not include all the Cortex services, but does represent a typical deployment topology.
-
-<p align="center"><img src="../images/architecture.png" alt="Cortex Architecture"></p>
+The [interactive architecture diagram](./architecture-diagram.md) draws the same system, and does include the services this document leaves out. Hover a connector for the protocol and endpoint of that hop; select a component for its hash ring, endpoints and source file.
 
 ## The role of Prometheus
 

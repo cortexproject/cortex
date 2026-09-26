@@ -12,7 +12,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
-	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -187,9 +186,7 @@ func TestThanosBlockConverter(t *testing.T) {
 
 func cortexMeta(user string) metadata.Meta {
 	return metadata.Meta{
-		BlockMeta: tsdb.BlockMeta{
-			Version: metadata.ThanosVersion1,
-		},
+		Version: metadata.ThanosVersion1,
 		Thanos: metadata.Thanos{
 			Labels: map[string]string{
 				cortex_tsdb.TenantIDExternalLabel: user,
@@ -200,9 +197,7 @@ func cortexMeta(user string) metadata.Meta {
 
 func thanosMeta() metadata.Meta {
 	return metadata.Meta{
-		BlockMeta: tsdb.BlockMeta{
-			Version: metadata.ThanosVersion1,
-		},
+		Version: metadata.ThanosVersion1,
 		Thanos: metadata.Thanos{
 			Labels: map[string]string{
 				"cluster": "foo",

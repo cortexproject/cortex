@@ -23,6 +23,7 @@ linters:
   enable:
     - depguard
     - misspell
+    - modernize
     - revive
     - sloglint
   settings:

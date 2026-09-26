@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -898,4 +899,117 @@ func TestGetPartitionedGroupStatus(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdatePartitionedGroupInfo_ErrorHandling(t *testing.T) {
+	partitionedGroupID := uint32(12345)
+	partitionedGroupInfo := PartitionedGroupInfo{
+		PartitionedGroupID: partitionedGroupID,
+		PartitionCount:     1,
+		Partitions: []Partition{
+			{
+				PartitionID: 0,
+				Blocks:      []ulid.ULID{ulid.MustNew(0, nil)},
+			},
+		},
+		RangeStart: (1 * time.Hour).Milliseconds(),
+		RangeEnd:   (2 * time.Hour).Milliseconds(),
+		Version:    PartitionedGroupInfoVersion1,
+	}
+
+	t.Run("should return error when ReadPartitionedGroupInfo fails with non-NotFound error", func(t *testing.T) {
+		ctx := context.Background()
+		testBkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+		logger := log.NewNopLogger()
+
+		// Wrap the bucket to inject a Get failure on the partitioned group file path.
+		// This simulates S3 throttling or transient errors.
+		failingBkt := &cortex_testutil.MockBucketFailure{
+			Bucket: testBkt,
+			GetFailures: map[string]error{
+				GetPartitionedGroupFile(partitionedGroupID): errors.New("simulated S3 throttling error"),
+			},
+		}
+
+		result, err := UpdatePartitionedGroupInfo(ctx, failingBkt, logger, partitionedGroupInfo)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.Contains(t, err.Error(), "unable to check existing partitioned group info")
+	})
+
+	t.Run("should create partitioned group info when ReadPartitionedGroupInfo returns NotFound", func(t *testing.T) {
+		ctx := context.Background()
+		testBkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+		bkt := objstore.WithNoopInstr(testBkt)
+		logger := log.NewNopLogger()
+
+		// No pre-existing file — ReadPartitionedGroupInfo should return ErrorPartitionedGroupInfoNotFound,
+		// and UpdatePartitionedGroupInfo should proceed to create the file.
+		result, err := UpdatePartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Equal(t, partitionedGroupID, result.PartitionedGroupID)
+		require.Greater(t, result.CreationTime, int64(0))
+
+		// Verify it was actually written to the bucket.
+		readResult, err := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupID)
+		require.NoError(t, err)
+		require.Equal(t, result.PartitionedGroupID, readResult.PartitionedGroupID)
+		require.Equal(t, result.CreationTime, readResult.CreationTime)
+	})
+
+	t.Run("should return existing partitioned group info when it already exists", func(t *testing.T) {
+		ctx := context.Background()
+		testBkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+		bkt := objstore.WithNoopInstr(testBkt)
+		logger := log.NewNopLogger()
+
+		// First, create a partitioned group info.
+		firstResult, err := UpdatePartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo)
+		require.NoError(t, err)
+		require.NotNil(t, firstResult)
+
+		// Try to update again with the same partitioned group ID — should return the existing one.
+		modifiedInfo := partitionedGroupInfo
+		modifiedInfo.PartitionCount = 5 // Different value to prove we get the original back
+		secondResult, err := UpdatePartitionedGroupInfo(ctx, bkt, logger, modifiedInfo)
+		require.NoError(t, err)
+		require.NotNil(t, secondResult)
+		// Should return the original, not the modified one.
+		require.Equal(t, firstResult.PartitionCount, secondResult.PartitionCount)
+		require.Equal(t, firstResult.CreationTime, secondResult.CreationTime)
+	})
+
+	t.Run("should not overwrite existing file when S3 Get fails", func(t *testing.T) {
+		ctx := context.Background()
+		testBkt, _ := cortex_testutil.PrepareFilesystemBucket(t)
+		bkt := objstore.WithNoopInstr(testBkt)
+		logger := log.NewNopLogger()
+
+		// First, create a partitioned group info successfully.
+		firstResult, err := UpdatePartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo)
+		require.NoError(t, err)
+		require.NotNil(t, firstResult)
+		originalCreationTime := firstResult.CreationTime
+
+		// Now wrap the bucket to simulate S3 throttling on the existence check.
+		failingBkt := &cortex_testutil.MockBucketFailure{
+			Bucket: testBkt,
+			GetFailures: map[string]error{
+				GetPartitionedGroupFile(partitionedGroupID): errors.New("simulated S3 throttling error"),
+			},
+		}
+
+		// Attempt to update — this should fail, NOT overwrite.
+		modifiedInfo := partitionedGroupInfo
+		modifiedInfo.CreationTime = time.Now().Unix() + 9999 // A clearly different creation time
+		secondResult, err := UpdatePartitionedGroupInfo(ctx, failingBkt, logger, modifiedInfo)
+		require.Error(t, err)
+		require.Nil(t, secondResult)
+
+		// Verify the original file was NOT overwritten.
+		readResult, err := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupID)
+		require.NoError(t, err)
+		require.Equal(t, originalCreationTime, readResult.CreationTime)
+	})
 }

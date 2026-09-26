@@ -32,7 +32,7 @@ This guide will help you get Cortex running in single-binary mode using Docker C
 
 ### Optional Tools
 
-- [cortextool](https://github.com/cortexproject/cortex-tools/) - For managing rules and alerts (we'll use Docker to run this)
+- [cortextool](https://github.com/cortexproject/cortex-tools/) - For managing rules and alerts (install with `brew install cortexproject/tap/cortextool`)
 
 ## Architecture
 
@@ -159,22 +159,27 @@ Cortex can evaluate PromQL recording rules and alerting rules, similar to Promet
 
 The repository includes example rules in `rules.yaml` and `alerts.yaml`.
 
-### Load Rules into Cortex
+### Install cortextool
 
-**For Linux users:**
 ```sh
-docker run --network host \
-  -v "$(pwd):/workspace" -w /workspace \
-  quay.io/cortexproject/cortex-tools:v0.17.0 \
-  rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:9009
+brew install cortexproject/tap/cortextool
 ```
 
-**For macOS/Windows users:**
+Works on macOS and Linux (including WSL2), builds from source, takes about a minute.
+
+**Or use Docker:**
 ```sh
-docker run --network cortex-docs-getting-started_default \
-  -v "$(pwd):/workspace" -w /workspace \
-  quay.io/cortexproject/cortex-tools:v0.17.0 \
-  rules sync rules.yaml alerts.yaml --id cortex --address http://cortex:9009
+alias cortextool="docker run --rm --network getting-started_default \
+  -v $(pwd):/workspace -w /workspace \
+  quay.io/cortexproject/cortex-tools:v0.21.1"
+```
+
+With the Docker alias, use `--address http://cortex:9009` instead of `http://localhost:9009` below — the container reaches Cortex over the Compose network, not your host.
+
+### Load Rules into Cortex
+
+```sh
+cortextool rules sync rules.yaml alerts.yaml --id cortex --address http://localhost:9009
 ```
 
 **Note:** The `--id cortex` flag specifies the tenant ID. Cortex is multi-tenant, so rules are namespaced by tenant.
@@ -194,20 +199,8 @@ Cortex includes a multi-tenant Alertmanager that receives alerts from the ruler.
 
 ### Load Alertmanager Configuration
 
-**For Linux users:**
 ```sh
-docker run --network host \
-  -v "$(pwd):/workspace" -w /workspace \
-  quay.io/cortexproject/cortex-tools:v0.17.0 \
-  alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:9009
-```
-
-**For macOS/Windows users:**
-```sh
-docker run --network cortex-docs-getting-started_default \
-  -v "$(pwd):/workspace" -w /workspace \
-  quay.io/cortexproject/cortex-tools:v0.17.0 \
-  alertmanager load alertmanager-config.yaml --id cortex --address http://cortex:9009
+cortextool alertmanager load alertmanager-config.yaml --id cortex --address http://localhost:9009
 ```
 
 ### View Alertmanager in Grafana
@@ -484,11 +477,10 @@ lsof -i :3000  # Grafana
 2. Check Cortex is receiving metrics: `curl "http://localhost:9009/prometheus/api/v1/query?query=up"`
 3. Check Grafana datasource: Settings → Data sources → Cortex → Test
 
-### cortextool fails on macOS/Windows
-The `--network host` flag doesn't work on macOS/Windows. Use the Docker network name instead:
-```sh
-docker run --network cortex-docs-getting-started_default ...
-```
+### cortextool cannot reach Cortex
+1. Check the binary is on your `PATH`: `cortextool version`
+2. Check Cortex is up: `docker compose ps` should show `cortex` as healthy
+3. If you're using the Docker alias instead of a host install, use `--address http://cortex:9009` — a container can't reach Cortex on your host's `localhost`
 
 ### Out of memory errors
 Increase Docker's memory limit to 4GB or more:

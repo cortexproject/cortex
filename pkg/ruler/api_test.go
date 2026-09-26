@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -424,6 +425,135 @@ func TestRuler_rules_limit(t *testing.T) {
 		},
 	})
 	require.JSONEq(t, string(expectedResponse), string(actual))
+}
+
+func TestRuler_rules_max_rules(t *testing.T) {
+	// mockRulesNamespaces gives user1 two groups of two rules each: namespace2/fail
+	// sorts before namespace1/group1 in rule group token order, so it is the group
+	// that survives truncation. Filters and pagination vary how many rules a single
+	// request returns.
+	for _, tc := range []struct {
+		name              string
+		rules             map[string]rulespb.RuleGroupList
+		userID            string
+		maxRules          uint
+		queryParams       string
+		expectedGroups    int
+		expectedRules     int
+		expectedNextToken string
+	}{
+		{
+			name:           "limit disabled returns every rule",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       0,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:           "count below the limit",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       10,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:           "count exactly at the limit",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       4,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:              "count over the limit is truncated, summed across groups",
+			rules:             mockRulesNamespaces,
+			userID:            "user1",
+			maxRules:          3,
+			expectedGroups:    1,
+			expectedRules:     2,
+			expectedNextToken: GetRuleGroupNextToken("namespace2", "fail"),
+		},
+		{
+			name:           "only the rules matching the filters are counted",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       3,
+			queryParams:    "?type=alert",
+			expectedGroups: 2,
+			expectedRules:  2,
+		},
+		{
+			name:              "paginating below the limit succeeds",
+			rules:             mockRulesNamespaces,
+			userID:            "user1",
+			maxRules:          3,
+			queryParams:       "?group_limit=1",
+			expectedGroups:    1,
+			expectedRules:     2,
+			expectedNextToken: GetRuleGroupNextToken("namespace2", "fail"),
+		},
+		{
+			// A rule group is indivisible, so the response is allowed to exceed the
+			// limit rather than return an unusable empty page. It is the only group, so
+			// there is nothing left to page to and no token is returned.
+			name:           "a lone rule group over the limit is returned whole",
+			rules:          mockRules,
+			userID:         "user1",
+			maxRules:       1,
+			expectedGroups: 1,
+			expectedRules:  2,
+		},
+		{
+			name:           "limit applies per request: tenant under the limit",
+			rules:          mockRules,
+			userID:         "user2",
+			maxRules:       1,
+			expectedGroups: 1,
+			expectedRules:  1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultRulerConfig(t)
+			cfg.ListRulesMaxRules = tc.maxRules
+
+			r := newTestRuler(t, cfg, newMockRuleStore(tc.rules, nil), nil)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, tc.userID)
+			w := httptest.NewRecorder()
+			a.PrometheusRules(w, req)
+
+			resp := w.Result()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			// util_api.Response holds Data as an any, so decode into a shape that
+			// exposes the rule groups directly.
+			parsed := struct {
+				Status    string        `json:"status"`
+				Data      RuleDiscovery `json:"data"`
+				ErrorType v1.ErrorType  `json:"errorType"`
+				Error     string        `json:"error"`
+			}{}
+			require.NoError(t, json.Unmarshal(body, &parsed))
+
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, "success", parsed.Status)
+			require.Empty(t, parsed.Error)
+			require.Len(t, parsed.Data.RuleGroups, tc.expectedGroups)
+
+			rulesCount := 0
+			for _, g := range parsed.Data.RuleGroups {
+				rulesCount += len(g.Rules)
+			}
+			require.Equal(t, tc.expectedRules, rulesCount)
+			require.Equal(t, tc.expectedNextToken, parsed.Data.GroupNextToken)
+		})
+	}
 }
 
 func TestRuler_alerts(t *testing.T) {

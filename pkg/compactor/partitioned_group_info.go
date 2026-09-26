@@ -318,9 +318,11 @@ func ReadPartitionedGroupInfoFile(ctx context.Context, bkt objstore.Instrumented
 }
 
 func UpdatePartitionedGroupInfo(ctx context.Context, bkt objstore.InstrumentedBucket, logger log.Logger, partitionedGroupInfo PartitionedGroupInfo) (*PartitionedGroupInfo, error) {
-	// Ignore error in order to always update partitioned group info. There is no harm to put latest version of
-	// partitioned group info which is supposed to be the correct grouping based on latest bucket store.
-	existingPartitionedGroup, _ := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID)
+	existingPartitionedGroup, err := ReadPartitionedGroupInfo(ctx, bkt, logger, partitionedGroupInfo.PartitionedGroupID)
+	if err != nil && !errors.Is(err, ErrorPartitionedGroupInfoNotFound) {
+		level.Error(logger).Log("msg", "failed to check existing partitioned group info, skipping creation", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "err", err)
+		return nil, errors.Wrap(err, "unable to check existing partitioned group info")
+	}
 	if existingPartitionedGroup != nil {
 		level.Warn(logger).Log("msg", "partitioned group info already exists", "partitioned_group_id", partitionedGroupInfo.PartitionedGroupID, "partitioned_group_creation_time", partitionedGroupInfo.CreationTimeString())
 		return existingPartitionedGroup, nil

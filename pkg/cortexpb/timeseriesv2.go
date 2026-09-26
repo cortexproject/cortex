@@ -37,9 +37,7 @@ var (
 	writeRequestPoolV2 = sync.Pool{
 		New: func() any {
 			return &PreallocWriteRequestV2{
-				WriteRequestV2: WriteRequestV2{
-					Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
-				},
+				Symbols: make([]string, 0, dynamicSymbolsCapacity.Load()),
 			}
 		},
 	}

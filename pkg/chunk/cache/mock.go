@@ -11,11 +11,19 @@ type MockCache struct {
 	sync.Mutex
 	cache   map[string][]byte
 	lastTTL time.Duration
+	// DefaultTTL, when set, is applied when a Store call passes a TTL of 0, mirroring
+	// the global default validity of real cache backends (Memcached/Redis/FIFO).
+	DefaultTTL time.Duration
 }
 
+// Store records the resolved TTL. Mirroring real cache backends (Memcached/Redis/FIFO),
+// a TTL of 0 falls back to the configured default validity.
 func (m *MockCache) Store(_ context.Context, keys []string, bufs [][]byte, ttl time.Duration) {
 	m.Lock()
 	defer m.Unlock()
+	if ttl == 0 {
+		ttl = m.DefaultTTL
+	}
 	m.lastTTL = ttl
 	for i := range keys {
 		m.cache[keys[i]] = bufs[i]

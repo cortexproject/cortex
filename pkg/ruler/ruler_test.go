@@ -917,10 +917,10 @@ func TestGetRules(t *testing.T) {
 				"user3": 0,
 			},
 		},
-		"No Sharding with Alert state filter for inactive alerts": {
+		"No Sharding with Alert state filter for unknown alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				State:         unknownStateFilter, // Prometheus v2.x uses "unknown" for unevaluated alerts
+				State:         unknownStateFilter, // Prometheus uses the "unknown" state for alerting rules that have not been evaluated yet.
 				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
@@ -1363,7 +1363,13 @@ func TestGetRules(t *testing.T) {
 					cfg.Ring.InstanceZone = tc.rulerAZMap[id]
 				}
 
-				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				// Use a no-op GroupEvalIterationFunc to keep rules in their pre-evaluation state ("unknown"
+				// alert state and "unknown" health). The scheduled evaluation of a group can otherwise fire
+				// within the test window (the first evaluation is slotted at a hash-based offset within the
+				// group interval) and move rules out of the state asserted by the state/health filter cases.
+				noopEvalIterationFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {}
+
+				r, _ := buildRulerWithIterFunc(t, cfg, nil, store, rulerAddrMap, noopEvalIterationFunc)
 				r.limits = &ruleLimits{tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {

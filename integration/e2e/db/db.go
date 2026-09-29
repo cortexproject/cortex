@@ -38,7 +38,9 @@ func newMinio(port int, envVars map[string]string, bktNames ...string) *e2e.HTTP
 		images.Minio,
 		// Create the "cortex" bucket before starting minio
 		e2e.NewCommandWithoutEntrypoint("sh", "-c", strings.Join(commands, " && ")),
-		e2e.NewHTTPReadinessProbe(port, "/minio/health/live", 200, 200),
+		// /minio/health/live and /minio/health/ready return 200 before minio can
+		// serve S3 requests; /minio/health/cluster waits for it to initialize.
+		e2e.NewHTTPReadinessProbe(port, "/minio/health/cluster", 200, 200),
 		port,
 	)
 	envVars["MINIO_ACCESS_KEY"] = MinioAccessKey

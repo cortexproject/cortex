@@ -327,6 +327,15 @@ func (t *Cortex) initRegexResolverService() (serv services.Service, err error) {
 	return regexResolver, nil
 }
 
+// shouldUseRegexValidator reports whether the default resolver can be replaced with the RegexValidator.
+func (t *Cortex) shouldUseRegexValidator() bool {
+	if !t.Cfg.TenantFederation.Enabled || !t.Cfg.TenantFederation.RegexMatcherEnabled {
+		return false
+	}
+
+	return !t.Cfg.isModuleEnabled(All) && !t.Cfg.isModuleEnabled(Querier)
+}
+
 // Enable merge querier if multi tenant query federation is enabled
 func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 	if t.Cfg.TenantFederation.Enabled {
@@ -559,7 +568,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	instantQueryCodec := instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 
-	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+	if t.shouldUseRegexValidator() {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
 		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}
@@ -904,7 +913,7 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
-	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+	if t.shouldUseRegexValidator() {
 		// If regex matcher enabled, we use regex validator to pass regex to the querier
 		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
 	}

@@ -324,6 +324,74 @@ func Test_initResourceMonitor_shouldFailOnInvalidResource(t *testing.T) {
 	require.ErrorContains(t, err, "unknown resource type")
 }
 
+func TestCortex_shouldUseRegexValidator(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		target              []string
+		federationEnabled   bool
+		regexMatcherEnabled bool
+		expected            bool
+	}{
+		{
+			name:                "tenant federation disabled",
+			target:              []string{QueryFrontend},
+			federationEnabled:   false,
+			regexMatcherEnabled: true,
+			expected:            false,
+		},
+		{
+			name:                "regex matcher disabled",
+			target:              []string{QueryFrontend},
+			federationEnabled:   true,
+			regexMatcherEnabled: false,
+			expected:            false,
+		},
+		{
+			name:                "query-frontend only",
+			target:              []string{QueryFrontend},
+			federationEnabled:   true,
+			regexMatcherEnabled: true,
+			expected:            true,
+		},
+		{
+			name:                "query-scheduler only",
+			target:              []string{QueryScheduler},
+			federationEnabled:   true,
+			regexMatcherEnabled: true,
+			expected:            true,
+		},
+		{
+			name:                "single binary",
+			target:              []string{All},
+			federationEnabled:   true,
+			regexMatcherEnabled: true,
+			expected:            false,
+		},
+		{
+			name:                "query-frontend and querier in the same process",
+			target:              []string{QueryFrontend, Querier},
+			federationEnabled:   true,
+			regexMatcherEnabled: true,
+			expected:            false,
+		},
+		{
+			name:                "query-scheduler and querier in the same process",
+			target:              []string{QueryScheduler, Querier},
+			federationEnabled:   true,
+			regexMatcherEnabled: true,
+			expected:            false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cortex := &Cortex{Cfg: Config{Target: tc.target}}
+			cortex.Cfg.TenantFederation.Enabled = tc.federationEnabled
+			cortex.Cfg.TenantFederation.RegexMatcherEnabled = tc.regexMatcherEnabled
+
+			require.Equal(t, tc.expected, cortex.shouldUseRegexValidator())
+		})
+	}
+}
+
 func TestConfigEndpoint_SecretsMasked(t *testing.T) {
 	cfg := newDefaultConfig()
 

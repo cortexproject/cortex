@@ -76,16 +76,20 @@ func mergeV2AlertGroups(in v2_models.AlertGroups) (v2_models.AlertGroups, error)
 // getGroupKey returns an identity for a group which can be used to match it against other groups.
 // Only the receiver name is necessary to ensure grouping by receiver, and for the labels, we again
 // use the same method for matching the group labels as used internally, generating the fingerprint.
+// Route labels are part of the key because Alertmanager keeps one group per route: two routes
+// sharing a receiver and group labels but with different route labels must stay separate.
 func getGroupKey(group *v2_models.AlertGroup) groupKey {
 	return groupKey{
-		fingerprint: prom_model.LabelsToSignature(group.Labels),
-		receiver:    *group.Receiver.Name,
+		fingerprint:      prom_model.LabelsToSignature(group.Labels),
+		routeFingerprint: prom_model.LabelsToSignature(group.RouteLabels),
+		receiver:         *group.Receiver.Name,
 	}
 }
 
 type groupKey struct {
-	fingerprint uint64
-	receiver    string
+	fingerprint      uint64
+	routeFingerprint uint64
+	receiver         string
 }
 
 // byGroup implements the ordering of Alertmanager dispatch.AlertGroups on the OpenAPI type.
@@ -97,6 +101,11 @@ func (ag byGroup) Less(i, j int) bool {
 	jLabels := v2.APILabelSetToModelLabelSet(ag[j].Labels)
 
 	if iLabels.Equal(jLabels) {
+		if *ag[i].Receiver.Name == *ag[j].Receiver.Name {
+			iRouteLabels := v2.APILabelSetToModelLabelSet(ag[i].RouteLabels)
+			jRouteLabels := v2.APILabelSetToModelLabelSet(ag[j].RouteLabels)
+			return iRouteLabels.Before(jRouteLabels)
+		}
 		return *ag[i].Receiver.Name < *ag[j].Receiver.Name
 	}
 	return iLabels.Before(jLabels)

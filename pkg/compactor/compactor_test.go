@@ -1518,6 +1518,8 @@ func removeIgnoredLogs(input []string) []string {
 	ignoredLogStringsRegexList := []*regexp.Regexp{
 		regexp.MustCompile(`^level=(info|debug|warn) component=cleaner .+$`),
 		regexp.MustCompile(`^level=info component=compactor msg="set state" .+$`),
+		regexp.MustCompile(`^level=error component=compactor msg="failed to check if compactor owns updating user index" err=.+$`),
+		regexp.MustCompile(`^level=error component=compactor msg="failed to update user index" err=.+$`),
 	}
 
 	out := make([]string, 0, len(input))

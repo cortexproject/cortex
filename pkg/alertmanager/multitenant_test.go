@@ -860,6 +860,15 @@ func TestMultitenantAlertmanager_zoneAwareSharding(t *testing.T) {
 	am2ZoneA := createInstance(2, "zoneA", registriesZoneA)
 	am1ZoneB := createInstance(3, "zoneB", registriesZoneB)
 
+	// Wait until every instance's ring client sees all the instances, otherwise
+	// ownership is computed against a partial ring view and tenants may get
+	// double-counted.
+	for _, am := range []*MultitenantAlertmanager{am1ZoneA, am2ZoneA, am1ZoneB} {
+		test.Poll(t, 5*time.Second, 3, func() any {
+			return am.ring.InstancesCount()
+		})
+	}
+
 	{
 		require.NoError(t, alertStore.SetAlertConfig(ctx, alertspb.AlertConfigDesc{
 			User:      user1,

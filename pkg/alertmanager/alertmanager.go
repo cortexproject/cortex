@@ -413,6 +413,7 @@ func (am *Alertmanager) ApplyConfig(userID string, conf *config.Config, rawCfg s
 		util_log.GoKitLogToSlog(log.With(am.logger, "component", "dispatcher")),
 		eventrecorder.NopRecorder(),
 		am.dispatcherMetrics,
+		tmpl,
 	)
 
 	// Start the inhibitor and dispatcher and wait for each to finish loading

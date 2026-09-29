@@ -86,7 +86,7 @@ func TestOTLP(t *testing.T) {
 
 	labelNames, err := c.LabelNames(time.Time{}, time.Time{})
 	require.NoError(t, err)
-	require.Equal(t, []string{"__name__", "foo"}, labelNames)
+	require.Equal(t, model.LabelNames{"__name__", "foo"}, labelNames)
 
 	metadataResult, err := c.Metadata("series_1_total", "")
 	require.NoError(t, err)
@@ -255,15 +255,15 @@ func TestOTLPPromoteResourceAttributesPerTenant(t *testing.T) {
 
 	labelSet1, err := c1.LabelNames(now.Add(-time.Minute*5), now, "series_1")
 	require.NoError(t, err)
-	require.Equal(t, labelSet1, []string{"__name__", "attr1", "instance", "job"})
+	require.Equal(t, labelSet1, model.LabelNames{"__name__", "attr1", "instance", "job"})
 
 	labelSet2, err := c2.LabelNames(now.Add(-time.Minute*5), now, "series_1")
 	require.NoError(t, err)
-	require.Equal(t, labelSet2, []string{"__name__", "attr1", "attr2", "instance", "job"})
+	require.Equal(t, labelSet2, model.LabelNames{"__name__", "attr1", "attr2", "instance", "job"})
 
 	labelSet3, err := c3.LabelNames(now.Add(-time.Minute*5), now, "series_1")
 	require.NoError(t, err)
-	require.Equal(t, labelSet3, []string{"__name__", "attr1", "attr2", "attr3", "instance", "job"})
+	require.Equal(t, labelSet3, model.LabelNames{"__name__", "attr1", "attr2", "attr3", "instance", "job"})
 }
 
 func TestOTLPEnableTypeAndUnitLabels(t *testing.T) {

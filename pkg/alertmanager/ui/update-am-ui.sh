@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Usage: ./update-am-ui.sh [version]
-# Example: ./update-am-ui.sh 0.33.0
+# Example: ./update-am-ui.sh 0.34.0
 
 set -euo pipefail
 
-VERSION="${1:-0.33.0}"
+VERSION="${1:-0.34.0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET_DIR="${SCRIPT_DIR}/app/dist"
 TARBALL="alertmanager-web-ui-${VERSION}.tar.gz"

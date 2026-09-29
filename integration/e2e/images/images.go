@@ -8,7 +8,7 @@ package images
 var (
 	Memcached  = "memcached:1.6.1"
 	Redis      = "docker.io/redis:7.0.4-alpine"
-	Minio      = "quay.io/minio/minio:RELEASE.2024-05-28T17-19-04Z"
+	Minio      = "docker.io/cortexproject/minio:RELEASE.2024-07-04T14-25-45Z" // Unmodified copy of MinIO's official image; MinIO withdrew its public images.
 	Consul     = "consul:1.8.4"
 	ETCD       = "quay.io/coreos/etcd:v3.5.29"
 	Prometheus = "quay.io/prometheus/prometheus:v3.9.1"

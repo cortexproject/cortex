@@ -55,6 +55,12 @@ func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Tim
 	if !ts.IsZero() {
 		args.Set("time", ts.Format(time.RFC3339Nano))
 	}
+	// Rule information lets the Query Frontend identify the rule in its query stats logs.
+	origin := ruleOriginFromContext(ctx)
+	setIfNotEmpty(args, "rule_group", origin.group)
+	setIfNotEmpty(args, "rule_namespace", origin.namespace)
+	setIfNotEmpty(args, "rule", origin.name)
+	setIfNotEmpty(args, "rule_kind", origin.kind)
 	body := []byte(args.Encode())
 
 	//lint:ignore faillint wrapper around upstream method
@@ -85,6 +91,12 @@ func (p *FrontendClient) makeRequest(ctx context.Context, qs string, ts time.Tim
 	}
 
 	return req, nil
+}
+
+func setIfNotEmpty(args url.Values, key, value string) {
+	if value != "" {
+		args.Set(key, value)
+	}
 }
 
 func (p *FrontendClient) InstantQuery(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {

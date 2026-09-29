@@ -284,7 +284,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.AllowedFederatedTenants, "ruler.allowed-federated-tenants", "[Experimental] Comma separated list of tenants allowed to create federated rule groups. If specified, only these tenants can create federated rule groups, otherwise all tenants can.")
 	f.Var(&cfg.DisallowedFederatedTenants, "ruler.disallowed-federated-tenants", "[Experimental] Comma separated list of tenants that cannot create federated rule groups. If specified, a tenant that would normally be allowed to create federated rule groups is denied instead.")
 
-	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message.")
+	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message. When -ruler.frontend-address is configured, fetched series/chunks/samples statistics are not available in the Ruler. Enable -frontend.enabled-ruler-query-stats to get them from the Query Frontend.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")

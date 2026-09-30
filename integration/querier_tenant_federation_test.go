@@ -392,7 +392,8 @@ func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
 	require.Len(t, metadataResult, 0)
 }
 
-func TestRegexResolver_SingleBinary(t *testing.T) {
+// Test that the regex resolver works in single binary mode.
+func Test_TenantFederationRegexResolver_SingleBinary(t *testing.T) {
 	const blockRangePeriod = 5 * time.Second
 
 	s, err := e2e.NewScenario(networkName)
@@ -425,9 +426,9 @@ func TestRegexResolver_SingleBinary(t *testing.T) {
 	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
 
 	now := time.Now()
-	userIDs := []string{"user-1", "user-2"}
-	for _, userID := range userIDs {
-		c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", userID)
+	tenants := []string{"user-1", "user-2", "fooXbar"}
+	for _, tenant := range tenants {
+		c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", tenant)
 		require.NoError(t, err)
 
 		series, _ := generateSeries("series_1", now)
@@ -442,8 +443,9 @@ func TestRegexResolver_SingleBinary(t *testing.T) {
 		require.Equal(t, 200, res.StatusCode)
 	}
 
-	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(len(userIDs))), "cortex_regex_resolver_discovered_users"))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(len(tenants))), "cortex_regex_resolver_discovered_users"))
 
+	// Query path: the regex is resolved to the matched tenants.
 	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-.+")
 	require.NoError(t, err)
 
@@ -456,7 +458,25 @@ func TestRegexResolver_SingleBinary(t *testing.T) {
 	for _, sample := range vector {
 		actualTenants = append(actualTenants, string(sample.Metric[model.LabelName("__tenant_id__")]))
 	}
-	require.ElementsMatch(t, userIDs, actualTenants)
+	require.ElementsMatch(t, []string{"user-1", "user-2"}, actualTenants)
+
+	// Write path: tenant IDs are not resolved as regexes.
+	for _, tenant := range []string{"foo.bar", "a(b"} {
+		c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", tenant)
+		require.NoError(t, err)
+
+		series, _ := generateSeries("series_3", now)
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ingester_memory_series_created_total"},
+			e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", tenant))))
+	}
+
+	// fooXbar only has series_1 and series_2.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ingester_memory_series_created_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "fooXbar"))))
 }
 
 func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTenantFederationConfig) {
@@ -596,7 +616,8 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 		totalCacheSize += querier2Sum[0]
 	}
 
-	require.Equal(t, float64(numUsers+1), totalCacheSize)
+	// Only the regex is cached, since the tenants it resolves to are not resolved as regexes again.
+	require.Equal(t, float64(1), totalCacheSize)
 
 	// ensure a push to multiple tenants is failing
 	series, _ := generateSeries("series_1", now)

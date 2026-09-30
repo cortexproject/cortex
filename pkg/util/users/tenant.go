@@ -1,13 +1,10 @@
 package users
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/weaveworks/common/user"
 )
 
 const GlobalMarkersDir = "__markers__"
@@ -129,13 +126,4 @@ func isSupported(c rune) bool {
 		c == '\'' ||
 		c == '(' ||
 		c == ')'
-}
-
-// TenantIDsFromOrgID extracts different tenants from an orgID string value
-//
-// ignore stutter warning
-//
-//nolint:revive
-func TenantIDsFromOrgID(orgID string) ([]string, error) {
-	return TenantIDs(user.InjectOrgID(context.TODO(), orgID))
 }

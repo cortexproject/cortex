@@ -48,7 +48,8 @@ type Scheduler struct {
 	cfg Config
 	log log.Logger
 
-	limits Limits
+	limits         Limits
+	tenantResolver users.Resolver
 
 	connectedFrontendsMu sync.Mutex
 	connectedFrontends   map[string]*connectedFrontend
@@ -112,11 +113,12 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer, distributedExecEnabled bool) (*Scheduler, error) {
+func NewScheduler(cfg Config, limits Limits, tenantResolver users.Resolver, log log.Logger, registerer prometheus.Registerer, distributedExecEnabled bool) (*Scheduler, error) {
 	s := &Scheduler{
-		cfg:    cfg,
-		log:    log,
-		limits: limits,
+		cfg:            cfg,
+		log:            log,
+		limits:         limits,
+		tenantResolver: tenantResolver,
 
 		trackedRequests:    map[requestKey]*schedulerRequest{},
 		connectedFrontends: map[string]*connectedFrontend{},
@@ -425,7 +427,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 	req.ctxCancel = cancel
 
 	// aggregate the max queriers limit in the case of a multi tenant query
-	tenantIDs, err := users.TenantIDsFromOrgID(userID)
+	tenantIDs, err := users.TenantIDs(users.InjectResolver(user.InjectOrgID(ctx, userID), s.tenantResolver))
 	if err != nil {
 		return err
 	}

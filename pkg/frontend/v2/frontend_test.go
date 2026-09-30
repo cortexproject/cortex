@@ -50,7 +50,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 
 	//logger := log.NewLogfmtLogger(os.Stdout)
 	logger := log.NewNopLogger()
-	f, err := NewFrontend(cfg, queue.MockLimits{}, logger, nil, transport.NewRetry(maxRetries, nil))
+	f, err := NewFrontend(cfg, queue.MockLimits{}, nil, logger, nil, transport.NewRetry(maxRetries, nil))
 	require.NoError(t, err)
 
 	frontendv2pb.RegisterFrontendForQuerierServer(server, f)

@@ -103,6 +103,7 @@ func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 type Handler struct {
 	cfg                 HandlerConfig
 	tenantFederationCfg tenantfederation.Config
+	tenantResolver      users.Resolver
 	log                 log.Logger
 	roundTripper        http.RoundTripper
 
@@ -123,10 +124,11 @@ type Handler struct {
 }
 
 // NewHandler creates a new frontend handler.
-func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) *Handler {
+func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, tenantResolver users.Resolver, roundTripper http.RoundTripper, log log.Logger, reg prometheus.Registerer) *Handler {
 	h := &Handler{
 		cfg:                 cfg,
 		tenantFederationCfg: tenantFederationCfg,
+		tenantResolver:      tenantResolver,
 		log:                 log,
 		roundTripper:        roundTripper,
 		reg:                 reg,
@@ -245,6 +247,8 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		stats       *querier_stats.QueryStats
 		queryString url.Values
 	)
+
+	r = r.WithContext(users.InjectResolver(r.Context(), f.tenantResolver))
 
 	tenantIDs, err := users.TenantIDs(r.Context())
 	if err != nil {

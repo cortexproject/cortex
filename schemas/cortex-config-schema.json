@@ -10095,7 +10095,7 @@
         },
         "regex_cache_size": {
           "default": 1000,
-          "description": "[Experimental] Cache size of regex match results used by regex resolver. Each cache entry includes both regex patterns (e.g. `user-.+`) and resolved tenant IDs (e.g. `user-1`). Set to 0 or less to disable caching.",
+          "description": "[Experimental] Cache size of regex match results used by regex resolver. Each cache entry maps a regex (e.g. `user-.+`) to the tenant IDs it matches. Set to 0 or less to disable caching.",
           "type": "number",
           "x-cli-flag": "tenant-federation.regex-cache-size"
         },

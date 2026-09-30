@@ -2,7 +2,7 @@
 
 ## master / unreleased
 
-* [BUGFIX] Tenant Federation: Fix regex tenant federation not working in single binary mode. #7869
+* [BUGFIX] Tenant Federation: Fix regex tenant federation not working in single binary mode, and failing with `multiple org IDs present` when a matched tenant ID contains regex metacharacters and also matches other tenants as a regex. #7869
 
 ## 1.22.0 in progress
 * [CHANGE] Ruler: Remove the deprecated `-ruler.evaluation-delay-duration` flag and its `ruler_evaluation_delay_duration` per-tenant limit. Use `-ruler.query-offset` / `ruler_query_offset`, which no longer takes the higher of the two values. Cortex decodes the runtime config strictly, so a leftover `ruler_evaluation_delay_duration` override makes the runtime config fail to load: Cortex **exits at startup** (`module failed`, `module=runtime-config`), and on an already-running process every reload fails, pinning the last good overrides and dropping `cortex_runtime_config_last_reload_successful` to 0. Run `grep -r ruler_evaluation_delay_duration` over your runtime configs before upgrading. #7792

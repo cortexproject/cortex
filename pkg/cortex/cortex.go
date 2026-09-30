@@ -70,8 +70,9 @@ import (
 )
 
 var (
-	errInvalidHTTPPrefix                       = errors.New("HTTP prefix should be empty or start with /")
-	errTimeoutClassificationRequiresQueryStats = errors.New("timeout classification requires query stats to be enabled (frontend.query-stats-enabled)")
+	errInvalidHTTPPrefix                          = errors.New("HTTP prefix should be empty or start with /")
+	errRulerFederatedRulesRequireTenantFederation = errors.New("-ruler.enable-federated-rules requires -tenant-federation.enabled")
+	errTimeoutClassificationRequiresQueryStats    = errors.New("timeout classification requires query stats to be enabled (frontend.query-stats-enabled)")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -262,6 +263,9 @@ func (c *Config) Validate(log log.Logger) error {
 	}
 	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
+	}
+	if c.Ruler.EnableFederatedRules && !c.TenantFederation.Enabled {
+		return errRulerFederatedRulesRequireTenantFederation
 	}
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")

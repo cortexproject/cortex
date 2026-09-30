@@ -749,7 +749,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		// queryable has to merge the results of every source tenant. Metrics are
 		// not registered because the querier registers the same ones when both
 		// run in a single process.
-		queryable = tenantfederation.NewQueryable(queryable, t.Cfg.TenantFederation, true, nil)
+		queryable = tenantfederation.NewQueryable(queryable, t.Cfg.TenantFederation, users.NewMultiResolver(), true, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)

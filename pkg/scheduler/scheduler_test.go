@@ -25,7 +25,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributed_execution"
 	frontendv1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	"github.com/cortexproject/cortex/pkg/frontend/v2/frontendv2pb"
-	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	"github.com/cortexproject/cortex/pkg/scheduler/schedulerpb"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
@@ -970,14 +969,14 @@ func TestSchedulerTrackedRequestsMetric(t *testing.T) {
 }
 
 func TestSchedulerTenantResolver(t *testing.T) {
-	enqueueRegex := func(t *testing.T, tenantResolver users.Resolver) *schedulerpb.SchedulerToFrontend {
+	enqueue := func(t *testing.T, tenantResolver users.Resolver) *schedulerpb.SchedulerToFrontend {
 		_, frontendClient, _ := setupSchedulerWithTenantResolver(t, nil, false, tenantResolver)
 		frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
 
 		require.NoError(t, frontendLoop.Send(&schedulerpb.FrontendToScheduler{
 			Type:        schedulerpb.ENQUEUE,
 			QueryID:     1,
-			UserID:      "user-.+",
+			UserID:      "tenant-a|tenant-b",
 			HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
 		}))
 		resp, err := frontendLoop.Recv()
@@ -985,14 +984,14 @@ func TestSchedulerTenantResolver(t *testing.T) {
 		return resp
 	}
 
-	t.Run("default resolver rejects the regex", func(t *testing.T) {
-		resp := enqueueRegex(t, nil)
+	t.Run("default resolver rejects multiple tenants", func(t *testing.T) {
+		resp := enqueue(t, nil)
 		require.Equal(t, schedulerpb.ERROR, resp.Status)
-		require.Contains(t, resp.Error, "unsupported character '+'")
+		require.Contains(t, resp.Error, "unsupported character '|'")
 	})
 
-	t.Run("regex validator passes the regex through", func(t *testing.T) {
-		resp := enqueueRegex(t, tenantfederation.NewRegexValidator())
+	t.Run("injected resolver is used", func(t *testing.T) {
+		resp := enqueue(t, users.NewMultiResolver())
 		require.Equal(t, schedulerpb.OK, resp.Status)
 	})
 }

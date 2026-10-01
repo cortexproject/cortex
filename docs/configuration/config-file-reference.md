@@ -3757,6 +3757,14 @@ otlp:
   # If true, suffixes will be added to the metrics for name normalization.
   # CLI flag: -distributor.otlp.add-metric-suffixes
   [add_metric_suffixes: <boolean> | default = true]
+
+  # EXPERIMENTAL: If true, the distributor accepts OTLP metrics over gRPC
+  # (opentelemetry.proto.collector.metrics.v1.MetricsService/Export) on the gRPC
+  # server port. The tenant is read from the X-Scope-OrgID gRPC metadata. The
+  # maximum request size is set by -server.grpc-max-recv-msg-size-bytes, not by
+  # -distributor.otlp-max-recv-msg-size.
+  # CLI flag: -distributor.otlp.grpc-enabled
+  [grpc_enabled: <boolean> | default = false]
 ```
 
 ### `etcd_config`

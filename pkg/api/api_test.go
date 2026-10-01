@@ -12,6 +12,8 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/server"
+
+	"github.com/cortexproject/cortex/pkg/distributor"
 )
 
 const (
@@ -209,6 +211,33 @@ func Benchmark_Compression(b *testing.B) {
 
 				b.ReportMetric(float64(responseBodySize), "ContentLength")
 			}
+		})
+	}
+}
+
+func TestRegisterDistributor_OTLPGRPCService(t *testing.T) {
+	const otlpMetricsService = "opentelemetry.proto.collector.metrics.v1.MetricsService"
+
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("grpc_enabled=%v", enabled), func(t *testing.T) {
+			serverCfg := server.Config{
+				HTTPListenNetwork: server.DefaultNetwork,
+				GRPCListenNetwork: server.DefaultNetwork,
+				MetricsNamespace:  fmt.Sprintf("otlp_grpc_%v", enabled),
+			}
+			srv, err := server.New(serverCfg)
+			require.NoError(t, err)
+			t.Cleanup(srv.Shutdown)
+
+			api, err := New(Config{}, serverCfg, srv, &FakeLogger{})
+			require.NoError(t, err)
+
+			pushCfg := distributor.Config{}
+			pushCfg.OTLPConfig.GRPCEnabled = enabled
+			api.RegisterDistributor(&distributor.Distributor{}, pushCfg, nil, prometheus.NewRegistry())
+
+			_, registered := srv.GRPC.GetServiceInfo()[otlpMetricsService]
+			require.Equal(t, enabled, registered)
 		})
 	}
 }

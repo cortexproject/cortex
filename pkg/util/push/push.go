@@ -284,7 +284,7 @@ func convertV2RequestToV1(req *cortexpb.PreallocWriteRequestV2, enableTypeAndUni
 	for _, v2Ts := range req.Timeseries {
 		lbs, err := v2Ts.ToLabels(&b, symbols)
 		if err != nil {
-			badRequestErrs.add(err)
+			badRequestErrs.add(fmt.Errorf("parsing labels for series %v: %w", v2Ts.LabelsRefs, err))
 			continue
 		}
 

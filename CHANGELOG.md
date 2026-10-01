@@ -6,6 +6,7 @@
 * [FEATURE] Distributor: Add experimental OTLP metrics ingestion over gRPC (`opentelemetry.proto.collector.metrics.v1.MetricsService/Export`) on the gRPC server port. Enable it with `-distributor.otlp.grpc-enabled`. The tenant is read from the `X-Scope-OrgID` gRPC metadata, and the request size is limited by `-server.grpc-max-recv-msg-size-bytes`. #7873
 * [FEATURE] Storage: Add support for Alibaba Cloud OSS as a backend for blocks, ruler, and alertmanager storage. Configured via `-<prefix>.oss.*` flags with `backend: oss`. #7907
 * [ENHANCEMENT] Ring: Add the `cortex_ring_member_zonal_ownership_percent{name, member, zone}` metric, reporting the fraction of its own zone's token space owned by each ring member. With zone-aware replication a write is routed within a single zone, so the existing `cortex_ring_member_ownership_percent`, which is computed over the merged token list of all zones, does not reflect the hash range a member actually serves. Reported when ring detailed metrics and zone awareness are both enabled. #7910
+* [ENHANCEMENT] Distributor: Support partial write for Prometheus Remote Write 2.0 requests. Invalid series are now skipped and reported together in the `400` response instead of rejecting the whole batch, the valid ones are written, and the `X-Prometheus-Remote-Write-*-Written` response headers are set even when a `400` is returned. #7761
 * [ENHANCEMENT] Ruler: Add rule information to query parameters sent to the Query Frontend when `-ruler.frontend-address` is configured, so the Query Frontend query stats logs (`-frontend.enabled-ruler-query-stats`) can identify the evaluated rule. In this mode, the Ruler query stats log (`-ruler.query-stats-enabled`) omits the fetched statistics fields, which are always zero. #6539
 * [ENHANCEMENT] gRPC: When `-auth.enabled=true`, a gRPC request without the `X-Scope-OrgID` metadata is now rejected with the `UNAUTHENTICATED` status code instead of `UNKNOWN`. #7873
 * [ENHANCEMENT] Upgrade promql-engine and Thanos to latest. #7889
@@ -95,7 +96,6 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_head_metric_names` gauge exposing the number of unique metric names in the TSDB head per tenant. Registered when `-ingester.active-series-metrics-enabled` is true. #7514
 * [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [ENHANCEMENT] Querier: Add `-querier.pool-iterator-batches-buf` flag to pool mergeIterator scratch buffers via sync.Pool, reducing per-iterator memory allocation. #7765
-* [ENHANCEMENT] Distributor: Support partial write for Prometheus Remote Write 2.0 requests. Invalid series are now skipped and reported together in the `400` response instead of rejecting the whole batch, the valid ones are written, and the `X-Prometheus-Remote-Write-*-Written` response headers are set even when a `400` is returned. #7761
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7807 #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823

@@ -406,7 +406,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 	var (
 		replicationFactor      = r.cfg.ReplicationFactor
 		instances              = bufDescs[:0]
-		start                  = searchToken(r.ringTokens, key)
+		start                  = SearchToken(r.ringTokens, key)
 		iterations             = 0
 		maxInstancePerZone     = replicationFactor / len(r.ringZones)
 		zonesWithExtraInstance = replicationFactor % len(r.ringZones)
@@ -863,7 +863,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 			finalInstancesPerZone++
 		}
 		for i := 0; i < finalInstancesPerZone; i++ {
-			start := searchToken(tokens, random.Uint32())
+			start := SearchToken(tokens, random.Uint32())
 			iterations := 0
 			found := false
 

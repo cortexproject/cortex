@@ -282,7 +282,7 @@ func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	}
 }
 
-func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
+func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger, queryViaFrontend bool) rules.QueryFunc {
 	queryTime := evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 	querySeries := evalMetrics.RulerQuerySeries.WithLabelValues(userID)
 	querySample := evalMetrics.RulerQuerySamples.WithLabelValues(userID)
@@ -321,15 +321,19 @@ func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 				"rule_kind", origin.kind,
 				"query", qs,
 				"cortex_ruler_query_seconds_total", querySeconds,
-				"query_wall_time_seconds", queryStats.WallTime,
-				"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
-				"fetched_series_count", queryStats.FetchedSeriesCount,
-				"fetched_chunks_count", queryStats.FetchedChunksCount,
-				"fetched_samples_count", queryStats.FetchedSamplesCount,
-				"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
-				"fetched_data_bytes", queryStats.FetchedDataBytes,
 			)
-			logMessage = append(logMessage, queryStats.LoadExtraFields()...)
+			if !queryViaFrontend {
+				logMessage = append(logMessage,
+					"query_wall_time_seconds", queryStats.WallTime,
+					"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
+					"fetched_series_count", queryStats.FetchedSeriesCount,
+					"fetched_chunks_count", queryStats.FetchedChunksCount,
+					"fetched_samples_count", queryStats.FetchedSamplesCount,
+					"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
+					"fetched_data_bytes", queryStats.FetchedDataBytes,
+				)
+				logMessage = append(logMessage, queryStats.LoadExtraFields()...)
+			}
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
 		}()
 
@@ -495,7 +499,7 @@ func buildQueryFunc(
 
 	// apply statistic middleware
 	if cfg.EnableQueryStats {
-		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger, client != nil)
 	}
 	return metricsFunc
 }

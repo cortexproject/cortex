@@ -6268,8 +6268,8 @@ ring:
 # Report query statistics for ruler queries to complete as a per user metric and
 # as an info level log message. When -ruler.frontend-address is configured,
 # fetched series/chunks/samples statistics are not available in the Ruler.
-# Enable -frontend.enabled-ruler-query-stats to get them from the Query
-# Frontend.
+# Enable -frontend.enabled-ruler-query-stats to get the statistics from the
+# Query Frontend.
 # CLI flag: -ruler.query-stats-enabled
 [query_stats_enabled: <boolean> | default = false]
 

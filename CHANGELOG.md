@@ -1,8 +1,10 @@
 # Changelog
 
 ## master / unreleased
+
 * [FEATURE] Ruler: Add experimental support for federated rule groups. A rule group listing tenants in its `source_tenants` field is evaluated against those tenants while the resulting series and alerts are written to the tenant owning the rule group. Enabled with `-ruler.enable-federated-rules` (requires `-tenant-federation.enabled`), and restricted to selected tenants with `-ruler.allowed-federated-tenants` and `-ruler.disallowed-federated-tenants`. #7828
 * [FEATURE] Distributor: Add experimental OTLP metrics ingestion over gRPC (`opentelemetry.proto.collector.metrics.v1.MetricsService/Export`) on the gRPC server port. Enable it with `-distributor.otlp.grpc-enabled`. The tenant is read from the `X-Scope-OrgID` gRPC metadata, and the request size is limited by `-server.grpc-max-recv-msg-size-bytes`. #7873
+* [ENHANCEMENT] Distributor: Support partial write for Prometheus Remote Write 2.0 requests. Invalid series are now skipped and reported together in the `400` response instead of rejecting the whole batch, the valid ones are written, and the `X-Prometheus-Remote-Write-*-Written` response headers are set even when a `400` is returned. #7761
 * [ENHANCEMENT] gRPC: When `-auth.enabled=true`, a gRPC request without the `X-Scope-OrgID` metadata is now rejected with the `UNAUTHENTICATED` status code instead of `UNKNOWN`. #7873
 * [ENHANCEMENT] Ruler: Add rule information to query parameters sent to the Query Frontend when `-ruler.frontend-address` is configured, so the Query Frontend query stats logs (`-frontend.enabled-ruler-query-stats`) can identify the evaluated rule. In this mode, the Ruler query stats log (`-ruler.query-stats-enabled`) omits the fetched statistics fields, which are always zero. #6539
 * [BUGFIX] Tenant Federation: Fix regex tenant federation not working in single binary mode, and failing with `multiple org IDs present` when a matched tenant ID contains regex metacharacters and also matches other tenants as a regex. #7869
@@ -84,7 +86,6 @@
 * [ENHANCEMENT] Ingester: Add `cortex_ingester_head_metric_names` gauge exposing the number of unique metric names in the TSDB head per tenant. Registered when `-ingester.active-series-metrics-enabled` is true. #7514
 * [ENHANCEMENT] Query Frontend: Log `X-Grafana-User` header in query stats, slow query, and query request logs when Grafana's `send_user_header` is enabled. #7799
 * [ENHANCEMENT] Querier: Add `-querier.pool-iterator-batches-buf` flag to pool mergeIterator scratch buffers via sync.Pool, reducing per-iterator memory allocation. #7765
-* [ENHANCEMENT] Distributor: Support partial write for Prometheus Remote Write 2.0 requests. Invalid series are now skipped and reported together in the `400` response instead of rejecting the whole batch, the valid ones are written, and the `X-Prometheus-Remote-Write-*-Written` response headers are set even when a `400` is returned. #7761
 * [ENHANCEMENT] Querier: Use non-pointer HistogramBucket slice in response codec. #7809
 * [ENHANCEMENT] Update build image and Go version to 1.27.0. #7807 #7814
 * [ENHANCEMENT] Querier: Reduce merge iterator `BatchSize` from 12 to 8. #7823

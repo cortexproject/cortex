@@ -1677,7 +1677,7 @@ func TestHandler_remoteWriteV2_PartialWrite(t *testing.T) {
 				{LabelsRefs: []uint32{1, 2}, Samples: []writev2.Sample{{Value: 1, Timestamp: 11}, {Value: 2, Timestamp: 12}}},
 			},
 			pushedSamples: []string{"foo@11", "foo@12"},
-			expectedErrs:  []string{"outside of symbols table"},
+			expectedErrs:  []string{"parsing labels for series [1 9]: ", "outside of symbols table"},
 		},
 		{
 			name: "an invalid series is skipped, the histograms of the valid ones are pushed",
@@ -1686,7 +1686,7 @@ func TestHandler_remoteWriteV2_PartialWrite(t *testing.T) {
 				{LabelsRefs: []uint32{1, 2}, Histograms: []writev2.Histogram{hist}},
 			},
 			pushedHistograms: []string{"foo@20"},
-			expectedErrs:     []string{"outside of symbols table"},
+			expectedErrs:     []string{"parsing labels for series [1 9]: ", "outside of symbols table"},
 		},
 		{
 			name: "a malformed exemplar is dropped, the rest of its series is pushed",

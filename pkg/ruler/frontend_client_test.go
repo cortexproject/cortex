@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
@@ -43,6 +45,61 @@ func TestNoOrgId(t *testing.T) {
 	frontendClient := NewFrontendClient(mockHTTPGRPCClient(mockClientFn), time.Second*5, "/prometheus", "json")
 	_, err := frontendClient.InstantQuery(context.Background(), "query", time.Now())
 	require.Equal(t, user.ErrNoOrgID, err)
+}
+
+func TestMakeRequestRuleInfo(t *testing.T) {
+	ts := time.Unix(1000, 0).UTC()
+	ctx := user.InjectOrgID(context.Background(), "userID")
+	ruleCtx := promql.NewOriginContext(ctx, map[string]any{
+		"ruleGroup": map[string]string{
+			"file": "namespace",
+			"name": "group",
+		},
+	})
+	ruleCtx = rules.NewOriginContext(ruleCtx, rules.RuleDetail{Name: "rule", Kind: "recording"})
+
+	tests := map[string]struct {
+		ctx      context.Context
+		expected url.Values
+	}{
+		"without rule origin": {
+			ctx: ctx,
+			expected: url.Values{
+				"query": []string{"up"},
+				"time":  []string{ts.Format(time.RFC3339Nano)},
+			},
+		},
+		"with rule origin": {
+			ctx: ruleCtx,
+			expected: url.Values{
+				"query":          []string{"up"},
+				"time":           []string{ts.Format(time.RFC3339Nano)},
+				"rule_group":     []string{"group"},
+				"rule_namespace": []string{"namespace"},
+				"rule":           []string{"rule"},
+				"rule_kind":      []string{"recording"},
+			},
+		},
+		"unexpected query origin type": {
+			ctx: promql.NewOriginContext(ctx, map[string]any{"ruleGroup": "invalid"}),
+			expected: url.Values{
+				"query": []string{"up"},
+				"time":  []string{ts.Format(time.RFC3339Nano)},
+			},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			frontendClient := NewFrontendClient(nil, time.Second*5, "/prometheus", "json")
+			req, err := frontendClient.makeRequest(tc.ctx, "up", ts)
+			require.NoError(t, err)
+
+			args, err := url.ParseQuery(string(req.Body))
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, args)
+		})
+	}
 }
 
 func TestInstantQueryJsonCodec(t *testing.T) {

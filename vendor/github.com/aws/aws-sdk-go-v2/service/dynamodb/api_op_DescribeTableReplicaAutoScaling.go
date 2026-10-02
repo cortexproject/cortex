@@ -4,9 +4,10 @@ package dynamodb
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Describes auto scaling settings across replicas of the global table at once.
@@ -36,6 +37,17 @@ type DescribeTableReplicaAutoScalingInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTableReplicaAutoScalingInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTableReplicaAutoScalingInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTableReplicaAutoScalingInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableName != nil {
+		s.WriteString(schemas.DescribeTableReplicaAutoScalingInput_TableName, *v.TableName)
+	}
+}
 func (in *DescribeTableReplicaAutoScalingInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -53,35 +65,44 @@ type DescribeTableReplicaAutoScalingOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTableReplicaAutoScalingOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTableReplicaAutoScalingOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTableReplicaAutoScalingOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableAutoScalingDescription != nil {
+		s.WriteStruct(schemas.DescribeTableReplicaAutoScalingOutput_TableAutoScalingDescription)
+		v.TableAutoScalingDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DescribeTableReplicaAutoScalingOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeTableReplicaAutoScalingOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeTableReplicaAutoScalingOutput_TableAutoScalingDescription:
+			v.TableAutoScalingDescription = &types.TableAutoScalingDescription{}
+			return v.TableAutoScalingDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeTableReplicaAutoScalingMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDescribeTableReplicaAutoScaling{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTableReplicaAutoScaling, schemas.DescribeTableReplicaAutoScalingInput, schemas.DescribeTableReplicaAutoScalingOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDescribeTableReplicaAutoScaling{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTableReplicaAutoScaling, schemas.DescribeTableReplicaAutoScalingInput, schemas.DescribeTableReplicaAutoScalingOutput), output: &DescribeTableReplicaAutoScalingOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
@@ -91,9 +112,6 @@ func (c *Client) addOperationDescribeTableReplicaAutoScalingMiddlewares(stack *m
 		return err
 	}
 	if err = addOpDescribeTableReplicaAutoScalingValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DescribeTableReplicaAutoScaling"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

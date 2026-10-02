@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Creates a new table from an existing backup. Any number of users can execute up
@@ -80,9 +81,50 @@ type RestoreTableFromBackupInput struct {
 	// The new server-side encryption settings for the restored table.
 	SSESpecificationOverride *types.SSESpecification
 
+	// The vector indexes for the restored table. If not specified, all vector indexes
+	// from the backup are restored. The indexes provided must match existing vector
+	// indexes from the backup. You can choose to exclude some or all of the vector
+	// indexes at the time of restore.
+	VectorIndexOverride []types.VectorIndex
+
 	noSmithyDocumentSerde
 }
 
+func (v *RestoreTableFromBackupInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RestoreTableFromBackupInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RestoreTableFromBackupInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BackupArn != nil {
+		s.WriteString(schemas.RestoreTableFromBackupInput_BackupArn, *v.BackupArn)
+	}
+	if v.BillingModeOverride != "" {
+		s.WriteString(schemas.RestoreTableFromBackupInput_BillingModeOverride, string(v.BillingModeOverride))
+	}
+	serializeGlobalSecondaryIndexList(s, schemas.RestoreTableFromBackupInput_GlobalSecondaryIndexOverride, v.GlobalSecondaryIndexOverride)
+	serializeLocalSecondaryIndexList(s, schemas.RestoreTableFromBackupInput_LocalSecondaryIndexOverride, v.LocalSecondaryIndexOverride)
+	if v.OnDemandThroughputOverride != nil {
+		s.WriteStruct(schemas.RestoreTableFromBackupInput_OnDemandThroughputOverride)
+		v.OnDemandThroughputOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.ProvisionedThroughputOverride != nil {
+		s.WriteStruct(schemas.RestoreTableFromBackupInput_ProvisionedThroughputOverride)
+		v.ProvisionedThroughputOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.SSESpecificationOverride != nil {
+		s.WriteStruct(schemas.RestoreTableFromBackupInput_SSESpecificationOverride)
+		v.SSESpecificationOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.TargetTableName != nil {
+		s.WriteString(schemas.RestoreTableFromBackupInput_TargetTableName, *v.TargetTableName)
+	}
+	serializeVectorIndexList(s, schemas.RestoreTableFromBackupInput_VectorIndexOverride, v.VectorIndexOverride)
+}
 func (in *RestoreTableFromBackupInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TargetTableName
@@ -100,35 +142,44 @@ type RestoreTableFromBackupOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RestoreTableFromBackupOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RestoreTableFromBackupOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RestoreTableFromBackupOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableDescription != nil {
+		s.WriteStruct(schemas.RestoreTableFromBackupOutput_TableDescription)
+		v.TableDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *RestoreTableFromBackupOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RestoreTableFromBackupOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.RestoreTableFromBackupOutput_TableDescription:
+			v.TableDescription = &types.TableDescription{}
+			return v.TableDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRestoreTableFromBackupMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpRestoreTableFromBackup{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RestoreTableFromBackup, schemas.RestoreTableFromBackupInput, schemas.RestoreTableFromBackupOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpRestoreTableFromBackup{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RestoreTableFromBackup, schemas.RestoreTableFromBackupInput, schemas.RestoreTableFromBackupOutput), output: &RestoreTableFromBackupOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpRestoreTableFromBackupDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -141,9 +192,6 @@ func (c *Client) addOperationRestoreTableFromBackupMiddlewares(stack *middleware
 		return err
 	}
 	if err = addOpRestoreTableFromBackupValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "RestoreTableFromBackup"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

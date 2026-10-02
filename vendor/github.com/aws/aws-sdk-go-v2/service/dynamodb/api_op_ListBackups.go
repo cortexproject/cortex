@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
@@ -81,6 +82,32 @@ type ListBackupsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListBackupsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListBackupsInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListBackupsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BackupType != "" {
+		s.WriteString(schemas.ListBackupsInput_BackupType, string(v.BackupType))
+	}
+	if v.ExclusiveStartBackupArn != nil {
+		s.WriteString(schemas.ListBackupsInput_ExclusiveStartBackupArn, *v.ExclusiveStartBackupArn)
+	}
+	if v.Limit != nil {
+		s.WriteInt32(schemas.ListBackupsInput_Limit, *v.Limit)
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.ListBackupsInput_TableName, *v.TableName)
+	}
+	if v.TimeRangeLowerBound != nil {
+		s.WriteTime(schemas.ListBackupsInput_TimeRangeLowerBound, *v.TimeRangeLowerBound)
+	}
+	if v.TimeRangeUpperBound != nil {
+		s.WriteTime(schemas.ListBackupsInput_TimeRangeUpperBound, *v.TimeRangeUpperBound)
+	}
+}
 func (in *ListBackupsInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -111,35 +138,45 @@ type ListBackupsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListBackupsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListBackupsOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListBackupsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeBackupSummaries(s, schemas.ListBackupsOutput_BackupSummaries, v.BackupSummaries)
+	if v.LastEvaluatedBackupArn != nil {
+		s.WriteString(schemas.ListBackupsOutput_LastEvaluatedBackupArn, *v.LastEvaluatedBackupArn)
+	}
+}
+func (v *ListBackupsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListBackupsOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListBackupsOutput_BackupSummaries:
+			return deserializeBackupSummaries(d, schemas.ListBackupsOutput_BackupSummaries, &v.BackupSummaries)
+		case schemas.ListBackupsOutput_LastEvaluatedBackupArn:
+			v.LastEvaluatedBackupArn = new(string)
+			return d.ReadString(schemas.ListBackupsOutput_LastEvaluatedBackupArn, v.LastEvaluatedBackupArn)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListBackupsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpListBackups{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListBackups, schemas.ListBackupsInput, schemas.ListBackupsOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpListBackups{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListBackups, schemas.ListBackupsInput, schemas.ListBackupsOutput), output: &ListBackupsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListBackupsDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -149,9 +186,6 @@ func (c *Client) addOperationListBackupsMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 	if err = addCredentialSource(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ListBackups"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

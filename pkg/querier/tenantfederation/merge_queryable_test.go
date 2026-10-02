@@ -322,14 +322,14 @@ type mergeQueryableScenario struct {
 	allowPartialData bool
 }
 
-func (s *mergeQueryableScenario) init() (storage.Querier, prometheus.Gatherer, error) {
+func (s *mergeQueryableScenario) init(resolver users.Resolver) (storage.Querier, prometheus.Gatherer, error) {
 	// initialize with default tenant label
 	reg := prometheus.NewPedanticRegistry()
 	cfg := Config{
 		MaxConcurrent:    defaultMaxConcurrency,
 		AllowPartialData: s.allowPartialData,
 	}
-	q := NewQueryable(&s.queryable, cfg, !s.doNotByPassSingleQuerier, reg)
+	q := NewQueryable(&s.queryable, cfg, resolver, !s.doNotByPassSingleQuerier, reg)
 
 	// retrieve querier
 	querier, err := q.Querier(mint, maxt)
@@ -414,7 +414,7 @@ func TestMergeQueryable_Querier(t *testing.T) {
 		cfg := Config{
 			MaxConcurrent: defaultMaxConcurrency,
 		}
-		q := NewQueryable(queryable, cfg, false /* byPassWithSingleQuerier */, nil)
+		q := NewQueryable(queryable, cfg, users.NewMultiResolver(), false /* byPassWithSingleQuerier */, nil)
 
 		querier, err := q.Querier(mint, maxt)
 		require.NoError(t, err)
@@ -712,6 +712,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 				for _, tc := range scenario.selectTestCases {
 					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
 						ctx := context.Background()
+						var resolver users.Resolver = users.NewMultiResolver()
 						if useRegexResolver {
 							reg := prometheus.NewRegistry()
 							bucketClient := &bucket.ClientMock{}
@@ -732,8 +733,7 @@ func TestMergeQueryable_Select(t *testing.T) {
 							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)
 
-							// set a regex tenant resolver
-							users.WithDefaultResolver(regexResolver)
+							resolver = regexResolver
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
@@ -743,16 +743,13 @@ func TestMergeQueryable_Select(t *testing.T) {
 
 							ctx = user.InjectOrgID(ctx, "team-.+")
 						} else {
-							// Set a multi tenant resolver.
-							users.WithDefaultResolver(users.NewMultiResolver())
-
 							// inject tenants into context
 							if len(scenario.tenants) > 0 {
 								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
 							}
 						}
 
-						querier, reg, err := scenario.init()
+						querier, reg, err := scenario.init(resolver)
 						require.NoError(t, err)
 
 						seriesSet := querier.Select(ctx, true, &storage.SelectHints{Start: mint, End: maxt}, tc.matchers...)
@@ -923,6 +920,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 		for _, useRegexResolver := range []bool{true, false} {
 			t.Run(fmt.Sprintf("%s, useRegexResolver: %v", scenario.mergeQueryableScenario.name, useRegexResolver), func(t *testing.T) {
 				ctx := context.Background()
+				var resolver users.Resolver = users.NewMultiResolver()
 				if useRegexResolver {
 					reg := prometheus.NewRegistry()
 					bucketClient := &bucket.ClientMock{}
@@ -942,8 +940,7 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 					regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 					require.NoError(t, err)
 
-					// set a regex tenant resolver
-					users.WithDefaultResolver(regexResolver)
+					resolver = regexResolver
 					require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 					// wait update knownUsers
@@ -953,16 +950,13 @@ func TestMergeQueryable_LabelNames(t *testing.T) {
 
 					ctx = user.InjectOrgID(ctx, "team-.+")
 				} else {
-					// Set a multi tenant resolver.
-					users.WithDefaultResolver(users.NewMultiResolver())
-
 					// inject tenants into context
 					if len(scenario.tenants) > 0 {
 						ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
 					}
 				}
 
-				querier, reg, err := scenario.init()
+				querier, reg, err := scenario.init(resolver)
 				require.NoError(t, err)
 
 				t.Run(scenario.labelNamesTestCase.name, func(t *testing.T) {
@@ -1173,6 +1167,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 				for _, tc := range scenario.labelValuesTestCases {
 					t.Run(fmt.Sprintf("%s, useRegexResolver: %v", tc.name, useRegexResolver), func(t *testing.T) {
 						ctx := context.Background()
+						var resolver users.Resolver = users.NewMultiResolver()
 						if useRegexResolver {
 							reg := prometheus.NewRegistry()
 							bucketClient := &bucket.ClientMock{}
@@ -1192,8 +1187,7 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 							regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 							require.NoError(t, err)
 
-							// set a regex tenant resolver
-							users.WithDefaultResolver(regexResolver)
+							resolver = regexResolver
 							require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 							// wait update knownUsers
@@ -1203,16 +1197,13 @@ func TestMergeQueryable_LabelValues(t *testing.T) {
 
 							ctx = user.InjectOrgID(ctx, "team-.+")
 						} else {
-							// Set a multi tenant resolver.
-							users.WithDefaultResolver(users.NewMultiResolver())
-
 							// inject tenants into context
 							if len(scenario.tenants) > 0 {
 								ctx = user.InjectOrgID(ctx, strings.Join(scenario.tenants, "|"))
 							}
 						}
 
-						querier, reg, err := scenario.init()
+						querier, reg, err := scenario.init(resolver)
 						require.NoError(t, err)
 
 						actLabelValues, warnings, err := querier.LabelValues(ctx, tc.labelName, nil, tc.matchers...)
@@ -1293,7 +1284,7 @@ func TestTracingMergeQueryable(t *testing.T) {
 	cfg := Config{
 		MaxConcurrent: defaultMaxConcurrency,
 	}
-	q := NewQueryable(&filter, cfg, false, nil)
+	q := NewQueryable(&filter, cfg, users.NewMultiResolver(), false, nil)
 	// retrieve querier if set
 	querier, err := q.Querier(mint, maxt)
 	require.NoError(t, err)

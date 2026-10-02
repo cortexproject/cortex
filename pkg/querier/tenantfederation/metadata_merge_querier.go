@@ -21,9 +21,10 @@ import (
 
 // NewMetadataQuerier returns a MetadataQuerier that merges metric
 // metadata for multiple tenants.
-func NewMetadataQuerier(upstream querier.MetadataQuerier, cfg Config, reg prometheus.Registerer) querier.MetadataQuerier {
+func NewMetadataQuerier(upstream querier.MetadataQuerier, cfg Config, resolver users.Resolver, reg prometheus.Registerer) querier.MetadataQuerier {
 	return &mergeMetadataQuerier{
 		upstream:         upstream,
+		resolver:         resolver,
 		maxConcurrent:    cfg.MaxConcurrent,
 		allowPartialData: cfg.AllowPartialData,
 
@@ -44,6 +45,7 @@ type mergeMetadataQuerier struct {
 	allowPartialData        bool
 	tenantsPerMetadataQuery prometheus.Histogram
 	upstream                querier.MetadataQuerier
+	resolver                users.Resolver
 }
 
 type metadataSelectJob struct {
@@ -57,7 +59,7 @@ func (m *mergeMetadataQuerier) MetricsMetadata(ctx context.Context, req *client.
 	log, ctx := spanlogger.New(ctx, "mergeMetadataQuerier.MetricsMetadata")
 	defer log.Finish()
 
-	tenantIds, err := users.TenantIDs(ctx)
+	tenantIds, err := m.resolver.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
 	}

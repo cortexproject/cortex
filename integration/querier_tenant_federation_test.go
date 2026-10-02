@@ -392,6 +392,170 @@ func Test_TenantFederationRegexResolver_WhenSingleTenantMatched(t *testing.T) {
 	require.Len(t, metadataResult, 0)
 }
 
+// Test that the regex resolver works in single binary mode.
+func Test_TenantFederationRegexResolver_SingleBinary(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(BlocksStorageFlags(), AlertmanagerLocalFlags(), map[string]string{
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "1s",
+
+		// Ship blocks quickly so that the regex resolver can discover tenants from the bucket.
+		"-blocks-storage.tsdb.block-ranges-period": blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":       "1s",
+
+		"-ring.store":                    "consul",
+		"-consul.hostname":               consul.NetworkHTTPEndpoint(),
+		"-alertmanager.web.external-url": "http://localhost/alertmanager",
+	})
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	cortex := e2ecortex.NewSingleBinary("cortex", flags, "")
+	require.NoError(t, s.StartAndWaitReady(cortex))
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+	tenants := []string{"user-1", "user-2", "fooXbar"}
+	for _, tenant := range tenants {
+		c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", tenant)
+		require.NoError(t, err)
+
+		series, _ := generateSeries("series_1", now)
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		// Push a sample in the next block range to ship the block containing series_1.
+		series2, _ := generateSeries("series_2", now.Add(blockRangePeriod*2))
+		res, err = c.Push(series2)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	require.NoError(t, cortex.WaitSumMetrics(e2e.Equals(float64(len(tenants))), "cortex_regex_resolver_discovered_users"))
+
+	// Query path: the regex is resolved to the matched tenants.
+	c, err := e2ecortex.NewClient("", cortex.HTTPEndpoint(), "", "", "user-.+")
+	require.NoError(t, err)
+
+	result, err := c.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+
+	vector := result.(model.Vector)
+	actualTenants := make([]string, 0, len(vector))
+	for _, sample := range vector {
+		actualTenants = append(actualTenants, string(sample.Metric[model.LabelName("__tenant_id__")]))
+	}
+	require.ElementsMatch(t, []string{"user-1", "user-2"}, actualTenants)
+
+	// Write path: tenant IDs are not resolved as regexes.
+	for _, tenant := range []string{"foo.bar", "a(b"} {
+		c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), "", "", "", tenant)
+		require.NoError(t, err)
+
+		series, _ := generateSeries("series_3", now)
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ingester_memory_series_created_total"},
+			e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", tenant))))
+	}
+
+	// fooXbar only has series_1 and series_2.
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_ingester_memory_series_created_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "user", "fooXbar"))))
+}
+
+// Test that a tenant ID with regex metacharacters is not matched against other tenants again
+// once the regex has been resolved, e.g. `team.a` also matching `teamXa`.
+func Test_TenantFederationRegexResolver_TenantIDWithRegexMetacharacters(t *testing.T) {
+	const blockRangePeriod = 5 * time.Second
+
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	consul := e2edb.NewConsulWithName("consul")
+	require.NoError(t, s.StartAndWaitReady(consul))
+
+	flags := mergeFlags(BlocksStorageFlags(), map[string]string{
+		"-tenant-federation.enabled":               "true",
+		"-tenant-federation.regex-matcher-enabled": "true",
+		"-tenant-federation.user-sync-interval":    "1s",
+
+		// Ship blocks quickly so that the regex resolver can discover tenants from the bucket.
+		"-blocks-storage.tsdb.block-ranges-period":   blockRangePeriod.String(),
+		"-blocks-storage.tsdb.ship-interval":         "1s",
+		"-blocks-storage.bucket-store.sync-interval": "1s",
+	})
+
+	minio := e2edb.NewMinio(9000, flags["-blocks-storage.s3.bucket-name"])
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(ingester, distributor))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	queryFrontend := e2ecortex.NewQueryFrontend("query-frontend", flags, "")
+	require.NoError(t, s.Start(queryFrontend))
+
+	flags["-querier.frontend-address"] = queryFrontend.NetworkGRPCEndpoint()
+	storeGateway := e2ecortex.NewStoreGateway("store-gateway", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	querier := e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), flags, "")
+	require.NoError(t, s.StartAndWaitReady(querier, storeGateway))
+	require.NoError(t, s.WaitReady(queryFrontend))
+	require.NoError(t, storeGateway.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512*2), "cortex_ring_tokens_total"))
+
+	now := time.Now()
+	tenants := []string{"team.a", "teamXa"}
+	for _, tenant := range tenants {
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", tenant)
+		require.NoError(t, err)
+
+		series, _ := generateSeries("series_1", now)
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+
+		// Push a sample in the next block range to ship the block containing series_1.
+		series2, _ := generateSeries("series_2", now.Add(blockRangePeriod*2))
+		res, err = c.Push(series2)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	require.NoError(t, querier.WaitSumMetrics(e2e.Equals(float64(len(tenants))), "cortex_regex_resolver_discovered_users"))
+
+	c, err := e2ecortex.NewClient("", queryFrontend.HTTPEndpoint(), "", "", "team.*")
+	require.NoError(t, err)
+
+	result, err := c.Query("series_1", now)
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+
+	vector := result.(model.Vector)
+	actualTenants := make([]string, 0, len(vector))
+	for _, sample := range vector {
+		actualTenants = append(actualTenants, string(sample.Metric[model.LabelName("__tenant_id__")]))
+	}
+	require.ElementsMatch(t, tenants, actualTenants)
+}
+
 func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTenantFederationConfig) {
 	const numUsers = 10
 	const blockRangePeriod = 5 * time.Second
@@ -529,7 +693,8 @@ func runQuerierTenantFederationTest_UseRegexResolver(t *testing.T, cfg querierTe
 		totalCacheSize += querier2Sum[0]
 	}
 
-	require.Equal(t, float64(numUsers+1), totalCacheSize)
+	// Only the regex is cached, since the tenants it resolves to are not resolved as regexes again.
+	require.Equal(t, float64(1), totalCacheSize)
 
 	// ensure a push to multiple tenants is failing
 	series, _ := generateSeries("series_1", now)

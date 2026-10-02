@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // The Scan operation returns one or more items and item attributes by accessing
@@ -325,6 +326,52 @@ type ScanInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ScanInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ScanInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ScanInput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeAttributeNameList(s, schemas.ScanInput_AttributesToGet, v.AttributesToGet)
+	if v.ConditionalOperator != "" {
+		s.WriteString(schemas.ScanInput_ConditionalOperator, string(v.ConditionalOperator))
+	}
+	if v.ConsistentRead != nil {
+		s.WriteBool(schemas.ScanInput_ConsistentRead, *v.ConsistentRead)
+	}
+	serializeKey(s, schemas.ScanInput_ExclusiveStartKey, v.ExclusiveStartKey)
+	serializeExpressionAttributeNameMap(s, schemas.ScanInput_ExpressionAttributeNames, v.ExpressionAttributeNames)
+	serializeExpressionAttributeValueMap(s, schemas.ScanInput_ExpressionAttributeValues, v.ExpressionAttributeValues)
+	if v.FilterExpression != nil {
+		s.WriteString(schemas.ScanInput_FilterExpression, *v.FilterExpression)
+	}
+	if v.IndexName != nil {
+		s.WriteString(schemas.ScanInput_IndexName, *v.IndexName)
+	}
+	if v.Limit != nil {
+		s.WriteInt32(schemas.ScanInput_Limit, *v.Limit)
+	}
+	if v.ProjectionExpression != nil {
+		s.WriteString(schemas.ScanInput_ProjectionExpression, *v.ProjectionExpression)
+	}
+	if v.ReturnConsumedCapacity != "" {
+		s.WriteString(schemas.ScanInput_ReturnConsumedCapacity, string(v.ReturnConsumedCapacity))
+	}
+	serializeFilterConditionMap(s, schemas.ScanInput_ScanFilter, v.ScanFilter)
+	if v.Segment != nil {
+		s.WriteInt32(schemas.ScanInput_Segment, *v.Segment)
+	}
+	if v.Select != "" {
+		s.WriteString(schemas.ScanInput_Select, string(v.Select))
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.ScanInput_TableName, *v.TableName)
+	}
+	if v.TotalSegments != nil {
+		s.WriteInt32(schemas.ScanInput_TotalSegments, *v.TotalSegments)
+	}
+}
 func (in *ScanInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -385,35 +432,60 @@ type ScanOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ScanOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ScanOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ScanOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConsumedCapacity != nil {
+		s.WriteStruct(schemas.ScanOutput_ConsumedCapacity)
+		v.ConsumedCapacity.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.Count != 0 {
+		s.WriteInt32(schemas.ScanOutput_Count, v.Count)
+	}
+	serializeItemList(s, schemas.ScanOutput_Items, v.Items)
+	serializeKey(s, schemas.ScanOutput_LastEvaluatedKey, v.LastEvaluatedKey)
+	if v.ScannedCount != 0 {
+		s.WriteInt32(schemas.ScanOutput_ScannedCount, v.ScannedCount)
+	}
+}
+func (v *ScanOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ScanOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ScanOutput_ConsumedCapacity:
+			v.ConsumedCapacity = &types.ConsumedCapacity{}
+			return v.ConsumedCapacity.Deserialize(d)
+		case schemas.ScanOutput_Count:
+			return d.ReadInt32(schemas.ScanOutput_Count, &v.Count)
+		case schemas.ScanOutput_Items:
+			return deserializeItemList(d, schemas.ScanOutput_Items, &v.Items)
+		case schemas.ScanOutput_LastEvaluatedKey:
+			return deserializeKey(d, schemas.ScanOutput_LastEvaluatedKey, &v.LastEvaluatedKey)
+		case schemas.ScanOutput_ScannedCount:
+			return d.ReadInt32(schemas.ScanOutput_ScannedCount, &v.ScannedCount)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationScanMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpScan{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.Scan, schemas.ScanInput, schemas.ScanOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpScan{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.Scan, schemas.ScanInput, schemas.ScanOutput), output: &ScanOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpScanDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -426,9 +498,6 @@ func (c *Client) addOperationScanMiddlewares(stack *middleware.Stack, options Op
 		return err
 	}
 	if err = addOpScanValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "Scan"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

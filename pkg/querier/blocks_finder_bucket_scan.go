@@ -41,9 +41,12 @@ var (
 )
 
 type BucketScanBlocksFinderConfig struct {
-	ScanInterval             time.Duration
-	TenantsConcurrency       int
-	MetasConcurrency         int
+	ScanInterval       time.Duration
+	TenantsConcurrency int
+	MetasConcurrency   int
+	// CacheDir is the bucket store sync directory, which the finder may share with a co-located
+	// store-gateway. The finder doesn't cache anything directly in it: it keeps its per-tenant
+	// metadata caches in its own sub directory (see metaCacheDirForUser).
 	CacheDir                 string
 	ConsistencyDelay         time.Duration
 	IgnoreDeletionMarksDelay time.Duration
@@ -420,7 +423,7 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 		userBucket,
 		blockLister,
 		// The fetcher stores cached metas in the "meta-syncer/" sub directory.
-		filepath.Join(d.cfg.CacheDir, userID),
+		d.metaCacheDirForUser(userID),
 		userReg,
 		filters,
 	)
@@ -432,15 +435,23 @@ func (d *BucketScanBlocksFinder) createMetaFetcher(userID string) (block.Metadat
 	return f, userBucket, deletionMarkFilter, nil
 }
 
-// metaSyncerCacheDirName is the sub-directory, under the per-tenant cache directory, where
-// block.NewMetaFetcher stores its cached meta.json files (see createMetaFetcher).
-const metaSyncerCacheDirName = "meta-syncer"
+// metaCacheDirForUser returns the directory where the metadata fetcher of the given tenant caches
+// its meta.json files (the fetcher appends its own "meta-syncer" sub directory to it).
+//
+// The finder keeps its caches under its own root inside the bucket store sync directory, instead of
+// in <sync-dir>/<tenant>, because a co-located store-gateway (single-binary mode with the bucket
+// index disabled) uses <sync-dir>/<tenant> for its own fetcher cache and block data. Both
+// components reconcile their on-disk state against different sets of tenants, so sharing a
+// directory means each of them deletes cache entries the other still considers live.
+func (d *BucketScanBlocksFinder) metaCacheDirForUser(userID string) string {
+	return filepath.Join(d.cfg.CacheDir, users.QuerierMetaCacheDirName, userID)
+}
 
 // evictInactiveUserFetchers reconciles the per-tenant metadata fetchers against the set of
 // currently active tenants. For every tenant that is no longer active it removes the cached
-// fetcher, unregisters its per-tenant Prometheus registry, and deletes the fetcher's on-disk meta
-// cache. Without this, d.fetchers, d.fetchersMetrics and the on-disk cache would grow unbounded
-// for the lifetime of the process as tenants are deleted from storage.
+// fetcher, unregisters its per-tenant Prometheus registry and deletes its on-disk metadata cache.
+// Without this, d.fetchers, d.fetchersMetrics and the on-disk caches would grow unbounded for the
+// lifetime of the process as tenants are deleted from storage.
 func (d *BucketScanBlocksFinder) evictInactiveUserFetchers(activeUserIDs []string) {
 	active := make(map[string]struct{}, len(activeUserIDs))
 	for _, userID := range activeUserIDs {
@@ -461,29 +472,48 @@ func (d *BucketScanBlocksFinder) evictInactiveUserFetchers(activeUserIDs []strin
 	}
 	d.fetchersMx.Unlock()
 
-	if len(evicted) == 0 {
+	if len(evicted) > 0 {
+		level.Info(d.logger).Log("msg", "evicted metadata fetchers for inactive tenants", "count", len(evicted))
+	}
+
+	// Reconcile the on-disk caches too, outside the lock to keep disk I/O off it.
+	d.deleteInactiveUserMetaCacheDirs(active)
+}
+
+// deleteInactiveUserMetaCacheDirs deletes the on-disk metadata caches of the tenants that are no
+// longer active. It sweeps the finder's own cache root rather than keying off the fetchers evicted
+// by the current process, so that directories left behind by a previous one (e.g. tenants deleted
+// while this process was down) are reclaimed as well; it therefore runs on every scan, not only
+// when something was evicted — the cost is a single ReadDir of the root, negligible next to the
+// bucket scan that precedes it. That is safe because the root is exclusive to the finder: a
+// store-gateway co-located in the same process keeps its own metadata caches and its block data in
+// <sync-dir>/<tenant>/, which we never touch.
+func (d *BucketScanBlocksFinder) deleteInactiveUserMetaCacheDirs(activeUserIDs map[string]struct{}) {
+	root := filepath.Join(d.cfg.CacheDir, users.QuerierMetaCacheDirName)
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		// The root is created lazily, together with the first tenant's metadata fetcher.
+		if !os.IsNotExist(err) {
+			level.Warn(d.logger).Log("msg", "failed to list the cached metadata fetcher directory", "dir", root, "err", err)
+		}
 		return
 	}
 
-	level.Info(d.logger).Log("msg", "evicted metadata fetchers for inactive tenants", "count", len(evicted))
-
-	// Delete each evicted fetcher's on-disk meta cache, outside the lock to keep disk I/O off it.
-	// We remove only the fetcher's own "meta-syncer" sub-directory, not the whole CacheDir/<userID>
-	// tree: in single-binary mode CacheDir is the store-gateway's SyncDir, whose block data also
-	// lives under CacheDir/<userID>/ and must not be deleted here. We key this off the fetchers
-	// this process evicted rather than sweeping CacheDir, so we never reach into a co-located
-	// store-gateway's cache; stale directories left by a previous process are reaped by the
-	// store-gateway's own cleanup (single-binary) and are otherwise a negligible disk residual.
-	for _, userID := range evicted {
-		metaCacheDir := filepath.Join(d.cfg.CacheDir, userID, metaSyncerCacheDirName)
-		if err := os.RemoveAll(metaCacheDir); err != nil {
-			level.Warn(d.logger).Log("msg", "failed to delete cached metadata fetcher directory for inactive user", "user", userID, "dir", metaCacheDir, "err", err)
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
 
-		// Best-effort removal of the now-empty per-tenant directory. os.Remove only succeeds on an
-		// empty directory, so a co-located store-gateway's data under the same path is preserved.
-		_ = os.Remove(filepath.Join(d.cfg.CacheDir, userID))
+		userID := entry.Name()
+		if _, ok := activeUserIDs[userID]; ok {
+			continue
+		}
+
+		metaCacheDir := d.metaCacheDirForUser(userID)
+		if err := os.RemoveAll(metaCacheDir); err != nil {
+			level.Warn(d.logger).Log("msg", "failed to delete cached metadata fetcher directory for inactive user", "user", userID, "dir", metaCacheDir, "err", err)
+		}
 	}
 }
 

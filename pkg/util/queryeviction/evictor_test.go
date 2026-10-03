@@ -16,6 +16,7 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/util/resource"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/test"
 )
 
 type mockMonitor struct {
@@ -138,7 +139,10 @@ func TestCPUCheckedBeforeHeap(t *testing.T) {
 	evictor := startEvictor(t, newMockMonitor(0.95, 0.95), reg, testEvictorConfig(0.9, 0.9, 0))
 	waitEvicted(t, evicted)
 
-	assert.Equal(t, float64(1), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))))
+	// The eviction callback runs before the counter is incremented, so poll for it.
+	test.Poll(t, time.Second, float64(1), func() any {
+		return promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU)))
+	})
 	assert.Equal(t, float64(0), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.Heap))))
 }
 
@@ -207,7 +211,9 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 		waitEvicted(t, evicted)
 	}
 
-	assert.Equal(t, float64(3), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))))
+	test.Poll(t, time.Second, float64(3), func() any {
+		return promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU)))
+	})
 }
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {

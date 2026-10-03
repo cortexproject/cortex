@@ -548,6 +548,10 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	var queryAnalyzer querysharding.Analyzer
 	queryAnalyzer = querysharding.NewQueryAnalyzer()
+	// `vector()` synthesises a series that is not backed by any selector, so every
+	// vertical shard produces it. Sharding such a query can return the `vector()`
+	// fallback instead of the real data, so disable sharding for those queries.
+	queryAnalyzer = cortexquerysharding.NewDisableVectorFunctionAnalyzer(queryAnalyzer)
 	if t.Cfg.Querier.EnableParquetQueryable {
 		// Disable vertical sharding for binary expression with ignore for parquet queryable.
 		queryAnalyzer = cortexquerysharding.NewDisableBinaryExpressionAnalyzer(queryAnalyzer)

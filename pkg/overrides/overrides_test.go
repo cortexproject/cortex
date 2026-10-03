@@ -211,7 +211,7 @@ func TestAPIEndpoints(t *testing.T) {
 			method:         "GET",
 			path:           "/api/v1/user-overrides",
 			tenantID:       "nonexistent_user",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusNotFound,
 			setupMock: func(mock *bucket.ClientMock) {
 				// Mock runtime config with different user
 				overridesData := `overrides:

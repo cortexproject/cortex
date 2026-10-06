@@ -1,6 +1,8 @@
 package ingester
 
 import (
+	"encoding/binary"
+	"hash/fnv"
 	"testing"
 	"time"
 
@@ -9,45 +11,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIsOwnedByInstance(t *testing.T) {
-	// Ring with 4 tokens across 2 ingesters in one zone:
-	// Token 100 → ingester-0
-	// Token 200 → ingester-1
-	// Token 300 → ingester-0
-	// Token 400 → ingester-1
+func TestIsOwned(t *testing.T) {
+	// Ring with 4 tokens across 2 ingesters. With a replication factor of 1 each
+	// token range has a single owner, which is what makes the expectations below
+	// a simple alternation.
 	ringTokens := []uint32{100, 200, 300, 400}
-	ingester0Tokens := map[uint32]struct{}{100: {}, 300: {}}
-	ingester1Tokens := map[uint32]struct{}{200: {}, 400: {}}
+	ingester0 := ownedPositionsFor(ringTokens, 100, 300)
+	ingester1 := ownedPositionsFor(ringTokens, 200, 400)
 
 	tests := []struct {
 		name           string
 		key            uint32
-		instanceTokens map[uint32]struct{}
+		ownedPositions []bool
 		expected       bool
 	}{
 		// Hash 50 → SearchToken finds 100 → ingester-0 owns it
-		{"hash 50 owned by ingester-0", 50, ingester0Tokens, true},
-		{"hash 50 not owned by ingester-1", 50, ingester1Tokens, false},
+		{"hash 50 owned by ingester-0", 50, ingester0, true},
+		{"hash 50 not owned by ingester-1", 50, ingester1, false},
 		// Hash 150 → SearchToken finds 200 → ingester-1 owns it
-		{"hash 150 owned by ingester-1", 150, ingester1Tokens, true},
-		{"hash 150 not owned by ingester-0", 150, ingester0Tokens, false},
+		{"hash 150 owned by ingester-1", 150, ingester1, true},
+		{"hash 150 not owned by ingester-0", 150, ingester0, false},
 		// Hash 250 → SearchToken finds 300 → ingester-0 owns it
-		{"hash 250 owned by ingester-0", 250, ingester0Tokens, true},
-		{"hash 250 not owned by ingester-1", 250, ingester1Tokens, false},
+		{"hash 250 owned by ingester-0", 250, ingester0, true},
+		{"hash 250 not owned by ingester-1", 250, ingester1, false},
 		// Hash 350 → SearchToken finds 400 → ingester-1 owns it
-		{"hash 350 owned by ingester-1", 350, ingester1Tokens, true},
-		{"hash 350 not owned by ingester-0", 350, ingester0Tokens, false},
+		{"hash 350 owned by ingester-1", 350, ingester1, true},
+		{"hash 350 not owned by ingester-0", 350, ingester0, false},
 		// Hash 450 → wraps around → SearchToken finds 100 → ingester-0 owns it
-		{"hash 450 wraps to ingester-0", 450, ingester0Tokens, true},
-		{"hash 450 wraps, not ingester-1", 450, ingester1Tokens, false},
+		{"hash 450 wraps to ingester-0", 450, ingester0, true},
+		{"hash 450 wraps, not ingester-1", 450, ingester1, false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := isOwnedByInstance(tc.key, ringTokens, tc.instanceTokens)
-			assert.Equal(t, tc.expected, result)
+			assert.Equal(t, tc.expected, isOwned(tc.key, ringTokens, tc.ownedPositions))
 		})
 	}
+}
+
+// TestIsOwned_UnknownOwnership covers the inputs which previously indexed a token
+// slice without checking its length, which panicked on an empty ring.
+func TestIsOwned_UnknownOwnership(t *testing.T) {
+	assert.True(t, isOwned(50, nil, nil), "empty ring must not panic and must not under-count")
+	assert.True(t, isOwned(50, []uint32{}, []bool{}), "empty ring must not panic and must not under-count")
+	assert.True(t, isOwned(50, []uint32{100, 200}, nil), "missing bitmap must not under-count")
+	assert.True(t, isOwned(50, []uint32{100, 200}, []bool{true}), "mismatched bitmap must not under-count")
 }
 
 func TestActiveSeries_OwnedCount_NoRingTokens(t *testing.T) {
@@ -75,7 +83,7 @@ func TestActiveSeries_OwnedCount_WithRingTokens(t *testing.T) {
 	instanceTokens := []uint32{100}
 
 	// Update ring state on ActiveSeries
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Series with key=50 → SearchToken finds 100 → owned (100 is ours)
 	lbls1 := labels.FromStrings("__name__", "metric_owned", "job", "test")
@@ -99,7 +107,7 @@ func TestActiveSeries_UpdateMetrics_RingChange(t *testing.T) {
 	// Initially: ring has tokens [100, 200], instance owns token 100
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add a series with key=50 → owned (token 100 is ours)
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
@@ -113,7 +121,7 @@ func TestActiveSeries_UpdateMetrics_RingChange(t *testing.T) {
 	// Need different ringTokens to trigger change detection (hash must differ)
 	newRingTokens := []uint32{100, 200, 300}
 
-	c.UpdateMetrics(keepUntil, newInstanceTokens, newRingTokens)
+	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
 
 	// Series with key=50 → SearchToken([100,200,300], 50) finds 100 → is 100 in {200}? NO
 	// Series should be removed
@@ -131,7 +139,7 @@ func TestActiveSeries_UpdateMetrics_PurgeExpired(t *testing.T) {
 	// Ring: everything owned
 	ringTokens := []uint32{100}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Old series (will be purged)
 	lbls1 := labels.FromStrings("__name__", "old_metric", "job", "test")
@@ -145,7 +153,7 @@ func TestActiveSeries_UpdateMetrics_PurgeExpired(t *testing.T) {
 	assert.Equal(t, 2, c.Owned())
 
 	// Purge with same ring tokens (no change) but keepUntil in between
-	c.UpdateMetrics(keepUntil, instanceTokens, ringTokens)
+	updateMetricsWithRing(c, keepUntil, ringTokens, instanceTokens...)
 
 	// Old series purged, recent survives
 	assert.Equal(t, 1, c.Active())
@@ -160,7 +168,7 @@ func TestActiveSeries_UpdateMetrics_NoChangeSkipsRescan(t *testing.T) {
 
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add owned series
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
@@ -169,7 +177,7 @@ func TestActiveSeries_UpdateMetrics_NoChangeSkipsRescan(t *testing.T) {
 	assert.Equal(t, 1, c.Owned())
 
 	// Call UpdateMetrics with SAME ring tokens — should not remove the series
-	c.UpdateMetrics(keepUntil, instanceTokens, ringTokens)
+	updateMetricsWithRing(c, keepUntil, ringTokens, instanceTokens...)
 
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
@@ -207,7 +215,7 @@ func TestActiveSeries_KeyZeroSkipsOwnershipCheck(t *testing.T) {
 	// Load ring tokens where instance only owns token 200
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{200}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Pass key=0 — should be accepted regardless of ownership
 	// (This happens when OwnedSeriesMetricsEnabled is false and tsToken=0 is passed)
@@ -235,39 +243,82 @@ func TestActiveSeries_KeyZeroSkipsOwnershipCheck(t *testing.T) {
 	assert.Equal(t, 0, c.Active())
 }
 
-func TestHashTokenList(t *testing.T) {
-	// Same tokens should produce same hash
-	tokens1 := []uint32{100, 200, 300}
-	tokens2 := []uint32{100, 200, 300}
-	assert.Equal(t, hashTokenList(tokens1), hashTokenList(tokens2))
-
-	// Different tokens should produce different hash
-	tokens3 := []uint32{100, 200, 400}
-	assert.NotEqual(t, hashTokenList(tokens1), hashTokenList(tokens3))
-
-	// Empty list
-	assert.Equal(t, hashTokenList(nil), hashTokenList([]uint32{}))
-}
-
 func TestUpdateTokens_DetectsChange(t *testing.T) {
 	c := NewActiveSeries()
 
 	// First call should detect change (from empty to something)
-	changed := c.updateTokens([]uint32{100}, []uint32{100, 200})
+	changed := setRingState(c, []uint32{100, 200}, 100)
 	assert.True(t, changed)
 
 	// Same tokens again — no change
-	changed = c.updateTokens([]uint32{100}, []uint32{100, 200})
+	changed = setRingState(c, []uint32{100, 200}, 100)
 	assert.False(t, changed)
 
 	// Different ring tokens — change detected
-	changed = c.updateTokens([]uint32{100}, []uint32{100, 200, 300})
+	changed = setRingState(c, []uint32{100, 200, 300}, 100)
 	assert.True(t, changed)
 }
 
 // copyFn is a helper used by tests to copy labels.
 func copyFn(l labels.Labels) labels.Labels {
 	return l.Copy()
+}
+
+// ownedPositionsFor builds an ownership bitmap over ringTokens from the subset of
+// ring tokens this instance is a replica for. It lets these tests express
+// ownership in terms of tokens, which reads more naturally, while the production
+// code consumes the bitmap that ring.OwnedTokenPositions produces.
+func ownedPositionsFor(ringTokens []uint32, ownedTokens ...uint32) []bool {
+	ownedSet := make(map[uint32]struct{}, len(ownedTokens))
+	for _, token := range ownedTokens {
+		ownedSet[token] = struct{}{}
+	}
+
+	positions := make([]bool, len(ringTokens))
+	for position, token := range ringTokens {
+		_, positions[position] = ownedSet[token]
+	}
+
+	return positions
+}
+
+// testRingFingerprint derives a fingerprint from ring state the way the lifecycler
+// does, so that tests passing identical state are seen as unchanged and tests
+// passing different state are seen as a change.
+//
+// Unlike the token-list hash this replaces, it covers the ownership bitmap too, so
+// a change in ownership which leaves the token list untouched is still detected.
+func testRingFingerprint(ringTokens []uint32, ownedPositions []bool) uint64 {
+	h := fnv.New64a()
+
+	var buf [4]byte
+	for _, token := range ringTokens {
+		binary.LittleEndian.PutUint32(buf[:], token)
+		_, _ = h.Write(buf[:])
+	}
+	for _, owned := range ownedPositions {
+		if owned {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+	}
+
+	return h.Sum64()
+}
+
+// setRingState installs ring ownership state on c, reporting whether ownership
+// changed.
+func setRingState(c *ActiveSeries, ringTokens []uint32, ownedTokens ...uint32) bool {
+	positions := ownedPositionsFor(ringTokens, ownedTokens...)
+	return c.updateTokens(ringTokens, positions, testRingFingerprint(ringTokens, positions))
+}
+
+// updateMetricsWithRing calls UpdateMetrics with ownership expressed as the subset
+// of ring tokens this instance is a replica for.
+func updateMetricsWithRing(c *ActiveSeries, keepUntil time.Time, ringTokens []uint32, ownedTokens ...uint32) {
+	positions := ownedPositionsFor(ringTokens, ownedTokens...)
+	c.UpdateMetrics(keepUntil, ringTokens, positions, testRingFingerprint(ringTokens, positions))
 }
 
 func TestActiveSeries_NativeHistogram_Owned(t *testing.T) {
@@ -277,7 +328,7 @@ func TestActiveSeries_NativeHistogram_Owned(t *testing.T) {
 	// Ring: instance owns everything (single token)
 	ringTokens := []uint32{100}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add a native histogram series
 	lbls := labels.FromStrings("__name__", "histogram_metric", "job", "test")
@@ -300,7 +351,7 @@ func TestActiveSeries_ExistingSeriesNotRejected(t *testing.T) {
 	// Ring: instance owns token 100
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add series with key=50 → owned (token 100)
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
@@ -330,7 +381,7 @@ func TestActiveSeries_AtomicPointer_ConsistentRead(t *testing.T) {
 	// Load ring: instance owns token 100 only. Key=150 → token 200 → NOT owned.
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// New series with key=150 should be rejected (not owned)
 	lbls2 := labels.FromStrings("__name__", "metric_after_ring", "job", "test")
@@ -368,7 +419,7 @@ func TestActiveSeries_Flag1Only_MetricEmitsButNoEnforcement(t *testing.T) {
 	// Ring: instance owns token 100 (not 200)
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Owned series (key=50 → token 100 → ours)
 	lblsOwned := labels.FromStrings("__name__", "owned_metric", "job", "test")
@@ -414,7 +465,7 @@ func TestActiveSeries_BothFlagsOn_OwnedUsedForLimits(t *testing.T) {
 	// Ring: 3 tokens, instance owns 2 of them (100, 300)
 	ringTokens := []uint32{100, 200, 300}
 	instanceTokens := []uint32{100, 300}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// key=50 → token 100 → OWNED
 	lbls1 := labels.FromStrings("__name__", "m1", "job", "test")
@@ -445,7 +496,7 @@ func TestActiveSeries_UpdateMetrics_LoadsFromAtomicPointer(t *testing.T) {
 	// Ring: owns token 100
 	ringTokens := []uint32{100, 200}
 	instanceTokens := []uint32{100}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add owned series
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
@@ -457,7 +508,7 @@ func TestActiveSeries_UpdateMetrics_LoadsFromAtomicPointer(t *testing.T) {
 	// from the atomic pointer to pass to stripes.
 	newRingTokens := []uint32{100, 200, 300}
 	newInstanceTokens := []uint32{200} // We no longer own 100
-	c.UpdateMetrics(keepUntil, newInstanceTokens, newRingTokens)
+	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
 
 	// Series key=50 → token 100 → not in {200} → removed
 	assert.Equal(t, 0, c.Active())
@@ -470,19 +521,19 @@ func TestActiveSeries_UpdateTokens_ImmutableSnapshots(t *testing.T) {
 	c := NewActiveSeries()
 
 	// First ring state
-	c.updateTokens([]uint32{100}, []uint32{100, 200})
+	setRingState(c, []uint32{100, 200}, 100)
 	state1 := c.ring.Load()
 
 	// Second ring state (different)
-	c.updateTokens([]uint32{100, 300}, []uint32{100, 200, 300})
+	setRingState(c, []uint32{100, 200, 300}, 100, 300)
 	state2 := c.ring.Load()
 
 	// They should be different pointers with different content
 	assert.NotEqual(t, state1, state2)
-	assert.Equal(t, 2, len(state1.ringTokens))
-	assert.Equal(t, 3, len(state2.ringTokens))
-	assert.Equal(t, 1, len(state1.instanceTokens))
-	assert.Equal(t, 2, len(state2.instanceTokens))
+	assert.Len(t, state1.tokens, 2)
+	assert.Len(t, state2.tokens, 3)
+	assert.Len(t, state1.ownedPositions, 2)
+	assert.Len(t, state2.ownedPositions, 3)
 }
 
 func TestActiveSeries_InstanceOwnedCount_Recalculation(t *testing.T) {
@@ -495,7 +546,7 @@ func TestActiveSeries_InstanceOwnedCount_Recalculation(t *testing.T) {
 	// Ring: instance owns tokens 100 and 300
 	ringTokens := []uint32{100, 200, 300}
 	instanceTokens := []uint32{100, 300}
-	c.updateTokens(instanceTokens, ringTokens)
+	setRingState(c, ringTokens, instanceTokens...)
 
 	// Add 3 owned series
 	for i := 0; i < 3; i++ {
@@ -509,7 +560,7 @@ func TestActiveSeries_InstanceOwnedCount_Recalculation(t *testing.T) {
 	// Ring changes: we lose token 300, keep 100
 	newRingTokens := []uint32{100, 200, 300, 400}
 	newInstanceTokens := []uint32{100} // Lost 300
-	c.UpdateMetrics(keepUntil, newInstanceTokens, newRingTokens)
+	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
 
 	// Series with key=250 → token 300 → not in {100} → removed
 	// Series with key=50 → token 100 → in {100} → kept (2 series share this key)

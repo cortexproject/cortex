@@ -232,6 +232,72 @@ func TestOwnedTokenPositions_AddrDiffersFromInstanceID(t *testing.T) {
 	assert.Equal(t, replicationFactor*len(allTokens), totalOwned)
 }
 
+// TestOwnershipFingerprint pins down the fingerprint's two jobs. It must change
+// whenever ownership could have changed, because a false "unchanged" leaves every
+// ingester using a stale ownership bitmap. It must NOT change on a heartbeat,
+// because heartbeats are the overwhelmingly common reason the lifecycler reruns
+// this, and recomputing ownership each time would cost far more than the cheap
+// per-series lookup saves.
+func TestOwnershipFingerprint(t *testing.T) {
+	base := &Desc{Ingesters: map[string]InstanceDesc{
+		"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+		"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+	}}
+	baseFingerprint := ownershipFingerprint(base)
+
+	t.Run("is stable for equal rings", func(t *testing.T) {
+		same := &Desc{Ingesters: map[string]InstanceDesc{
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+		}}
+		assert.Equal(t, baseFingerprint, ownershipFingerprint(same),
+			"fingerprint must not depend on map iteration order")
+	})
+
+	t.Run("ignores heartbeats", func(t *testing.T) {
+		heartbeat := &Desc{Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 9999},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 8888},
+		}}
+		assert.Equal(t, baseFingerprint, ownershipFingerprint(heartbeat),
+			"a heartbeat must not force an ownership recompute")
+	})
+
+	// Each of these changes the replica set, so each must invalidate the bitmap.
+	// The state case is the one Desc.RingCompare cannot distinguish from a
+	// heartbeat, which is why this fingerprint exists at all.
+	for name, changed := range map[string]*Desc{
+		"state change": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: LEAVING, Tokens: []uint32{100, 300}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+		}},
+		"token change": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 301}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+		}},
+		"zone change": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+		}},
+		"instance added": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+			"instance-3": {Addr: "10.0.0.3:9095", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{500}, Timestamp: 1000},
+		}},
+		"instance removed": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+		}},
+		"tokens moved between instances": {Ingesters: map[string]InstanceDesc{
+			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300, 400}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200}, Timestamp: 1000},
+		}},
+	} {
+		t.Run("changes on "+name, func(t *testing.T) {
+			assert.NotEqual(t, baseFingerprint, ownershipFingerprint(changed))
+		})
+	}
+}
+
 // BenchmarkOwnedTokenPositions measures the cost of the once-per-ring-change
 // precompute. This is the price paid to make the per-series ownership check a
 // binary search plus an array index, so it is expected to be large relative to a

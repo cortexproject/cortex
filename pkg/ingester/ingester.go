@@ -1267,7 +1267,8 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 
 		if i.cfg.OwnedSeriesMetricsEnabled {
 			// Use UpdateMetrics which handles both purge AND ownership re-evaluation.
-			userDB.activeSeries.UpdateMetrics(purgeTime, i.lifecycler.GetTokens(), i.lifecycler.GetRingTokensForZone(i.lifecycler.Zone))
+			ringTokens, ownedPositions, ringFingerprint := i.lifecycler.GetOwnedTokenPositions()
+			userDB.activeSeries.UpdateMetrics(purgeTime, ringTokens, ownedPositions, ringFingerprint)
 			owned := userDB.activeSeries.Owned()
 			i.metrics.ownedSeriesPerUser.WithLabelValues(userID).Set(float64(owned))
 			totalOwnedCount += int64(owned)

@@ -128,7 +128,7 @@ func benchmarkBatching(b *testing.B, client storepb.StoreClient, userID string, 
 	}
 }
 
-func generateBenchmarkBlock(b *testing.B, storageDir, userID string, numSeries, numSamples int) {
+func generateBenchmarkBlock(b testing.TB, storageDir, userID string, numSeries, numSamples int) {
 	userDir := filepath.Join(storageDir, userID)
 	if err := os.MkdirAll(userDir, os.ModePerm); err != nil {
 		b.Fatal(err)

@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
+	"github.com/prometheus-community/parquet-common/schema"
 	"github.com/prometheus/client_golang/prometheus"
 	promutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -29,7 +31,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -38,6 +42,8 @@ import (
 	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
+	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -1839,21 +1845,29 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			expectedProjectionInclude: false,
 			expectedProjectionLabels:  nil,
 		},
-		"projection not modified: honor disabled, projection included, querying ingesters": {
+		"projection reset: honor disabled, projection included, querying ingesters": {
 			honorProjectionHints:      false,
 			inputProjectionInclude:    true,
 			inputProjectionLabels:     []string{"__name__", "job"},
 			queryIngesters:            true,
-			expectedProjectionInclude: true,
-			expectedProjectionLabels:  []string{"__name__", "job"},
+			expectedProjectionInclude: false,
+			expectedProjectionLabels:  nil,
 		},
-		"projection not modified: honor disabled, projection not included": {
+		"projection reset: honor disabled, projection included, not querying ingesters": {
+			honorProjectionHints:      false,
+			inputProjectionInclude:    true,
+			inputProjectionLabels:     []string{"__name__", "job"},
+			queryIngesters:            false,
+			expectedProjectionInclude: false,
+			expectedProjectionLabels:  nil,
+		},
+		"projection reset: honor disabled, projection not included": {
 			honorProjectionHints:      false,
 			inputProjectionInclude:    false,
 			inputProjectionLabels:     []string{"__name__", "job"},
 			queryIngesters:            false,
 			expectedProjectionInclude: false,
-			expectedProjectionLabels:  []string{"__name__", "job"},
+			expectedProjectionLabels:  nil,
 		},
 	}
 
@@ -1928,6 +1942,108 @@ func TestQuerier_ProjectionHints(t *testing.T) {
 			require.NotNil(t, receivedHints, "should have received hints")
 			assert.Equal(t, testData.expectedProjectionInclude, receivedHints.ProjectionInclude, "ProjectionInclude mismatch")
 			assert.Equal(t, testData.expectedProjectionLabels, receivedHints.ProjectionLabels, "ProjectionLabels mismatch")
+		})
+	}
+}
+
+// projectingStoreGatewayClientMock mimics a parquet store gateway running with
+// -blocks-storage.bucket-store.honor-projection-hints=true.
+type projectingStoreGatewayClientMock struct {
+	*storeGatewayClientMock
+	series  labels.Labels
+	samples []cortexpb.Sample
+	blockID ulid.ULID
+}
+
+func (m *projectingStoreGatewayClientMock) Series(ctx context.Context, in *storepb.SeriesRequest, opts ...grpc.CallOption) (storegatewaypb.StoreGateway_SeriesClient, error) {
+	lbls := m.series
+	if in.QueryHints != nil && in.QueryHints.ProjectionInclude {
+		b := labels.NewBuilder(labels.EmptyLabels())
+		for _, name := range in.QueryHints.ProjectionLabels {
+			b.Set(name, m.series.Get(name))
+		}
+		b.Set(schema.SeriesHashColumn, strconv.FormatUint(m.series.Hash(), 10))
+		lbls = b.Labels()
+	}
+	m.mockedSeriesResponses = []*storepb.SeriesResponse{
+		mockSeriesResponse(lbls, m.samples, nil, nil),
+		mockHintsResponse(m.blockID),
+	}
+	return m.storeGatewayClientMock.Series(ctx, in, opts...)
+}
+
+// Ensures a projecting store gateway never returns projected series for a query that
+// also hits ingesters, regardless of the querier's honor-projection-hints setting.
+func TestQuerier_ProjectionHints_IngestersAndProjectingStoreGateway(t *testing.T) {
+	t.Parallel()
+	const userID = "user-1"
+	end := time.Now()
+	start := end.Add(-time.Hour)
+	minT, maxT := util.TimeToMillis(start), util.TimeToMillis(end)
+	block1 := ulid.MustNew(1, nil)
+
+	seriesLabels := labels.FromStrings(labels.MetricName, "test", "job", "a", "instance", "i1")
+	samples := []cortexpb.Sample{{TimestampMs: minT, Value: 1}, {TimestampMs: minT + 1000, Value: 2}}
+
+	for _, honorProjectionHints := range []bool{true, false} {
+		t.Run(fmt.Sprintf("querier honor-projection-hints=%t", honorProjectionHints), func(t *testing.T) {
+			t.Parallel()
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			cfg.ActiveQueryTrackerDir = ""
+			cfg.HonorProjectionHints = honorProjectionHints
+
+			// Ingesters hold the same samples, returned with the full label set.
+			matrix := model.Matrix{{Metric: util.LabelsToMetric(seriesLabels)}}
+			for _, s := range samples {
+				matrix[0].Values = append(matrix[0].Values, model.SamplePair{Timestamp: model.Time(s.TimestampMs), Value: model.SampleValue(s.Value)})
+			}
+			ingesterQueryable := UseAlwaysQueryable(storage.QueryableFunc(func(_, _ int64) (storage.Querier, error) {
+				return mockQuerier{matrix: matrix}, nil
+			}))
+
+			sgClient := &projectingStoreGatewayClientMock{
+				storeGatewayClientMock: &storeGatewayClientMock{remoteAddr: "1.1.1.1"},
+				series:                 seriesLabels,
+				samples:                samples,
+				blockID:                block1,
+			}
+			storeQueryable := UseAlwaysQueryable(storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+				finder := &blocksFinderMock{}
+				finder.On("GetBlocks", mock.Anything, userID, mock.Anything, mock.Anything, mock.Anything).Return(bucketindex.Blocks{&bucketindex.Block{ID: block1}}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+				return &blocksStoreQuerier{
+					minT:        mint,
+					maxT:        maxt,
+					finder:      finder,
+					stores:      &blocksStoreSetMock{mockedResponses: []any{map[BlocksStoreClient][]ulid.ULID{sgClient: {block1}}}},
+					consistency: NewBlocksConsistencyChecker(0, 0, log.NewNopLogger(), nil),
+					logger:      log.NewNopLogger(),
+					metrics:     newBlocksStoreQueryableMetrics(prometheus.NewPedanticRegistry()),
+					limits:      &blocksStoreLimitsMock{},
+
+					storeGatewayConsistencyCheckMaxAttempts: 1,
+				}, nil
+			}))
+
+			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			queryable := NewQueryable(ingesterQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides, nil, log.NewNopLogger(), nil)
+			q, err := queryable.Querier(minT, maxT)
+			require.NoError(t, err)
+
+			// Hints as produced by the Thanos engine projection optimizer for `sum by (job) (test)`.
+			hints := &storage.SelectHints{Start: minT, End: maxT, ProjectionInclude: true, ProjectionLabels: []string{"job"}}
+			ctx := limiter.AddQueryLimiterToContext(user.InjectOrgID(context.Background(), userID), limiter.NewQueryLimiter(0, 0, 0, 0))
+			set := q.Select(ctx, true, hints, labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test"))
+
+			var got []labels.Labels
+			for set.Next() {
+				got = append(got, set.At().Labels())
+			}
+			require.NoError(t, set.Err())
+
+			// The same series is held by both ingesters and the store gateway, so it must be
+			// merged into one; otherwise overlapping samples are counted twice by aggregations.
+			assert.Equal(t, []labels.Labels{seriesLabels}, got)
 		})
 	}
 }

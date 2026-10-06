@@ -1539,6 +1539,12 @@
               "x-cli-flag": "blocks-storage.bucket-store.consistency-delay",
               "x-format": "duration"
             },
+            "honor_projection_hints": {
+              "default": false,
+              "description": "[Experimental] If enabled, Store Gateway will honor projection hints and only materialize requested labels. It only takes effect when `-blocks-storage.bucket-store.bucket-store-type` is parquet and `-querier.honor-projection-hints` is enabled.",
+              "type": "boolean",
+              "x-cli-flag": "blocks-storage.bucket-store.honor-projection-hints"
+            },
             "ignore_blocks_before": {
               "default": "0s",
               "description": "The blocks created before `now() - ignore_blocks_before` will not be synced. 0 to disable.",

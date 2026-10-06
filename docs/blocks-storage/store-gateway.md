@@ -2221,8 +2221,10 @@ blocks_storage:
 
     # [Experimental] If enabled, Store Gateway will honor projection hints and
     # only materialize requested labels. It only takes effect when
-    # `-blocks-storage.bucket-store.bucket-store-type` is parquet and
-    # `-querier.honor-projection-hints` is enabled.
+    # `-blocks-storage.bucket-store.bucket-store-type` is parquet,
+    # `-querier.honor-projection-hints` is enabled and the querier uses the
+    # Thanos engine (`-querier.thanos-engine`) with the `projection` optimizer
+    # (`-querier.optimizers`).
     # CLI flag: -blocks-storage.bucket-store.honor-projection-hints
     [honor_projection_hints: <boolean> | default = false]
 

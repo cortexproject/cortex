@@ -10,7 +10,6 @@ import (
 	uatomic "go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring"
-	"github.com/cortexproject/cortex/pkg/util"
 )
 
 const (
@@ -22,8 +21,12 @@ const (
 // a consistent snapshot without lock contention, while the writer (periodic
 // updateActiveSeries loop) can swap in a new state atomically.
 type ringState struct {
-	instanceTokens map[uint32]struct{} // tokens owned by this ingester
-	ringTokens     []uint32           // all tokens in this ingester's zone (sorted)
+	// tokens is the ring's full sorted token list.
+	tokens []uint32
+	// ownedPositions is parallel to tokens and marks the positions whose replica
+	// set includes this ingester. Both come from Lifecycler.GetOwnedTokenPositions
+	// and are immutable.
+	ownedPositions []bool
 }
 
 // emptyRingState is the zero-value ring state used before any ring data is loaded.
@@ -35,9 +38,11 @@ type ActiveSeries struct {
 	// the writer (updateTokens) stores a new pointer on ring changes.
 	ring atomic.Pointer[ringState]
 
-	// currHash detects ring changes. Only accessed by the updateTokens caller
+	// currFingerprint detects ring changes. It is the fingerprint reported by the
+	// lifecycler alongside the ownership bitmap, which changes if and only if
+	// ownership may have changed. Only accessed by the updateTokens caller
 	// (periodic updateActiveSeries goroutine), so no synchronization needed.
-	currHash uint32
+	currFingerprint uint64
 
 	stripes [numActiveSeriesStripes]activeSeriesStripe
 }
@@ -84,54 +89,42 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint3
 
 	// Load ring state atomically — readers on the push path always see a consistent snapshot.
 	state := c.ring.Load()
-	c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, key, nativeHistogram, labelsCopy, state.ringTokens, state.instanceTokens)
+	c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions)
 }
 
-// updateTokens updates the cached ring state. Returns true if the ring changed.
+// updateTokens updates the cached ring state. Returns true if ownership changed.
 // Only called from the updateActiveSeries goroutine (single writer).
-func (c *ActiveSeries) updateTokens(instanceTokens []uint32, ringTokens []uint32) bool {
-	newHash := hashTokenList(ringTokens)
-	if len(ringTokens) > 0 && newHash != c.currHash {
-		// Build a new ringState and store it atomically.
-		// Readers on the push path will pick up the new state on their next Load().
-		newInstanceTokens := make(map[uint32]struct{}, len(instanceTokens))
-		for _, token := range instanceTokens {
-			newInstanceTokens[token] = struct{}{}
-		}
-
-		newRingTokens := make([]uint32, len(ringTokens))
-		copy(newRingTokens, ringTokens)
-
-		c.ring.Store(&ringState{
-			instanceTokens: newInstanceTokens,
-			ringTokens:     newRingTokens,
-		})
-		c.currHash = newHash
-		return true
+//
+// The lifecycler's fingerprint is used rather than a hash of the token list,
+// because an instance changing state alters the replica set, and therefore
+// ownership, without changing any token.
+func (c *ActiveSeries) updateTokens(tokens []uint32, ownedPositions []bool, fingerprint uint64) bool {
+	if len(tokens) == 0 || fingerprint == c.currFingerprint {
+		return false
 	}
-	return false
-}
 
-// hashTokenList computes a fingerprint of a token list to detect changes.
-func hashTokenList(tokens []uint32) uint32 {
-	h := util.HashNew32()
-	for _, token := range tokens {
-		h = util.HashAddUint32(h, token)
-	}
-	return h
+	// The slices come from the lifecycler and are never mutated in place, so they
+	// can be published to readers directly rather than copied.
+	c.ring.Store(&ringState{
+		tokens:         tokens,
+		ownedPositions: ownedPositions,
+	})
+	c.currFingerprint = fingerprint
+
+	return true
 }
 
 // UpdateMetrics updates the owned series count by re-checking ownership if the ring
 // changed, and purges expired entries. Called from updateActiveSeries when OwnedMetrics is enabled.
-func (c *ActiveSeries) UpdateMetrics(keepUntil time.Time, instanceTokens []uint32, ringTokens []uint32) {
-	tokensChanged := c.updateTokens(instanceTokens, ringTokens)
+func (c *ActiveSeries) UpdateMetrics(keepUntil time.Time, tokens []uint32, ownedPositions []bool, fingerprint uint64) {
+	tokensChanged := c.updateTokens(tokens, ownedPositions, fingerprint)
 
 	// Load the ring state from the atomic pointer for consistency.
 	// Even though we're on the same goroutine that just stored it, reading from
 	// the pointer ensures all code paths use the same access pattern.
 	state := c.ring.Load()
 	for s := range numActiveSeriesStripes {
-		c.stripes[s].updateMetrics(keepUntil, tokensChanged, state.instanceTokens, state.ringTokens)
+		c.stripes[s].updateMetrics(keepUntil, tokensChanged, state.tokens, state.ownedPositions)
 	}
 }
 
@@ -176,13 +169,13 @@ func (c *ActiveSeries) ActiveNativeHistogram() int {
 	return total
 }
 
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, ringTokens []uint32, instanceTokens map[uint32]struct{}) {
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) {
 	nowNanos := now.UnixNano()
 
 	e := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
-		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, key, series, nowNanos, nativeHistogram, labelsCopy, ringTokens, instanceTokens)
+		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, key, series, nowNanos, nativeHistogram, labelsCopy, tokens, ownedPositions)
 		if e == nil {
 			return // Series not owned by this instance, skip tracking
 		}
@@ -219,7 +212,7 @@ func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series label
 	return nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, ringTokens []uint32, instanceTokens map[uint32]struct{}) (*uatomic.Int64, bool) {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) (*uatomic.Int64, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -232,7 +225,7 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key 
 
 	// If ring tokens are loaded, check ownership before creating.
 	// This prevents tracking series we don't own (e.g., stale distributor routes).
-	if len(ringTokens) > 0 && !isOwnedByInstance(key, ringTokens, instanceTokens) {
+	if !isOwned(key, tokens, ownedPositions) {
 		return nil, false
 	}
 
@@ -255,7 +248,7 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key 
 
 // updateMetrics re-evaluates ownership for all entries when the ring changes,
 // and purges expired entries. This combines ownership tracking with the purge cycle.
-func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bool, instanceTokens map[uint32]struct{}, ringTokens []uint32) {
+func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bool, tokens []uint32, ownedPositions []bool) {
 	keepUntilNanos := keepUntil.UnixNano()
 	if oldest := s.oldestEntryTs.Load(); oldest > 0 && keepUntilNanos <= oldest && !tokensChanged {
 		// Nothing to do — no expired entries and ring hasn't changed.
@@ -276,7 +269,7 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bo
 			ts := entries[0].nanos.Load()
 
 			// If ring changed and we lost ownership, remove entry.
-			if tokensChanged && len(ringTokens) > 0 && !isOwnedByInstance(entries[0].key, ringTokens, instanceTokens) {
+			if tokensChanged && !isOwned(entries[0].key, tokens, ownedPositions) {
 				delete(s.refs, fp)
 				continue
 			}
@@ -303,7 +296,7 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bo
 			ts := entries[i].nanos.Load()
 
 			// If ring changed and we lost ownership, remove.
-			if tokensChanged && len(ringTokens) > 0 && !isOwnedByInstance(entries[i].key, ringTokens, instanceTokens) {
+			if tokensChanged && !isOwned(entries[i].key, tokens, ownedPositions) {
 				entries = append(entries[:i], entries[i+1:]...)
 				continue
 			}
@@ -440,13 +433,24 @@ func (s *activeSeriesStripe) getActiveNativeHistogram() int {
 	return s.activeNativeHistogram
 }
 
-// isOwnedByInstance checks if the given series token is owned by this instance
-// within its zone. Uses binary search on the sorted zone tokens, then checks
-// if the responsible token belongs to this instance.
-func isOwnedByInstance(key uint32, ringTokens []uint32, instanceTokens map[uint32]struct{}) bool {
-	i := ring.SearchToken(ringTokens, key)
-	_, found := instanceTokens[ringTokens[i]]
-	return found
+// isOwned reports whether the series with the given ring token is owned by this
+// instance, meaning this instance is one of the replicas the ring selects for it.
+//
+// The answer is a binary search over the ring's token list followed by an array
+// index into a bitmap precomputed once per ring change, so this is cheap enough
+// to call on the push path.
+//
+// When ownership is unknown, because the ring has not been read yet or the bitmap
+// does not match the token list, this returns true. Ownership is used to decide
+// what counts against a limit, so the safe direction is to assume the series is
+// ours: over-counting delays an unrelated scale-up, while under-counting would
+// let a tenant exceed its limit.
+func isOwned(key uint32, tokens []uint32, ownedPositions []bool) bool {
+	if len(tokens) == 0 || len(ownedPositions) != len(tokens) {
+		return true
+	}
+
+	return ownedPositions[ring.SearchToken(tokens, key)]
 }
 
 // matchesAll returns true if the labels satisfy all given matchers.

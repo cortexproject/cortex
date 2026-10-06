@@ -1,5 +1,57 @@
 package ring
 
+import (
+	"encoding/binary"
+	"hash/fnv"
+	"sort"
+)
+
+// ownershipFingerprint returns a value which changes if and only if something the
+// replica-set walk depends on has changed: the set of instances, their zones,
+// their states and their tokens.
+//
+// It deliberately ignores Timestamp and RegisteredTimestamp. Heartbeats bump
+// Timestamp constantly, and recomputing ownership on every heartbeat would cost
+// far more than making the per-series check cheap saves.
+//
+// Desc.RingCompare cannot be used for this: it reports a timestamp-only change
+// and a state change as the same EqualButStatesAndTimestamps result, and
+// ownership does depend on state, because a non-ACTIVE instance extends the
+// replica set.
+func ownershipFingerprint(d *Desc) uint64 {
+	ids := make([]string, 0, len(d.Ingesters))
+	for id := range d.Ingesters {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	var (
+		h   = fnv.New64a()
+		buf [8]byte
+		sep = []byte{0}
+	)
+
+	for _, id := range ids {
+		instance := d.Ingesters[id]
+
+		_, _ = h.Write([]byte(id))
+		_, _ = h.Write(sep)
+		_, _ = h.Write([]byte(instance.Zone))
+		_, _ = h.Write(sep)
+
+		binary.LittleEndian.PutUint64(buf[:], uint64(instance.State))
+		_, _ = h.Write(buf[:])
+
+		for _, token := range instance.Tokens {
+			binary.LittleEndian.PutUint32(buf[:4], token)
+			_, _ = h.Write(buf[:4])
+		}
+		_, _ = h.Write(sep)
+	}
+
+	return h.Sum64()
+}
+
 // OwnedTokenPositions returns the ring's full sorted token list together with a
 // parallel bitmap marking which token positions are owned by instanceID.
 //

@@ -110,7 +110,7 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 	numSamples := 100
 
 	lbls := make([]labels.Labels, 0, numSeries)
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(
 			labels.MetricName, "http_requests_total",
 			"job", "api-server",
@@ -145,7 +145,7 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 	cHonorOff, err := e2ecortex.NewClient("", querierHonorOff.HTTPEndpoint(), "", "", "user-1")
 	require.NoError(t, err)
 
-	cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 		labelSets, err := c.Series([]string{`{job="api-server"}`}, start, end)
 		if err != nil {
 			t.Logf("Series query failed: %v", err)

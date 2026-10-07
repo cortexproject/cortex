@@ -1,15 +1,184 @@
 package ingester
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/fnv"
+	"math"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func copyFn(l labels.Labels) labels.Labels { return l }
+
+func fromLabelToLabels(ls []labels.Label) labels.Labels {
+	return *(*labels.Labels)(unsafe.Pointer(&ls))
+}
+
+// noRingToken is the ring token passed by tests which are not exercising
+// ownership. With no ring loaded, ownership is unknown and every series counts as
+// owned, so these tests observe exactly the behaviour that predates owned-series
+// tracking.
+const noRingToken = uint32(0)
+
+// --- Active series behaviour. These tests predate owned-series tracking and are
+// --- kept unchanged so that they continue to pin the active count's behaviour.
+
+func TestActiveSeries_UpdateSeries(t *testing.T) {
+	ls1 := []labels.Label{{Name: "a", Value: "1"}}
+	ls2 := []labels.Label{{Name: "a", Value: "2"}}
+
+	c := NewActiveSeries()
+	assert.Equal(t, 0, c.Active())
+	assert.Equal(t, 0, c.ActiveNativeHistogram())
+	labels1Hash := fromLabelToLabels(ls1).Hash()
+	labels2Hash := fromLabelToLabels(ls2).Hash()
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, noRingToken, time.Now(), true, copyFn)
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
+
+	c.UpdateSeries(fromLabelToLabels(ls1), labels1Hash, noRingToken, time.Now(), true, copyFn)
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
+
+	c.UpdateSeries(fromLabelToLabels(ls2), labels2Hash, noRingToken, time.Now(), true, copyFn)
+	assert.Equal(t, 2, c.Active())
+	assert.Equal(t, 2, c.ActiveNativeHistogram())
+}
+
+func TestActiveSeries_Purge(t *testing.T) {
+	series := [][]labels.Label{
+		{{Name: "a", Value: "1"}},
+		{{Name: "a", Value: "2"}},
+		// The two following series have the same Fingerprint
+		{{Name: "_", Value: "ypfajYg2lsv"}, {Name: "__name__", Value: "logs"}},
+		{{Name: "_", Value: "KiqbryhzUpn"}, {Name: "__name__", Value: "logs"}},
+	}
+
+	// Run the same test for increasing TTL values
+	for ttl := range series {
+		c := NewActiveSeries()
+
+		for i := range series {
+			c.UpdateSeries(fromLabelToLabels(series[i]), fromLabelToLabels(series[i]).Hash(), noRingToken, time.Unix(int64(i), 0), true, copyFn)
+		}
+
+		c.Purge(time.Unix(int64(ttl+1), 0))
+		// call purge twice, just to hit "quick" path. It doesn't really do anything.
+		c.Purge(time.Unix(int64(ttl+1), 0))
+
+		exp := len(series) - (ttl + 1)
+		assert.Equal(t, exp, c.Active())
+		assert.Equal(t, exp, c.ActiveNativeHistogram())
+	}
+}
+
+func TestActiveSeries_PurgeOpt(t *testing.T) {
+	metric := labels.NewBuilder(labels.FromStrings("__name__", "logs"))
+	ls1 := metric.Set("_", "ypfajYg2lsv").Labels()
+	ls2 := metric.Set("_", "KiqbryhzUpn").Labels()
+	c := NewActiveSeries()
+
+	now := time.Now()
+	c.UpdateSeries(ls1, ls1.Hash(), noRingToken, now.Add(-2*time.Minute), true, copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now, true, copyFn)
+	c.Purge(now)
+
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
+
+	c.UpdateSeries(ls1, ls1.Hash(), noRingToken, now.Add(-1*time.Minute), true, copyFn)
+	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now, true, copyFn)
+	c.Purge(now)
+
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
+
+	// This will *not* update the series, since there is already newer timestamp.
+	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now.Add(-1*time.Minute), true, copyFn)
+	c.Purge(now)
+
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.ActiveNativeHistogram())
+}
+
+// --- Ownership helpers.
+
+// ownedPositionsFor builds an ownership bitmap over ringTokens from the subset of
+// ring tokens this instance is a replica for. It lets these tests express
+// ownership in terms of tokens, which reads more naturally, while the production
+// code consumes the bitmap that ring.OwnedTokenPositions produces.
+func ownedPositionsFor(ringTokens []uint32, ownedTokens ...uint32) []bool {
+	ownedSet := make(map[uint32]struct{}, len(ownedTokens))
+	for _, token := range ownedTokens {
+		ownedSet[token] = struct{}{}
+	}
+
+	positions := make([]bool, len(ringTokens))
+	for position, token := range ringTokens {
+		_, positions[position] = ownedSet[token]
+	}
+
+	return positions
+}
+
+// testRingFingerprint derives a fingerprint from ring state the way the lifecycler
+// does, so that tests passing identical state are seen as unchanged and tests
+// passing different state are seen as a change.
+func testRingFingerprint(ringTokens []uint32, ownedPositions []bool) uint64 {
+	h := fnv.New64a()
+
+	var buf [4]byte
+	for _, token := range ringTokens {
+		binary.LittleEndian.PutUint32(buf[:], token)
+		_, _ = h.Write(buf[:])
+	}
+	for _, owned := range ownedPositions {
+		if owned {
+			_, _ = h.Write([]byte{1})
+		} else {
+			_, _ = h.Write([]byte{0})
+		}
+	}
+
+	return h.Sum64()
+}
+
+// setRingState installs ring ownership state on c, reporting whether ownership
+// changed.
+func setRingState(c *ActiveSeries, ringTokens []uint32, ownedTokens ...uint32) bool {
+	positions := ownedPositionsFor(ringTokens, ownedTokens...)
+	return c.updateTokens(ringTokens, positions, testRingFingerprint(ringTokens, positions))
+}
+
+// updateMetricsWithRing calls UpdateMetrics with ownership expressed as the subset
+// of ring tokens this instance is a replica for.
+func updateMetricsWithRing(c *ActiveSeries, keepUntil time.Time, ringTokens []uint32, ownedTokens ...uint32) {
+	positions := ownedPositionsFor(ringTokens, ownedTokens...)
+	c.UpdateMetrics(keepUntil, ringTokens, positions, testRingFingerprint(ringTokens, positions))
+}
+
+// sumStripes totals the per-stripe counters, which are the source the cached
+// totals are derived from.
+func sumStripes(c *ActiveSeries) (active, owned, activeNativeHistogram int) {
+	for s := range numActiveSeriesStripes {
+		stripe := &c.stripes[s]
+		stripe.mu.RLock()
+		active += stripe.active
+		owned += stripe.owned
+		activeNativeHistogram += stripe.activeNativeHistogram
+		stripe.mu.RUnlock()
+	}
+	return active, owned, activeNativeHistogram
+}
 
 func TestIsOwned(t *testing.T) {
 	// Ring with 4 tokens across 2 ingesters. With a replication factor of 1 each
@@ -58,279 +227,214 @@ func TestIsOwned_UnknownOwnership(t *testing.T) {
 	assert.True(t, isOwned(50, []uint32{100, 200}, []bool{true}), "mismatched bitmap must not under-count")
 }
 
-func TestActiveSeries_OwnedCount_NoRingTokens(t *testing.T) {
-	// When ring tokens are not loaded, Owned() should equal Active()
+// TestActiveSeries_ActiveIsUnaffectedByOwnership is the regression test for the
+// property that owned-series tracking must not disturb the pre-existing
+// cortex_ingester_active_series gauge. The same series are pushed into two
+// trackers, one with a ring loaded where half the tokens belong elsewhere and one
+// with no ring at all, and the active counts must agree exactly.
+func TestActiveSeries_ActiveIsUnaffectedByOwnership(t *testing.T) {
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+
+	withRing := NewActiveSeries()
+	setRingState(withRing, ringTokens, 100) // owns token 100 only
+
+	withoutRing := NewActiveSeries()
+
+	// Keys alternate between the owned and the unowned token range.
+	for i := range 20 {
+		lbls := labels.FromStrings("__name__", "metric", "i", strconv.Itoa(i))
+		key := uint32(50)
+		if i%2 == 1 {
+			key = 150
+		}
+
+		withRing.UpdateSeries(lbls, lbls.Hash(), key, now, i%3 == 0, copyFn)
+		withoutRing.UpdateSeries(lbls, lbls.Hash(), key, now, i%3 == 0, copyFn)
+	}
+
+	assert.Equal(t, withoutRing.Active(), withRing.Active(),
+		"ownership tracking must not change the active series count")
+	assert.Equal(t, withoutRing.ActiveNativeHistogram(), withRing.ActiveNativeHistogram(),
+		"ownership tracking must not change the active native histogram count")
+	assert.Equal(t, 20, withRing.Active())
+
+	// Ownership is the only thing that differs between the two.
+	assert.Equal(t, 10, withRing.Owned(), "half the keys fall in a token range owned elsewhere")
+	assert.Equal(t, 20, withoutRing.Owned(), "with no ring, ownership is unknown and everything counts")
+}
+
+func TestActiveSeries_OwnedCount_NoRingLoaded(t *testing.T) {
+	// Before the ring is read, ownership is unknown, so Owned() equals Active().
 	c := NewActiveSeries()
 	now := time.Now()
 
 	lbls1 := labels.FromStrings("__name__", "metric_1", "job", "test")
 	lbls2 := labels.FromStrings("__name__", "metric_2", "job", "test")
 
-	c.UpdateSeries(lbls1, lbls1.Hash(), 0, now, false, copyFn)
-	c.UpdateSeries(lbls2, lbls2.Hash(), 0, now, false, copyFn)
+	c.UpdateSeries(lbls1, lbls1.Hash(), noRingToken, now, false, copyFn)
+	c.UpdateSeries(lbls2, lbls2.Hash(), noRingToken, now, false, copyFn)
 
 	assert.Equal(t, 2, c.Active())
 	assert.Equal(t, 2, c.Owned())
 }
 
-func TestActiveSeries_OwnedCount_WithRingTokens(t *testing.T) {
-	// With ring tokens loaded, only owned series are tracked
+func TestActiveSeries_OwnedCount_WithRingLoaded(t *testing.T) {
+	// With the ring loaded, an unowned series is still tracked as active but does
+	// not count towards owned.
 	c := NewActiveSeries()
 	now := time.Now()
 
-	// Ring: tokens [100, 200], instance owns token 100
 	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
+	setRingState(c, ringTokens, 100) // owns token 100
 
-	// Update ring state on ActiveSeries
-	setRingState(c, ringTokens, instanceTokens...)
+	// key=50 → SearchToken finds 100 → owned
+	lblsOwned := labels.FromStrings("__name__", "metric_owned", "job", "test")
+	c.UpdateSeries(lblsOwned, lblsOwned.Hash(), 50, now, false, copyFn)
 
-	// Series with key=50 → SearchToken finds 100 → owned (100 is ours)
-	lbls1 := labels.FromStrings("__name__", "metric_owned", "job", "test")
-	c.UpdateSeries(lbls1, lbls1.Hash(), 50, now, false, copyFn)
+	// key=150 → SearchToken finds 200 → not owned
+	lblsUnowned := labels.FromStrings("__name__", "metric_not_owned", "job", "test")
+	c.UpdateSeries(lblsUnowned, lblsUnowned.Hash(), 150, now, false, copyFn)
 
-	// Series with key=150 → SearchToken finds 200 → NOT owned (200 is not ours)
-	lbls2 := labels.FromStrings("__name__", "metric_not_owned", "job", "test")
-	c.UpdateSeries(lbls2, lbls2.Hash(), 150, now, false, copyFn)
+	assert.Equal(t, 2, c.Active(), "both series are active regardless of ownership")
+	assert.Equal(t, 1, c.Owned(), "only the owned series counts towards owned")
+}
 
-	// Only the owned series should be tracked
+// TestActiveSeries_OwnedExceedsActiveForIdleSeries covers the behaviour the whole
+// feature rests on. Entries are retained until Purge is called with the head's
+// minimum time, so a series which has gone idle still counts towards owned while
+// it is still held in the head. owned therefore tracks what is in memory, which is
+// what the series limit is protecting, rather than what is in the idle window.
+func TestActiveSeries_OwnedExceedsActiveForIdleSeries(t *testing.T) {
+	c := NewActiveSeries()
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+
+	ringTokens := []uint32{100}
+	setRingState(c, ringTokens, 100) // owns everything
+
+	// One recent series and three which have gone idle.
+	recent := labels.FromStrings("__name__", "recent")
+	c.UpdateSeries(recent, recent.Hash(), 50, now, false, copyFn)
+	for i := range 3 {
+		lbls := labels.FromStrings("__name__", "idle", "i", strconv.Itoa(i))
+		c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(-time.Hour), false, copyFn)
+	}
+
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+
+	assert.Equal(t, 1, c.Active(), "only the recent series is inside the idle window")
+	assert.Equal(t, 4, c.Owned(), "all four are still held, so all four count towards owned")
+	assert.Greater(t, c.Owned(), c.Active(), "owned exceeds active for an idle-heavy tenant")
+}
+
+// TestActiveSeries_UpdateMetricsRetainsExpiredEntries pins down that the periodic
+// cycle removes nothing, which is what allows owned to outlive the idle window.
+func TestActiveSeries_UpdateMetricsRetainsExpiredEntries(t *testing.T) {
+	c := NewActiveSeries()
+	now := time.Now()
+	idleCutoff := now.Add(-30 * time.Minute)
+
+	ringTokens := []uint32{100}
+	setRingState(c, ringTokens, 100)
+
+	old := labels.FromStrings("__name__", "old_metric")
+	c.UpdateSeries(old, old.Hash(), 50, now.Add(-time.Hour), false, copyFn)
+	recent := labels.FromStrings("__name__", "recent_metric")
+	c.UpdateSeries(recent, recent.Hash(), 50, now, false, copyFn)
+
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 2, c.Owned(), "the expired entry is retained and still owned")
+
+	// Repeated cycles must be stable rather than progressively dropping entries.
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 2, c.Owned())
+
+	// Only a purge releases it.
+	c.Purge(idleCutoff)
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
 }
 
-func TestActiveSeries_UpdateMetrics_RingChange(t *testing.T) {
-	// Simulate: series is owned, then ring changes and it's no longer owned
+// TestActiveSeries_RingChangeMovesOwnedNotActive checks that losing ownership of a
+// series changes only the owned count. The series is still held in this ingester's
+// head, so it must remain active and must not be deleted.
+func TestActiveSeries_RingChangeMovesOwnedNotActive(t *testing.T) {
 	c := NewActiveSeries()
 	now := time.Now()
-	keepUntil := now.Add(-10 * time.Minute) // Don't purge anything (far in the past)
+	idleCutoff := now.Add(-10 * time.Minute)
 
-	// Initially: ring has tokens [100, 200], instance owns token 100
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
+	setRingState(c, []uint32{100, 200}, 100)
 
-	// Add a series with key=50 → owned (token 100 is ours)
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
 	c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
 
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
 
-	// Now ring changes: we lose token 100, only own token 200
-	newInstanceTokens := []uint32{200}
-	// Need different ringTokens to trigger change detection (hash must differ)
-	newRingTokens := []uint32{100, 200, 300}
+	// The ring changes and token 100's range now belongs elsewhere.
+	updateMetricsWithRing(c, idleCutoff, []uint32{100, 200, 300}, 200)
 
-	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
+	assert.Equal(t, 1, c.Active(), "the series is still held here, so it is still active")
+	assert.Equal(t, 0, c.Owned(), "but it is no longer owned")
 
-	// Series with key=50 → SearchToken([100,200,300], 50) finds 100 → is 100 in {200}? NO
-	// Series should be removed
+	// And ownership can come back without the series having to be re-pushed.
+	updateMetricsWithRing(c, idleCutoff, []uint32{100, 200, 300}, 100)
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.Owned())
+}
+
+// TestActiveSeries_CachedTotalsMatchStripes guards the cached totals that
+// PreCreation reads. They are incremented as series are created and recomputed by
+// the periodic cycle, so a mismatch would mean limits are enforced against a
+// number that has drifted from reality.
+func TestActiveSeries_CachedTotalsMatchStripes(t *testing.T) {
+	c := NewActiveSeries()
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+	setRingState(c, ringTokens, 100)
+
+	for i := range 50 {
+		lbls := labels.FromStrings("__name__", "metric", "i", strconv.Itoa(i))
+		key := uint32(50)
+		if i%2 == 1 {
+			key = 150
+		}
+		c.UpdateSeries(lbls, lbls.Hash(), key, now, i%5 == 0, copyFn)
+	}
+
+	assertTotalsMatchStripes := func(stage string) {
+		t.Helper()
+		active, owned, activeNativeHistogram := sumStripes(c)
+		assert.Equal(t, active, c.Active(), "active total drifted from stripes after %s", stage)
+		assert.Equal(t, owned, c.Owned(), "owned total drifted from stripes after %s", stage)
+		assert.Equal(t, activeNativeHistogram, c.ActiveNativeHistogram(), "native histogram total drifted from stripes after %s", stage)
+	}
+
+	assertTotalsMatchStripes("creation")
+
+	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens, 100)
+	assertTotalsMatchStripes("periodic cycle")
+
+	c.Purge(now.Add(-time.Minute))
+	assertTotalsMatchStripes("purge")
+
+	c.clear()
+	assertTotalsMatchStripes("clear")
 	assert.Equal(t, 0, c.Active())
 	assert.Equal(t, 0, c.Owned())
-}
-
-func TestActiveSeries_UpdateMetrics_PurgeExpired(t *testing.T) {
-	// Series older than keepUntil are purged
-	c := NewActiveSeries()
-	oldTime := time.Now().Add(-1 * time.Hour)
-	recentTime := time.Now()
-	keepUntil := time.Now().Add(-30 * time.Minute)
-
-	// Ring: everything owned
-	ringTokens := []uint32{100}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// Old series (will be purged)
-	lbls1 := labels.FromStrings("__name__", "old_metric", "job", "test")
-	c.UpdateSeries(lbls1, lbls1.Hash(), 50, oldTime, false, copyFn)
-
-	// Recent series (will survive)
-	lbls2 := labels.FromStrings("__name__", "recent_metric", "job", "test")
-	c.UpdateSeries(lbls2, lbls2.Hash(), 60, recentTime, false, copyFn)
-
-	assert.Equal(t, 2, c.Active())
-	assert.Equal(t, 2, c.Owned())
-
-	// Purge with same ring tokens (no change) but keepUntil in between
-	updateMetricsWithRing(c, keepUntil, ringTokens, instanceTokens...)
-
-	// Old series purged, recent survives
-	assert.Equal(t, 1, c.Active())
-	assert.Equal(t, 1, c.Owned())
-}
-
-func TestActiveSeries_UpdateMetrics_NoChangeSkipsRescan(t *testing.T) {
-	// When ring hasn't changed, updateMetrics only purges — doesn't re-scan ownership
-	c := NewActiveSeries()
-	now := time.Now()
-	keepUntil := now.Add(-10 * time.Minute) // Far past, won't purge anything
-
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// Add owned series
-	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
-	c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
-
-	assert.Equal(t, 1, c.Owned())
-
-	// Call UpdateMetrics with SAME ring tokens — should not remove the series
-	updateMetricsWithRing(c, keepUntil, ringTokens, instanceTokens...)
-
-	assert.Equal(t, 1, c.Active())
-	assert.Equal(t, 1, c.Owned())
-}
-
-func TestActiveSeries_Purge_SetsOwnedEqualToActive(t *testing.T) {
-	// When using Purge (flag off), owned should always equal active
-	c := NewActiveSeries()
-	now := time.Now()
-	oldTime := time.Now().Add(-1 * time.Hour)
-	keepUntil := time.Now().Add(-30 * time.Minute)
-
-	// No ring tokens set (feature flag off scenario)
-	lbls1 := labels.FromStrings("__name__", "metric_1", "job", "test")
-	lbls2 := labels.FromStrings("__name__", "metric_2", "job", "test")
-	c.UpdateSeries(lbls1, lbls1.Hash(), 0, oldTime, false, copyFn)
-	c.UpdateSeries(lbls2, lbls2.Hash(), 0, now, false, copyFn)
-
-	assert.Equal(t, 2, c.Active())
-	assert.Equal(t, 2, c.Owned())
-
-	c.Purge(keepUntil)
-
-	// After purge, old series removed, owned == active
-	assert.Equal(t, 1, c.Active())
-	assert.Equal(t, 1, c.Owned())
-}
-
-func TestActiveSeries_KeyZeroSkipsOwnershipCheck(t *testing.T) {
-	// When key=0 is passed (feature flag off), series is always accepted
-	// even if ring tokens are loaded
-	c := NewActiveSeries()
-	now := time.Now()
-
-	// Load ring tokens where instance only owns token 200
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{200}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// Pass key=0 — should be accepted regardless of ownership
-	// (This happens when OwnedSeriesMetricsEnabled is false and tsToken=0 is passed)
-	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
-	c.UpdateSeries(lbls, lbls.Hash(), 0, now, false, copyFn)
-
-	// key=0 with ringTokens loaded: SearchToken([100,200], 0) → finds 100
-	// Is 100 in {200}? NO → would be rejected...
-	// BUT we need to handle key=0 specially. Let me check the implementation.
-	// Actually, key=0 goes through the normal check. The feature flag prevents
-	// computing tsToken in the first place (so key=0 is never passed when
-	// ringTokens are loaded). This test validates current behavior.
-	// When ringTokens are loaded AND key=0 is passed, the ownership check
-	// will evaluate: isOwnedByInstance(0, [100,200], {200})
-	// SearchToken([100,200], 0) → finds 100 (first token > 0)
-	// Is 100 in {200}? NO → rejected
-
-	// This means: if someone passes key=0 with ring loaded, it gets rejected.
-	// In practice this doesn't happen because:
-	// - flag OFF: ringTokens is empty (updateTokens never called)
-	// - flag ON: key is always computed (never 0 for real series)
-	// For OOO samples, key=0 is passed but the entry already exists (findEntry returns non-nil)
-
-	// With current implementation, this series would be rejected
-	assert.Equal(t, 0, c.Active())
-}
-
-func TestUpdateTokens_DetectsChange(t *testing.T) {
-	c := NewActiveSeries()
-
-	// First call should detect change (from empty to something)
-	changed := setRingState(c, []uint32{100, 200}, 100)
-	assert.True(t, changed)
-
-	// Same tokens again — no change
-	changed = setRingState(c, []uint32{100, 200}, 100)
-	assert.False(t, changed)
-
-	// Different ring tokens — change detected
-	changed = setRingState(c, []uint32{100, 200, 300}, 100)
-	assert.True(t, changed)
-}
-
-// copyFn is a helper used by tests to copy labels.
-func copyFn(l labels.Labels) labels.Labels {
-	return l.Copy()
-}
-
-// ownedPositionsFor builds an ownership bitmap over ringTokens from the subset of
-// ring tokens this instance is a replica for. It lets these tests express
-// ownership in terms of tokens, which reads more naturally, while the production
-// code consumes the bitmap that ring.OwnedTokenPositions produces.
-func ownedPositionsFor(ringTokens []uint32, ownedTokens ...uint32) []bool {
-	ownedSet := make(map[uint32]struct{}, len(ownedTokens))
-	for _, token := range ownedTokens {
-		ownedSet[token] = struct{}{}
-	}
-
-	positions := make([]bool, len(ringTokens))
-	for position, token := range ringTokens {
-		_, positions[position] = ownedSet[token]
-	}
-
-	return positions
-}
-
-// testRingFingerprint derives a fingerprint from ring state the way the lifecycler
-// does, so that tests passing identical state are seen as unchanged and tests
-// passing different state are seen as a change.
-//
-// Unlike the token-list hash this replaces, it covers the ownership bitmap too, so
-// a change in ownership which leaves the token list untouched is still detected.
-func testRingFingerprint(ringTokens []uint32, ownedPositions []bool) uint64 {
-	h := fnv.New64a()
-
-	var buf [4]byte
-	for _, token := range ringTokens {
-		binary.LittleEndian.PutUint32(buf[:], token)
-		_, _ = h.Write(buf[:])
-	}
-	for _, owned := range ownedPositions {
-		if owned {
-			_, _ = h.Write([]byte{1})
-		} else {
-			_, _ = h.Write([]byte{0})
-		}
-	}
-
-	return h.Sum64()
-}
-
-// setRingState installs ring ownership state on c, reporting whether ownership
-// changed.
-func setRingState(c *ActiveSeries, ringTokens []uint32, ownedTokens ...uint32) bool {
-	positions := ownedPositionsFor(ringTokens, ownedTokens...)
-	return c.updateTokens(ringTokens, positions, testRingFingerprint(ringTokens, positions))
-}
-
-// updateMetricsWithRing calls UpdateMetrics with ownership expressed as the subset
-// of ring tokens this instance is a replica for.
-func updateMetricsWithRing(c *ActiveSeries, keepUntil time.Time, ringTokens []uint32, ownedTokens ...uint32) {
-	positions := ownedPositionsFor(ringTokens, ownedTokens...)
-	c.UpdateMetrics(keepUntil, ringTokens, positions, testRingFingerprint(ringTokens, positions))
 }
 
 func TestActiveSeries_NativeHistogram_Owned(t *testing.T) {
 	c := NewActiveSeries()
 	now := time.Now()
 
-	// Ring: instance owns everything (single token)
 	ringTokens := []uint32{100}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
+	setRingState(c, ringTokens, 100)
 
-	// Add a native histogram series
 	lbls := labels.FromStrings("__name__", "histogram_metric", "job", "test")
 	c.UpdateSeries(lbls, lbls.Hash(), 50, now, true, copyFn)
 
@@ -339,196 +443,53 @@ func TestActiveSeries_NativeHistogram_Owned(t *testing.T) {
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
 }
 
-func TestActiveSeries_ExistingSeriesNotRejected(t *testing.T) {
-	// If a series already exists in ActiveSeries (was previously tracked),
-	// updating it should succeed even if it would fail the ownership check
-	// for a NEW series. This handles the case where a series was owned,
-	// ring hasn't updated yet, and we get another sample for it.
+func TestActiveSeries_ExistingSeriesKeepsOwnership(t *testing.T) {
+	// A second sample for a series already tracked must not duplicate it, and must
+	// not disturb its ownership.
 	c := NewActiveSeries()
 	now := time.Now()
 	later := now.Add(1 * time.Minute)
 
-	// Ring: instance owns token 100
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
+	setRingState(c, []uint32{100, 200}, 100)
 
-	// Add series with key=50 → owned (token 100)
 	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
 	c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
 	require.Equal(t, 1, c.Active())
+	require.Equal(t, 1, c.Owned())
 
-	// Update same series again (simulating another sample arriving)
-	// This should succeed because findEntryForSeries finds existing entry
 	c.UpdateSeries(lbls, lbls.Hash(), 50, later, false, copyFn)
-	assert.Equal(t, 1, c.Active()) // Still 1, not rejected or duplicated
-}
-
-// --- Tests for two-flag behavior and atomic.Pointer[ringState] ---
-
-func TestActiveSeries_AtomicPointer_ConsistentRead(t *testing.T) {
-	// Verify that UpdateSeries reads a consistent ringState snapshot.
-	// After updateTokens stores new state, subsequent UpdateSeries calls
-	// should see the new tokens immediately.
-	c := NewActiveSeries()
-	now := time.Now()
-
-	// Initially no ring state — all series accepted
-	lbls := labels.FromStrings("__name__", "metric_before_ring", "job", "test")
-	c.UpdateSeries(lbls, lbls.Hash(), 150, now, false, copyFn)
-	assert.Equal(t, 1, c.Active())
-
-	// Load ring: instance owns token 100 only. Key=150 → token 200 → NOT owned.
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// New series with key=150 should be rejected (not owned)
-	lbls2 := labels.FromStrings("__name__", "metric_after_ring", "job", "test")
-	c.UpdateSeries(lbls2, lbls2.Hash(), 150, now, false, copyFn)
-
-	// Only the first series (created before ring loaded) should exist
-	// The second was rejected because ring is now loaded and key=150 → token 200 not ours
-	assert.Equal(t, 1, c.Active())
-}
-
-func TestActiveSeries_AtomicPointer_EmptyRingStateAtInit(t *testing.T) {
-	// Before any ring data is loaded, the atomic pointer holds emptyRingState.
-	// All series should be accepted (no ownership filtering).
-	c := NewActiveSeries()
-	now := time.Now()
-
-	// Add multiple series with various keys — all should be accepted
-	for i := 0; i < 10; i++ {
-		lbls := labels.FromStrings("__name__", "metric", "i", string(rune('0'+i)))
-		c.UpdateSeries(lbls, lbls.Hash(), uint32(i*100+50), now, false, copyFn)
-	}
-
-	assert.Equal(t, 10, c.Active())
-	assert.Equal(t, 10, c.Owned())
-}
-
-func TestActiveSeries_Flag1Only_MetricEmitsButNoEnforcement(t *testing.T) {
-	// Simulates flag 1 ON, flag 2 OFF scenario.
-	// ActiveSeries tracks ownership (rejects unowned at creation),
-	// but the caller (ingester) would still use Head().NumSeries() for limits.
-	// This test verifies ActiveSeries still functions correctly with ring loaded.
-	c := NewActiveSeries()
-	now := time.Now()
-
-	// Ring: instance owns token 100 (not 200)
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// Owned series (key=50 → token 100 → ours)
-	lblsOwned := labels.FromStrings("__name__", "owned_metric", "job", "test")
-	c.UpdateSeries(lblsOwned, lblsOwned.Hash(), 50, now, false, copyFn)
-
-	// Unowned series (key=150 → token 200 → not ours)
-	lblsUnowned := labels.FromStrings("__name__", "unowned_metric", "job", "test")
-	c.UpdateSeries(lblsUnowned, lblsUnowned.Hash(), 150, now, false, copyFn)
-
-	// Only owned series tracked
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
-
-	// The metric cortex_ingester_owned_series would report 1.
-	// With flag 2 OFF, PreCreation ignores this and uses Head().NumSeries().
-	// This test just validates ActiveSeries itself works correctly.
 }
 
-func TestActiveSeries_Flag2WithoutFlag1_FallsBack(t *testing.T) {
-	// Simulates flag 2 ON but flag 1 OFF.
-	// When flag 1 is off, ringTokens are never loaded (updateTokens never called).
-	// ActiveSeries behaves as before — all series accepted, Owned() == Active().
+func TestUpdateTokens_DetectsChange(t *testing.T) {
 	c := NewActiveSeries()
-	now := time.Now()
 
-	// Do NOT call updateTokens (simulating flag 1 off — no ring data loaded)
-	// Add series — all should be accepted regardless of key value
-	lbls1 := labels.FromStrings("__name__", "metric_1", "job", "test")
-	lbls2 := labels.FromStrings("__name__", "metric_2", "job", "test")
-	c.UpdateSeries(lbls1, lbls1.Hash(), 50, now, false, copyFn)
-	c.UpdateSeries(lbls2, lbls2.Hash(), 150, now, false, copyFn)
+	// First call should detect change (from empty to something)
+	assert.True(t, setRingState(c, []uint32{100, 200}, 100))
 
-	assert.Equal(t, 2, c.Active())
-	assert.Equal(t, 2, c.Owned()) // Owned == Active when no ring loaded
-}
+	// Same state again — no change
+	assert.False(t, setRingState(c, []uint32{100, 200}, 100))
 
-func TestActiveSeries_BothFlagsOn_OwnedUsedForLimits(t *testing.T) {
-	// Simulates both flags on: ring loaded, ownership tracked.
-	// Owned() accurately reflects only series this instance owns.
-	c := NewActiveSeries()
-	now := time.Now()
+	// Different ring tokens — change detected
+	assert.True(t, setRingState(c, []uint32{100, 200, 300}, 100))
 
-	// Ring: 3 tokens, instance owns 2 of them (100, 300)
-	ringTokens := []uint32{100, 200, 300}
-	instanceTokens := []uint32{100, 300}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// key=50 → token 100 → OWNED
-	lbls1 := labels.FromStrings("__name__", "m1", "job", "test")
-	c.UpdateSeries(lbls1, lbls1.Hash(), 50, now, false, copyFn)
-
-	// key=150 → token 200 → NOT owned (rejected)
-	lbls2 := labels.FromStrings("__name__", "m2", "job", "test")
-	c.UpdateSeries(lbls2, lbls2.Hash(), 150, now, false, copyFn)
-
-	// key=250 → token 300 → OWNED
-	lbls3 := labels.FromStrings("__name__", "m3", "job", "test")
-	c.UpdateSeries(lbls3, lbls3.Hash(), 250, now, false, copyFn)
-
-	assert.Equal(t, 2, c.Active())
-	assert.Equal(t, 2, c.Owned())
-
-	// PreCreation (with flag 2 on) would use Owned()=2 instead of Head().NumSeries()
-	// which might be much higher due to stale data in TSDB.
-}
-
-func TestActiveSeries_UpdateMetrics_LoadsFromAtomicPointer(t *testing.T) {
-	// Verify that UpdateMetrics reads ring state from the atomic pointer
-	// (same as UpdateSeries), ensuring consistency.
-	c := NewActiveSeries()
-	now := time.Now()
-	keepUntil := now.Add(-10 * time.Minute)
-
-	// Ring: owns token 100
-	ringTokens := []uint32{100, 200}
-	instanceTokens := []uint32{100}
-	setRingState(c, ringTokens, instanceTokens...)
-
-	// Add owned series
-	lbls := labels.FromStrings("__name__", "metric_1", "job", "test")
-	c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
-	assert.Equal(t, 1, c.Owned())
-
-	// Call UpdateMetrics with NEW ring where we lose token 100
-	// The function should store new state via updateTokens, then load it
-	// from the atomic pointer to pass to stripes.
-	newRingTokens := []uint32{100, 200, 300}
-	newInstanceTokens := []uint32{200} // We no longer own 100
-	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
-
-	// Series key=50 → token 100 → not in {200} → removed
-	assert.Equal(t, 0, c.Active())
-	assert.Equal(t, 0, c.Owned())
+	// Same tokens but different ownership — must still be detected, because a peer
+	// changing state alters the replica set without moving any token.
+	assert.True(t, setRingState(c, []uint32{100, 200, 300}, 100, 200))
 }
 
 func TestActiveSeries_UpdateTokens_ImmutableSnapshots(t *testing.T) {
-	// Verify that updateTokens creates a new ringState each time,
-	// not mutating the previous one. This is critical for atomic.Pointer safety.
+	// Verify that updateTokens publishes a new ringState each time rather than
+	// mutating the previous one, which is what makes the atomic.Pointer safe.
 	c := NewActiveSeries()
 
-	// First ring state
 	setRingState(c, []uint32{100, 200}, 100)
 	state1 := c.ring.Load()
 
-	// Second ring state (different)
 	setRingState(c, []uint32{100, 200, 300}, 100, 300)
 	state2 := c.ring.Load()
 
-	// They should be different pointers with different content
 	assert.NotEqual(t, state1, state2)
 	assert.Len(t, state1.tokens, 2)
 	assert.Len(t, state2.tokens, 3)
@@ -536,36 +497,208 @@ func TestActiveSeries_UpdateTokens_ImmutableSnapshots(t *testing.T) {
 	assert.Len(t, state2.ownedPositions, 3)
 }
 
-func TestActiveSeries_InstanceOwnedCount_Recalculation(t *testing.T) {
-	// Simulates what updateActiveSeries does: sums Owned() across tenants.
-	// Verify that after ring change removes series, Owned() reflects it.
-	c := NewActiveSeries()
-	now := time.Now()
-	keepUntil := now.Add(-10 * time.Minute)
+// --- Benchmarks. These predate owned-series tracking and are kept so that the
+// --- push and purge paths stay comparable against earlier numbers.
 
-	// Ring: instance owns tokens 100 and 300
-	ringTokens := []uint32{100, 200, 300}
-	instanceTokens := []uint32{100, 300}
-	setRingState(c, ringTokens, instanceTokens...)
+var activeSeriesTestGoroutines = []int{50, 100, 500}
 
-	// Add 3 owned series
-	for i := 0; i < 3; i++ {
-		lbls := labels.FromStrings("__name__", "metric", "i", string(rune('a'+i)))
-		// Keys 50, 250, 50 → tokens 100, 300, 100 → all owned
-		keys := []uint32{50, 250, 50}
-		c.UpdateSeries(lbls, lbls.Hash(), keys[i], now, false, copyFn)
+func BenchmarkActiveSeriesTest_single_series(b *testing.B) {
+	for _, num := range activeSeriesTestGoroutines {
+		b.Run(fmt.Sprintf("%d", num), func(b *testing.B) {
+			benchmarkActiveSeriesConcurrencySingleSeries(b, num)
+		})
 	}
-	assert.Equal(t, 3, c.Owned())
+}
 
-	// Ring changes: we lose token 300, keep 100
-	newRingTokens := []uint32{100, 200, 300, 400}
-	newInstanceTokens := []uint32{100} // Lost 300
-	updateMetricsWithRing(c, keepUntil, newRingTokens, newInstanceTokens...)
+func benchmarkActiveSeriesConcurrencySingleSeries(b *testing.B, goroutines int) {
+	series := labels.FromStrings("a", "a")
 
-	// Series with key=250 → token 300 → not in {100} → removed
-	// Series with key=50 → token 100 → in {100} → kept (2 series share this key)
-	assert.Equal(t, 2, c.Owned())
+	c := NewActiveSeries()
 
-	// In the real ingester, this value would be summed across all tenants
-	// and stored in instanceOwnedCount.
+	wg := &sync.WaitGroup{}
+	start := make(chan struct{})
+	max := int(math.Ceil(float64(b.N) / float64(goroutines)))
+	labelhash := series.Hash()
+	for range goroutines {
+		wg.Go(func() {
+			<-start
+
+			now := time.Now()
+
+			for ix := range max {
+				now = now.Add(time.Duration(ix) * time.Millisecond)
+				c.UpdateSeries(series, labelhash, noRingToken, now, false, copyFn)
+			}
+		})
+	}
+
+	b.ResetTimer()
+	close(start)
+	wg.Wait()
+}
+
+func BenchmarkActiveSeries_UpdateSeries(b *testing.B) {
+	c := NewActiveSeries()
+
+	// Prepare series
+	nameBuf := bytes.Buffer{}
+	for range 50 {
+		nameBuf.WriteString("abcdefghijklmnopqrstuvzyx")
+	}
+	name := nameBuf.String()
+
+	// NOTE: this deliberately does not use b.Loop(). A benchmark may only run one
+	// b.Loop() loop, and sizing the series slice requires knowing the iteration
+	// count before the loop starts, so the b.N form is the correct one here.
+	series := make([]labels.Labels, b.N)
+	labelhash := make([]uint64, b.N)
+	for s := 0; s < b.N; s++ {
+		series[s] = labels.FromStrings(name, name+strconv.Itoa(s))
+		labelhash[s] = series[s].Hash()
+	}
+
+	now := time.Now().UnixNano()
+	b.ResetTimer()
+
+	for ix := 0; ix < b.N; ix++ {
+		c.UpdateSeries(series[ix], labelhash[ix], noRingToken, time.Unix(0, now+int64(ix)), false, copyFn)
+	}
+}
+
+func BenchmarkActiveSeries_Purge_once(b *testing.B) {
+	benchmarkPurge(b, false)
+}
+
+func BenchmarkActiveSeries_Purge_twice(b *testing.B) {
+	benchmarkPurge(b, true)
+}
+
+func benchmarkPurge(b *testing.B, twice bool) {
+	const numSeries = 10000
+	const numExpiresSeries = numSeries / 25
+
+	now := time.Now()
+	c := NewActiveSeries()
+
+	series := [numSeries]labels.Labels{}
+	labelhash := [numSeries]uint64{}
+	for s := range numSeries {
+		series[s] = labels.FromStrings("a", strconv.Itoa(s))
+		labelhash[s] = series[s].Hash()
+	}
+
+	for b.Loop() {
+		b.StopTimer()
+
+		// Prepare series
+		for ix, s := range series {
+			if ix < numExpiresSeries {
+				c.UpdateSeries(s, labelhash[ix], noRingToken, now.Add(-time.Minute), false, copyFn)
+			} else {
+				c.UpdateSeries(s, labelhash[ix], noRingToken, now, false, copyFn)
+			}
+		}
+
+		assert.Equal(b, numSeries, c.Active())
+		b.StartTimer()
+
+		// Purge everything
+		c.Purge(now)
+		assert.Equal(b, numSeries-numExpiresSeries, c.Active())
+
+		if twice {
+			c.Purge(now)
+			assert.Equal(b, numSeries-numExpiresSeries, c.Active())
+		}
+	}
+}
+
+// --- Benchmarks for the owned-series paths.
+
+// BenchmarkActiveSeries_UpdateSeries_Owned measures the push path with a ring
+// loaded, which is the cost ownership tracking adds per new series: one binary
+// search over the ring's tokens plus one array index.
+func BenchmarkActiveSeries_UpdateSeries_Owned(b *testing.B) {
+	const numRingTokens = 100 * 512
+
+	ringTokens := make([]uint32, numRingTokens)
+	for i := range ringTokens {
+		ringTokens[i] = uint32(i) * 128
+	}
+	ownedPositions := make([]bool, numRingTokens)
+	for i := range ownedPositions {
+		ownedPositions[i] = i%3 == 0
+	}
+
+	for _, withRing := range []bool{false, true} {
+		name := "ring_not_loaded"
+		if withRing {
+			name = "ring_loaded"
+		}
+
+		b.Run(name, func(b *testing.B) {
+			c := NewActiveSeries()
+			if withRing {
+				c.updateTokens(ringTokens, ownedPositions, 1)
+			}
+
+			series := make([]labels.Labels, b.N)
+			labelhash := make([]uint64, b.N)
+			for s := 0; s < b.N; s++ {
+				series[s] = labels.FromStrings("__name__", "metric", "i", strconv.Itoa(s))
+				labelhash[s] = series[s].Hash()
+			}
+
+			now := time.Now()
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for ix := 0; ix < b.N; ix++ {
+				c.UpdateSeries(series[ix], labelhash[ix], uint32(ix)*7919, now, false, copyFn)
+			}
+		})
+	}
+}
+
+// BenchmarkActiveSeries_UpdateMetrics measures the periodic recount, separating the
+// common case where the ring has not changed from the case where every entry's
+// ownership has to be re-evaluated.
+func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
+	const (
+		numSeries     = 100000
+		numRingTokens = 1000
+	)
+
+	ringTokens := make([]uint32, numRingTokens)
+	for i := range ringTokens {
+		ringTokens[i] = uint32(i) * 4096
+	}
+	ownedPositions := make([]bool, numRingTokens)
+	for i := range ownedPositions {
+		ownedPositions[i] = i%3 == 0
+	}
+
+	now := time.Now()
+	c := NewActiveSeries()
+	c.updateTokens(ringTokens, ownedPositions, 1)
+	for i := range numSeries {
+		lbls := labels.FromStrings("__name__", "metric", "i", strconv.Itoa(i))
+		c.UpdateSeries(lbls, lbls.Hash(), uint32(i)*7919, now, false, copyFn)
+	}
+
+	b.Run("ring_unchanged", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, 1)
+		}
+	})
+
+	b.Run("ring_changed", func(b *testing.B) {
+		b.ReportAllocs()
+		fingerprint := uint64(1)
+		for b.Loop() {
+			fingerprint++
+			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, fingerprint)
+		}
+	})
 }

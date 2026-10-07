@@ -550,9 +550,41 @@ func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 	return u.db.CompactOOOHead(ctx)
 }
 
+// activeSeriesPurgeCutoff returns the timestamp before which active-series entries
+// can be released, given the TSDB head's minimum time.
+//
+// These two values live in different clock domains, which is why this needs care.
+// An entry's timestamp is the wall-clock time at which a sample for it arrived,
+// whereas the head's minimum time is a sample timestamp. They agree for real-time
+// ingestion, but diverge for a client whose samples are backdated or whose clock is
+// skewed.
+//
+// Of the two ways they can disagree, only one is dangerous. A cutoff that lands too
+// early just retains entries for longer than necessary, which over-counts owned
+// series and so errs towards enforcing limits sooner: wasteful, but safe. A cutoff
+// that lands too late drops entries for series which are still resident, which
+// under-counts owned series and lets a tenant exceed its limit.
+//
+// Only the dangerous direction is corrected here, by refusing to use a cutoff more
+// recent than one block range ago. Anything still in the head must have arrived
+// within roughly that window, so this cannot drop an entry for a resident series
+// however far ahead a tenant's sample timestamps run.
+//
+// Note this is a bound, not a translation between the two clocks. Making the
+// comparison exact would mean recording each series' last sample timestamp on its
+// entry, which costs memory per series and is a trade worth agreeing before taking.
+func activeSeriesPurgeCutoff(headMinTimeMs int64, now time.Time, blockRange time.Duration) time.Time {
+	cutoff := time.UnixMilli(headMinTimeMs)
+
+	if latest := now.Add(-blockRange); cutoff.After(latest) {
+		return latest
+	}
+
+	return cutoff
+}
+
 // purgeActiveSeriesToHead releases active-series entries whose series are no longer
-// in the TSDB head, by purging everything last seen before the head's new minimum
-// time. Called after a successful head compaction.
+// in the TSDB head. Called after a successful head compaction.
 //
 // This is the second tier of a two-tier retention scheme. The periodic cycle
 // recounts without removing anything, so that an idle series still held in the head
@@ -562,7 +594,7 @@ func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 // A series appended immediately after the head's minimum time is read could have
 // its entry dropped here while still being in the head, which would undercount
 // owned. That self-corrects on the series' next sample, which recreates the entry.
-func (u *userTSDB) purgeActiveSeriesToHead() {
+func (u *userTSDB) purgeActiveSeriesToHead(blockRange time.Duration) {
 	h := u.Head()
 
 	// An empty head means nothing is in memory, so every entry can go. MinTime is
@@ -577,7 +609,7 @@ func (u *userTSDB) purgeActiveSeriesToHead() {
 		return
 	}
 
-	u.activeSeries.Purge(time.UnixMilli(minTime))
+	u.activeSeries.Purge(activeSeriesPurgeCutoff(minTime, time.Now(), blockRange))
 }
 
 // PreCreation implements SeriesLifecycleCallback interface.
@@ -3660,7 +3692,7 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 			// owned-series tracking is on, which is what keeps the owned count
 			// aligned with what is in memory rather than with the idle window.
 			if i.cfg.OwnedSeriesMetricsEnabled {
-				userDB.purgeActiveSeriesToHead()
+				userDB.purgeActiveSeriesToHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0])
 			}
 		}
 

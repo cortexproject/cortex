@@ -86,11 +86,19 @@ func OwnedTokenPositions(d *Desc, instanceID string, op Operation, replicationFa
 		return tokens, owned, nil
 	}
 
+	// Count distinct zones directly. Deriving this from getTokensByZone would
+	// merge every token in the ring into a sorted slice per zone purely to take
+	// the length of the resulting map.
+	zones := make(map[string]struct{}, len(d.Ingesters))
+	for _, instance := range d.Ingesters {
+		zones[instance.Zone] = struct{}{}
+	}
+
 	topology := ringTopology{
 		tokens:               tokens,
 		instanceByToken:      d.getTokensInfo(),
 		instances:            d.Ingesters,
-		numZones:             len(d.getTokensByZone()),
+		numZones:             len(zones),
 		replicationFactor:    replicationFactor,
 		zoneAwarenessEnabled: zoneAwarenessEnabled,
 	}

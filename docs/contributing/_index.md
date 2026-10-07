@@ -60,17 +60,29 @@ make
 with all the tools required. The source code is mounted from where you
 run `make` into the build container as a Docker volume.)
 
-To run the unit tests suite:
+To run the unit test suite with the build container's Go toolchain:
 ```
-go test ./...
+make test
 ```
+
+To run the same suite with a local Go installation, use the flags from the
+`Makefile` test target:
+```
+go test -tags "netgo slicelabels" -timeout 30m -race -count 1 ./...
+```
+
+Keep the `slicelabels` tag: Cortex uses the slice-based Prometheus label
+representation, while the vendored Prometheus package defaults to a different
+representation without it.
 
 To run the integration tests suite please see "[How integration tests work](./how-integration-tests-work.md)".
 
 ### Dependency management
 
 We use [Go modules](https://golang.org/cmd/go/#hdr-Modules__module_versions__and_more) to manage dependencies on external packages.
-This requires a working Go environment with version 1.11 or greater, git and [bzr](http://wiki.bazaar.canonical.com/Download) installed.
+For local development, install Git and a Go toolchain that satisfies the `go`
+directive in the repository's `go.mod`. The build container's Go version is
+specified in `build-image/Dockerfile`.
 
 To add or update a new dependency, use the `go get` command:
 

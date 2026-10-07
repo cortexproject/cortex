@@ -594,7 +594,7 @@ func activeSeriesPurgeCutoff(headMinTimeMs int64, now time.Time, blockRange time
 // A series appended immediately after the head's minimum time is read could have
 // its entry dropped here while still being in the head, which would undercount
 // owned. That self-corrects on the series' next sample, which recreates the entry.
-func (u *userTSDB) purgeActiveSeriesToHead(blockRange time.Duration) {
+func (u *userTSDB) purgeActiveSeriesToHead(blockRange time.Duration, activeCutoff time.Time) {
 	h := u.Head()
 
 	// An empty head means nothing is in memory, so every entry can go. MinTime is
@@ -609,7 +609,7 @@ func (u *userTSDB) purgeActiveSeriesToHead(blockRange time.Duration) {
 		return
 	}
 
-	u.activeSeries.Purge(activeSeriesPurgeCutoff(minTime, time.Now(), blockRange))
+	u.activeSeries.Purge(activeSeriesPurgeCutoff(minTime, time.Now(), blockRange), activeCutoff)
 }
 
 // PreCreation implements SeriesLifecycleCallback interface.
@@ -1347,7 +1347,8 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 			i.metrics.ownedSeriesPerUser.WithLabelValues(userID).Set(float64(owned))
 			totalOwnedCount += int64(owned)
 		} else {
-			userDB.activeSeries.Purge(purgeTime)
+			// Both cutoffs are the idle timeout, which is the pre-existing behaviour.
+			userDB.activeSeries.Purge(purgeTime, purgeTime)
 		}
 
 		i.metrics.activeSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Active()))
@@ -3693,7 +3694,10 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 			// owned-series tracking is on, which is what keeps the owned count
 			// aligned with what is in memory rather than with the idle window.
 			if i.cfg.OwnedSeriesMetricsEnabled {
-				userDB.purgeActiveSeriesToHead(i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0])
+				userDB.purgeActiveSeriesToHead(
+					i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0],
+					time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout),
+				)
 			}
 		}
 

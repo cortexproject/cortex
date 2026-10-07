@@ -298,17 +298,18 @@ func (u *ParquetBucketStores) createParquetBucketStore(userID string, userLogger
 	userBucket := bucket.NewUserBucketClient(userID, u.bucket, u.limits)
 
 	store := &parquetBucketStore{
-		logger:             userLogger,
-		bucket:             userBucket,
-		indexLoader:        u.indexLoader,
-		limits:             u.limits,
-		userID:             userID,
-		bucketIndexEnabled: u.cfg.BucketStore.BucketIndex.Enabled,
-		concurrency:        u.cfg.BucketStore.ParquetQueryConcurrency,
-		chunksDecoder:      u.chunksDecoder,
-		matcherCache:       u.matcherCache,
-		parquetShardCache:  u.parquetShardCache,
-		rowRangesCache:     u.rowRangesCache,
+		logger:               userLogger,
+		bucket:               userBucket,
+		indexLoader:          u.indexLoader,
+		limits:               u.limits,
+		userID:               userID,
+		bucketIndexEnabled:   u.cfg.BucketStore.BucketIndex.Enabled,
+		concurrency:          u.cfg.BucketStore.ParquetQueryConcurrency,
+		chunksDecoder:        u.chunksDecoder,
+		matcherCache:         u.matcherCache,
+		parquetShardCache:    u.parquetShardCache,
+		honorProjectionHints: u.cfg.BucketStore.HonorProjectionHints,
+		rowRangesCache:       u.rowRangesCache,
 	}
 
 	return store, nil
@@ -358,7 +359,7 @@ func (p *parquetBucketStore) newParquetBlock(ctx context.Context, name string, s
 	if err != nil {
 		return nil, err
 	}
-	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback, false)
+	m, err := search.NewMaterializer(s, d, shard, p.concurrency, rowCountQuota, chunkBytesQuota, dataBytesQuota, search.NoopMaterializedSeriesFunc, materializedLabelsFilterCallback, p.honorProjectionHints)
 	if err != nil {
 		return nil, err
 	}
@@ -414,7 +415,7 @@ func (f *shardMatcherLabelsFilter) Close() {
 	f.shardMatcher.Close()
 }
 
-func (b *parquetBlock) Query(ctx context.Context, mint, maxt int64, skipChunks bool, matchers []*labels.Matcher) (prom_storage.ChunkSeriesSet, error) {
+func (b *parquetBlock) Query(ctx context.Context, hints *prom_storage.SelectHints, skipChunks bool, matchers []*labels.Matcher) (prom_storage.ChunkSeriesSet, error) {
 	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(b.concurrency)
 
@@ -444,7 +445,7 @@ func (b *parquetBlock) Query(ctx context.Context, mint, maxt int64, skipChunks b
 				return nil
 			}
 
-			seriesSetIter, err := b.m.Materialize(ctx, nil, rgi, mint, maxt, skipChunks, rr)
+			seriesSetIter, err := b.m.Materialize(ctx, hints, rgi, hints.Start, hints.End, skipChunks, rr)
 			if err != nil {
 				return err
 			}
@@ -579,6 +580,18 @@ func (b *parquetBlock) allLabelValues(ctx context.Context, name string, limit in
 	}
 
 	return util.MergeUnsortedSlices(int(limit), results...), nil
+}
+
+// hasHashColumn checks if the parquet block contains the schema.SeriesHashColumn column.
+// This is used to determine if projection pushdown can be enabled.
+func (b *parquetBlock) hasHashColumn() bool {
+	labelsFile := b.shard.LabelsFile()
+	if labelsFile == nil {
+		return false
+	}
+
+	_, found := labelsFile.Schema().Lookup(schema.SeriesHashColumn)
+	return found
 }
 
 type byLabels []prom_storage.ChunkSeries

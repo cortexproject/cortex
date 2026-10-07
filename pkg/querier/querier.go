@@ -529,13 +529,11 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 		}
 	}
 
-	// Reset projection hints if querying ingesters or projection is not included.
-	// Projection can only be applied when not querying mixed sources (ingester + store).
-	if q.honorProjectionHints {
-		if !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, userID, mint, maxt) {
-			sp.ProjectionLabels = nil
-			sp.ProjectionInclude = false
-		}
+	// Reset projection hints unless the querier honors them, projection is included and ingesters are not queried.
+	// Ingesters always return full label sets, so projected store series could not be merged with them.
+	if !q.honorProjectionHints || !sp.ProjectionInclude || q.distributor.UseQueryable(q.now, userID, mint, maxt) {
+		sp.ProjectionLabels = nil
+		sp.ProjectionInclude = false
 	}
 
 	if len(queriers) == 1 {

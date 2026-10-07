@@ -177,4 +177,6 @@ Currently experimental features are:
 - Ingester: Owned Series Tracking
   - Enable on Ingester via `-ingester.owned-series-metrics-enabled=true`
   - Counts only the series the ring assigns to this ingester and exposes the `cortex_ingester_owned_series` metric
-  - `-ingester.owned-series-limit-enforcement-enabled` additionally uses that count for per-tenant and instance series limits, instead of the total number of series in the TSDB head
+  - Active series entries are then retained until head compaction instead of being released after `-ingester.active-series-metrics-idle-timeout`, so that the owned count reflects what is held in memory. This increases ingester memory roughly in proportion to the ratio between series in the TSDB head and recently active series
+  - The value of `cortex_ingester_active_series` is unchanged, but `cortex_ingester_owned_series` may exceed it for a tenant with high churn, since it counts idle series which are still held
+  - `-ingester.owned-series-limit-enforcement-enabled` additionally uses that count for per-tenant and instance series limits, instead of the total number of series in the TSDB head. Note the instance-wide `max_series` limit then stops counting series which have been reassigned to another ingester but are still resident until the next head compaction

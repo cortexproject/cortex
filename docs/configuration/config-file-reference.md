@@ -4194,14 +4194,26 @@ lifecycler:
 [head_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
 # Enable tracking of owned series per user. When enabled, the ingester computes
-# series ownership based on the ring and emits cortex_ingester_owned_series
-# metric.
+# which series the ring assigns to it and emits the cortex_ingester_owned_series
+# metric. This also changes how long active series entries are retained: they
+# are released at head compaction rather than after the idle timeout, so that
+# the owned count reflects series still held in memory rather than only recently
+# active ones. Ingester memory therefore increases roughly in proportion to the
+# ratio between series in the TSDB head and recently active series. The value of
+# cortex_ingester_active_series is unchanged, but cortex_ingester_owned_series
+# may exceed it for a tenant with high churn, because it counts idle series
+# which are still held.
 # CLI flag: -ingester.owned-series-metrics-enabled
 [owned_series_metrics_enabled: <boolean> | default = false]
 
-# Use owned series count for limit enforcement. Requires
-# owned-series-metrics-enabled. When enabled, PreCreation uses owned count
-# instead of Head().NumSeries() for both per-user and instance-level limits.
+# Use the owned series count for limit enforcement instead of the total number
+# of series in the TSDB head. Requires owned-series-metrics-enabled. This
+# prevents tenants being throttled against a limit that has already shrunk after
+# a ring change, while the head still holds series that have moved elsewhere.
+# Note this applies to the instance-wide max_series limit as well as to
+# per-tenant limits, so max_series stops counting series which have been
+# reassigned to another ingester but are still resident until the next head
+# compaction.
 # CLI flag: -ingester.owned-series-limit-enforcement-enabled
 [owned_series_limit_enforcement_enabled: <boolean> | default = false]
 

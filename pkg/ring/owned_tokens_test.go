@@ -232,6 +232,96 @@ func TestOwnedTokenPositions_AddrDiffersFromInstanceID(t *testing.T) {
 	assert.Equal(t, replicationFactor*len(allTokens), totalOwned)
 }
 
+// TestOwnedTokenPositions_NonActiveInstancesExtendReplicaSet pins down what
+// ownership means while instances are transitioning, which is deliberately not the
+// same as what the write path routes.
+//
+// An instance in a state other than ACTIVE extends the replica set, so the ring
+// picks an additional instance for the affected token ranges. Both the
+// transitioning instance and the extra one own those ranges, because both really
+// are holding that data: the departing instance still has the series in its head,
+// and the distributor really is writing to the extension.
+//
+// Ownership is computed from the raw walk and deliberately does not apply the
+// replication strategy's health filter, so a LEAVING instance keeps owning its
+// series even though Ring.Get for a write excludes it. That asymmetry is the point:
+// ownership answers "what am I holding, and must therefore count against my
+// limit", not "where would a new write go". Filtering here would make an
+// instance's own series count depend on its peers' heartbeat luck.
+func TestOwnedTokenPositions_NonActiveInstancesExtendReplicaSet(t *testing.T) {
+	const (
+		numInstances      = 9
+		replicationFactor = 3
+		transitioning     = "instance-1"
+	)
+
+	for _, state := range []InstanceState{JOINING, LEAVING, READONLY} {
+		t.Run(state.String(), func(t *testing.T) {
+			ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, 1, 128)}
+
+			instance := ringDesc.Ingesters[transitioning]
+			instance.State = state
+			ringDesc.Ingesters[transitioning] = instance
+
+			ring := newRingForOwnershipTest(ringDesc, replicationFactor, false)
+			allTokens := ringDesc.GetTokens()
+
+			ownersPerPosition := make([]int, len(allTokens))
+			var transitioningOwned []bool
+
+			for instanceID := range ringDesc.Ingesters {
+				_, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, replicationFactor, false)
+				require.NoError(t, err)
+
+				if instanceID == transitioning {
+					transitioningOwned = owned
+				}
+				for p, isOwned := range owned {
+					if isOwned {
+						ownersPerPosition[p]++
+					}
+				}
+			}
+
+			// The transitioning instance still holds its series, so it still owns them.
+			transitioningOwnedCount := 0
+			for _, isOwned := range transitioningOwned {
+				if isOwned {
+					transitioningOwnedCount++
+				}
+			}
+			assert.NotZero(t, transitioningOwnedCount,
+				"a %s instance still holds its series and must still own them", state)
+
+			bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+			extended := 0
+
+			for p := range allTokens {
+				// Extension means these ranges have more owners than the replication
+				// factor, never fewer.
+				assert.GreaterOrEqual(t, ownersPerPosition[p], replicationFactor,
+					"token position %d has fewer owners than RF", p)
+				if ownersPerPosition[p] > replicationFactor {
+					extended++
+				}
+
+				key := keyForPosition(allTokens, p)
+				set, err := ring.Get(key, Write, bufDescs, bufHosts, bufZones)
+				require.NoError(t, err)
+
+				// Writes still land on exactly RF healthy instances, and never on the
+				// transitioning one, even where it owns the range.
+				assert.Len(t, set.Instances, replicationFactor)
+				assert.False(t, set.Includes(ringDesc.Ingesters[transitioning].Addr),
+					"a %s instance must not receive writes at position %d", state, p)
+			}
+
+			assert.NotZero(t, extended,
+				"a %s instance must cause the replica set to be extended somewhere", state)
+		})
+	}
+}
+
 // TestOwnershipFingerprint pins down the fingerprint's two jobs. It must change
 // whenever ownership could have changed, because a false "unchanged" leaves every
 // ingester using a stale ownership bitmap. It must NOT change on a heartbeat,

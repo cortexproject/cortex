@@ -550,6 +550,36 @@ func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 	return u.db.CompactOOOHead(ctx)
 }
 
+// purgeActiveSeriesToHead releases active-series entries whose series are no longer
+// in the TSDB head, by purging everything last seen before the head's new minimum
+// time. Called after a successful head compaction.
+//
+// This is the second tier of a two-tier retention scheme. The periodic cycle
+// recounts without removing anything, so that an idle series still held in the head
+// keeps counting towards owned; this tier removes an entry once the series it
+// describes has actually left memory.
+//
+// A series appended immediately after the head's minimum time is read could have
+// its entry dropped here while still being in the head, which would undercount
+// owned. That self-corrects on the series' next sample, which recreates the entry.
+func (u *userTSDB) purgeActiveSeriesToHead() {
+	h := u.Head()
+
+	// An empty head means nothing is in memory, so every entry can go. MinTime is
+	// not usable in this case: Prometheus reports math.MaxInt64 for an empty head.
+	if h.NumSeries() == 0 {
+		u.activeSeries.clear()
+		return
+	}
+
+	minTime := h.MinTime()
+	if minTime <= 0 || minTime == math.MaxInt64 {
+		return
+	}
+
+	u.activeSeries.Purge(time.UnixMilli(minTime))
+}
+
 // PreCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	if u.limiter == nil {
@@ -564,14 +594,12 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	gl := u.instanceLimitsFn()
 	if gl != nil && gl.MaxInMemorySeries > 0 {
 		var instanceCount int64
-		if u.ownedSeriesLimitEnabled {
-			instanceCount = u.instanceOwnedCount.Load()
-			// Fallback at startup: instanceOwnedCount is 0 until the first
-			// updateActiveSeries cycle runs (~1 min). Use instanceSeriesCount
-			// to maintain OOM protection during this window.
-			if instanceCount == 0 {
-				instanceCount = u.instanceSeriesCount.Load()
-			}
+		// A negative owned count means no cycle has computed one yet. Fall back to
+		// the total in-memory series count so that OOM protection still applies
+		// during the first cycle after startup. A count of zero is a real count and
+		// is used as-is.
+		if owned := u.instanceOwnedCount.Load(); u.ownedSeriesLimitEnabled && owned >= 0 {
+			instanceCount = owned
 		} else {
 			instanceCount = u.instanceSeriesCount.Load()
 		}
@@ -582,14 +610,17 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 
 	// Per-user series limit.
 	// When limit enforcement is enabled (flag 2 + flag 1), use activeSeries.Owned()
-	// which excludes resharded/stale series this ingester no longer owns. This prevents
-	// false throttling during scale-up (where Head().NumSeries() stays high but the
-	// local limit has dropped due to more ingesters joining).
+	// which counts the series this ingester holds and owns, rather than everything
+	// left in the head. This prevents false throttling during scale-up, where
+	// Head().NumSeries() stays high for up to a head-compaction cycle while the
+	// local limit has already dropped because more ingesters joined the ring.
+	//
+	// Owned() needs no startup fallback: it is maintained as series are created, so
+	// it is accurate from the very first sample rather than only after the first
+	// periodic cycle.
 	seriesCount := int(u.Head().NumSeries())
 	if u.ownedSeriesLimitEnabled {
-		if owned := u.activeSeries.Owned(); owned > 0 {
-			seriesCount = owned
-		}
+		seriesCount = u.activeSeries.Owned()
 	}
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, seriesCount); err != nil {
 		return err
@@ -796,6 +827,10 @@ type TSDBState struct {
 
 	// Number of owned series across all tenants. Recalculated every updateActiveSeries
 	// cycle (~1 min). Used for instance-level max_series when limit enforcement is enabled.
+	//
+	// Negative means "not computed yet", which is distinct from a genuine zero. The
+	// distinction matters: zero is a legitimate count that must be trusted, whereas
+	// before the first cycle there is no owned count to compare a limit against.
 	ownedSeriesCount atomic.Int64
 
 	// Head compactions metrics.
@@ -829,7 +864,7 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 	idleTsdbChecks.WithLabelValues(string(tsdbTenantMarkedForDeletion))
 	idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))
 
-	return TSDBState{
+	state := TSDBState{
 		dbs:                 make(map[string]*userTSDB),
 		bucket:              bucketClient,
 		tsdbMetrics:         newTSDBMetrics(registerer),
@@ -872,6 +907,13 @@ func newTSDBState(bucketClient objstore.Bucket, registerer prometheus.Registerer
 
 		idleTsdbChecks: idleTsdbChecks,
 	}
+
+	// No owned count has been computed yet. Until the first updateActiveSeries
+	// cycle runs, the instance-level limit falls back to the total in-memory
+	// series count so that OOM protection is never switched off.
+	state.ownedSeriesCount.Store(-1)
+
+	return state
 }
 
 // New returns a new Ingester that uses Cortex block storage instead of chunks storage.
@@ -3612,6 +3654,14 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 			}
 		} else {
 			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
+
+			// Compaction has moved series out of the head, so the entries tracking
+			// them can be released. This is the only place entries are dropped when
+			// owned-series tracking is on, which is what keeps the owned count
+			// aligned with what is in memory rather than with the idle window.
+			if i.cfg.OwnedSeriesMetricsEnabled {
+				userDB.purgeActiveSeriesToHead()
+			}
 		}
 
 		return nil

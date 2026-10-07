@@ -778,3 +778,102 @@ func TestActiveSeriesPurgeCutoff_NeverDropsResidentSeries(t *testing.T) {
 			"a series that arrived within the block range must survive a head minimum time skewed by %s", skew)
 	}
 }
+
+// TestActiveSeries_ReactivatedSeriesCountsImmediately covers the one way retaining
+// entries could have changed the active count's behaviour.
+//
+// Before entries were retained, a series going idle had its entry removed, so a later
+// sample created a fresh entry and active reflected it at once. Now the entry survives
+// but stops being counted, and a later sample updates it in place rather than creating
+// anything. Without explicit handling, active would not notice the series had returned
+// until the next periodic recount, under-reporting for up to one update period.
+func TestActiveSeries_ReactivatedSeriesCountsImmediately(t *testing.T) {
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+	ringTokens := []uint32{100}
+
+	for _, nativeHistogram := range []bool{false, true} {
+		name := "sample"
+		if nativeHistogram {
+			name = "native histogram"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			c := NewActiveSeries()
+			setRingState(c, ringTokens, 100)
+
+			// A series whose last sample is older than the idle window.
+			lbls := labels.FromStrings("__name__", "idle_metric")
+			c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(-time.Hour), nativeHistogram, copyFn)
+
+			updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+			require.Equal(t, 0, c.Active(), "the series is outside the idle window")
+			require.Equal(t, 0, c.ActiveNativeHistogram())
+			require.Equal(t, 1, c.Owned(), "but it is still held, so it is still owned")
+
+			// It receives a sample again. No entry is created, because the entry was
+			// retained, so this has to be noticed explicitly.
+			c.UpdateSeries(lbls, lbls.Hash(), 50, now, nativeHistogram, copyFn)
+
+			assert.Equal(t, 1, c.Active(), "active must reflect the returning series without waiting for a recount")
+			assert.Equal(t, 1, c.Owned(), "owned is unchanged: an idle series never stopped being owned")
+			if nativeHistogram {
+				assert.Equal(t, 1, c.ActiveNativeHistogram())
+			} else {
+				assert.Equal(t, 0, c.ActiveNativeHistogram())
+			}
+
+			// Further samples inside the window must not count it again.
+			c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(time.Second), nativeHistogram, copyFn)
+			assert.Equal(t, 1, c.Active(), "a series already inside the window is not counted twice")
+
+			// And the authoritative recount must agree with what the push path did.
+			updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+			assert.Equal(t, 1, c.Active())
+			assert.Equal(t, 1, c.Owned())
+
+			active, owned, activeNH := sumStripes(c)
+			assert.Equal(t, active, c.Active(), "cached active drifted from the stripes")
+			assert.Equal(t, owned, c.Owned(), "cached owned drifted from the stripes")
+			assert.Equal(t, activeNH, c.ActiveNativeHistogram(), "cached native histogram total drifted from the stripes")
+		})
+	}
+}
+
+// TestActiveSeries_ReactivationIsCountedOnceUnderConcurrency checks that concurrent
+// samples for the same returning series only count it once, which relies on the
+// compare-and-swap that moves the timestamp across the cutoff arbitrating.
+func TestActiveSeries_ReactivationIsCountedOnceUnderConcurrency(t *testing.T) {
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+	ringTokens := []uint32{100}
+
+	c := NewActiveSeries()
+	setRingState(c, ringTokens, 100)
+
+	lbls := labels.FromStrings("__name__", "idle_metric")
+	c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(-time.Hour), false, copyFn)
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+	require.Equal(t, 0, c.Active())
+
+	const goroutines = 64
+	start := make(chan struct{})
+	wg := &sync.WaitGroup{}
+	for i := range goroutines {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(time.Duration(i)*time.Millisecond), false, copyFn)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	assert.Equal(t, 1, c.Active(), "concurrent samples for one returning series must count it once")
+	assert.Equal(t, 1, c.Owned())
+
+	active, owned, _ := sumStripes(c)
+	assert.Equal(t, active, c.Active())
+	assert.Equal(t, owned, c.Owned())
+}

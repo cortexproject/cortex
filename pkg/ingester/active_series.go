@@ -82,6 +82,7 @@ type activeSeriesStripe struct {
 	// Counters for this stripe. Every mutation happens while holding mu, so they
 	// cannot be lost, but they are atomics so that readers can total them across
 	// stripes without acquiring 512 locks.
+	tracked               uatomic.Int64 // All entries in this stripe, regardless of age or ownership.
 	active                uatomic.Int64 // Entries in this stripe within the idle window.
 	activeNativeHistogram uatomic.Int64 // Native histogram entries in this stripe within the idle window.
 	owned                 uatomic.Int64 // Entries in this stripe owned by this instance, ignoring the idle window.
@@ -229,6 +230,21 @@ func (c *ActiveSeries) Owned() int {
 	return int(total)
 }
 
+// Tracked returns the number of series this tracker holds an entry for, whatever
+// their age or ownership.
+//
+// Entries are only created when a sample arrives, so after a restart this is zero
+// while the TSDB head is already full of series restored from the WAL. Comparing it
+// against the head's series count is therefore how a caller tells whether the owned
+// count covers what is actually in memory, or only the part of it seen since start.
+func (c *ActiveSeries) Tracked() int {
+	total := int64(0)
+	for s := range numActiveSeriesStripes {
+		total += c.stripes[s].tracked.Load()
+	}
+	return int(total)
+}
+
 func (c *ActiveSeries) ActiveNativeHistogram() int {
 	total := int64(0)
 	for s := range numActiveSeriesStripes {
@@ -321,6 +337,7 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key 
 	// is tracked. A series this instance does not own is still an active series.
 	owned := isOwned(key, tokens, ownedPositions)
 
+	s.tracked.Inc()
 	s.active.Inc()
 	if owned {
 		s.owned.Inc()
@@ -354,13 +371,14 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key 
 // have to be recomputed. The scan is the same order of work the purge it replaces
 // performed on a tenant that was churning.
 func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bool, tokens []uint32, ownedPositions []bool) {
-	var active, owned, activeNativeHistogram int
+	var tracked, active, owned, activeNativeHistogram int
 	keepUntilNanos := keepUntil.UnixNano()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, entries := range s.refs {
+		tracked += len(entries)
 		for i := range entries {
 			if tokensChanged {
 				entries[i].owned = isOwned(entries[i].key, tokens, ownedPositions)
@@ -379,6 +397,7 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bo
 		}
 	}
 
+	s.tracked.Store(int64(tracked))
 	s.active.Store(int64(active))
 	s.owned.Store(int64(owned))
 	s.activeNativeHistogram.Store(int64(activeNativeHistogram))
@@ -387,7 +406,7 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bo
 // purge removes entries last updated before keepUntil and returns the resulting
 // counts for this stripe.
 func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
-	var active, owned, activeNativeHistogram int
+	var tracked, active, owned, activeNativeHistogram int
 	deleteBeforeNanos := deleteBefore.UnixNano()
 	activeCutoffNanos := activeCutoff.UnixNano()
 	if oldest := s.oldestEntryTs.Load(); oldest > 0 && deleteBeforeNanos <= oldest {
@@ -408,6 +427,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 			}
 
 			// Retained. Owned ignores the idle window; active applies it.
+			tracked++
 			if entries[0].owned {
 				owned++
 			}
@@ -431,6 +451,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 				if ts < oldest {
 					oldest = ts
 				}
+				tracked++
 				if entries[i].owned {
 					owned++
 				}
@@ -456,6 +477,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 	} else {
 		s.oldestEntryTs.Store(oldest)
 	}
+	s.tracked.Store(int64(tracked))
 	s.active.Store(int64(active))
 	s.owned.Store(int64(owned))
 	s.activeNativeHistogram.Store(int64(activeNativeHistogram))
@@ -468,6 +490,7 @@ func (s *activeSeriesStripe) clear() {
 
 	s.oldestEntryTs.Store(0)
 	s.refs = map[uint64][]activeSeriesEntry{}
+	s.tracked.Store(0)
 	s.active.Store(0)
 	s.owned.Store(0)
 	s.activeNativeHistogram.Store(0)

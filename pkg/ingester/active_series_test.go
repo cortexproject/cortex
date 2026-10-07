@@ -1000,3 +1000,48 @@ func TestActiveSeries_PurgeToHeadDoesNotInflateActive(t *testing.T) {
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
 }
+
+// TestActiveSeries_TrackedRevealsAnUnseenHead covers the signal that keeps limit
+// enforcement safe after a restart.
+//
+// Entries are only created when a sample arrives, so an ingester that has just
+// replayed its WAL has a full head and an empty tracker. Owned() would read zero and
+// the limit would admit a whole limit's worth of new series on top of everything
+// already resident. Tracked() is what lets the caller notice.
+func TestActiveSeries_TrackedRevealsAnUnseenHead(t *testing.T) {
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+	ringTokens := []uint32{100, 200}
+
+	c := NewActiveSeries()
+	setRingState(c, ringTokens, 100)
+
+	// Nothing pushed yet: this is the post-replay state.
+	assert.Equal(t, 0, c.Tracked(), "a tracker that has seen no samples holds nothing")
+	assert.Equal(t, 0, c.Owned(), "so Owned is zero even though a real head would be full")
+
+	// Samples arrive. Tracked counts every series, owned only the ones we own.
+	for i := range 10 {
+		lbls := labels.FromStrings("__name__", "metric", "i", strconv.Itoa(i))
+		key := uint32(50)
+		if i%2 == 1 {
+			key = 150 // falls in a token range owned elsewhere
+		}
+		c.UpdateSeries(lbls, lbls.Hash(), key, now, false, copyFn)
+	}
+
+	assert.Equal(t, 10, c.Tracked(), "tracked counts series regardless of ownership")
+	assert.Equal(t, 10, c.Active())
+	assert.Equal(t, 5, c.Owned())
+
+	// Tracked survives the idle window, like owned does, because entries are retained.
+	updateMetricsWithRing(c, now.Add(time.Minute), ringTokens, 100)
+	assert.Equal(t, 10, c.Tracked(), "retained entries are still tracked once idle")
+	assert.Equal(t, 0, c.Active(), "but none are active")
+	assert.Equal(t, 5, c.Owned())
+
+	// And drops only when entries are actually released.
+	c.Purge(now.Add(time.Minute), idleCutoff)
+	assert.Equal(t, 0, c.Tracked())
+	assert.Equal(t, 0, c.Owned())
+}

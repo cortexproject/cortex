@@ -626,10 +626,12 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	gl := u.instanceLimitsFn()
 	if gl != nil && gl.MaxInMemorySeries > 0 {
 		var instanceCount int64
-		// A negative owned count means no cycle has computed one yet. Fall back to
-		// the total in-memory series count so that OOM protection still applies
-		// during the first cycle after startup. A count of zero is a real count and
-		// is used as-is.
+		// A negative owned count means there is no owned count that can be trusted
+		// yet: either no cycle has computed one, or the last cycle found the tracker
+		// did not cover everything in memory, which is the case after a restart has
+		// restored series from the WAL. Fall back to the total in-memory series count
+		// so that OOM protection is never switched off. A count of zero is a real
+		// count and is used as-is.
 		if owned := u.instanceOwnedCount.Load(); u.ownedSeriesLimitEnabled && owned >= 0 {
 			instanceCount = owned
 		} else {
@@ -647,11 +649,15 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	// Head().NumSeries() stays high for up to a head-compaction cycle while the
 	// local limit has already dropped because more ingesters joined the ring.
 	//
-	// Owned() needs no startup fallback: it is maintained as series are created, so
-	// it is accurate from the very first sample rather than only after the first
-	// periodic cycle.
-	seriesCount := int(u.Head().NumSeries())
-	if u.ownedSeriesLimitEnabled {
+	// Owned() is only usable when the tracker holds an entry for everything in the
+	// head. Entries are created when a sample arrives, so after a restart the head
+	// is full of series restored from the WAL that the tracker has never seen, and
+	// Owned() would read far too low: the tenant could then create a whole limit's
+	// worth of series on top of everything already resident. Falling back to the
+	// head count in that window over-counts, which is the safe direction.
+	headSeriesCount := int(u.Head().NumSeries())
+	seriesCount := headSeriesCount
+	if u.ownedSeriesLimitEnabled && u.activeSeries.Tracked() >= headSeriesCount {
 		seriesCount = u.activeSeries.Owned()
 	}
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, seriesCount); err != nil {
@@ -1331,7 +1337,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	// from scratch each cycle. This avoids drift from edge cases (missed decrements
 	// during ring changes or tenant deletions). The loop already iterates all userTSDBs
 	// and calls Owned(), so this is essentially free (one int64 addition per tenant).
-	var totalOwnedCount int64
+	var totalOwnedCount, totalTrackedCount int64
 
 	for _, userID := range i.getTSDBUsers() {
 		userDB, err := i.getTSDB(userID)
@@ -1346,6 +1352,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 			owned := userDB.activeSeries.Owned()
 			i.metrics.ownedSeriesPerUser.WithLabelValues(userID).Set(float64(owned))
 			totalOwnedCount += int64(owned)
+			totalTrackedCount += int64(userDB.activeSeries.Tracked())
 		} else {
 			// Both cutoffs are the idle timeout, which is the pre-existing behaviour.
 			userDB.activeSeries.Purge(purgeTime, purgeTime)
@@ -1365,8 +1372,18 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 	}
 
 	// Store the instance-level owned count for use in PreCreation's max_series check.
+	//
+	// If the trackers between them hold fewer entries than there are series in
+	// memory, the owned count does not describe everything this ingester is holding,
+	// which is the situation after a restart has restored series from the WAL.
+	// Publish the sentinel instead so that the limit falls back to the in-memory
+	// series count rather than a number that is known to be too low.
 	if i.cfg.OwnedSeriesMetricsEnabled {
-		i.TSDBState.ownedSeriesCount.Store(totalOwnedCount)
+		if totalTrackedCount < i.TSDBState.seriesCount.Load() {
+			i.TSDBState.ownedSeriesCount.Store(-1)
+		} else {
+			i.TSDBState.ownedSeriesCount.Store(totalOwnedCount)
+		}
 	}
 }
 

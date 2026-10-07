@@ -71,9 +71,9 @@ func TestActiveSeries_Purge(t *testing.T) {
 			c.UpdateSeries(fromLabelToLabels(series[i]), fromLabelToLabels(series[i]).Hash(), noRingToken, time.Unix(int64(i), 0), true, copyFn)
 		}
 
-		c.Purge(time.Unix(int64(ttl+1), 0))
+		c.Purge(time.Unix(int64(ttl+1), 0), time.Unix(int64(ttl+1), 0))
 		// call purge twice, just to hit "quick" path. It doesn't really do anything.
-		c.Purge(time.Unix(int64(ttl+1), 0))
+		c.Purge(time.Unix(int64(ttl+1), 0), time.Unix(int64(ttl+1), 0))
 
 		exp := len(series) - (ttl + 1)
 		assert.Equal(t, exp, c.Active())
@@ -90,21 +90,21 @@ func TestActiveSeries_PurgeOpt(t *testing.T) {
 	now := time.Now()
 	c.UpdateSeries(ls1, ls1.Hash(), noRingToken, now.Add(-2*time.Minute), true, copyFn)
 	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now, true, copyFn)
-	c.Purge(now)
+	c.Purge(now, now)
 
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
 	c.UpdateSeries(ls1, ls1.Hash(), noRingToken, now.Add(-1*time.Minute), true, copyFn)
 	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now, true, copyFn)
-	c.Purge(now)
+	c.Purge(now, now)
 
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
 
 	// This will *not* update the series, since there is already newer timestamp.
 	c.UpdateSeries(ls2, ls2.Hash(), noRingToken, now.Add(-1*time.Minute), true, copyFn)
-	c.Purge(now)
+	c.Purge(now, now)
 
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.ActiveNativeHistogram())
@@ -354,7 +354,7 @@ func TestActiveSeries_UpdateMetricsRetainsExpiredEntries(t *testing.T) {
 	assert.Equal(t, 2, c.Owned())
 
 	// Only a purge releases it.
-	c.Purge(idleCutoff)
+	c.Purge(idleCutoff, idleCutoff)
 	assert.Equal(t, 1, c.Active())
 	assert.Equal(t, 1, c.Owned())
 }
@@ -419,7 +419,7 @@ func TestActiveSeries_CachedTotalsMatchStripes(t *testing.T) {
 	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens, 100)
 	assertTotalsMatchStripes("periodic cycle")
 
-	c.Purge(now.Add(-time.Minute))
+	c.Purge(now.Add(-time.Minute), now.Add(-time.Minute))
 	assertTotalsMatchStripes("purge")
 
 	c.clear()
@@ -603,11 +603,11 @@ func benchmarkPurge(b *testing.B, twice bool) {
 		b.StartTimer()
 
 		// Purge everything
-		c.Purge(now)
+		c.Purge(now, now)
 		assert.Equal(b, numSeries-numExpiresSeries, c.Active())
 
 		if twice {
-			c.Purge(now)
+			c.Purge(now, now)
 			assert.Equal(b, numSeries-numExpiresSeries, c.Active())
 		}
 	}
@@ -954,4 +954,49 @@ func TestActiveSeries_CountsAreExactUnderConcurrentRecount(t *testing.T) {
 	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
 	assert.Equal(t, totalSeries, c.Active())
 	assert.Equal(t, totalSeries, c.Owned())
+}
+
+// TestActiveSeries_PurgeToHeadDoesNotInflateActive is the regression test for
+// conflating the two cutoffs purge is given.
+//
+// With owned-series tracking on, purge is called at head compaction with a cutoff
+// derived from the head's minimum time, which can be hours old. If that same cutoff
+// were also used to decide what counts as active, every retained entry would be
+// counted, including ones idle for hours, so the active count would jump to the
+// owned count until the next periodic recount. Two readers would see it: the native
+// histogram limit on the PreCreation path, and the per-tenant stats endpoint.
+func TestActiveSeries_PurgeToHeadDoesNotInflateActive(t *testing.T) {
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+	headCutoff := now.Add(-2 * time.Hour)
+	ringTokens := []uint32{100}
+
+	c := NewActiveSeries()
+	setRingState(c, ringTokens, 100)
+
+	// One recent series, three idle for an hour but still inside the head window.
+	recent := labels.FromStrings("__name__", "recent")
+	c.UpdateSeries(recent, recent.Hash(), 50, now, true, copyFn)
+	for i := range 3 {
+		lbls := labels.FromStrings("__name__", "idle", "i", strconv.Itoa(i))
+		c.UpdateSeries(lbls, lbls.Hash(), 50, now.Add(-time.Hour), true, copyFn)
+	}
+
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+	require.Equal(t, 1, c.Active())
+	require.Equal(t, 1, c.ActiveNativeHistogram())
+	require.Equal(t, 4, c.Owned())
+
+	// Purge at head compaction: nothing is old enough to delete.
+	c.Purge(headCutoff, idleCutoff)
+
+	assert.Equal(t, 1, c.Active(), "purging to the head cutoff must not count idle entries as active")
+	assert.Equal(t, 1, c.ActiveNativeHistogram(), "the native histogram limit input must not be inflated")
+	assert.Equal(t, 4, c.Owned(), "all four are still held, so all four are still owned")
+
+	// Now move the head cutoff past the idle series: they are released, and both
+	// counts follow.
+	c.Purge(now.Add(-30*time.Minute), idleCutoff)
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 1, c.Owned())
 }

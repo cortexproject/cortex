@@ -173,15 +173,23 @@ func (c *ActiveSeries) UpdateMetrics(keepUntil time.Time, tokens []uint32, owned
 	c.activeCutoffNanos.Store(keepUntil.UnixNano())
 }
 
-// Purge removes entries last updated before keepUntil and recomputes the counts.
+// Purge removes entries last updated before deleteBefore and recomputes the counts.
 //
-// When owned-series tracking is enabled this is called with the TSDB head's
-// minimum time, so that an entry survives exactly as long as the series it
-// describes is in the head. When tracking is disabled it is called with the idle
-// timeout, which is the original behaviour.
-func (c *ActiveSeries) Purge(keepUntil time.Time) {
+// The two cutoffs are separate because they answer different questions.
+// deleteBefore decides what is still held: with owned-series tracking enabled it
+// is derived from the TSDB head's minimum time, so an entry survives as long as
+// the series it describes is in the head. activeCutoff decides what counts as
+// active, and is always the idle timeout.
+//
+// Conflating them would redefine the active count. Passing the head cutoff as both
+// would count every retained entry as active, including ones idle for hours, which
+// is the owned count rather than the active one.
+//
+// When tracking is disabled both are the idle timeout, which is the original
+// behaviour.
+func (c *ActiveSeries) Purge(deleteBefore, activeCutoff time.Time) {
 	for s := range numActiveSeriesStripes {
-		c.stripes[s].purge(keepUntil)
+		c.stripes[s].purge(deleteBefore, activeCutoff)
 	}
 }
 
@@ -378,10 +386,11 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, tokensChanged bo
 
 // purge removes entries last updated before keepUntil and returns the resulting
 // counts for this stripe.
-func (s *activeSeriesStripe) purge(keepUntil time.Time) {
+func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 	var active, owned, activeNativeHistogram int
-	keepUntilNanos := keepUntil.UnixNano()
-	if oldest := s.oldestEntryTs.Load(); oldest > 0 && keepUntilNanos <= oldest {
+	deleteBeforeNanos := deleteBefore.UnixNano()
+	activeCutoffNanos := activeCutoff.UnixNano()
+	if oldest := s.oldestEntryTs.Load(); oldest > 0 && deleteBeforeNanos <= oldest {
 		// Nothing to remove, so the counts cannot have changed.
 		return
 	}
@@ -393,17 +402,20 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 	for fp, entries := range s.refs {
 		if len(entries) == 1 {
 			ts := entries[0].nanos.Load()
-			if ts < keepUntilNanos {
+			if ts < deleteBeforeNanos {
 				delete(s.refs, fp)
 				continue
 			}
 
-			active++
+			// Retained. Owned ignores the idle window; active applies it.
 			if entries[0].owned {
 				owned++
 			}
-			if entries[0].isNativeHistogram {
-				activeNativeHistogram++
+			if ts >= activeCutoffNanos {
+				active++
+				if entries[0].isNativeHistogram {
+					activeNativeHistogram++
+				}
 			}
 			if ts < oldest {
 				oldest = ts
@@ -413,18 +425,20 @@ func (s *activeSeriesStripe) purge(keepUntil time.Time) {
 
 		for i := 0; i < len(entries); {
 			ts := entries[i].nanos.Load()
-			if ts < keepUntilNanos {
+			if ts < deleteBeforeNanos {
 				entries = append(entries[:i], entries[i+1:]...)
 			} else {
 				if ts < oldest {
 					oldest = ts
 				}
-				active++
 				if entries[i].owned {
 					owned++
 				}
-				if entries[i].isNativeHistogram {
-					activeNativeHistogram++
+				if ts >= activeCutoffNanos {
+					active++
+					if entries[i].isNativeHistogram {
+						activeNativeHistogram++
+					}
 				}
 				i++
 			}

@@ -172,9 +172,9 @@ func sumStripes(c *ActiveSeries) (active, owned, activeNativeHistogram int) {
 	for s := range numActiveSeriesStripes {
 		stripe := &c.stripes[s]
 		stripe.mu.RLock()
-		active += stripe.active
-		owned += stripe.owned
-		activeNativeHistogram += stripe.activeNativeHistogram
+		active += int(stripe.active.Load())
+		owned += int(stripe.owned.Load())
+		activeNativeHistogram += int(stripe.activeNativeHistogram.Load())
 		stripe.mu.RUnlock()
 	}
 	return active, owned, activeNativeHistogram
@@ -876,4 +876,82 @@ func TestActiveSeries_ReactivationIsCountedOnceUnderConcurrency(t *testing.T) {
 	active, owned, _ := sumStripes(c)
 	assert.Equal(t, active, c.Active())
 	assert.Equal(t, owned, c.Owned())
+}
+
+// TestActiveSeries_CountsAreExactUnderConcurrentRecount asserts that a periodic
+// recount running concurrently with series creation neither loses nor double counts.
+// Every counter mutation happens while holding the relevant stripe's lock, and the
+// totals are summed from the stripes rather than cached separately, so the two
+// cannot disagree.
+//
+// Note this does not reproduce the transient drift of a design that caches one
+// cross-stripe total: there, a creation landing between a stripe being scanned and
+// the total being stored is lost, but the next complete recount repairs it, so the
+// window is not observable from a test that asserts after the fact. This test pins
+// the steady-state invariant instead.
+func TestActiveSeries_CountsAreExactUnderConcurrentRecount(t *testing.T) {
+	const (
+		writers         = 16
+		seriesPerWriter = 400
+		totalSeries     = writers * seriesPerWriter
+	)
+
+	now := time.Now()
+	idleCutoff := now.Add(-10 * time.Minute)
+	ringTokens := []uint32{100}
+
+	c := NewActiveSeries()
+	setRingState(c, ringTokens, 100)
+
+	var (
+		wg    sync.WaitGroup
+		start = make(chan struct{})
+		done  = make(chan struct{})
+	)
+
+	// Recount continuously while series are being created.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+			}
+		}
+	}()
+
+	for w := range writers {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			<-start
+			for i := range seriesPerWriter {
+				lbls := labels.FromStrings("__name__", "metric", "w", strconv.Itoa(w), "i", strconv.Itoa(i))
+				c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
+			}
+		}(w)
+	}
+
+	close(start)
+	// Let the writers finish, then stop the recounter.
+	time.Sleep(50 * time.Millisecond)
+	close(done)
+	wg.Wait()
+
+	// Every series was created once, inside the active window, and owned.
+	assert.Equal(t, totalSeries, c.Active(), "active count drifted under a concurrent recount")
+	assert.Equal(t, totalSeries, c.Owned(), "owned count drifted under a concurrent recount")
+
+	active, owned, _ := sumStripes(c)
+	assert.Equal(t, active, c.Active())
+	assert.Equal(t, owned, c.Owned())
+
+	// And a final quiescent recount must agree.
+	updateMetricsWithRing(c, idleCutoff, ringTokens, 100)
+	assert.Equal(t, totalSeries, c.Active())
+	assert.Equal(t, totalSeries, c.Owned())
 }

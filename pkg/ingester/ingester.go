@@ -3350,6 +3350,7 @@ func (i *Ingester) closeAllTSDB() {
 			i.metrics.memUsers.Dec()
 			i.metrics.activeSeriesPerUser.DeleteLabelValues(userID)
 			i.metrics.activeNHSeriesPerUser.DeleteLabelValues(userID)
+			i.metrics.ownedSeriesPerUser.DeleteLabelValues(userID)
 			i.metrics.headMetricNamesPerUser.DeleteLabelValues(userID)
 		}(userDB)
 	}

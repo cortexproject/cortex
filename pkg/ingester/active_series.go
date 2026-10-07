@@ -67,6 +67,13 @@ type ActiveSeries struct {
 	ownedTotal                 uatomic.Int64
 	activeNativeHistogramTotal uatomic.Int64
 
+	// activeCutoffNanos is the idle cutoff used by the most recent UpdateMetrics,
+	// published so that the push path can tell when a retained entry crosses back
+	// into the active window. Zero means no cycle has run with a cutoff yet, which
+	// is the case when entries are released by the idle timeout instead of being
+	// retained, and then a returning series simply creates a new entry.
+	activeCutoffNanos uatomic.Int64
+
 	stripes [numActiveSeriesStripes]activeSeriesStripe
 }
 
@@ -120,18 +127,27 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint3
 
 	// Load ring state atomically — readers on the push path always see a consistent snapshot.
 	state := c.ring.Load()
-	created, owned := c.stripes[stripeID].updateSeriesTimestamp(now, series, hash, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions)
+	created, owned, reactivated, reactivatedNativeHistogram := c.stripes[stripeID].updateSeriesTimestamp(
+		now, series, hash, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions, c.activeCutoffNanos.Load())
 
-	if !created {
-		return
-	}
+	switch {
+	case created:
+		c.activeTotal.Inc()
+		if owned {
+			c.ownedTotal.Inc()
+		}
+		if nativeHistogram {
+			c.activeNativeHistogramTotal.Inc()
+		}
 
-	c.activeTotal.Inc()
-	if owned {
-		c.ownedTotal.Inc()
-	}
-	if nativeHistogram {
-		c.activeNativeHistogramTotal.Inc()
+	case reactivated:
+		// The entry was retained but had aged out of the active window, and has now
+		// received a sample inside it. Only the active counts change: an idle series
+		// never stopped being owned, because owned ignores the window.
+		c.activeTotal.Inc()
+		if reactivatedNativeHistogram {
+			c.activeNativeHistogramTotal.Inc()
+		}
 	}
 }
 
@@ -183,6 +199,10 @@ func (c *ActiveSeries) UpdateMetrics(keepUntil time.Time, tokens []uint32, owned
 	c.activeTotal.Store(active)
 	c.ownedTotal.Store(owned)
 	c.activeNativeHistogramTotal.Store(activeNativeHistogram)
+
+	// Publish the cutoff last, so the push path never sees one that is newer than
+	// the counts it belongs to and double counts a series as reactivated.
+	c.activeCutoffNanos.Store(keepUntil.UnixNano())
 }
 
 // Purge removes entries last updated before keepUntil and recomputes the counts.
@@ -244,7 +264,7 @@ func (c *ActiveSeries) ActiveNativeHistogram() int {
 // updateSeriesTimestamp records a sample for a series, creating the entry if this
 // is the first time it has been seen. It reports whether an entry was created and,
 // if so, whether that entry is owned by this instance.
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) (created, owned bool) {
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool, activeCutoffNanos int64) (created, owned, reactivated, reactivatedNativeHistogram bool) {
 	nowNanos := now.UnixNano()
 
 	e := s.findEntryForSeries(fingerprint, series)
@@ -255,7 +275,13 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 
 	if !entryTimeSet {
 		if prev := e.Load(); nowNanos > prev {
-			entryTimeSet = e.CompareAndSwap(prev, nowNanos)
+			if entryTimeSet = e.CompareAndSwap(prev, nowNanos); entryTimeSet &&
+				activeCutoffNanos > 0 && prev < activeCutoffNanos && nowNanos >= activeCutoffNanos {
+				// This entry has just crossed back into the active window. Only the
+				// goroutine whose compare-and-swap moved the timestamp across the
+				// cutoff gets here, so the series is counted exactly once.
+				reactivated, reactivatedNativeHistogram = s.countReactivation(fingerprint, series)
+			}
 		}
 	}
 
@@ -269,7 +295,28 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 		}
 	}
 
-	return created, owned
+	return created, owned, reactivated, reactivatedNativeHistogram
+}
+
+// countReactivation records that a retained entry has re-entered the active window.
+// It reports whether the entry was found, and whether it is a native histogram, which
+// is taken from the entry rather than from the incoming sample because the entry's
+// kind is fixed when it is created.
+func (s *activeSeriesStripe) countReactivation(fingerprint uint64, series labels.Labels) (found, isNativeHistogram bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, entry := range s.refs[fingerprint] {
+		if labels.Equal(entry.lbs, series) {
+			s.active++
+			if entry.isNativeHistogram {
+				s.activeNativeHistogram++
+			}
+			return true, entry.isNativeHistogram
+		}
+	}
+
+	return false, false
 }
 
 func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) *uatomic.Int64 {

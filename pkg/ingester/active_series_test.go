@@ -702,3 +702,79 @@ func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
 		}
 	})
 }
+
+// TestActiveSeriesPurgeCutoff covers the clock-domain hazard in head-anchored
+// retention. Entry timestamps are wall-clock arrival times while the head's minimum
+// time is a sample timestamp, so a tenant whose sample timestamps run ahead of real
+// time would otherwise produce a cutoff in the recent past and drop entries for
+// series which are still resident, under-counting owned series and letting the
+// tenant exceed its limit.
+func TestActiveSeriesPurgeCutoff(t *testing.T) {
+	const blockRange = 2 * time.Hour
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+
+	tests := map[string]struct {
+		headMinTime time.Time
+		expected    time.Time
+		why         string
+	}{
+		"real-time ingestion uses the head's minimum time": {
+			headMinTime: now.Add(-blockRange),
+			expected:    now.Add(-blockRange),
+			why:         "sample time and arrival time agree, so no clamping applies",
+		},
+		"backdated samples retain entries for longer": {
+			headMinTime: now.Add(-3 * time.Hour),
+			expected:    now.Add(-3 * time.Hour),
+			why:         "an earlier cutoff only over-retains, which is the safe direction",
+		},
+		"future-dated samples are clamped": {
+			headMinTime: now.Add(10 * time.Minute),
+			expected:    now.Add(-blockRange),
+			why:         "without clamping this would drop every entry, since no arrival time is in the future",
+		},
+		"a head minimum time inside the block range is clamped": {
+			headMinTime: now.Add(-30 * time.Minute),
+			expected:    now.Add(-blockRange),
+			why:         "entries for series admitted up to a block range ago must survive",
+		},
+		"a head minimum time exactly one block range ago is kept": {
+			headMinTime: now.Add(-blockRange),
+			expected:    now.Add(-blockRange),
+			why:         "the boundary itself is not clamped",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := activeSeriesPurgeCutoff(tc.headMinTime.UnixMilli(), now, blockRange)
+			assert.Equal(t, tc.expected.UTC(), got.UTC(), tc.why)
+			assert.False(t, got.After(now.Add(-blockRange)),
+				"the cutoff must never be more recent than one block range ago")
+		})
+	}
+}
+
+// TestActiveSeriesPurgeCutoff_NeverDropsResidentSeries states the property the clamp
+// exists for: whatever the head reports, an entry whose series arrived within the
+// last block range is never released.
+func TestActiveSeriesPurgeCutoff_NeverDropsResidentSeries(t *testing.T) {
+	const blockRange = 2 * time.Hour
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+
+	// A series which received a sample just now, and one which received a sample
+	// almost a whole block range ago. Both could still be in the head.
+	justArrived := now
+	nearlyStale := now.Add(-blockRange).Add(time.Minute)
+
+	for _, skew := range []time.Duration{
+		-24 * time.Hour, -3 * time.Hour, -blockRange, -time.Minute, 0, time.Minute, 10 * time.Minute, time.Hour,
+	} {
+		cutoff := activeSeriesPurgeCutoff(now.Add(skew).UnixMilli(), now, blockRange)
+
+		assert.True(t, justArrived.After(cutoff),
+			"a series that just arrived must survive a head minimum time skewed by %s", skew)
+		assert.True(t, nearlyStale.After(cutoff),
+			"a series that arrived within the block range must survive a head minimum time skewed by %s", skew)
+	}
+}

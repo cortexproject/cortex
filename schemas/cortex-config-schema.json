@@ -5408,6 +5408,18 @@
           "x-cli-flag": "ingester.metadata-retain-period",
           "x-format": "duration"
         },
+        "owned_series_limit_enforcement_enabled": {
+          "default": false,
+          "description": "Use owned series count for limit enforcement. Requires owned-series-metrics-enabled. When enabled, PreCreation uses owned count instead of Head().NumSeries() for both per-user and instance-level limits.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.owned-series-limit-enforcement-enabled"
+        },
+        "owned_series_metrics_enabled": {
+          "default": false,
+          "description": "Enable tracking of owned series per user. When enabled, the ingester computes series ownership based on the ring and emits cortex_ingester_owned_series metric.",
+          "type": "boolean",
+          "x-cli-flag": "ingester.owned-series-metrics-enabled"
+        },
         "query_protection": {
           "properties": {
             "eviction": {

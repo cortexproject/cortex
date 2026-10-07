@@ -4193,6 +4193,18 @@ lifecycler:
 # CLI flag: -ingester.head-queried-series-metrics-windows
 [head_queried_series_metrics_windows: <list of duration> | default = 2h0m0s]
 
+# Enable tracking of owned series per user. When enabled, the ingester computes
+# series ownership based on the ring and emits cortex_ingester_owned_series
+# metric.
+# CLI flag: -ingester.owned-series-metrics-enabled
+[owned_series_metrics_enabled: <boolean> | default = false]
+
+# Use owned series count for limit enforcement. Requires
+# owned-series-metrics-enabled. When enabled, PreCreation uses owned count
+# instead of Head().NumSeries() for both per-user and instance-level limits.
+# CLI flag: -ingester.owned-series-limit-enforcement-enabled
+[owned_series_limit_enforcement_enabled: <boolean> | default = false]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]

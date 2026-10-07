@@ -174,3 +174,7 @@ Currently experimental features are:
   - `-querier.optimizers` / `-ruler.optimizers` (string) CLI flags
   - `-querier.decoding-concurrency` / `-ruler.decoding-concurrency` (int) CLI flags
   - `-querier.selector-batch-size` / `-ruler.selector-batch-size` (int) CLI flags
+- Ingester: Owned Series Tracking
+  - Enable on Ingester via `-ingester.owned-series-metrics-enabled=true`
+  - Counts only the series the ring assigns to this ingester and exposes the `cortex_ingester_owned_series` metric
+  - `-ingester.owned-series-limit-enforcement-enabled` additionally uses that count for per-tenant and instance series limits, instead of the total number of series in the TSDB head

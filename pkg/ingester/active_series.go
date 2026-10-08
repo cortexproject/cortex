@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	uatomic "go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -98,6 +99,14 @@ type activeSeriesEntry struct {
 	owned             bool
 	nanos             *uatomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
 	isNativeHistogram bool
+	// headRef is the TSDB head series reference this entry describes, refreshed
+	// on every sample. Head series references are never reused within a TSDB, so
+	// it identifies the exact head series: when the head deletes a series, only
+	// the entry still carrying that reference is removed. It is nil when the
+	// caller supplies no reference, as with owned-series tracking disabled, so
+	// that path allocates nothing extra; such entries are never removed by
+	// DeleteSeries.
+	headRef *uatomic.Uint64
 }
 
 func NewActiveSeries() *ActiveSeries {
@@ -120,12 +129,38 @@ func NewActiveSeries() *ActiveSeries {
 // towards owned, never whether it is tracked at all, so the active count behaves
 // exactly as it did before owned-series tracking existed.
 func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint32, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
+	c.UpdateSeriesWithRef(series, hash, 0, key, now, nativeHistogram, labelsCopy)
+}
+
+// UpdateSeriesWithRef is UpdateSeries for callers that know the TSDB head series
+// reference the sample was appended to. Recording it lets DeleteSeries release the
+// entry exactly when the head drops that series.
+func (c *ActiveSeries) UpdateSeriesWithRef(series labels.Labels, hash uint64, headRef uint64, key uint32, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
 	stripeID := hash % numActiveSeriesStripes
 
 	// Load ring state atomically — readers on the push path always see a consistent snapshot.
 	state := c.ring.Load()
 	c.stripes[stripeID].updateSeriesTimestamp(
-		now, series, hash, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions, c.activeCutoffNanos.Load())
+		now, series, hash, headRef, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions, c.activeCutoffNanos.Load())
+}
+
+// DeleteSeries releases the entries for series the TSDB head has just deleted. It
+// is driven by the head's PostDeletion callback, so an entry lives exactly as long
+// as the series it describes is in memory, with no clock comparison involved.
+//
+// An entry is removed only if it still carries the deleted series' reference. The
+// head invokes the callback after releasing its own lock, so a sample can re-create
+// the same labels as a new head series before this runs. That sample refreshes the
+// entry to the new reference, and the entry is then correctly kept.
+func (c *ActiveSeries) DeleteSeries(deleted map[chunks.HeadSeriesRef]labels.Labels) {
+	activeCutoffNanos := c.activeCutoffNanos.Load()
+	for ref, lbls := range deleted {
+		if ref == 0 {
+			continue
+		}
+		fp := lbls.Hash()
+		c.stripes[fp%numActiveSeriesStripes].deleteSeries(fp, lbls, uint64(ref), activeCutoffNanos)
+	}
 }
 
 // updateTokens updates the cached ring state. Returns true if ownership changed.
@@ -256,13 +291,25 @@ func (c *ActiveSeries) ActiveNativeHistogram() int {
 // updateSeriesTimestamp records a sample for a series, creating the entry if this
 // is the first time it has been seen. It reports whether an entry was created and,
 // if so, whether that entry is owned by this instance.
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool, activeCutoffNanos int64) {
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, headRef uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool, activeCutoffNanos int64) {
 	nowNanos := now.UnixNano()
 
-	e := s.findEntryForSeries(fingerprint, series)
+	e, ref := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
-		e, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, key, series, nowNanos, nativeHistogram, labelsCopy, tokens, ownedPositions)
+		e, ref, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, headRef, key, series, nowNanos, nativeHistogram, labelsCopy, tokens, ownedPositions)
+	}
+
+	// Keep the entry pointing at the live head series. It changes only when the
+	// head deleted the series and a later sample re-created it.
+	if headRef != 0 {
+		if ref == nil {
+			// The entry was created without a reference; adopt this one so the
+			// head's deletion callback can release it.
+			s.setHeadRef(fingerprint, series, headRef)
+		} else if ref.Load() != headRef {
+			ref.Store(headRef)
+		}
 	}
 
 	if !entryTimeSet {
@@ -308,28 +355,28 @@ func (s *activeSeriesStripe) countReactivation(fingerprint uint64, series labels
 	}
 }
 
-func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) *uatomic.Int64 {
+func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) (*uatomic.Int64, *uatomic.Uint64) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	// Check if already exists within the entries.
 	for ix, entry := range s.refs[fingerprint] {
 		if labels.Equal(entry.lbs, series) {
-			return s.refs[fingerprint][ix].nanos
+			return s.refs[fingerprint][ix].nanos, s.refs[fingerprint][ix].headRef
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) (nanos *uatomic.Int64, entryTimeSet bool) {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, headRef uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) (nanos *uatomic.Int64, ref *uatomic.Uint64, entryTimeSet bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	// Check if already exists within the entries.
 	for ix, entry := range s.refs[fingerprint] {
 		if labels.Equal(entry.lbs, series) {
-			return s.refs[fingerprint][ix].nanos, false
+			return s.refs[fingerprint][ix].nanos, s.refs[fingerprint][ix].headRef, false
 		}
 	}
 
@@ -353,10 +400,72 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, key 
 		nanos:             uatomic.NewInt64(nowNanos),
 		isNativeHistogram: nativeHistogram,
 	}
+	if headRef != 0 {
+		e.headRef = uatomic.NewUint64(headRef)
+	}
 
 	s.refs[fingerprint] = append(s.refs[fingerprint], e)
 
-	return e.nanos, true
+	return e.nanos, e.headRef, true
+}
+
+// setHeadRef gives an existing entry that has no head reference the given one.
+func (s *activeSeriesStripe) setHeadRef(fingerprint uint64, series labels.Labels, headRef uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range s.refs[fingerprint] {
+		e := &s.refs[fingerprint][i]
+		if !labels.Equal(e.lbs, series) {
+			continue
+		}
+		if e.headRef == nil {
+			e.headRef = uatomic.NewUint64(headRef)
+		} else {
+			e.headRef.Store(headRef)
+		}
+		return
+	}
+}
+
+// deleteSeries removes the entry for series if it still refers to headRef, and
+// takes it out of every count it contributed to.
+func (s *activeSeriesStripe) deleteSeries(fingerprint uint64, series labels.Labels, headRef uint64, activeCutoffNanos int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entries := s.refs[fingerprint]
+	for i := range entries {
+		if !labels.Equal(entries[i].lbs, series) {
+			continue
+		}
+		if entries[i].headRef == nil || entries[i].headRef.Load() != headRef {
+			// Re-created as a new head series since the head deleted this one.
+			return
+		}
+
+		e := entries[i]
+		s.tracked.Dec()
+		if e.owned {
+			s.owned.Dec()
+		}
+		// Mirror how the entry was counted: everything counts as active until the
+		// first recount publishes a cutoff, and after that only entries inside it.
+		if activeCutoffNanos == 0 || e.nanos.Load() >= activeCutoffNanos {
+			s.active.Dec()
+			if e.isNativeHistogram {
+				s.activeNativeHistogram.Dec()
+			}
+		}
+
+		entries = append(entries[:i], entries[i+1:]...)
+		if len(entries) == 0 {
+			delete(s.refs, fingerprint)
+		} else {
+			s.refs[fingerprint] = entries
+		}
+		return
+	}
 }
 
 // updateMetrics recounts this stripe's active and owned series, refreshing each

@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/require"
@@ -405,7 +407,7 @@ func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger())
+	qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger(), false)
 	_, _ = qf(context.Background(), "test", time.Now())
 
 	require.GreaterOrEqual(t, testutil.ToFloat64(metrics.RulerQuerySeconds.WithLabelValues("userID")), float64(1))
@@ -414,6 +416,39 @@ func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryChunkBytes.WithLabelValues("userID")), float64(10))
 	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryDataBytes.WithLabelValues("userID")), float64(14))
 }
+
+func TestRecordAndReportRuleQueryMetrics_LogFields(t *testing.T) {
+	statsFields := []string{"query_wall_time_seconds", "query_storage_wall_time_seconds", "fetched_series_count", "fetched_chunks_count", "fetched_samples_count", "fetched_chunks_bytes", "fetched_data_bytes"}
+
+	for name, queryViaFrontend := range map[string]bool{
+		"query via engine":   false,
+		"query via frontend": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			metrics := NewRuleEvalMetrics(Config{EnableQueryStats: true}, prometheus.NewPedanticRegistry())
+			buf := &bytes.Buffer{}
+			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+				return promql.Vector{}, nil
+			}
+			ctx := rules.NewOriginContext(context.Background(), rules.RuleDetail{Name: "rule", Kind: "recording"})
+
+			qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewLogfmtLogger(buf), queryViaFrontend)
+			_, _ = qf(ctx, "test", time.Now())
+
+			logLine := buf.String()
+			require.Contains(t, logLine, "rule=rule")
+			require.Contains(t, logLine, "cortex_ruler_query_seconds_total=")
+			for _, field := range statsFields {
+				if queryViaFrontend {
+					require.NotContains(t, logLine, field+"=")
+				} else {
+					require.Contains(t, logLine, field+"=")
+				}
+			}
+		})
+	}
+}
+
 func TestPusherAppender_Commit_WithDiscardOutOfOrder(t *testing.T) {
 	pusher := &fakePusher{response: &cortexpb.WriteResponse{}}
 	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "test"})

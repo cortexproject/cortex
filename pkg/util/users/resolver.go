@@ -10,9 +10,27 @@ import (
 
 var defaultResolver Resolver = NewSingleResolver()
 
+type resolverContextKey struct{}
+
 // WithDefaultResolver updates the resolver used for the package methods.
 func WithDefaultResolver(r Resolver) {
 	defaultResolver = r
+}
+
+// InjectResolver returns a context whose tenant IDs are resolved by r instead of the default resolver.
+// If r is nil, ctx is returned as is.
+func InjectResolver(ctx context.Context, r Resolver) context.Context {
+	if r == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, resolverContextKey{}, r)
+}
+
+func resolverFromContext(ctx context.Context) Resolver {
+	if r, ok := ctx.Value(resolverContextKey{}).(Resolver); ok {
+		return r
+	}
+	return defaultResolver
 }
 
 // TenantID returns exactly a single tenant ID from the context. It should be
@@ -24,7 +42,7 @@ func WithDefaultResolver(r Resolver) {
 //
 //nolint:revive
 func TenantID(ctx context.Context) (string, error) {
-	return defaultResolver.TenantID(ctx)
+	return resolverFromContext(ctx).TenantID(ctx)
 }
 
 // TenantIDs returns all tenant IDs from the context. It should return
@@ -35,7 +53,7 @@ func TenantID(ctx context.Context) (string, error) {
 //
 //nolint:revive
 func TenantIDs(ctx context.Context) ([]string, error) {
-	return defaultResolver.TenantIDs(ctx)
+	return resolverFromContext(ctx).TenantIDs(ctx)
 }
 
 type Resolver interface {
@@ -146,7 +164,7 @@ func ExtractTenantIDFromHTTPRequest(req *http.Request) (string, context.Context,
 		return "", nil, err
 	}
 
-	tenantID, err := defaultResolver.TenantID(ctx)
+	tenantID, err := resolverFromContext(ctx).TenantID(ctx)
 	if err != nil {
 		return "", nil, err
 	}

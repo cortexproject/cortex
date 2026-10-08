@@ -12,6 +12,7 @@ import (
 	v1 "github.com/cortexproject/cortex/pkg/frontend/v1"
 	v2 "github.com/cortexproject/cortex/pkg/frontend/v2"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 // This struct combines several configuration options together to preserve backwards compatibility.
@@ -37,7 +38,7 @@ func (cfg *CombinedFrontendConfig) RegisterFlags(f *flag.FlagSet) {
 // Returned RoundTripper can be wrapped in more round-tripper middlewares, and then eventually registered
 // into HTTP server using the Handler from this package. Returned RoundTripper is always non-nil
 // (if there are no errors), and it uses the returned frontend (if any).
-func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort int, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (http.RoundTripper, *v1.Frontend, *v2.Frontend, error) {
+func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, tenantResolver users.Resolver, grpcListenPort int, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (http.RoundTripper, *v1.Frontend, *v2.Frontend, error) {
 	switch {
 	case cfg.DownstreamURL != "":
 		// If the user has specified a downstream Prometheus, then we should use that.
@@ -59,7 +60,7 @@ func InitFrontend(cfg CombinedFrontendConfig, limits v1.Limits, grpcListenPort i
 			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := v2.NewFrontend(cfg.FrontendV2, limits, log, reg, retry)
+		fr, err := v2.NewFrontend(cfg.FrontendV2, limits, tenantResolver, log, reg, retry)
 		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), nil, fr, err
 
 	default:

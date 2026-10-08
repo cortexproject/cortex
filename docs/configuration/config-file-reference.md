@@ -324,8 +324,8 @@ tenant_federation:
   [user_sync_interval: <duration> | default = 5m]
 
   # [Experimental] Cache size of regex match results used by regex resolver.
-  # Each cache entry includes both regex patterns (e.g. `user-.+`) and resolved
-  # tenant IDs (e.g. `user-1`). Set to 0 or less to disable caching.
+  # Each cache entry maps a regex (e.g. `user-.+`) to the tenant IDs it matches.
+  # Set to 0 or less to disable caching.
   # CLI flag: -tenant-federation.regex-cache-size
   [regex_cache_size: <int> | default = 1000]
 

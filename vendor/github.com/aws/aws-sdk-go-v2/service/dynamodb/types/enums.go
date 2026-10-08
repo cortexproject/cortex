@@ -784,6 +784,25 @@ func (ScalarAttributeType) Values() []ScalarAttributeType {
 	}
 }
 
+type SearchSchemaElementType string
+
+// Enum values for SearchSchemaElementType
+const (
+	SearchSchemaElementTypeHash         SearchSchemaElementType = "HASH"
+	SearchSchemaElementTypeInlineFilter SearchSchemaElementType = "INLINE_FILTER"
+)
+
+// Values returns all known values for SearchSchemaElementType. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (SearchSchemaElementType) Values() []SearchSchemaElementType {
+	return []SearchSchemaElementType{
+		"HASH",
+		"INLINE_FILTER",
+	}
+}
+
 type Select string
 
 // Enum values for Select
@@ -944,6 +963,27 @@ func (TimeToLiveStatus) Values() []TimeToLiveStatus {
 		"DISABLING",
 		"ENABLED",
 		"DISABLED",
+	}
+}
+
+type VectorDistanceFunction string
+
+// Enum values for VectorDistanceFunction
+const (
+	VectorDistanceFunctionCosine     VectorDistanceFunction = "COSINE"
+	VectorDistanceFunctionDotProduct VectorDistanceFunction = "DOT_PRODUCT"
+	VectorDistanceFunctionEuclidean  VectorDistanceFunction = "EUCLIDEAN"
+)
+
+// Values returns all known values for VectorDistanceFunction. Note that this can
+// be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (VectorDistanceFunction) Values() []VectorDistanceFunction {
+	return []VectorDistanceFunction{
+		"COSINE",
+		"DOT_PRODUCT",
+		"EUCLIDEAN",
 	}
 }
 

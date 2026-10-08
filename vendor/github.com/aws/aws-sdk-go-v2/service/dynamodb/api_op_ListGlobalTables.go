@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Lists all global tables that have a replica in the specified Region.
@@ -59,6 +60,24 @@ type ListGlobalTablesInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListGlobalTablesInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListGlobalTablesInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListGlobalTablesInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ExclusiveStartGlobalTableName != nil {
+		s.WriteString(schemas.ListGlobalTablesInput_ExclusiveStartGlobalTableName, *v.ExclusiveStartGlobalTableName)
+	}
+	if v.Limit != nil {
+		s.WriteInt32(schemas.ListGlobalTablesInput_Limit, *v.Limit)
+	}
+	if v.RegionName != nil {
+		s.WriteString(schemas.ListGlobalTablesInput_RegionName, *v.RegionName)
+	}
+}
+
 type ListGlobalTablesOutput struct {
 
 	// List of global table names.
@@ -73,35 +92,45 @@ type ListGlobalTablesOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListGlobalTablesOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListGlobalTablesOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListGlobalTablesOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeGlobalTableList(s, schemas.ListGlobalTablesOutput_GlobalTables, v.GlobalTables)
+	if v.LastEvaluatedGlobalTableName != nil {
+		s.WriteString(schemas.ListGlobalTablesOutput_LastEvaluatedGlobalTableName, *v.LastEvaluatedGlobalTableName)
+	}
+}
+func (v *ListGlobalTablesOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListGlobalTablesOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListGlobalTablesOutput_GlobalTables:
+			return deserializeGlobalTableList(d, schemas.ListGlobalTablesOutput_GlobalTables, &v.GlobalTables)
+		case schemas.ListGlobalTablesOutput_LastEvaluatedGlobalTableName:
+			v.LastEvaluatedGlobalTableName = new(string)
+			return d.ReadString(schemas.ListGlobalTablesOutput_LastEvaluatedGlobalTableName, v.LastEvaluatedGlobalTableName)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListGlobalTablesMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpListGlobalTables{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListGlobalTables, schemas.ListGlobalTablesInput, schemas.ListGlobalTablesOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpListGlobalTables{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListGlobalTables, schemas.ListGlobalTablesInput, schemas.ListGlobalTablesOutput), output: &ListGlobalTablesOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpListGlobalTablesDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -111,9 +140,6 @@ func (c *Client) addOperationListGlobalTablesMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addCredentialSource(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ListGlobalTables"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

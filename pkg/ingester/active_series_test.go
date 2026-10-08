@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -703,82 +704,6 @@ func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
 	})
 }
 
-// TestActiveSeriesPurgeCutoff covers the clock-domain hazard in head-anchored
-// retention. Entry timestamps are wall-clock arrival times while the head's minimum
-// time is a sample timestamp, so a tenant whose sample timestamps run ahead of real
-// time would otherwise produce a cutoff in the recent past and drop entries for
-// series which are still resident, under-counting owned series and letting the
-// tenant exceed its limit.
-func TestActiveSeriesPurgeCutoff(t *testing.T) {
-	const blockRange = 2 * time.Hour
-	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
-
-	tests := map[string]struct {
-		headMinTime time.Time
-		expected    time.Time
-		why         string
-	}{
-		"real-time ingestion uses the head's minimum time": {
-			headMinTime: now.Add(-blockRange),
-			expected:    now.Add(-blockRange),
-			why:         "sample time and arrival time agree, so no clamping applies",
-		},
-		"backdated samples retain entries for longer": {
-			headMinTime: now.Add(-3 * time.Hour),
-			expected:    now.Add(-3 * time.Hour),
-			why:         "an earlier cutoff only over-retains, which is the safe direction",
-		},
-		"future-dated samples are clamped": {
-			headMinTime: now.Add(10 * time.Minute),
-			expected:    now.Add(-blockRange),
-			why:         "without clamping this would drop every entry, since no arrival time is in the future",
-		},
-		"a head minimum time inside the block range is clamped": {
-			headMinTime: now.Add(-30 * time.Minute),
-			expected:    now.Add(-blockRange),
-			why:         "entries for series admitted up to a block range ago must survive",
-		},
-		"a head minimum time exactly one block range ago is kept": {
-			headMinTime: now.Add(-blockRange),
-			expected:    now.Add(-blockRange),
-			why:         "the boundary itself is not clamped",
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			got := activeSeriesPurgeCutoff(tc.headMinTime.UnixMilli(), now, blockRange)
-			assert.Equal(t, tc.expected.UTC(), got.UTC(), tc.why)
-			assert.False(t, got.After(now.Add(-blockRange)),
-				"the cutoff must never be more recent than one block range ago")
-		})
-	}
-}
-
-// TestActiveSeriesPurgeCutoff_NeverDropsResidentSeries states the property the clamp
-// exists for: whatever the head reports, an entry whose series arrived within the
-// last block range is never released.
-func TestActiveSeriesPurgeCutoff_NeverDropsResidentSeries(t *testing.T) {
-	const blockRange = 2 * time.Hour
-	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
-
-	// A series which received a sample just now, and one which received a sample
-	// almost a whole block range ago. Both could still be in the head.
-	justArrived := now
-	nearlyStale := now.Add(-blockRange).Add(time.Minute)
-
-	for _, skew := range []time.Duration{
-		-24 * time.Hour, -3 * time.Hour, -blockRange, -time.Minute, 0, time.Minute, 10 * time.Minute, time.Hour,
-	} {
-		cutoff := activeSeriesPurgeCutoff(now.Add(skew).UnixMilli(), now, blockRange)
-
-		assert.True(t, justArrived.After(cutoff),
-			"a series that just arrived must survive a head minimum time skewed by %s", skew)
-		assert.True(t, nearlyStale.After(cutoff),
-			"a series that arrived within the block range must survive a head minimum time skewed by %s", skew)
-	}
-}
-
 // TestActiveSeries_ReactivatedSeriesCountsImmediately covers the one way retaining
 // entries could have changed the active count's behaviour.
 //
@@ -1044,4 +969,101 @@ func TestActiveSeries_TrackedRevealsAnUnseenHead(t *testing.T) {
 	c.Purge(now.Add(time.Minute), idleCutoff)
 	assert.Equal(t, 0, c.Tracked())
 	assert.Equal(t, 0, c.Owned())
+}
+
+// TestActiveSeries_DeleteSeriesReleasesExactlyTheDeletedHeadSeries covers the
+// mechanism that keeps the owned count aligned with memory: the head reports the
+// series it deleted, and only those entries are released.
+func TestActiveSeries_DeleteSeriesReleasesExactlyTheDeletedHeadSeries(t *testing.T) {
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+
+	c := NewActiveSeries()
+	setRingState(c, ringTokens, 100) // keys <100 owned, keys in (100,200] not owned
+
+	gone := labels.FromStrings("__name__", "gone")
+	kept := labels.FromStrings("__name__", "kept")
+	goneUnowned := labels.FromStrings("__name__", "gone_unowned")
+	c.UpdateSeriesWithRef(gone, gone.Hash(), 11, 50, now, true, copyFn)
+	c.UpdateSeriesWithRef(kept, kept.Hash(), 12, 50, now, false, copyFn)
+	c.UpdateSeriesWithRef(goneUnowned, goneUnowned.Hash(), 13, 150, now, false, copyFn)
+	require.Equal(t, 3, c.Tracked())
+	require.Equal(t, 2, c.Owned())
+	require.Equal(t, 3, c.Active())
+	require.Equal(t, 1, c.ActiveNativeHistogram())
+
+	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{11: gone, 13: goneUnowned})
+
+	assert.Equal(t, 1, c.Tracked(), "both deleted series are released")
+	assert.Equal(t, 1, c.Owned(), "an owned deleted series leaves owned; an unowned one never counted")
+	assert.Equal(t, 1, c.Active())
+	assert.Equal(t, 0, c.ActiveNativeHistogram(), "the deleted native histogram leaves that count too")
+
+	active, owned, nh := sumStripes(c)
+	assert.Equal(t, []int{1, 1, 0}, []int{active, owned, nh}, "per-stripe counters agree with the totals")
+
+	// A recount must agree with the incremental bookkeeping.
+	updateMetricsWithRing(c, now.Add(-10*time.Minute), ringTokens, 100)
+	assert.Equal(t, 1, c.Tracked())
+	assert.Equal(t, 1, c.Owned())
+	assert.Equal(t, 1, c.Active())
+}
+
+// TestActiveSeries_DeleteSeriesKeepsSeriesRecreatedInTheHead covers the race the
+// head reference exists for. The head calls PostDeletion after releasing its lock,
+// so a sample can re-create the same labels as a new head series first. That
+// sample moves the entry to the new reference, and the stale deletion must not
+// remove it.
+func TestActiveSeries_DeleteSeriesKeepsSeriesRecreatedInTheHead(t *testing.T) {
+	now := time.Now()
+	c := NewActiveSeries()
+	setRingState(c, []uint32{100}, 100)
+
+	lbls := labels.FromStrings("__name__", "flapping")
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 21, 50, now, false, copyFn)
+
+	// The head deletes ref 21; before the callback runs, a sample re-creates the
+	// series as ref 35.
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 35, 50, now.Add(time.Second), false, copyFn)
+	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{21: lbls})
+
+	assert.Equal(t, 1, c.Tracked(), "the series is live again under a new reference and must stay tracked")
+	assert.Equal(t, 1, c.Owned())
+
+	// When the head later deletes ref 35, it goes.
+	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{35: lbls})
+	assert.Equal(t, 0, c.Tracked())
+	assert.Equal(t, 0, c.Owned())
+}
+
+// TestActiveSeries_DeleteSeriesIgnoresUnknownReferences checks that entries
+// created without a head reference, and deletions for series never tracked, are
+// both no-ops rather than corrupting counts.
+func TestActiveSeries_DeleteSeriesIgnoresUnknownReferences(t *testing.T) {
+	now := time.Now()
+	c := NewActiveSeries()
+
+	noRef := labels.FromStrings("__name__", "no_ref")
+	c.UpdateSeries(noRef, noRef.Hash(), noRingToken, now, false, copyFn)
+	never := labels.FromStrings("__name__", "never_tracked")
+
+	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{7: noRef, 8: never})
+
+	assert.Equal(t, 1, c.Tracked(), "an entry with no head reference is never released by the callback")
+	assert.Equal(t, 1, c.Active())
+}
+
+// TestActiveSeries_EntryWithoutRefAdoptsOne checks that an entry first created
+// without a head reference picks one up from a later sample, so the head's
+// deletion callback can still release it.
+func TestActiveSeries_EntryWithoutRefAdoptsOne(t *testing.T) {
+	now := time.Now()
+	c := NewActiveSeries()
+
+	lbls := labels.FromStrings("__name__", "late_ref")
+	c.UpdateSeries(lbls, lbls.Hash(), noRingToken, now, false, copyFn)
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 42, noRingToken, now.Add(time.Second), false, copyFn)
+
+	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{42: lbls})
+	assert.Equal(t, 0, c.Tracked(), "the adopted reference lets the callback release the entry")
 }

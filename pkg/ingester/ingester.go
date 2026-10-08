@@ -411,6 +411,10 @@ type userTSDB struct {
 	// OwnedSeriesMetricsEnabled AND OwnedSeriesLimitEnforcementEnabled are set.
 	ownedSeriesLimitEnabled bool
 
+	// ownedSeriesTrackingEnabled releases active series entries when the head
+	// deletes their series, so that the owned count follows what is in memory.
+	ownedSeriesTrackingEnabled bool
+
 	// instanceOwnedCount tracks total owned series across all tenants on this ingester.
 	// Recalculated every updateActiveSeries cycle (1 min). Used for instance-level
 	// max_series limit when ownedSeriesLimitEnabled is true.
@@ -550,68 +554,6 @@ func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 	return u.db.CompactOOOHead(ctx)
 }
 
-// activeSeriesPurgeCutoff returns the timestamp before which active-series entries
-// can be released, given the TSDB head's minimum time.
-//
-// These two values live in different clock domains, which is why this needs care.
-// An entry's timestamp is the wall-clock time at which a sample for it arrived,
-// whereas the head's minimum time is a sample timestamp. They agree for real-time
-// ingestion, but diverge for a client whose samples are backdated or whose clock is
-// skewed.
-//
-// Of the two ways they can disagree, only one is dangerous. A cutoff that lands too
-// early just retains entries for longer than necessary, which over-counts owned
-// series and so errs towards enforcing limits sooner: wasteful, but safe. A cutoff
-// that lands too late drops entries for series which are still resident, which
-// under-counts owned series and lets a tenant exceed its limit.
-//
-// Only the dangerous direction is corrected here, by refusing to use a cutoff more
-// recent than one block range ago. Anything still in the head must have arrived
-// within roughly that window, so this cannot drop an entry for a resident series
-// however far ahead a tenant's sample timestamps run.
-//
-// Note this is a bound, not a translation between the two clocks. Making the
-// comparison exact would mean recording each series' last sample timestamp on its
-// entry, which costs memory per series and is a trade worth agreeing before taking.
-func activeSeriesPurgeCutoff(headMinTimeMs int64, now time.Time, blockRange time.Duration) time.Time {
-	cutoff := time.UnixMilli(headMinTimeMs)
-
-	if latest := now.Add(-blockRange); cutoff.After(latest) {
-		return latest
-	}
-
-	return cutoff
-}
-
-// purgeActiveSeriesToHead releases active-series entries whose series are no longer
-// in the TSDB head. Called after a successful head compaction.
-//
-// This is the second tier of a two-tier retention scheme. The periodic cycle
-// recounts without removing anything, so that an idle series still held in the head
-// keeps counting towards owned; this tier removes an entry once the series it
-// describes has actually left memory.
-//
-// A series appended immediately after the head's minimum time is read could have
-// its entry dropped here while still being in the head, which would undercount
-// owned. That self-corrects on the series' next sample, which recreates the entry.
-func (u *userTSDB) purgeActiveSeriesToHead(blockRange time.Duration, activeCutoff time.Time) {
-	h := u.Head()
-
-	// An empty head means nothing is in memory, so every entry can go. MinTime is
-	// not usable in this case: Prometheus reports math.MaxInt64 for an empty head.
-	if h.NumSeries() == 0 {
-		u.activeSeries.clear()
-		return
-	}
-
-	minTime := h.MinTime()
-	if minTime <= 0 || minTime == math.MaxInt64 {
-		return
-	}
-
-	u.activeSeries.Purge(activeSeriesPurgeCutoff(minTime, time.Now(), blockRange), activeCutoff)
-}
-
 // PreCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	if u.limiter == nil {
@@ -712,6 +654,13 @@ func (u *userTSDB) PostCreation(metric labels.Labels) {
 // PostDeletion implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) {
 	u.instanceSeriesCount.Sub(int64(len(metrics)))
+
+	// With owned-series tracking, active series entries live exactly as long as
+	// their head series. The head is the authority on what it deleted, so release
+	// those entries here rather than estimating from timestamps.
+	if u.ownedSeriesTrackingEnabled {
+		u.activeSeries.DeleteSeries(metrics)
+	}
 
 	for _, metric := range metrics {
 		metricName, err := extract.MetricNameFromLabels(metric)
@@ -1751,6 +1700,10 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 
 		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
+		// seriesRef is the head series the samples actually landed in, as returned
+		// by the appender. It can differ from ref if the head deleted the series
+		// between GetRef and Append and the append re-created it.
+		var seriesRef storage.SeriesRef
 
 		// To find out if any sample was added to this series, we keep old value.
 		oldSucceededSamplesCount := succeededSamplesCount
@@ -1779,7 +1732,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			// If the cached reference exists, we try to use it.
 			if ref != 0 {
-				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
+				var appendedRef storage.SeriesRef
+				if appendedRef, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
+					seriesRef = appendedRef
 					succeededSamplesCount++
 					continue
 				}
@@ -1787,6 +1742,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			} else {
 				// Retain the reference in case there are multiple samples for the series.
 				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
+					seriesRef = ref
 					succeededSamplesCount++
 					continue
 				}
@@ -1835,7 +1791,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				}
 
 				if ref != 0 {
-					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+					var appendedRef storage.SeriesRef
+					if appendedRef, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+						seriesRef = appendedRef
 						succeededHistogramsCount++
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
@@ -1844,6 +1802,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					// Copy the label set because both TSDB and the active series tracker may retain it.
 					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+						seriesRef = ref
 						succeededHistogramsCount++
 						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
 						continue
@@ -1866,7 +1825,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
 		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
 		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
-			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, tsToken, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
+			// The head series reference is only needed to release the entry when the
+			// head deletes the series, which only owned-series tracking does.
+			var headRef uint64
+			if db.ownedSeriesTrackingEnabled {
+				headRef = uint64(seriesRef)
+			}
+			db.activeSeries.UpdateSeriesWithRef(tsLabels, tsLabelsHash, headRef, tsToken, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
 				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
 				return copiedLabels
 			})
@@ -3232,6 +3197,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 		interner:                     util.NewLruInterner(i.cfg.LabelsStringInterningEnabled),
 		labelsStringInterningEnabled: i.cfg.LabelsStringInterningEnabled,
 		ownedSeriesLimitEnabled:      i.cfg.OwnedSeriesMetricsEnabled && i.cfg.OwnedSeriesLimitEnforcementEnabled,
+		ownedSeriesTrackingEnabled:   i.cfg.OwnedSeriesMetricsEnabled,
 		instanceOwnedCount:           &i.TSDBState.ownedSeriesCount,
 
 		blockRetentionPeriod: i.cfg.BlocksStorageConfig.TSDB.Retention.Milliseconds(),
@@ -3706,14 +3672,16 @@ func (i *Ingester) compactBlocks(ctx context.Context, force bool, allowed *users
 		} else {
 			level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "TSDB blocks compaction completed successfully", "user", userID, "compactReason", reason)
 
-			// Compaction has moved series out of the head, so the entries tracking
-			// them can be released. This is the only place entries are dropped when
-			// owned-series tracking is on, which is what keeps the owned count
-			// aligned with what is in memory rather than with the idle window.
+			// Entries are released by PostDeletion as the head deletes their series,
+			// so nothing needs purging here for correctness. This is only a backstop
+			// against an entry outliving its series through some path the head
+			// callback does not cover: no series can remain in the head after this
+			// long without a sample, so releasing such entries cannot under-count.
 			if i.cfg.OwnedSeriesMetricsEnabled {
-				userDB.purgeActiveSeriesToHead(
-					i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0],
-					time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout),
+				now := time.Now()
+				userDB.activeSeries.Purge(
+					now.Add(-2*i.cfg.BlocksStorageConfig.TSDB.BlockRanges[0]),
+					now.Add(-i.cfg.ActiveSeriesMetricsIdleTimeout),
 				)
 			}
 		}

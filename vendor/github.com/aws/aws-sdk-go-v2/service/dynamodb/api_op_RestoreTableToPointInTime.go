@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"time"
 )
 
@@ -80,6 +81,11 @@ type RestoreTableToPointInTimeInput struct {
 	// List of global secondary indexes for the restored table. The indexes provided
 	// should match existing secondary indexes. You can choose to exclude some or all
 	// of the indexes at the time of restore.
+	//
+	// The WarmThroughput setting is not supported on global secondary indexes when
+	// you use RestoreTableToPointInTime . Although WarmThroughput appears in the
+	// shared index definition, including it in a GlobalSecondaryIndexOverride entry
+	// causes the request to fail with a validation error.
 	GlobalSecondaryIndexOverride []types.GlobalSecondaryIndex
 
 	// List of local secondary indexes for the restored table. The indexes provided
@@ -112,9 +118,59 @@ type RestoreTableToPointInTimeInput struct {
 	// typically 5 minutes before the current time.
 	UseLatestRestorableTime *bool
 
+	// The vector indexes for the restored table. If not specified, all vector indexes
+	// from the source table are restored. The indexes provided must match existing
+	// vector indexes from the source table. You can choose to exclude some or all of
+	// the vector indexes at the time of restore.
+	VectorIndexOverride []types.VectorIndex
+
 	noSmithyDocumentSerde
 }
 
+func (v *RestoreTableToPointInTimeInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RestoreTableToPointInTimeInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RestoreTableToPointInTimeInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BillingModeOverride != "" {
+		s.WriteString(schemas.RestoreTableToPointInTimeInput_BillingModeOverride, string(v.BillingModeOverride))
+	}
+	serializeGlobalSecondaryIndexList(s, schemas.RestoreTableToPointInTimeInput_GlobalSecondaryIndexOverride, v.GlobalSecondaryIndexOverride)
+	serializeLocalSecondaryIndexList(s, schemas.RestoreTableToPointInTimeInput_LocalSecondaryIndexOverride, v.LocalSecondaryIndexOverride)
+	if v.OnDemandThroughputOverride != nil {
+		s.WriteStruct(schemas.RestoreTableToPointInTimeInput_OnDemandThroughputOverride)
+		v.OnDemandThroughputOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.ProvisionedThroughputOverride != nil {
+		s.WriteStruct(schemas.RestoreTableToPointInTimeInput_ProvisionedThroughputOverride)
+		v.ProvisionedThroughputOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.RestoreDateTime != nil {
+		s.WriteTime(schemas.RestoreTableToPointInTimeInput_RestoreDateTime, *v.RestoreDateTime)
+	}
+	if v.SSESpecificationOverride != nil {
+		s.WriteStruct(schemas.RestoreTableToPointInTimeInput_SSESpecificationOverride)
+		v.SSESpecificationOverride.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.SourceTableArn != nil {
+		s.WriteString(schemas.RestoreTableToPointInTimeInput_SourceTableArn, *v.SourceTableArn)
+	}
+	if v.SourceTableName != nil {
+		s.WriteString(schemas.RestoreTableToPointInTimeInput_SourceTableName, *v.SourceTableName)
+	}
+	if v.TargetTableName != nil {
+		s.WriteString(schemas.RestoreTableToPointInTimeInput_TargetTableName, *v.TargetTableName)
+	}
+	if v.UseLatestRestorableTime != nil {
+		s.WriteBool(schemas.RestoreTableToPointInTimeInput_UseLatestRestorableTime, *v.UseLatestRestorableTime)
+	}
+	serializeVectorIndexList(s, schemas.RestoreTableToPointInTimeInput_VectorIndexOverride, v.VectorIndexOverride)
+}
 func (in *RestoreTableToPointInTimeInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TargetTableName
@@ -132,35 +188,44 @@ type RestoreTableToPointInTimeOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *RestoreTableToPointInTimeOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.RestoreTableToPointInTimeOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *RestoreTableToPointInTimeOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableDescription != nil {
+		s.WriteStruct(schemas.RestoreTableToPointInTimeOutput_TableDescription)
+		v.TableDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *RestoreTableToPointInTimeOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.RestoreTableToPointInTimeOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.RestoreTableToPointInTimeOutput_TableDescription:
+			v.TableDescription = &types.TableDescription{}
+			return v.TableDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationRestoreTableToPointInTimeMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpRestoreTableToPointInTime{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RestoreTableToPointInTime, schemas.RestoreTableToPointInTimeInput, schemas.RestoreTableToPointInTimeOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpRestoreTableToPointInTime{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.RestoreTableToPointInTime, schemas.RestoreTableToPointInTimeInput, schemas.RestoreTableToPointInTimeOutput), output: &RestoreTableToPointInTimeOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpRestoreTableToPointInTimeDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -173,9 +238,6 @@ func (c *Client) addOperationRestoreTableToPointInTimeMiddlewares(stack *middlew
 		return err
 	}
 	if err = addOpRestoreTableToPointInTimeValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "RestoreTableToPointInTime"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

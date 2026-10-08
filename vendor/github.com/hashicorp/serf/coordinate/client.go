@@ -1,3 +1,6 @@
+// Copyright IBM Corp. 2013, 2026
+// SPDX-License-Identifier: MPL-2.0
+
 package coordinate
 
 import (
@@ -7,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armon/go-metrics"
+	metrics "github.com/hashicorp/go-metrics/compat"
 )
 
 // Client manages the estimated network coordinate for a given node, and adjusts
@@ -52,7 +55,7 @@ type ClientStats struct {
 
 // NewClient creates a new Client and verifies the configuration is valid.
 func NewClient(config *Config) (*Client, error) {
-	if !(config.Dimensionality > 0) {
+	if config.Dimensionality == 0 {
 		return nil, fmt.Errorf("dimensionality must be >0")
 	}
 

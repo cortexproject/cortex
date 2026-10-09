@@ -38,10 +38,11 @@ const (
 	rw20WrittenHistogramsHeader = "X-Prometheus-Remote-Write-Histograms-Written"
 	rw20WrittenExemplarsHeader  = "X-Prometheus-Remote-Write-Exemplars-Written"
 
-	labelValuePRW1    = "prw1"
-	labelValuePRW2    = "prw2"
-	labelValueOTLP    = "otlp"
-	labelValueUnknown = "unknown"
+	labelValuePRW1     = "prw1"
+	labelValuePRW2     = "prw2"
+	labelValueOTLP     = "otlp"
+	labelValueOTLPGRPC = "otlp_grpc"
+	labelValueUnknown  = "unknown"
 )
 
 // Func defines the type of the push. It is similar to http.HandlerFunc.

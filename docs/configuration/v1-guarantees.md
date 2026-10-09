@@ -103,6 +103,7 @@ Currently experimental features are:
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
+  - Ingest OTLP metrics over gRPC (`-distributor.otlp.grpc-enabled=true`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - String interning for metrics labels

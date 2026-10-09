@@ -212,6 +212,7 @@ type OTLPConfig struct {
 	AllowDeltaTemporality   bool `yaml:"allow_delta_temporality"`
 	EnableTypeAndUnitLabels bool `yaml:"enable_type_and_unit_labels"`
 	AddMetricSuffixes       bool `yaml:"add_metric_suffixes"`
+	GRPCEnabled             bool `yaml:"grpc_enabled"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -245,6 +246,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.OTLPConfig.AllowDeltaTemporality, "distributor.otlp.allow-delta-temporality", false, "EXPERIMENTAL: If true, delta temporality otlp metrics to be ingested.")
 	f.BoolVar(&cfg.OTLPConfig.EnableTypeAndUnitLabels, "distributor.otlp.enable-type-and-unit-labels", false, "Deprecated: Use `-distributor.enable-type-and-unit-labels` flag instead.")
 	f.BoolVar(&cfg.OTLPConfig.AddMetricSuffixes, "distributor.otlp.add-metric-suffixes", true, "If true, suffixes will be added to the metrics for name normalization.")
+	f.BoolVar(&cfg.OTLPConfig.GRPCEnabled, "distributor.otlp.grpc-enabled", false, "EXPERIMENTAL: If true, the distributor accepts OTLP metrics over gRPC (opentelemetry.proto.collector.metrics.v1.MetricsService/Export) on the gRPC server port. The tenant is read from the X-Scope-OrgID gRPC metadata. The maximum request size is set by -server.grpc-max-recv-msg-size-bytes, not by -distributor.otlp-max-recv-msg-size.")
 }
 
 // Validate config and returns error on failure

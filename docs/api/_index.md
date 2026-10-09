@@ -99,6 +99,8 @@ In this documentation you will find the usage of some placeholders for the path 
 
 When multi-tenancy is enabled, endpoints requiring authentication are expected to be called with the `X-Scope-OrgID` HTTP request header set to the tenant ID. Otherwise, when multi-tenancy is disabled, Cortex doesn't require any request to have the `X-Scope-OrgID` header.
 
+The gRPC endpoints read the tenant ID from the `X-Scope-OrgID` gRPC metadata key. When multi-tenancy is enabled, a gRPC request without it is rejected with the `UNAUTHENTICATED` status code.
+
 Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
 
 _For more information, please refer to the dedicated [Authentication and Authorisation](../guides/authentication-and-authorisation.md) guide._
@@ -243,7 +245,7 @@ Entrypoint for the OTLP Receiver over gRPC. It is experimental, and it is disabl
 
 This gRPC service accepts the standard [OTLP](https://opentelemetry.io/docs/specs/otlp/) metrics export request on the distributor gRPC server port (`-server.grpc-listen-port`). The conversion to Prometheus series is the same as for the HTTP endpoint, and it uses the same `-distributor.otlp.*` flags.
 
-- The tenant is read from the `X-Scope-OrgID` gRPC metadata. When `-auth.enabled=true`, a request without it is rejected.
+- The tenant is read from the `X-Scope-OrgID` gRPC metadata. When `-auth.enabled=true`, a request without it is rejected with `UNAUTHENTICATED`.
 - The maximum request size is set by `-server.grpc-max-recv-msg-size-bytes` (default 4 MiB), not by `-distributor.otlp-max-recv-msg-size`. The server rejects a larger request with `RESOURCE_EXHAUSTED`. Increase the limit, or decrease the batch size in the OpenTelemetry Collector.
 - When some metrics cannot be converted (for example delta temporality metrics when `-distributor.otlp.allow-delta-temporality=false`), the other metrics are ingested, and the response is a partial success with an error message. The `rejected_data_points` field is always 0, because the number of dropped data points is not known.
 

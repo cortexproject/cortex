@@ -30,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -42,7 +43,7 @@ func startOTLPGRPCServer(t *testing.T, srv *OTLPGRPCServer) pmetricotlp.GRPCClie
 	t.Helper()
 
 	listen := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer(grpc.UnaryInterceptor(middleware.ServerUserHeaderInterceptor))
+	server := grpc.NewServer(grpc.UnaryInterceptor(fakeauth.ServerUserHeaderInterceptor))
 	pmetricotlp.RegisterGRPCServer(server, srv)
 	go func() { _ = server.Serve(listen) }()
 	t.Cleanup(server.Stop)
@@ -119,6 +120,7 @@ func TestOTLPGRPCServer_MissingTenant(t *testing.T) {
 		client := startOTLPGRPCServer(t, newTestOTLPGRPCServer(distributor.OTLPConfig{}, nil, push, nil))
 		_, err := client.Export(context.Background(), generateOTLPWriteRequest())
 		require.Error(t, err)
+		assert.Equal(t, codes.Unauthenticated, grpcstatus.Code(err))
 		assert.Contains(t, err.Error(), "no org id")
 	})
 

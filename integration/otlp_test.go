@@ -21,9 +21,11 @@ import (
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/encoding/gzip"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -430,6 +432,7 @@ func TestOTLPGRPC(t *testing.T) {
 	// A request without a tenant is rejected.
 	_, err = otlpClient.Export(ctx, e2ecortex.OTLPWriteRequest("series_grpc", "", pmetric.AggregationTemporalityCumulative))
 	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
 
 	resp, err := otlpClient.Export(metadata.AppendToOutgoingContext(ctx, "x-scope-orgid", "user-1"),
 		e2ecortex.OTLPWriteRequest("series_grpc", "", pmetric.AggregationTemporalityCumulative))

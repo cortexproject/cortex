@@ -568,12 +568,11 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	gl := u.instanceLimitsFn()
 	if gl != nil && gl.MaxInMemorySeries > 0 {
 		var instanceCount int64
-		// A negative owned count means there is no owned count that can be trusted
-		// yet: either no cycle has computed one, or the last cycle found the tracker
-		// did not cover everything in memory, which is the case after a restart has
-		// restored series from the WAL. Fall back to the total in-memory series count
-		// so that OOM protection is never switched off. A count of zero is a real
-		// count and is used as-is.
+		// A negative owned count means no cycle has computed one yet. Fall back to
+		// the total in-memory series count so that OOM protection is never switched
+		// off. Series without a tracker entry, such as those restored from the WAL,
+		// are already counted as owned by the cycle. A count of zero is a real count
+		// and is used as-is.
 		if owned := u.instanceOwnedCount.Load(); u.ownedSeriesLimitEnabled && owned >= 0 {
 			instanceCount = owned
 		} else {
@@ -591,16 +590,18 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	// Head().NumSeries() stays high for up to a head-compaction cycle while the
 	// local limit has already dropped because more ingesters joined the ring.
 	//
-	// Owned() is only usable when the tracker holds an entry for everything in the
-	// head. Entries are created when a sample arrives, so after a restart the head
-	// is full of series restored from the WAL that the tracker has never seen, and
-	// Owned() would read far too low: the tenant could then create a whole limit's
-	// worth of series on top of everything already resident. Falling back to the
-	// head count in that window over-counts, which is the safe direction.
+	// Owned() only covers series that have a tracker entry. A series in the head
+	// without one is counted as owned: right after a restart that is everything
+	// restored from the WAL, which the tracker has never seen, and in normal running
+	// it is the handful of series concurrent pushes have just created and not yet
+	// recorded. Counting the gap keeps the limit safe after a restart without
+	// switching the owned count off whenever any series is in flight, which would
+	// throttle exactly the tenants it exists to protect. Owned() <= Tracked(), so
+	// the result never exceeds the head.
 	headSeriesCount := int(u.Head().NumSeries())
 	seriesCount := headSeriesCount
-	if u.ownedSeriesLimitEnabled && u.activeSeries.Tracked() >= headSeriesCount {
-		seriesCount = u.activeSeries.Owned()
+	if u.ownedSeriesLimitEnabled {
+		seriesCount = u.activeSeries.Owned() + max(0, headSeriesCount-u.activeSeries.Tracked())
 	}
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, seriesCount); err != nil {
 		return err
@@ -1322,17 +1323,15 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 
 	// Store the instance-level owned count for use in PreCreation's max_series check.
 	//
-	// If the trackers between them hold fewer entries than there are series in
-	// memory, the owned count does not describe everything this ingester is holding,
-	// which is the situation after a restart has restored series from the WAL.
-	// Publish the sentinel instead so that the limit falls back to the in-memory
-	// series count rather than a number that is known to be too low.
+	// Series in memory without a tracker entry are counted as owned, as in the
+	// per-tenant check: after a restart that is everything restored from the WAL,
+	// and in normal running it is whatever concurrent pushes have created but not
+	// yet recorded. Counting the gap rather than discarding the owned count keeps
+	// the limit safe after a restart without turning it off for the whole cycle
+	// whenever the snapshot lands mid-push.
 	if i.cfg.OwnedSeriesMetricsEnabled {
-		if totalTrackedCount < i.TSDBState.seriesCount.Load() {
-			i.TSDBState.ownedSeriesCount.Store(-1)
-		} else {
-			i.TSDBState.ownedSeriesCount.Store(totalOwnedCount)
-		}
+		untracked := max(0, i.TSDBState.seriesCount.Load()-totalTrackedCount)
+		i.TSDBState.ownedSeriesCount.Store(totalOwnedCount + untracked)
 	}
 }
 

@@ -139,8 +139,8 @@ func getZones(tokens map[string][]uint32) []string {
 	return zones
 }
 
-// searchToken returns the offset of the tokens entry holding the range for the provided key.
-func searchToken(tokens []uint32, key uint32) int {
+// SearchToken returns the offset of the tokens entry holding the range for the provided key.
+func SearchToken(tokens []uint32, key uint32) int {
 	i := sort.Search(len(tokens), func(x int) bool {
 		return tokens[x] > key
 	})

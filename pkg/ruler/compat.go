@@ -282,7 +282,7 @@ func metricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Coun
 	}
 }
 
-func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger) rules.QueryFunc {
+func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetrics *RuleEvalMetrics, logger log.Logger, queryViaFrontend bool) rules.QueryFunc {
 	queryTime := evalMetrics.RulerQuerySeconds.WithLabelValues(userID)
 	querySeries := evalMetrics.RulerQuerySeries.WithLabelValues(userID)
 	querySample := evalMetrics.RulerQuerySamples.WithLabelValues(userID)
@@ -309,35 +309,61 @@ func recordAndReportRuleQueryMetrics(qf rules.QueryFunc, userID string, evalMetr
 				"msg", "query stats",
 				"component", "ruler",
 			}
-			if origin := ctx.Value(promql.QueryOrigin{}); origin != nil {
-				queryLabels := origin.(map[string]any)
-				rgMap := queryLabels["ruleGroup"].(map[string]string)
+			origin := ruleOriginFromContext(ctx)
+			if origin.hasGroup {
 				logMessage = append(logMessage,
-					"rule_group", rgMap["name"],
-					"namespace", rgMap["file"],
+					"rule_group", origin.group,
+					"namespace", origin.namespace,
 				)
 			}
-			ruleDetail := rules.FromOriginContext(ctx)
 			logMessage = append(logMessage,
-				"rule", ruleDetail.Name,
-				"rule_kind", ruleDetail.Kind,
+				"rule", origin.name,
+				"rule_kind", origin.kind,
 				"query", qs,
 				"cortex_ruler_query_seconds_total", querySeconds,
-				"query_wall_time_seconds", queryStats.WallTime,
-				"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
-				"fetched_series_count", queryStats.FetchedSeriesCount,
-				"fetched_chunks_count", queryStats.FetchedChunksCount,
-				"fetched_samples_count", queryStats.FetchedSamplesCount,
-				"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
-				"fetched_data_bytes", queryStats.FetchedDataBytes,
 			)
-			logMessage = append(logMessage, queryStats.LoadExtraFields()...)
+			if !queryViaFrontend {
+				logMessage = append(logMessage,
+					"query_wall_time_seconds", queryStats.WallTime,
+					"query_storage_wall_time_seconds", queryStats.QueryStorageWallTime,
+					"fetched_series_count", queryStats.FetchedSeriesCount,
+					"fetched_chunks_count", queryStats.FetchedChunksCount,
+					"fetched_samples_count", queryStats.FetchedSamplesCount,
+					"fetched_chunks_bytes", queryStats.FetchedChunkBytes,
+					"fetched_data_bytes", queryStats.FetchedDataBytes,
+				)
+				logMessage = append(logMessage, queryStats.LoadExtraFields()...)
+			}
 			level.Info(util_log.WithContext(ctx, logger)).Log(logMessage...)
 		}()
 
 		result, err := qf(ctx, qs, t)
 		return result, err
 	}
+}
+
+// ruleOrigin holds the rule information Prometheus attaches to the rule evaluation context.
+type ruleOrigin struct {
+	hasGroup  bool
+	group     string
+	namespace string
+	name      string
+	kind      string
+}
+
+func ruleOriginFromContext(ctx context.Context) ruleOrigin {
+	var o ruleOrigin
+	if queryLabels, ok := ctx.Value(promql.QueryOrigin{}).(map[string]any); ok {
+		if rgMap, ok := queryLabels["ruleGroup"].(map[string]string); ok {
+			o.hasGroup = true
+			o.group = rgMap["name"]
+			o.namespace = rgMap["file"]
+		}
+	}
+	ruleDetail := rules.FromOriginContext(ctx)
+	o.name = ruleDetail.Name
+	o.kind = ruleDetail.Kind
+	return o
 }
 
 // This interface mimics rules.Manager API. Interface is used to simplify tests.
@@ -473,7 +499,7 @@ func buildQueryFunc(
 
 	// apply statistic middleware
 	if cfg.EnableQueryStats {
-		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger)
+		return recordAndReportRuleQueryMetrics(metricsFunc, userID, metrics, logger, client != nil)
 	}
 	return metricsFunc
 }

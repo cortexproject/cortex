@@ -3,7 +3,6 @@
 ## master / unreleased
 * [FEATURE] Ruler: Add experimental support for federated rule groups. A rule group listing tenants in its `source_tenants` field is evaluated against those tenants while the resulting series and alerts are written to the tenant owning the rule group. Enabled with `-ruler.enable-federated-rules` (requires `-tenant-federation.enabled`), and restricted to selected tenants with `-ruler.allowed-federated-tenants` and `-ruler.disallowed-federated-tenants`. #7828
 * [ENHANCEMENT] Ruler: Add rule information to query parameters sent to the Query Frontend when `-ruler.frontend-address` is configured, so the Query Frontend query stats logs (`-frontend.enabled-ruler-query-stats`) can identify the evaluated rule. In this mode, the Ruler query stats log (`-ruler.query-stats-enabled`) omits the fetched statistics fields, which are always zero. #6539
-
 * [BUGFIX] Tenant Federation: Fix regex tenant federation not working in single binary mode, and failing with `multiple org IDs present` when a matched tenant ID contains regex metacharacters and also matches other tenants as a regex. #7869
 
 ## 1.22.0 in progress

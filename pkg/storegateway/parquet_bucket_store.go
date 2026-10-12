@@ -3,6 +3,7 @@ package storegateway
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 
@@ -46,9 +47,10 @@ type parquetBucketStore struct {
 
 	chunksDecoder *schema.PrometheusParquetChunksDecoder
 
-	matcherCache      storecache.MatchersCache
-	parquetShardCache parquetutil.CacheInterface[parquet_storage.ParquetShard]
-	rowRangesCache    search.RowRangesForConstraintsCache
+	matcherCache         storecache.MatchersCache
+	parquetShardCache    parquetutil.CacheInterface[parquet_storage.ParquetShard]
+	rowRangesCache       search.RowRangesForConstraintsCache
+	honorProjectionHints bool
 
 	shardCountsMu sync.Mutex
 	// cachedShardCounts maps a block ID to its parquet shard count. The map is rebuilt
@@ -232,6 +234,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 		return fmt.Errorf("failed to find parquet shards: %w", err)
 	}
 
+	storageHints := p.buildSelectHints(req.QueryHints, shards, req.MinTime, req.MaxTime)
 	seriesSet := make([]prom_storage.ChunkSeriesSet, len(shards))
 	errGroup, ctx := errgroup.WithContext(srv.Context())
 	errGroup.SetLimit(p.concurrency)
@@ -245,7 +248,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 			})
 		}
 		errGroup.Go(func() error {
-			ss, err := shard.Query(ctx, req.MinTime, req.MaxTime, req.SkipChunks, matchers)
+			ss, err := shard.Query(ctx, storageHints, req.SkipChunks, matchers)
 			seriesSet[i] = ss
 			return err
 		})
@@ -415,4 +418,41 @@ func (p *parquetBucketStore) LabelValues(ctx context.Context, req *storepb.Label
 		Values: result,
 		Hints:  anyHints,
 	}, nil
+}
+
+func (p *parquetBucketStore) buildSelectHints(queryHints *storepb.QueryHints, shards []*parquetBlock, minT, maxT int64) *prom_storage.SelectHints {
+	storageHints := &prom_storage.SelectHints{
+		Start: minT,
+		End:   maxT,
+	}
+
+	if p.honorProjectionHints && queryHints != nil && queryHints.ProjectionInclude {
+		storageHints.ProjectionInclude = true
+		// Copy so appending the hash column never writes into the request's backing array.
+		lbls := make([]string, 0, len(queryHints.ProjectionLabels)+1)
+		storageHints.ProjectionLabels = append(lbls, queryHints.ProjectionLabels...)
+
+		if !allParquetBlocksHaveHashColumn(shards) {
+			// Reset projection hints if not all parquet shards have the hash column (version < 2).
+			storageHints.ProjectionInclude = false
+			storageHints.ProjectionLabels = nil
+		}
+
+		if storageHints.ProjectionInclude && !slices.Contains(storageHints.ProjectionLabels, schema.SeriesHashColumn) {
+			// Series hash column is always required for projection.
+			storageHints.ProjectionLabels = append(storageHints.ProjectionLabels, schema.SeriesHashColumn)
+		}
+	}
+
+	return storageHints
+}
+
+func allParquetBlocksHaveHashColumn(blocks []*parquetBlock) bool {
+	// TODO(Sungjin1212): Change it to read marker version
+	for _, b := range blocks {
+		if !b.hasHashColumn() {
+			return false
+		}
+	}
+	return true
 }

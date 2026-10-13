@@ -59,12 +59,13 @@ func ReadTenantDeletionMark(ctx context.Context, bkt objstore.InstrumentedBucket
 	return read(ctx, bkt.WithExpectedErrs(bkt.IsObjNotFoundErr), markerFile, logger)
 }
 
-// Deletes the tenant deletion mark for given user if it exists.
+// Deletes the tenant deletion mark for given user from both the global and the local location,
+// if it exists. Not-found errors are ignored for both locations.
 func DeleteTenantDeletionMark(ctx context.Context, bkt objstore.Bucket, userID string) error {
-	if err := bkt.Delete(ctx, GetGlobalDeletionMarkPath(userID)); err != nil {
+	if err := bkt.Delete(ctx, GetGlobalDeletionMarkPath(userID)); err != nil && !bkt.IsObjNotFoundErr(err) {
 		return err
 	}
-	if err := bkt.Delete(ctx, GetLocalDeletionMarkPath(userID)); err != nil {
+	if err := bkt.Delete(ctx, GetLocalDeletionMarkPath(userID)); err != nil && !bkt.IsObjNotFoundErr(err) {
 		return err
 	}
 	return nil

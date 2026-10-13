@@ -133,7 +133,9 @@ func TestBlockCleaner_KeyPermissionDenied(t *testing.T) {
 }
 
 func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions) {
-	bucketClient, _ := cortex_testutil.PrepareFilesystemBucket(t)
+	// Use an in-memory bucket: the filesystem bucket's Delete also removes emptied parent
+	// directories, which races with the visit marker heartbeat writing under the same tenant.
+	bucketClient := objstore.WithNoopInstr(objstore.NewInMemBucket())
 
 	// If the markers migration is enabled, then we create the fixture blocks without
 	// writing the deletion marks in the global location, because they will be migrated
@@ -224,6 +226,14 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	require.NoError(t, services.StartAndAwaitRunning(ctx, cleaner))
 	defer services.StopAndAwaitTerminated(ctx, cleaner) //nolint:errcheck
 
+	// The cleanup of each tenant waits for the visit marker heartbeat to delete the cleaner
+	// visit marker before returning, so none is left once the initial cleanup has completed.
+	for _, userID := range []string{"user-1", "user-2", "user-3", "user-4", "user-5", "user-6"} {
+		exists, err := bucketClient.Exists(ctx, path.Join(userID, bucketindex.MarkersPathname, CleanerVisitMarkerName))
+		require.NoError(t, err)
+		assert.False(t, exists, userID)
+	}
+
 	for _, tc := range []struct {
 		path           string
 		expectedExists bool
@@ -278,6 +288,9 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(activeStatus)))
 	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(activeStatus)))
 	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(activeStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsStarted.WithLabelValues(deletedStatus)))
+	assert.Equal(t, float64(1), prom_testutil.ToFloat64(cleaner.runsCompleted.WithLabelValues(deletedStatus)))
+	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.runsFailed.WithLabelValues(deletedStatus)))
 	assert.Equal(t, float64(7), prom_testutil.ToFloat64(cleaner.blocksCleanedTotal))
 	assert.Equal(t, float64(0), prom_testutil.ToFloat64(cleaner.blocksFailedTotal))
 

@@ -192,6 +192,68 @@ func TestFindMinMaxTime(t *testing.T) {
 	}
 }
 
+func TestFindMinMaxTime_InstantQuery(t *testing.T) {
+	// Not a whole number of seconds, so that a default expressed in the wrong unit is visible.
+	now := time.Unix(1700000000, 500*int64(time.Millisecond))
+	// The evaluation time of an instant query without a time parameter, matching what the
+	// instant query decoders default to.
+	evalTime := now.Truncate(time.Second)
+
+	type testCase struct {
+		query           string
+		timeParam       string
+		lookbackDelta   time.Duration
+		expectedMinTime time.Time
+		expectedMaxTime time.Time
+	}
+
+	tests := map[string]testCase{
+		"should default to now when the time parameter is absent": {
+			query:           "up",
+			lookbackDelta:   5 * time.Minute,
+			expectedMinTime: evalTime.Add(-5 * time.Minute),
+			expectedMaxTime: evalTime,
+		},
+		"should not add the lookback delta to a range selector when the time parameter is absent": {
+			query:           "up[1h]",
+			lookbackDelta:   5 * time.Minute,
+			expectedMinTime: evalTime.Add(-1 * time.Hour),
+			expectedMaxTime: evalTime,
+		},
+		"should apply the offset modifier when the time parameter is absent": {
+			query:           "up offset 30m",
+			lookbackDelta:   5 * time.Minute,
+			expectedMinTime: evalTime.Add(-35 * time.Minute),
+			expectedMaxTime: evalTime.Add(-30 * time.Minute),
+		},
+		"should use the time parameter when present": {
+			query:           "up",
+			timeParam:       strconv.FormatInt(evalTime.Add(-2*time.Hour).Unix(), 10),
+			lookbackDelta:   5 * time.Minute,
+			expectedMinTime: evalTime.Add(-2*time.Hour - 5*time.Minute),
+			expectedMaxTime: evalTime.Add(-2 * time.Hour),
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			expr, err := cortexparser.ParseExpr(testData.query)
+			require.NoError(t, err)
+
+			url := "/query?query=" + testData.query
+			if testData.timeParam != "" {
+				url += "&time=" + testData.timeParam
+			}
+			req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte{}))
+			require.NoError(t, err)
+
+			minTime, maxTime := FindMinMaxTime(req, expr, testData.lookbackDelta, now)
+			assert.Equal(t, testData.expectedMinTime.UnixMilli()+1, minTime) // refer to https://github.com/prometheus/prometheus/issues/13213 for the reason +1
+			assert.Equal(t, testData.expectedMaxTime.UnixMilli(), maxTime)
+		})
+	}
+}
+
 func TestSlottedTicker(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {

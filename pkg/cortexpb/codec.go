@@ -28,6 +28,20 @@ type GogoProtoMessage interface {
 	MarshalToSizedBuffer(dAtA []byte) (int, error)
 }
 
+// otelProtoMessage is implemented by the OpenTelemetry pdata messages (for example the
+// OTLP ExportMetricsServiceRequest). They are not proto.Message values, so the codec must
+// encode them with their own methods.
+//
+// pdata registers its own "proto" codec, which wraps the codec that exists when its init
+// runs. This codec is also registered as "proto", and in the Cortex binary it is
+// registered after the pdata codec, so it replaces it. Without this case, the OTLP gRPC
+// receiver cannot decode or encode any request.
+type otelProtoMessage interface {
+	SizeProto() int
+	MarshalProto(buf []byte) int
+	UnmarshalProto(buf []byte) error
+}
+
 type cortexCodec struct {
 	noOpBufferPool    mem.BufferPool
 	defaultBufferPool mem.BufferPool
@@ -40,6 +54,12 @@ func (c cortexCodec) Name() string {
 // Marshal is basically the same as https://github.com/grpc/grpc-go/blob/d2e836604b36400a54fbf04af495d12b38fa1e3a/encoding/proto/proto.go#L43-L67
 // but it uses gogo proto methods where applicable.
 func (c *cortexCodec) Marshal(v any) (data mem.BufferSlice, err error) {
+	if m, ok := v.(otelProtoMessage); ok {
+		buf := make([]byte, m.SizeProto())
+		n := m.MarshalProto(buf)
+		return mem.BufferSlice{mem.SliceBuffer(buf[:n])}, nil
+	}
+
 	vv := messageV2Of(v)
 	if vv == nil {
 		return nil, fmt.Errorf("proto: failed to marshal, message is %T, want proto.Message", v)
@@ -95,6 +115,13 @@ func (c *cortexCodec) Marshal(v any) (data mem.BufferSlice, err error) {
 // Unmarshal Copied from https://github.com/grpc/grpc-go/blob/d2e836604b36400a54fbf04af495d12b38fa1e3a/encoding/proto/proto.go#L69-L81
 // but without releasing the buffer
 func (c *cortexCodec) Unmarshal(data mem.BufferSlice, v any) error {
+	if m, ok := v.(otelProtoMessage); ok {
+		// Do not use a pooled buffer. The decoded message can keep references into the
+		// buffer, and nothing releases the buffer after the request.
+		buf := data.MaterializeToBuffer(c.noOpBufferPool)
+		return m.UnmarshalProto(buf.ReadOnlyData())
+	}
+
 	vv := messageV2Of(v)
 	if vv == nil {
 		return fmt.Errorf("failed to unmarshal, message is %T, want proto.Message", v)

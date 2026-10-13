@@ -10,6 +10,8 @@ import (
 	"github.com/weaveworks/common/server"
 	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // SetupAuthMiddleware for the given server config.
@@ -24,7 +26,7 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 			if ignoredMethods[info.FullMethod] {
 				return handler(ctx, req)
 			}
-			return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
+			return ServerUserHeaderInterceptor(ctx, req, info, handler)
 		})
 
 		config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
@@ -32,7 +34,7 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 				if ignoredMethods[info.FullMethod] {
 					return handler(srv, ss)
 				}
-				return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+				return StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 			},
 		)
 
@@ -46,6 +48,30 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 		fakeGRPCAuthStreamMiddleware,
 	)
 	return fakeHTTPAuthMiddleware
+}
+
+// ServerUserHeaderInterceptor propagates the tenant ID from the gRPC metadata to the context.
+// Unlike middleware.ServerUserHeaderInterceptor, it rejects a request without a tenant ID with
+// codes.Unauthenticated and not codes.Unknown, so that external gRPC clients (for example
+// OTLP exporters) can see that the request failed permanently.
+func ServerUserHeaderInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	_, ctx, err := user.ExtractFromGRPCRequest(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Unauthenticated, err.Error())
+	}
+	return handler(ctx, req)
+}
+
+// StreamServerUserHeaderInterceptor is the stream version of ServerUserHeaderInterceptor.
+func StreamServerUserHeaderInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	_, ctx, err := user.ExtractFromGRPCRequest(ss.Context())
+	if err != nil {
+		return status.Error(codes.Unauthenticated, err.Error())
+	}
+	return handler(srv, serverStream{
+		ctx:          ctx,
+		ServerStream: ss,
+	})
 }
 
 var fakeHTTPAuthMiddleware = middleware.Func(func(next http.Handler) http.Handler {

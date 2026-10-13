@@ -64,6 +64,35 @@ service:
       exporters: [otlphttp]
 ```
 
+### Push with OTLP over gRPC
+
+The distributor can also receive OTLP metrics over gRPC. This is experimental, and it is disabled by default. Enable it with `-distributor.otlp.grpc-enabled=true`. Then use the [otlp](https://github.com/open-telemetry/opentelemetry-collector/tree/main/exporter/otlpexporter) exporter with the distributor gRPC server port (`-server.grpc-listen-port`, default 9095):
+
+```
+exporters:
+  otlp:
+    endpoint: <cortex-distributor>:9095
+    compression: gzip
+    tls:
+      insecure: true
+    headers:
+      X-Scope-OrgId: <orgId>
+
+...
+
+service:
+  pipelines:
+    metrics:
+      receivers: [...]
+      processors: [...]
+      exporters: [otlp]
+```
+
+Notes:
+- The `otlp` exporter uses TLS by default. Set `tls` to match the Cortex gRPC server configuration.
+- The maximum request size is set by `-server.grpc-max-recv-msg-size-bytes` (default 4 MiB). This limit applies to all gRPC traffic of the distributor. If the Collector sends larger batches, increase the limit, or decrease the batch size in the Collector.
+- The gRPC port is often only reachable inside the cluster, with no authenticating gateway in front of it. The distributor trusts the `X-Scope-OrgId` metadata as it is sent. Do not expose the port to clients that you do not trust.
+
 ## Cortex configurations for ingesting OTLP metrics
 You can configure OTLP-related flags in the config file.
 

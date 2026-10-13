@@ -336,6 +336,12 @@ func otlpWriteRequest(name, unit string, temporality pmetric.AggregationTemporal
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
+// OTLPWriteRequest builds an OTLP export request with one counter and one exemplar. Use it
+// to push over OTLP gRPC, which the HTTP client does not support.
+func OTLPWriteRequest(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) pmetricotlp.ExportRequest {
+	return otlpWriteRequest(name, unit, temporality, labels...)
+}
+
 func (c *Client) OTLPPushExemplar(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) (*http.Response, error) {
 	data, err := otlpWriteRequest(name, unit, temporality, labels...).MarshalProto()
 	if err != nil {

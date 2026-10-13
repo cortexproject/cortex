@@ -12,12 +12,20 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore/providers/s3"
 	"go.opentelemetry.io/collector/pdata/pmetric"
+	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/encoding/gzip"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/cortexproject/cortex/integration/e2e"
 	e2edb "github.com/cortexproject/cortex/integration/e2e/db"
@@ -377,4 +385,71 @@ func TestOTLPPushDeltaTemporality(t *testing.T) {
 	vector, ok := value.(model.Vector)
 	require.True(t, ok)
 	require.Equal(t, 1, len(vector))
+}
+
+func TestOTLPGRPC(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	minio := e2edb.NewMinio(9000, bucketName)
+	require.NoError(t, s.StartAndWaitReady(minio))
+
+	require.NoError(t, copyFileToSharedDir(s, "docs/configuration/single-process-config-blocks.yaml", cortexConfigFile))
+
+	flags := map[string]string{
+		"-blocks-storage.s3.access-key-id":     e2edb.MinioAccessKey,
+		"-blocks-storage.s3.secret-access-key": e2edb.MinioSecretKey,
+		"-blocks-storage.s3.bucket-name":       bucketName,
+		"-blocks-storage.s3.endpoint":          fmt.Sprintf("%s-minio-9000:9000", networkName),
+		"-blocks-storage.s3.insecure":          "true",
+		// The tenant must come from the x-scope-orgid gRPC metadata.
+		"-auth.enabled":                  "true",
+		"-distributor.otlp.grpc-enabled": "true",
+		// alert manager
+		"-alertmanager.web.external-url":   "http://localhost/alertmanager",
+		"-alertmanager-storage.backend":    "local",
+		"-alertmanager-storage.local.path": filepath.Join(e2e.ContainerSharedDir, "alertmanager_configs"),
+	}
+	require.NoError(t, writeFileToSharedDir(s, "alertmanager_configs", []byte{}))
+
+	cortex := e2ecortex.NewSingleBinaryWithConfigFile("cortex-1", cortexConfigFile, flags, "", 9009, 9095)
+	require.NoError(t, s.StartAndWaitReady(cortex))
+
+	// Push with the standard OTLP gRPC client, as the OpenTelemetry Collector otlp exporter does.
+	conn, err := grpc.NewClient(cortex.GRPCEndpoint(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.UseCompressor(gzip.Name)),
+	)
+	require.NoError(t, err)
+	defer conn.Close()
+	otlpClient := pmetricotlp.NewGRPCClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// A request without a tenant is rejected.
+	_, err = otlpClient.Export(ctx, e2ecortex.OTLPWriteRequest("series_grpc", "", pmetric.AggregationTemporalityCumulative))
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+
+	resp, err := otlpClient.Export(metadata.AppendToOutgoingContext(ctx, "x-scope-orgid", "user-1"),
+		e2ecortex.OTLPWriteRequest("series_grpc", "", pmetric.AggregationTemporalityCumulative))
+	require.NoError(t, err)
+	require.Empty(t, resp.PartialSuccess().ErrorMessage())
+
+	require.NoError(t, cortex.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_distributor_push_requests_total"},
+		e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "type", "otlp_grpc"))))
+
+	// Read the series back for the tenant that pushed it.
+	c, err := e2ecortex.NewClient(cortex.HTTPEndpoint(), cortex.HTTPEndpoint(), "", "", "user-1")
+	require.NoError(t, err)
+
+	result, err := c.Query("series_grpc", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, model.ValVector, result.Type())
+	vector := result.(model.Vector)
+	require.Len(t, vector, 1)
+	assert.Equal(t, model.SampleValue(10), vector[0].Value)
 }

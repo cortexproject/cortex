@@ -86,3 +86,37 @@ func TestNoopBufferWhenNotReleasableMessage(t *testing.T) {
 		})
 	}
 }
+
+// fakeOTelMessage has the same encoding methods as the OpenTelemetry pdata messages,
+// and it is not a proto.Message.
+type fakeOTelMessage struct {
+	payload []byte
+}
+
+func (m *fakeOTelMessage) SizeProto() int { return len(m.payload) }
+
+func (m *fakeOTelMessage) MarshalProto(buf []byte) int { return copy(buf, m.payload) }
+
+func (m *fakeOTelMessage) UnmarshalProto(buf []byte) error {
+	m.payload = append([]byte(nil), buf...)
+	return nil
+}
+
+func TestCodecOTelProtoMessage(t *testing.T) {
+	codec := &cortexCodec{
+		noOpBufferPool:    &wrappedBufferPool{inner: mem.NopBufferPool{}},
+		defaultBufferPool: &wrappedBufferPool{inner: mem.DefaultBufferPool()},
+	}
+
+	in := &fakeOTelMessage{payload: []byte(strings.Repeat("otlp", 5000))}
+	data, err := codec.Marshal(in)
+	require.NoError(t, err)
+
+	out := &fakeOTelMessage{}
+	require.NoError(t, codec.Unmarshal(data, out))
+	require.Equal(t, in.payload, out.payload)
+
+	// The decoded message can keep references into the buffer, so the codec must not
+	// take the buffer from the shared pool.
+	require.Equal(t, 0, codec.defaultBufferPool.(*wrappedBufferPool).getCount)
+}

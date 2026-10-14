@@ -321,10 +321,19 @@ func (t *Cortex) initRegexResolverService() (serv services.Service, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize regex resolver: %v", err)
 	}
-	users.WithDefaultResolver(regexResolver)
 	t.RegexResolver = regexResolver
 
 	return regexResolver, nil
+}
+
+// queryFrontendTenantResolver returns the tenant resolver for the query-frontend and query-scheduler,
+// or nil to use the default resolver.
+func (t *Cortex) queryFrontendTenantResolver() users.Resolver {
+	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
+		// Pass the regex through as is, the querier resolves it.
+		return tenantfederation.NewRegexValidator()
+	}
+	return nil
 }
 
 // Enable merge querier if multi tenant query federation is enabled
@@ -335,10 +344,16 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 		// federation.
 		byPassForSingleQuerier := true
 
+		// Resolve tenants explicitly rather than via the default resolver, which is shared with the write path.
+		var resolver users.Resolver = users.NewMultiResolver()
+		if t.RegexResolver != nil {
+			resolver = t.RegexResolver
+		}
+
 		reg := prometheus.DefaultRegisterer
-		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg))
-		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation, reg)
-		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation, byPassForSingleQuerier, reg)
+		t.QuerierQueryable = querier.NewSampleAndChunkQueryable(tenantfederation.NewQueryable(t.QuerierQueryable, t.Cfg.TenantFederation, resolver, byPassForSingleQuerier, reg))
+		t.MetadataQuerier = tenantfederation.NewMetadataQuerier(t.MetadataQuerier, t.Cfg.TenantFederation, resolver, reg)
+		t.ExemplarQueryable = tenantfederation.NewExemplarQueryable(t.ExemplarQueryable, t.Cfg.TenantFederation, resolver, byPassForSingleQuerier, reg)
 	}
 
 	return nil, nil
@@ -559,11 +574,6 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 	shardedPrometheusCodec := queryrange.NewPrometheusCodec(true, t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 	instantQueryCodec := instantquery.NewInstantQueryCodec(t.Cfg.Querier.ResponseCompression, t.Cfg.API.QuerierDefaultCodec)
 
-	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
-		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
-	}
-
 	// Build a lazy resolver function for the result cache.
 	var tenantResolverFn func() users.Resolver
 	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
@@ -629,7 +639,7 @@ func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err erro
 
 func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	retry := transport.NewRetry(t.Cfg.QueryRange.MaxRetries, prometheus.DefaultRegisterer)
-	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.OverridesConfig, t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer, retry)
+	roundTripper, frontendV1, frontendV2, err := frontend.InitFrontend(t.Cfg.Frontend, t.OverridesConfig, t.queryFrontendTenantResolver(), t.Cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer, retry)
 	if err != nil {
 		return nil, err
 	}
@@ -637,7 +647,7 @@ func (t *Cortex) initQueryFrontend() (serv services.Service, err error) {
 	// Wrap roundtripper into Tripperware.
 	roundTripper = t.QueryFrontendTripperware(roundTripper)
 
-	handler := transport.NewHandler(t.Cfg.Frontend.Handler, t.Cfg.TenantFederation, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
+	handler := transport.NewHandler(t.Cfg.Frontend.Handler, t.Cfg.TenantFederation, t.queryFrontendTenantResolver(), roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	t.API.RegisterQueryFrontendHandler(handler)
 
 	if frontendV1 != nil {
@@ -739,7 +749,7 @@ func (t *Cortex) initRuler() (serv services.Service, err error) {
 		// queryable has to merge the results of every source tenant. Metrics are
 		// not registered because the querier registers the same ones when both
 		// run in a single process.
-		queryable = tenantfederation.NewQueryable(queryable, t.Cfg.TenantFederation, true, nil)
+		queryable = tenantfederation.NewQueryable(queryable, t.Cfg.TenantFederation, users.NewMultiResolver(), true, nil)
 	}
 
 	managerFactory := ruler.DefaultTenantManagerFactory(t.Cfg.Ruler, pusher, queryable, queryEngine, t.OverridesConfig, metrics, prometheus.DefaultRegisterer)
@@ -904,12 +914,7 @@ func (t *Cortex) initTenantDeletionAPI() (services.Service, error) {
 }
 
 func (t *Cortex) initQueryScheduler() (services.Service, error) {
-	if t.Cfg.TenantFederation.Enabled && t.Cfg.TenantFederation.RegexMatcherEnabled {
-		// If regex matcher enabled, we use regex validator to pass regex to the querier
-		users.WithDefaultResolver(tenantfederation.NewRegexValidator())
-	}
-
-	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.OverridesConfig, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.Querier.DistributedExecEnabled)
+	s, err := scheduler.NewScheduler(t.Cfg.QueryScheduler, t.OverridesConfig, t.queryFrontendTenantResolver(), util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.Querier.DistributedExecEnabled)
 	if err != nil {
 		return nil, errors.Wrap(err, "query-scheduler init")
 	}

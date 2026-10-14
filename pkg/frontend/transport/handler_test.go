@@ -436,7 +436,7 @@ func TestHandler_ServeHTTP(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := prometheus.NewPedanticRegistry()
-			handler := NewHandler(tt.cfg, tenantFederationCfg, tt.roundTripperFunc, log.NewNopLogger(), reg)
+			handler := NewHandler(tt.cfg, tenantFederationCfg, nil, tt.roundTripperFunc, log.NewNopLogger(), reg)
 
 			ctx := user.InjectOrgID(context.Background(), userID)
 			req := httptest.NewRequest("GET", "/", nil)
@@ -586,7 +586,7 @@ func TestReportQueryStatsFormat(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, EnabledRulerQueryStatsLog: testData.enabledRulerQueryStatsLog}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, EnabledRulerQueryStatsLog: testData.enabledRulerQueryStatsLog}, tenantfederation.Config{}, nil, http.DefaultTransport, logger, nil)
 			req.Header = testData.header
 			req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), testData.source))
 			handler.reportQueryStats(req, testData.source, userID, testData.queryString, responseTime, testData.queryStats, testData.responseErr, statusCode, resp)
@@ -682,7 +682,7 @@ func TestReportSlowQueryFormat(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			outputBuf := bytes.NewBuffer(nil)
 			logger := log.NewSyncLogger(log.NewLogfmtLogger(outputBuf))
-			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, nil, http.DefaultTransport, logger, nil)
 
 			req, _ := http.NewRequest(http.MethodGet, "http://localhost:8080/prometheus/api/v1/query", nil)
 			req.Header = testData.header
@@ -705,7 +705,7 @@ func TestReportQueryStatsRejectionReason(t *testing.T) {
 	resp := &http.Response{ContentLength: 0}
 	responseTime := time.Second
 
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, logger, nil)
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, nil, http.DefaultTransport, logger, nil)
 	req = req.WithContext(requestmeta.ContextWithRequestSource(context.Background(), requestmeta.SourceAPI))
 
 	queryErr := httpgrpc.Errorf(http.StatusUnprocessableEntity, "%s", `query timed out: query spent too long in evaluation - consider simplifying your query`)
@@ -745,7 +745,7 @@ func Test_ExtractTenantIDs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, roundTripper, log.NewNopLogger(), nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), nil)
 			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
 
 			req := httptest.NewRequest("GET", "http://fake", nil)
@@ -756,6 +756,36 @@ func Test_ExtractTenantIDs(t *testing.T) {
 			require.Equal(t, test.expectedStatusCode, resp.Code)
 		})
 	}
+}
+
+func TestHandler_TenantResolver(t *testing.T) {
+	// The default resolver rejects the regex.
+	users.WithDefaultResolver(users.NewMultiResolver())
+
+	var resolvedTenantIDs []string
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		var err error
+		resolvedTenantIDs, err = users.TenantIDs(req.Context())
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+
+	cfg := tenantfederation.Config{Enabled: true, RegexMatcherEnabled: true}
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, cfg, tenantfederation.NewRegexValidator(), roundTripper, log.NewNopLogger(), nil)
+	handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
+
+	req := httptest.NewRequest("GET", "http://fake", nil)
+	req.Header.Set("X-Scope-OrgId", "user-.+")
+	resp := httptest.NewRecorder()
+
+	handlerWithAuth.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+	require.Equal(t, []string{"user-.+"}, resolvedTenantIDs)
 }
 
 func Test_TenantFederation_MaxTenant(t *testing.T) {
@@ -836,7 +866,7 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, test.cfg, roundTripper, log.NewNopLogger(), nil)
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, test.cfg, nil, roundTripper, log.NewNopLogger(), nil)
 			handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
 
 			req := httptest.NewRequest("GET", "http://fake", nil)
@@ -863,7 +893,7 @@ func Test_TenantFederation_MaxTenant(t *testing.T) {
 
 func TestHandlerMetricsCleanup(t *testing.T) {
 	reg := prometheus.NewPedanticRegistry()
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, http.DefaultTransport, log.NewNopLogger(), reg)
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true}, tenantfederation.Config{}, nil, http.DefaultTransport, log.NewNopLogger(), reg)
 
 	user1 := "user1"
 	user2 := "user2"
@@ -988,7 +1018,7 @@ func TestHandler_RemoteReadRequest_DoesNotParseQueryString(t *testing.T) {
 	})
 
 	// Use a larger MaxBodySize to avoid the "request body too large" error
-	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 10 * 1024 * 1024}, tenantfederation.Config{}, roundTripper, log.NewNopLogger(), nil)
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 10 * 1024 * 1024}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), nil)
 	handlerWithAuth := middleware.Merge(middleware.AuthenticateUser).Wrap(handler)
 
 	// Create a remote read request with a body that would be corrupted by parseRequestQueryString

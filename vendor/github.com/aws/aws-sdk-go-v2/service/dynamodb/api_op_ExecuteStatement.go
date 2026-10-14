@@ -4,9 +4,10 @@ package dynamodb
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation allows you to perform reads and singleton writes on data stored
@@ -94,6 +95,34 @@ type ExecuteStatementInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ExecuteStatementInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ExecuteStatementInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ExecuteStatementInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConsistentRead != nil {
+		s.WriteBool(schemas.ExecuteStatementInput_ConsistentRead, *v.ConsistentRead)
+	}
+	if v.Limit != nil {
+		s.WriteInt32(schemas.ExecuteStatementInput_Limit, *v.Limit)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ExecuteStatementInput_NextToken, *v.NextToken)
+	}
+	serializePreparedStatementParameters(s, schemas.ExecuteStatementInput_Parameters, v.Parameters)
+	if v.ReturnConsumedCapacity != "" {
+		s.WriteString(schemas.ExecuteStatementInput_ReturnConsumedCapacity, string(v.ReturnConsumedCapacity))
+	}
+	if v.ReturnValuesOnConditionCheckFailure != "" {
+		s.WriteString(schemas.ExecuteStatementInput_ReturnValuesOnConditionCheckFailure, string(v.ReturnValuesOnConditionCheckFailure))
+	}
+	if v.Statement != nil {
+		s.WriteString(schemas.ExecuteStatementInput_Statement, *v.Statement)
+	}
+}
+
 type ExecuteStatementOutput struct {
 
 	// The capacity units consumed by an operation. The data returned includes the
@@ -130,35 +159,56 @@ type ExecuteStatementOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ExecuteStatementOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ExecuteStatementOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ExecuteStatementOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConsumedCapacity != nil {
+		s.WriteStruct(schemas.ExecuteStatementOutput_ConsumedCapacity)
+		v.ConsumedCapacity.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	serializeItemList(s, schemas.ExecuteStatementOutput_Items, v.Items)
+	serializeKey(s, schemas.ExecuteStatementOutput_LastEvaluatedKey, v.LastEvaluatedKey)
+	if v.NextToken != nil {
+		s.WriteString(schemas.ExecuteStatementOutput_NextToken, *v.NextToken)
+	}
+}
+func (v *ExecuteStatementOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ExecuteStatementOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ExecuteStatementOutput_ConsumedCapacity:
+			v.ConsumedCapacity = &types.ConsumedCapacity{}
+			return v.ConsumedCapacity.Deserialize(d)
+		case schemas.ExecuteStatementOutput_Items:
+			return deserializeItemList(d, schemas.ExecuteStatementOutput_Items, &v.Items)
+		case schemas.ExecuteStatementOutput_LastEvaluatedKey:
+			return deserializeKey(d, schemas.ExecuteStatementOutput_LastEvaluatedKey, &v.LastEvaluatedKey)
+		case schemas.ExecuteStatementOutput_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ExecuteStatementOutput_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationExecuteStatementMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpExecuteStatement{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ExecuteStatement, schemas.ExecuteStatementInput, schemas.ExecuteStatementOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpExecuteStatement{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ExecuteStatement, schemas.ExecuteStatementInput, schemas.ExecuteStatementOutput), output: &ExecuteStatementOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
@@ -168,9 +218,6 @@ func (c *Client) addOperationExecuteStatementMiddlewares(stack *middleware.Stack
 		return err
 	}
 	if err = addOpExecuteStatementValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ExecuteStatement"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

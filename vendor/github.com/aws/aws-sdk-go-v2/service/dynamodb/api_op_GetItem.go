@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // The GetItem operation returns a set of attributes for the item with the given
@@ -134,6 +135,29 @@ type GetItemInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetItemInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetItemInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetItemInput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeAttributeNameList(s, schemas.GetItemInput_AttributesToGet, v.AttributesToGet)
+	if v.ConsistentRead != nil {
+		s.WriteBool(schemas.GetItemInput_ConsistentRead, *v.ConsistentRead)
+	}
+	serializeExpressionAttributeNameMap(s, schemas.GetItemInput_ExpressionAttributeNames, v.ExpressionAttributeNames)
+	serializeKey(s, schemas.GetItemInput_Key, v.Key)
+	if v.ProjectionExpression != nil {
+		s.WriteString(schemas.GetItemInput_ProjectionExpression, *v.ProjectionExpression)
+	}
+	if v.ReturnConsumedCapacity != "" {
+		s.WriteString(schemas.GetItemInput_ReturnConsumedCapacity, string(v.ReturnConsumedCapacity))
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.GetItemInput_TableName, *v.TableName)
+	}
+}
 func (in *GetItemInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -162,35 +186,47 @@ type GetItemOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *GetItemOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.GetItemOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *GetItemOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ConsumedCapacity != nil {
+		s.WriteStruct(schemas.GetItemOutput_ConsumedCapacity)
+		v.ConsumedCapacity.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	serializeAttributeMap(s, schemas.GetItemOutput_Item, v.Item)
+}
+func (v *GetItemOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.GetItemOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.GetItemOutput_ConsumedCapacity:
+			v.ConsumedCapacity = &types.ConsumedCapacity{}
+			return v.ConsumedCapacity.Deserialize(d)
+		case schemas.GetItemOutput_Item:
+			return deserializeAttributeMap(d, schemas.GetItemOutput_Item, &v.Item)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationGetItemMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpGetItem{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetItem, schemas.GetItemInput, schemas.GetItemOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpGetItem{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.GetItem, schemas.GetItemInput, schemas.GetItemOutput), output: &GetItemOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpGetItemDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -203,9 +239,6 @@ func (c *Client) addOperationGetItemMiddlewares(stack *middleware.Stack, options
 		return err
 	}
 	if err = addOpGetItemValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "GetItem"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

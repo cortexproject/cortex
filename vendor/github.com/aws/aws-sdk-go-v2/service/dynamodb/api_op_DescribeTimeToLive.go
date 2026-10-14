@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Gives a description of the Time to Live (TTL) status on the specified table.
@@ -38,6 +39,17 @@ type DescribeTimeToLiveInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTimeToLiveInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTimeToLiveInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTimeToLiveInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableName != nil {
+		s.WriteString(schemas.DescribeTimeToLiveInput_TableName, *v.TableName)
+	}
+}
 func (in *DescribeTimeToLiveInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -55,35 +67,44 @@ type DescribeTimeToLiveOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTimeToLiveOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTimeToLiveOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTimeToLiveOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TimeToLiveDescription != nil {
+		s.WriteStruct(schemas.DescribeTimeToLiveOutput_TimeToLiveDescription)
+		v.TimeToLiveDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DescribeTimeToLiveOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeTimeToLiveOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeTimeToLiveOutput_TimeToLiveDescription:
+			v.TimeToLiveDescription = &types.TimeToLiveDescription{}
+			return v.TimeToLiveDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeTimeToLiveMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDescribeTimeToLive{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTimeToLive, schemas.DescribeTimeToLiveInput, schemas.DescribeTimeToLiveOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDescribeTimeToLive{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTimeToLive, schemas.DescribeTimeToLiveInput, schemas.DescribeTimeToLiveOutput), output: &DescribeTimeToLiveOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeTimeToLiveDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -96,9 +117,6 @@ func (c *Client) addOperationDescribeTimeToLiveMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addOpDescribeTimeToLiveValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DescribeTimeToLive"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

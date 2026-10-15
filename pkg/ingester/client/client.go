@@ -168,6 +168,12 @@ func MakeIngesterClient(addr string, cfg Config, useStreamConnection bool) (Heal
 		streamCtx, streamCancel := context.WithCancel(context.Background())
 		err = c.Run(make(chan *streamWriteJob, INGESTER_CLIENT_STREAM_WORKER_COUNT), streamCtx, streamCancel)
 		if err != nil {
+			// Run() failed to start all stream-push workers. Undo what was
+			// already set up: cancel the stream context (so any workers that
+			// did start their job-processing goroutine successfully stop),
+			// and close the connection so it isn't leaked.
+			streamCancel()
+			_ = conn.Close()
 			return nil, err
 		}
 	}
@@ -210,7 +216,9 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 	c.streamCtx = streamCtx
 	c.streamCancel = streamCancel
 
-	var workerErr error
+	// Buffered so every worker can report its error without blocking, even
+	// though we only ever consume the first one.
+	errCh := make(chan error, INGESTER_CLIENT_STREAM_WORKER_COUNT)
 	var wg sync.WaitGroup
 	// Sanitize addr: colons (from host:port) are not allowed in tenant IDs.
 	sanitizedAddr := strings.ReplaceAll(c.addr, ":", "-")
@@ -220,12 +228,24 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)
 			if err != nil {
-				workerErr = err
+				// A sibling worker failed to open its stream: cancel the
+				// shared stream context so the remaining workers stop
+				// opening new streams, and any job-processing goroutines
+				// that already started exit via ctx.Done().
+				streamCancel()
+				errCh <- err
 			}
 		})
 	}
 	wg.Wait()
-	return workerErr
+	close(errCh)
+
+	// Only the first error is returned; the rest are worker failures caused
+	// by the same cancellation and aren't useful on top of it.
+	for err := range errCh {
+		return err
+	}
+	return nil
 }
 
 func (c *closableHealthAndIngesterClient) worker(ctx context.Context) error {

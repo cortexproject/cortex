@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	userIDsToSkip = []string{GlobalMarkersDir, UserIndexCompressedFilename}
+	userIDsToSkip = []string{GlobalMarkersDir, UserIndexCompressedFilename, QuerierMetaCacheDirName}
 )
 
 type Scanner interface {

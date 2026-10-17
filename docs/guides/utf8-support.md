@@ -1,0 +1,153 @@
+---
+title: "UTF-8 support"
+linkTitle: "UTF-8 support"
+weight: 70
+slug: utf8-support
+---
+
+# UTF-8 support
+
+## Why UTF-8 support?
+
+There are a number of reasons why UTF-8 support in Cortex is useful:
+
+1. With Prometheus version [3.0](https://prometheus.io/docs/guides/utf8/) UTF-8 support has been released for metric and label names. Thus, UTF-8 support improves the interoperability between Cortex and modern Prometheus ecosystems.
+2. It makes Cortex more flexible for internationalized or externally sourced metadata which is useful when metrics or labels originate from systems, teams, or domains that do not fit neatly into ASCII-only naming.
+3. It keeps behavior consistent across ingestion, rules and alerting.
+
+## Before you enable UTF-8 support
+
+Although UTF-8 support increases flexibility, the traditional naming style remains the safest choice for broad ecosystem compatibility, because downstream tools might assume legacy-compatible names. Definitely, check this before enabling UTF-8 support.
+
+Before enabling UTF-8 support, review the systems that write metrics to Cortex, the rules evaluated by the Ruler, and the alerting configuration used by Alertmanager.
+
+Enabling UTF-8 support changes validation behavior. Roll it out in a staging environment first and verify that ingestion, rule evaluation, and alert routing continue to work as expected.
+
+## Configure UTF-8 support
+
+Cortex supports configuring how metric names and label names are validated through the `-name-validation-scheme` flag or `name_validation_scheme` in the YAML configuration file.
+
+Supported values are:
+
+- `legacy` (default)
+- `utf8`
+
+The UTF-8 support has been released since Cortex [v1.20.0](https://github.com/cortexproject/cortex/releases/tag/v1.20.0).
+
+This guide explains how to enable UTF-8 support and how the selected validation scheme affects the Cortex components.
+
+To enable UTF-8 validation, set the validation scheme to `utf8`.
+
+CLI:
+
+```bash
+-name-validation-scheme=utf8
+```
+
+YAML:
+
+```yaml
+name_validation_scheme: utf8
+```
+
+## Using UTF-8
+
+After enabling UTF-8 name validation, UTF-8 metric names and label names can be used. The examples below show practical examples.
+
+### Querying
+
+PromQL queries support UTF-8 metric names and label names. For example, a UTF-8 metric name can be queried with the following expression:
+
+```promql
+series.1{"test.utf8.metric"="😄"}
+```
+
+Note that the metric name `series.1` is not valid under the `legacy` validation scheme. It is accepted only when UTF-8 validation is enabled. This is useful when metric or label names contain characters, such as `.`, that are supported by UTF-8 validation but not by the legacy validation scheme.
+
+### Alertmanager
+
+Alertmanager configuration can use UTF-8 names in matchers, `group_by` fields, and silence matchers. For example, a route can group and match on UTF-8 label names:
+
+```yaml
+route:
+  receiver: default
+  group_by:
+    - "group.test.🙂"
+  routes:
+    - receiver: utf8-receiver
+      matchers:
+        - '"🙂.utf8.label"="😄"'
+
+receivers:
+  - name: default
+  - name: utf8-receiver
+```
+
+Silences can also match alerts using UTF-8 label names and values. For example:
+
+```yaml
+matchers:
+  - "🙂.utf8.label"
+    value: "😄"
+    isRegex: false
+```
+
+This allows alert routing, silencing and grouping to work with alerts that contain UTF-8 label names and values.
+
+### Ruler
+
+Ruler rule definition can use UTF-8 names in rule names, rule labels and rule group labels. For example:
+
+```yaml
+groups:
+  - name: "test.utf8.group"
+    labels:
+      "test.utf8.group.label": "😄"
+    rules:
+      - record: "test.utf8.recording.rule"
+        expr: up
+        labels:
+          "test.utf8.rule.label": "😄"
+      - alert: "test.utf8.alert"
+        expr: up == 0
+        labels:
+          "test.utf8.alert.label": "😄"
+```
+
+## Impact on Cortex components
+
+### Distributor
+
+The [Distributor](https://cortexmetrics.io/docs/architecture/#distributor) validates incoming metric names and label names during ingestion.
+
+When `name_validation_scheme` is set to `legacy`, Cortex applies the legacy validation behavior. When it is set to `utf8`, the Distributor accepts names that are valid under the UTF-8 scheme.
+
+In practice, this means that enabling UTF-8 support can change whether samples or series are accepted during ingestion by the Distributor. With legacy validation, samples containing invalid metric or label names are dropped during validation. With UTF-8 validation enabled, names that are valid under the UTF-8 scheme can pass validation. Writers that send UTF-8 metric or label names require the Distributor to run with `utf8` validation enabled.
+
+### Ruler
+
+The [Ruler](https://cortexmetrics.io/docs/architecture/#ruler) is affected by the selected name validation scheme in the places where it validates rule definitions, ruler external labels, and alert notifications.
+
+Cortex validates each rule using the configured `name_validation_scheme`. This means that recording rule names, alerting rule labels, and other rule fields that are subject to Prometheus name validation are checked according to the selected scheme.
+
+Ruler external labels are also validated with the selected scheme. With `legacy`, external label names must follow the legacy validation rules. With `utf8`, external label names that are valid under the UTF-8 validation scheme can be used.
+
+The Ruler also passes the configured validation scheme to the notifier that sends alerts to Alertmanager. As a result, alert labels handled by the notification path are validated according to the selected scheme before alerts are sent.
+
+### Alertmanager
+
+The `name_validation_scheme` setting is not applied directly by Cortex [Alertmanager](https://cortexmetrics.io/docs/architecture/#alertmanager) in the same way it is applied by the Distributor or Ruler. Its effect on Alertmanager is indirect. Alerts sent by the Ruler pass through the Ruler notifier, which is created with the configured validation scheme. As a result, Alertmanager may receive alert labels that were validated according to the selected scheme.
+
+## Recommended rollout strategy
+
+1. Enable `utf8` in a staging environment first.
+2. Test metric ingestion through the Distributor with representative UTF-8 metric names and label names.
+3. If your environment also relies on UTF-8 names in rule evaluation or alerting configuration, test the affected Ruler or Alertmanager workflows before production rollout.
+4. Roll out the selected validation scheme consistently wherever it is required.
+
+## Compatibility notes
+
+- Use `legacy` if you need to preserve the previous validation behavior.
+- Use `utf8` if you want Cortex to accept UTF-8 metric names and label names.
+- Plan migration carefully when different systems in your environment assume different naming rules.
+- Refer to the [configuration reference](https://cortexmetrics.io/docs/configuration/configuration-file/#supported-contents-and-default-values-of-the-config-file) for the current flag and supported values.

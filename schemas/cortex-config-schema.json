@@ -6508,6 +6508,38 @@
           "x-cli-flag": "frontend.memcached.timeout",
           "x-format": "duration"
         },
+        "tls_ca_path": {
+          "description": "Path to the CA certificates file to validate server certificate against. If not set, the host's root CA certificates are used.",
+          "type": "string",
+          "x-cli-flag": "frontend.memcached.tls-ca-path"
+        },
+        "tls_cert_path": {
+          "description": "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.",
+          "type": "string",
+          "x-cli-flag": "frontend.memcached.tls-cert-path"
+        },
+        "tls_enabled": {
+          "default": false,
+          "description": "Enable connecting to memcached with TLS.",
+          "type": "boolean",
+          "x-cli-flag": "frontend.memcached.tls-enabled"
+        },
+        "tls_insecure_skip_verify": {
+          "default": false,
+          "description": "Skip validating server certificate.",
+          "type": "boolean",
+          "x-cli-flag": "frontend.memcached.tls-insecure-skip-verify"
+        },
+        "tls_key_path": {
+          "description": "Path to the key file for the client certificate. Also requires the client certificate to be configured.",
+          "type": "string",
+          "x-cli-flag": "frontend.memcached.tls-key-path"
+        },
+        "tls_server_name": {
+          "description": "Override the expected name on the server certificate.",
+          "type": "string",
+          "x-cli-flag": "frontend.memcached.tls-server-name"
+        },
         "update_interval": {
           "default": "1m0s",
           "description": "Period with which to poll DNS for memcache servers.",

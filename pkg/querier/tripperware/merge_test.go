@@ -1,11 +1,15 @@
 package tripperware
 
 import (
+	"context"
+	"fmt"
 	"testing"
 
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
@@ -597,9 +601,10 @@ func TestSliceHistograms(t *testing.T) {
 
 func Test_sortPlanForQuery(t *testing.T) {
 	tc := []struct {
-		query        string
-		expectedPlan sortPlan
-		err          bool
+		query          string
+		expectedPlan   sortPlan
+		expectedLabels []string
+		err            bool
 	}{
 		{
 			query:        "invalid(10, up)",
@@ -642,14 +647,22 @@ func Test_sortPlanForQuery(t *testing.T) {
 			err:          false,
 		},
 		{
-			query:        "1 + sort_by_label_desc(sum by (job) (up) )",
-			expectedPlan: sortByValuesDesc,
-			err:          false,
+			query:          `1 + sort_by_label_desc(sum by (job) (up), "job")`,
+			expectedPlan:   sortByLabelValuesDesc,
+			expectedLabels: []string{"job"},
+			err:            false,
 		},
 		{
-			query:        "sort_by_label(topk by (job) (10, up))",
-			expectedPlan: sortByValuesAsc,
-			err:          false,
+			query:          `sort_by_label(topk by (job) (10, up), "job", ("instance"))`,
+			expectedPlan:   sortByLabelValuesAsc,
+			expectedLabels: []string{"job", "instance"},
+			err:            false,
+		},
+		{
+			query:          "sort_by_label(sum by (job) (up))",
+			expectedPlan:   sortByLabelValuesAsc,
+			expectedLabels: []string{},
+			err:            false,
 		},
 		{
 			query:        "topk(5, up) by (job) + sort_desc(up)",
@@ -671,13 +684,115 @@ func Test_sortPlanForQuery(t *testing.T) {
 	for _, tc := range tc {
 		t.Run(tc.query, func(t *testing.T) {
 			promqlparser.EnableExperimentalFunctions = true
-			p, err := sortPlanForQuery(tc.query)
+			p, lbls, err := sortPlanForQuery(tc.query)
 			if tc.err {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expectedPlan, p)
+				assert.Equal(t, tc.expectedLabels, lbls)
 			}
+		})
+	}
+}
+
+func TestMergeResponse_SortByLabel(t *testing.T) {
+	promqlparser.EnableExperimentalFunctions = true
+
+	sample := func(v float64, lbls ...string) Sample {
+		return Sample{
+			Labels: cortexpb.FromLabelsToLabelAdapters(labels.FromStrings(lbls...)),
+			Sample: &cortexpb.Sample{Value: v, TimestampMs: 1000},
+		}
+	}
+	vectorResponse := func(samples ...Sample) Response {
+		return &PrometheusResponse{
+			Status: StatusSuccess,
+			Data: PrometheusData{
+				ResultType: model.ValVector.String(),
+				Result:     PrometheusQueryResult{Result: &PrometheusQueryResult_Vector{Vector: &Vector{Samples: samples}}},
+			},
+		}
+	}
+
+	for _, tc := range []struct {
+		name     string
+		query    string
+		resps    []Response
+		expected []Sample
+	}{
+		{
+			name:  "sort_by_label ignores sample values",
+			query: `sort_by_label(sum by (job) (up), "job")`,
+			resps: []Response{
+				vectorResponse(sample(4, "job", "a"), sample(1, "job", "c")),
+				vectorResponse(sample(3, "job", "b"), sample(2, "job", "d")),
+			},
+			expected: []Sample{sample(4, "job", "a"), sample(3, "job", "b"), sample(1, "job", "c"), sample(2, "job", "d")},
+		},
+		{
+			name:  "sort_by_label_desc ignores sample values",
+			query: `sort_by_label_desc(sum by (job) (up), "job")`,
+			resps: []Response{
+				vectorResponse(sample(1, "job", "c"), sample(4, "job", "a")),
+				vectorResponse(sample(2, "job", "d"), sample(3, "job", "b")),
+			},
+			expected: []Sample{sample(2, "job", "d"), sample(1, "job", "c"), sample(3, "job", "b"), sample(4, "job", "a")},
+		},
+		{
+			name:  "sort_by_label uses natural sort order",
+			query: `sort_by_label(sum by (job) (up), "job")`,
+			resps: []Response{
+				vectorResponse(sample(1, "job", "job10"), sample(2, "job", "job1")),
+				vectorResponse(sample(3, "job", "job2")),
+			},
+			expected: []Sample{sample(2, "job", "job1"), sample(3, "job", "job2"), sample(1, "job", "job10")},
+		},
+		{
+			name:  "sort_by_label sorts by the given labels before the full label set",
+			query: `sort_by_label(sum by (env, job) (up), "job", "env")`,
+			resps: []Response{
+				vectorResponse(sample(1, "env", "a", "job", "y"), sample(2, "env", "b", "job", "x")),
+				vectorResponse(sample(3, "env", "a", "job", "x"), sample(4, "env", "b", "job", "y")),
+			},
+			expected: []Sample{
+				sample(3, "env", "a", "job", "x"),
+				sample(2, "env", "b", "job", "x"),
+				sample(1, "env", "a", "job", "y"),
+				sample(4, "env", "b", "job", "y"),
+			},
+		},
+		{
+			name:  "sort_by_label falls back to the full label set when the given labels are equal",
+			query: `sort_by_label(sum by (env, job) (up), "env")`,
+			resps: []Response{
+				vectorResponse(sample(1, "env", "a", "job", "z")),
+				vectorResponse(sample(2, "env", "a", "job", "x")),
+			},
+			expected: []Sample{sample(2, "env", "a", "job", "x"), sample(1, "env", "a", "job", "z")},
+		},
+		{
+			name:  "sort_by_label in a binary expression",
+			query: `1 + sort_by_label(sum by (job) (up), "job")`,
+			resps: []Response{
+				vectorResponse(sample(3, "job", "b")),
+				vectorResponse(sample(4, "job", "a")),
+			},
+			expected: []Sample{sample(4, "job", "a"), sample(3, "job", "b")},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := MergeResponse(context.Background(), true, &PrometheusRequest{Query: tc.query}, tc.resps...)
+			require.NoError(t, err)
+			// Compare label strings since reflect on LabelAdapter trips checkptr with stringlabels.
+			toStrings := func(samples []Sample) []string {
+				out := make([]string, 0, len(samples))
+				for _, s := range samples {
+					out = append(out, fmt.Sprintf("%s %v", cortexpb.FromLabelAdaptersToLabels(s.Labels).String(), s.Sample.Value))
+				}
+				return out
+			}
+			assert.Equal(t, toStrings(tc.expected), toStrings(resp.(*PrometheusResponse).Data.Result.GetVector().Samples))
 		})
 	}
 }

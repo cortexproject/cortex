@@ -92,6 +92,9 @@ func (r *RateBuffer) SampleCount() int {
 
 func (r *RateBuffer) MaxT() int64 { return r.lastSample.T }
 
+// Empty reports whether any sample is retained for the current step range.
+func (r *RateBuffer) Empty() bool { return r.firstSamples[0].T == math.MaxInt64 }
+
 func (r *RateBuffer) Push(t int64, v Value) {
 	if t <= r.currentMint {
 		return

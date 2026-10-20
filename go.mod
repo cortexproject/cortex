@@ -69,11 +69,11 @@ require (
 	// Pinned to main: promql-engine has never cut a tag, so a pseudo-version is the only
 	// option. We need thanosengine.Opts.SelectorBatchSize (-querier.selector-batch-size,
 	// #7763) and the logicalplan API that pkg/distributed_execution builds on.
-	github.com/thanos-io/promql-engine v0.0.0-20260915065525-1b359e941bde
+	github.com/thanos-io/promql-engine v0.0.0-20261020165614-7157e606efa6
 	// Pinned to main: promql-engine's api.RemoteEndpoints gained mint/maxt parameters on
 	// Engines(), and thanos/pkg/query implements that interface. The newest tag (v0.42.4,
 	// 146 commits behind main) predates the change, so downgrading breaks the build.
-	github.com/thanos-io/thanos v0.42.5-0.20260817064418-8908023d563b
+	github.com/thanos-io/thanos v0.42.5-0.20261008195948-dd67d9cc81c3
 	github.com/tjhop/slog-gokit v0.2.2
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/weaveworks/common v0.0.0-20230728070032-dd9e68f319d5

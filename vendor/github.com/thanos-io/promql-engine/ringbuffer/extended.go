@@ -83,7 +83,9 @@ func (r *ExtendedRingBuffer) Push(t int64, v Value) {
 	}
 	if baseline >= 0 {
 		if t >= r.items[baseline].T {
+			r.sampleCount -= valueSampleCount(r.items[baseline].V)
 			setSample(&r.items[baseline], t, v)
+			r.sampleCount += valueSampleCount(v)
 		}
 		return
 	}
@@ -95,6 +97,7 @@ func (r *ExtendedRingBuffer) Push(t int64, v Value) {
 	copy(r.items[1:], r.items[:len(r.items)-1])
 	r.items[0] = Sample{}
 	setSample(&r.items[0], t, v)
+	r.sampleCount += valueSampleCount(v)
 }
 
 func (r *ExtendedRingBuffer) Eval(ctx context.Context, scalarArg float64, scalarArg2 float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {

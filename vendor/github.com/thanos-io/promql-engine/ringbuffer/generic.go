@@ -18,6 +18,7 @@ import (
 // belongs in that window.
 type Buffer interface {
 	MaxT() int64
+	Empty() bool
 	Push(t int64, v Value)
 	Reset(mint int64, evalt int64)
 	Eval(ctx context.Context, _, _ float64) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error)
@@ -37,9 +38,10 @@ type Sample struct {
 }
 
 type GenericRingBuffer struct {
-	ctx   context.Context
-	items []Sample
-	tail  []Sample
+	ctx         context.Context
+	items       []Sample
+	tail        []Sample
+	sampleCount int
 
 	currentStep       int64
 	currentRangeStart int64
@@ -59,15 +61,7 @@ func New(ctx context.Context, size int, selectRange, offset int64, call Function
 }
 
 func (r *GenericRingBuffer) SampleCount() int {
-	c := 0
-	for _, s := range r.items {
-		if s.V.H != nil {
-			c += telemetry.CalculateHistogramSampleCount(s.V.H)
-			continue
-		}
-		c++
-	}
-	return c
+	return r.sampleCount
 }
 
 // MaxT returns the maximum timestamp of the ring buffer.
@@ -77,6 +71,11 @@ func (r *GenericRingBuffer) MaxT() int64 {
 		return math.MinInt64
 	}
 	return r.items[len(r.items)-1].T
+}
+
+// Empty reports whether any sample is retained for the current range.
+func (r *GenericRingBuffer) Empty() bool {
+	return len(r.items) == 0
 }
 
 // Push considers a sample for the current range.
@@ -96,6 +95,14 @@ func (r *GenericRingBuffer) push(t int64, v Value) {
 		r.items = append(r.items, Sample{})
 	}
 	setSample(&r.items[n], t, v)
+	r.sampleCount += valueSampleCount(v)
+}
+
+func valueSampleCount(v Value) int {
+	if v.H != nil {
+		return telemetry.CalculateHistogramSampleCount(v.H)
+	}
+	return 1
 }
 
 func setSample(dst *Sample, t int64, v Value) {
@@ -117,6 +124,7 @@ func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 	r.currentRangeStart = mint
 	if len(r.items) == 0 || r.items[len(r.items)-1].T < mint {
 		r.items = r.items[:0]
+		r.sampleCount = 0
 		return
 	}
 	var drop int
@@ -126,6 +134,9 @@ func (r *GenericRingBuffer) Reset(mint int64, evalt int64) {
 }
 
 func (r *GenericRingBuffer) drop(drop int) {
+	for _, sample := range r.items[:drop] {
+		r.sampleCount -= valueSampleCount(sample.V)
+	}
 	keep := len(r.items) - drop
 	r.tail = resize(r.tail, drop)
 	copy(r.tail, r.items[:drop])

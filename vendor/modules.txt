@@ -1293,7 +1293,7 @@ github.com/thanos-io/objstore/providers/oss
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
 github.com/thanos-io/objstore/tracing/opentracing
-# github.com/thanos-io/promql-engine v0.0.0-20260915065525-1b359e941bde
+# github.com/thanos-io/promql-engine v0.0.0-20261020165614-7157e606efa6
 ## explicit; go 1.24.0
 github.com/thanos-io/promql-engine/api
 github.com/thanos-io/promql-engine/compute
@@ -1318,7 +1318,7 @@ github.com/thanos-io/promql-engine/ringbuffer
 github.com/thanos-io/promql-engine/storage
 github.com/thanos-io/promql-engine/storage/prometheus
 github.com/thanos-io/promql-engine/warnings
-# github.com/thanos-io/thanos v0.42.5-0.20260817064418-8908023d563b
+# github.com/thanos-io/thanos v0.42.5-0.20261008195948-dd67d9cc81c3
 ## explicit; go 1.26.0
 github.com/thanos-io/thanos/pkg/api/query/querypb
 github.com/thanos-io/thanos/pkg/block

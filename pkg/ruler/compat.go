@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -97,6 +98,10 @@ func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ 
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 
+	// Computed before the samples are handed to ToWriteRequest, which takes
+	// ownership of them.
+	onlyStaleMarkers := a.onlyStaleMarkers()
+
 	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE)
 	req.AddHistogramTimeSeries(a.histogramLabels, a.histograms)
 
@@ -112,6 +117,19 @@ func (a *PusherAppender) Commit() error {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 == 5 {
 			a.failedWrites.Inc()
+		} else if onlyStaleMarkers {
+			// A 4xx means the rejected samples will never be accepted, and that the
+			// rest of the batch was written. That is not the all-or-nothing rollback
+			// a non-nil Commit promises, and callers that retry on Commit failure
+			// take it literally: rules.Group.cleanupStaleSeries keeps its staleSeries
+			// list until Commit succeeds and re-appends the whole list on every
+			// evaluation, so a marker that can never be accepted is retried until the
+			// ruler restarts.
+			//
+			// Report success when the transaction is only staleness markers, so that
+			// the caller drops them. Transactions carrying rule results keep returning
+			// the error: the ruler reports it as rule health and does not retry it.
+			err = nil
 		}
 	}
 
@@ -120,6 +138,23 @@ func (a *PusherAppender) Commit() error {
 	a.histogramLabels = nil
 	a.histograms = nil
 	return err
+}
+
+// onlyStaleMarkers reports whether every sample in the transaction is a staleness
+// marker. Prometheus writes those for series a rule no longer produces, as
+// best-effort bookkeeping rather than tenant data, and rules.Group.cleanupStaleSeries
+// builds a transaction containing nothing else. A transaction that also carries
+// rule results is not one of them.
+func (a *PusherAppender) onlyStaleMarkers() bool {
+	if len(a.samples) == 0 || len(a.histograms) > 0 {
+		return false
+	}
+	for _, s := range a.samples {
+		if !value.IsStaleNaN(s.Value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {

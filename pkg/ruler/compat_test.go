@@ -312,6 +312,98 @@ func TestPusherErrors(t *testing.T) {
 	}
 }
 
+func TestPusherAppender_Commit_StaleMarkers(t *testing.T) {
+	staleNaN := math.Float64frombits(value.StaleNaN)
+
+	for name, tc := range map[string]struct {
+		samples          []float64
+		withHistogram    bool
+		returnedError    error
+		expectedError    error
+		expectedFailures int
+	}{
+		"only staleness markers, 4xx: reported as success so the caller stops retrying": {
+			samples:       []float64{staleNaN, staleNaN},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: nil,
+		},
+		"only staleness markers, 429: also terminal": {
+			samples:       []float64{staleNaN},
+			returnedError: httpgrpc.Errorf(http.StatusTooManyRequests, "test error"),
+			expectedError: nil,
+		},
+		"only staleness markers, 5xx: still an error, retrying is correct": {
+			samples:          []float64{staleNaN},
+			returnedError:    httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedError:    httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedFailures: 1,
+		},
+		"only staleness markers, non-HTTP error: still an error": {
+			samples:          []float64{staleNaN},
+			returnedError:    errors.New("test error"),
+			expectedError:    errors.New("test error"),
+			expectedFailures: 1,
+		},
+		"only staleness markers, no error": {
+			samples:       []float64{staleNaN},
+			returnedError: nil,
+			expectedError: nil,
+		},
+		"markers alongside a rule result, 4xx: still an error, the ruler reports rule health from it": {
+			samples:       []float64{staleNaN, 123456},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"rule results only, 4xx: still an error": {
+			samples:       []float64{123456},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"staleness marker with a histogram, 4xx: still an error, cleanupStaleSeries never appends histograms": {
+			samples:       []float64{staleNaN},
+			withHistogram: true,
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"empty transaction, 4xx: still an error": {
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			pusher := &fakePusher{err: tc.returnedError, response: &cortexpb.WriteResponse{}}
+
+			writes := prometheus.NewCounter(prometheus.CounterOpts{})
+			failures := prometheus.NewCounter(prometheus.CounterOpts{})
+
+			pa := NewPusherAppendable(pusher, "user-1", &ruleLimits{}, writes, failures)
+
+			lbls, err := parser.ParseMetric("foo_bar")
+			require.NoError(t, err)
+
+			a := pa.Appender(ctx)
+			for _, v := range tc.samples {
+				_, err = a.Append(0, lbls, int64(model.Now()), v)
+				require.NoError(t, err)
+			}
+			if tc.withHistogram {
+				_, err = a.AppendHistogram(0, lbls, int64(model.Now()), tsdbutil.GenerateTestHistogram(1), nil)
+				require.NoError(t, err)
+			}
+
+			if tc.expectedError == nil {
+				require.NoError(t, a.Commit())
+			} else {
+				require.Equal(t, tc.expectedError, a.Commit())
+			}
+
+			require.Equal(t, 1, int(testutil.ToFloat64(writes)))
+			require.Equal(t, tc.expectedFailures, int(testutil.ToFloat64(failures)))
+		})
+	}
+}
+
 func TestMetricsQueryFuncErrors(t *testing.T) {
 	for name, tc := range map[string]struct {
 		returnedError          error

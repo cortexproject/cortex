@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
@@ -1436,6 +1437,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		perMetricSeriesLimitCount              = 0
 		discardedNativeHistogramCount          = 0
 
+		// Only the ruler sets the write request source to RULE.
+		isRuleSource = req.Source == cortexpb.RULE
+
 		// headMaxTime is snapshotted right after the appender is created. The appender
 		// derives its lower time bound checks (e.g. out of bounds) from the head max
 		// time at creation time. We cannot access the appender's internal bound
@@ -1449,7 +1453,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			}
 		}
 
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet) (rollback bool) {
+		// isStaleNaN reports whether the failed sample carried the reserved stale NaN
+		// payload. Callers appending native histograms always pass false, because a
+		// staleness marker is only ever appended as a float sample.
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet, isStaleNaN bool) (rollback bool) {
+			// A staleness marker from the ruler is internal bookkeeping rather than
+			// tenant data. Prometheus' rules.Group.cleanupStaleSeries appends one for
+			// every series a rule stopped producing, and treats out-of-order, too-old
+			// and duplicate-timestamp rejections as expected when the series is now
+			// produced by a different rule group, so it does not account for them.
+			// Do the same here, rather than reporting samples the tenant never sent.
+			// The rejection is still visible to operators: the TSDB counters exported
+			// per user are unaffected, and the ruler logs a warning for every failed
+			// commit.
+			ruleStaleMarker := isRuleSource && isStaleNaN
+
 			// Check if the error is a soft error we can proceed on. If so, we keep track
 			// of it, so that we can return it back to the distributor, which will return a
 			// 400 error to the client. The client (Prometheus) will not retry on 400, and
@@ -1463,18 +1481,24 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				})
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
-				sampleOutOfOrderCount++
-				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfOrder, userID, copiedLabels.Hash())
+				if !ruleStaleMarker {
+					sampleOutOfOrderCount++
+					i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfOrder, userID, copiedLabels.Hash())
+				}
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
-				newValueForTimestampCount++
-				i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, copiedLabels.Hash())
+				if !ruleStaleMarker {
+					newValueForTimestampCount++
+					i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, copiedLabels.Hash())
+				}
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
-				sampleTooOldCount++
-				i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
+				if !ruleStaleMarker {
+					sampleTooOldCount++
+					i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
+				}
 				updateFirstPartial(func() error {
 					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
 				})
@@ -1610,7 +1634,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value)); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback.
@@ -1668,7 +1692,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback.

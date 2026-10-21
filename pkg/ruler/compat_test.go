@@ -327,10 +327,10 @@ func TestPusherAppender_Commit_StaleMarkers(t *testing.T) {
 			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
 			expectedError: nil,
 		},
-		"only staleness markers, 429: also terminal": {
+		"only staleness markers, 429: still an error, the rate limiter rejected the whole request and the limit is transient": {
 			samples:       []float64{staleNaN},
 			returnedError: httpgrpc.Errorf(http.StatusTooManyRequests, "test error"),
-			expectedError: nil,
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "test error"),
 		},
 		"only staleness markers, 5xx: still an error, retrying is correct": {
 			samples:          []float64{staleNaN},

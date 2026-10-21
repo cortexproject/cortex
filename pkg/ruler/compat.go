@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 
 	"time"
@@ -98,8 +99,7 @@ func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ 
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 
-	// Computed before the samples are handed to ToWriteRequest, which takes
-	// ownership of them.
+	// Computed before ToWriteRequest takes ownership of the samples.
 	onlyStaleMarkers := a.onlyStaleMarkers()
 
 	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE)
@@ -117,18 +117,12 @@ func (a *PusherAppender) Commit() error {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 == 5 {
 			a.failedWrites.Inc()
-		} else if onlyStaleMarkers {
-			// A 4xx means the rejected samples will never be accepted, and that the
-			// rest of the batch was written. That is not the all-or-nothing rollback
-			// a non-nil Commit promises, and callers that retry on Commit failure
-			// take it literally: rules.Group.cleanupStaleSeries keeps its staleSeries
-			// list until Commit succeeds and re-appends the whole list on every
-			// evaluation, so a marker that can never be accepted is retried until the
-			// ruler restarts.
-			//
-			// Report success when the transaction is only staleness markers, so that
-			// the caller drops them. Transactions carrying rule results keep returning
-			// the error: the ruler reports it as rule health and does not retry it.
+		} else if onlyStaleMarkers && resp.Code != http.StatusTooManyRequests {
+			// cleanupStaleSeries keeps its staleSeries list until Commit succeeds, so a
+			// permanent rejection makes it re-append the whole list on every evaluation
+			// until the ruler restarts. Report success so it drops them instead. Markers
+			// only: with rule results the ruler surfaces the error as rule health. 429 is
+			// excluded, the rate limiter rejects the whole request and is transient.
 			err = nil
 		}
 	}
@@ -141,10 +135,7 @@ func (a *PusherAppender) Commit() error {
 }
 
 // onlyStaleMarkers reports whether every sample in the transaction is a staleness
-// marker. Prometheus writes those for series a rule no longer produces, as
-// best-effort bookkeeping rather than tenant data, and rules.Group.cleanupStaleSeries
-// builds a transaction containing nothing else. A transaction that also carries
-// rule results is not one of them.
+// marker, as in a transaction built by rules.Group.cleanupStaleSeries.
 func (a *PusherAppender) onlyStaleMarkers() bool {
 	if len(a.samples) == 0 || len(a.histograms) > 0 {
 		return false

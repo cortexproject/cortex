@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/promql"
 	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/thanos/pkg/strutil"
 
@@ -142,7 +143,7 @@ func matrixMerge(ctx context.Context, resps []*PrometheusResponse) ([]SampleStre
 func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) (*Vector, error) {
 	output := map[string]Sample{}
 	metrics := []string{} // Used to preserve the order for topk and bottomk.
-	sortPlan, err := sortPlanForQuery(req.GetQuery())
+	sortPlan, sortLabels, err := sortPlanForQuery(req.GetQuery())
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +184,13 @@ func vectorMerge(ctx context.Context, req Request, resps []*PrometheusResponse) 
 	if sortPlan == mergeOnly {
 		for _, k := range metrics {
 			result.Samples = append(result.Samples, output[k])
+		}
+		return result, nil
+	}
+
+	if sortPlan == sortByLabelValuesAsc || sortPlan == sortByLabelValuesDesc {
+		for _, metric := range sortByLabelValues(output, sortPlan, sortLabels) {
+			result.Samples = append(result.Samples, output[metric])
 		}
 		return result, nil
 	}
@@ -266,10 +274,12 @@ func statsMerge(shouldSumStats bool, resps []*PrometheusResponse) *PrometheusRes
 type sortPlan int
 
 const (
-	mergeOnly        sortPlan = 0
-	sortByValuesAsc  sortPlan = 1
-	sortByValuesDesc sortPlan = 2
-	sortByLabels     sortPlan = 3
+	mergeOnly             sortPlan = 0
+	sortByValuesAsc       sortPlan = 1
+	sortByValuesDesc      sortPlan = 2
+	sortByLabels          sortPlan = 3
+	sortByLabelValuesAsc  sortPlan = 4
+	sortByLabelValuesDesc sortPlan = 5
 )
 
 type pair struct {
@@ -288,60 +298,96 @@ func getSortValueFromPair(samples []*pair, i int) float64 {
 	return samples[i].s.Sample.Value
 }
 
-func sortPlanForQuery(q string) (sortPlan, error) {
+// sortByLabelValues returns the keys of output ordered by Prometheus' own
+// sort_by_label or sort_by_label_desc implementation.
+func sortByLabelValues(output map[string]Sample, plan sortPlan, sortLabels []string) []string {
+	funcName := "sort_by_label"
+	if plan == sortByLabelValuesDesc {
+		funcName = "sort_by_label_desc"
+	}
+	// The first argument is the vector, which is passed via vectorVals instead.
+	args := make(promqlparser.Expressions, 0, len(sortLabels)+1)
+	args = append(args, nil)
+	for _, l := range sortLabels {
+		args = append(args, &promqlparser.StringLiteral{Val: l})
+	}
+
+	vec := make(promql.Vector, 0, len(output))
+	for _, s := range output {
+		vec = append(vec, promql.Sample{Metric: cortexpb.FromLabelAdaptersToLabels(s.Labels)})
+	}
+	vec, _ = promql.FunctionCalls[funcName]([]promql.Vector{vec}, nil, args, &promql.EvalNodeHelper{})
+
+	buf := make([]byte, 0, 1024)
+	metrics := make([]string, 0, len(vec))
+	for _, s := range vec {
+		metrics = append(metrics, string(s.Metric.Bytes(buf)))
+	}
+	return metrics
+}
+
+// sortPlanForQuery returns how merged vector results should be ordered. For
+// sort_by_label and sort_by_label_desc, it also returns the labels to sort by.
+func sortPlanForQuery(q string) (sortPlan, []string, error) {
 	expr, err := cortexparser.ParseExpr(q)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	// Check if the root expression is topk, bottomk, limitk, or limit_ratio
 	if aggr, ok := expr.(*promqlparser.AggregateExpr); ok {
 		if aggr.Op == promqlparser.TOPK || aggr.Op == promqlparser.BOTTOMK || aggr.Op == promqlparser.LIMITK || aggr.Op == promqlparser.LIMIT_RATIO {
-			return mergeOnly, nil
+			return mergeOnly, nil, nil
 		}
 	}
-	checkForSort := func(expr promqlparser.Expr) (sortAsc, sortDesc bool) {
-		if n, ok := expr.(*promqlparser.Call); ok {
-			if n.Func != nil {
-				if n.Func.Name == "sort" {
-					sortAsc = true
-				}
-				if n.Func.Name == "sort_desc" {
-					sortDesc = true
-				}
-				if n.Func.Name == "sort_by_label" {
-					sortAsc = true
-				}
-				if n.Func.Name == "sort_by_label_desc" {
-					sortDesc = true
-				}
-			}
+	checkForSort := func(expr promqlparser.Expr) (sortPlan, []string, bool) {
+		n, ok := expr.(*promqlparser.Call)
+		if !ok || n.Func == nil {
+			return 0, nil, false
 		}
-		return sortAsc, sortDesc
+		switch n.Func.Name {
+		case "sort":
+			return sortByValuesAsc, nil, true
+		case "sort_desc":
+			return sortByValuesDesc, nil, true
+		case "sort_by_label":
+			return sortByLabelValuesAsc, stringsFromArgs(n.Args[1:]), true
+		case "sort_by_label_desc":
+			return sortByLabelValuesDesc, stringsFromArgs(n.Args[1:]), true
+		}
+		return 0, nil, false
 	}
 	// Check the root expression for sort
-	if sortAsc, sortDesc := checkForSort(expr); sortAsc || sortDesc {
-		if sortAsc {
-			return sortByValuesAsc, nil
-		}
-		return sortByValuesDesc, nil
+	if plan, sortLabels, ok := checkForSort(expr); ok {
+		return plan, sortLabels, nil
 	}
 
 	// If the root expression is a binary expression, check the LHS and RHS for sort
 	if bin, ok := expr.(*promqlparser.BinaryExpr); ok {
-		if sortAsc, sortDesc := checkForSort(bin.LHS); sortAsc || sortDesc {
-			if sortAsc {
-				return sortByValuesAsc, nil
-			}
-			return sortByValuesDesc, nil
+		if plan, sortLabels, ok := checkForSort(bin.LHS); ok {
+			return plan, sortLabels, nil
 		}
-		if sortAsc, sortDesc := checkForSort(bin.RHS); sortAsc || sortDesc {
-			if sortAsc {
-				return sortByValuesAsc, nil
-			}
-			return sortByValuesDesc, nil
+		if plan, sortLabels, ok := checkForSort(bin.RHS); ok {
+			return plan, sortLabels, nil
 		}
 	}
-	return sortByLabels, nil
+	return sortByLabels, nil, nil
+}
+
+func stringsFromArgs(args promqlparser.Expressions) []string {
+	strs := make([]string, 0, len(args))
+	for _, arg := range args {
+		for {
+			p, ok := arg.(*promqlparser.ParenExpr)
+			if !ok {
+				break
+			}
+			arg = p.Expr
+		}
+		if s, ok := arg.(*promqlparser.StringLiteral); ok {
+			strs = append(strs, s.Val)
+		}
+	}
+	return strs
 }
 
 // mergeSampleStreams deduplicates sample streams using a map.

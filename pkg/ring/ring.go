@@ -392,24 +392,70 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.updateRingMetrics(rc)
 }
 
-// Get returns n (or more) instances which form the replicas for the given key.
-// This implementation guarantees:
-// - Stability: given the same ring, two invocations returns the same set for same operation.
-// - Consistency: adding/removing 1 instance from the ring returns set with no more than 1 difference for same operation.
-func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error) {
-	r.mtx.RLock()
-	defer r.mtx.RUnlock()
-	if r.ringDesc == nil || len(r.ringTokens) == 0 {
-		return ReplicationSet{}, ErrEmptyRing
+// ringTopology is the read-only view of a ring required to compute a replica
+// set. It exists so that the replica-set walk can be shared between Ring.Get,
+// which starts at the token position of a single key, and ownership
+// computation, which walks every token position in turn. Sharing one walk is
+// what guarantees that an instance's idea of which series it owns cannot drift
+// from the ring's idea of where those series are routed.
+type ringTopology struct {
+	// tokens is the full, sorted token list of the ring.
+	tokens []uint32
+	// instanceByToken maps each token to information about the instance holding it.
+	instanceByToken map[uint32]instanceInfo
+	// instances holds the instance descriptors, keyed by instance ID.
+	instances map[string]InstanceDesc
+	// numZones is the number of distinct zones holding at least one instance.
+	numZones int
+
+	replicationFactor    int
+	zoneAwarenessEnabled bool
+}
+
+// topology returns the read-only view of the ring used by the replica-set walk.
+// Callers must hold at least a read lock on r.mtx. This is cheap: it copies
+// slice and map headers, never their contents.
+func (r *Ring) topology() ringTopology {
+	return ringTopology{
+		tokens:               r.ringTokens,
+		instanceByToken:      r.ringInstanceByToken,
+		instances:            r.ringDesc.Ingesters,
+		numZones:             len(r.ringZones),
+		replicationFactor:    r.cfg.ReplicationFactor,
+		zoneAwarenessEnabled: r.cfg.ZoneAwarenessEnabled,
+	}
+}
+
+// replicaSetAt walks the ring starting from the given token position and returns
+// the instances which form the replica set for any key mapping to that
+// position. It is the single definition of "which instances hold this data".
+//
+// Two parallel slices are returned: the instance descriptors, and the instance
+// IDs which key them in the ring. Both are in walk order. The IDs are returned
+// because InstanceDesc does not carry its own ID, and an instance's ID is not
+// interchangeable with its Addr, so a caller asking "am I in this set?" can only
+// answer correctly by comparing IDs.
+//
+// The returned instances have NOT been health filtered. Callers which need only
+// reachable instances apply a ReplicationStrategy afterwards; callers which need
+// an answer that stays stable across heartbeat flapping use the result directly.
+//
+// Both returned slices alias the caller's buffers and are only valid until the
+// next call sharing those buffers.
+func (t ringTopology) replicaSetAt(start int, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) ([]InstanceDesc, []string, error) {
+	if len(t.tokens) == 0 {
+		return nil, nil, ErrEmptyRing
 	}
 
 	var (
-		replicationFactor      = r.cfg.ReplicationFactor
-		instances              = bufDescs[:0]
-		start                  = searchToken(r.ringTokens, key)
-		iterations             = 0
-		maxInstancePerZone     = replicationFactor / len(r.ringZones)
-		zonesWithExtraInstance = replicationFactor % len(r.ringZones)
+		replicationFactor = t.replicationFactor
+		instances         = bufDescs[:0]
+		iterations        = 0
+
+		// With no zones known there is no per-zone cap to apply, so allow the
+		// whole replica set to come from the single (unnamed) zone.
+		maxInstancePerZone     = replicationFactor
+		zonesWithExtraInstance = 0
 
 		// We use a slice instead of a map because it's faster to search within a
 		// slice than lookup a map for a very low number of items.
@@ -417,16 +463,21 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		numOfInstanceByZone = resetZoneMap(bufZones)
 	)
 
-	for i := start; len(distinctHosts) < replicationFactor && iterations < len(r.ringTokens); i++ {
+	if t.numZones > 0 {
+		maxInstancePerZone = replicationFactor / t.numZones
+		zonesWithExtraInstance = replicationFactor % t.numZones
+	}
+
+	for i := start; len(distinctHosts) < replicationFactor && iterations < len(t.tokens); i++ {
 		iterations++
 		// Wrap i around in the ring.
-		i %= len(r.ringTokens)
-		token := r.ringTokens[i]
+		i %= len(t.tokens)
+		token := t.tokens[i]
 
-		info, ok := r.ringInstanceByToken[token]
+		info, ok := t.instanceByToken[token]
 		if !ok {
 			// This should never happen unless a bug in the ring code.
-			return ReplicationSet{}, ErrInconsistentTokensInfo
+			return nil, nil, ErrInconsistentTokensInfo
 		}
 
 		// We want n *distinct* instances.
@@ -435,7 +486,7 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		}
 
 		// Ignore if the instances don't have a zone set.
-		if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
+		if t.zoneAwarenessEnabled && info.Zone != "" {
 			maxNumOfInstance := maxInstancePerZone
 			// If we still have room for zones with extra instance, increase the instance threshold by 1
 			if zonesWithExtraInstance > 0 {
@@ -448,13 +499,13 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		}
 
 		distinctHosts = append(distinctHosts, info.InstanceID)
-		instance := r.ringDesc.Ingesters[info.InstanceID]
+		instance := t.instances[info.InstanceID]
 
 		// Check whether the replica set should be extended given we're including
 		// this instance.
 		if op.ShouldExtendReplicaSetOnState(instance.State) {
 			replicationFactor++
-		} else if r.cfg.ZoneAwarenessEnabled && info.Zone != "" {
+		} else if t.zoneAwarenessEnabled && info.Zone != "" {
 			// We should only add the zone if we are not going to extend,
 			// as we want to extend the instance in the same AZ.
 			if numOfInstance, ok := numOfInstanceByZone[info.Zone]; !ok {
@@ -469,6 +520,25 @@ func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts [
 		}
 
 		instances = append(instances, instance)
+	}
+
+	return instances, distinctHosts, nil
+}
+
+// Get returns n (or more) instances which form the replicas for the given key.
+// This implementation guarantees:
+// - Stability: given the same ring, two invocations returns the same set for same operation.
+// - Consistency: adding/removing 1 instance from the ring returns set with no more than 1 difference for same operation.
+func (r *Ring) Get(key uint32, op Operation, bufDescs []InstanceDesc, bufHosts []string, bufZones map[string]int) (ReplicationSet, error) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	if r.ringDesc == nil || len(r.ringTokens) == 0 {
+		return ReplicationSet{}, ErrEmptyRing
+	}
+
+	instances, _, err := r.topology().replicaSetAt(SearchToken(r.ringTokens, key), op, bufDescs, bufHosts, bufZones)
+	if err != nil {
+		return ReplicationSet{}, err
 	}
 
 	healthyInstances, maxFailure, err := r.strategy.Filter(instances, op, r.cfg.ReplicationFactor, r.cfg.HeartbeatTimeout, r.cfg.ZoneAwarenessEnabled, r.KVClient.LastUpdateTime(r.key))
@@ -863,7 +933,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 			finalInstancesPerZone++
 		}
 		for i := 0; i < finalInstancesPerZone; i++ {
-			start := searchToken(tokens, random.Uint32())
+			start := SearchToken(tokens, random.Uint32())
 			iterations := 0
 			found := false
 

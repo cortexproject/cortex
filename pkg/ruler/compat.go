@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
+	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/notifier"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
@@ -97,6 +99,9 @@ func (a *PusherAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ 
 func (a *PusherAppender) Commit() error {
 	a.totalWrites.Inc()
 
+	// Computed before ToWriteRequest takes ownership of the samples.
+	onlyStaleMarkers := a.onlyStaleMarkers()
+
 	req := cortexpb.ToWriteRequest(a.labels, a.samples, nil, nil, cortexpb.RULE)
 	req.AddHistogramTimeSeries(a.histogramLabels, a.histograms)
 
@@ -112,6 +117,13 @@ func (a *PusherAppender) Commit() error {
 		// Don't report errors that ended with 4xx HTTP status code (series limits, duplicate samples, out of order, etc.)
 		if resp, ok := httpgrpc.HTTPResponseFromError(err); !ok || resp.Code/100 == 5 {
 			a.failedWrites.Inc()
+		} else if onlyStaleMarkers && resp.Code != http.StatusTooManyRequests {
+			// cleanupStaleSeries keeps its staleSeries list until Commit succeeds, so a
+			// permanent rejection makes it re-append the whole list on every evaluation
+			// until the ruler restarts. Report success so it drops them instead. Markers
+			// only: with rule results the ruler surfaces the error as rule health. 429 is
+			// excluded, the rate limiter rejects the whole request and is transient.
+			err = nil
 		}
 	}
 
@@ -120,6 +132,20 @@ func (a *PusherAppender) Commit() error {
 	a.histogramLabels = nil
 	a.histograms = nil
 	return err
+}
+
+// onlyStaleMarkers reports whether every sample in the transaction is a staleness
+// marker, as in a transaction built by rules.Group.cleanupStaleSeries.
+func (a *PusherAppender) onlyStaleMarkers() bool {
+	if len(a.samples) == 0 || len(a.histograms) > 0 {
+		return false
+	}
+	for _, s := range a.samples {
+		if !value.IsStaleNaN(s.Value) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *PusherAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {

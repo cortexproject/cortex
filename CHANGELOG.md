@@ -12,6 +12,7 @@
 * [BUGFIX] Query Frontend: Fix the data selection time window computed for an instant query sent without a `time` parameter. The default evaluation time was passed to `util.ParseTimeParam` in milliseconds, but that helper formats the default and parses it as seconds, so the value overflowed `UnixNano()` and wrapped to a timestamp decades away from `now`. This made the `data_select_min_time` and `data_select_max_time` query stats wrong, and stopped the `time_window` query attribute of query priority and query rejection from matching such queries correctly. #7880
 * [BUGFIX] Ingester: Staleness markers written by the Ruler are no longer reported as discarded samples for the tenant. #7887
 * [BUGFIX] Ruler: Stop retrying staleness markers that can never be accepted. A rule moved between rule groups left the original group re-appending staleness markers for its series on every evaluation until the ruler restarted. #7888
+* [BUGFIX] Compactor: Delete block deletion markers left in the global `markers/` location of a tenant after the block they refer to was removed. They were skipped at every bucket index update and kept the tenant location in the bucket forever. #7890
 
 
 ## 1.22.0 in progress

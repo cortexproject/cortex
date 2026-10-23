@@ -6917,6 +6917,11 @@
     "query_frontend_config": {
       "description": "The query_frontend_config configures the Cortex query-frontend.",
       "properties": {
+        "active_query_tracker_dir": {
+          "description": "Active query tracker monitors queries in flight in the query frontend, and writes them to a file in the given directory. If Cortex discovers any queries in this file during startup, it will log them. Empty value disables the active query tracker.",
+          "type": "string",
+          "x-cli-flag": "frontend.active-query-tracker-dir"
+        },
         "downstream_url": {
           "description": "URL of downstream Prometheus.",
           "type": "string",
@@ -7053,6 +7058,12 @@
           "description": "Max body size for downstream prometheus.",
           "type": "number",
           "x-cli-flag": "frontend.max-body-size"
+        },
+        "max_concurrent": {
+          "default": 0,
+          "description": "The maximum number of inflight queries in the query frontend, enforced by the active query tracker. Queries above the limit are rejected with 429. Requires -frontend.active-query-tracker-dir. 0 to disable.",
+          "type": "number",
+          "x-cli-flag": "frontend.max-concurrent"
         },
         "querier_forget_delay": {
           "default": "0s",

@@ -174,15 +174,30 @@ func (tracker *RequestTracker) Insert(ctx context.Context, entry []byte) (int, e
 	}
 	select {
 	case i := <-tracker.getNextIndex:
-		fileBytes := tracker.mmappedFile
-		start, end := i, i+maxEntrySize
-
-		copy(fileBytes[start:], entry)
-		copy(fileBytes[end-1:], ",")
+		tracker.write(i, entry)
 		return i, nil
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
+}
+
+// TryInsert inserts the entry if a slot is free. It never blocks and returns false when all slots are in use.
+func (tracker *RequestTracker) TryInsert(entry []byte) (int, bool) {
+	if len(entry) > maxEntrySize {
+		entry = generateMinEntry()
+	}
+	select {
+	case i := <-tracker.getNextIndex:
+		tracker.write(i, entry)
+		return i, true
+	default:
+		return 0, false
+	}
+}
+
+func (tracker *RequestTracker) write(index int, entry []byte) {
+	copy(tracker.mmappedFile[index:], entry)
+	copy(tracker.mmappedFile[index+maxEntrySize-1:], ",")
 }
 
 func generateMinEntry() []byte {

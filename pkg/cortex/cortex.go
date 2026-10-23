@@ -285,6 +285,9 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Querier.Validate(c.ResourceMonitor.Resources); err != nil {
 		return errors.Wrap(err, "invalid querier config")
 	}
+	if err := c.Frontend.Handler.Validate(); err != nil {
+		return errors.Wrap(err, "invalid frontend config")
+	}
 	if c.Querier.TimeoutClassificationEnabled && !c.Frontend.Handler.QueryStatsEnabled {
 		return errTimeoutClassificationRequiresQueryStats
 	}

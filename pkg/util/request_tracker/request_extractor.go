@@ -3,6 +3,7 @@ package request_tracker
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -21,6 +22,33 @@ type InstantQueryExtractor struct{}
 
 type RangedQueryExtractor struct{}
 
+var (
+	apiExtractor          = &ApiExtractor{}
+	instantQueryExtractor = &InstantQueryExtractor{}
+	rangedQueryExtractor  = &RangedQueryExtractor{}
+)
+
+// ExtractorForPath returns the extractor matching the Prometheus API endpoint of the given path.
+func ExtractorForPath(path string) Extractor {
+	switch {
+	case strings.HasSuffix(path, "/api/v1/query"):
+		return instantQueryExtractor
+	case strings.HasSuffix(path, "/api/v1/query_range"):
+		return rangedQueryExtractor
+	default:
+		return apiExtractor
+	}
+}
+
+// requestParams returns the parsed form when available, so parameters sent in a POST body are
+// included, and falls back to the URL query otherwise.
+func requestParams(r *http.Request) url.Values {
+	if r.Form != nil {
+		return r.Form
+	}
+	return r.URL.Query()
+}
+
 func generateCommonMap(r *http.Request) map[string]any {
 	ctx := r.Context()
 	entryMap := make(map[string]any)
@@ -38,11 +66,12 @@ func generateCommonMap(r *http.Request) map[string]any {
 
 func (e *ApiExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
-	entryMap["limit"] = r.URL.Query().Get("limit")
-	entryMap["start"] = r.URL.Query().Get("start")
-	entryMap["end"] = r.URL.Query().Get("end")
+	params := requestParams(r)
+	entryMap["limit"] = params.Get("limit")
+	entryMap["start"] = params.Get("start")
+	entryMap["end"] = params.Get("end")
 
-	matches := r.URL.Query()["match[]"]
+	matches := params["match[]"]
 	entryMap["numberOfMatches"] = len(matches)
 	matchesStr := strings.Join(matches, ",")
 
@@ -51,16 +80,18 @@ func (e *ApiExtractor) Extract(r *http.Request) []byte {
 
 func (e *InstantQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
-	entryMap["time"] = r.URL.Query().Get("time")
-	return generateJSONEntryWithTruncatedField(entryMap, "query", r.URL.Query().Get("query"))
+	params := requestParams(r)
+	entryMap["time"] = params.Get("time")
+	return generateJSONEntryWithTruncatedField(entryMap, "query", params.Get("query"))
 }
 
 func (e *RangedQueryExtractor) Extract(r *http.Request) []byte {
 	entryMap := generateCommonMap(r)
-	entryMap["start"] = r.URL.Query().Get("start")
-	entryMap["end"] = r.URL.Query().Get("end")
-	entryMap["step"] = r.URL.Query().Get("step")
-	return generateJSONEntryWithTruncatedField(entryMap, "query", r.URL.Query().Get("query"))
+	params := requestParams(r)
+	entryMap["start"] = params.Get("start")
+	entryMap["end"] = params.Get("end")
+	entryMap["step"] = params.Get("step")
+	return generateJSONEntryWithTruncatedField(entryMap, "query", params.Get("query"))
 }
 
 func generateJSONEntry(entryMap map[string]any) []byte {

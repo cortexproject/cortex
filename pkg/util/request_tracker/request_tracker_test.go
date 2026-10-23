@@ -205,3 +205,26 @@ func TestRangedQueryExtractorMultiByteTruncation(t *testing.T) {
 		assert.True(t, utf8.Valid(entry), "entry should be valid UTF-8")
 	})
 }
+
+func TestAPITrackerTryInsert(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	tracker := NewRequestTracker(t.TempDir(), "apis.active", 1, logger)
+	require.NotNil(t, tracker)
+	defer tracker.Close()
+
+	index, ok := tracker.TryInsert([]byte(`{"Path":"/api/v1/query"}`))
+	require.True(t, ok)
+
+	_, ok = tracker.TryInsert([]byte(`{"Path":"/api/v1/query"}`))
+	assert.False(t, ok)
+
+	tracker.Delete(index)
+	_, ok = tracker.TryInsert([]byte(`{"Path":"/api/v1/query"}`))
+	assert.True(t, ok)
+}
+
+func TestExtractorForPath(t *testing.T) {
+	assert.IsType(t, &InstantQueryExtractor{}, ExtractorForPath("/prometheus/api/v1/query"))
+	assert.IsType(t, &RangedQueryExtractor{}, ExtractorForPath("/prometheus/api/v1/query_range"))
+	assert.IsType(t, &ApiExtractor{}, ExtractorForPath("/prometheus/api/v1/series"))
+}

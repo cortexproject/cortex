@@ -99,6 +99,11 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 			// Evict each victim.
 			for _, victim := range victims {
 				metricValue := e.registry.metric(victim.Stats)
+
+				// Increment the metric before cancelling, so that observers
+				// of the cancellation see the counter already updated.
+				e.evictionsTotal.WithLabelValues(string(breachedResource)).Inc()
+
 				victim.Cancel()
 
 				level.Warn(e.logger).Log(
@@ -112,8 +117,6 @@ func (e *QueryEvictor) running(ctx context.Context) error {
 					"metric", e.cfg.EvictionMetric,
 					"metric_value", metricValue,
 				)
-
-				e.evictionsTotal.WithLabelValues(string(breachedResource)).Inc()
 			}
 
 			// Enter cooldown.

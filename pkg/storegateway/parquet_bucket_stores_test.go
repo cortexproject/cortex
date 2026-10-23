@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -276,7 +275,7 @@ func TestParquetBucketStoresWithCaching(t *testing.T) {
 	limits := validation.NewOverrides(validation.Limits{}, nil)
 
 	// Create parquet bucket stores with caching
-	parquetStores, err := newParquetBucketStores(storageCfg, bucketClient, limits, log.NewNopLogger(), prometheus.NewRegistry())
+	parquetStores, err := newParquetBucketStores(storageCfg, bucketClient, nil, nil, limits, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NotNil(t, parquetStores)
 	require.NotNil(t, parquetStores.rowRangesCache)
@@ -338,14 +337,15 @@ func TestCreateCachingBucketClientForParquet(t *testing.T) {
 func TestParquetBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReached(t *testing.T) {
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 	cfg.BucketStore.MaxInflightRequests = 10
 	reg := prometheus.NewPedanticRegistry()
 	storageDir := t.TempDir()
 	generateStorageBlock(t, storageDir, "user_id", "series_1", 0, 100, 15)
-	bucket, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bucket), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), reg)
 	require.NoError(t, err)
 	require.NoError(t, stores.InitialSync(context.Background()))
 
@@ -363,10 +363,11 @@ func TestParquetBucketStores_Series_ShouldReturnErrorIfMaxInflightRequestIsReach
 func TestParquetBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitIsDisabled(t *testing.T) {
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 	reg := prometheus.NewPedanticRegistry()
 	storageDir := t.TempDir()
-	userId := "user_id"
-	generateStorageBlock(t, storageDir, userId, "series_1", 0, 100, 15)
+	userID := "user_id"
+	generateStorageBlock(t, storageDir, userID, "series_1", 0, 100, 15)
 	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
 	require.NoError(t, err)
 
@@ -375,20 +376,16 @@ func TestParquetBucketStores_Series_ShouldNotCheckMaxInflightRequestsIfTheLimitI
 	require.NoError(t, stores.InitialSync(context.Background()))
 
 	parquetStores := stores.(*ParquetBucketStores)
-	// Set inflight requests to the limit (max_inflight_request is set to 0 by default = disabled)for range 10 {
+	// max_inflight_requests is 0 (disabled), so inflight requests must not be checked.
 	for range 10 {
 		parquetStores.inflightRequests.Inc()
 	}
 
-	userPath := fmt.Sprintf("%s/%s", storageDir, userId)
-
-	limits := validation.Limits{}
-	overrides := validation.NewOverrides(limits, nil)
-	uBucket := bucket.NewUserBucketClient(userId, bkt, overrides)
-	blockIds, err := convertToParquetBlocksForTesting(userPath, uBucket)
+	uBucket := bucket.NewUserBucketClient(userID, bkt, validation.NewOverrides(validation.Limits{}, nil))
+	blockIDs, err := convertToParquetBlocksForTesting(filepath.Join(storageDir, userID), uBucket)
 	require.NoError(t, err)
 
-	series, _, err := querySeries(stores, userId, "series_1", 0, 100, blockIds...)
+	series, _, err := querySeries(stores, userID, "series_1", 0, 100, blockIDs...)
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(series))
 }
@@ -488,6 +485,7 @@ func TestParquetBucketStores_Series_MultiShard(t *testing.T) {
 
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 
 	storageDir := t.TempDir()
 
@@ -538,6 +536,7 @@ func TestParquetBucketStores_Series_MultiShard_BucketIndex(t *testing.T) {
 
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 	cfg.BucketStore.BucketIndex.Enabled = true
 
 	storageDir := t.TempDir()
@@ -602,6 +601,7 @@ func TestParquetBucketStores_Series_MultiShard_BucketIndexStale_FallbackToConver
 
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 	cfg.BucketStore.BucketIndex.Enabled = true
 
 	storageDir := t.TempDir()
@@ -628,7 +628,7 @@ func TestParquetBucketStores_Series_MultiShard_BucketIndexStale_FallbackToConver
 	require.NoError(t, err)
 	require.Len(t, blockIDs, 1)
 
-	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewRegistry())
+	stores, err := newParquetBucketStores(cfg, objstore.WithNoopInstr(bkt), nil, nil, overrides, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 
 	series, _, err := querySeries(stores, userID, metricName, 0, 100, blockIDs...)

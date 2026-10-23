@@ -142,6 +142,26 @@ querier:
   parquet_queryable_fallback_disabled: false
 ```
 
+### Querying Parquet Through the Store Gateway
+
+As an alternative to the parquet queryable, the store-gateway can serve Parquet files while the querier keeps querying the store-gateway as usual:
+
+```yaml
+blocks_storage:
+  bucket_store:
+    bucket_store_type: parquet
+
+    # Disable fallback to TSDB blocks for blocks not converted to Parquet yet
+    parquet_fallback_disabled: false
+
+    bucket_index:
+      enabled: true
+```
+
+By default the store-gateway runs in hybrid mode: blocks converted to Parquet are served from Parquet files, and blocks not converted yet are served from TSDB blocks, so they stay queryable while the conversion is pending. The store-gateway syncs only the not-yet-converted blocks, so it keeps index-headers on local disk for those blocks only. Hybrid mode requires the bucket index to be enabled.
+
+When `parquet_fallback_disabled` is `true`, the store-gateway serves only Parquet files and keeps no local state. Queries fail for blocks that have not been converted yet, so enable it only when every queried block is available as Parquet.
+
 ### Query Limits for Parquet
 
 Configure query limits specific to parquet operations:

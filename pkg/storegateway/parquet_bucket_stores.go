@@ -160,12 +160,10 @@ func (u *ParquetBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Sto
 		defer u.inflightRequests.Dec()
 	}
 
-	wrappedSrv := spanSeriesServer{
+	return store.Series(req, spanSeriesServer{
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
-	}
-
-	return store.Series(req, wrappedSrv)
+	})
 }
 
 // LabelNames implements BucketStores

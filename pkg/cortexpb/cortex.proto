@@ -117,9 +117,16 @@ message MetadataV2 {
   uint32 unit_ref = 4;
 }
 
+message Header {
+  string Key = 1;
+  repeated string Values = 2;
+}
+
 message StreamWriteRequest {
   string TenantID = 1;
   WriteRequest Request = 2;
+  // TraceContext carries the tracing headers of the write request this message belongs to.
+  repeated Header TraceContext = 3;
 
   MessageWithBufRef Ref = 1000 [(gogoproto.embed) = true, (gogoproto.customtype) = "MessageWithBufRef", (gogoproto.nullable) = false]; //set intentionally high to keep WriteRequest compatible with upstream Prometheus
 }

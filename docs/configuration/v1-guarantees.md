@@ -165,7 +165,8 @@ Currently experimental features are:
     ring configuration
   - Querier: `-querier.parquet-queryable-default-block-store`, `-querier.parquet-queryable-fallback-disabled`,
     the `-querier.parquet-queryable.max-fetched-*` limits and `-querier.parquet-shard-cache-*`
-  - Store Gateway: `-blocks-storage.bucket-store.parquet-query-concurrency`,
+  - Store Gateway: `-blocks-storage.bucket-store.parquet-fallback-disabled`,
+    `-blocks-storage.bucket-store.parquet-query-concurrency`,
     `-blocks-storage.bucket-store.parquet-shard-cache-*` and the
     `-blocks-storage.bucket-store.parquet-labels-cache.*` /
     `-blocks-storage.bucket-store.parquet-row-ranges-cache.*` cache configuration

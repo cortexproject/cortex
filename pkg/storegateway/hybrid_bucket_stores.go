@@ -121,7 +121,7 @@ func (h *HybridBucketStores) Series(req *storepb.SeriesRequest, srv storepb.Stor
 		Store_SeriesServer: srv,
 		ctx:                spanCtx,
 	}
-	return h.seriesWithTSDBStore(spanCtx, userID, req, store, wrappedSrv)
+	return h.series(spanCtx, userID, req, store, wrappedSrv)
 }
 
 // LabelNames implements BucketStores.
@@ -144,7 +144,7 @@ func (h *HybridBucketStores) LabelNames(ctx context.Context, req *storepb.LabelN
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return h.labelNamesWithTSDBStore(spanCtx, userID, req, store)
+	return h.labelNames(spanCtx, userID, req, store)
 }
 
 // LabelValues implements BucketStores.
@@ -167,7 +167,7 @@ func (h *HybridBucketStores) LabelValues(ctx context.Context, req *storepb.Label
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return h.labelValuesWithTSDBStore(spanCtx, userID, req, store)
+	return h.labelValues(spanCtx, userID, req, store)
 }
 
 func (h *HybridBucketStores) checkStoreError(userID string) error {
@@ -287,9 +287,9 @@ func labelValuesRequestForBlocks(req *storepb.LabelValuesRequest, hints *hintspb
 	return &r, nil
 }
 
-// seriesWithTSDBStore serves a Series request by splitting the requested blocks between the
-// Parquet store and the TSDB store, then merging the (sorted) results.
-func (h *HybridBucketStores) seriesWithTSDBStore(ctx context.Context, userID string, req *storepb.SeriesRequest, store *parquetBucketStore, srv storepb.Store_SeriesServer) error {
+// series serves a Series request by splitting the requested blocks between the Parquet store and
+// the TSDB store, then merging the (sorted) results when both are involved.
+func (h *HybridBucketStores) series(ctx context.Context, userID string, req *storepb.SeriesRequest, store *parquetBucketStore, srv storepb.Store_SeriesServer) error {
 	reqHints := &hintspb.SeriesRequestHints{}
 	if req.Hints != nil {
 		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
@@ -402,8 +402,8 @@ func (h *HybridBucketStores) seriesWithTSDBStore(ctx context.Context, userID str
 	return outSrv.Flush()
 }
 
-// labelNamesWithTSDBStore serves a LabelNames request across the Parquet store and the TSDB store.
-func (h *HybridBucketStores) labelNamesWithTSDBStore(ctx context.Context, userID string, req *storepb.LabelNamesRequest, store *parquetBucketStore) (*storepb.LabelNamesResponse, error) {
+// labelNames serves a LabelNames request across the Parquet store and the TSDB store.
+func (h *HybridBucketStores) labelNames(ctx context.Context, userID string, req *storepb.LabelNamesRequest, store *parquetBucketStore) (*storepb.LabelNamesResponse, error) {
 	reqHints := &hintspb.LabelNamesRequestHints{}
 	if req.Hints != nil {
 		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {
@@ -471,8 +471,8 @@ func mergeLabelNamesHints(a, b *storepb.LabelNamesResponse) (*types.Any, error) 
 	return types.MarshalAny(merged)
 }
 
-// labelValuesWithTSDBStore serves a LabelValues request across the Parquet store and the TSDB store.
-func (h *HybridBucketStores) labelValuesWithTSDBStore(ctx context.Context, userID string, req *storepb.LabelValuesRequest, store *parquetBucketStore) (*storepb.LabelValuesResponse, error) {
+// labelValues serves a LabelValues request across the Parquet store and the TSDB store.
+func (h *HybridBucketStores) labelValues(ctx context.Context, userID string, req *storepb.LabelValuesRequest, store *parquetBucketStore) (*storepb.LabelValuesResponse, error) {
 	reqHints := &hintspb.LabelValuesRequestHints{}
 	if req.Hints != nil {
 		if err := types.UnmarshalAny(req.Hints, reqHints); err != nil {

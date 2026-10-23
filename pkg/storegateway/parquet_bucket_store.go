@@ -233,7 +233,7 @@ func (p *parquetBucketStore) Series(req *storepb.SeriesRequest, seriesSrv storep
 	}
 
 	seriesSet := make([]prom_storage.ChunkSeriesSet, len(shards))
-	errGroup, ctx := errgroup.WithContext(srv.Context())
+	errGroup, ctx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(p.concurrency)
 
 	seenBlocks := make(map[string]struct{}, len(shards))

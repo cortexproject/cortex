@@ -5,9 +5,10 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // This operation allows you to perform transactional reads or writes on data
@@ -55,6 +56,22 @@ type ExecuteTransactionInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ExecuteTransactionInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ExecuteTransactionInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ExecuteTransactionInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.ClientRequestToken != nil {
+		s.WriteString(schemas.ExecuteTransactionInput_ClientRequestToken, *v.ClientRequestToken)
+	}
+	if v.ReturnConsumedCapacity != "" {
+		s.WriteString(schemas.ExecuteTransactionInput_ReturnConsumedCapacity, string(v.ReturnConsumedCapacity))
+	}
+	serializeParameterizedStatements(s, schemas.ExecuteTransactionInput_TransactStatements, v.TransactStatements)
+}
+
 type ExecuteTransactionOutput struct {
 
 	// The capacity units consumed by the entire operation. The values of the list are
@@ -70,35 +87,42 @@ type ExecuteTransactionOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ExecuteTransactionOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ExecuteTransactionOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ExecuteTransactionOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeConsumedCapacityMultiple(s, schemas.ExecuteTransactionOutput_ConsumedCapacity, v.ConsumedCapacity)
+	serializeItemResponseList(s, schemas.ExecuteTransactionOutput_Responses, v.Responses)
+}
+func (v *ExecuteTransactionOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ExecuteTransactionOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ExecuteTransactionOutput_ConsumedCapacity:
+			return deserializeConsumedCapacityMultiple(d, schemas.ExecuteTransactionOutput_ConsumedCapacity, &v.ConsumedCapacity)
+		case schemas.ExecuteTransactionOutput_Responses:
+			return deserializeItemResponseList(d, schemas.ExecuteTransactionOutput_Responses, &v.Responses)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationExecuteTransactionMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpExecuteTransaction{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ExecuteTransaction, schemas.ExecuteTransactionInput, schemas.ExecuteTransactionOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpExecuteTransaction{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ExecuteTransaction, schemas.ExecuteTransactionInput, schemas.ExecuteTransactionOutput), output: &ExecuteTransactionOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
@@ -111,9 +135,6 @@ func (c *Client) addOperationExecuteTransactionMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addOpExecuteTransactionValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ExecuteTransaction"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

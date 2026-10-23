@@ -5,10 +5,11 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Creates a backup for an existing table.
@@ -72,6 +73,20 @@ type CreateBackupInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateBackupInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateBackupInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateBackupInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BackupName != nil {
+		s.WriteString(schemas.CreateBackupInput_BackupName, *v.BackupName)
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.CreateBackupInput_TableName, *v.TableName)
+	}
+}
 func (in *CreateBackupInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -89,35 +104,44 @@ type CreateBackupOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *CreateBackupOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.CreateBackupOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *CreateBackupOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.BackupDetails != nil {
+		s.WriteStruct(schemas.CreateBackupOutput_BackupDetails)
+		v.BackupDetails.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *CreateBackupOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.CreateBackupOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.CreateBackupOutput_BackupDetails:
+			v.BackupDetails = &types.BackupDetails{}
+			return v.BackupDetails.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationCreateBackupMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpCreateBackup{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateBackup, schemas.CreateBackupInput, schemas.CreateBackupOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpCreateBackup{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.CreateBackup, schemas.CreateBackupInput, schemas.CreateBackupOutput), output: &CreateBackupOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateBackupDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -130,9 +154,6 @@ func (c *Client) addOperationCreateBackupMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addOpCreateBackupValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "CreateBackup"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

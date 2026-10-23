@@ -2155,9 +2155,19 @@ blocks_storage:
     # CLI flag: -blocks-storage.bucket-store.block-discovery-strategy
     [block_discovery_strategy: <string> | default = "concurrent"]
 
-    # Type of bucket store to use (tsdb or parquet).
+    # Type of bucket store to use (tsdb or parquet). With parquet, blocks
+    # converted to Parquet are served from Parquet files and blocks not yet
+    # converted are served from TSDB blocks, unless
+    # -blocks-storage.bucket-store.parquet-fallback-disabled is set.
     # CLI flag: -blocks-storage.bucket-store.bucket-store-type
     [bucket_store_type: <string> | default = "tsdb"]
+
+    # [Experimental] Only used when the bucket store type is parquet. If true,
+    # the store-gateway serves only blocks converted to Parquet and does not
+    # fall back to TSDB blocks for blocks not converted yet, so it keeps no
+    # local state. If false, the bucket index must be enabled.
+    # CLI flag: -blocks-storage.bucket-store.parquet-fallback-disabled
+    [parquet_fallback_disabled: <boolean> | default = false]
 
     # Max size - in bytes - of a chunks pool, used to reduce memory allocations.
     # The pool is shared across all tenants. 0 to disable the limit.

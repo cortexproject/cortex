@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math"
+	"runtime"
 	"strconv"
 	"sync"
 	"testing"
@@ -702,6 +703,56 @@ func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
 			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, fingerprint)
 		}
 	})
+}
+
+// BenchmarkActiveSeries_MemoryPerEntry reports the heap held per tracker entry,
+// labels excluded since the tracker shares them with the head. With owned-series
+// tracking an entry also carries its head series reference, and entries are kept
+// until the head deletes the series rather than until the idle timeout, so the
+// extra memory is roughly this per-entry cost times (series in the head - active
+// series).
+func BenchmarkActiveSeries_MemoryPerEntry(b *testing.B) {
+	const n = 1_000_000
+
+	lbls := make([]labels.Labels, n)
+	for i := range lbls {
+		lbls[i] = labels.FromStrings("__name__", "metric", "i", strconv.Itoa(i))
+	}
+	ringTokens := []uint32{1 << 31, 1<<32 - 1}
+	ownedPositions := []bool{true, false}
+	now := time.Now()
+
+	for _, ownedTracking := range []bool{false, true} {
+		name := "owned_tracking_disabled"
+		if ownedTracking {
+			name = "owned_tracking_enabled"
+		}
+
+		b.Run(name, func(b *testing.B) {
+			for b.Loop() {
+				var before, after runtime.MemStats
+				runtime.GC()
+				runtime.ReadMemStats(&before)
+
+				c := NewActiveSeries()
+				if ownedTracking {
+					c.updateTokens(ringTokens, ownedPositions, 1)
+				}
+				for i := range lbls {
+					if ownedTracking {
+						c.UpdateSeriesWithRef(lbls[i], lbls[i].Hash(), uint64(i+1), uint32(i)*7919, now, false, copyFn)
+					} else {
+						c.UpdateSeries(lbls[i], lbls[i].Hash(), noRingToken, now, false, copyFn)
+					}
+				}
+
+				runtime.GC()
+				runtime.ReadMemStats(&after)
+				b.ReportMetric(float64(after.HeapAlloc-before.HeapAlloc)/n, "B/entry")
+				runtime.KeepAlive(c)
+			}
+		})
+	}
 }
 
 // TestActiveSeries_ReactivatedSeriesCountsImmediately covers the one way retaining

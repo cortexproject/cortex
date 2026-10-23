@@ -200,6 +200,8 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					flags["-parquet-converter.ring.consul.hostname"] = consul.NetworkHTTPEndpoint()
 					flags["-compactor.block-ranges"] = "1ms,12h" // to convert all blocks to parquet blocks
 					flags["-blocks-storage.bucket-store.parquet-labels-cache.backend"] = testCfg.parquetLabelsCache
+					// Refresh the bucket index frequently so it records the converted blocks.
+					flags["-compactor.cleanup-interval"] = "1s"
 				}
 
 				// Add the cache address to the flags.
@@ -322,12 +324,16 @@ func TestQuerierWithBlocksStorageRunningInMicroservicesMode(t *testing.T) {
 					// Wait until the parquet-converter convert blocks
 					require.NoError(t, parquetConverter.WaitSumMetricsWithOptions(e2e.Equals(float64(2)), []string{"cortex_parquet_converter_blocks_converted_total"}, e2e.WaitMissingMetrics))
 
-					// Wait until the compactor's blocks cleaner has completed at least
-					// one pass, which creates the bucket index. The parquet
-					// store-gateway discovers blocks on-demand through the bucket index
-					// rather than pre-loading them, so the bucket index must exist
-					// before querying.
-					require.NoError(t, compactor.WaitSumMetricsWithOptions(e2e.Greater(0), []string{"cortex_compactor_block_cleanup_completed_total"}, e2e.WaitMissingMetrics))
+					// Wait until the store-gateways have synced the bucket index recording both blocks as
+					// converted, so they are routed to the Parquet store. Until then, the hybrid
+					// store-gateway routes them to the TSDB sub-store, which has not loaded them either.
+					if testCfg.blocksShardingStrategy != "" {
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_blocks_meta_synced"},
+							e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "parquet-converted")), e2e.SkipMissingMetrics))
+					} else {
+						require.NoError(t, storeGateways.WaitSumMetricsWithOptions(e2e.Equals(float64(2*storeGateways.NumInstances())), []string{"cortex_blocks_meta_synced"},
+							e2e.WithLabelMatchers(labels.MustNewMatcher(labels.MatchEqual, "state", "parquet-converted")), e2e.WaitMissingMetrics))
+					}
 				}
 
 				// Query back the series (1 only in the storage, 1 only in the ingesters, 1 on both).

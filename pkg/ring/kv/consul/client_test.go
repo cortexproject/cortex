@@ -5,6 +5,8 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -262,4 +264,27 @@ type testLogger struct {
 
 func (l testLogger) Log(keyvals ...any) error {
 	return nil
+}
+
+func TestCASBackoff(t *testing.T) {
+	requests := make(chan time.Time, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- time.Now()
+		http.Error(w, "unavailable", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c, err := NewClient(Config{Host: server.URL, MaxCasRetries: 2}, codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = c.CAS(ctx, "test", func(any) (any, bool, error) {
+		t.Fatal("callback called after failed read")
+		return nil, false, nil
+	})
+	require.EqualError(t, err, "failed to CAS test")
+	require.Len(t, requests, 2)
+	first, second := <-requests, <-requests
+	require.GreaterOrEqual(t, second.Sub(first), time.Second)
 }

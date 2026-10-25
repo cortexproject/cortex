@@ -487,6 +487,7 @@ func TestParquetBucketStores_Series_QuerySharding(t *testing.T) {
 
 	cfg := prepareStorageConfig(t)
 	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+	cfg.BucketStore.ParquetFallbackDisabled = true
 
 	storageDir := t.TempDir()
 	generateStorageBlockWithMultipleSeries(t, storageDir, userID, metricName, numSeries, 0, 100, 15)

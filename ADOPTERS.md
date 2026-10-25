@@ -25,3 +25,4 @@ This is the list of organisations that are using Cortex in **production environm
 * [Sophotech](https://sopho.tech/)
 * [SysEleven](https://www.syseleven.de/)
 * [Twilio](https://www.twilio.com/)
+* [Wordfully](https://wordfully.ai)

@@ -3,6 +3,7 @@ package tripperware
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 
@@ -313,7 +314,9 @@ func sortByLabelValues(output map[string]Sample, plan sortPlan, sortLabels []str
 	}
 
 	vec := make(promql.Vector, 0, len(output))
-	for _, s := range output {
+	// The upstream comparator is not a strict weak order, so feed it a fixed input order.
+	for _, k := range slices.Sorted(maps.Keys(output)) {
+		s := output[k]
 		vec = append(vec, promql.Sample{Metric: cortexpb.FromLabelAdaptersToLabels(s.Labels)})
 	}
 	vec, _ = promql.FunctionCalls[funcName]([]promql.Vector{vec}, nil, args, &promql.EvalNodeHelper{})

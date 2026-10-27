@@ -271,21 +271,21 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
 }
 
-// errStopIteration is used to stop a bucket iteration as soon as the first object is found.
-var errStopIteration = errors.New("stop iteration")
-
 // deleteOrphanedGlobalDeletionMark removes the block deletion mark from the global markers location
 // when the block it refers to no longer exists in the storage. Without this, the stale marker would
 // be listed (and skipped) at every update of the bucket index, and would keep the tenant's location in
 // the storage forever. The marker is removed only if the block location is empty, so that a block
 // which is being marked for deletion is never affected. This is best effort: failures are only logged.
 func (w *Updater) deleteOrphanedGlobalDeletionMark(ctx context.Context, id ulid.ULID) {
+	// The listing is not stopped at the first object: returning an error from the callback makes some
+	// clients (e.g. S3) leave the listing undrained, and is counted and retried as a failed operation.
+	// A block location holds only a handful of objects.
 	hasObjects := false
 	err := w.bkt.Iter(ctx, id.String()+objstore.DirDelim, func(string) error {
 		hasObjects = true
-		return errStopIteration
+		return nil
 	}, objstore.WithRecursiveIter())
-	if err != nil && !errors.Is(err, errStopIteration) {
+	if err != nil {
 		level.Warn(w.logger).Log("msg", "failed to check whether the block of an orphaned deletion mark exists", "block", id.String(), "err", err)
 		return
 	}

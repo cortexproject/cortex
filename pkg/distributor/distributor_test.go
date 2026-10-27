@@ -981,7 +981,7 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 						assert.Nil(t, response)
 					}
 				}
-				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, "user")))
+				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, "user", validation.SampleTypeHistogram)))
 			}
 		})
 	}
@@ -2142,7 +2142,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 			_, err = ds[0].Push(ctx, req)
 			require.NoError(t, err)
 
-			actualDiscardedSamples := testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
+			sampleType := validation.SampleTypeFloat
+			if histogram {
+				sampleType = validation.SampleTypeHistogram
+			}
+			actualDiscardedSamples := testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user", sampleType))
 			actualDiscardedExemplars := testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
 			require.Equal(t, float64(expectedDiscardedSamples), actualDiscardedSamples)
 			require.Equal(t, float64(expectedDiscardedExemplars), actualDiscardedExemplars)
@@ -4613,7 +4617,11 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 			assert.Equal(t, 1, len(timeseries))
 		}
 
-		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(1))
+		sampleType := validation.SampleTypeFloat
+		if histogramEnabled {
+			sampleType = validation.SampleTypeHistogram
+		}
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id, sampleType)), float64(1))
 		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(2))
 		receivedFloatSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "float"))
 		receivedHistogramSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "histogram"))

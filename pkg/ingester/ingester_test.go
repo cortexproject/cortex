@@ -351,7 +351,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",type="float",user="1"} 2
 				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{label1=\"value1\"}",limit="max_series",user="1"} 3
@@ -402,7 +402,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 2
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",type="float",user="1"} 2
 				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
@@ -454,7 +454,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 				cortex_discarded_samples_per_labelset_total{labelset="{label2=\"value2\"}",reason="per_labelset_series_limit",user="1"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 3
+				cortex_discarded_samples_total{reason="per_labelset_series_limit",type="float",user="1"} 3
 				# HELP cortex_ingester_limits_per_labelset Limits per user and labelset.
 				# TYPE cortex_ingester_limits_per_labelset gauge
 				cortex_ingester_limits_per_labelset{labelset="{comp1=\"compValue1\", comp2=\"compValue2\"}",limit="max_series",user="1"} 2
@@ -852,7 +852,7 @@ func TestIngesterUserLimitExceeded(t *testing.T) {
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="per_user_series_limit",user="1"} 1
+				cortex_discarded_samples_total{reason="per_user_series_limit",type="float",user="1"} 1
 	`), "cortex_discarded_samples_total"))
 			}
 
@@ -1078,7 +1078,7 @@ func TestIngesterMetricLimitExceeded(t *testing.T) {
 				require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="per_metric_series_limit",user="1"} 1
+				cortex_discarded_samples_total{reason="per_metric_series_limit",type="float",user="1"} 1
 	`), "cortex_discarded_samples_total"))
 			}
 
@@ -1179,7 +1179,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="native-histogram-sample",user="test"} 1
+				cortex_discarded_samples_total{reason="native-histogram-sample",type="histogram",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1630,7 +1630,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 2
+				cortex_discarded_samples_total{reason="sample-out-of-order",type="float",user="test"} 2
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1688,7 +1688,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-bounds",user="test"} 2
+				cortex_discarded_samples_total{reason="sample-out-of-bounds",type="float",user="test"} 2
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1743,7 +1743,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-too-old",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-too-old",type="float",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1859,7 +1859,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-too-old",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-too-old",type="float",user="test"} 1
 				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
 				# TYPE cortex_ingester_active_native_histogram_series gauge
 				cortex_ingester_active_native_histogram_series{user="test"} 1
@@ -1967,7 +1967,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="new-value-for-timestamp",user="test"} 1
+				cortex_discarded_samples_total{reason="new-value-for-timestamp",type="float",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -7980,7 +7980,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 		cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="per_labelset_series_limit",user="1"} 1
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 1
+		cortex_discarded_samples_total{reason="per_labelset_series_limit",type="float",user="1"} 1
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Expect per labelset validate metrics cleaned up.
@@ -7989,7 +7989,7 @@ func TestIngester_UpdateLabelSetMetrics(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, bytes.NewBufferString(`
 		# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 		# TYPE cortex_discarded_samples_total counter
-		cortex_discarded_samples_total{reason="per_labelset_series_limit",user="1"} 1
+		cortex_discarded_samples_total{reason="per_labelset_series_limit",type="float",user="1"} 1
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 

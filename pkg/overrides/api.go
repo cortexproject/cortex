@@ -26,6 +26,8 @@ const (
 	ErrRuntimeConfig = "runtime config read error"
 )
 
+var errInvalidOverrides = errors.New("invalid overrides")
+
 // getAllowedLimitsFromBucket reads allowed limits from the runtime config file
 func (a *API) getAllowedLimitsFromBucket(ctx context.Context) ([]string, error) {
 	reader, err := a.bucketClient.Get(ctx, a.runtimeConfigPath)
@@ -117,6 +119,11 @@ func (a *API) SetOverrides(w http.ResponseWriter, r *http.Request) {
 
 	// Write overrides to bucket storage
 	if err := a.setOverridesToBucket(r.Context(), userID, overrides); err != nil {
+		if errors.Is(err, errInvalidOverrides) {
+			level.Error(a.logger).Log("msg", "limits validation failed", "userID", userID, "err", err)
+			http.Error(w, "Invalid overrides", http.StatusBadRequest)
+			return
+		}
 		level.Error(a.logger).Log("msg", "failed to set overrides to bucket", "userID", userID, "err", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -246,6 +253,13 @@ func (a *API) setOverridesToBucket(ctx context.Context, userID string, overrides
 	var limits validation.Limits
 	if err := yaml.Unmarshal(yamlData, &limits); err != nil {
 		return fmt.Errorf("invalid overrides format: %w", err)
+	}
+
+	// Reject limits that would make the runtime config fail to load in other components.
+	if a.validateLimits != nil {
+		if err := a.validateLimits(userID, &limits); err != nil {
+			return fmt.Errorf("%w: %w", errInvalidOverrides, err)
+		}
 	}
 
 	config.TenantLimits[userID] = &limits

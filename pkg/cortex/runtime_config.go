@@ -77,10 +77,7 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 			// refer to https://github.com/cortexproject/cortex/issues/6741#issuecomment-3067244929
 			if overrides != nil {
 				for userID, ul := range overrides.TenantLimits {
-					if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled, l.cfg.Distributor.HATrackerConfig.UpdateTimeout, l.cfg.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
-						return nil, err
-					}
-					if err := ul.ValidateQueryLimits(userID, l.cfg.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {
+					if err := l.validateTenantLimits(userID, ul); err != nil {
 						return nil, err
 					}
 				}
@@ -89,6 +86,13 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 	}
 
 	return overrides, nil
+}
+
+func (l runtimeConfigLoader) validateTenantLimits(userID string, ul *validation.Limits) error {
+	if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled, l.cfg.Distributor.HATrackerConfig.UpdateTimeout, l.cfg.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
+		return err
+	}
+	return ul.ValidateQueryLimits(userID, l.cfg.BlocksStorage.TSDB.CloseIdleTSDBTimeout)
 }
 
 func multiClientRuntimeConfigChannel(manager *runtimeconfig.Manager) func() <-chan kv.MultiRuntimeConfig {

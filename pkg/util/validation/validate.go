@@ -226,18 +226,31 @@ func (m *ValidateMetrics) UpdateLabelSet(userSet map[string]map[uint64]struct{},
 	})
 }
 
+// discardSamplesForSeries records one discarded-series event, attributed to
+// each sample type present in the series. When the caller has no sample
+// counts (e.g. direct unit tests), the event is attributed to float samples,
+// matching historical behaviour.
+func discardSamplesForSeries(validateMetrics *ValidateMetrics, reason, userID string, numFloatSamples, numHistogramSamples int) {
+	if numFloatSamples > 0 || numHistogramSamples == 0 {
+		validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, SampleTypeFloat).Inc()
+	}
+	if numHistogramSamples > 0 {
+		validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, SampleTypeHistogram).Inc()
+	}
+}
+
 // ValidateSampleTimestamp returns an err if the sample timestamp is invalid.
 // The returned error may retain the provided series labels.
-func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, timestampMs int64) ValidationError {
+func ValidateSampleTimestamp(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, timestampMs int64, sampleType string) ValidationError {
 	unsafeMetricName, _ := extract.UnsafeMetricNameFromLabelAdapters(ls)
 
 	if limits.RejectOldSamples && model.Time(timestampMs) < model.Now().Add(-time.Duration(limits.RejectOldSamplesMaxAge)) {
-		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID, SampleTypeFloat).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(greaterThanMaxSampleAge, userID, sampleType).Inc()
 		return newSampleTimestampTooOldError(unsafeMetricName, timestampMs)
 	}
 
 	if model.Time(timestampMs) > model.Now().Add(time.Duration(limits.CreationGracePeriod)) {
-		validateMetrics.DiscardedSamples.WithLabelValues(tooFarInFuture, userID, SampleTypeFloat).Inc()
+		validateMetrics.DiscardedSamples.WithLabelValues(tooFarInFuture, userID, sampleType).Inc()
 		return newSampleTimestampTooNewError(unsafeMetricName, timestampMs)
 	}
 
@@ -301,10 +314,10 @@ func ValidateMetricName(limits *Limits, ls []cortexpb.LabelAdapter, nameValidati
 // ValidateLabels returns an err if the labels are invalid.
 // The returned error may retain the provided series labels.
 // Callers must validate metric name (e.g. via ValidateMetricName) before calling this when EnforceMetricName is true.
-func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool, nameValidationScheme model.ValidationScheme) ValidationError {
+func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID string, ls []cortexpb.LabelAdapter, skipLabelNameValidation bool, nameValidationScheme model.ValidationScheme, numFloatSamples, numHistogramSamples int) ValidationError {
 	numLabelNames := len(ls)
 	if numLabelNames > limits.MaxLabelNamesPerSeries {
-		validateMetrics.DiscardedSamples.WithLabelValues(maxLabelNamesPerSeries, userID, SampleTypeFloat).Inc()
+		discardSamplesForSeries(validateMetrics, maxLabelNamesPerSeries, userID, numFloatSamples, numHistogramSamples)
 		return newTooManyLabelsError(ls, limits.MaxLabelNamesPerSeries)
 	}
 
@@ -316,21 +329,21 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 
 	for _, l := range ls {
 		if !skipLabelNameValidation && !nameValidationScheme.IsValidLabelName(l.Name) {
-			validateMetrics.DiscardedSamples.WithLabelValues(invalidLabel, userID, SampleTypeFloat).Inc()
+			discardSamplesForSeries(validateMetrics, invalidLabel, userID, numFloatSamples, numHistogramSamples)
 			return newInvalidLabelError(ls, l.Name)
 		} else if len(l.Name) > maxLabelNameLength {
-			validateMetrics.DiscardedSamples.WithLabelValues(labelNameTooLong, userID, SampleTypeFloat).Inc()
+			discardSamplesForSeries(validateMetrics, labelNameTooLong, userID, numFloatSamples, numHistogramSamples)
 			return newLabelNameTooLongError(ls, l.Name, maxLabelNameLength)
 		} else if len(l.Value) > maxLabelValueLength {
-			validateMetrics.DiscardedSamples.WithLabelValues(labelValueTooLong, userID, SampleTypeFloat).Inc()
+			discardSamplesForSeries(validateMetrics, labelValueTooLong, userID, numFloatSamples, numHistogramSamples)
 			return newLabelValueTooLongError(ls, l.Name, l.Value, maxLabelValueLength)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp >= 0 {
 			if cmp == 0 {
-				validateMetrics.DiscardedSamples.WithLabelValues(duplicateLabelNames, userID, SampleTypeFloat).Inc()
+				discardSamplesForSeries(validateMetrics, duplicateLabelNames, userID, numFloatSamples, numHistogramSamples)
 				return newDuplicatedLabelError(ls, l.Name)
 			}
 
-			validateMetrics.DiscardedSamples.WithLabelValues(labelsNotSorted, userID, SampleTypeFloat).Inc()
+			discardSamplesForSeries(validateMetrics, labelsNotSorted, userID, numFloatSamples, numHistogramSamples)
 			return newLabelsNotSortedError(ls, l.Name)
 		}
 
@@ -339,7 +352,7 @@ func ValidateLabels(validateMetrics *ValidateMetrics, limits *Limits, userID str
 	}
 	validateMetrics.LabelSizeBytes.WithLabelValues(userID).Observe(float64(labelsSizeBytes))
 	if maxLabelsSizeBytes > 0 && labelsSizeBytes > maxLabelsSizeBytes {
-		validateMetrics.DiscardedSamples.WithLabelValues(labelsSizeBytesExceeded, userID, SampleTypeFloat).Inc()
+		discardSamplesForSeries(validateMetrics, labelsSizeBytesExceeded, userID, numFloatSamples, numHistogramSamples)
 		return labelSizeBytesExceededError(ls, labelsSizeBytes, maxLabelsSizeBytes)
 	}
 	return nil

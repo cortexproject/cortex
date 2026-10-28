@@ -66,7 +66,7 @@ func TestValidateLabels_UTF8(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation, model.UTF8Validation)
+			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation, model.UTF8Validation, 0, 0)
 			assert.Equal(t, test.expectedErr, err, "wrong error")
 		})
 	}
@@ -187,7 +187,7 @@ func TestValidateLabels(t *testing.T) {
 			nil,
 		},
 	} {
-		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation, model.LegacyValidation)
+		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation, model.LegacyValidation, 0, 0)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
@@ -348,7 +348,7 @@ func TestValidateLabelOrder(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected := newLabelsNotSortedError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
@@ -375,7 +375,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected := newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
@@ -386,7 +386,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected = newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},

@@ -1512,7 +1512,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-order",type="float",user="test"} 1
 			`,
 		},
 		"ooo disabled, tenant staleness marker out of order is counted as a discarded sample": {
@@ -1564,7 +1564,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_tsdb_out_of_order_samples_total{type="histogram",user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-order",type="float",user="test"} 1
 			`,
 		},
 		"ooo disabled, should soft fail on sample out of order": {
@@ -1630,7 +1630,8 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_memory_series_removed_total{user="test"} 0
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-out-of-order",type="float",user="test"} 2
+				cortex_discarded_samples_total{reason="sample-out-of-order",type="float",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-out-of-order",type="histogram",user="test"} 1
 				# HELP cortex_ingester_active_series Number of currently active series per user.
 				# TYPE cortex_ingester_active_series gauge
 				cortex_ingester_active_series{user="test"} 1
@@ -1859,7 +1860,7 @@ func TestIngester_Push(t *testing.T) {
 				cortex_ingester_active_series{user="test"} 1
 				# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 				# TYPE cortex_discarded_samples_total counter
-				cortex_discarded_samples_total{reason="sample-too-old",type="float",user="test"} 1
+				cortex_discarded_samples_total{reason="sample-too-old",type="histogram",user="test"} 1
 				# HELP cortex_ingester_active_native_histogram_series Number of currently active native histogram series per user.
 				# TYPE cortex_ingester_active_native_histogram_series gauge
 				cortex_ingester_active_native_histogram_series{user="test"} 1

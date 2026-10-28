@@ -30,9 +30,20 @@ const (
 var (
 	writeOptions = &consul.WriteOptions{}
 
+	// backoffConfig is used by the long-running watch loops.
 	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
+	}
+
+	// casBackoffConfig is used between CAS attempts after a failed read or
+	// write. It is kept short because CAS callers (e.g. ring heartbeats and
+	// shutdown paths) may not have a deadline: with the default 10 attempts
+	// the total wait is less than 13s (100ms+200ms+400ms+800ms+5*2s upper
+	// bounds), well below the default 1m ring heartbeat timeout.
+	casBackoffConfig = backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 2 * time.Second,
 	}
 )
 
@@ -183,7 +194,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 	index := uint64(0)
 	// Keep error backoff across attempts: a successful read doesn't imply
 	// that writes have recovered. Conflicts and callback retries don't wait.
-	errorBackoff := backoff.New(ctx, backoffConfig)
+	errorBackoff := backoff.New(ctx, casBackoffConfig)
 	retryAfterError := false
 	for i := 0; i < retries; i++ {
 		if retryAfterError {

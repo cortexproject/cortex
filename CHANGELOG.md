@@ -2,8 +2,6 @@
 
 ## master / unreleased
 
-* [BUGFIX] Consul: Back off CAS retries after failed reads or writes to reduce request amplification during outages, and honor context cancellation while waiting to retry.
-
 * [FEATURE] Ruler: Add experimental support for federated rule groups. A rule group listing tenants in its `source_tenants` field is evaluated against those tenants while the resulting series and alerts are written to the tenant owning the rule group. Enabled with `-ruler.enable-federated-rules` (requires `-tenant-federation.enabled`), and restricted to selected tenants with `-ruler.allowed-federated-tenants` and `-ruler.disallowed-federated-tenants`. #7828
 * [FEATURE] Distributor: Add experimental OTLP metrics ingestion over gRPC (`opentelemetry.proto.collector.metrics.v1.MetricsService/Export`) on the gRPC server port. Enable it with `-distributor.otlp.grpc-enabled`. The tenant is read from the `X-Scope-OrgID` gRPC metadata, and the request size is limited by `-server.grpc-max-recv-msg-size-bytes`. #7873
 * [ENHANCEMENT] Ruler: Add rule information to query parameters sent to the Query Frontend when `-ruler.frontend-address` is configured, so the Query Frontend query stats logs (`-frontend.enabled-ruler-query-stats`) can identify the evaluated rule. In this mode, the Ruler query stats log (`-ruler.query-stats-enabled`) omits the fetched statistics fields, which are always zero. #6539
@@ -15,6 +13,7 @@
 * [BUGFIX] Ingester: Staleness markers written by the Ruler are no longer reported as discarded samples for the tenant. #7887
 * [BUGFIX] Ruler: Stop retrying staleness markers that can never be accepted. A rule moved between rule groups left the original group re-appending staleness markers for its series on every evaluation until the ruler restarted. #7888
 * [BUGFIX] Store Gateway: Fix the Parquet bucket store ignoring query sharding, which made every shard return all series. #7892
+* [BUGFIX] Consul: Back off CAS retries after failed reads or writes to reduce request amplification during outages, and honor context cancellation while waiting to retry. #7893
 
 
 ## 1.22.0 in progress

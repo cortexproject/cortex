@@ -798,6 +798,19 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 			return ringDesc, true, nil
 		}
 
+		// An instance registered in the ring without tokens owns no part of the ring, so
+		// it can neither receive writes nor pass its readiness check. Unless it is
+		// PENDING it will also never run autoJoin to acquire tokens (see loop()), so it
+		// stays unusable for as long as the process lives. Reset it to PENDING in order
+		// to start the lifecycle from the beginning.
+		if len(instanceDesc.Tokens) == 0 && instanceDesc.State != PENDING {
+			level.Warn(i.logger).Log("msg", "instance found in ring without tokens, setting to PENDING",
+				"ring", i.RingName, "state", instanceDesc.State)
+			instanceDesc.State = PENDING
+			ringDesc.Ingesters[i.ID] = instanceDesc
+			return ringDesc, true, nil
+		}
+
 		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
 		// OR unregister_on_shutdown=false
 		// if autoJoinOnStartup, move it into previous state based on token file (default: ACTIVE)
@@ -964,8 +977,6 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 			ringDesc = in.(*Desc)
 		}
 
-		i.setState(targetState)
-
 		// At this point, we should not have any tokens, and we should be in PENDING state.
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
@@ -976,6 +987,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 
 		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
 			// Tokens have been verified. No need to change them.
+			i.setState(targetState)
 			state := i.GetState()
 			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
 			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
@@ -984,6 +996,11 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 
 		newTokens := i.tg.GenerateTokens(ringDesc, i.ID, i.Zone, needTokens, false)
 		if len(newTokens) != needTokens {
+			// Leave the instance in its current state: it still owns no tokens. Moving it
+			// to targetState here would let a concurrent heartbeat persist a tokenless
+			// instance in targetState, and on the next startup initRing adopts that state
+			// from the ring. Since autoJoin only runs while the instance is PENDING, the
+			// instance would then never be able to acquire tokens again.
 			level.Warn(i.logger).Log("msg", "retrying generate tokens")
 			return ringDesc, true, errors.New("could not generate tokens")
 		}
@@ -992,6 +1009,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 		sort.Sort(myTokens)
 		i.setTokens(myTokens)
 
+		i.setState(targetState)
 		state := i.GetState()
 		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
 		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)

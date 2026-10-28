@@ -758,3 +758,30 @@ func getStoreGatewayClientAddrs(clients map[BlocksStoreClient][]ulid.ULID) map[s
 	}
 	return addrs
 }
+
+// TestBlocksStoreReplicationSet_SubservicesWatcherIsInitialised guards against a nil
+// subservicesWatcher. starting() calls WatchManager on it, which registers a callback
+// that sends on the watcher's channel, so a nil watcher panics in the goroutine the
+// service manager runs the callback on as soon as a subservice fails.
+func TestBlocksStoreReplicationSet_SubservicesWatcherIsInitialised(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	ringStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	require.NoError(t, ringStore.CAS(ctx, "test", func(in any) (any, bool, error) {
+		return ring.NewDesc(), true, nil
+	}))
+
+	ringCfg := ring.Config{}
+	flagext.DefaultValues(&ringCfg)
+
+	r, err := ring.NewWithStoreClientAndStrategy(ringCfg, "test", "test", ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), nil, nil)
+	require.NoError(t, err)
+
+	s, err := newBlocksStoreReplicationSet(r, util.ShardingStrategyDefault, noLoadBalancing, &blocksStoreLimitsMock{}, ClientConfig{}, log.NewNopLogger(), prometheus.NewPedanticRegistry(), false, false)
+	require.NoError(t, err)
+	require.NotNil(t, s.subservicesWatcher)
+}

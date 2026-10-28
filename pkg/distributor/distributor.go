@@ -689,7 +689,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme, len(ts.Samples), len(ts.Histograms)); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -698,7 +698,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		// Only alloc when data present
 		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, s.TimestampMs); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, s.TimestampMs, validation.SampleTypeFloat); err != nil {
 				return emptyPreallocSeries, err
 			}
 			samples = append(samples, s)
@@ -727,7 +727,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		histograms = make([]cortexpb.WrappedHistogram, 0, len(ts.Histograms))
 		receivedBucketsObserver := d.receivedHistogramBuckets.WithLabelValues(userID)
 		for i, h := range ts.Histograms {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs, validation.SampleTypeHistogram); err != nil {
 				return emptyPreallocSeries, err
 			}
 			receivedBucketsObserver.Observe(float64(h.BucketCount()))

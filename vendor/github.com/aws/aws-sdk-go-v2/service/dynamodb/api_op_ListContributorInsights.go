@@ -5,9 +5,10 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // Returns a list of ContributorInsightsSummary for a table and all its global
@@ -42,6 +43,23 @@ type ListContributorInsightsInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListContributorInsightsInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListContributorInsightsInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListContributorInsightsInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.MaxResults != 0 {
+		s.WriteInt32(schemas.ListContributorInsightsInput_MaxResults, v.MaxResults)
+	}
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListContributorInsightsInput_NextToken, *v.NextToken)
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.ListContributorInsightsInput_TableName, *v.TableName)
+	}
+}
 func (in *ListContributorInsightsInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -62,44 +80,51 @@ type ListContributorInsightsOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *ListContributorInsightsOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.ListContributorInsightsOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *ListContributorInsightsOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeContributorInsightsSummaries(s, schemas.ListContributorInsightsOutput_ContributorInsightsSummaries, v.ContributorInsightsSummaries)
+	if v.NextToken != nil {
+		s.WriteString(schemas.ListContributorInsightsOutput_NextToken, *v.NextToken)
+	}
+}
+func (v *ListContributorInsightsOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.ListContributorInsightsOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.ListContributorInsightsOutput_ContributorInsightsSummaries:
+			return deserializeContributorInsightsSummaries(d, schemas.ListContributorInsightsOutput_ContributorInsightsSummaries, &v.ContributorInsightsSummaries)
+		case schemas.ListContributorInsightsOutput_NextToken:
+			v.NextToken = new(string)
+			return d.ReadString(schemas.ListContributorInsightsOutput_NextToken, v.NextToken)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationListContributorInsightsMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpListContributorInsights{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListContributorInsights, schemas.ListContributorInsightsInput, schemas.ListContributorInsightsOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpListContributorInsights{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.ListContributorInsights, schemas.ListContributorInsightsInput, schemas.ListContributorInsightsOutput), output: &ListContributorInsightsOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
 		return err
 	}
 	if err = addCredentialSource(stack, options); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "ListContributorInsights"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

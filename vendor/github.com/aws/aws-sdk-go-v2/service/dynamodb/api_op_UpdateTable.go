@@ -5,14 +5,15 @@ package dynamodb
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Modifies the provisioned throughput settings, global secondary indexes, or
-// DynamoDB Streams settings for a given table.
+// Modifies the provisioned throughput settings, global secondary indexes,
+// DynamoDB Streams settings, or global table replica settings for a given table.
 //
 // You can only perform one of the following operations at once:
 //
@@ -23,10 +24,31 @@ import (
 //   - Create a new global secondary index on the table. After the index begins
 //     backfilling, you can use UpdateTable to perform other operations.
 //
+//   - Enable or disable disassociation protection for the local global table
+//     replica.
+//
+//   - Disassociate the local global table replica and keep it as a standalone
+//     regional table. The Disassociate action must be the only replica update in the
+//     request. If the request includes any other update, UpdateTable fails with a
+//     ValidationException and the disassociation does not start.
+//
 // UpdateTable is an asynchronous operation; while it's executing, the table
 // status changes from ACTIVE to UPDATING . While it's UPDATING , you can't issue
-// another UpdateTable request. When the table returns to the ACTIVE state, the
-// UpdateTable operation is complete.
+// another UpdateTable request. Use DescribeTable to monitor the table's status.
+//
+// To use this operation to disassociate a local replica, you must have the
+// dynamodb:UpdateTable and dynamodb:DisassociateTableReplica IAM permissions on
+// the local replica. Send disassociation and disassociation protection requests to
+// the replica's Region using credentials for the account that owns the replica.
+// For prerequisites and the procedure, see [Disassociating a global table replica]in the Amazon DynamoDB Developer Guide.
+//
+// To confirm successful disassociation, call DescribeTable in the replica's
+// Region and verify that TableStatus is ACTIVE and Replicas is absent or empty.
+// If TableStatus returns to ACTIVE but the response still includes a Replicas
+// list, the disassociation did not complete. Check ReplicaStatus for a
+// replication-permission or encryption-access problem, resolve it, and retry.
+//
+// [Disassociating a global table replica]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/globaltables-disassociate.html
 func (c *Client) UpdateTable(ctx context.Context, params *UpdateTableInput, optFns ...func(*Options)) (*UpdateTableOutput, error) {
 	if params == nil {
 		params = &UpdateTableInput{}
@@ -76,6 +98,18 @@ type UpdateTableInput struct {
 	// Indicates whether deletion protection is to be enabled (true) or disabled
 	// (false) on the table.
 	DeletionProtectionEnabled *bool
+
+	// Specifies whether disassociation protection is enabled ( true ) or disabled (
+	// false ) for the local replica of a multi-Region eventual consistency (MREC)
+	// global table using Version 2019.11.21.
+	//
+	// Disassociation protection is enabled by default. If you omit this parameter,
+	// the existing setting is unchanged. This setting is independent of
+	// DeletionProtectionEnabled .
+	//
+	// You can't combine this change with any other change in the same UpdateTable
+	// request.
+	DisassociationProtectionEnabled *bool
 
 	// An array of one or more global secondary indexes for the table. For each index
 	// in the array, you can request one action:
@@ -153,7 +187,8 @@ type UpdateTableInput struct {
 	// The new provisioned throughput settings for the specified table or index.
 	ProvisionedThroughput *types.ProvisionedThroughput
 
-	// A list of replica update actions (create, delete, or update) for the table.
+	// A list of replica update actions (create, delete, update, or disassociate) for
+	// the table.
 	ReplicaUpdates []types.ReplicationGroupUpdate
 
 	// The new server-side encryption settings for the specified table.
@@ -170,6 +205,14 @@ type UpdateTableInput struct {
 	// STANDARD_INFREQUENT_ACCESS .
 	TableClass types.TableClass
 
+	// A list of vector indexes to be added to or removed from the table. You can add
+	// or remove one vector index for each UpdateTable operation.
+	//
+	// To add a vector index, specify IndexName , VectorAttribute , Dimensions ,
+	// DistanceFunction , and Projection . To remove a vector index, specify only the
+	// IndexName .
+	VectorIndexUpdates []types.VectorIndexUpdate
+
 	// Represents the warm throughput (in read units per second and write units per
 	// second) for updating a table.
 	WarmThroughput *types.WarmThroughput
@@ -177,6 +220,65 @@ type UpdateTableInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateTableInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateTableInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateTableInput) SerializeMembers(s smithy.ShapeSerializer) {
+	serializeAttributeDefinitions(s, schemas.UpdateTableInput_AttributeDefinitions, v.AttributeDefinitions)
+	if v.BillingMode != "" {
+		s.WriteString(schemas.UpdateTableInput_BillingMode, string(v.BillingMode))
+	}
+	if v.DeletionProtectionEnabled != nil {
+		s.WriteBool(schemas.UpdateTableInput_DeletionProtectionEnabled, *v.DeletionProtectionEnabled)
+	}
+	if v.DisassociationProtectionEnabled != nil {
+		s.WriteBool(schemas.UpdateTableInput_DisassociationProtectionEnabled, *v.DisassociationProtectionEnabled)
+	}
+	serializeGlobalSecondaryIndexUpdateList(s, schemas.UpdateTableInput_GlobalSecondaryIndexUpdates, v.GlobalSecondaryIndexUpdates)
+	if v.GlobalTableSettingsReplicationMode != "" {
+		s.WriteString(schemas.UpdateTableInput_GlobalTableSettingsReplicationMode, string(v.GlobalTableSettingsReplicationMode))
+	}
+	serializeGlobalTableWitnessGroupUpdateList(s, schemas.UpdateTableInput_GlobalTableWitnessUpdates, v.GlobalTableWitnessUpdates)
+	if v.MultiRegionConsistency != "" {
+		s.WriteString(schemas.UpdateTableInput_MultiRegionConsistency, string(v.MultiRegionConsistency))
+	}
+	if v.OnDemandThroughput != nil {
+		s.WriteStruct(schemas.UpdateTableInput_OnDemandThroughput)
+		v.OnDemandThroughput.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.ProvisionedThroughput != nil {
+		s.WriteStruct(schemas.UpdateTableInput_ProvisionedThroughput)
+		v.ProvisionedThroughput.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	serializeReplicationGroupUpdateList(s, schemas.UpdateTableInput_ReplicaUpdates, v.ReplicaUpdates)
+	if v.SSESpecification != nil {
+		s.WriteStruct(schemas.UpdateTableInput_SSESpecification)
+		v.SSESpecification.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.StreamSpecification != nil {
+		s.WriteStruct(schemas.UpdateTableInput_StreamSpecification)
+		v.StreamSpecification.SerializeMembers(s)
+		s.CloseStruct()
+	}
+	if v.TableClass != "" {
+		s.WriteString(schemas.UpdateTableInput_TableClass, string(v.TableClass))
+	}
+	if v.TableName != nil {
+		s.WriteString(schemas.UpdateTableInput_TableName, *v.TableName)
+	}
+	serializeVectorIndexUpdateList(s, schemas.UpdateTableInput_VectorIndexUpdates, v.VectorIndexUpdates)
+	if v.WarmThroughput != nil {
+		s.WriteStruct(schemas.UpdateTableInput_WarmThroughput)
+		v.WarmThroughput.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
 func (in *UpdateTableInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -195,35 +297,44 @@ type UpdateTableOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *UpdateTableOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.UpdateTableOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *UpdateTableOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableDescription != nil {
+		s.WriteStruct(schemas.UpdateTableOutput_TableDescription)
+		v.TableDescription.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *UpdateTableOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.UpdateTableOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.UpdateTableOutput_TableDescription:
+			v.TableDescription = &types.TableDescription{}
+			return v.TableDescription.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpUpdateTable{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateTable, schemas.UpdateTableInput, schemas.UpdateTableOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpUpdateTable{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.UpdateTable, schemas.UpdateTableInput, schemas.UpdateTableOutput), output: &UpdateTableOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpUpdateTableDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -236,9 +347,6 @@ func (c *Client) addOperationUpdateTableMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 	if err = addOpUpdateTableValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "UpdateTable"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

@@ -6,11 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/schemas"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	internalEndpointDiscovery "github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery"
+	smithy "github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/middleware"
 	smithytime "github.com/aws/smithy-go/time"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
 	smithywaiter "github.com/aws/smithy-go/waiter"
 	"time"
 )
@@ -50,6 +51,17 @@ type DescribeTableInput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTableInput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTableInput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTableInput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.TableName != nil {
+		s.WriteString(schemas.DescribeTableInput_TableName, *v.TableName)
+	}
+}
 func (in *DescribeTableInput) bindEndpointParams(p *EndpointParameters) {
 
 	p.ResourceArn = in.TableName
@@ -68,35 +80,44 @@ type DescribeTableOutput struct {
 	noSmithyDocumentSerde
 }
 
+func (v *DescribeTableOutput) Serialize(s smithy.ShapeSerializer) {
+	s.WriteStruct(schemas.DescribeTableOutput)
+	v.SerializeMembers(s)
+	s.CloseStruct()
+}
+
+func (v *DescribeTableOutput) SerializeMembers(s smithy.ShapeSerializer) {
+	if v.Table != nil {
+		s.WriteStruct(schemas.DescribeTableOutput_Table)
+		v.Table.SerializeMembers(s)
+		s.CloseStruct()
+	}
+}
+func (v *DescribeTableOutput) Deserialize(d smithy.ShapeDeserializer) error {
+	return smithy.ReadStruct(d, schemas.DescribeTableOutput, func(s *smithy.Schema) error {
+		switch s {
+		case schemas.DescribeTableOutput_Table:
+			v.Table = &types.TableDescription{}
+			return v.Table.Deserialize(d)
+		}
+		return nil
+	})
+}
 func (c *Client) addOperationDescribeTableMiddlewares(stack *middleware.Stack, options Options) (err error) {
-	err = stack.Serialize.Add(&awsAwsjson10_serializeOpDescribeTable{}, middleware.After)
-	if err != nil {
+	if err := stack.Serialize.Add(&serializeRequestMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTable, schemas.DescribeTableInput, schemas.DescribeTableOutput)}, middleware.After); err != nil {
 		return err
 	}
-	err = stack.Deserialize.Add(&awsAwsjson10_deserializeOpDescribeTable{}, middleware.After)
-	if err != nil {
+	if err := stack.Deserialize.Add(&deserializeResponseMiddleware{options: &options, operationSchema: smithy.NewOperationSchema(schemas.DescribeTable, schemas.DescribeTableInput, schemas.DescribeTableOutput), output: &DescribeTableOutput{}}, middleware.After); err != nil {
 		return err
 	}
 
-	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
-		return err
-	}
-	if err = addComputeContentLength(stack); err != nil {
-		return err
-	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
 	if err = addComputePayloadSHA256(stack); err != nil {
 		return err
 	}
-	if err = addRecordResponseTiming(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
-		return err
-	}
-	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
+	if err = addRecordResponseTiming(stack, options); err != nil {
 		return err
 	}
 	if err = addOpDescribeTableDiscoverEndpointMiddleware(stack, options, c); err != nil {
@@ -109,9 +130,6 @@ func (c *Client) addOperationDescribeTableMiddlewares(stack *middleware.Stack, o
 		return err
 	}
 	if err = addOpDescribeTableValidationMiddleware(stack); err != nil {
-		return err
-	}
-	if err = stack.Initialize.Add(newServiceMetadataMiddleware(options.Region, "DescribeTable"), middleware.Before); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {

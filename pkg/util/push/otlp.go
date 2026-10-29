@@ -186,6 +186,10 @@ func decodeOTLPWriteRequest(ctx context.Context, r *http.Request, maxSize int) (
 			if err != nil {
 				return req, err
 			}
+			// The readers are capped at maxSize+1 bytes, so a longer body was truncated.
+			if buf.Len() > maxSize {
+				return req, fmt.Errorf("received message larger than max (%d vs %d)", buf.Len(), maxSize)
+			}
 
 			return req, req.UnmarshalJSON(buf.Bytes())
 		}

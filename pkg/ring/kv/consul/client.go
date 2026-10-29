@@ -39,7 +39,7 @@ var (
 	// casBackoffConfig is used between CAS attempts after a failed read or
 	// write. It is kept short because CAS callers (e.g. ring heartbeats and
 	// shutdown paths) may not have a deadline: with the default 10 attempts
-	// the total wait is less than 13s (100ms+200ms+400ms+800ms+5*2s upper
+	// the total wait is less than 13s (200ms+400ms+800ms+1.6s+5*2s upper
 	// bounds), well below the default 1m ring heartbeat timeout.
 	casBackoffConfig = backoff.Config{
 		MinBackoff: 100 * time.Millisecond,

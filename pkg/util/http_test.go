@@ -293,7 +293,7 @@ func TestParseProtoReader_OversizeBodyIsRejected(t *testing.T) {
 		t.Run(tc.name+" over limit", func(t *testing.T) {
 			// Every limit below the decoded size must be reported as a size error,
 			// whether or not the cut lands on a message boundary.
-			for maxSize := len(tc.data); maxSize < len(body); maxSize++ {
+			for maxSize := gz.Len(); maxSize < len(body); maxSize++ {
 				var fromWire cortexpb.PreallocWriteRequest
 				err := util.ParseProtoReader(context.Background(), newReader(), 0, maxSize, &fromWire, tc.compression)
 				require.Error(t, err, "maxSize=%d", maxSize)

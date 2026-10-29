@@ -95,7 +95,7 @@ func TestBlocksStoreQuerier_FetchSeriesFromStores_CancelsStreamPerRequest(t *tes
 	var fastStreamCtx context.Context
 	fastCtxCaptured := make(chan struct{})
 	fastClient := &seriesStreamLifetimeClient{
-		storeGatewayClientMock: storeGatewayClientMock{remoteAddr: "fast"},
+		remoteAddr: "fast",
 		seriesFn: func(ctx context.Context) (storegatewaypb.StoreGateway_SeriesClient, error) {
 			fastStreamCtx = ctx
 			close(fastCtxCaptured)
@@ -113,7 +113,7 @@ func TestBlocksStoreQuerier_FetchSeriesFromStores_CancelsStreamPerRequest(t *tes
 	doRelease := func() { releaseOnce.Do(func() { close(release) }) }
 	defer doRelease()
 	slowClient := &seriesStreamLifetimeClient{
-		storeGatewayClientMock: storeGatewayClientMock{remoteAddr: "slow"},
+		remoteAddr: "slow",
 		seriesFn: func(ctx context.Context) (storegatewaypb.StoreGateway_SeriesClient, error) {
 			return &blockingSeriesClient{ctx: ctx, started: slowStarted, release: release}, nil
 		},
@@ -206,7 +206,7 @@ func TestBlocksStoreQuerier_FetchSeriesFromStores_SiblingErrorCancelsStreamConte
 	defer doRelease()
 	blockedStarted := make(chan struct{}, 1)
 	blockedClient := &seriesStreamLifetimeClient{
-		storeGatewayClientMock: storeGatewayClientMock{remoteAddr: "blocked"},
+		remoteAddr: "blocked",
 		seriesFn: func(ctx context.Context) (storegatewaypb.StoreGateway_SeriesClient, error) {
 			return &blockingSeriesClient{ctx: ctx, started: blockedStarted, release: release}, nil
 		},
@@ -220,7 +220,7 @@ func TestBlocksStoreQuerier_FetchSeriesFromStores_SiblingErrorCancelsStreamConte
 	// happens iff that context is derived from gCtx. This makes the wrong-parent
 	// regression deterministic rather than scheduling-dependent.
 	failingClient := &seriesStreamLifetimeClient{
-		storeGatewayClientMock: storeGatewayClientMock{remoteAddr: "failing"},
+		remoteAddr: "failing",
 		seriesFn: func(_ context.Context) (storegatewaypb.StoreGateway_SeriesClient, error) {
 			select {
 			case <-blockedStarted:

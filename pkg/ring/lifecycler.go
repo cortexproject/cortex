@@ -806,7 +806,11 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 		if len(instanceDesc.Tokens) == 0 && instanceDesc.State != PENDING {
 			level.Warn(i.logger).Log("msg", "instance found in ring without tokens, setting to PENDING",
 				"ring", i.RingName, "state", instanceDesc.State)
+			if instanceDesc.State == READONLY {
+				i.setPreviousState(READONLY)
+			}
 			instanceDesc.State = PENDING
+			instanceDesc.Timestamp = time.Now().Unix()
 			ringDesc.Ingesters[i.ID] = instanceDesc
 			return ringDesc, true, nil
 		}

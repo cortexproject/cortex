@@ -495,7 +495,7 @@ This ensures compatibility with different Cortex configurations while maintainin
 ## References
 
 - [Crossplane Documentation](https://crossplane.io/docs/) - Core platform documentation and best practices
-- [Crossplane Runtime v2](https://github.com/crossplane/crossplane-runtime/tree/main/v2) - Runtime library used by the provider
+- [Crossplane Runtime v2](https://github.com/crossplane/crossplane-runtime) - Runtime library used by the provider
 - [Cortex Documentation](https://cortexmetrics.io/docs/) - Cortex configuration and API documentation
 - [Cortex Ruler API](https://cortexmetrics.io/docs/api/#ruler) - API endpoints for rule management
 - [Cortex Alertmanager API](https://cortexmetrics.io/docs/api/#alertmanager) - API endpoints for alertmanager configuration

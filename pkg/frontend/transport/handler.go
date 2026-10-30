@@ -32,6 +32,7 @@ import (
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/request_tracker"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
@@ -40,12 +41,19 @@ const (
 	// StatusClientClosedRequest is the status code for when a client request cancellation of a http request
 	StatusClientClosedRequest = 499
 	ServiceTimingHeaderName   = "Server-Timing"
+
+	activeQueryTrackerFileName = "frontend_queries.active"
+	// Number of tracked queries when -frontend.max-concurrent is disabled. Queries above it are served but not tracked.
+	defaultActiveQueryTrackerSize = 500
 )
 
+var errMaxConcurrentRequiresActiveQueryTracker = errors.New("-frontend.max-concurrent requires -frontend.active-query-tracker-dir to be set")
+
 var (
-	errCanceled              = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
-	errDeadlineExceeded      = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
-	errRequestEntityTooLarge = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "%s", "http: request body too large")
+	errCanceled               = httpgrpc.Errorf(StatusClientClosedRequest, "%s", context.Canceled.Error())
+	errDeadlineExceeded       = httpgrpc.Errorf(http.StatusGatewayTimeout, "%s", context.DeadlineExceeded.Error())
+	errRequestEntityTooLarge  = httpgrpc.Errorf(http.StatusRequestEntityTooLarge, "%s", "http: request body too large")
+	errTooManyInflightQueries = httpgrpc.Errorf(http.StatusTooManyRequests, "%s", "too many inflight queries in the query frontend")
 )
 
 const (
@@ -53,6 +61,7 @@ const (
 	reasonRequestBodySizeExceeded  = "request_body_size_exceeded"
 	reasonResponseBodySizeExceeded = "response_body_size_exceeded"
 	reasonTooManyRequests          = "too_many_requests"
+	reasonTooManyInflightQueries   = "too_many_inflight_queries"
 	reasonResourceExhausted        = "resource_exhausted"
 	reasonTimeRangeExceeded        = "time_range_exceeded"
 	reasonResponseSizeExceeded     = "response_size_exceeded"
@@ -89,6 +98,8 @@ type HandlerConfig struct {
 	MaxBodySize               int64         `yaml:"max_body_size"`
 	QueryStatsEnabled         bool          `yaml:"query_stats_enabled"`
 	EnabledRulerQueryStatsLog bool          `yaml:"enabled_ruler_query_stats_log"`
+	ActiveQueryTrackerDir     string        `yaml:"active_query_tracker_dir"`
+	MaxConcurrent             int           `yaml:"max_concurrent"`
 }
 
 func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
@@ -96,6 +107,18 @@ func (cfg *HandlerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.MaxBodySize, "frontend.max-body-size", 10*1024*1024, "Max body size for downstream prometheus.")
 	f.BoolVar(&cfg.QueryStatsEnabled, "frontend.query-stats-enabled", false, "True to enable query statistics tracking. When enabled, a message with some statistics is logged for every query.")
 	f.BoolVar(&cfg.EnabledRulerQueryStatsLog, "frontend.enabled-ruler-query-stats", false, "If enabled, report the query stats log for queries coming from the ruler to evaluate rules. It only takes effect when '-ruler.frontend-address' is configured.")
+	f.StringVar(&cfg.ActiveQueryTrackerDir, "frontend.active-query-tracker-dir", "", "Active query tracker monitors queries in flight in the query frontend, and writes them to a file in the given directory. If Cortex discovers any queries in this file during startup, it will log them. Empty value disables the active query tracker.")
+	f.IntVar(&cfg.MaxConcurrent, "frontend.max-concurrent", 0, "The maximum number of inflight queries in the query frontend, enforced by the active query tracker. Queries above the limit are rejected with 429. Requires -frontend.active-query-tracker-dir. 0 to disable.")
+}
+
+func (cfg *HandlerConfig) Validate() error {
+	if cfg.MaxConcurrent < 0 {
+		return errors.New("-frontend.max-concurrent must be non-negative")
+	}
+	if cfg.MaxConcurrent > 0 && cfg.ActiveQueryTrackerDir == "" {
+		return errMaxConcurrentRequiresActiveQueryTracker
+	}
+	return nil
 }
 
 // Handler accepts queries and forwards them to RoundTripper. It can log slow queries,
@@ -118,6 +141,7 @@ type Handler struct {
 	rejectedQueries     *prometheus.CounterVec
 	slowQueries         *prometheus.CounterVec
 	activeUsers         *users.ActiveUsersCleanupService
+	activeQueryTracker  *request_tracker.RequestTracker
 
 	initSlowQueryMetric sync.Once
 	reg                 prometheus.Registerer
@@ -184,6 +208,17 @@ func NewHandler(cfg HandlerConfig, tenantFederationCfg tenantfederation.Config, 
 		h.activeUsers = users.NewActiveUsersCleanupWithDefaultValues(h.cleanupMetricsForInactiveUser)
 		// If cleaner stops or fail, we will simply not clean the metrics for inactive users.
 		_ = h.activeUsers.StartAsync(context.Background())
+	}
+
+	if cfg.ActiveQueryTrackerDir != "" {
+		trackerSize := defaultActiveQueryTrackerSize
+		if cfg.MaxConcurrent > 0 {
+			trackerSize = cfg.MaxConcurrent
+		}
+		h.activeQueryTracker = request_tracker.NewRequestTracker(cfg.ActiveQueryTrackerDir, activeQueryTrackerFileName, trackerSize, util_log.GoKitLogToSlog(log))
+		if h.activeQueryTracker == nil && cfg.MaxConcurrent > 0 {
+			level.Error(log).Log("msg", "failed to create the active query tracker, -frontend.max-concurrent is not enforced", "dir", cfg.ActiveQueryTrackerDir)
+		}
 	}
 
 	return h
@@ -307,6 +342,19 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		r.Body = io.NopCloser(&buf)
+	}
+
+	if f.activeQueryTracker != nil {
+		index, ok := f.activeQueryTracker.TryInsert(request_tracker.ExtractorForPath(r.URL.Path).Extract(r))
+		if ok {
+			defer f.activeQueryTracker.Delete(index)
+		} else if f.cfg.MaxConcurrent > 0 {
+			if f.cfg.QueryStatsEnabled {
+				f.rejectedQueries.WithLabelValues(reasonTooManyInflightQueries, source, userID).Inc()
+			}
+			writeError(util_log.WithContext(r.Context(), f.log), w, errTooManyInflightQueries, nil)
+			return
+		}
 	}
 
 	// Log request if the request is not remote read.

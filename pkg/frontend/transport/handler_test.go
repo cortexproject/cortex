@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -29,6 +31,7 @@ import (
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/requestmeta"
@@ -1042,4 +1045,126 @@ func TestHandler_RemoteReadRequest_DoesNotParseQueryString(t *testing.T) {
 
 	// Verify that the request body is still readable (not replaced with empty buffer)
 	require.NotEmpty(t, string(bodyBytes))
+}
+
+func TestHandler_ActiveQueryTrackerAndConcurrencyDisabledByDefault(t *testing.T) {
+	cfg := HandlerConfig{}
+	flagext.DefaultValues(&cfg)
+
+	handler := NewHandler(cfg, tenantfederation.Config{}, nil, http.DefaultTransport, log.NewNopLogger(), nil)
+	assert.Nil(t, handler.activeQueryTracker)
+	assert.NoError(t, cfg.Validate())
+}
+
+func TestHandlerConfig_Validate(t *testing.T) {
+	assert.NoError(t, (&HandlerConfig{}).Validate())
+	assert.NoError(t, (&HandlerConfig{ActiveQueryTrackerDir: "dir"}).Validate())
+	assert.NoError(t, (&HandlerConfig{ActiveQueryTrackerDir: "dir", MaxConcurrent: 10}).Validate())
+	assert.ErrorIs(t, (&HandlerConfig{MaxConcurrent: 10}).Validate(), errMaxConcurrentRequiresActiveQueryTracker)
+	assert.Error(t, (&HandlerConfig{ActiveQueryTrackerDir: "dir", MaxConcurrent: -1}).Validate())
+}
+
+func TestHandler_ActiveQueryTracker(t *testing.T) {
+	dir := t.TempDir()
+	trackerFile := filepath.Join(dir, activeQueryTrackerFileName)
+	query := `sum(rate(http_requests_total{job="api"}[5m]))`
+
+	inFlight := make(chan string, 1)
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		content, err := os.ReadFile(trackerFile)
+		require.NoError(t, err)
+		inFlight <- string(content)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})
+
+	handler := NewHandler(HandlerConfig{ActiveQueryTrackerDir: dir, MaxBodySize: 1024}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), nil)
+	require.NotNil(t, handler.activeQueryTracker)
+
+	form := url.Values{"query": []string{query}, "start": []string{"1000"}, "end": []string{"2000"}, "step": []string{"15"}}
+	req := httptest.NewRequest(http.MethodPost, "/prometheus/api/v1/query_range", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(user.InjectOrgID(context.Background(), "user-1"))
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, req)
+	require.Equal(t, http.StatusOK, resp.Code)
+
+	tracked := <-inFlight
+	assert.Contains(t, tracked, `"TenantID":"user-1"`)
+	assert.Contains(t, tracked, `"Path":"/prometheus/api/v1/query_range"`)
+	assert.Contains(t, tracked, `"step":"15"`)
+	assert.Contains(t, tracked, `sum(rate(http_requests_total{job=\"api\"}[5m]))`)
+
+	content, err := os.ReadFile(trackerFile)
+	require.NoError(t, err)
+	assert.NotContains(t, string(content), "user-1")
+}
+
+func TestHandler_MaxConcurrent(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		started <- struct{}{}
+		<-release
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})
+
+	reg := prometheus.NewPedanticRegistry()
+	cfg := HandlerConfig{ActiveQueryTrackerDir: t.TempDir(), MaxConcurrent: 1, MaxBodySize: 1024, QueryStatsEnabled: true}
+	handler := NewHandler(cfg, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), reg)
+
+	newRequest := func() *http.Request {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/query?query=up", nil)
+		return req.WithContext(user.InjectOrgID(context.Background(), "user-1"))
+	}
+
+	firstDone := make(chan int)
+	go func() {
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, newRequest())
+		firstDone <- resp.Code
+	}()
+	<-started
+
+	resp := httptest.NewRecorder()
+	handler.ServeHTTP(resp, newRequest())
+	assert.Equal(t, http.StatusTooManyRequests, resp.Code)
+	assert.Equal(t, 1.0, promtest.ToFloat64(handler.rejectedQueries.WithLabelValues(reasonTooManyInflightQueries, requestmeta.SourceAPI, "user-1")))
+
+	close(release)
+	assert.Equal(t, http.StatusOK, <-firstDone)
+
+	go func() { <-started }()
+	resp = httptest.NewRecorder()
+	handler.ServeHTTP(resp, newRequest())
+	assert.Equal(t, http.StatusOK, resp.Code)
+}
+
+func TestHandler_ActiveQueryTrackerWithoutLimitDoesNotReject(t *testing.T) {
+	started := make(chan struct{}, defaultActiveQueryTrackerSize+1)
+	release := make(chan struct{})
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		started <- struct{}{}
+		<-release
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	})
+
+	handler := NewHandler(HandlerConfig{ActiveQueryTrackerDir: t.TempDir(), MaxBodySize: 1024}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), nil)
+
+	codes := make(chan int, defaultActiveQueryTrackerSize+1)
+	for range defaultActiveQueryTrackerSize + 1 {
+		go func() {
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/query?query=up", nil)
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req.WithContext(user.InjectOrgID(context.Background(), "user-1")))
+			codes <- resp.Code
+		}()
+	}
+	for range defaultActiveQueryTrackerSize + 1 {
+		<-started
+	}
+	close(release)
+	for range defaultActiveQueryTrackerSize + 1 {
+		assert.Equal(t, http.StatusOK, <-codes)
+	}
 }

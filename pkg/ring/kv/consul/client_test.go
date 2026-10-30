@@ -4,9 +4,14 @@ import (
 	"context"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,6 +22,7 @@ import (
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/tls"
 )
 
@@ -262,4 +268,158 @@ type testLogger struct {
 
 func (l testLogger) Log(keyvals ...any) error {
 	return nil
+}
+
+func TestCASBackoff(t *testing.T) {
+	requests := make(chan time.Time, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests <- time.Now()
+		http.Error(w, "unavailable", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c, err := NewClient(Config{Host: server.URL, MaxCasRetries: 2}, codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err = c.CAS(ctx, "test", func(any) (any, bool, error) {
+		t.Fatal("callback called after failed read")
+		return nil, false, nil
+	})
+	require.EqualError(t, err, "failed to CAS test")
+	require.Len(t, requests, 2)
+	first, second := <-requests, <-requests
+	require.GreaterOrEqual(t, second.Sub(first), casBackoffConfig.MinBackoff)
+}
+
+// setCASBackoff overrides the CAS backoff for the duration of a test.
+func setCASBackoff(t *testing.T, cfg backoff.Config) {
+	t.Helper()
+	orig := casBackoffConfig
+	casBackoffConfig = cfg
+	t.Cleanup(func() { casBackoffConfig = orig })
+}
+
+// casTestServer returns a fake Consul server whose reads always succeed and
+// whose writes are answered by onWrite. It records the time of every write.
+func casTestServer(t *testing.T, onWrite func(w http.ResponseWriter, n int)) (*httptest.Server, func() []time.Time) {
+	t.Helper()
+	var (
+		mtx    sync.Mutex
+		writes []time.Time
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]consul.KVPair{{Key: "test", Value: []byte("value"), ModifyIndex: 1}})
+		case http.MethodPut:
+			mtx.Lock()
+			writes = append(writes, time.Now())
+			n := len(writes)
+			mtx.Unlock()
+			onWrite(w, n)
+		default:
+			http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
+		}
+	}))
+	t.Cleanup(server.Close)
+	return server, func() []time.Time {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return append([]time.Time(nil), writes...)
+	}
+}
+
+func TestCASBackoffAfterFailedWrites(t *testing.T) {
+	server, writes := casTestServer(t, func(w http.ResponseWriter, _ int) {
+		http.Error(w, "unavailable", http.StatusTooManyRequests)
+	})
+
+	c, err := NewClient(Config{Host: server.URL, MaxCasRetries: 4}, codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	calls := 0
+	err = c.CAS(ctx, "test", func(in any) (any, bool, error) {
+		calls++
+		require.Equal(t, "value", in)
+		return "updated", false, nil
+	})
+	require.EqualError(t, err, "failed to CAS test")
+	// Every read succeeds, so every attempt reaches the write.
+	require.Equal(t, 4, calls)
+
+	ts := writes()
+	require.Len(t, ts, 4)
+	// The backoff is not reset by the successful reads in between, so the
+	// minimum delay between writes keeps doubling.
+	minDelay := casBackoffConfig.MinBackoff
+	for i := 1; i < len(ts); i++ {
+		require.GreaterOrEqual(t, ts[i].Sub(ts[i-1]), minDelay, "delay before write %d", i+1)
+		minDelay *= 2
+	}
+}
+
+func TestCASBackoffContextCanceledDuringWait(t *testing.T) {
+	// Make the wait long enough that returning early can only be explained
+	// by the context cancellation.
+	setCASBackoff(t, backoff.Config{MinBackoff: time.Minute, MaxBackoff: time.Minute})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "unavailable", http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	c, err := NewClient(Config{Host: server.URL}, codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+
+	// Cancel shortly after the first read has failed, while CAS is waiting.
+	go func() {
+		for requests.Load() == 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	start := time.Now()
+	err = c.CAS(ctx, "test", func(any) (any, bool, error) {
+		t.Fatal("callback called after failed read")
+		return nil, false, nil
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Less(t, time.Since(start), 10*time.Second)
+	require.Equal(t, int32(1), requests.Load())
+}
+
+func TestCASConflictRetriedWithoutBackoff(t *testing.T) {
+	// Any error backoff would make the test exceed its deadline.
+	setCASBackoff(t, backoff.Config{MinBackoff: time.Minute, MaxBackoff: time.Minute})
+
+	const conflicts = 3
+	server, writes := casTestServer(t, func(w http.ResponseWriter, n int) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(n > conflicts)
+	})
+
+	c, err := NewClient(Config{Host: server.URL}, codec.String{}, testLogger{}, prometheus.NewPedanticRegistry())
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	calls := 0
+	err = c.CAS(ctx, "test", func(any) (any, bool, error) {
+		calls++
+		return "updated", false, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, conflicts+1, calls)
+	require.Len(t, writes(), conflicts+1)
 }

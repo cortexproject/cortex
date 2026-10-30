@@ -283,7 +283,7 @@ Limit names correspond to fields in the [`limits_config`](../configuration/confi
 
 ### Limits Validation
 
-Before writing to the runtime configuration file, the merged limits of the tenant are validated with the same checks that Cortex components run when they load the runtime configuration. For example, setting `max_global_series_per_user` is rejected when `-distributor.shard-by-all-labels` is disabled.
+Before writing to the runtime configuration file, the merged limits of the tenant are validated with the same checks that Cortex components run when they load the runtime configuration, using the configuration of the process that runs the overrides module. For example, setting `max_global_series_per_user` is rejected when `-distributor.shard-by-all-labels` is disabled there, so when the overrides module runs as its own target it needs the same `-distributor.shard-by-all-labels`, `-ingester.active-series-metrics-enabled`, `-distributor.ha-tracker.update-timeout`, `-distributor.ha-tracker.update-timeout-jitter-max`, `-blocks-storage.tsdb.close-idle-tsdb-timeout` and `-name-validation-scheme` values as the rest of the cluster.
 
 ## Hard Limits
 

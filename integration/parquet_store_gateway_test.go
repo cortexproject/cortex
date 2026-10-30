@@ -229,7 +229,7 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 						// Check that no unexpected labels are present
 						for lbl := range actualLabels {
 							if !slices.Contains(tc.expectedLabels, lbl) {
-								require.Fail(t, "series should not have unexpected label: %s", lbl)
+								require.Failf(t, "unexpected label", "series should not have unexpected label: %s", lbl)
 							}
 						}
 					}

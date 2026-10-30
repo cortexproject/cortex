@@ -14,7 +14,7 @@
 * [BUGFIX] Ruler: Stop retrying staleness markers that can never be accepted. A rule moved between rule groups left the original group re-appending staleness markers for its series on every evaluation until the ruler restarted. #7888
 * [BUGFIX] Store Gateway: Fix the Parquet bucket store ignoring query sharding, which made every shard return all series. #7892
 * [BUGFIX] Querier: Fix the querier crashing instead of reporting the error when a blocks store set subservice fails. `blocksStoreReplicationSet` never initialised its `FailureWatcher`, so the failure callback dereferenced a nil pointer on the goroutine the service manager runs listeners on, and the resulting panic's stack trace buried the error logged for the actual cause. #7896
-
+* [BUGFIX] Compactor: Delete block deletion markers left in the global `markers/` location of a tenant after the block they refer to was removed. They were skipped at every bucket index update and kept the tenant location in the bucket forever. #7890
 
 ## 1.22.0 in progress
 * [CHANGE] Ruler: Remove the deprecated `-ruler.evaluation-delay-duration` flag and its `ruler_evaluation_delay_duration` per-tenant limit. Use `-ruler.query-offset` / `ruler_query_offset`, which no longer takes the higher of the two values. Cortex decodes the runtime config strictly, so a leftover `ruler_evaluation_delay_duration` override makes the runtime config fail to load: Cortex **exits at startup** (`module failed`, `module=runtime-config`), and on an already-running process every reload fails, pinning the last good overrides and dropping `cortex_runtime_config_last_reload_successful` to 0. Run `grep -r ruler_evaluation_delay_duration` over your runtime configs before upgrading. #7792

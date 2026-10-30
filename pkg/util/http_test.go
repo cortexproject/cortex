@@ -237,8 +237,68 @@ func TestParseProtoReader_GzipDecompressionBomb(t *testing.T) {
 
 	var fromWire cortexpb.PreallocWriteRequest
 	err = util.ParseProtoReader(context.Background(), io.NopCloser(&compressed), 0, maxSize, &fromWire, util.Gzip)
-	// The decompressed output should be limited to maxSize+1 bytes, causing a
-	// proto unmarshal error (not an OOM). The key assertion is that we don't
-	// allocate 1 MB of memory.
-	assert.NotNil(t, err)
+	// The decompressed output should be limited to maxSize+1 bytes (not an
+	// OOM) and the request rejected as too large.
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "received message larger than max")
+}
+
+// streamReader hides the underlying reader's type, so ParseProtoReader reads it
+// like an HTTP request body instead of using the BytesBuffer() fast path.
+type streamReader struct{ r io.Reader }
+
+func (s streamReader) Read(p []byte) (int, error) { return s.r.Read(p) }
+
+func TestParseProtoReader_OversizeBodyIsRejected(t *testing.T) {
+	req := cortexpb.PreallocWriteRequest{}
+	for i := range 100 {
+		req.Timeseries = append(req.Timeseries, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
+			Labels:  []cortexpb.LabelAdapter{{Name: "__name__", Value: "metric_" + strconv.Itoa(i)}, {Name: "job", Value: "probe"}},
+			Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1}},
+		}})
+	}
+	body, err := req.Marshal()
+	require.NoError(t, err)
+
+	var gz bytes.Buffer
+	gzw := gzip.NewWriter(&gz)
+	_, err = gzw.Write(body)
+	require.NoError(t, err)
+	require.NoError(t, gzw.Close())
+	require.Less(t, gz.Len(), len(body))
+
+	for _, tc := range []struct {
+		name           string
+		compression    util.CompressionType
+		data           []byte
+		useBytesBuffer bool
+	}{
+		{"noCompression", util.NoCompression, body, false},
+		{"gzip", util.Gzip, gz.Bytes(), false},
+		{"bytesbuffer gzip", util.Gzip, gz.Bytes(), true},
+	} {
+		newReader := func() io.Reader {
+			if tc.useBytesBuffer {
+				return bytesBuffered{Buffer: bytes.NewBuffer(append([]byte(nil), tc.data...))}
+			}
+			return streamReader{bytes.NewReader(tc.data)}
+		}
+
+		t.Run(tc.name+" within limit", func(t *testing.T) {
+			var fromWire cortexpb.PreallocWriteRequest
+			require.NoError(t, util.ParseProtoReader(context.Background(), newReader(), 0, len(body), &fromWire, tc.compression))
+			require.Len(t, fromWire.Timeseries, 100)
+		})
+
+		t.Run(tc.name+" over limit", func(t *testing.T) {
+			// Every limit below the decoded size must be reported as a size error,
+			// whether or not the cut lands on a message boundary.
+			for maxSize := gz.Len(); maxSize < len(body); maxSize++ {
+				var fromWire cortexpb.PreallocWriteRequest
+				err := util.ParseProtoReader(context.Background(), newReader(), 0, maxSize, &fromWire, tc.compression)
+				require.Error(t, err, "maxSize=%d", maxSize)
+				require.Contains(t, err.Error(), "received message larger than max", "maxSize=%d", maxSize)
+			}
+		})
+	}
 }

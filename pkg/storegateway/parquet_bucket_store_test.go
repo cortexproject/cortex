@@ -93,7 +93,7 @@ func createTestParquetBlock(t *testing.T, hasHash bool) *parquetBlock {
 	}
 }
 
-func Test_AllParquetBlocksHaveHashColumn(t *testing.T) {
+func Test_AllShardsHaveHashColumn(t *testing.T) {
 	tests := []struct {
 		description string
 		setup       func() []*parquetBlock
@@ -143,7 +143,7 @@ func Test_AllParquetBlocksHaveHashColumn(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.description, func(t *testing.T) {
 			blocks := tc.setup()
-			actual := allParquetBlocksHaveHashColumn(blocks)
+			actual := allShardsHaveHashColumn(blocks)
 			require.Equal(t, tc.expected, actual)
 		})
 	}

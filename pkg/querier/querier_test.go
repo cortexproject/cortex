@@ -42,6 +42,7 @@ import (
 	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
 	"github.com/cortexproject/cortex/pkg/util"
@@ -2009,8 +2010,11 @@ func TestQuerier_ProjectionHints_IngestersAndProjectingStoreGateway(t *testing.T
 				blockID:                block1,
 			}
 			storeQueryable := UseAlwaysQueryable(storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+				// The block is parquet v2, so the blocks store querier keeps projection hints and only
+				// the ingester check in the querier can reset them.
+				blocks := bucketindex.Blocks{&bucketindex.Block{ID: block1, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion2}}}
 				finder := &blocksFinderMock{}
-				finder.On("GetBlocks", mock.Anything, userID, mock.Anything, mock.Anything, mock.Anything).Return(bucketindex.Blocks{&bucketindex.Block{ID: block1}}, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
+				finder.On("GetBlocks", mock.Anything, userID, mock.Anything, mock.Anything, mock.Anything).Return(blocks, map[ulid.ULID]*bucketindex.BlockDeletionMark(nil), nil)
 				return &blocksStoreQuerier{
 					minT:        mint,
 					maxT:        maxt,

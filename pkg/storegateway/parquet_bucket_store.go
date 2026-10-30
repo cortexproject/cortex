@@ -432,7 +432,7 @@ func (p *parquetBucketStore) buildSelectHints(queryHints *storepb.QueryHints, sh
 		lbls := make([]string, 0, len(queryHints.ProjectionLabels)+1)
 		storageHints.ProjectionLabels = append(lbls, queryHints.ProjectionLabels...)
 
-		if !allParquetBlocksHaveHashColumn(shards) {
+		if !allShardsHaveHashColumn(shards) {
 			// Reset projection hints if not all parquet shards have the hash column (version < 2).
 			storageHints.ProjectionInclude = false
 			storageHints.ProjectionLabels = nil
@@ -447,9 +447,11 @@ func (p *parquetBucketStore) buildSelectHints(queryHints *storepb.QueryHints, sh
 	return storageHints
 }
 
-func allParquetBlocksHaveHashColumn(blocks []*parquetBlock) bool {
-	// TODO(Sungjin1212): Change it to read marker version
-	for _, b := range blocks {
+// allShardsHaveHashColumn reports whether every shard's labels file has the series hash column.
+// The querier already decides projection from the converter mark version of all queried blocks,
+// so this is a safeguard for the materializer, which fails on shards without the column.
+func allShardsHaveHashColumn(shards []*parquetBlock) bool {
+	for _, b := range shards {
 		if !b.hasHashColumn() {
 			return false
 		}

@@ -3,11 +3,13 @@ package overrides
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +24,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 func TestConfig_Validate(t *testing.T) {
@@ -111,7 +114,7 @@ func TestNew(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			api, err := New(testData.cfg, log.Logger, prometheus.DefaultRegisterer)
+			api, err := New(testData.cfg, nil, log.Logger, prometheus.DefaultRegisterer)
 
 			if testData.expectError {
 				assert.Error(t, err)
@@ -140,7 +143,7 @@ func TestOverridesModuleServiceInterface(t *testing.T) {
 	}
 	// Set default values before validation
 	flagext.DefaultValues(&cfg.StorageConfig.S3)
-	api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
+	api, err := New(cfg, nil, log.Logger, prometheus.DefaultRegisterer)
 	require.NoError(t, err)
 	require.NotNil(t, api)
 
@@ -417,7 +420,7 @@ api_allowed_limits:
 			}
 			// Set default values before validation
 			flagext.DefaultValues(&cfg.StorageConfig.S3)
-			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
+			api, err := New(cfg, nil, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
 
@@ -515,7 +518,7 @@ func TestAPITenantExtraction(t *testing.T) {
 			}
 			// Set default values before validation
 			flagext.DefaultValues(&cfg.StorageConfig.S3)
-			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
+			api, err := New(cfg, nil, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
 
@@ -612,7 +615,7 @@ api_allowed_limits:
 			}
 			// Set default values before validation
 			flagext.DefaultValues(&cfg.StorageConfig.S3)
-			api, err := New(cfg, log.Logger, prometheus.DefaultRegisterer)
+			api, err := New(cfg, nil, log.Logger, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			require.NotNil(t, api)
 
@@ -649,6 +652,71 @@ api_allowed_limits:
 
 			// Assert status code
 			assert.Equal(t, tt.expectedStatus, recorder.Code)
+		})
+	}
+}
+
+func TestSetOverridesLimitsValidation(t *testing.T) {
+	const runtimeConfig = `overrides:
+  user1:
+    ingestion_rate: 1000
+    max_global_series_per_user: 100000
+api_allowed_limits:
+  - ingestion_rate
+  - max_global_series_per_user`
+
+	tests := map[string]struct {
+		requestBody    string
+		validateLimits LimitsValidator
+		expectedStatus int
+		expectedBody   string
+		expectUpload   bool
+	}{
+		"validator receives merged limits": {
+			requestBody: `{"ingestion_rate": 2000}`,
+			validateLimits: func(userID string, limits *validation.Limits) error {
+				assert.Equal(t, "user1", userID)
+				assert.Equal(t, float64(2000), limits.IngestionRate)
+				assert.Equal(t, 100000, limits.MaxGlobalSeriesPerUser)
+				return nil
+			},
+			expectedStatus: http.StatusOK,
+			expectUpload:   true,
+		},
+		"validator error rejects the request": {
+			requestBody: `{"max_global_series_per_user": 200000}`,
+			validateLimits: func(string, *validation.Limits) error {
+				return errors.New("max_global_series_per_user is not supported")
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedBody:   "Invalid overrides",
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			mockBucket := &bucket.ClientMock{}
+			mockBucket.MockGet("runtime.yaml", runtimeConfig, nil)
+			mockBucket.MockUpload("runtime.yaml", nil)
+
+			api, err := New(runtimeconfig.Config{StorageConfig: bucket.Config{Backend: bucket.Filesystem}}, tc.validateLimits, log.Logger, prometheus.NewRegistry())
+			require.NoError(t, err)
+			api.bucketClient = mockBucket
+			api.runtimeConfigPath = "runtime.yaml"
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/user-overrides", strings.NewReader(tc.requestBody))
+			req.Header.Set("X-Scope-OrgID", "user1")
+			recorder := httptest.NewRecorder()
+
+			api.SetOverrides(recorder, req)
+
+			assert.Equal(t, tc.expectedStatus, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), tc.expectedBody)
+			if tc.expectUpload {
+				mockBucket.AssertCalled(t, "Upload", mock.Anything, "runtime.yaml", mock.Anything)
+			} else {
+				mockBucket.AssertNotCalled(t, "Upload", mock.Anything, "runtime.yaml", mock.Anything)
+			}
 		})
 	}
 }

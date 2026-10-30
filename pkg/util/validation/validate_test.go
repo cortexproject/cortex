@@ -66,7 +66,7 @@ func TestValidateLabels_UTF8(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation, model.UTF8Validation)
+			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(test.metric), test.skipLabelNameValidation, model.UTF8Validation, 0, 0)
 			assert.Equal(t, test.expectedErr, err, "wrong error")
 		})
 	}
@@ -187,22 +187,22 @@ func TestValidateLabels(t *testing.T) {
 			nil,
 		},
 	} {
-		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation, model.LegacyValidation)
+		err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(c.metric), c.skipLabelNameValidation, model.LegacyValidation, 0, 0)
 		assert.Equal(t, c.err, err, "wrong error")
 	}
 
-	validateMetrics.DiscardedSamples.WithLabelValues("random reason", "different user").Inc()
+	validateMetrics.DiscardedSamples.WithLabelValues("random reason", "different user", SampleTypeFloat).Inc()
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="label_invalid",user="testUser"} 1
-			cortex_discarded_samples_total{reason="label_name_too_long",user="testUser"} 1
-			cortex_discarded_samples_total{reason="label_value_too_long",user="testUser"} 1
-			cortex_discarded_samples_total{reason="max_label_names_per_series",user="testUser"} 1
-			cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",user="testUser"} 1
+			cortex_discarded_samples_total{reason="label_invalid",type="float",user="testUser"} 1
+			cortex_discarded_samples_total{reason="label_name_too_long",type="float",user="testUser"} 1
+			cortex_discarded_samples_total{reason="label_value_too_long",type="float",user="testUser"} 1
+			cortex_discarded_samples_total{reason="max_label_names_per_series",type="float",user="testUser"} 1
+			cortex_discarded_samples_total{reason="labels_size_bytes_exceeded",type="float",user="testUser"} 1
 
-			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+			cortex_discarded_samples_total{reason="random reason",type="float",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
@@ -218,7 +218,7 @@ func TestValidateLabels(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="random reason",user="different user"} 1
+			cortex_discarded_samples_total{reason="random reason",type="float",user="different user"} 1
 	`), "cortex_discarded_samples_total"))
 }
 
@@ -348,7 +348,7 @@ func TestValidateLabelOrder(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
 		{Name: "a", Value: "a"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected := newLabelsNotSortedError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "m"},
 		{Name: "b", Value: "b"},
@@ -359,7 +359,7 @@ func TestValidateLabelOrder(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="labels_not_sorted",user="testUser"} 1
+			cortex_discarded_samples_total{reason="labels_not_sorted",type="float",user="testUser"} 1
 	`), "cortex_discarded_samples_total"))
 }
 
@@ -375,7 +375,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	actual := ValidateLabels(validateMetrics, cfg, userID, []cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected := newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: model.MetricNameLabel, Value: "b"},
@@ -386,7 +386,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
 		{Name: "a", Value: "a"},
-	}, false, model.LegacyValidation)
+	}, false, model.LegacyValidation, 0, 0)
 	expected = newDuplicatedLabelError([]cortexpb.LabelAdapter{
 		{Name: model.MetricNameLabel, Value: "a"},
 		{Name: "a", Value: "a"},
@@ -397,7 +397,7 @@ func TestValidateLabelDuplication(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="duplicate_label_names",user="testUser"} 2
+			cortex_discarded_samples_total{reason="duplicate_label_names",type="float",user="testUser"} 2
 	`), "cortex_discarded_samples_total"))
 }
 
@@ -721,7 +721,7 @@ func TestValidateNativeHistogram(t *testing.T) {
 			actualHistogram, actualErr := ValidateNativeHistogram(validateMetrics, limits, userID, lbls, tc.histogram)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr.Error(), actualErr.Error())
-				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(tc.discardedSampleLabelValue, userID)))
+				require.Equal(t, float64(1), testutil.ToFloat64(validateMetrics.DiscardedSamples.WithLabelValues(tc.discardedSampleLabelValue, userID, SampleTypeHistogram)))
 				// Should never increment if error was returned
 				require.Equal(t, float64(0), testutil.ToFloat64(validateMetrics.HistogramSamplesReducedResolution.WithLabelValues(userID)))
 
@@ -761,7 +761,7 @@ func TestValidateMetrics_UpdateSamplesDiscardedForSeries(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	v.updateSamplesDiscardedForSeries(userID, "out-of-order", limits, labels.FromMap(map[string]string{"foo": "baz"}), 1)
@@ -772,8 +772,8 @@ func TestValidateMetrics_UpdateSamplesDiscardedForSeries(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="out-of-order",user="user"} 1
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
-			cortex_discarded_samples_total{reason="out-of-order",user="user"} 1
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
+			cortex_discarded_samples_total{reason="out-of-order",type="float",user="user"} 1
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Match default partition.
@@ -786,9 +786,9 @@ func TestValidateMetrics_UpdateSamplesDiscardedForSeries(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="too-old",user="user"} 1
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
-			cortex_discarded_samples_total{reason="out-of-order",user="user"} 1
-			cortex_discarded_samples_total{reason="too-old",user="user"} 1
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
+			cortex_discarded_samples_total{reason="out-of-order",type="float",user="user"} 1
+			cortex_discarded_samples_total{reason="too-old",type="float",user="user"} 1
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }
 
@@ -812,7 +812,7 @@ func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
 		},
 	}
 
-	v.updateSamplesDiscarded(userID, "dummy", limits, 100)
+	v.updateSamplesDiscarded(userID, "dummy", SampleTypeFloat, limits, 100)
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_per_labelset_total The total number of samples that were discarded for each labelset.
 			# TYPE cortex_discarded_samples_per_labelset_total counter
@@ -821,7 +821,7 @@ func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{}",reason="dummy",user="user"} 100
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Remove default partition.
@@ -837,7 +837,7 @@ func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"baz\"}",reason="dummy",user="user"} 100
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Remove limit 1.
@@ -852,7 +852,7 @@ func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
 			cortex_discarded_samples_per_labelset_total{labelset="{foo=\"bar\"}",reason="dummy",user="user"} 100
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 
 	// Remove user.
@@ -861,6 +861,6 @@ func TestValidateMetrics_UpdateLabelSet(t *testing.T) {
 	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
 			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
 			# TYPE cortex_discarded_samples_total counter
-			cortex_discarded_samples_total{reason="dummy",user="user"} 100
+			cortex_discarded_samples_total{reason="dummy",type="float",user="user"} 100
 	`), "cortex_discarded_samples_total", "cortex_discarded_samples_per_labelset_total"))
 }

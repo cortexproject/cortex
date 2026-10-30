@@ -1415,6 +1415,30 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 	reasonCounter := newLabelSetReasonCounters()
 
+	// discardedCounts tracks discarded samples for one reason, split by
+	// sample type. The ingester's append-failure handler is shared by the
+	// float and native histogram loops, so a single counter per reason
+	// would misattribute histogram discards to the float series.
+	type discardedCounts struct {
+		float     int
+		histogram int
+	}
+	incDiscarded := func(c *discardedCounts, sampleType string) {
+		if sampleType == validation.SampleTypeHistogram {
+			c.histogram++
+		} else {
+			c.float++
+		}
+	}
+	emitDiscarded := func(reason string, c discardedCounts) {
+		if c.float > 0 {
+			i.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, validation.SampleTypeFloat).Add(float64(c.float))
+		}
+		if c.histogram > 0 {
+			i.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, validation.SampleTypeHistogram).Add(float64(c.histogram))
+		}
+	}
+
 	// Keep track of some stats which are tracked only if the samples will be
 	// successfully committed
 	var (
@@ -1427,14 +1451,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		startTimestampSampleAppendFailCount    = 0
 		startTimestampHistogramAppendFailCount = 0
 		startAppend                            = time.Now()
-		sampleOutOfBoundsCount                 = 0
-		sampleOutOfOrderCount                  = 0
-		sampleTooOldCount                      = 0
-		newValueForTimestampCount              = 0
-		perUserSeriesLimitCount                = 0
+		sampleOutOfBoundsCount discardedCounts
+		sampleOutOfOrderCount discardedCounts
+		sampleTooOldCount discardedCounts
+		newValueForTimestampCount discardedCounts
+		perUserSeriesLimitCount                discardedCounts
 		perUserNativeHistogramSeriesLimitCount = 0
-		perLabelSetSeriesLimitCount            = 0
-		perMetricSeriesLimitCount              = 0
+		perLabelSetSeriesLimitCount discardedCounts
+		perMetricSeriesLimitCount discardedCounts
 		discardedNativeHistogramCount          = 0
 
 		// Only the ruler sets the write request source to RULE.
@@ -1456,7 +1480,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// isStaleNaN reports whether the failed sample carried the reserved stale NaN
 		// payload. Callers appending native histograms always pass false, because a
 		// staleness marker is only ever appended as a float sample.
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet, isStaleNaN bool) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet, isStaleNaN bool, sampleType string) (rollback bool) {
 			// A staleness marker from the ruler is internal bookkeeping rather than
 			// tenant data. Prometheus' rules.Group.cleanupStaleSeries appends one for
 			// every series a rule stopped producing, and treats out-of-order, too-old
@@ -1474,7 +1498,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			// we actually ingested all samples which haven't failed.
 			switch cause := errors.Cause(err); {
 			case errors.Is(cause, storage.ErrOutOfBounds):
-				sampleOutOfBoundsCount++
+				incDiscarded(&sampleOutOfBoundsCount, sampleType)
 				i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfBounds, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
 					return wrappedTSDBIngestErrWithHeadMaxTime(err, model.Time(timestampMs), model.Time(headMaxTime), lbls)
@@ -1482,21 +1506,21 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			case errors.Is(cause, storage.ErrOutOfOrderSample):
 				if !ruleStaleMarker {
-					sampleOutOfOrderCount++
+					incDiscarded(&sampleOutOfOrderCount, sampleType)
 					i.validateMetrics.DiscardedSeriesTracker.Track(sampleOutOfOrder, userID, copiedLabels.Hash())
 				}
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrDuplicateSampleForTimestamp):
 				if !ruleStaleMarker {
-					newValueForTimestampCount++
+					incDiscarded(&newValueForTimestampCount, sampleType)
 					i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, copiedLabels.Hash())
 				}
 				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				if !ruleStaleMarker {
-					sampleTooOldCount++
+					incDiscarded(&sampleTooOldCount, sampleType)
 					i.validateMetrics.DiscardedSeriesTracker.Track(sampleTooOld, userID, copiedLabels.Hash())
 				}
 				updateFirstPartial(func() error {
@@ -1504,7 +1528,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				})
 
 			case errors.Is(cause, errMaxSeriesPerUserLimitExceeded):
-				perUserSeriesLimitCount++
+				incDiscarded(&perUserSeriesLimitCount, sampleType)
 				i.validateMetrics.DiscardedSeriesTracker.Track(perUserSeriesLimit, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
 					return makeLimitError(perUserSeriesLimit, i.limiter.FormatError(userID, cause, copiedLabels))
@@ -1517,14 +1541,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 				})
 
 			case errors.Is(cause, errMaxSeriesPerMetricLimitExceeded):
-				perMetricSeriesLimitCount++
+				incDiscarded(&perMetricSeriesLimitCount, sampleType)
 				i.validateMetrics.DiscardedSeriesTracker.Track(perMetricSeriesLimit, userID, copiedLabels.Hash())
 				updateFirstPartial(func() error {
 					return makeMetricLimitError(perMetricSeriesLimit, copiedLabels, i.limiter.FormatError(userID, cause, copiedLabels))
 				})
 
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
-				perLabelSetSeriesLimitCount++
+				incDiscarded(&perLabelSetSeriesLimitCount, sampleType)
 				i.validateMetrics.DiscardedSeriesTracker.Track(perLabelsetSeriesLimit, userID, copiedLabels.Hash())
 				for _, matchedLabelset := range matchedLabelSetLimits {
 					i.validateMetrics.DiscardedSeriesPerLabelsetTracker.Track(userID, copiedLabels.Hash(), matchedLabelset.Hash, matchedLabelset.Id)
@@ -1634,7 +1658,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value)); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value), validation.SampleTypeFloat); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback.
@@ -1692,7 +1716,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false, validation.SampleTypeHistogram); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback.
@@ -1784,33 +1808,19 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 	i.metrics.ingestedExemplars.Add(float64(succeededExemplarsCount))
 	i.metrics.ingestedExemplarsFail.Add(float64(failedExemplarsCount))
 
-	if sampleOutOfBoundsCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfBounds, userID).Add(float64(sampleOutOfBoundsCount))
-	}
-	if sampleOutOfOrderCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleOutOfOrder, userID).Add(float64(sampleOutOfOrderCount))
-	}
-	if sampleTooOldCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(sampleTooOld, userID).Add(float64(sampleTooOldCount))
-	}
-	if newValueForTimestampCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(newValueForTimestamp, userID).Add(float64(newValueForTimestampCount))
-	}
-	if perUserSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserSeriesLimit, userID).Add(float64(perUserSeriesLimitCount))
-	}
+	emitDiscarded(sampleOutOfBounds, sampleOutOfBoundsCount)
+	emitDiscarded(sampleOutOfOrder, sampleOutOfOrderCount)
+	emitDiscarded(sampleTooOld, sampleTooOldCount)
+	emitDiscarded(newValueForTimestamp, newValueForTimestampCount)
+	emitDiscarded(perUserSeriesLimit, perUserSeriesLimitCount)
 	if perUserNativeHistogramSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramSeriesLimit, userID).Add(float64(perUserNativeHistogramSeriesLimitCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(perUserNativeHistogramSeriesLimit, userID, validation.SampleTypeHistogram).Add(float64(perUserNativeHistogramSeriesLimitCount))
 	}
-	if perMetricSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perMetricSeriesLimit, userID).Add(float64(perMetricSeriesLimitCount))
-	}
-	if perLabelSetSeriesLimitCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(perLabelsetSeriesLimit, userID).Add(float64(perLabelSetSeriesLimitCount))
-	}
+	emitDiscarded(perMetricSeriesLimit, perMetricSeriesLimitCount)
+	emitDiscarded(perLabelsetSeriesLimit, perLabelSetSeriesLimitCount)
 
 	if !i.limits.EnableNativeHistograms(userID) && discardedNativeHistogramCount > 0 {
-		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID).Add(float64(discardedNativeHistogramCount))
+		i.validateMetrics.DiscardedSamples.WithLabelValues(nativeHistogramSample, userID, validation.SampleTypeHistogram).Add(float64(discardedNativeHistogramCount))
 	}
 
 	for h, counter := range reasonCounter.counters {

@@ -69,12 +69,19 @@ type ParquetBucketStores struct {
 	indexLoader *bucketindex.Loader
 }
 
-// newParquetBucketStores creates a new multi-tenant parquet bucket stores
-func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
-	// Create caching bucket client for parquet bucket stores
-	cachingBucket, err := createCachingBucketClientForParquet(cfg, bucketClient, "parquet-storegateway", logger, reg)
-	if err != nil {
-		return nil, err
+// newParquetBucketStores creates a new multi-tenant parquet bucket stores.
+func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, cachingBucket objstore.InstrumentedBucket, matcherCache storecache.MatchersCache, limits *validation.Overrides, logger log.Logger, reg prometheus.Registerer) (*ParquetBucketStores, error) {
+	var err error
+	if cachingBucket == nil {
+		// Create caching bucket client for parquet bucket stores
+		if cachingBucket, err = createCachingBucketClientForParquet(cfg, bucketClient, "parquet-storegateway", logger, reg); err != nil {
+			return nil, err
+		}
+	}
+	if matcherCache == nil {
+		if matcherCache, err = newMatchersCache(cfg, logger, reg); err != nil {
+			return nil, err
+		}
 	}
 
 	parquetShardCache, err := parquetutil.NewParquetShardCache[parquet_storage.ParquetShard](&cfg.BucketStore.ParquetShardCache, "parquet-shards", reg)
@@ -102,17 +109,7 @@ func newParquetBucketStores(cfg tsdb.BlocksStorageConfig, bucketClient objstore.
 		inflightRequests:  cortex_util.NewInflightRequestTracker(),
 		parquetShardCache: parquetShardCache,
 		rowRangesCache:    rowRangesCache,
-	}
-
-	if cfg.BucketStore.MatchersCacheMaxItems > 0 {
-		r := prometheus.NewRegistry()
-		reg.MustRegister(tsdb.NewMatchCacheMetrics("cortex_storegateway", r, logger))
-		u.matcherCache, err = storecache.NewMatchersCache(storecache.WithSize(cfg.BucketStore.MatchersCacheMaxItems), storecache.WithPromRegistry(r))
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		u.matcherCache = storecache.NoopMatchersCache
+		matcherCache:      matcherCache,
 	}
 
 	if cfg.BucketStore.BucketIndex.Enabled {
@@ -601,7 +598,7 @@ func chunkToStoreEncoding(in chunkenc.Encoding) storepb.Chunk_Encoding {
 }
 
 // createCachingBucketClientForParquet creates a caching bucket client for parquet bucket stores
-func createCachingBucketClientForParquet(storageCfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, name string, logger log.Logger, reg prometheus.Registerer) (objstore.Bucket, error) {
+func createCachingBucketClientForParquet(storageCfg tsdb.BlocksStorageConfig, bucketClient objstore.InstrumentedBucket, name string, logger log.Logger, reg prometheus.Registerer) (objstore.InstrumentedBucket, error) {
 	// Create caching bucket using the existing infrastructure
 	matchers := tsdb.NewMatchers()
 	cachingBucket, err := tsdb.CreateCachingBucket(storageCfg.BucketStore.ChunksCache, storageCfg.BucketStore.MetadataCache, storageCfg.BucketStore.ParquetLabelsCache, matchers, bucketClient, logger, reg)

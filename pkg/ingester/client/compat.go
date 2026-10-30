@@ -10,6 +10,7 @@ import (
 	storecache "github.com/thanos-io/thanos/pkg/store/cache"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/util"
 )
 
 // ToQueryRequest builds a QueryRequest proto.
@@ -294,10 +295,10 @@ func FastFingerprint(ls []cortexpb.LabelAdapter) model.Fingerprint {
 
 	var result uint64
 	for _, l := range ls {
-		sum := hashNew()
-		sum = hashAdd(sum, l.Name)
-		sum = hashAddByte(sum, model.SeparatorByte)
-		sum = hashAdd(sum, l.Value)
+		sum := util.HashNew()
+		sum = util.HashAdd(sum, l.Name)
+		sum = util.HashAddByte(sum, model.SeparatorByte)
+		sum = util.HashAdd(sum, l.Value)
 		result ^= sum
 	}
 	return model.Fingerprint(result)

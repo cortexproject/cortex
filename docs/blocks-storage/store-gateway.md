@@ -439,7 +439,7 @@ The `blocks_storage_config` configures the blocks storage.
 ```yaml
 blocks_storage:
   # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-  # filesystem.
+  # oss, filesystem.
   # CLI flag: -blocks-storage.backend
   [backend: <string> | default = "s3"]
 
@@ -770,6 +770,24 @@ blocks_storage:
     # The fixed interval in seconds to wait between request retry attempts.
     # CLI flag: -blocks-storage.oci.request-retry-interval
     [request_retry_interval: <int> | default = 10]
+
+  oss:
+    # The Alibaba Cloud OSS endpoint to connect to, e.g.
+    # oss-cn-hangzhou.aliyuncs.com.
+    # CLI flag: -blocks-storage.oss.endpoint
+    [endpoint: <string> | default = ""]
+
+    # The Alibaba Cloud OSS bucket name.
+    # CLI flag: -blocks-storage.oss.bucket
+    [bucket: <string> | default = ""]
+
+    # The Alibaba Cloud OSS access key ID.
+    # CLI flag: -blocks-storage.oss.access-key-id
+    [access_key_id: <string> | default = ""]
+
+    # The Alibaba Cloud OSS access key secret.
+    # CLI flag: -blocks-storage.oss.access-key-secret
+    [access_key_secret: <string> | default = ""]
 
   filesystem:
     # Local filesystem storage directory.

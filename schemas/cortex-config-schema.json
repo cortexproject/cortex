@@ -640,7 +640,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "alertmanager-storage.backend"
         },
@@ -747,6 +747,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.endpoint"
             }
           },
           "type": "object"
@@ -1136,7 +1161,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem.",
           "type": "string",
           "x-cli-flag": "blocks-storage.backend"
         },
@@ -3182,6 +3207,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "blocks-storage.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.endpoint"
             }
           },
           "type": "object"
@@ -8065,7 +8115,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "ruler-storage.backend"
         },
@@ -8172,6 +8222,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "ruler-storage.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.endpoint"
             }
           },
           "type": "object"
@@ -8561,7 +8636,7 @@
         },
         "backend": {
           "default": "filesystem",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem.",
           "type": "string",
           "x-cli-flag": "runtime-config.backend"
         },
@@ -8660,6 +8735,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "runtime-config.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.endpoint"
             }
           },
           "type": "object"

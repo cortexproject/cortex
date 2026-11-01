@@ -150,6 +150,17 @@ In UTF-8 strict mode, there is **no fallback to classic matcher parsing**. Exist
 4. Load representative recording and alerting rules, including group and rule labels, and verify evaluation and notifications.
 5. Test Alertmanager configuration loading, grouping, routing, and silence creation. Roll out consistently across the Cortex components that need the selected mode.
 
+## Rolling back to legacy
+
+Switching `name_validation_scheme` from `utf8` back to `legacy` does not remove previously ingested series with UTF-8 names. These series remain in storage and can still be queried. However, the rollback affects new ingestion and configuration validation:
+
+- **Distributor:** New samples containing metric or label names that are invalid under the legacy validation scheme are rejected during ingestion.
+- **Ruler:** Existing rule groups remain stored and can still load, but rule outputs with UTF-8 names are rejected during ingestion. Rules containing UTF-8 recording rule names or rule labels can no longer be uploaded or updated through the Ruler API.
+- **Alertmanager:** Configurations using UTF-8 label names in matchers or `group_by` fields fail to load in `classic-mode`. Incoming alerts containing UTF-8 label names are also rejected.
+- **Limits validation:** `ruler_external_labels` and `metric_relabel_configs` containing UTF-8 label names fail validation. Invalid default limits prevent Cortex from starting, while invalid per-tenant overrides cause the runtime configuration file to be rejected.
+
+Before switching back to `legacy`, remove or rename UTF-8 metric and label names in Ruler rule groups, `ruler_external_labels`, `metric_relabel_configs`, and Alertmanager configurations to ensure compatibility with legacy validation.
+
 ## Compatibility notes
 
 - Use `legacy` if you need to preserve the previous validation behavior.

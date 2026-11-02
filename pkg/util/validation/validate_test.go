@@ -222,6 +222,59 @@ func TestValidateLabels(t *testing.T) {
 	`), "cortex_discarded_samples_total"))
 }
 
+func TestValidateLabelsDiscardedSampleTypeAttribution(t *testing.T) {
+	userID := "testUser"
+
+	// Series with 3 label names against a limit of 2 always fails with
+	// max_label_names_per_series, so each subtest exercises exactly one
+	// discardSamplesForSeries call with the given sample counts.
+	metric := map[model.LabelName]model.LabelValue{
+		model.MetricNameLabel: "foo",
+		"bar":                 "baz",
+		"blip":                "blop",
+	}
+
+	for name, tc := range map[string]struct {
+		numFloatSamples     int
+		numHistogramSamples int
+		expectedMetrics     string
+	}{
+		"histogram only": {
+			numFloatSamples:     0,
+			numHistogramSamples: 1,
+			expectedMetrics: `
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="max_label_names_per_series",type="histogram",user="testUser"} 1
+	`,
+		},
+		"mixed float and histogram": {
+			numFloatSamples:     2,
+			numHistogramSamples: 3,
+			// One increment per type present, not per sample.
+			expectedMetrics: `
+			# HELP cortex_discarded_samples_total The total number of samples that were discarded.
+			# TYPE cortex_discarded_samples_total counter
+			cortex_discarded_samples_total{reason="max_label_names_per_series",type="float",user="testUser"} 1
+			cortex_discarded_samples_total{reason="max_label_names_per_series",type="histogram",user="testUser"} 1
+	`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := new(Limits)
+			cfg.MaxLabelNamesPerSeries = 2
+
+			reg := prometheus.NewRegistry()
+			validateMetrics := NewValidateMetrics(reg)
+
+			err := ValidateLabels(validateMetrics, cfg, userID, cortexpb.FromMetricsToLabelAdapters(metric), false, model.LegacyValidation, tc.numFloatSamples, tc.numHistogramSamples)
+			require.Error(t, err)
+
+			require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(tc.expectedMetrics), "cortex_discarded_samples_total"))
+		})
+	}
+}
+
 func TestValidateExemplars(t *testing.T) {
 	userID := "testUser"
 	reg := prometheus.NewRegistry()

@@ -4268,6 +4268,43 @@ func TestDistributorValidation(t *testing.T) {
 	}
 }
 
+func TestDistributorValidationTooOldHistogramDiscardedAsHistogram(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "1")
+	now := model.Now()
+	past := now.Add(-25 * time.Hour)
+	testHistogram := tsdbutil.GenerateTestHistogram(1)
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.CreationGracePeriod = model.Duration(2 * time.Hour)
+	limits.RejectOldSamples = true
+	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
+	limits.MaxLabelNamesPerSeries = 10
+
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           &limits,
+	})
+
+	lbls := []labels.Labels{
+		labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+	}
+	histograms := []cortexpb.WrappedHistogram{
+		cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(past), testHistogram)),
+	}
+
+	_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(lbls, nil, nil, histograms, cortexpb.API))
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past), err)
+
+	// The discarded sample must be attributed to the histogram type, not float.
+	require.Equal(t, float64(1), testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues("greater_than_max_sample_age", "1", validation.SampleTypeHistogram)))
+	require.Equal(t, float64(0), testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues("greater_than_max_sample_age", "1", validation.SampleTypeFloat)))
+}
+
 func TestRemoveReplicaLabel(t *testing.T) {
 	t.Parallel()
 	replicaLabel := "replica"

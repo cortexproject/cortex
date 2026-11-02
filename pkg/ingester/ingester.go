@@ -1451,14 +1451,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		startTimestampSampleAppendFailCount    = 0
 		startTimestampHistogramAppendFailCount = 0
 		startAppend                            = time.Now()
-		sampleOutOfBoundsCount discardedCounts
-		sampleOutOfOrderCount discardedCounts
-		sampleTooOldCount discardedCounts
-		newValueForTimestampCount discardedCounts
+		sampleOutOfBoundsCount                 discardedCounts
+		sampleOutOfOrderCount                  discardedCounts
+		sampleTooOldCount                      discardedCounts
+		newValueForTimestampCount              discardedCounts
 		perUserSeriesLimitCount                discardedCounts
 		perUserNativeHistogramSeriesLimitCount = 0
-		perLabelSetSeriesLimitCount discardedCounts
-		perMetricSeriesLimitCount discardedCounts
+		perLabelSetSeriesLimitCount            discardedCounts
+		perMetricSeriesLimitCount              discardedCounts
 		discardedNativeHistogramCount          = 0
 
 		// Only the ruler sets the write request source to RULE.

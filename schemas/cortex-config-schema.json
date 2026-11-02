@@ -7586,6 +7586,31 @@
           "type": "number",
           "x-cli-flag": "ruler.max-concurrent-evals"
         },
+        "notification_backoff": {
+          "properties": {
+            "max_period": {
+              "default": "1s",
+              "description": "Maximum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.",
+              "type": "string",
+              "x-cli-flag": "ruler.notification.backoff-max-period",
+              "x-format": "duration"
+            },
+            "max_retries": {
+              "default": 0,
+              "description": "Maximum number of times to retry a notification that the Alertmanager failed to accept with a retriable error, which is a transport error or a 5xx response. A notification that is not retried is dropped and the alert is not delivered until the next evaluation of its rule group. Retries happen within -ruler.notification-timeout and delay the other notifications of the same tenant, so keep this number small. Set to 0 to disable the retries.",
+              "type": "number",
+              "x-cli-flag": "ruler.notification.backoff-retries"
+            },
+            "min_period": {
+              "default": "100ms",
+              "description": "Minimum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.",
+              "type": "string",
+              "x-cli-flag": "ruler.notification.backoff-min-period",
+              "x-format": "duration"
+            }
+          },
+          "type": "object"
+        },
         "notification_queue_capacity": {
           "default": 10000,
           "description": "Capacity of the queue for notifications to be sent to the Alertmanager.",

@@ -377,6 +377,7 @@ func (r tsdbCloseCheckResult) shouldClose() bool {
 
 type userTSDB struct {
 	db                  *tsdb.DB
+	blocksToDeleteReady atomic.Bool
 	userID              string
 	logger              log.Logger
 	activeSeries        *ActiveSeries
@@ -600,7 +601,7 @@ func (u *userTSDB) PostDeletion(metrics map[chunks.HeadSeriesRef]labels.Labels) 
 
 // blocksToDelete filters the input blocks and returns the blocks which are safe to be deleted from the ingester.
 func (u *userTSDB) blocksToDelete(blocks []*tsdb.Block) map[ulid.ULID]struct{} {
-	if u.db == nil {
+	if !u.blocksToDeleteReady.Load() {
 		return nil
 	}
 	deletable := tsdb.DefaultBlocksToDelete(u.db)(blocks)
@@ -3143,6 +3144,7 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	}
 
 	userDB.db = db
+	userDB.blocksToDeleteReady.Store(true)
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter

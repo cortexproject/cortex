@@ -228,12 +228,16 @@ func (c *closableHealthAndIngesterClient) Run(streamPushChan chan *streamWriteJo
 			workerCtx := user.InjectOrgID(streamCtx, workerName)
 			err := c.worker(workerCtx)
 			if err != nil {
-				// A sibling worker failed to open its stream: cancel the
-				// shared stream context so the remaining workers stop
-				// opening new streams, and any job-processing goroutines
+				// Send the error before cancelling: if a sibling wakes on
+				// ctx.Done() first it can enqueue its own "context canceled"
+				// error ahead of ours, and Run would then return that instead
+				// of the real failure. errCh is buffered for every worker, so
+				// sending first never blocks.
+				errCh <- err
+				// Cancel the shared stream context so the remaining workers
+				// stop opening new streams, and any job-processing goroutines
 				// that already started exit via ctx.Done().
 				streamCancel()
-				errCh <- err
 			}
 		})
 	}

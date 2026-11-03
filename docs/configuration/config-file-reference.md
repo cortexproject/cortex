@@ -7117,6 +7117,66 @@ filesystem:
   [dir: <string> | default = ""]
 ```
 
+### `runtime_config_file`
+
+File with the configuration that can be updated in runtime.
+
+```yaml
+# Optionally Configurable limits by user through Overrides HTTP API Call
+# Full list in (https://cortexmetrics.io/docs/api/#supported-limits)
+[api_allowed_limits: <list of limits> | default = []]
+
+# Optionally configure global overrides for multiple components.
+# The limits_config configures default and per-tenant limits imposed by Cortex
+# services (ie. distributor, ingester, ...).
+[hard_overrides: <limits_config> | default = []]
+
+# Optionally configure ingester limits overrides.
+ingester_limits:
+  # Max ingestion rate (samples/sec) that this distributor will accept. This
+  # limit is per-distributor, not per-tenant. Additional push requests will be
+  # rejected. Current ingestion rate is computed as exponentially weighted
+  # moving average, updated every second. 0 = unlimited.
+  [max_ingestion_rate: <float> | default = ""]
+
+  # Max users that this ingester can hold. Requests from additional users will
+  # be rejected. This limit only works when using blocks engine. 0 = unlimited.
+  [max_tenants: <int> | default = ""]
+
+  # Max series that this ingester can hold (across all tenants). Requests to
+  # create additional series will be rejected. This limit only works when using
+  # blocks engine. 0 = unlimited.
+  [max_series: <int> | default = ""]
+
+  # Max inflight push requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
+  [max_inflight_push_requests: <int> | default = ""]
+
+  # Max inflight query requests that this ingester can handle (across all
+  # tenants). Additional requests will be rejected. 0 = unlimited.
+  [max_inflight_query_requests: <int> | default = ""]
+
+# Optionally configure stream entire chunks to querier instead of individual samples to the querier.
+# This configuration options are temporary and will be removed when feature is stable #3889
+[ingester_stream_chunks_when_using_blocks: <boolean> | default = null]
+
+# Optionally configure overrides configuration to switch to a different kvstore during runtime (e.g., consule to etcd).
+# Useful during kvstore migration.
+multi_kv_config:
+  # Overrides primary backend storage used by multi-client.
+  [primary: <string> | default = ""]
+
+  # Overrides mirror writes to secondary store.
+  [mirror_enabled: <boolean> | default = false]
+
+# Optionally configure Per-tenant overrides, keyed by tenant ID.
+# The limits_config configures default and per-tenant limits imposed by Cortex
+# services (ie. distributor, ingester, ...).
+overrides:
+  [<tenant name>: <limits_config> | default = []]
+
+```
+
 ### `s3_sse_config`
 
 The `s3_sse_config` configures the S3 server-side encryption. The supported CLI flags `<prefix>` used to reference this config block are:

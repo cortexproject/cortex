@@ -1,10 +1,13 @@
 package querier
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -14,6 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
+	"google.golang.org/grpc/encoding"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	promchunk "github.com/cortexproject/cortex/pkg/chunk/encoding"
@@ -631,39 +635,34 @@ func TestDistributorQuerier_QueryIngestersWithinBoundary(t *testing.T) {
 	}
 }
 
+// BenchmarkIngesterStreamingSelect quantifies the cost of the chunk detach
+// copy removed for issue #7732, on an input with the shape a real gRPC
+// Unmarshal produces for chunks: each chunk's Data is its own independently
+// allocated slice (Chunk.Unmarshal appends into the nil Data slice of a
+// fresh per-Recv message, so it never aliases the receive buffer or any
+// other chunk). Label memory layout is irrelevant to what the two arms
+// compare -- both run the identical label copy -- so labels are ordinary
+// independent strings here. This replaces the original #7670 benchmark,
+// which constructed Chunk.Data as sub-slices of one shared buffer, a shape
+// a real gRPC unmarshal never produces.
 func BenchmarkIngesterStreamingSelect(b *testing.B) {
-	// Simulate a realistic ingester response: 100 series, each with labels and chunk data
-	// that reference a shared backing buffer (mimicking gRPC unmarshal behavior).
-	// This benchmark measures the allocations in the streamingSelect hot path.
 	const numSeries = 100
 	const chunkDataSize = 1024
 
-	// Build a single large buffer to simulate the gRPC receive buffer.
-	// All label strings and chunk data will be slices into this buffer.
-	bufSize := numSeries * (chunkDataSize + 200) // 200 bytes for label strings per series
-	buf := make([]byte, bufSize)
-	for i := range buf {
-		buf[i] = byte(i % 256)
-	}
-
 	buildResponse := func() *client.QueryStreamResponse {
-		offset := 0
 		series := make([]client.TimeSeriesChunk, numSeries)
 		for i := range series {
-			// Labels that reference the shared buffer (simulating protobuf unmarshal)
-			nameStr := string(buf[offset : offset+10])
-			offset += 10
-			valueStr := string(buf[offset : offset+20])
-			offset += 20
-
-			// Chunk data that references the shared buffer
-			chunkData := buf[offset : offset+chunkDataSize]
-			offset += chunkDataSize
+			// Chunk data independently allocated, as a real Chunk.Unmarshal
+			// produces -- never a sub-slice of a shared buffer.
+			chunkData := make([]byte, chunkDataSize)
+			for j := range chunkData {
+				chunkData[j] = byte(j % 256)
+			}
 
 			series[i] = client.TimeSeriesChunk{
 				Labels: []cortexpb.LabelAdapter{
-					{Name: "__name__", Value: nameStr},
-					{Name: "instance", Value: valueStr},
+					{Name: "__name__", Value: fmt.Sprintf("metric_%d", i)},
+					{Name: "instance", Value: fmt.Sprintf("instance-%d", i)},
 				},
 				Chunks: []client.Chunk{
 					{
@@ -677,24 +676,231 @@ func BenchmarkIngesterStreamingSelect(b *testing.B) {
 		return &client.QueryStreamResponse{Chunkseries: series}
 	}
 
-	b.Run("with_detach", func(b *testing.B) {
+	// after_fix mirrors the current streamingSelect body: copy labels out of
+	// the receive buffer, pass chunks through untouched.
+	b.Run("after_fix_no_redundant_copy", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			resp := buildResponse()
 			for _, result := range resp.Chunkseries {
 				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
-				_ = detachChunksFromBuffer(result.Chunks)
+				_ = result.Chunks
 			}
 		}
 	})
 
-	b.Run("without_detach", func(b *testing.B) {
+	// before_fix reproduces the removed detachChunksFromBuffer behavior inline
+	// (the helper itself is gone from the production code) to quantify the
+	// allocation/byte cost of copying data that Unmarshal already allocated
+	// separately, even under this realistic input shape.
+	b.Run("before_fix_redundant_copy", func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			resp := buildResponse()
 			for _, result := range resp.Chunkseries {
-				_ = cortexpb.FromLabelAdaptersToLabels(result.Labels)
+				_ = cortexpb.FromLabelAdaptersToLabelsWithCopy(result.Labels)
+				copied := make([]client.Chunk, len(result.Chunks))
+				for ci, c := range result.Chunks {
+					copied[ci] = c
+					if len(c.Data) > 0 {
+						copied[ci].Data = append([]byte(nil), c.Data...)
+					}
+				}
+				_ = copied
 			}
 		}
 	})
+}
+
+// newAliasingProbeQueryStreamResponse returns a QueryStreamResponse with one
+// series carrying a label and a chunk whose payload bytes are individually
+// distinguishable (0x00, 0x01, 0x02, ...), so that accidental aliasing can be
+// detected either by pointer-range overlap or by mutating the source buffer
+// and observing whether the decoded bytes change. It also returns an
+// independent copy of the chunk payload to compare against after the wire
+// buffer has been mutated, since wire-format field ordering is an
+// implementation detail we don't want the test to depend on.
+//
+// chunkDataSize is a parameter (not a constant) because callers going through
+// the registered cortexCodec need a marshaled message large enough to cross
+// mem.IsBelowBufferPoolingThreshold (1KiB): below that threshold, Marshal
+// returns a plain mem.SliceBuffer whose Ref/Free are no-ops, which would
+// silently skip exercising the real pool-backed mem.Buffer code path.
+func newAliasingProbeQueryStreamResponse(chunkDataSize int) (resp *client.QueryStreamResponse, wantChunkData []byte) {
+	chunkData := make([]byte, chunkDataSize)
+	for i := range chunkData {
+		chunkData[i] = byte(i)
+	}
+	resp = &client.QueryStreamResponse{
+		Chunkseries: []client.TimeSeriesChunk{
+			{
+				Labels: []cortexpb.LabelAdapter{
+					{Name: "__name__", Value: "some_metric_name"},
+					{Name: "instance", Value: "instance-aliasing-probe-01"},
+				},
+				Chunks: []client.Chunk{
+					{
+						StartTimestampMs: 1000,
+						EndTimestampMs:   2000,
+						Encoding:         3,
+						Data:             chunkData,
+					},
+				},
+			},
+		},
+	}
+	return resp, append([]byte(nil), chunkData...)
+}
+
+// overlaps reports whether byte slices a and b share any backing memory.
+//
+// This compares raw addresses as uintptrs, which is only valid because Go's
+// garbage collector does not move heap-allocated objects (unlike goroutine
+// stacks, which can be copied). If a future Go runtime introduces a moving
+// GC for the heap, this address-range comparison would need to be redone
+// (e.g. by writing sentinel bytes and checking for their presence/absence
+// instead of comparing pointers). runtime.KeepAlive calls below only guard
+// against the compiler treating a/b as dead before the address is taken;
+// they say nothing about GC movement.
+func overlaps(a, b []byte) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	aStart := uintptr(unsafe.Pointer(&a[0]))
+	aEnd := aStart + uintptr(len(a))
+	bStart := uintptr(unsafe.Pointer(&b[0]))
+	bEnd := bStart + uintptr(len(b))
+	result := aStart < bEnd && bStart < aEnd
+	runtime.KeepAlive(a)
+	runtime.KeepAlive(b)
+	return result
+}
+
+// unsafeBytesFromString exposes a string's backing bytes without copying, so
+// that yoloString-produced strings can be checked for aliasing with the
+// buffer they were decoded from.
+func unsafeBytesFromString(s string) []byte {
+	if len(s) == 0 {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+// TestChunkDataDoesNotAliasWireBuffer_ButLabelValueDoes pins the invariant
+// behind the fix for #7732: a gogo Marshal -> Unmarshal round trip of
+// client.QueryStreamResponse must leave Chunk.Data as an independent
+// allocation (never aliasing the wire buffer), while LabelAdapter.Value must
+// still alias it via yoloString. If a future change to the gogo-generated
+// Chunk.Unmarshal (or a replacement decoder) ever starts aliasing Data, this
+// test must fail loudly -- both the pointer-overlap check AND the mutation
+// check below have to be defeated for that regression to slip through.
+func TestChunkDataDoesNotAliasWireBuffer_ButLabelValueDoes(t *testing.T) {
+	// Size is irrelevant here: this test calls gogo's Marshal/Unmarshal
+	// directly, never going through cortexCodec's buffer-pooling threshold.
+	orig, wantChunkData := newAliasingProbeQueryStreamResponse(256)
+
+	wireBytes, err := orig.Marshal()
+	require.NoError(t, err)
+
+	got := &client.QueryStreamResponse{}
+	require.NoError(t, got.Unmarshal(wireBytes))
+	require.Len(t, got.Chunkseries, 1)
+	require.Len(t, got.Chunkseries[0].Chunks, 1)
+	require.Len(t, got.Chunkseries[0].Labels, 2)
+
+	chunkData := got.Chunkseries[0].Chunks[0].Data
+	labelValue := got.Chunkseries[0].Labels[1].Value
+	require.Equal(t, "instance-aliasing-probe-01", labelValue)
+
+	// --- Pointer-range checks ---
+	assert.False(t, overlaps(chunkData, wireBytes),
+		"invariant broken: Chunk.Data now aliases the wire buffer -- if Unmarshal changed "+
+			"to make this true, a detach/copy step must be reinstated in streamingSelect")
+	assert.True(t, overlaps(unsafeBytesFromString(labelValue), wireBytes),
+		"expected LabelAdapter.Value to still alias the wire buffer via yoloString; if this "+
+			"is now false, FromLabelAdaptersToLabelsWithCopy may no longer be load-bearing "+
+			"(but should still be kept -- do not remove without re-verifying this test)")
+
+	// --- Behavioral (mutation) checks: corrupt the wire buffer in place and
+	// confirm the chunk is unaffected while the label (known to alias) is. ---
+	for i := range wireBytes {
+		wireBytes[i] = 0xFF
+	}
+	assert.Equal(t, wantChunkData, chunkData,
+		"Chunk.Data must be a private copy: it should be unaffected by mutating the wire buffer")
+	assert.Equal(t, bytes.Repeat([]byte{0xFF}, len(labelValue)), unsafeBytesFromString(labelValue),
+		"sanity check failed: LabelAdapter.Value should have observably changed after mutating "+
+			"the wire buffer it aliases -- if this assertion itself fails, the test's mutation "+
+			"methodology is broken and the non-aliasing assertion above cannot be trusted")
+}
+
+// TestChunkDataDoesNotAliasWireBuffer_ViaRegisteredCodec re-runs the same
+// invariant through the actual gRPC codec registered for Cortex's ingester
+// connections (pkg/cortexpb.codec.go's cortexCodec, registered under the
+// "proto" content-subtype via encoding.RegisterCodecV2). That codec uses
+// grpc's mem.BufferSlice/mem.Buffer machinery. The payload is sized above
+// mem.IsBelowBufferPoolingThreshold (1KiB) so that cortexCodec.Marshal takes
+// its real pool.Get/mem.NewBuffer branch -- a smaller payload would silently
+// fall back to a plain mem.SliceBuffer, whose Ref/Free are no-ops, and this
+// test would then never actually touch a pool-backed buffer.
+//
+// This test confirms that, even through that pool-backed buffer, decoding
+// still routes to the classic gogo Marshal/Unmarshal methods (via the
+// protobuf-go legacy-message shim) so Chunk.Data is still never an alias of
+// the wire buffer -- this is the real path used by QueryStream, not just the
+// pb.go method in isolation.
+//
+// What this does NOT cover: a message split across multiple transport reads
+// (mem.BufferSlice with len > 1), which drives MaterializeToBuffer's other
+// branch (pool.Get + CopyTo instead of the single-buffer Ref fast path). A
+// same-process Marshal->Unmarshal round trip can't produce that shape --
+// reaching it would need an actual (or bufconn-based) gRPC transport with a
+// large enough message to span multiple HTTP/2 DATA frames, which is
+// integration-test territory and out of scope here.
+func TestChunkDataDoesNotAliasWireBuffer_ViaRegisteredCodec(t *testing.T) {
+	codec := encoding.GetCodecV2(cortexpb.Name)
+	require.NotNil(t, codec, "expected a CodecV2 to be registered under name %q", cortexpb.Name)
+
+	// 4096 bytes of chunk data comfortably clears the 1KiB pooling threshold
+	// once labels and protobuf framing overhead are added.
+	orig, _ := newAliasingProbeQueryStreamResponse(4096)
+
+	wireData, err := codec.Marshal(orig)
+	require.NoError(t, err)
+	require.NotEmpty(t, wireData)
+	require.Greater(t, wireData.Len(), 1024,
+		"test payload must exceed the buffer-pooling threshold or this test silently stops "+
+			"exercising the pool-backed mem.Buffer code path (see mem.IsBelowBufferPoolingThreshold)")
+
+	got := &client.QueryStreamResponse{}
+	require.NoError(t, codec.Unmarshal(wireData, got))
+	require.Len(t, got.Chunkseries, 1)
+	require.Len(t, got.Chunkseries[0].Chunks, 1)
+	require.Len(t, got.Chunkseries[0].Labels, 2)
+
+	chunkData := got.Chunkseries[0].Chunks[0].Data
+	labelValue := got.Chunkseries[0].Labels[1].Value
+	require.Equal(t, "instance-aliasing-probe-01", labelValue)
+
+	labelBytes := unsafeBytesFromString(labelValue)
+	chunkAliasesWire := false
+	labelAliasesWire := false
+	for _, b := range wireData {
+		wireSegment := b.ReadOnlyData()
+		if overlaps(chunkData, wireSegment) {
+			chunkAliasesWire = true
+		}
+		if overlaps(labelBytes, wireSegment) {
+			labelAliasesWire = true
+		}
+	}
+
+	assert.False(t, chunkAliasesWire,
+		"invariant broken: through the registered gRPC codec, Chunk.Data aliases a wire "+
+			"mem.Buffer segment -- this would mean a zero-copy/pooled decode path now exists "+
+			"and detachChunksFromBuffer (or equivalent) must be reinstated")
+	assert.True(t, labelAliasesWire,
+		"expected LabelAdapter.Value to alias a wire mem.Buffer segment via yoloString even "+
+			"through the registered codec; if false, re-verify FromLabelAdaptersToLabelsWithCopy "+
+			"is still necessary before considering it dead weight")
 }

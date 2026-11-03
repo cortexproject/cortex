@@ -13,18 +13,26 @@ The Cortex documentation is compiled into a website published at [cortexmetrics.
 The following initial setup is required only once:
 
 1. Install [Hugo](https://gohugo.io/) (**extended** version)
-   * Look for value of `HUGO_VERSION` in `build-image/Dockerfile`.
-1. Install [Node.js](https://nodejs.org/en/) `v14` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
+   * Look for value of `HUGO_VERSION` in `.github/workflows/web.yml`.
+1. Install [Node.js](https://nodejs.org/en/) `v26` or above (alternatively via [`nvm`](https://github.com/nvm-sh/nvm))
 1. Install required Node modules with:
+
+   ```bash
+   cd website && npm ci && cd -
    ```
-   cd website && npm install && cd -
-   ```
+
 1. Install [embedmd](https://github.com/campoy/embedmd) `v1.0.0`:
-   ```
+
+   ```bash
    go install github.com/campoy/embedmd@v1.0.0
    ```
-1. Run `make BUILD_IN_CONTAINER=false web-build`
 
+1. Run `web-pre.sh` script
+
+   ```bash
+   # must run from project root folder
+   ./tools/website/web-pre.sh
+   ```
 
 ## Run it
 
@@ -38,11 +46,12 @@ make web-serve
 Whenever you change the content of `docs/` or markdown files in the repository root `/` you should run:
 
 ```bash
-make BUILD_IN_CONTAINER=false web-pre
+# must run from project root folder
+./tools/website/web-pre.sh
 ```
 
 Whenever you change the config file or CLI flags in the Cortex code, you should rebuild the config file reference documentation:
 
 ```bash
-make BUILD_IN_CONTAINER=false doc web-pre
+make BUILD_IN_CONTAINER=false doc && ./tools/website/web-pre.sh
 ```

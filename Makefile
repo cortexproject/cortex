@@ -281,7 +281,7 @@ check-white-noise: clean-white-noise
 	@git diff --exit-code --quiet -- '*.md' || (echo "Please remove trailing whitespaces running 'make clean-white-noise'" && false)
 
 web-serve:
-	cd website && hugo --config config.toml --minify -v server
+	cd website && hugo --config config.toml --minify --logLevel debug server
 
 # Generate binaries for a Cortex release
 dist: dist/$(UPTODATE)

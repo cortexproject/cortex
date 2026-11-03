@@ -725,7 +725,7 @@ The `alertmanager_storage_config` configures the Cortex alertmanager storage bac
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem, configdb, local.
+# oss, filesystem, configdb, local.
 # CLI flag: -alertmanager-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -1055,6 +1055,24 @@ oci:
   # CLI flag: -alertmanager-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
 
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -alertmanager-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -alertmanager-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -alertmanager-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -alertmanager-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -alertmanager-storage.filesystem.dir
@@ -1097,7 +1115,7 @@ The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem.
+# oss, filesystem.
 # CLI flag: -blocks-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -1426,6 +1444,24 @@ oci:
   # The fixed interval in seconds to wait between request retry attempts.
   # CLI flag: -blocks-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
+
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -blocks-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -blocks-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -blocks-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -blocks-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
 
 filesystem:
   # Local filesystem storage directory.
@@ -6329,7 +6365,7 @@ The `ruler_storage_config` configures the Cortex ruler storage backend.
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem, configdb, local.
+# oss, filesystem, configdb, local.
 # CLI flag: -ruler-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -6659,6 +6695,24 @@ oci:
   # CLI flag: -ruler-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
 
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -ruler-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -ruler-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -ruler-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -ruler-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -ruler-storage.filesystem.dir
@@ -6709,7 +6763,7 @@ The `runtime_configuration_storage_config` configures the storage backend for th
 [file: <string> | default = ""]
 
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem.
+# oss, filesystem.
 # CLI flag: -runtime-config.backend
 [backend: <string> | default = "filesystem"]
 
@@ -7038,6 +7092,24 @@ oci:
   # The fixed interval in seconds to wait between request retry attempts.
   # CLI flag: -runtime-config.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
+
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -runtime-config.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -runtime-config.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -runtime-config.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -runtime-config.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
 
 filesystem:
   # Local filesystem storage directory.

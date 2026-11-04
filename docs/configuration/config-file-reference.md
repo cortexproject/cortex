@@ -6079,6 +6079,26 @@ ruler_client:
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
 
+notification_backoff:
+  # Minimum delay between notification retries. Only applies when
+  # -ruler.notification.backoff-retries is greater than 0.
+  # CLI flag: -ruler.notification.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay between notification retries. Only applies when
+  # -ruler.notification.backoff-retries is greater than 0.
+  # CLI flag: -ruler.notification.backoff-max-period
+  [max_period: <duration> | default = 1s]
+
+  # Maximum number of times to retry a notification that the Alertmanager failed
+  # to accept with a retriable error, which is a transport error or a 5xx
+  # response. A notification that is not retried is dropped and the alert is not
+  # delivered until the next evaluation of its rule group. Retries happen within
+  # -ruler.notification-timeout and delay the other notifications of the same
+  # tenant, so keep this number small. Set to 0 to disable the retries.
+  # CLI flag: -ruler.notification.backoff-retries
+  [max_retries: <int> | default = 0]
+
 alertmanager_client:
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.

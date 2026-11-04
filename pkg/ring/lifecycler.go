@@ -157,6 +157,17 @@ type Lifecycler struct {
 	zonesCount            int
 	zones                 []string
 
+	// Ownership of ring token positions by this instance. ownedTokens is the
+	// ring's full sorted token list and ownedPositions is parallel to it.
+	//
+	// These are recomputed only when the ring topology actually changes, tracked
+	// by ownedFingerprint. Once published they are never mutated in place, so
+	// readers may keep using a snapshot after releasing countersLock.
+	ownedTokens        []uint32
+	ownedPositions     []bool
+	ownedFingerprint   uint64
+	ownedFingerprintOK bool
+
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
 
@@ -283,7 +294,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 func (i *Lifecycler) checkRingHealthForReadiness(ctx context.Context) error {
 	// Ensure the instance holds some tokens.
-	if len(i.getTokens()) == 0 {
+	if len(i.GetTokens()) == 0 {
 		return fmt.Errorf("this instance owns no tokens")
 	}
 
@@ -363,10 +374,33 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state InstanceState) error
 	return <-errCh
 }
 
-func (i *Lifecycler) getTokens() Tokens {
+func (i *Lifecycler) GetTokens() Tokens {
 	i.stateMtx.RLock()
 	defer i.stateMtx.RUnlock()
 	return i.tokenFile.Tokens
+}
+
+// GetOwnedTokenPositions returns the ring's full sorted token list together with a
+// parallel bitmap of the token positions owned by this instance, meaning the
+// positions whose replica set includes this instance.
+//
+// A caller answers "do I own this series?" with
+// positions[SearchToken(tokens, key)], which is a binary search plus an array
+// index. Both slices are immutable once returned, so the caller may hold on to
+// them while classifying many series.
+//
+// The returned fingerprint changes if and only if ownership may have changed, so
+// callers can use it to decide whether to redo work derived from the bitmap
+// without having to compare the bitmap itself. It is zero before the ring has
+// been read.
+//
+// Returns nil, nil before the ring has been read for the first time. Callers must
+// treat that as "ownership unknown" rather than "owns nothing", because an
+// ingester which has not yet seen the ring still holds its series.
+func (i *Lifecycler) GetOwnedTokenPositions() (tokens []uint32, positions []bool, fingerprint uint64) {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+	return i.ownedTokens, i.ownedPositions, i.ownedFingerprint
 }
 
 func (i *Lifecycler) setTokens(tokens Tokens) {
@@ -938,7 +972,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 	sort.Sort(fromRing)
 
-	tokens := i.getTokens()
+	tokens := i.GetTokens()
 	sort.Sort(tokens)
 
 	if len(tokens) != len(fromRing) {
@@ -970,14 +1004,14 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
 		if !alreadyInRing {
-			myTokens = i.getTokens()
+			myTokens = i.GetTokens()
 		}
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
-		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
+		if needTokens == 0 && myTokens.Equals(i.GetTokens()) {
 			// Tokens have been verified. No need to change them.
 			state := i.GetState()
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), state, i.getRegisteredAt())
 			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
 			return ringDesc, true, nil
 		}
@@ -993,7 +1027,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 		i.setTokens(myTokens)
 
 		state := i.GetState()
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), state, i.getRegisteredAt())
 		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)
 
 		return ringDesc, true, nil
@@ -1023,7 +1057,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(i.logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
 			instanceDesc.Timestamp = time.Now().Unix()
 			instanceDesc.State = i.GetState()
@@ -1092,6 +1126,48 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 		}
 	}
 
+	// Recompute which ring token positions this instance owns, but only when the
+	// ring topology has actually changed. The walk is proportional to the total
+	// token count times the replication factor, which is far too expensive to
+	// repeat on every heartbeat, and heartbeats are by far the most common reason
+	// this function runs.
+	//
+	// This deliberately happens outside countersLock: HealthyInstancesCount is on
+	// the per-series ingestion path, and holding the lock across the walk would
+	// stall ingestion.
+	var (
+		ownedFingerprint uint64
+		ownedTokens      []uint32
+		ownedPositions   []bool
+		ownedRecomputed  bool
+	)
+
+	if ringDesc != nil {
+		ownedFingerprint = ownershipFingerprint(ringDesc)
+
+		i.countersLock.RLock()
+		ownedUnchanged := i.ownedFingerprintOK && i.ownedFingerprint == ownedFingerprint
+		i.countersLock.RUnlock()
+
+		if !ownedUnchanged {
+			var err error
+			ownedTokens, ownedPositions, err = OwnedTokenPositions(
+				ringDesc,
+				i.ID,
+				Write,
+				i.cfg.RingConfig.ReplicationFactor,
+				i.cfg.RingConfig.ZoneAwarenessEnabled,
+			)
+			if err != nil {
+				// Keep the previous ownership rather than publishing an empty
+				// bitmap, which would read as "owns nothing" and under-count.
+				level.Error(i.logger).Log("msg", "failed to compute owned ring token positions", "ring", i.RingName, "err", err)
+			} else {
+				ownedRecomputed = true
+			}
+		}
+	}
+
 	zones := make([]string, 0, len(zonesMap))
 	for z := range zonesMap {
 		zones = append(zones, z)
@@ -1104,6 +1180,12 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.healthyInstancesCount = healthyInstancesCount
 	i.zonesCount = len(zones)
 	i.zones = zones
+	if ownedRecomputed {
+		i.ownedTokens = ownedTokens
+		i.ownedPositions = ownedPositions
+		i.ownedFingerprint = ownedFingerprint
+		i.ownedFingerprintOK = true
+	}
 	i.countersLock.Unlock()
 }
 

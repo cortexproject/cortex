@@ -2309,6 +2309,13 @@ func elapsedRange(r time.Duration) (rangeStart, rangeEnd int64, age time.Duratio
 	return rangeStart, rangeEnd, age
 }
 
+// blockMetaForRange returns the meta of a block spanning [minTime, maxTime].
+func blockMetaForRange(id uint64, minTime, maxTime int64) *metadata.Meta {
+	return &metadata.Meta{
+		BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(id, nil), MinTime: minTime, MaxTime: maxTime},
+	}
+}
+
 func TestPartitionCompactionGrouper_CompactionDelayForRange(t *testing.T) {
 	const cleanupInterval = 15 * time.Minute
 	defaultDelay := defaultCompactionDelayCleanupIntervalMultiplier * cleanupInterval
@@ -2379,8 +2386,8 @@ func TestPartitionCompactionGrouper_GroupBlocksByRange_CompactionDelay(t *testin
 	// grouped is the delay applied to the 2h range.
 	rangeStart, rangeEnd, age := elapsedRange(2 * time.Hour)
 	blocks := []*metadata.Meta{
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(1, nil), MinTime: rangeStart, MaxTime: rangeEnd}},
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(2, nil), MinTime: rangeStart, MaxTime: rangeEnd}},
+		blockMetaForRange(1, rangeStart, rangeEnd),
+		blockMetaForRange(2, rangeStart, rangeEnd),
 	}
 
 	// The gate is rangeEnd < now-delay, so a delay shorter than the range age lets the group
@@ -2441,8 +2448,8 @@ func TestPartitionCompactionGrouper_GroupBlocksByRange_CompactionDelayOfNonFirst
 	// proving the 12h range does not read it.
 	rangeStart, rangeEnd, age := elapsedRange(12 * time.Hour)
 	blocks := []*metadata.Meta{
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(1, nil), MinTime: rangeStart, MaxTime: rangeStart + 2*H}},
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(2, nil), MinTime: rangeStart + 2*H, MaxTime: rangeStart + 4*H}},
+		blockMetaForRange(1, rangeStart, rangeStart+2*H),
+		blockMetaForRange(2, rangeStart+2*H, rangeStart+4*H),
 	}
 	blockingDelay := 365 * 24 * time.Hour
 
@@ -2487,8 +2494,8 @@ func TestPartitionCompactionGrouper_GroupBlocksByRange_CompactionDelayOfNonFirst
 func TestPartitionCompactionGrouper_GroupBlocksByRange_DefaultDelayFollowsCleanupInterval(t *testing.T) {
 	rangeStart, rangeEnd, age := elapsedRange(2 * time.Hour)
 	blocks := []*metadata.Meta{
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(1, nil), MinTime: rangeStart, MaxTime: rangeEnd}},
-		{BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(2, nil), MinTime: rangeStart, MaxTime: rangeEnd}},
+		blockMetaForRange(1, rangeStart, rangeEnd),
+		blockMetaForRange(2, rangeStart, rangeEnd),
 	}
 
 	// With no delay configured the gate must still be twice the cleanup interval, so a

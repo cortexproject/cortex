@@ -3756,6 +3756,14 @@
           "type": "array",
           "x-cli-flag": "compactor.block-ranges"
         },
+        "block_ranges_compaction_delay": {
+          "description": "Per compaction time range, the minimum age the end of a compaction group's time range must reach before the group becomes eligible for compaction. Positionally matched against -compactor.block-ranges: it must either be empty or have the same number of entries, and no entry may be negative. When empty, every range defaults to twice -compactor.cleanup-interval. This is a lower bound: a group only becomes eligible on a compaction run, so the effective wait can be up to -compactor.compaction-interval longer. Only used by the partitioning compaction strategy.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "compactor.block-ranges-compaction-delay"
+        },
         "block_sync_concurrency": {
           "default": 20,
           "description": "Number of Go routines to use when syncing block index and chunks files from the long term storage.",

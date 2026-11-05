@@ -92,6 +92,17 @@ compactor:
   # CLI flag: -compactor.block-ranges
   [block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
 
+  # Per compaction time range, the minimum age the end of a compaction group's
+  # time range must reach before the group becomes eligible for compaction.
+  # Positionally matched against -compactor.block-ranges: it must either be
+  # empty or have the same number of entries, and no entry may be negative. When
+  # empty, every range defaults to twice -compactor.cleanup-interval. This is a
+  # lower bound: a group only becomes eligible on a compaction run, so the
+  # effective wait can be up to -compactor.compaction-interval longer. Only used
+  # by the partitioning compaction strategy.
+  # CLI flag: -compactor.block-ranges-compaction-delay
+  [block_ranges_compaction_delay: <list of duration> | default = ]
+
   # Number of Go routines to use when syncing block index and chunks files from
   # the long term storage.
   # CLI flag: -compactor.block-sync-concurrency

@@ -117,6 +117,9 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.Cfg.API.ServerPrefix = t.Cfg.Server.PathPrefix
 	t.Cfg.API.LegacyHTTPPrefix = t.Cfg.HTTPPrefix
 
+	// Compute the list of enabled features from the root config.
+	t.Cfg.API.Features = cortexFeatures(t.Cfg)
+
 	a, err := api.New(t.Cfg.API, t.Cfg.Server, t.Server, util_log.Logger)
 	if err != nil {
 		return nil, err
@@ -126,6 +129,68 @@ func (t *Cortex) initAPI() (services.Service, error) {
 	t.API.RegisterAPI(t.Cfg.Server.PathPrefix, t.Cfg, newDefaultConfig())
 
 	return nil, nil
+}
+
+// cortexFeatures returns a Prometheus-compatible features map based on the given config.
+// The response format matches Prometheus's GET /api/v1/features endpoint, providing
+// clients like Grafana with accurate capability discovery.
+func cortexFeatures(cfg Config) map[string]map[string]bool {
+	features := make(map[string]map[string]bool)
+
+	experimentalFunctions := cfg.Querier.EnablePromQLExperimentalFunctions
+
+	// Build promql_functions from the vendored Prometheus parser.
+	promqlFunctions := make(map[string]bool, len(parser.Functions))
+	for name, fn := range parser.Functions {
+		if fn.Experimental {
+			promqlFunctions[name] = experimentalFunctions
+		} else {
+			promqlFunctions[name] = true
+		}
+	}
+	features["promql_functions"] = promqlFunctions
+
+	// PromQL language features supported by Cortex.
+	features["promql"] = map[string]bool{
+		"at_modifier":     true,
+		"negative_offset": true,
+		"offset":          true,
+		"subqueries":      true,
+		"bool":            true,
+		"by":              true,
+		"without":         true,
+		"on":              true,
+		"ignoring":        true,
+		"group_left":      true,
+		"group_right":     true,
+		"per_step_stats":  cfg.Querier.EnablePerStepStats,
+	}
+
+	// PromQL operators supported by Cortex.
+	features["promql_operators"] = map[string]bool{
+		"+": true, "-": true, "*": true, "/": true, "%": true, "^": true,
+		"==": true, "!=": true, ">": true, "<": true, ">=": true, "<=": true,
+		"=~": true, "!~": true, "@": true,
+		"and": true, "or": true, "unless": true,
+		"sum": true, "avg": true, "count": true, "min": true, "max": true,
+		"group": true, "stddev": true, "stdvar": true,
+		"topk": true, "bottomk": true, "count_values": true, "quantile": true,
+		"atan2": true,
+		// limitk and limit_ratio are experimental aggregators, gated by the same
+		// flag as experimental PromQL functions.
+		"limitk":      experimentalFunctions,
+		"limit_ratio": experimentalFunctions,
+	}
+
+	// API features relevant to Cortex as a Prometheus-compatible query backend.
+	features["api"] = map[string]bool{
+		"query_stats":        cfg.Querier.EnablePerStepStats,
+		"label_values_match": true,
+		"time_range_labels":  true,
+		"time_range_series":  true,
+	}
+
+	return features
 }
 
 func (t *Cortex) initServer() (services.Service, error) {

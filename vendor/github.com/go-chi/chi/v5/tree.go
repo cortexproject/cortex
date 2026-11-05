@@ -7,7 +7,9 @@ package chi
 import (
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,11 +27,17 @@ const (
 	mPATCH
 	mPOST
 	mPUT
+	mQUERY
 	mTRACE
 )
 
 var mALL = mCONNECT | mDELETE | mGET | mHEAD |
-	mOPTIONS | mPATCH | mPOST | mPUT | mTRACE
+	mOPTIONS | mPATCH | mPOST | mPUT | mQUERY | mTRACE
+
+// methodQuery is the HTTP QUERY method (RFC 10008), a safe, idempotent
+// method that conveys a request body. It is defined here until net/http
+// provides an equivalent constant, at which point this is a 1-1 swap.
+const methodQuery = "QUERY"
 
 var methodMap = map[string]methodTyp{
 	http.MethodConnect: mCONNECT,
@@ -40,6 +48,7 @@ var methodMap = map[string]methodTyp{
 	http.MethodPatch:   mPATCH,
 	http.MethodPost:    mPOST,
 	http.MethodPut:     mPUT,
+	methodQuery:        mQUERY,
 	http.MethodTrace:   mTRACE,
 }
 
@@ -52,6 +61,7 @@ var reverseMethodMap = map[methodTyp]string{
 	mPATCH:   http.MethodPatch,
 	mPOST:    http.MethodPost,
 	mPUT:     http.MethodPut,
+	mQUERY:   methodQuery,
 	mTRACE:   http.MethodTrace,
 }
 
@@ -469,7 +479,9 @@ func (n *node) findRoute(rctx *Context, method methodTyp, path string) *node {
 							if endpoints == mALL || endpoints == mSTUB {
 								continue
 							}
-							rctx.methodsAllowed = append(rctx.methodsAllowed, endpoints)
+							if !slices.Contains(rctx.methodsAllowed, endpoints) {
+								rctx.methodsAllowed = append(rctx.methodsAllowed, endpoints)
+							}
 						}
 
 						// flag that the routing context found a route, but not a corresponding
@@ -515,7 +527,9 @@ func (n *node) findRoute(rctx *Context, method methodTyp, path string) *node {
 					if endpoints == mALL || endpoints == mSTUB {
 						continue
 					}
-					rctx.methodsAllowed = append(rctx.methodsAllowed, endpoints)
+					if !slices.Contains(rctx.methodsAllowed, endpoints) {
+						rctx.methodsAllowed = append(rctx.methodsAllowed, endpoints)
+					}
 				}
 
 				// flag that the routing context found a route, but not a corresponding
@@ -620,8 +634,10 @@ func (n *node) routes() []Route {
 	rts := []Route{}
 
 	n.walk(func(eps endpoints, subroutes Routes) bool {
-		if eps[mSTUB] != nil && eps[mSTUB].handler != nil && subroutes == nil {
-			return false
+		// Hide Mount()'s stub handler, but not a real handler sharing its pattern.
+		var stubHandler http.Handler
+		if eps[mSTUB] != nil {
+			stubHandler = eps[mSTUB].handler
 		}
 
 		// Group methodHandlers by unique patterns
@@ -641,17 +657,27 @@ func (n *node) routes() []Route {
 
 		for p, mh := range pats {
 			hs := make(map[string]http.Handler)
+
+			// Walk() reads Handlers["*"] for With() middleware when recursing
+			// into a subroute, so keep it there even if it's also the stub.
 			if mh[mALL] != nil && mh[mALL].handler != nil {
-				hs["*"] = mh[mALL].handler
+				if subroutes != nil || !equalHandlers(mh[mALL].handler, stubHandler) {
+					hs["*"] = mh[mALL].handler
+				}
 			}
 
 			for mt, h := range mh {
-				if h.handler == nil {
+				if h.handler == nil || equalHandlers(h.handler, stubHandler) {
 					continue
 				}
 				if m, ok := reverseMethodMap[mt]; ok {
 					hs[m] = h.handler
 				}
+			}
+
+			// Keep subroute nodes so Walk() can recurse; a stub-only leaf has nothing to report.
+			if len(hs) == 0 && subroutes == nil {
+				continue
 			}
 
 			rt := Route{subroutes, hs, p}
@@ -662,6 +688,29 @@ func (n *node) routes() []Route {
 	})
 
 	return rts
+}
+
+// equalHandlers reports whether a and b are the same handler value. Handlers
+// are commonly funcs (e.g. http.HandlerFunc), and a direct == on those
+// panics at runtime, so funcs are compared by pointer instead.
+func equalHandlers(a, b http.Handler) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	av := reflect.ValueOf(a)
+	bv := reflect.ValueOf(b)
+	if av.Type() != bv.Type() {
+		return false
+	}
+
+	if av.Kind() == reflect.Func {
+		return av.Pointer() == bv.Pointer()
+	}
+	if av.Type().Comparable() {
+		return a == b
+	}
+	return false
 }
 
 func (n *node) walk(fn func(eps endpoints, subroutes Routes) bool) bool {
@@ -790,8 +839,8 @@ func (ns nodes) Less(i, j int) bool { return ns[i].label < ns[j].label }
 // tailSort pushes nodes with '/' as the tail to the end of the list for param nodes.
 // The list order determines the traversal order.
 func (ns nodes) tailSort() {
-	for i := len(ns) - 1; i >= 0; i-- {
-		if ns[i].typ > ntStatic && ns[i].tail == '/' {
+	for i, n := range slices.Backward(ns) {
+		if n.typ > ntStatic && n.tail == '/' {
 			ns.Swap(i, len(ns)-1)
 			return
 		}
@@ -836,11 +885,15 @@ func Walk(r Routes, walkFn WalkFunc) error {
 
 func walk(r Routes, walkFn WalkFunc, parentRoute string, parentMw ...func(http.Handler) http.Handler) error {
 	for _, route := range r.Routes() {
-		mws := make([]func(http.Handler) http.Handler, len(parentMw))
-		copy(mws, parentMw)
-		mws = append(mws, r.Middlewares()...)
+		mws := slices.Concat(parentMw, r.Middlewares())
 
 		if route.SubRoutes != nil {
+			if handler, ok := route.Handlers["*"]; ok {
+				if chain, ok := handler.(*ChainHandler); ok {
+					mws = append(mws, chain.Middlewares...)
+				}
+			}
+
 			if err := walk(route.SubRoutes, walkFn, parentRoute+route.Pattern, mws...); err != nil {
 				return err
 			}
@@ -854,7 +907,7 @@ func walk(r Routes, walkFn WalkFunc, parentRoute string, parentMw ...func(http.H
 			}
 
 			fullRoute := parentRoute + route.Pattern
-			fullRoute = strings.Replace(fullRoute, "/*/", "/", -1)
+			fullRoute = strings.ReplaceAll(fullRoute, "/*/", "/")
 
 			if chain, ok := handler.(*ChainHandler); ok {
 				if err := walkFn(method, fullRoute, chain.Endpoint, append(mws, chain.Middlewares...)...); err != nil {

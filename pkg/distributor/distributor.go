@@ -689,7 +689,7 @@ func (d *Distributor) checkSample(ctx context.Context, userID, cluster, replica 
 func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID string, skipLabelNameValidation bool, limits *validation.Limits) (cortexpb.PreallocTimeseries, validation.ValidationError) {
 	d.labelsHistogram.Observe(float64(len(ts.Labels)))
 
-	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme); err != nil {
+	if err := validation.ValidateLabels(d.validateMetrics, limits, userID, ts.Labels, skipLabelNameValidation, d.cfg.NameValidationScheme, len(ts.Samples), len(ts.Histograms)); err != nil {
 		return emptyPreallocSeries, err
 	}
 
@@ -698,7 +698,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		// Only alloc when data present
 		samples = make([]cortexpb.Sample, 0, len(ts.Samples))
 		for _, s := range ts.Samples {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, s.TimestampMs); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, s.TimestampMs, validation.SampleTypeFloat); err != nil {
 				return emptyPreallocSeries, err
 			}
 			samples = append(samples, s)
@@ -727,7 +727,7 @@ func (d *Distributor) validateSeries(ts cortexpb.PreallocTimeseries, userID stri
 		histograms = make([]cortexpb.WrappedHistogram, 0, len(ts.Histograms))
 		receivedBucketsObserver := d.receivedHistogramBuckets.WithLabelValues(userID)
 		for i, h := range ts.Histograms {
-			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs); err != nil {
+			if err := validation.ValidateSampleTimestamp(d.validateMetrics, limits, userID, ts.Labels, h.TimestampMs, validation.SampleTypeHistogram); err != nil {
 				return emptyPreallocSeries, err
 			}
 			receivedBucketsObserver.Observe(float64(h.BucketCount()))
@@ -833,7 +833,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 			}
 
 			if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
-				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(numFloatSamples + numHistogramSamples))
+				if numFloatSamples > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeFloat).Add(float64(numFloatSamples))
+				}
+				if numHistogramSamples > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeHistogram).Add(float64(numHistogramSamples))
+				}
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "%s", err.Error())
 			}
 			return nil, err
@@ -864,7 +869,12 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	totalSamples := validatedFloatSamples + validatedHistogramSamples
 	totalN := totalSamples + validatedExemplars + len(validatedMetadata)
 	if !d.ingestionRateLimiter.AllowN(now, userID, totalN) {
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID).Add(float64(totalSamples))
+		if validatedFloatSamples > 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID, validation.SampleTypeFloat).Add(float64(validatedFloatSamples))
+		}
+		if validatedHistogramSamples > 0 {
+			d.validateMetrics.DiscardedSamples.WithLabelValues(validation.RateLimited, userID, validation.SampleTypeHistogram).Add(float64(validatedHistogramSamples))
+		}
 		d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.RateLimited, userID).Add(float64(validatedExemplars))
 		d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.RateLimited, userID).Add(float64(len(validatedMetadata)))
 		// Return a 429 here to tell the client it is going too fast.
@@ -879,7 +889,7 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 	var nativeHistogramErr error
 
 	if !d.nativeHistogramIngestionRateLimiter.AllowN(now, userID, validatedHistogramSamples) {
-		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID).Add(float64(validatedHistogramSamples))
+		d.validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, userID, validation.SampleTypeHistogram).Add(float64(validatedHistogramSamples))
 		nativeHistogramErr = httpgrpc.Errorf(http.StatusTooManyRequests, "native histogram ingestion rate limit (%v) exceeded while adding %d native histogram samples", d.nativeHistogramIngestionRateLimiter.Limit(now, userID), validatedHistogramSamples)
 		validatedHistogramSamples = 0
 	} else {
@@ -1121,7 +1131,12 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 						d.dedupedSamples.WithLabelValues(userID, cluster).Add(float64(len(ts.Samples) + len(ts.Histograms)))
 					}
 					if errors.Is(err, ha.TooManyReplicaGroupsError{}) {
-						d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+						if len(ts.Samples) > 0 {
+							d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeFloat).Add(float64(len(ts.Samples)))
+						}
+						if len(ts.Histograms) > 0 {
+							d.validateMetrics.DiscardedSamples.WithLabelValues(validation.TooManyHAClusters, userID, validation.SampleTypeHistogram).Add(float64(len(ts.Histograms)))
+						}
 					}
 
 					continue
@@ -1145,10 +1160,20 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 			l, _ := relabel.Process(cortexpb.FromLabelAdaptersToLabels(ts.Labels), mrc...)
 			if l.Len() == 0 {
 				// all labels are gone, samples will be discarded
-				d.validateMetrics.DiscardedSamples.WithLabelValues(
-					validation.DroppedByRelabelConfiguration,
-					userID,
-				).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+				if len(ts.Samples) > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(
+						validation.DroppedByRelabelConfiguration,
+						userID,
+						validation.SampleTypeFloat,
+					).Add(float64(len(ts.Samples)))
+				}
+				if len(ts.Histograms) > 0 {
+					d.validateMetrics.DiscardedSamples.WithLabelValues(
+						validation.DroppedByRelabelConfiguration,
+						userID,
+						validation.SampleTypeHistogram,
+					).Add(float64(len(ts.Histograms)))
+				}
 
 				// all labels are gone, exemplars will be discarded
 				d.validateMetrics.DiscardedExemplars.WithLabelValues(
@@ -1173,12 +1198,16 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 
 		// Reject series with missing or empty metric name before removeEmptyLabels (which would strip __name__="").
 		if validationErr, reason := validation.ValidateMetricName(limits, ts.Labels, d.cfg.NameValidationScheme); reason != "" {
-			samplesCount := float64(len(ts.Samples) + len(ts.Histograms))
 			exemplarsCount := float64(len(ts.Exemplars))
 			if firstPartialErr == nil {
 				firstPartialErr = httpgrpc.Errorf(http.StatusBadRequest, "%s", validationErr.Error())
 			}
-			d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID).Add(samplesCount)
+			if len(ts.Samples) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, validation.SampleTypeFloat).Add(float64(len(ts.Samples)))
+			}
+			if len(ts.Histograms) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(reason, userID, validation.SampleTypeHistogram).Add(float64(len(ts.Histograms)))
+			}
 			d.validateMetrics.DiscardedExemplars.WithLabelValues(reason, userID).Add(exemplarsCount)
 			continue
 		}
@@ -1187,10 +1216,20 @@ func (d *Distributor) prepareSeriesKeys(ctx context.Context, req *cortexpb.Write
 		removeEmptyLabels(&ts.Labels)
 
 		if len(ts.Labels) == 0 {
-			d.validateMetrics.DiscardedSamples.WithLabelValues(
-				validation.DroppedByUserConfigurationOverride,
-				userID,
-			).Add(float64(len(ts.Samples) + len(ts.Histograms)))
+			if len(ts.Samples) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
+					validation.DroppedByUserConfigurationOverride,
+					userID,
+					validation.SampleTypeFloat,
+				).Add(float64(len(ts.Samples)))
+			}
+			if len(ts.Histograms) > 0 {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(
+					validation.DroppedByUserConfigurationOverride,
+					userID,
+					validation.SampleTypeHistogram,
+				).Add(float64(len(ts.Histograms)))
+			}
 
 			d.validateMetrics.DiscardedExemplars.WithLabelValues(
 				validation.DroppedByUserConfigurationOverride,

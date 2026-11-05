@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -242,6 +243,10 @@ func (c *Config) Validate(log log.Logger) error {
 		return err
 	}
 
+	if err := c.applyDeprecatedLimits(); err != nil {
+		return err
+	}
+
 	switch c.NameValidationScheme {
 	case model.LegacyValidation, model.UTF8Validation:
 	default:
@@ -327,6 +332,54 @@ func (c *Config) Validate(log log.Logger) error {
 
 func (c *Config) isModuleEnabled(m string) bool {
 	return slices.Contains(c.Target, m)
+}
+
+type deprecatedLimit struct {
+	oldName, newName string
+	old              time.Duration
+	limit            *model.Duration
+	def              model.Duration
+}
+
+// deprecatedLimits lists the settings that moved into the per-tenant limits in 1.22, with
+// their old location. The old one is kept so that 1.21 configs keep working.
+func (c *Config) deprecatedLimits() []deprecatedLimit {
+	defaults := validation.Limits{}
+	flagext.DefaultValues(&defaults)
+
+	return []deprecatedLimit{
+		{"querier.query_ingesters_within", "limits.query_ingesters_within", c.Querier.DeprecatedQueryIngestersWithin, &c.LimitsConfig.QueryIngestersWithin, defaults.QueryIngestersWithin},
+		{"querier.query_store_after", "limits.query_store_after", c.Querier.DeprecatedQueryStoreAfter, &c.LimitsConfig.QueryStoreAfter, defaults.QueryStoreAfter},
+		{"querier.shuffle_sharding_ingesters_lookback_period", "limits.shuffle_sharding_ingesters_lookback_period", c.Querier.DeprecatedShuffleShardingIngestersLookbackPeriod, &c.LimitsConfig.ShuffleShardingIngestersLookbackPeriod, defaults.ShuffleShardingIngestersLookbackPeriod},
+		{"distributor.ha_tracker.ha_tracker_failover_timeout", "limits.ha_tracker_failover_timeout", c.Distributor.HATrackerConfig.DeprecatedFailoverTimeout, &c.LimitsConfig.HATrackerFailoverTimeout, defaults.HATrackerFailoverTimeout},
+	}
+}
+
+// applyDeprecatedLimits copies each deprecated setting that is set into its limit, unless the
+// limit is set to a different value. It must run before the limits are validated and before
+// they become the defaults for the runtime config overrides.
+func (c *Config) applyDeprecatedLimits() error {
+	for _, d := range c.deprecatedLimits() {
+		switch {
+		case d.old == 0:
+		case *d.limit == d.def:
+			*d.limit = model.Duration(d.old)
+		case time.Duration(*d.limit) != d.old:
+			return fmt.Errorf("%s (%s) and the deprecated %s (%s) are both set: remove %s", d.newName, time.Duration(*d.limit), d.oldName, d.old, d.oldName)
+		}
+	}
+	return nil
+}
+
+// warnDeprecatedLimits logs each deprecated setting that is set. It is separate from
+// applyDeprecatedLimits because Validate runs before the logger is initialised.
+func (c *Config) warnDeprecatedLimits(logger log.Logger) {
+	for _, d := range c.deprecatedLimits() {
+		if d.old != 0 {
+			flagext.DeprecatedFlagsUsed.Inc()
+			level.Warn(logger).Log("msg", "running with DEPRECATED config "+d.oldName+", use "+d.newName+" instead, it will be removed in v1.24.0")
+		}
+	}
 }
 
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
@@ -441,6 +494,8 @@ func New(cfg Config) (*Cortex, error) {
 		}
 		os.Exit(0)
 	}
+
+	cfg.warnDeprecatedLimits(util_log.Logger)
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {

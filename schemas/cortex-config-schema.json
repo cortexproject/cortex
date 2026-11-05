@@ -6092,7 +6092,7 @@
         },
         "query_ingesters_within": {
           "default": "0s",
-          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.",
+          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Must be less than -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.",
           "type": "string",
           "x-cli-flag": "limits.query-ingesters-within",
           "x-format": "duration"

@@ -71,7 +71,7 @@ type Config struct {
 	// series is considered stale.
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
-	// Deprecated: moved to the per-tenant limits of the same name, and scheduled for removal
+	// These moved to the per-tenant limits of the same name, and are scheduled for removal
 	// in v1.24.0. Kept so that 1.21 configs still start. A non-zero value is applied as the
 	// default limit by cortex.Config.Validate.
 	DeprecatedQueryIngestersWithin                   time.Duration `yaml:"query_ingesters_within" doc:"hidden"`

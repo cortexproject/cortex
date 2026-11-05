@@ -126,6 +126,107 @@ func TestLifecycler_RenewTokens(t *testing.T) {
 	require.Equal(t, 51, diff)
 }
 
+// tokenRefusingGenerator never returns tokens, mimicking MinimizeSpreadTokenGenerator
+// declining to generate for every instance but the earliest registered one when several
+// instances in the same zone hold no tokens. autoJoin() always calls it with force=false.
+type tokenRefusingGenerator struct{}
+
+func (g *tokenRefusingGenerator) GenerateTokens(*Desc, string, string, int, bool) []uint32 {
+	return []uint32{}
+}
+
+func TestLifecycler_AutoJoinShouldNotChangeStateWhenTokenGenerationFails(t *testing.T) {
+	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+	var ringConfig Config
+	flagext.DefaultValues(&ringConfig)
+	ringConfig.KVStore.Mock = ringStore
+
+	lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+	l, err := NewLifecycler(lifecyclerConfig, &nopFlushTransferer{}, "ingester", ringKey, false, true, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	l.tg = &tokenRefusingGenerator{}
+
+	// autoJoin() must fail, because no tokens could be generated.
+	require.Error(t, l.autoJoin(context.Background(), ACTIVE, false))
+
+	// The instance must be left in PENDING. Were it moved to ACTIVE here, a concurrent
+	// heartbeat would persist a tokenless instance in ACTIVE and, on the next startup,
+	// initRing() would adopt that state from the ring. autoJoin() only runs while the
+	// instance is PENDING, so the instance would never acquire tokens again.
+	assert.Equal(t, PENDING, l.GetState())
+	assert.Empty(t, l.getTokens())
+}
+
+func TestLifecycler_InitRingShouldResetInstanceWithoutTokensToPending(t *testing.T) {
+	tests := map[string]struct {
+		ringState         InstanceState
+		ringTokens        []uint32
+		autoJoinOnStartup bool
+
+		// expectedState is the lifecycler state, which is what gates autoJoin().
+		expectedState  InstanceState
+		expectedTokens int
+		// expectedRingState is the state persisted back to the ring by initRing().
+		expectedRingState InstanceState
+	}{
+		// An instance owning no tokens cannot acquire any unless it is PENDING, whichever
+		// state the ring entry holds, so all of these must be reset.
+		"ACTIVE without tokens is reset to PENDING": {
+			ringState: ACTIVE, ringTokens: []uint32{},
+			expectedState: PENDING, expectedTokens: 0, expectedRingState: PENDING,
+		},
+		"READONLY without tokens is reset to PENDING": {
+			ringState: READONLY, ringTokens: []uint32{},
+			expectedState: PENDING, expectedTokens: 0, expectedRingState: PENDING,
+		},
+		"LEAVING without tokens is reset to PENDING": {
+			ringState: LEAVING, ringTokens: []uint32{},
+			expectedState: PENDING, expectedTokens: 0, expectedRingState: PENDING,
+		},
+		// An instance that kept its tokens must still follow the existing LEAVING
+		// recovery path and rejoin with the tokens it already owns. That path updates the
+		// lifecycler state and lets the next heartbeat persist it, so the ring entry is
+		// deliberately still LEAVING at this point.
+		"LEAVING with tokens keeps following the existing recovery path": {
+			ringState: LEAVING, ringTokens: []uint32{1, 2, 3}, autoJoinOnStartup: true,
+			expectedState: ACTIVE, expectedTokens: 3, expectedRingState: LEAVING,
+		},
+	}
+
+	for name, testData := range tests {
+		t.Run(name, func(t *testing.T) {
+			ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
+			t.Cleanup(func() { assert.NoError(t, closer.Close()) })
+
+			require.NoError(t, ringStore.CAS(context.Background(), ringKey, func(any) (any, bool, error) {
+				desc := NewDesc()
+				desc.AddIngester("ing1", "0.0.0.0:1", "zone1", testData.ringTokens, testData.ringState, time.Now())
+				return desc, true, nil
+			}))
+
+			var ringConfig Config
+			flagext.DefaultValues(&ringConfig)
+			ringConfig.KVStore.Mock = ringStore
+
+			lifecyclerConfig := testLifecyclerConfig(ringConfig, "ing1")
+			l, err := NewLifecycler(lifecyclerConfig, &nopFlushTransferer{}, "ingester", ringKey, testData.autoJoinOnStartup, true, log.NewNopLogger(), nil)
+			require.NoError(t, err)
+
+			_, err = l.initRing(context.Background())
+			require.NoError(t, err)
+
+			assert.Equal(t, testData.expectedState, l.GetState())
+			assert.Len(t, l.getTokens(), testData.expectedTokens)
+
+			desc, err := ringStore.Get(context.Background(), ringKey)
+			require.NoError(t, err)
+			assert.Equal(t, testData.expectedRingState, desc.(*Desc).Ingesters["ing1"].State)
+		})
+	}
+}
+
 func TestLifecycler_DefferedJoin(t *testing.T) {
 	ringStore, closer := consul.NewInMemoryClient(GetCodec(), log.NewNopLogger(), nil)
 	t.Cleanup(func() { assert.NoError(t, closer.Close()) })

@@ -1710,8 +1710,7 @@ artifacts, or OS packages for production deployments.&lt;/p&gt;
 &lt;/table&gt;
 &lt;p&gt;The CI and release pipelines build Cortex with &lt;code&gt;GOOS&lt;/code&gt; and &lt;code&gt;GOARCH&lt;/code&gt; targets
 matching these rows. Automated tests run against Linux &lt;code&gt;amd64&lt;/code&gt; and &lt;code&gt;arm64&lt;/code&gt;
-Cortex images.&lt;/p&gt;</description></item><item><title>UTF-8 support</title><link>/docs/guides/utf8-support/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/utf8-support/</guid><description>&lt;h1 id="utf-8-support"&gt;UTF-8 support&lt;/h1&gt;
-&lt;h2 id="why-enable-utf-8-support"&gt;Why enable UTF-8 support?&lt;/h2&gt;
+Cortex images.&lt;/p&gt;</description></item><item><title>UTF-8 support</title><link>/docs/guides/utf8-support/</link><pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate><guid>/docs/guides/utf8-support/</guid><description>&lt;h2 id="why-enable-utf-8-support"&gt;Why enable UTF-8 support?&lt;/h2&gt;
 &lt;p&gt;There are a number of reasons why UTF-8 support in Cortex is useful:&lt;/p&gt;
 &lt;ol&gt;
 &lt;li&gt;With Prometheus version &lt;a href="https://prometheus.io/docs/guides/utf8/"&gt;3.0&lt;/a&gt; UTF-8 support has been released for metric and label names. Thus, UTF-8 support improves the interoperability between Cortex and modern Prometheus ecosystems.&lt;/li&gt;

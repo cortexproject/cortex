@@ -2311,9 +2311,7 @@ func elapsedRange(r time.Duration) (rangeStart, rangeEnd int64, age time.Duratio
 
 // blockMetaForRange returns the meta of a block spanning [minTime, maxTime].
 func blockMetaForRange(id uint64, minTime, maxTime int64) *metadata.Meta {
-	return &metadata.Meta{
-		BlockMeta: tsdb.BlockMeta{ULID: ulid.MustNew(id, nil), MinTime: minTime, MaxTime: maxTime},
-	}
+	return &metadata.Meta{ULID: ulid.MustNew(id, nil), MinTime: minTime, MaxTime: maxTime}
 }
 
 func TestPartitionCompactionGrouper_CompactionDelayForRange(t *testing.T) {

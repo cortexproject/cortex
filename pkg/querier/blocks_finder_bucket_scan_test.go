@@ -28,6 +28,10 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
+// metaSyncerCacheDirName is the sub directory that block.NewMetaFetcher appends to the directory it
+// is given to cache its meta.json files.
+const metaSyncerCacheDirName = "meta-syncer"
+
 func TestBucketScanBlocksFinder_InitialScan(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -433,7 +437,7 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsDeletedUserFetcher(t *testing.
 	require.Equal(t, 1, len(s.fetchers))
 	s.fetchersMx.Unlock()
 
-	userCacheDir := filepath.Join(s.cfg.CacheDir, "user-1")
+	userCacheDir := filepath.Join(s.cfg.CacheDir, users.QuerierMetaCacheDirName, "user-1")
 	metaSyncerDir := filepath.Join(userCacheDir, metaSyncerCacheDirName)
 	require.DirExists(t, metaSyncerDir)
 
@@ -454,8 +458,7 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsDeletedUserFetcher(t *testing.
 	assert.Equal(t, 0, len(s.fetchers))
 	s.fetchersMx.Unlock()
 
-	// The fetcher's own meta-syncer cache must be removed; the now-empty parent dir is then
-	// removed on a best-effort basis.
+	// The whole per-tenant directory the fetcher cached its metas in must be removed.
 	assert.NoDirExists(t, metaSyncerDir)
 	assert.NoDirExists(t, userCacheDir)
 
@@ -586,33 +589,65 @@ func TestBucketScanBlocksFinder_PeriodicScanEvictsInactiveUserDespiteOtherTenant
 	assert.True(t, has2)
 }
 
-// TestBucketScanBlocksFinder_PeriodicScanPreservesNonMetaSyncerDataOnEviction guards the
-// single-binary safety property: CacheDir is the store-gateway's SyncDir, whose block data lives
-// under the same per-tenant directory, so evicting a tenant must remove only the fetcher's own
-// meta-syncer cache and never the sibling block data.
-func TestBucketScanBlocksFinder_PeriodicScanPreservesNonMetaSyncerDataOnEviction(t *testing.T) {
+// TestBucketScanBlocksFinder_PeriodicScanPreservesColocatedStoreGatewayCache guards the
+// single-binary safety property: the finder shares -blocks-storage.bucket-store.sync-dir with a
+// co-located store-gateway, which keeps syncing and serving tenants marked for deletion for as long
+// as their blocks are still in the bucket. The finder tracks active tenants only, so evicting a
+// tenant must not remove any on-disk state the store-gateway still considers live.
+func TestBucketScanBlocksFinder_PeriodicScanPreservesColocatedStoreGatewayCache(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	s, bucket, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
+	s, bkt, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
 
-	cortex_testutil.MockStorageBlock(t, bucket, "user-1", 10, 20)
+	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
 	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
 
-	metaSyncerDir := filepath.Join(s.cfg.CacheDir, "user-1", metaSyncerCacheDirName)
-	require.DirExists(t, metaSyncerDir)
+	// The finder caches its metas under its own root, not in the store-gateway's per-tenant dir.
+	require.DirExists(t, filepath.Join(s.cfg.CacheDir, users.QuerierMetaCacheDirName, "user-1", metaSyncerCacheDirName))
 
-	// Simulate a co-located store-gateway's block data under the same per-tenant directory.
+	// Simulate the on-disk state of a co-located store-gateway for the same tenant: its own
+	// metadata fetcher cache and a downloaded block.
+	sgMetaFile := filepath.Join(s.cfg.CacheDir, "user-1", metaSyncerCacheDirName, "01DTVP434PA9VFXSW2JKB3392D", "meta.json")
+	require.NoError(t, os.MkdirAll(filepath.Dir(sgMetaFile), 0o755))
+	require.NoError(t, os.WriteFile(sgMetaFile, []byte("{}"), 0o644))
 	sgBlockFile := filepath.Join(s.cfg.CacheDir, "user-1", "01DTVP434PA9VFXSW2JKB3392D", "index")
 	require.NoError(t, os.MkdirAll(filepath.Dir(sgBlockFile), 0o755))
 	require.NoError(t, os.WriteFile(sgBlockFile, []byte("block-data"), 0o644))
 
-	require.NoError(t, bucket.Delete(ctx, "user-1"))
+	// Mark the tenant for deletion: it leaves the finder's active set, while the store-gateway
+	// keeps it in its own sync set (active + deleting) until its blocks are gone.
+	require.NoError(t, users.WriteTenantDeletionMark(ctx, objstore.WithNoopInstr(bkt), "user-1", users.NewTenantDeletionMark(time.Now())))
 	require.NoError(t, s.scan(ctx))
 
-	// The fetcher's own meta-syncer cache is deleted...
-	assert.NoDirExists(t, metaSyncerDir)
-	// ...but the co-located store-gateway block data under the same per-tenant dir must survive.
+	// The finder released its own cache for the tenant it no longer tracks...
+	s.fetchersMx.Lock()
+	require.Empty(t, s.fetchers)
+	s.fetchersMx.Unlock()
+	assert.NoDirExists(t, filepath.Join(s.cfg.CacheDir, users.QuerierMetaCacheDirName, "user-1"))
+
+	// ...but the co-located store-gateway's cache for a tenant it still serves is untouched.
+	assert.FileExists(t, sgMetaFile)
 	assert.FileExists(t, sgBlockFile)
+}
+
+// TestBucketScanBlocksFinder_ScanDeletesMetaCacheDirsLeftByAPreviousProcess covers that the finder's
+// cache root is exclusive to it, so it can also reclaim the per-tenant directories left behind by a
+// previous process, e.g. for tenants deleted while this one was down.
+func TestBucketScanBlocksFinder_ScanDeletesMetaCacheDirsLeftByAPreviousProcess(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s, bkt, _, _ := prepareBucketScanBlocksFinder(t, prepareBucketScanBlocksFinderConfig())
+
+	cortex_testutil.MockStorageBlock(t, bkt, "user-1", 10, 20)
+
+	// The cache of a tenant this process never created a metadata fetcher for.
+	staleUserCacheDir := filepath.Join(s.cfg.CacheDir, users.QuerierMetaCacheDirName, "user-2")
+	require.NoError(t, os.MkdirAll(filepath.Join(staleUserCacheDir, metaSyncerCacheDirName, "01DTVP434PA9VFXSW2JKB3392D"), 0o755))
+
+	require.NoError(t, services.StartAndAwaitRunning(ctx, s))
+
+	assert.NoDirExists(t, staleUserCacheDir)
+	assert.DirExists(t, filepath.Join(s.cfg.CacheDir, users.QuerierMetaCacheDirName, "user-1", metaSyncerCacheDirName))
 }
 
 func TestBucketScanBlocksFinder_GetBlocks(t *testing.T) {

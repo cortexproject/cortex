@@ -5,8 +5,6 @@ weight: 70
 slug: utf8-support
 ---
 
-# UTF-8 support
-
 ## Why enable UTF-8 support?
 
 There are a number of reasons why UTF-8 support in Cortex is useful:

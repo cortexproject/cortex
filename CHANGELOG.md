@@ -103,6 +103,7 @@
 * [BUGFIX] Querier: Fix queryWithRetry and labelsWithRetry returning (nil, nil) on cancelled context by propagating ctx.Err(). #7370
 * [BUGFIX] Metrics Helper: Fix non-deterministic bucket order in merged histograms by sorting buckets after map iteration, matching Prometheus client library behavior. #7380
 * [BUGFIX] Distributor: Return HTTP 401 Unauthorized when tenant ID resolution fails in the Prometheus Remote Write 2.0 path. #7389
+* [BUGFIX] Distributor: Fix `MetricsForLabelMatchers` merging distinct series whose label-set fingerprints collide, by deduplicating results on the full label set instead of the fingerprint. #717
 * [BUGFIX] Packaging: Fix RPM and deb packages to install the binary to `/usr/bin`, install the systemd unit to the correct system path (`/usr/lib/systemd/system` for RPM, `/lib/systemd/system` for deb), and mark the sysconfig/default env file as a config file so it is not overwritten on upgrade. #7445
 * [BUGFIX] Compactor: Handle not-found and access-denied errors from `Attributes()` in bucket index updater, preventing a stale cached `Get()` from causing the entire cleanup cycle to fail when `meta.json` has been deleted from object storage. #7454
 * [BUGFIX] Compactor: Fix stale `cortex_bucket_index_last_successful_update_timestamp_seconds` metric not being cleaned up when tenant ownership changes due to ring rebalancing. This caused false alarms on bucket index update rate when a tenant moved between compactors. #7487

@@ -609,7 +609,7 @@ func (c *HATracker) CheckReplica(ctx context.Context, userID, replicaGroup, repl
 	err := c.checkKVStore(ctx, key, replica, userID, now)
 	c.kvCASCalls.WithLabelValues(userID, replicaGroup).Inc()
 	if err != nil {
-		// The callback within checkKVStore will return a ReplicasNotMatchError if the sample is being deduped,
+		// checkKVStore will return a ReplicasNotMatchError if the sample is being deduped,
 		// otherwise there may have been an actual error CAS'ing that we should log.
 		if !errors.Is(err, ReplicasNotMatchError{}) {
 			level.Error(c.logger).Log("msg", "rejecting sample", "err", err)
@@ -619,7 +619,10 @@ func (c *HATracker) CheckReplica(ctx context.Context, userID, replicaGroup, repl
 }
 
 func (c *HATracker) checkKVStore(ctx context.Context, key, replica, userID string, now time.Time) error {
-	return c.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
+	// A replica mismatch is a dedup decision, not a CAS failure: stop the CAS without an
+	// error, so it isn't tracked as failed, and report the decision to the caller afterwards.
+	var notMatchErr error
+	err := c.client.CAS(ctx, key, func(in any) (out any, retry bool, err error) {
 		if desc, ok := in.(*ReplicaDesc); ok && desc.DeletedAt == 0 {
 			// We don't need to CAS and update the timestamp in the KV store if the timestamp we've received
 			// this sample at is less than updateTimeout amount of time since the timestamp in the KV store.
@@ -630,7 +633,8 @@ func (c *HATracker) checkKVStore(ctx context.Context, key, replica, userID strin
 			// We shouldn't failover to accepting a new replica if the timestamp we've received this sample at
 			// is less than failover timeout amount of time since the timestamp in the KV store.
 			if desc.Replica != replica && now.Sub(timestamp.Time(desc.ReceivedAt)) < c.limits.HATrackerFailoverTimeout(userID) {
-				return nil, false, ReplicasNotMatchError{replica: replica, elected: desc.Replica}
+				notMatchErr = ReplicasNotMatchError{replica: replica, elected: desc.Replica}
+				return nil, false, nil
 			}
 		}
 
@@ -643,6 +647,10 @@ func (c *HATracker) checkKVStore(ctx context.Context, key, replica, userID strin
 			DeletedAt:  0,
 		}, true, nil
 	})
+	if err != nil {
+		return err
+	}
+	return notMatchErr
 }
 
 func (c *HATracker) Cfg() HATrackerConfig {

@@ -74,9 +74,9 @@ type Config struct {
 	// These moved to the per-tenant limits of the same name, and are scheduled for removal
 	// in v1.24.0. Kept so that 1.21 configs still start. A non-zero value is applied as the
 	// default limit by cortex.Config.Validate.
-	DeprecatedQueryIngestersWithin                   time.Duration `yaml:"query_ingesters_within" doc:"hidden"`
-	DeprecatedQueryStoreAfter                        time.Duration `yaml:"query_store_after" doc:"hidden"`
-	DeprecatedShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period" doc:"hidden"`
+	DeprecatedQueryIngestersWithin                   time.Duration `yaml:"query_ingesters_within,omitempty" doc:"hidden"`
+	DeprecatedQueryStoreAfter                        time.Duration `yaml:"query_store_after,omitempty" doc:"hidden"`
+	DeprecatedShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period,omitempty" doc:"hidden"`
 
 	// Blocks storage only.
 	StoreGatewayAddresses         string       `yaml:"store_gateway_addresses"`

@@ -423,7 +423,11 @@ func (c *Converter) convertUser(ctx context.Context, logger log.Logger, ring rin
 			continue
 		}
 
-		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.blockRanges) {
+		hasNoCompactMark := func() bool {
+			return cortex_parquet.ExistBlockNoCompact(ctx, uBucket, logger, b.ULID)
+		}
+
+		if !cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, time.Now().UnixMilli(), c.blockRanges, hasNoCompactMark) {
 			continue
 		}
 

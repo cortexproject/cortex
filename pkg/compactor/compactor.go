@@ -52,8 +52,10 @@ const (
 )
 
 var (
-	errInvalidBlockRanges = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
-	RingOp                = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
+	errInvalidBlockRanges                   = "compactor block range periods should be divisible by the previous one, but %s is not divisible by %s"
+	errInvalidBlockRangesCompactionDelayLen = "compactor block ranges compaction delay must have the same number of entries as compactor block ranges, but got %d and %d"
+	errNegativeBlockRangesCompactionDelay   = "compactor block ranges compaction delay cannot be negative, but got %s at position %d"
+	RingOp                                  = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 	supportedShardingStrategies              = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	errInvalidShardingStrategy               = errors.New("invalid sharding strategy")
@@ -255,6 +257,7 @@ type Limits interface {
 // Config holds the Compactor config.
 type Config struct {
 	BlockRanges                           cortex_tsdb.DurationList `yaml:"block_ranges"`
+	BlockRangesCompactionDelay            cortex_tsdb.DurationList `yaml:"block_ranges_compaction_delay"`
 	BlockSyncConcurrency                  int                      `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency                   int                      `yaml:"meta_sync_concurrency"`
 	ConsistencyDelay                      time.Duration            `yaml:"consistency_delay"`
@@ -317,6 +320,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.retryMaxBackoff = time.Minute
 
 	f.Var(&cfg.BlockRanges, "compactor.block-ranges", "List of compaction time ranges.")
+	f.Var(&cfg.BlockRangesCompactionDelay, "compactor.block-ranges-compaction-delay", "Per compaction time range, the minimum age the end of a compaction group's time range must reach before the group becomes eligible for compaction. Positionally matched against -compactor.block-ranges: it must either be empty or have the same number of entries, and no entry may be negative. When empty, every range defaults to twice -compactor.cleanup-interval. This is a lower bound: a group only becomes eligible on a compaction run, so the effective wait can be up to -compactor.compaction-interval longer. Only used by the partitioning compaction strategy.")
 	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 0, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.PartialUploadThresholdAge))
 	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of Go routines to use when syncing block index and chunks files from the long term storage.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
@@ -362,6 +366,19 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 	for i := 1; i < len(cfg.BlockRanges); i++ {
 		if cfg.BlockRanges[i]%cfg.BlockRanges[i-1] != 0 {
 			return errors.Errorf(errInvalidBlockRanges, cfg.BlockRanges[i].String(), cfg.BlockRanges[i-1].String())
+		}
+	}
+
+	// The compaction delay is matched to block ranges by position, so it must either be
+	// left empty (every range falls back to the default delay) or cover every range.
+	if len(cfg.BlockRangesCompactionDelay) > 0 {
+		if len(cfg.BlockRangesCompactionDelay) != len(cfg.BlockRanges) {
+			return errors.Errorf(errInvalidBlockRangesCompactionDelayLen, len(cfg.BlockRangesCompactionDelay), len(cfg.BlockRanges))
+		}
+		for i, delay := range cfg.BlockRangesCompactionDelay {
+			if delay < 0 {
+				return errors.Errorf(errNegativeBlockRangesCompactionDelay, delay.String(), i)
+			}
 		}
 	}
 

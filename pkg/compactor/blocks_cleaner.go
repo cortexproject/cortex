@@ -788,11 +788,16 @@ func (c *BlocksCleaner) cleanUser(ctx context.Context, userLogger log.Logger, us
 		}
 		level.Info(userLogger).Log("msg", "finish writing new index", "duration", time.Since(begin), "duration_ms", time.Since(begin).Milliseconds())
 	}
-	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), blocksMarkedForNoCompaction)
+
+	noCompactMarkCheckFunc := func(blockID ulid.ULID) bool {
+		return cortex_parquet.ExistBlockNoCompact(ctx, userBucket, userLogger, blockID)
+	}
+
+	c.updateBucketMetrics(userID, parquetEnabled, idx, float64(len(partials)), blocksMarkedForNoCompaction, noCompactMarkCheckFunc)
 	return nil
 }
 
-func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials float64, blocksMarkedForNoCompaction map[ulid.ULID]struct{}) {
+func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, idx *bucketindex.Index, partials float64, blocksMarkedForNoCompaction map[ulid.ULID]struct{}, noCompactMarkCheckFunc func(ulid.ULID) bool) {
 	c.tenantBlocks.WithLabelValues(userID).Set(float64(len(idx.Blocks)))
 	c.tenantBlocksMarkedForDelete.WithLabelValues(userID).Set(float64(len(idx.BlockDeletionMarks)))
 	c.tenantBlocksMarkedForNoCompaction.WithLabelValues(userID).Set(float64(len(blocksMarkedForNoCompaction)))
@@ -802,8 +807,10 @@ func (c *BlocksCleaner) updateBucketMetrics(userID string, parquetEnabled bool, 
 	if parquetEnabled {
 		c.tenantParquetBlocks.WithLabelValues(userID).Set(float64(len(idx.ParquetBlocks())))
 		remainingBlocksToConvert := 0
+		now := time.Now().UnixMilli()
 		for _, b := range idx.NonParquetBlocks() {
-			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, c.cfg.BlockRanges) {
+			hasNoCompactMark := func() bool { return noCompactMarkCheckFunc(b.ID) }
+			if cortex_parquet.ShouldConvertBlockToParquet(b.MinTime, b.MaxTime, now, c.cfg.BlockRanges, hasNoCompactMark) {
 				remainingBlocksToConvert++
 			}
 		}

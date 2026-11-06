@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -100,6 +101,8 @@ type Config struct {
 	HTTPPrefix           string                 `yaml:"http_prefix"`
 	NameValidationScheme model.ValidationScheme `yaml:"name_validation_scheme"`
 	yamlRootNodeStates   map[string]yamlRootNodeState
+	yamlKeys             map[string]bool // dotted paths of the keys set in the YAML file
+	cliFlags             map[string]bool // names of the flags set on the command line
 
 	ResourceMonitor configs.ResourceMonitor `yaml:"resource_monitor"`
 
@@ -168,6 +171,41 @@ func (c *Config) SetYAMLRootNodeStates(buf []byte) error {
 	}
 
 	return nil
+}
+
+// SetYAMLKeys records the dotted path of every key set in the YAML config file, so that
+// validation can tell a setting the file sets from one left at its default.
+func (c *Config) SetYAMLKeys(buf []byte) error {
+	var root map[any]any
+	if err := yaml.Unmarshal(buf, &root); err != nil {
+		return err
+	}
+
+	c.yamlKeys = map[string]bool{}
+	var walk func(prefix string, node map[any]any)
+	walk = func(prefix string, node map[any]any) {
+		for key, value := range node {
+			name, ok := key.(string)
+			if !ok {
+				continue
+			}
+			c.yamlKeys[prefix+name] = true
+			if child, ok := value.(map[any]any); ok {
+				walk(prefix+name+".", child)
+			}
+		}
+	}
+	walk("", root)
+	return nil
+}
+
+// SetCommandLineFlags records the flags set on the command line, so that validation can give
+// them precedence over the YAML config file. Call it after fs has been parsed.
+func (c *Config) SetCommandLineFlags(fs *flag.FlagSet) {
+	c.cliFlags = map[string]bool{}
+	fs.Visit(func(f *flag.Flag) {
+		c.cliFlags[f.Name] = true
+	})
 }
 
 func isEmptyYAMLRootNode(value any) bool {
@@ -239,6 +277,10 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 // doesn't pass
 func (c *Config) Validate(log log.Logger) error {
 	if err := c.validateYAMLEmptyNodes(); err != nil {
+		return err
+	}
+
+	if err := c.applyDeprecatedLimits(); err != nil {
 		return err
 	}
 
@@ -327,6 +369,75 @@ func (c *Config) Validate(log log.Logger) error {
 
 func (c *Config) isModuleEnabled(m string) bool {
 	return slices.Contains(c.Target, m)
+}
+
+type deprecatedLimit struct {
+	oldName, newName string // YAML paths
+	oldFlag, newFlag string // CLI flag names; oldFlag is empty when the flag name did not change
+	old              time.Duration
+	limit            *model.Duration
+	def              model.Duration
+}
+
+// deprecatedLimits lists the settings that moved into the per-tenant limits in 1.22, with
+// their old location. The old one is kept so that 1.21 configs keep working.
+func (c *Config) deprecatedLimits() []deprecatedLimit {
+	defaults := validation.Limits{}
+	flagext.DefaultValues(&defaults)
+
+	return []deprecatedLimit{
+		{"querier.query_ingesters_within", "limits.query_ingesters_within", "querier.query-ingesters-within", "limits.query-ingesters-within", c.Querier.DeprecatedQueryIngestersWithin, &c.LimitsConfig.QueryIngestersWithin, defaults.QueryIngestersWithin},
+		{"querier.query_store_after", "limits.query_store_after", "querier.query-store-after", "limits.query-store-after", c.Querier.DeprecatedQueryStoreAfter, &c.LimitsConfig.QueryStoreAfter, defaults.QueryStoreAfter},
+		{"querier.shuffle_sharding_ingesters_lookback_period", "limits.shuffle_sharding_ingesters_lookback_period", "querier.shuffle-sharding-ingesters-lookback-period", "limits.shuffle-sharding-ingesters-lookback-period", c.Querier.DeprecatedShuffleShardingIngestersLookbackPeriod, &c.LimitsConfig.ShuffleShardingIngestersLookbackPeriod, defaults.ShuffleShardingIngestersLookbackPeriod},
+		{"distributor.ha_tracker.ha_tracker_failover_timeout", "limits.ha_tracker_failover_timeout", "", "distributor.ha-tracker.failover-timeout", c.Distributor.HATrackerConfig.DeprecatedFailoverTimeout, &c.LimitsConfig.HATrackerFailoverTimeout, defaults.HATrackerFailoverTimeout},
+	}
+}
+
+// sources reports where the deprecated and the new setting were set. Without the sources
+// recorded by SetYAMLKeys and SetCommandLineFlags, as when the config is built in code, a
+// setting counts as set when it is not at its default value.
+func (c *Config) sources(d deprecatedLimit) (oldCLI, oldYAML, newCLI, newYAML bool) {
+	if c.yamlKeys == nil && c.cliFlags == nil {
+		return false, d.old != 0, false, *d.limit != d.def
+	}
+	return d.oldFlag != "" && c.cliFlags[d.oldFlag], c.yamlKeys[d.oldName], c.cliFlags[d.newFlag], c.yamlKeys[d.newName]
+}
+
+// applyDeprecatedLimits copies each deprecated setting that is set into its limit, with the
+// precedence that CLI flags have over the YAML file: a setting on the command line wins over
+// one in the file, whichever name each uses. Within one source, the old and the new name
+// must agree. It must run before the limits are validated and before they become the
+// defaults for the runtime config overrides.
+func (c *Config) applyDeprecatedLimits() error {
+	for _, d := range c.deprecatedLimits() {
+		oldCLI, oldYAML, newCLI, newYAML := c.sources(d)
+
+		switch {
+		case oldCLI && newCLI, !oldCLI && !newCLI && oldYAML && newYAML:
+			if time.Duration(*d.limit) != d.old {
+				oldName, newName := d.oldName, d.newName
+				if oldCLI {
+					oldName, newName = "-"+d.oldFlag, "-"+d.newFlag
+				}
+				return fmt.Errorf("%s (%s) and the deprecated %s (%s) are both set: remove %s", newName, time.Duration(*d.limit), oldName, d.old, oldName)
+			}
+		case newCLI:
+		case oldCLI, oldYAML && !newYAML:
+			*d.limit = model.Duration(d.old)
+		}
+	}
+	return nil
+}
+
+// warnDeprecatedLimits logs each deprecated setting that is set. It is separate from
+// applyDeprecatedLimits because Validate runs before the logger is initialised.
+func (c *Config) warnDeprecatedLimits(logger log.Logger) {
+	for _, d := range c.deprecatedLimits() {
+		if oldCLI, oldYAML, _, _ := c.sources(d); oldCLI || oldYAML {
+			flagext.DeprecatedFlagsUsed.Inc()
+			level.Warn(logger).Log("msg", "running with DEPRECATED config "+d.oldName+", use "+d.newName+" instead, it will be removed in v1.24.0")
+		}
+	}
 }
 
 // validateYAMLEmptyNodes ensure that no empty node has been specified in the YAML config file.
@@ -441,6 +552,8 @@ func New(cfg Config) (*Cortex, error) {
 		}
 		os.Exit(0)
 	}
+
+	cfg.warnDeprecatedLimits(util_log.Logger)
 
 	// Swap out the default resolver to support multiple tenant IDs separated by a '|'
 	if cfg.TenantFederation.Enabled {

@@ -3747,6 +3747,12 @@
           "type": "number",
           "x-cli-flag": "compactor.block-files-concurrency"
         },
+        "block_merge_fan_in": {
+          "default": 0,
+          "description": "Number of per-block series sets merged per subtree during compaction. Each subtree advances in its own goroutine, so a group of blocks larger than this value no longer issues every index read from a single goroutine. Only affects partitioning compaction. 0 disables it and keeps one flat merge over all blocks. Useful range is 32 to 128; lower values create more goroutines without adding disk concurrency.",
+          "type": "number",
+          "x-cli-flag": "compactor.block-merge-fan-in"
+        },
         "block_ranges": {
           "default": "2h0m0s,12h0m0s,24h0m0s",
           "description": "List of compaction time ranges.",

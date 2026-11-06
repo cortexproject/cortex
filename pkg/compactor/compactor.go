@@ -59,6 +59,7 @@ var (
 
 	supportedShardingStrategies              = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	errInvalidShardingStrategy               = errors.New("invalid sharding strategy")
+	errInvalidBlockMergeFanIn                = errors.New("invalid block merge fan-in, the value must not be negative")
 	errInvalidTenantShardSize                = errors.New("invalid tenant shard size, the value must be greater than 0")
 	supportedCompactionStrategies            = []string{util.CompactionStrategyDefault, util.CompactionStrategyPartitioning}
 	errInvalidCompactionStrategy             = errors.New("invalid compaction strategy")
@@ -173,16 +174,17 @@ var (
 		return NewPartitionCompactionBlockDeletableChecker()
 	}
 
-	DefaultCompactionLifecycleCallbackFactory = func(_ context.Context, _ objstore.InstrumentedBucket, _ log.Logger, _ int, _ string, _ string, _ *compactorMetrics) compact.CompactionLifecycleCallback {
+	DefaultCompactionLifecycleCallbackFactory = func(_ context.Context, _ objstore.InstrumentedBucket, _ log.Logger, _ int, _ int, _ string, _ string, _ *compactorMetrics) compact.CompactionLifecycleCallback {
 		return compact.DefaultCompactionLifecycleCallback{}
 	}
 
-	ShardedCompactionLifecycleCallbackFactory = func(ctx context.Context, userBucket objstore.InstrumentedBucket, logger log.Logger, metaSyncConcurrency int, compactDir string, userID string, compactorMetrics *compactorMetrics) compact.CompactionLifecycleCallback {
+	ShardedCompactionLifecycleCallbackFactory = func(ctx context.Context, userBucket objstore.InstrumentedBucket, logger log.Logger, metaSyncConcurrency int, blockMergeFanIn int, compactDir string, userID string, compactorMetrics *compactorMetrics) compact.CompactionLifecycleCallback {
 		return NewShardedCompactionLifecycleCallback(
 			ctx,
 			userBucket,
 			logger,
 			metaSyncConcurrency,
+			blockMergeFanIn,
 			compactDir,
 			userID,
 			compactorMetrics,
@@ -236,6 +238,7 @@ type CompactionLifecycleCallbackFactory func(
 	userBucket objstore.InstrumentedBucket,
 	logger log.Logger,
 	metaSyncConcurrency int,
+	blockMergeFanIn int,
 	compactDir string,
 	userID string,
 	compactorMetrics *compactorMetrics,
@@ -260,6 +263,7 @@ type Config struct {
 	BlockRangesCompactionDelay            cortex_tsdb.DurationList `yaml:"block_ranges_compaction_delay"`
 	BlockSyncConcurrency                  int                      `yaml:"block_sync_concurrency"`
 	MetaSyncConcurrency                   int                      `yaml:"meta_sync_concurrency"`
+	BlockMergeFanIn                       int                      `yaml:"block_merge_fan_in"`
 	ConsistencyDelay                      time.Duration            `yaml:"consistency_delay"`
 	DataDir                               string                   `yaml:"data_dir"`
 	CompactionInterval                    time.Duration            `yaml:"compaction_interval"`
@@ -324,6 +328,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.ConsistencyDelay, "compactor.consistency-delay", 0, fmt.Sprintf("Minimum age of fresh (non-compacted) blocks before they are being processed. Malformed blocks older than the maximum of consistency-delay and %s will be removed.", compact.PartialUploadThresholdAge))
 	f.IntVar(&cfg.BlockSyncConcurrency, "compactor.block-sync-concurrency", 20, "Number of Go routines to use when syncing block index and chunks files from the long term storage.")
 	f.IntVar(&cfg.MetaSyncConcurrency, "compactor.meta-sync-concurrency", 20, "Number of Go routines to use when syncing block meta files from the long term storage.")
+	f.IntVar(&cfg.BlockMergeFanIn, "compactor.block-merge-fan-in", 0, "Number of per-block series sets merged per subtree during compaction. Each subtree advances in its own goroutine, so a group of blocks larger than this value no longer issues every index read from a single goroutine. Only affects partitioning compaction. 0 disables it and keeps one flat merge over all blocks. Useful range is 32 to 128; lower values create more goroutines without adding disk concurrency.")
 	f.StringVar(&cfg.DataDir, "compactor.data-dir", "./data", "Data directory in which to cache blocks and process compactions")
 	f.DurationVar(&cfg.CompactionInterval, "compactor.compaction-interval", time.Hour, "The frequency at which the compaction runs")
 	f.IntVar(&cfg.CompactionRetries, "compactor.compaction-retries", 3, "How many times to retry a failed compaction within a single compaction run.")
@@ -380,6 +385,10 @@ func (cfg *Config) Validate(limits validation.Limits) error {
 				return errors.Errorf(errNegativeBlockRangesCompactionDelay, delay.String(), i)
 			}
 		}
+	}
+
+	if cfg.BlockMergeFanIn < 0 {
+		return errInvalidBlockMergeFanIn
 	}
 
 	// Make sure a valid sharding strategy is being used
@@ -1114,7 +1123,7 @@ func (c *Compactor) compactUser(ctx context.Context, userID string) error {
 		c.blocksPlannerFactory(currentCtx, bucket, ulogger, c.compactorCfg, noCompactMarkerFilter, c.ringLifecycler, userID, c.blockVisitMarkerReadFailed, c.blockVisitMarkerWriteFailed, c.compactorMetrics, ignoreDeletionMarkFilter),
 		c.blocksCompactor,
 		c.blockDeletableCheckerFactory(currentCtx, bucket, ulogger),
-		c.compactionLifecycleCallbackFactory(currentCtx, bucket, ulogger, c.compactorCfg.MetaSyncConcurrency, c.compactDirForUser(userID), userID, c.compactorMetrics),
+		c.compactionLifecycleCallbackFactory(currentCtx, bucket, ulogger, c.compactorCfg.MetaSyncConcurrency, c.compactorCfg.BlockMergeFanIn, c.compactDirForUser(userID), userID, c.compactorMetrics),
 		c.compactDirForUser(userID),
 		bucket,
 		c.compactorCfg.CompactionConcurrency,

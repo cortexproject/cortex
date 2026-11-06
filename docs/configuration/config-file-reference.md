@@ -3124,6 +3124,15 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.meta-sync-concurrency
 [meta_sync_concurrency: <int> | default = 20]
 
+# Number of per-block series sets merged per subtree during compaction. Each
+# subtree advances in its own goroutine, so a group of blocks larger than this
+# value no longer issues every index read from a single goroutine. Only affects
+# partitioning compaction. 0 disables it and keeps one flat merge over all
+# blocks. Useful range is 32 to 128; lower values create more goroutines without
+# adding disk concurrency.
+# CLI flag: -compactor.block-merge-fan-in
+[block_merge_fan_in: <int> | default = 0]
+
 # Minimum age of fresh (non-compacted) blocks before they are being processed.
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
 # be removed.

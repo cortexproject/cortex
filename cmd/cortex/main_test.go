@@ -62,6 +62,12 @@ func TestFlagParsing(t *testing.T) {
 			stdoutMessage: "target: distributor\n",
 		},
 
+		"new flag on the command line overrides the deprecated YAML field, as in 1.21": {
+			yaml:          "distributor:\n  ha_tracker:\n    ha_tracker_failover_timeout: 45s",
+			arguments:     []string{"-distributor.ha-tracker.failover-timeout=30s"},
+			stdoutMessage: "ha_tracker_failover_timeout: 30s\n",
+		},
+
 		"user visible module listing": {
 			arguments:      []string{"-modules"},
 			stdoutMessage:  "ingester *\n",

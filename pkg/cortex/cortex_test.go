@@ -21,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"gopkg.in/yaml.v2"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -283,6 +284,136 @@ func TestConfigValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfigValidation_DeprecatedLimits(t *testing.T) {
+	// The CLI flags and YAML fields that moved into the limits in 1.22 must keep working.
+	for _, tc := range []struct {
+		name          string
+		args          []string
+		yaml          string
+		expectedError string
+		check         func(t *testing.T, cfg *Config)
+	}{
+		{
+			name: "old querier YAML fields set the default limits",
+			yaml: "querier:\n  query_ingesters_within: 13h\n  query_store_after: 12h\n  shuffle_sharding_ingesters_lookback_period: 13h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(13*time.Hour), cfg.LimitsConfig.QueryIngestersWithin)
+				assert.Equal(t, model.Duration(12*time.Hour), cfg.LimitsConfig.QueryStoreAfter)
+				assert.Equal(t, model.Duration(13*time.Hour), cfg.LimitsConfig.ShuffleShardingIngestersLookbackPeriod)
+			},
+		},
+		{
+			name: "old querier CLI flags set the default limits",
+			args: []string{"-querier.query-ingesters-within=13h", "-querier.query-store-after=12h", "-querier.shuffle-sharding-ingesters-lookback-period=13h"},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(13*time.Hour), cfg.LimitsConfig.QueryIngestersWithin)
+				assert.Equal(t, model.Duration(12*time.Hour), cfg.LimitsConfig.QueryStoreAfter)
+				assert.Equal(t, model.Duration(13*time.Hour), cfg.LimitsConfig.ShuffleShardingIngestersLookbackPeriod)
+			},
+		},
+		{
+			name: "old HA tracker YAML field sets the default limit",
+			yaml: "distributor:\n  ha_tracker:\n    ha_tracker_failover_timeout: 45s\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(45*time.Second), cfg.LimitsConfig.HATrackerFailoverTimeout)
+			},
+		},
+		{
+			name: "old and new set to the same value",
+			yaml: "querier:\n  query_store_after: 12h\nlimits:\n  query_store_after: 12h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(12*time.Hour), cfg.LimitsConfig.QueryStoreAfter)
+			},
+		},
+		{
+			name:          "old and new set to different values",
+			yaml:          "querier:\n  query_store_after: 12h\nlimits:\n  query_store_after: 6h\n",
+			expectedError: "limits.query_store_after (6h0m0s) and the deprecated querier.query_store_after (12h0m0s) are both set: remove querier.query_store_after",
+		},
+		{
+			name:          "old HA tracker YAML field and the new one set to different values",
+			yaml:          "distributor:\n  ha_tracker:\n    ha_tracker_failover_timeout: 45s\nlimits:\n  ha_tracker_failover_timeout: 1m\n",
+			expectedError: "limits.ha_tracker_failover_timeout (1m0s) and the deprecated distributor.ha_tracker.ha_tracker_failover_timeout (45s) are both set: remove distributor.ha_tracker.ha_tracker_failover_timeout",
+		},
+		{
+			name: "a new flag on the command line wins over the old YAML field, even at its default value",
+			args: []string{"-distributor.ha-tracker.failover-timeout=30s"},
+			yaml: "distributor:\n  ha_tracker:\n    ha_tracker_failover_timeout: 45s\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(30*time.Second), cfg.LimitsConfig.HATrackerFailoverTimeout)
+			},
+		},
+		{
+			name: "a new querier flag on the command line wins over the old YAML field, even at its default value",
+			args: []string{"-limits.query-store-after=0"},
+			yaml: "querier:\n  query_store_after: 12h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(0), cfg.LimitsConfig.QueryStoreAfter)
+			},
+		},
+		{
+			name: "an old flag on the command line wins over the new YAML field",
+			args: []string{"-querier.query-store-after=12h"},
+			yaml: "limits:\n  query_ingesters_within: 13h\n  query_store_after: 6h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(12*time.Hour), cfg.LimitsConfig.QueryStoreAfter)
+			},
+		},
+		{
+			name:          "old and new flags on the command line set to different values",
+			args:          []string{"-querier.query-store-after=12h", "-limits.query-store-after=6h"},
+			expectedError: "-limits.query-store-after (6h0m0s) and the deprecated -querier.query-store-after (12h0m0s) are both set: remove -querier.query-store-after",
+		},
+		{
+			name: "old HA tracker YAML field and the new one set to the same value",
+			yaml: "distributor:\n  ha_tracker:\n    ha_tracker_failover_timeout: 45s\nlimits:\n  ha_tracker_failover_timeout: 45s\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(45*time.Second), cfg.LimitsConfig.HATrackerFailoverTimeout)
+			},
+		},
+		{
+			name:          "old fields are validated like the new ones",
+			yaml:          "querier:\n  query_ingesters_within: 12h\n  query_store_after: 12h\n",
+			expectedError: "tenant default: query_store_after (12h0m0s) must be less than query_ingesters_within (12h0m0s)",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Load the config the way cmd/cortex does: defaults, then the YAML file, then the
+			// command line on top.
+			cfg := &Config{}
+			fs := flag.NewFlagSet("", flag.PanicOnError)
+			cfg.RegisterFlags(fs)
+			require.NoError(t, cfg.SetYAMLKeys([]byte(tc.yaml)))
+			require.NoError(t, yaml.UnmarshalStrict([]byte(tc.yaml), cfg))
+			require.NoError(t, fs.Parse(tc.args))
+			cfg.SetCommandLineFlags(fs)
+
+			err := cfg.Validate(nil)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				return
+			}
+			require.NoError(t, err)
+			tc.check(t, cfg)
+		})
+	}
+}
+
+func TestConfigValidation_DeprecatedLimitsWithoutSources(t *testing.T) {
+	// A config built in code has no recorded sources, so a setting counts as set when it is
+	// not at its default value.
+	cfg := newDefaultConfig()
+	cfg.Querier.DeprecatedQueryStoreAfter = 12 * time.Hour
+	cfg.LimitsConfig.QueryIngestersWithin = model.Duration(13 * time.Hour)
+	require.NoError(t, cfg.Validate(nil))
+	assert.Equal(t, model.Duration(12*time.Hour), cfg.LimitsConfig.QueryStoreAfter)
+
+	cfg = newDefaultConfig()
+	cfg.Querier.DeprecatedQueryStoreAfter = 12 * time.Hour
+	cfg.LimitsConfig.QueryStoreAfter = model.Duration(6 * time.Hour)
+	require.ErrorContains(t, cfg.Validate(nil), "are both set: remove querier.query_store_after")
 }
 
 func TestGrpcAuthMiddleware(t *testing.T) {

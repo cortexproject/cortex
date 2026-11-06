@@ -71,6 +71,13 @@ type Config struct {
 	// series is considered stale.
 	LookbackDelta time.Duration `yaml:"lookback_delta"`
 
+	// These moved to the per-tenant limits of the same name, and are scheduled for removal
+	// in v1.24.0. Kept so that 1.21 configs still start. A non-zero value is applied as the
+	// default limit by cortex.Config.Validate.
+	DeprecatedQueryIngestersWithin                   time.Duration `yaml:"query_ingesters_within,omitempty" doc:"hidden"`
+	DeprecatedQueryStoreAfter                        time.Duration `yaml:"query_store_after,omitempty" doc:"hidden"`
+	DeprecatedShuffleShardingIngestersLookbackPeriod time.Duration `yaml:"shuffle_sharding_ingesters_lookback_period,omitempty" doc:"hidden"`
+
 	// Blocks storage only.
 	StoreGatewayAddresses         string       `yaml:"store_gateway_addresses"`
 	StoreGatewayClient            ClientConfig `yaml:"store_gateway_client"`
@@ -144,6 +151,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Int64Var(&cfg.StoreGatewaySeriesBatchSize, "querier.store-gateway-series-batch-size", 1, "[Experimental] The maximum number of series to be batched in a single gRPC response message from Store Gateways. A value of 0 or 1 disables batching.")
 	f.IntVar(&cfg.IngesterQueryMaxAttempts, "querier.ingester-query-max-attempts", 1, "The maximum number of times we attempt fetching data from ingesters for retryable errors (ex. partial data returned).")
 	f.DurationVar(&cfg.LookbackDelta, "querier.lookback-delta", 5*time.Minute, "Time since the last sample after which a time series is considered stale and ignored by expression evaluations.")
+	f.DurationVar(&cfg.DeprecatedQueryIngestersWithin, "querier.query-ingesters-within", 0, "Deprecated (use -limits.query-ingesters-within instead) and will be removed in v1.24.0.")
+	f.DurationVar(&cfg.DeprecatedQueryStoreAfter, "querier.query-store-after", 0, "Deprecated (use -limits.query-store-after instead) and will be removed in v1.24.0.")
+	f.DurationVar(&cfg.DeprecatedShuffleShardingIngestersLookbackPeriod, "querier.shuffle-sharding-ingesters-lookback-period", 0, "Deprecated (use -limits.shuffle-sharding-ingesters-lookback-period instead) and will be removed in v1.24.0.")
 	f.Int64Var(&cfg.MaxSubQuerySteps, "querier.max-subquery-steps", 0, "Max number of steps allowed for every subquery expression in query. Number of steps is calculated using subquery range / step. A value > 0 enables it.")
 	f.BoolVar(&cfg.IgnoreMaxQueryLength, "querier.ignore-max-query-length", false, "If enabled, ignore max query length check at Querier select method. Users can choose to ignore it since the validation can be done before Querier evaluation like at Query Frontend or Ruler.")
 	f.BoolVar(&cfg.EnablePromQLExperimentalFunctions, "querier.enable-promql-experimental-functions", false, "[Experimental] If true, experimental promQL functions are enabled.")

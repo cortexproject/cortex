@@ -40,6 +40,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/encoding"
 	"github.com/cortexproject/cortex/pkg/cortexpb"
+	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
 	"github.com/cortexproject/cortex/pkg/storage/tsdb/bucketindex"
 	"github.com/cortexproject/cortex/pkg/storegateway"
 	"github.com/cortexproject/cortex/pkg/storegateway/storegatewaypb"
@@ -1584,7 +1585,7 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 		},
 		"query with projection hints": {
 			finderResult: bucketindex.Blocks{
-				&bucketindex.Block{ID: block1},
+				&bucketindex.Block{ID: block1, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion2}},
 			},
 			storeSetResponses: []any{
 				map[BlocksStoreClient][]ulid.ULID{
@@ -1607,6 +1608,38 @@ func TestBlocksStoreQuerier_Select(t *testing.T) {
 					lbls: labels.New(metricNameLabel),
 					values: []valueResult{
 						{t: minT, v: 1},
+					},
+				},
+			},
+		},
+		"query with projection hints resets them for every store-gateway when any block is parquet v1": {
+			finderResult: bucketindex.Blocks{
+				&bucketindex.Block{ID: block1, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion2}},
+				&bucketindex.Block{ID: block2, Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion1}},
+			},
+			storeSetResponses: []any{
+				map[BlocksStoreClient][]ulid.ULID{
+					&storeGatewayClientMock{remoteAddr: "1.1.1.1", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.FromStrings(metricNameLabel.Name, metricNameLabel.Value, series1Label.Name, series1Label.Value), []cortexpb.Sample{{Value: 1, TimestampMs: minT}}, nil, nil),
+						mockHintsResponse(block1),
+					}}: {block1},
+					&storeGatewayClientMock{remoteAddr: "2.2.2.2", mockedSeriesResponses: []*storepb.SeriesResponse{
+						mockSeriesResponse(labels.FromStrings(metricNameLabel.Name, metricNameLabel.Value, series1Label.Name, series1Label.Value), []cortexpb.Sample{{Value: 1, TimestampMs: minT}, {Value: 2, TimestampMs: minT + 1}}, nil, nil),
+						mockHintsResponse(block2),
+					}}: {block2},
+				},
+			},
+			limits:             &blocksStoreLimitsMock{},
+			queryLimiter:       noOpQueryLimiter,
+			projectionLabels:   []string{"job", "instance"},
+			projectionInclude:  true,
+			expectedQueryHints: &storepb.QueryHints{},
+			expectedSeries: []seriesResult{
+				{
+					lbls: labels.New(metricNameLabel, series1Label),
+					values: []valueResult{
+						{t: minT, v: 1},
+						{t: minT + 1, v: 2},
 					},
 				},
 			},
@@ -3217,6 +3250,63 @@ func TestBlocksStoreQuerier_QueryStoreAfterBoundary(t *testing.T) {
 				assert.Equal(t, testData.expectedMinT, finder.Calls[0].Arguments.Get(2), testData.description)
 				assert.Equal(t, testData.expectedMaxT, finder.Calls[0].Arguments.Get(3), testData.description)
 			}
+		})
+	}
+}
+
+func TestStoreGatewaySelectHints(t *testing.T) {
+	v1Block := &bucketindex.Block{ID: ulid.MustNew(1, nil), Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion1}}
+	v2Block := &bucketindex.Block{ID: ulid.MustNew(2, nil), Parquet: &cortex_parquet.ConverterMarkMeta{Version: cortex_parquet.ParquetConverterMarkVersion2}}
+	tsdbBlock := &bucketindex.Block{ID: ulid.MustNew(3, nil)}
+
+	tests := map[string]struct {
+		hints              *storage.SelectHints
+		blocks             bucketindex.Blocks
+		expectedInclude    bool
+		expectedProjection []string
+	}{
+		"nil hints": {
+			blocks: bucketindex.Blocks{v1Block},
+		},
+		"projection not included": {
+			hints:  &storage.SelectHints{ProjectionLabels: []string{"job"}},
+			blocks: bucketindex.Blocks{v1Block},
+		},
+		"all blocks are parquet v2": {
+			hints:              &storage.SelectHints{ProjectionInclude: true, ProjectionLabels: []string{"job"}},
+			blocks:             bucketindex.Blocks{v2Block, v2Block},
+			expectedInclude:    true,
+			expectedProjection: []string{"job"},
+		},
+		"one block is parquet v1": {
+			hints:  &storage.SelectHints{ProjectionInclude: true, ProjectionLabels: []string{"job"}},
+			blocks: bucketindex.Blocks{v2Block, v1Block},
+		},
+		"one block is not converted to parquet": {
+			hints:  &storage.SelectHints{ProjectionInclude: true, ProjectionLabels: []string{"job"}},
+			blocks: bucketindex.Blocks{v2Block, tsdbBlock},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			var orig storage.SelectHints
+			if testData.hints != nil {
+				orig = *testData.hints
+			}
+
+			actual := storeGatewaySelectHints(testData.hints, testData.blocks)
+			if testData.hints == nil {
+				require.Nil(t, actual)
+				return
+			}
+
+			assert.Equal(t, testData.expectedInclude, actual.ProjectionInclude)
+			if testData.hints.ProjectionInclude {
+				assert.Equal(t, testData.expectedProjection, actual.ProjectionLabels)
+			}
+			// The caller's hints must never be modified.
+			assert.Equal(t, orig, *testData.hints)
 		})
 	}
 }

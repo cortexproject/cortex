@@ -353,10 +353,7 @@ func TestConverter_ShouldConvertNoCompactMarkBlocks(t *testing.T) {
 
 	ctx := context.Background()
 
-	lbls := labels.Labels{labels.Label{
-		Name:  "__name__",
-		Value: "test",
-	}}
+	lbls := labels.FromStrings("__name__", "test")
 
 	blocks := []ulid.ULID{}
 	numBlocks := 2

@@ -4761,8 +4761,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum lookback duration for querying data from ingesters. Queries for data
 # older than this will only query the long-term storage. This is a per-tenant
-# limit that can be overridden in the runtime configuration. Should be less than
-# or equal to close-idle-tsdb-timeout.
+# limit that can be overridden in the runtime configuration. Must be less than
+# -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.
 # CLI flag: -limits.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 

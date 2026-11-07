@@ -131,6 +131,8 @@ func main() {
 		return
 	}
 
+	cfg.SetCommandLineFlags(flag.CommandLine)
+
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	err = cfg.Validate(util_log.Logger)
@@ -260,6 +262,11 @@ func LoadConfig(filename string, expandENV bool, cfg *cortex.Config) error {
 	}
 
 	err = cfg.SetYAMLRootNodeStates(buf)
+	if err != nil {
+		return errors.Wrap(err, "Error parsing config file")
+	}
+
+	err = cfg.SetYAMLKeys(buf)
 	if err != nil {
 		return errors.Wrap(err, "Error parsing config file")
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 )
 
 // testSample is a float-only chunks.Sample; the package's own implementation is

@@ -88,14 +88,14 @@ func collect(t *testing.T, set storage.ChunkSeriesSet) []collectedSeries {
 // series to the compactor.
 func buildSets(setCount, seriesCount int) []storage.ChunkSeriesSet {
 	perSet := make([][]storage.ChunkSeries, setCount)
-	for i := 0; i < seriesCount; i++ {
+	for i := range seriesCount {
 		lbls := labels.FromStrings(labels.MetricName, "test_metric", "series", fmt.Sprintf("%03d", i))
 		for _, offset := range []int{0, 1, 3} {
 			set := (i + offset) % setCount
 			samples := make([]chunks.Sample, 0, 12)
 			start := int64(offset) * 40
-			for k := int64(0); k < 12; k++ {
-				ts := start + k*10
+			for k := range 12 {
+				ts := start + int64(k)*10
 				samples = append(samples, testSample{t: ts, v: float64(ts) * 1.5})
 			}
 			perSet[set] = append(perSet[set], storage.NewListChunkSeriesFromSamples(lbls, samples))

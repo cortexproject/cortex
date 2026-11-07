@@ -46,6 +46,7 @@ func RemoteReadHandler(q storage.Queryable, logger log.Logger) http.Handler {
 					errors <- err
 					return
 				}
+				defer querier.Close()
 
 				params := &storage.SelectHints{
 					Start: int64(from),

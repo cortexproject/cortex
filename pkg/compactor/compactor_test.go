@@ -2556,6 +2556,7 @@ func TestCompactor_UserIndexUpdateLoop(t *testing.T) {
 
 	// Start the compactor service
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), compactor))
+	defer services.StopAndAwaitTerminated(context.Background(), compactor) //nolint:errcheck
 
 	// Wait for the user index file to be created
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

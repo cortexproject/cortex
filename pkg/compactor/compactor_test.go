@@ -145,6 +145,53 @@ func TestConfig_Validate(t *testing.T) {
 			initLimits: func(_ *validation.Limits) {},
 			expected:   errInvalidTenantShardSize.Error(),
 		},
+		"should pass with an empty block ranges compaction delay": {
+			setup: func(cfg *Config) {
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   "",
+		},
+		"should pass with a block ranges compaction delay entry per block range": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{2 * time.Hour, 150 * time.Minute, 30 * time.Minute}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   "",
+		},
+		"should pass with a zero block ranges compaction delay entry": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{0, 0, 0}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   "",
+		},
+		"should fail with fewer block ranges compaction delay entries than block ranges": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{2 * time.Hour}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf(errInvalidBlockRangesCompactionDelayLen, 1, 3).Error(),
+		},
+		"should fail with more block ranges compaction delay entries than block ranges": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour}
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{2 * time.Hour, 150 * time.Minute, 30 * time.Minute}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf(errInvalidBlockRangesCompactionDelayLen, 3, 2).Error(),
+		},
+		"should fail with a negative block ranges compaction delay entry": {
+			setup: func(cfg *Config) {
+				cfg.BlockRanges = cortex_tsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+				cfg.BlockRangesCompactionDelay = cortex_tsdb.DurationList{2 * time.Hour, -1 * time.Minute, 30 * time.Minute}
+			},
+			initLimits: func(_ *validation.Limits) {},
+			expected:   errors.Errorf(errNegativeBlockRangesCompactionDelay, (-1 * time.Minute).String(), 1).Error(),
+		},
 	}
 
 	for testName, testData := range tests {

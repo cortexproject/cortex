@@ -46,7 +46,9 @@ func NewServerService(serv *server.Server, servicesToWaitFor func() []services.S
 		serv.Shutdown()
 
 		// if not closed yet, wait until server stops.
-		<-serverDone
+		if err := <-serverDone; err != nil {
+			level.Warn(util_log.Logger).Log("msg", "server stopped with error", "err", err)
+		}
 		level.Info(util_log.Logger).Log("msg", "server stopped")
 		return nil
 	}

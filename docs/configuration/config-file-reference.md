@@ -3103,6 +3103,17 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.block-ranges
 [block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
 
+# Per compaction time range, the minimum age the end of a compaction group's
+# time range must reach before the group becomes eligible for compaction.
+# Positionally matched against -compactor.block-ranges: it must either be empty
+# or have the same number of entries, and no entry may be negative. When empty,
+# every range defaults to twice -compactor.cleanup-interval. This is a lower
+# bound: a group only becomes eligible on a compaction run, so the effective
+# wait can be up to -compactor.compaction-interval longer. Only used by the
+# partitioning compaction strategy.
+# CLI flag: -compactor.block-ranges-compaction-delay
+[block_ranges_compaction_delay: <list of duration> | default = ]
+
 # Number of Go routines to use when syncing block index and chunks files from
 # the long term storage.
 # CLI flag: -compactor.block-sync-concurrency
@@ -3112,6 +3123,15 @@ The `compactor_config` configures the compactor for the blocks storage.
 # storage.
 # CLI flag: -compactor.meta-sync-concurrency
 [meta_sync_concurrency: <int> | default = 20]
+
+# Number of per-block series sets merged per subtree during compaction. Each
+# subtree advances in its own goroutine, so a group of blocks larger than this
+# value no longer issues every index read from a single goroutine. Only affects
+# partitioning compaction. 0 disables it and keeps one flat merge over all
+# blocks. Useful range is 32 to 128; lower values create more goroutines without
+# adding disk concurrency.
+# CLI flag: -compactor.block-merge-fan-in
+[block_merge_fan_in: <int> | default = 0]
 
 # Minimum age of fresh (non-compacted) blocks before they are being processed.
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
@@ -4805,8 +4825,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum lookback duration for querying data from ingesters. Queries for data
 # older than this will only query the long-term storage. This is a per-tenant
-# limit that can be overridden in the runtime configuration. Should be less than
-# or equal to close-idle-tsdb-timeout.
+# limit that can be overridden in the runtime configuration. Must be less than
+# -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.
 # CLI flag: -limits.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 

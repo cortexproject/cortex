@@ -41,6 +41,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -60,6 +61,7 @@ var (
 	errInvalidTenantShardSize     = errors.New("invalid tenant shard size, the value must be greater than 0")
 	errInvalidMaxConcurrentEvals  = errors.New("invalid max concurrent evals, the value must be greater than 0")
 	errInvalidQueryResponseFormat = errors.New("invalid query response format")
+	errInvalidNotificationRetries = errors.New("invalid notification backoff retries, the value must not be negative")
 )
 
 const (
@@ -142,6 +144,11 @@ type Config struct {
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
+	// Retries of the notifications that failed with a retriable error. Unlike
+	// everywhere else in Cortex, MaxRetries set to 0 disables the retries instead
+	// of making them infinite, so that the default does not change the behaviour
+	// of the ruler.
+	NotificationBackoff backoff.Config `yaml:"notification_backoff"`
 	// Client configs for interacting with the Alertmanager
 	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
@@ -222,6 +229,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 		return errInvalidQueryResponseFormat
 	}
 
+	if cfg.NotificationBackoff.MaxRetries < 0 {
+		return errInvalidNotificationRetries
+	}
+
 	if err := cfg.ThanosEngine.Validate(); err != nil {
 		return err
 	}
@@ -260,6 +271,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.IntVar(&cfg.NotificationBackoff.MaxRetries, "ruler.notification.backoff-retries", 0, "Maximum number of times to retry a notification that the Alertmanager failed to accept with a retriable error, which is a transport error or a 5xx response. A notification that is not retried is dropped and the alert is not delivered until the next evaluation of its rule group. Retries happen within -ruler.notification-timeout and delay the other notifications of the same tenant, so keep this number small. Set to 0 to disable the retries.")
+	f.DurationVar(&cfg.NotificationBackoff.MinBackoff, "ruler.notification.backoff-min-period", 100*time.Millisecond, "Minimum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.")
+	f.DurationVar(&cfg.NotificationBackoff.MaxBackoff, "ruler.notification.backoff-max-period", 1*time.Second, "Maximum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")

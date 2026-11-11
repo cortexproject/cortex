@@ -28,8 +28,13 @@ import (
 	"github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
+
+// maxNotificationErrorMessageLength is the number of characters of the Alertmanager
+// response body kept in the error logged for a notification it did not accept.
+const maxNotificationErrorMessageLength = 150
 
 type DefaultMultiTenantManager struct {
 	cfg             Config
@@ -64,6 +69,7 @@ type DefaultMultiTenantManager struct {
 	lastReloadSuccessful          *prometheus.GaugeVec
 	lastReloadSuccessfulTimestamp *prometheus.GaugeVec
 	configUpdatesTotal            *prometheus.CounterVec
+	notificationRetriesTotal      *prometheus.CounterVec
 	registry                      prometheus.Registerer
 	logger                        log.Logger
 
@@ -137,6 +143,11 @@ func NewDefaultMultiTenantManager(cfg Config, limits RulesLimits, managerFactory
 			Name:      "ruler_config_updates_total",
 			Help:      "Total number of config updates triggered by a user",
 		}, []string{"user"}),
+		notificationRetriesTotal: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "cortex",
+			Name:      "ruler_notification_retries_total",
+			Help:      "Total number of notifications to the Alertmanager retried after a retriable failure.",
+		}, []string{"user"}),
 		registry:               reg,
 		logger:                 logger,
 		ruleGroupIterationFunc: defaultRuleGroupIterationFunc,
@@ -184,6 +195,7 @@ func (r *DefaultMultiTenantManager) SyncRuleGroups(ctx context.Context, ruleGrou
 			r.lastReloadSuccessful.DeleteLabelValues(userID)
 			r.lastReloadSuccessfulTimestamp.DeleteLabelValues(userID)
 			r.configUpdatesTotal.DeleteLabelValues(userID)
+			r.notificationRetriesTotal.DeleteLabelValues(userID)
 			r.userManagerMetrics.RemoveUserRegistry(userID)
 			if r.ruleEvalMetrics != nil {
 				r.ruleEvalMetrics.deletePerUserMetrics(userID)
@@ -420,6 +432,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 	}
 
 	logger := log.With(r.logger, "user", userID)
+	notificationRetries := r.notificationRetriesTotal.WithLabelValues(userID)
 
 	n = newRulerNotifier(&notifier.Options{
 		QueueCapacity: r.cfg.NotificationQueueCapacity,
@@ -437,25 +450,7 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 			defer sp.Finish()
 			ctx = ot.ContextWithSpan(ctx, sp)
 			_ = ot.GlobalTracer().Inject(sp.Context(), ot.HTTPHeaders, ot.HTTPHeadersCarrier(req.Header))
-			resp, err := ctxhttp.Do(ctx, client, req)
-			if err != nil {
-				level.Error(logger).Log("msg", "error occurred while sending alerts", "error", err)
-				return resp, err
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode/100 != 2 {
-				bodyBytes, err := io.ReadAll(resp.Body)
-				if err != nil {
-					level.Error(logger).Log("msg", "error reading response body", "error", err, "response code", resp.StatusCode)
-					return resp, err
-				}
-				customErrorMessage := string(bodyBytes)
-				if len(customErrorMessage) >= 150 {
-					customErrorMessage = customErrorMessage[:150]
-				}
-				level.Error(logger).Log("msg", "error occurred sending notification", "error", customErrorMessage, "response code", resp.StatusCode)
-			}
-			return resp, err
+			return sendNotification(ctx, client, req, r.cfg.NotificationBackoff, notificationRetries, logger)
 		},
 	}, r.cfg.NameValidationScheme, logger, userManagerRegistry, r.notifiersDiscoveryMetrics)
 
@@ -468,6 +463,108 @@ func (r *DefaultMultiTenantManager) getOrCreateNotifier(userID string, userManag
 
 	r.notifiers[userID] = n
 	return n.notifier, nil
+}
+
+// sendNotification sends the alerts of a tenant to one Alertmanager, retrying
+// the failures that another attempt may recover from.
+//
+// The Prometheus notifier does not retry: it logs the error returned here and
+// moves on to the next batch, so a notification failing once is never delivered
+// again until the rule group is evaluated again. Two failures recover on a
+// second attempt, and both are routine when the ruler keeps connections alive:
+// the Alertmanager closing an idle connection just as it is reused, and an
+// Alertmanager replying 503 because it is shutting down while the connection is
+// still pinned to it.
+//
+// Retries are disabled unless backoffCfg.MaxRetries is greater than 0, and are
+// always bounded by the deadline of ctx, which carries the notification timeout.
+func sendNotification(ctx context.Context, client *http.Client, req *http.Request, backoffCfg backoff.Config, retries prometheus.Counter, logger log.Logger) (*http.Response, error) {
+	// A MaxRetries of 0 means infinite retries to backoff.Backoff, so the retries
+	// have to be skipped here instead of relying on Ongoing() to stop them.
+	var retry *backoff.Backoff
+	if backoffCfg.MaxRetries > 0 {
+		retry = backoff.New(ctx, backoffCfg)
+	}
+
+	for {
+		resp, retriable, err := doNotification(ctx, client, req, logger)
+		if !retriable || retry == nil || !retry.Ongoing() {
+			return resp, err
+		}
+
+		retryReq, rewindErr := rewindNotificationRequest(req)
+		if rewindErr != nil {
+			level.Error(logger).Log("msg", "notification cannot be retried", "error", rewindErr)
+			return resp, err
+		}
+		req = retryReq
+
+		// The connection the failed attempt used may be half-closed by the
+		// Alertmanager, or pinned to an instance that is refusing the alerts while it
+		// shuts down. Dropping the idle connections of this tenant's client makes the
+		// next attempt open a new one, which is also how it reaches another instance
+		// when the Alertmanagers are behind a load balancer.
+		client.CloseIdleConnections()
+
+		retries.Inc()
+		retry.Wait()
+	}
+}
+
+// doNotification sends the alerts once and reports whether the failure, if any,
+// is worth another attempt. The response body is always closed, so the returned
+// response carries the status and nothing else.
+func doNotification(ctx context.Context, client *http.Client, req *http.Request, logger log.Logger) (*http.Response, bool, error) {
+	resp, err := ctxhttp.Do(ctx, client, req)
+	if err != nil {
+		level.Error(logger).Log("msg", "error occurred while sending alerts", "error", err)
+		return resp, isRetriableNotificationError(err), err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			level.Error(logger).Log("msg", "error reading response body", "error", err, "response code", resp.StatusCode)
+			return resp, false, err
+		}
+		customErrorMessage := string(bodyBytes)
+		if len(customErrorMessage) >= maxNotificationErrorMessageLength {
+			customErrorMessage = customErrorMessage[:maxNotificationErrorMessageLength]
+		}
+		level.Error(logger).Log("msg", "error occurred sending notification", "error", customErrorMessage, "response code", resp.StatusCode)
+	}
+
+	// Only a server error can succeed on another attempt. A request the
+	// Alertmanager rejected is rejected again, however many times it is sent.
+	return resp, resp.StatusCode/100 == 5, nil
+}
+
+// isRetriableNotificationError returns whether the transport error may be
+// recovered from by sending the alerts again. An error caused by the context
+// being cancelled or its deadline being exceeded is not retriable, there is no
+// time left to retry.
+func isRetriableNotificationError(err error) bool {
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+// rewindNotificationRequest returns a copy of req that can be sent again. The
+// body of a request that has already been sent is consumed and closed.
+func rewindNotificationRequest(req *http.Request) (*http.Request, error) {
+	// GetBody is always set by the Prometheus notifier, which builds the request
+	// over a bytes.Reader, but Do is a public option of the notifier.
+	if req.GetBody == nil {
+		return nil, errors.New("the request body cannot be replayed")
+	}
+
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+
+	rewound := req.Clone(req.Context())
+	rewound.Body = body
+	return rewound, nil
 }
 
 func (r *DefaultMultiTenantManager) notifierApplyExternalLabels(userID string, externalLabels labels.Labels) error {

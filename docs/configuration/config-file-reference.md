@@ -725,7 +725,7 @@ The `alertmanager_storage_config` configures the Cortex alertmanager storage bac
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem, configdb, local.
+# oss, filesystem, configdb, local.
 # CLI flag: -alertmanager-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -1055,6 +1055,24 @@ oci:
   # CLI flag: -alertmanager-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
 
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -alertmanager-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -alertmanager-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -alertmanager-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -alertmanager-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -alertmanager-storage.filesystem.dir
@@ -1097,7 +1115,7 @@ The `blocks_storage_config` configures the blocks storage.
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem.
+# oss, filesystem.
 # CLI flag: -blocks-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -1426,6 +1444,24 @@ oci:
   # The fixed interval in seconds to wait between request retry attempts.
   # CLI flag: -blocks-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
+
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -blocks-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -blocks-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -blocks-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -blocks-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
 
 filesystem:
   # Local filesystem storage directory.
@@ -3067,6 +3103,17 @@ The `compactor_config` configures the compactor for the blocks storage.
 # CLI flag: -compactor.block-ranges
 [block_ranges: <list of duration> | default = 2h0m0s,12h0m0s,24h0m0s]
 
+# Per compaction time range, the minimum age the end of a compaction group's
+# time range must reach before the group becomes eligible for compaction.
+# Positionally matched against -compactor.block-ranges: it must either be empty
+# or have the same number of entries, and no entry may be negative. When empty,
+# every range defaults to twice -compactor.cleanup-interval. This is a lower
+# bound: a group only becomes eligible on a compaction run, so the effective
+# wait can be up to -compactor.compaction-interval longer. Only used by the
+# partitioning compaction strategy.
+# CLI flag: -compactor.block-ranges-compaction-delay
+[block_ranges_compaction_delay: <list of duration> | default = ]
+
 # Number of Go routines to use when syncing block index and chunks files from
 # the long term storage.
 # CLI flag: -compactor.block-sync-concurrency
@@ -3076,6 +3123,15 @@ The `compactor_config` configures the compactor for the blocks storage.
 # storage.
 # CLI flag: -compactor.meta-sync-concurrency
 [meta_sync_concurrency: <int> | default = 20]
+
+# Number of per-block series sets merged per subtree during compaction. Each
+# subtree advances in its own goroutine, so a group of blocks larger than this
+# value no longer issues every index read from a single goroutine. Only affects
+# partitioning compaction. 0 disables it and keeps one flat merge over all
+# blocks. Useful range is 32 to 128; lower values create more goroutines without
+# adding disk concurrency.
+# CLI flag: -compactor.block-merge-fan-in
+[block_merge_fan_in: <int> | default = 0]
 
 # Minimum age of fresh (non-compacted) blocks before they are being processed.
 # Malformed blocks older than the maximum of consistency-delay and 48h0m0s will
@@ -4769,8 +4825,8 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Maximum lookback duration for querying data from ingesters. Queries for data
 # older than this will only query the long-term storage. This is a per-tenant
-# limit that can be overridden in the runtime configuration. Should be less than
-# or equal to close-idle-tsdb-timeout.
+# limit that can be overridden in the runtime configuration. Must be less than
+# -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.
 # CLI flag: -limits.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
@@ -6043,6 +6099,26 @@ ruler_client:
 # CLI flag: -ruler.notification-timeout
 [notification_timeout: <duration> | default = 10s]
 
+notification_backoff:
+  # Minimum delay between notification retries. Only applies when
+  # -ruler.notification.backoff-retries is greater than 0.
+  # CLI flag: -ruler.notification.backoff-min-period
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum delay between notification retries. Only applies when
+  # -ruler.notification.backoff-retries is greater than 0.
+  # CLI flag: -ruler.notification.backoff-max-period
+  [max_period: <duration> | default = 1s]
+
+  # Maximum number of times to retry a notification that the Alertmanager failed
+  # to accept with a retriable error, which is a transport error or a 5xx
+  # response. A notification that is not retried is dropped and the alert is not
+  # delivered until the next evaluation of its rule group. Retries happen within
+  # -ruler.notification-timeout and delay the other notifications of the same
+  # tenant, so keep this number small. Set to 0 to disable the retries.
+  # CLI flag: -ruler.notification.backoff-retries
+  [max_retries: <int> | default = 0]
+
 alertmanager_client:
   # Path to the client certificate file, which will be used for authenticating
   # with the server. Also requires the key path to be configured.
@@ -6329,7 +6405,7 @@ The `ruler_storage_config` configures the Cortex ruler storage backend.
 
 ```yaml
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem, configdb, local.
+# oss, filesystem, configdb, local.
 # CLI flag: -ruler-storage.backend
 [backend: <string> | default = "s3"]
 
@@ -6659,6 +6735,24 @@ oci:
   # CLI flag: -ruler-storage.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
 
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -ruler-storage.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -ruler-storage.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -ruler-storage.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -ruler-storage.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
+
 filesystem:
   # Local filesystem storage directory.
   # CLI flag: -ruler-storage.filesystem.dir
@@ -6709,7 +6803,7 @@ The `runtime_configuration_storage_config` configures the storage backend for th
 [file: <string> | default = ""]
 
 # Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci,
-# filesystem.
+# oss, filesystem.
 # CLI flag: -runtime-config.backend
 [backend: <string> | default = "filesystem"]
 
@@ -7038,6 +7132,24 @@ oci:
   # The fixed interval in seconds to wait between request retry attempts.
   # CLI flag: -runtime-config.oci.request-retry-interval
   [request_retry_interval: <int> | default = 10]
+
+oss:
+  # The Alibaba Cloud OSS endpoint to connect to, e.g.
+  # oss-cn-hangzhou.aliyuncs.com.
+  # CLI flag: -runtime-config.oss.endpoint
+  [endpoint: <string> | default = ""]
+
+  # The Alibaba Cloud OSS bucket name.
+  # CLI flag: -runtime-config.oss.bucket
+  [bucket: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key ID.
+  # CLI flag: -runtime-config.oss.access-key-id
+  [access_key_id: <string> | default = ""]
+
+  # The Alibaba Cloud OSS access key secret.
+  # CLI flag: -runtime-config.oss.access-key-secret
+  [access_key_secret: <string> | default = ""]
 
 filesystem:
   # Local filesystem storage directory.

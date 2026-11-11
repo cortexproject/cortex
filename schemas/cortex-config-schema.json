@@ -640,7 +640,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "alertmanager-storage.backend"
         },
@@ -747,6 +747,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "alertmanager-storage.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "alertmanager-storage.oss.endpoint"
             }
           },
           "type": "object"
@@ -1136,7 +1161,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem.",
           "type": "string",
           "x-cli-flag": "blocks-storage.backend"
         },
@@ -3186,6 +3211,31 @@
           },
           "type": "object"
         },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "blocks-storage.oss.endpoint"
+            }
+          },
+          "type": "object"
+        },
         "s3": {
           "properties": {
             "access_key_id": {
@@ -3697,6 +3747,12 @@
           "type": "number",
           "x-cli-flag": "compactor.block-files-concurrency"
         },
+        "block_merge_fan_in": {
+          "default": 0,
+          "description": "Number of per-block series sets merged per subtree during compaction. Each subtree advances in its own goroutine, so a group of blocks larger than this value no longer issues every index read from a single goroutine. Only affects partitioning compaction. 0 disables it and keeps one flat merge over all blocks. Useful range is 32 to 128; lower values create more goroutines without adding disk concurrency.",
+          "type": "number",
+          "x-cli-flag": "compactor.block-merge-fan-in"
+        },
         "block_ranges": {
           "default": "2h0m0s,12h0m0s,24h0m0s",
           "description": "List of compaction time ranges.",
@@ -3705,6 +3761,14 @@
           },
           "type": "array",
           "x-cli-flag": "compactor.block-ranges"
+        },
+        "block_ranges_compaction_delay": {
+          "description": "Per compaction time range, the minimum age the end of a compaction group's time range must reach before the group becomes eligible for compaction. Positionally matched against -compactor.block-ranges: it must either be empty or have the same number of entries, and no entry may be negative. When empty, every range defaults to twice -compactor.cleanup-interval. This is a lower bound: a group only becomes eligible on a compaction run, so the effective wait can be up to -compactor.compaction-interval longer. Only used by the partitioning compaction strategy.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "x-cli-flag": "compactor.block-ranges-compaction-delay"
         },
         "block_sync_concurrency": {
           "default": 20,
@@ -6042,7 +6106,7 @@
         },
         "query_ingesters_within": {
           "default": "0s",
-          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Should be less than or equal to close-idle-tsdb-timeout.",
+          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Must be less than -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.",
           "type": "string",
           "x-cli-flag": "limits.query-ingesters-within",
           "x-format": "duration"
@@ -7586,6 +7650,31 @@
           "type": "number",
           "x-cli-flag": "ruler.max-concurrent-evals"
         },
+        "notification_backoff": {
+          "properties": {
+            "max_period": {
+              "default": "1s",
+              "description": "Maximum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.",
+              "type": "string",
+              "x-cli-flag": "ruler.notification.backoff-max-period",
+              "x-format": "duration"
+            },
+            "max_retries": {
+              "default": 0,
+              "description": "Maximum number of times to retry a notification that the Alertmanager failed to accept with a retriable error, which is a transport error or a 5xx response. A notification that is not retried is dropped and the alert is not delivered until the next evaluation of its rule group. Retries happen within -ruler.notification-timeout and delay the other notifications of the same tenant, so keep this number small. Set to 0 to disable the retries.",
+              "type": "number",
+              "x-cli-flag": "ruler.notification.backoff-retries"
+            },
+            "min_period": {
+              "default": "100ms",
+              "description": "Minimum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.",
+              "type": "string",
+              "x-cli-flag": "ruler.notification.backoff-min-period",
+              "x-format": "duration"
+            }
+          },
+          "type": "object"
+        },
         "notification_queue_capacity": {
           "default": 10000,
           "description": "Capacity of the queue for notifications to be sent to the Alertmanager.",
@@ -8065,7 +8154,7 @@
         },
         "backend": {
           "default": "s3",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem, configdb, local.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem, configdb, local.",
           "type": "string",
           "x-cli-flag": "ruler-storage.backend"
         },
@@ -8172,6 +8261,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "ruler-storage.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "ruler-storage.oss.endpoint"
             }
           },
           "type": "object"
@@ -8561,7 +8675,7 @@
         },
         "backend": {
           "default": "filesystem",
-          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, filesystem.",
+          "description": "Backend storage to use. Supported backends are: s3, gcs, azure, swift, oci, oss, filesystem.",
           "type": "string",
           "x-cli-flag": "runtime-config.backend"
         },
@@ -8660,6 +8774,31 @@
               "description": "The OCID of the user. Required when the provider is 'raw'.",
               "type": "string",
               "x-cli-flag": "runtime-config.oci.user-ocid"
+            }
+          },
+          "type": "object"
+        },
+        "oss": {
+          "properties": {
+            "access_key_id": {
+              "description": "The Alibaba Cloud OSS access key ID.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.access-key-id"
+            },
+            "access_key_secret": {
+              "description": "The Alibaba Cloud OSS access key secret.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.access-key-secret"
+            },
+            "bucket": {
+              "description": "The Alibaba Cloud OSS bucket name.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.bucket"
+            },
+            "endpoint": {
+              "description": "The Alibaba Cloud OSS endpoint to connect to, e.g. oss-cn-hangzhou.aliyuncs.com.",
+              "type": "string",
+              "x-cli-flag": "runtime-config.oss.endpoint"
             }
           },
           "type": "object"

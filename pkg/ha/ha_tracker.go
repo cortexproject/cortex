@@ -63,6 +63,11 @@ type HATrackerConfig struct {
 	// is more than this duration.
 	UpdateTimeout          time.Duration `yaml:"ha_tracker_update_timeout"`
 	UpdateTimeoutJitterMax time.Duration `yaml:"ha_tracker_update_timeout_jitter_max"`
+	// This moved to the ha_tracker_failover_timeout limit, and is scheduled for removal
+	// in v1.24.0. Kept so that 1.21 configs still start. YAML only: the
+	// -distributor.ha-tracker.failover-timeout flag now sets the limit. A non-zero value is
+	// applied as the default limit by cortex.Config.Validate.
+	DeprecatedFailoverTimeout time.Duration `yaml:"ha_tracker_failover_timeout,omitempty" doc:"hidden"`
 	// EnableStartupSync controls whether to fetch all tracked keys from the KV store
 	// on startup to populate the local cache.
 	// This prevents duplicate GET calls for the same key while the cache is cold,

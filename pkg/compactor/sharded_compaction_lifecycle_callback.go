@@ -22,6 +22,7 @@ type ShardedCompactionLifecycleCallback struct {
 	userBucket          objstore.InstrumentedBucket
 	logger              log.Logger
 	metaSyncConcurrency int
+	blockMergeFanIn     int
 	compactDir          string
 	userID              string
 	compactorMetrics    *compactorMetrics
@@ -34,6 +35,7 @@ func NewShardedCompactionLifecycleCallback(
 	userBucket objstore.InstrumentedBucket,
 	logger log.Logger,
 	metaSyncConcurrency int,
+	blockMergeFanIn int,
 	compactDir string,
 	userID string,
 	compactorMetrics *compactorMetrics,
@@ -43,6 +45,7 @@ func NewShardedCompactionLifecycleCallback(
 		userBucket:          userBucket,
 		logger:              logger,
 		metaSyncConcurrency: metaSyncConcurrency,
+		blockMergeFanIn:     blockMergeFanIn,
 		compactDir:          compactDir,
 		userID:              userID,
 		compactorMetrics:    compactorMetrics,
@@ -100,9 +103,10 @@ func (c *ShardedCompactionLifecycleCallback) GetBlockPopulator(_ context.Context
 		})
 	}
 	populateBlockFunc := ShardedBlockPopulator{
-		partitionCount: partitionInfo.PartitionCount,
-		partitionID:    partitionInfo.PartitionID,
-		logger:         logger,
+		partitionCount:  partitionInfo.PartitionCount,
+		partitionID:     partitionInfo.PartitionID,
+		blockMergeFanIn: c.blockMergeFanIn,
+		logger:          logger,
 	}
 	return populateBlockFunc, nil
 }

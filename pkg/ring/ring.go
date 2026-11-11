@@ -208,15 +208,24 @@ type Ring struct {
 	// If set to nil, no caching is done (used by tests, and subrings).
 	shuffledSubringCache map[subringCacheKey]*cachedSubring
 
-	memberOwnershipGaugeVec *prometheus.GaugeVec
-	numMembersGaugeVec      *prometheus.GaugeVec
-	totalTokensGauge        prometheus.Gauge
-	numTokensGaugeVec       *prometheus.GaugeVec
-	oldestTimestampGaugeVec *prometheus.GaugeVec
-	duplicateTokensGauge    prometheus.Gauge
-	reportedOwners          map[string]struct{}
+	memberOwnershipGaugeVec      *prometheus.GaugeVec
+	memberZonalOwnershipGaugeVec *prometheus.GaugeVec
+	numMembersGaugeVec           *prometheus.GaugeVec
+	totalTokensGauge             prometheus.Gauge
+	numTokensGaugeVec            *prometheus.GaugeVec
+	oldestTimestampGaugeVec      *prometheus.GaugeVec
+	duplicateTokensGauge         prometheus.Gauge
+	reportedOwners               map[string]struct{}
+	reportedZonalOwners          map[zonalOwner]struct{}
 
 	logger log.Logger
+}
+
+// zonalOwner identifies a single series of the per-zone ownership metric, so that stale
+// label values can be deleted when a member leaves the ring or moves to another zone.
+type zonalOwner struct {
+	member string
+	zone   string
 }
 
 type subringCacheKey struct {
@@ -274,6 +283,11 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 			Help:        "The percent ownership of the ring by member",
 			ConstLabels: map[string]string{"name": name}},
 			[]string{"member"}),
+		memberZonalOwnershipGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Name:        "ring_member_zonal_ownership_percent",
+			Help:        "The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.",
+			ConstLabels: map[string]string{"name": name}},
+			[]string{"member", "zone"}),
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
@@ -626,11 +640,18 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 	}, nil
 }
 
+// countTokensByAz returns the number of tokens per zone and member, and the token range
+// owned by each member within its own zone. With zone-aware replication each zone's tokens
+// span the whole hash space independently, so the ranges owned by the members of a zone sum
+// to the full space (math.MaxUint32+1).
+// The ring read lock must be already taken when calling this function.
 func (r *Ring) countTokensByAz() (map[string]map[string]uint32, map[string]int64) {
 	numTokens := map[string]map[string]uint32{}
 	owned := map[string]int64{}
 
-	for zone, zonalTokens := range r.ringDesc.getTokensByZone() {
+	// r.ringTokensByZone is already merged and sorted per zone by updateRingState, so reuse it
+	// rather than recomputing it here.
+	for zone, zonalTokens := range r.ringTokensByZone {
 		numTokens[zone] = map[string]uint32{}
 		for i := 1; i <= len(zonalTokens); i++ {
 			index := i % len(zonalTokens)
@@ -645,6 +666,9 @@ func (r *Ring) countTokensByAz() (map[string]map[string]uint32, map[string]int64
 	for id, info := range r.ringDesc.Ingesters {
 		if _, ok := owned[id]; !ok {
 			owned[id] = 0
+			if _, ok := numTokens[info.Zone]; !ok {
+				numTokens[info.Zone] = map[string]uint32{}
+			}
 			numTokens[info.Zone][id] = 0
 		}
 	}
@@ -740,6 +764,28 @@ func (r *Ring) updateRingMetrics(compareResult CompareResult) {
 		for k := range prevOwners {
 			r.memberOwnershipGaugeVec.DeleteLabelValues(k)
 			r.numTokensGaugeVec.DeleteLabelValues(k)
+		}
+
+		// Zone-aware replication routes each write within a single zone, so the ownership
+		// computed above over the merged token list of all zones is not the hash range a
+		// member actually serves: it also depends on where the other zones' tokens fall.
+		// Report the per-zone ownership too, which is what the write path uses.
+		if r.cfg.ZoneAwarenessEnabled {
+			prevZonalOwners := r.reportedZonalOwners
+			r.reportedZonalOwners = make(map[zonalOwner]struct{}, len(prevZonalOwners))
+			numTokensByZone, ownedRangeByZone := r.countTokensByAz()
+			for zone, members := range numTokensByZone {
+				for id := range members {
+					r.memberZonalOwnershipGaugeVec.WithLabelValues(id, zone).Set(float64(ownedRangeByZone[id]) / float64(math.MaxUint32+1))
+					owner := zonalOwner{member: id, zone: zone}
+					delete(prevZonalOwners, owner)
+					r.reportedZonalOwners[owner] = struct{}{}
+				}
+			}
+
+			for owner := range prevZonalOwners {
+				r.memberZonalOwnershipGaugeVec.DeleteLabelValues(owner.member, owner.zone)
+			}
 		}
 	}
 

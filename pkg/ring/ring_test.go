@@ -3306,6 +3306,10 @@ func TestUpdateMetrics(t *testing.T) {
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
+		# HELP ring_member_zonal_ownership_percent The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.
+		# TYPE ring_member_zonal_ownership_percent gauge
+		ring_member_zonal_ownership_percent{member="A",name="test",zone=""} 0.49999999976716936
+		ring_member_zonal_ownership_percent{member="B",name="test",zone=""} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone=""} 2
@@ -3420,6 +3424,10 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 0.49999999976716936
 		ring_member_ownership_percent{member="B",name="test"} 0.5000000002328306
+		# HELP ring_member_zonal_ownership_percent The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.
+		# TYPE ring_member_zonal_ownership_percent gauge
+		ring_member_zonal_ownership_percent{member="A",name="test",zone=""} 0.49999999976716936
+		ring_member_zonal_ownership_percent{member="B",name="test",zone=""} 0.5000000002328306
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone=""} 2
@@ -3460,6 +3468,9 @@ func TestUpdateMetricsWithRemoval(t *testing.T) {
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
+		# HELP ring_member_zonal_ownership_percent The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.
+		# TYPE ring_member_zonal_ownership_percent gauge
+		ring_member_zonal_ownership_percent{member="A",name="test",zone=""} 1
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone=""} 1
@@ -3519,6 +3530,11 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 		ring_member_ownership_percent{member="A",name="test"} 0.3333333332557231
 		ring_member_ownership_percent{member="B",name="test"} 0.3333333330228925
 		ring_member_ownership_percent{member="C",name="test"} 0.3333333337213844
+		# HELP ring_member_zonal_ownership_percent The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.
+		# TYPE ring_member_zonal_ownership_percent gauge
+		ring_member_zonal_ownership_percent{member="A",name="test",zone="zone1"} 1
+		ring_member_zonal_ownership_percent{member="B",name="test",zone="zone2"} 1
+		ring_member_zonal_ownership_percent{member="C",name="test",zone="zone3"} 1
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
@@ -3572,6 +3588,9 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 		# HELP ring_member_ownership_percent The percent ownership of the ring by member
 		# TYPE ring_member_ownership_percent gauge
 		ring_member_ownership_percent{member="A",name="test"} 1
+		# HELP ring_member_zonal_ownership_percent The fraction of its own zone's token space owned by the member. Values within a zone sum to 1. Only reported when zone awareness is enabled.
+		# TYPE ring_member_zonal_ownership_percent gauge
+		ring_member_zonal_ownership_percent{member="A",name="test",zone="zone1"} 1
 		# HELP ring_members Number of members in the ring
 		# TYPE ring_members gauge
 		ring_members{name="test",state="ACTIVE",zone="zone1"} 1
@@ -3608,6 +3627,181 @@ func TestUpdateMetricsWithZone(t *testing.T) {
 		ring_tokens_total{name="test"} 2
 	`))
 	assert.NoError(t, err)
+}
+
+const (
+	zonalOwnershipMetricName = "ring_member_zonal_ownership_percent"
+
+	// fullTokenSpace is the size of the whole token space. Each zone's tokens span it
+	// independently, so it is the denominator of the per-zone ownership metric.
+	fullTokenSpace = float64(math.MaxUint32) + 1
+
+	// Tokens used by the per-zone ownership tests. They are globally unique so that no
+	// token ends up owned by more than one instance.
+	zonalTokenA = uint32(1 << 30)
+	zonalTokenB = uint32(math.MaxUint32 - 3)
+	zonalTokenC = uint32(1 << 31)
+	zonalTokenD = uint32(math.MaxUint32 - 2)
+)
+
+// gatherZonalOwnership returns the current values of the per-zone ownership metric keyed by
+// member and zone, so tests can assert both on values and on series having been removed.
+func gatherZonalOwnership(t *testing.T, reg *prometheus.Registry) map[zonalOwner]float64 {
+	t.Helper()
+
+	families, err := reg.Gather()
+	require.NoError(t, err)
+
+	owned := map[zonalOwner]float64{}
+	for _, family := range families {
+		if family.GetName() != zonalOwnershipMetricName {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			owner := zonalOwner{}
+			for _, label := range metric.GetLabel() {
+				switch label.GetName() {
+				case "member":
+					owner.member = label.GetValue()
+				case "zone":
+					owner.zone = label.GetValue()
+				}
+			}
+			owned[owner] = metric.GetGauge().GetValue()
+		}
+	}
+
+	return owned
+}
+
+// zonalOwnershipTestRing returns a ring with two zones holding two members each. Zone "zone-a"
+// is deliberately skewed, with B owning three quarters of the zone's token space, while zone
+// "zone-b" is balanced.
+func zonalOwnershipTestRing(t *testing.T, cfg Config) (*Ring, *prometheus.Registry) {
+	t.Helper()
+
+	registry := prometheus.NewRegistry()
+	ring, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), registry, log.NewNopLogger())
+	require.NoError(t, err)
+
+	ring.updateRingState(&Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 11, Zone: "zone-a", Tokens: []uint32{zonalTokenA}},
+			"B": {Addr: "127.0.0.2", Timestamp: 11, Zone: "zone-a", Tokens: []uint32{zonalTokenB}},
+			"C": {Addr: "127.0.0.3", Timestamp: 11, Zone: "zone-b", Tokens: []uint32{zonalTokenC}},
+			"D": {Addr: "127.0.0.4", Timestamp: 11, Zone: "zone-b", Tokens: []uint32{zonalTokenD}},
+		},
+	})
+
+	return ring, registry
+}
+
+func TestUpdateMetricsZonalOwnershipSkew(t *testing.T) {
+	cfg := Config{
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
+	}
+
+	ring, registry := zonalOwnershipTestRing(t, cfg)
+	owned := gatherZonalOwnership(t, registry)
+
+	// Within a zone, a member owns the distance from the previous token of the same zone,
+	// wrapping around the end of the token space.
+	require.Len(t, owned, 4)
+	require.Equal(t, 1073741828/fullTokenSpace, owned[zonalOwner{member: "A", zone: "zone-a"}])
+	require.Equal(t, 3221225468/fullTokenSpace, owned[zonalOwner{member: "B", zone: "zone-a"}])
+	require.Equal(t, 2147483651/fullTokenSpace, owned[zonalOwner{member: "C", zone: "zone-b"}])
+	require.Equal(t, 2147483645/fullTokenSpace, owned[zonalOwner{member: "D", zone: "zone-b"}])
+
+	// Each zone's tokens span the whole token space, so the members of a zone own all of it.
+	zoneTotals := map[string]float64{}
+	for owner, value := range owned {
+		zoneTotals[owner.zone] += value
+	}
+	require.Len(t, zoneTotals, 2)
+	for zone, total := range zoneTotals {
+		require.Equal(t, 1.0, total, "ownership of zone %s should sum to 1", zone)
+	}
+
+	// The skew the metric is meant to expose: zone-a is 1.5x its average, zone-b is balanced.
+	require.InDelta(t, 1.5, owned[zonalOwner{member: "B", zone: "zone-a"}]/0.5, 0.0001)
+	require.InDelta(t, 1.0, owned[zonalOwner{member: "D", zone: "zone-b"}]/0.5, 0.0001)
+
+	// The pre-existing global metric merges the tokens of all zones into one list, so it does
+	// not report the per-zone skew above. Here it claims B owns half the ring while it actually
+	// serves three quarters of zone-a, and that D owns almost nothing while it actually serves
+	// half of zone-b. This is the gap the per-zone metric closes.
+	require.Equal(t, 2147483644/fullTokenSpace, testutil.ToFloat64(ring.memberOwnershipGaugeVec.WithLabelValues("B")))
+	require.Equal(t, 1/fullTokenSpace, testutil.ToFloat64(ring.memberOwnershipGaugeVec.WithLabelValues("D")))
+}
+
+func TestUpdateMetricsZonalOwnershipWithRemoval(t *testing.T) {
+	cfg := Config{
+		KVStore:                kv.Config{},
+		HeartbeatTimeout:       0, // get healthy stats
+		ReplicationFactor:      3,
+		ZoneAwarenessEnabled:   true,
+		DetailedMetricsEnabled: true,
+	}
+
+	ring, registry := zonalOwnershipTestRing(t, cfg)
+	require.Len(t, gatherZonalOwnership(t, registry), 4)
+
+	// B leaves the ring, and C moves from zone-b to zone-a.
+	ring.updateRingState(&Desc{
+		Ingesters: map[string]InstanceDesc{
+			"A": {Addr: "127.0.0.1", Timestamp: 11, Zone: "zone-a", Tokens: []uint32{zonalTokenA}},
+			"C": {Addr: "127.0.0.3", Timestamp: 11, Zone: "zone-a", Tokens: []uint32{zonalTokenC}},
+			"D": {Addr: "127.0.0.4", Timestamp: 11, Zone: "zone-b", Tokens: []uint32{zonalTokenD}},
+		},
+	})
+
+	owned := gatherZonalOwnership(t, registry)
+
+	// The series of the member that left is gone, and so is the stale series of the member
+	// that changed zone.
+	require.Len(t, owned, 3)
+	require.NotContains(t, owned, zonalOwner{member: "B", zone: "zone-a"})
+	require.NotContains(t, owned, zonalOwner{member: "C", zone: "zone-b"})
+
+	// D is now alone in zone-b and owns all of it.
+	require.Equal(t, 1.0, owned[zonalOwner{member: "D", zone: "zone-b"}])
+	require.Equal(t, 1.0, owned[zonalOwner{member: "A", zone: "zone-a"}]+owned[zonalOwner{member: "C", zone: "zone-a"}])
+}
+
+func TestUpdateMetricsZonalOwnershipGating(t *testing.T) {
+	for _, tc := range []struct {
+		detailedMetricsEnabled bool
+		zoneAwarenessEnabled   bool
+		expectReported         bool
+	}{
+		{detailedMetricsEnabled: true, zoneAwarenessEnabled: true, expectReported: true},
+		{detailedMetricsEnabled: true, zoneAwarenessEnabled: false, expectReported: false},
+		{detailedMetricsEnabled: false, zoneAwarenessEnabled: true, expectReported: false},
+		{detailedMetricsEnabled: false, zoneAwarenessEnabled: false, expectReported: false},
+	} {
+		t.Run(fmt.Sprintf("detailedMetricsEnabled=%v/zoneAwarenessEnabled=%v", tc.detailedMetricsEnabled, tc.zoneAwarenessEnabled), func(t *testing.T) {
+			cfg := Config{
+				KVStore:                kv.Config{},
+				HeartbeatTimeout:       0, // get healthy stats
+				ReplicationFactor:      3,
+				ZoneAwarenessEnabled:   tc.zoneAwarenessEnabled,
+				DetailedMetricsEnabled: tc.detailedMetricsEnabled,
+			}
+
+			_, registry := zonalOwnershipTestRing(t, cfg)
+
+			owned := gatherZonalOwnership(t, registry)
+			if tc.expectReported {
+				require.Len(t, owned, 4)
+			} else {
+				require.Empty(t, owned)
+			}
+		})
+	}
 }
 
 func TestUpdateMetricsDuplicateTokens(t *testing.T) {

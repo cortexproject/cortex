@@ -176,7 +176,7 @@ func TestReset(t *testing.T) {
 	const key = "test"
 	const max = 5
 
-	ch := make(chan error)
+	ch := make(chan struct{})
 	go func() {
 		defer close(ch)
 		for i := 0; i <= max; i++ {

@@ -199,6 +199,61 @@ func TestHATracker_CleanupDeletesArePropagatedWithMemberlist(t *testing.T) {
 	require.NotEmpty(t, broadcasts, "Cleanup Delete should generate a broadcast for tombstone propagation")
 }
 
+// TestCheckReplica_ReplicaMismatchIsNotCASFailure checks that a non-elected replica rejected
+// during the CAS is reported to the caller, but isn't tracked as a failed CAS operation.
+func TestCheckReplica_ReplicaMismatchIsNotCASFailure(t *testing.T) {
+	ctx := t.Context()
+	logger := log.NewNopLogger()
+	reg := prometheus.NewPedanticRegistry()
+
+	var kvCfg memberlist.KVConfig
+	flagext.DefaultValues(&kvCfg)
+	replicaDescCodec := GetReplicaDescCodec()
+	kvCfg.Codecs = []codec.Codec{replicaDescCodec}
+
+	mkv := memberlist.NewKV(kvCfg, logger, &dnsProviderMock{}, reg)
+	require.NoError(t, services.StartAndAwaitRunning(ctx, mkv))
+	defer services.StopAndAwaitTerminated(ctx, mkv) //nolint:errcheck
+
+	client, err := memberlist.NewClient(mkv, replicaDescCodec)
+	require.NoError(t, err)
+
+	trackerCfg := HATrackerConfig{
+		EnableHATracker: false, // to inject our client
+		UpdateTimeout:   time.Second,
+		KVStore:         kv.Config{Store: "memberlist"},
+	}
+	failoverTimeout := 10 * time.Second
+
+	tracker, err := NewHATracker(trackerCfg, trackerLimits{maxReplicaGroups: 100, failoverTimeout: failoverTimeout}, HATrackerStatusConfig{}, reg, "test", logger)
+	require.NoError(t, err)
+	tracker.cfg.EnableHATracker = true
+	tracker.client = client
+
+	userID := "user1"
+	cluster := "cluster1"
+
+	// The tracker isn't started, so its local cache stays empty and every check goes through the CAS.
+	now := time.Now()
+	require.NoError(t, tracker.CheckReplica(ctx, userID, cluster, "replica1", now))
+
+	err = tracker.CheckReplica(ctx, userID, cluster, "replica2", now.Add(time.Second))
+	require.ErrorIs(t, err, ReplicasNotMatchError{})
+	require.EqualError(t, err, ReplicasNotMatchError{replica: "replica2", elected: "replica1"}.Error())
+
+	require.NoError(t, testutil.GatherAndCompare(reg, strings.NewReader(`
+		# HELP memberlist_client_cas_failure_total Failed CAS operations
+		# TYPE memberlist_client_cas_failure_total counter
+		memberlist_client_cas_failure_total 0
+	`), "memberlist_client_cas_failure_total"))
+
+	// The rejected replica is still elected once the failover timeout has passed.
+	require.NoError(t, tracker.CheckReplica(ctx, userID, cluster, "replica2", now.Add(failoverTimeout+time.Second)))
+	val, err := client.Get(ctx, userID+"/"+cluster)
+	require.NoError(t, err)
+	require.Equal(t, "replica2", val.(*ReplicaDesc).GetReplica())
+}
+
 // TestWatchPrefixNilPanicWithMemberlist reproduces the panic at ha_tracker.go:437:
 // With memberlist, WatchPrefix delivers a nil value when a key is deleted
 // (memberlist KV.get() returns nil for deleted/tombstone keys).

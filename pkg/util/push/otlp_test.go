@@ -1188,6 +1188,47 @@ func TestOTLPWriteHandler(t *testing.T) {
 	}
 }
 
+func TestOTLPWriteHandler_OversizeBodyIsRejected(t *testing.T) {
+	cfg := distributor.OTLPConfig{}
+	exportRequest := generateOTLPWriteRequest()
+
+	for _, contentType := range []string{pbContentType, jsonContentType} {
+		for _, encodingType := range []string{"", "gzip"} {
+			t.Run(contentType+" "+encodingType, func(t *testing.T) {
+				plain, err := getOTLPHttpRequest(&exportRequest, contentType, "")
+				require.NoError(t, err)
+				decodedSize := int(plain.ContentLength)
+
+				// The body is either sent without a Content-Length (uncompressed)
+				// or compressed below the limit, so only its decoded size is too large.
+				maxRecvMsgSize := decodedSize - 1
+				req, err := getOTLPHttpRequest(&exportRequest, contentType, encodingType)
+				require.NoError(t, err)
+				if encodingType == "" {
+					req.ContentLength = -1
+				}
+				require.Less(t, int(req.ContentLength), maxRecvMsgSize)
+
+				push := func(context.Context, *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+					t.Error("an oversize request must not be pushed")
+					return &cortexpb.WriteResponse{}, nil
+				}
+				overrides := validation.NewOverrides(querier.DefaultLimitsConfig(), nil)
+				handler := OTLPHandler(maxRecvMsgSize, overrides, cfg, nil, push, nil)
+
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, req)
+
+				resp := recorder.Result()
+				require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+				b, err := io.ReadAll(resp.Body)
+				require.NoError(t, err)
+				require.Contains(t, string(b), "received message larger than max")
+			})
+		}
+	}
+}
+
 func generateOTLPWriteRequestWithSeries(numSeries, samplesPerSeries, numHistogram int) pmetricotlp.ExportRequest {
 	d := pmetric.NewMetrics()
 

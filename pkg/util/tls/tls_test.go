@@ -165,6 +165,23 @@ func TestGetTLSConfig_CA(t *testing.T) {
 	_, err = c.GetTLSConfig()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "error loading ca cert")
+
+	// expect an error when the CA file holds no PEM certificates
+	for name, content := range map[string][]byte{
+		"empty":    {},
+		"not PEM":  []byte("not a certificate"),
+		"key only": []byte(keyPEM),
+	} {
+		t.Run(name, func(t *testing.T) {
+			paths := newTestX509Files(t, nil, nil, content)
+			c := &ClientConfig{
+				CAPath: paths.ca,
+			}
+			_, err := c.GetTLSConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "no valid PEM-encoded CA certificates found")
+		})
+	}
 }
 
 func TestGetTLSConfig_InsecureSkipVerify(t *testing.T) {

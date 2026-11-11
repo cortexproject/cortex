@@ -22,6 +22,7 @@
 * [BUGFIX] Store Gateway: Fix the Parquet bucket store ignoring query sharding, which made every shard return all series. #7892
 * [BUGFIX] Querier: Fix the querier crashing instead of reporting the error when a blocks store set subservice fails. `blocksStoreReplicationSet` never initialised its `FailureWatcher`, so the failure callback dereferenced a nil pointer on the goroutine the service manager runs listeners on, and the resulting panic's stack trace buried the error logged for the actual cause. #7896
 * [BUGFIX] Compactor: Delete block deletion markers left in the global `markers/` location of a tenant after the block they refer to was removed. They were skipped at every bucket index update and kept the tenant location in the bucket forever. #7890
+* [BUGFIX] TLS: Fail client TLS setup with an error when the file set by a `-<prefix>.tls-ca-path` flag holds no PEM-encoded certificates. Before, the CA pool was left empty and every connection failed later with `certificate signed by unknown authority`. #7908
 * [BUGFIX] Ring: Fix an instance becoming permanently unable to acquire tokens. #7901
 
 ## 1.22.0 in progress

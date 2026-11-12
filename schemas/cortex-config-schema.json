@@ -5478,6 +5478,35 @@
           "x-cli-flag": "ingester.metadata-retain-period",
           "x-format": "duration"
         },
+        "push_coalesce": {
+          "properties": {
+            "enabled": {
+              "default": false,
+              "description": "Experimental: merge the TSDB commits of concurrent write requests for the same tenant into a single commit. A request only ever waits for a commit that was already in flight, so this adds no latency of its own.",
+              "type": "boolean",
+              "x-cli-flag": "ingester.push-coalesce.enabled"
+            },
+            "max_batch_bytes": {
+              "default": 0,
+              "description": "Maximum encoded size, in bytes, of the write requests a single coalesced commit may carry. 0 to disable the limit.",
+              "type": "number",
+              "x-cli-flag": "ingester.push-coalesce.max-batch-bytes"
+            },
+            "max_batch_requests": {
+              "default": 32,
+              "description": "Maximum number of write requests a single coalesced commit may carry.",
+              "type": "number",
+              "x-cli-flag": "ingester.push-coalesce.max-batch-requests"
+            },
+            "max_batch_samples": {
+              "default": 2000,
+              "description": "Maximum number of samples a single coalesced commit may carry. 0 to disable the limit.",
+              "type": "number",
+              "x-cli-flag": "ingester.push-coalesce.max-batch-samples"
+            }
+          },
+          "type": "object"
+        },
         "query_protection": {
           "properties": {
             "eviction": {

@@ -189,6 +189,10 @@ type Config struct {
 	EnableRegexMatcherLimits bool `yaml:"enable_regex_matcher_limits"`
 
 	QueryProtection configs.QueryProtection `yaml:"query_protection"`
+
+	// Merges the TSDB commits of concurrent write requests for the same tenant
+	// into a single commit. Disabled by default.
+	PushCoalesce PushCoalesceConfig `yaml:"push_coalesce"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -228,6 +232,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableRegexMatcherLimits, "ingester.enable-regex-matcher-limits", false, "Enable regex matcher limits and metrics collection for unoptimized regex queries. When enabled, the ingester will track pattern length, label cardinality, and total value length for unoptimized regex matchers.")
 	cfg.DefaultLimits.RegisterFlagsWithPrefix(f, "ingester.")
 	cfg.QueryProtection.RegisterFlagsWithPrefix(f, "ingester.")
+	cfg.PushCoalesce.RegisterFlagsWithPrefix(f, "ingester.")
 }
 
 func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
@@ -241,6 +246,13 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 
 	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
 		return err
+	}
+
+	if err := cfg.PushCoalesce.Validate(); err != nil {
+		return err
+	}
+	if cfg.PushCoalesce.Enabled {
+		logutil.WarnExperimentalUse("Push coalescing Enabled")
 	}
 
 	// Validate active queried series metrics windows
@@ -428,6 +440,10 @@ type userTSDB struct {
 
 	// Tracks active series per configured tracker pattern.
 	trackerCounter *trackerCounter
+
+	// Merge point for concurrent pushes for this tenant. nil when push
+	// coalescing is disabled, in which case every push commits on its own.
+	pushCoalescer *pushCoalescer
 }
 
 // Explicitly wrapping the tsdb.DB functions that we use.
@@ -867,7 +883,8 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		&i.maxInflightPushRequests,
 		&i.maxInflightQueryRequests,
 		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
-		cfg.EnableRegexMatcherLimits)
+		cfg.EnableRegexMatcherLimits,
+		cfg.PushCoalesce.Enabled)
 	i.validateMetrics = validation.NewValidateMetrics(registerer)
 
 	// Replace specific metrics which we can't directly track but we need to read
@@ -967,6 +984,7 @@ func NewForFlusher(cfg Config, limits *validation.Overrides, registerer promethe
 		&i.maxInflightQueryRequests,
 		cfg.BlocksStorageConfig.TSDB.PostingsCache.Blocks.Enabled || cfg.BlocksStorageConfig.TSDB.PostingsCache.Head.Enabled,
 		cfg.EnableRegexMatcherLimits,
+		cfg.PushCoalesce.Enabled,
 	)
 
 	i.TSDBState.shipperIngesterID = "flusher"
@@ -1545,32 +1563,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 	)
 
-	// Walk the samples, appending them to the users database
-	app := db.Appender(ctx).(extendedAppender)
-	headMaxTime = db.Head().MaxTime()
-
-	// Ensure the appender is always released so that we don't leak TSDB head
-	// series references, mmap'd chunks and pending state on early returns.
-	// `committed` is flipped to true immediately before app.Commit() because
-	// Prometheus closes the appender even on Commit failure (it self-rolls
-	// back internally on WAL error), so the deferred Rollback must not run
-	// afterwards.
-	committed := false
-	defer func() {
-		if committed {
-			return
-		}
-		if rollbackErr := app.Rollback(); rollbackErr != nil {
-			level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback appender on early return", "user", userID, "err", rollbackErr)
-		}
-	}()
-
-	// Even when OOO is enabled globally, we want to reject OOO samples in some cases.
-	// prometheus implementation: https://github.com/prometheus/prometheus/pull/14710
-	if req.DiscardOutOfOrder {
-		app.SetOptions(&storage.AppendOptions{DiscardOutOfOrder: true})
-	}
-
 	delayObserver := i.metrics.ingestionDelaySeconds.WithLabelValues(userID)
 	nowMs := time.Now().UnixMilli()
 	observeDelay := func(timestampMs int64) {
@@ -1579,195 +1571,289 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 	}
 
-	for _, ts := range req.Timeseries {
-		// The labels must be sorted (in our case, it's guaranteed a write request
-		// has sorted labels once hit the ingester).
+	// seriesHashes caches the label hash of every series in the request. It is
+	// only built on the coalesced path, which validates and hashes every series
+	// before the request joins a batch; without coalescing the hash is computed
+	// in the loop below, as before.
+	var seriesHashes []uint64
 
-		// Look up a reference for this series.
-		tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
-		if i.isLabelSetOutOfOrder(tsLabels) {
-			i.metrics.oooLabelsTotal.WithLabelValues(userID).Inc()
-			return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", tsLabels), userID)
-		}
-		tsLabelsHash := tsLabels.Hash()
-		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
+	// appendSamples writes this request's samples into app.
+	//
+	// It runs on the request's own goroutine when the request commits alone,
+	// and on a batch leader's goroutine when the commit is coalesced. An
+	// appender is not safe for concurrent use, so in the coalesced case only
+	// the leader ever runs it. For that to stay correct it must touch nothing
+	// but state belonging to this request: every counter it updates is one of
+	// this request's locals, and they are turned into metrics further down by
+	// this request's own goroutine, after the commit.
+	//
+	// It returns an error only for failures that require the appender to be
+	// discarded. Soft per-sample errors are recorded in firstPartialErr.
+	appendSamples := func(app extendedAppender, batchHeadMaxTime int64) error {
+		headMaxTime = batchHeadMaxTime
 
-		// To find out if any sample was added to this series, we keep old value.
-		oldSucceededSamplesCount := succeededSamplesCount
-		// To find out if any histogram was added to this series, we keep old value.
-		oldSucceededHistogramsCount := succeededHistogramsCount
+		for tsIdx, ts := range req.Timeseries {
+			// The labels must be sorted (in our case, it's guaranteed a write request
+			// has sorted labels once hit the ingester).
 
-		// Copied labels will be empty if ref is 0.
-		if ref == 0 {
-			// Copy the label set because both TSDB and the active series tracker may retain it.
-			copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-		}
-		matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
-
-		for _, s := range ts.Samples {
-			var err error
-
-			// Observe ingestion delay for all samples (accepted and rejected)
-			observeDelay(s.TimestampMs)
-
-			if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
-				if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
-					startTimestampSampleAppendFailCount++
-					i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
-				}
+			// Look up a reference for this series.
+			tsLabels := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+			if i.isLabelSetOutOfOrder(tsLabels) {
+				i.metrics.oooLabelsTotal.WithLabelValues(userID).Inc()
+				return errors.Errorf("out-of-order label set found when push: %s", tsLabels)
 			}
-
-			// If the cached reference exists, we try to use it.
-			if ref != 0 {
-				if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
-					succeededSamplesCount++
-					continue
-				}
-
+			var tsLabelsHash uint64
+			if seriesHashes != nil {
+				tsLabelsHash = seriesHashes[tsIdx]
 			} else {
-				// Retain the reference in case there are multiple samples for the series.
-				if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
-					succeededSamplesCount++
+				tsLabelsHash = tsLabels.Hash()
+			}
+			ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)
+
+			// To find out if any sample was added to this series, we keep old value.
+			oldSucceededSamplesCount := succeededSamplesCount
+			// To find out if any histogram was added to this series, we keep old value.
+			oldSucceededHistogramsCount := succeededHistogramsCount
+
+			// Copied labels will be empty if ref is 0.
+			if ref == 0 {
+				// Copy the label set because both TSDB and the active series tracker may retain it.
+				copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+			}
+			matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
+
+			for _, s := range ts.Samples {
+				var err error
+
+				// Observe ingestion delay for all samples (accepted and rejected)
+				observeDelay(s.TimestampMs)
+
+				if s.StartTimestampMs != 0 && s.TimestampMs != 0 {
+					if _, err = app.AppendSTZeroSample(ref, copiedLabels, s.TimestampMs, s.StartTimestampMs); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
+						startTimestampSampleAppendFailCount++
+						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeFloat).Inc()
+					}
+				}
+
+				// If the cached reference exists, we try to use it.
+				if ref != 0 {
+					if _, err = app.Append(ref, copiedLabels, s.TimestampMs, s.Value); err == nil {
+						succeededSamplesCount++
+						continue
+					}
+
+				} else {
+					// Retain the reference in case there are multiple samples for the series.
+					if ref, err = app.Append(0, copiedLabels, s.TimestampMs, s.Value); err == nil {
+						succeededSamplesCount++
+						continue
+					}
+				}
+
+				failedSamplesCount++
+
+				if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value)); !rollback {
 					continue
 				}
+				// The error looks an issue on our side, so the appender must be
+				// discarded. Returning says so; the caller rolls back, and in the
+				// coalesced case that fails every request sharing the batch.
+				return err
 			}
 
-			failedSamplesCount++
+			if i.limits.EnableNativeHistograms(userID) {
+				ingestedBucketsObserver := i.metrics.ingestedHistogramBuckets.WithLabelValues(userID)
+				for _, hp := range ts.Histograms {
+					var (
+						err error
+						h   *histogram.Histogram
+						fh  *histogram.FloatHistogram
+					)
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value)); !rollback {
-				continue
+					// Observe ingestion delay for all histograms (accepted and rejected)
+					observeDelay(hp.TimestampMs)
+
+					// Choose the decoder based on the histogram's proto type (the
+					// CountInt/CountFloat oneof), not the count value. A float
+					// histogram with a count of 0 (e.g. a staleness marker or an
+					// empty histogram) still has the CountFloat oneof set, so a
+					// value-based check (hp.GetCountFloat() > 0) would misroute it
+					// to the integer decoder, which panics. This mirrors the
+					// discriminator used everywhere else (e.g. util/validation).
+					if hp.IsFloatHistogram() {
+						fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
+					} else {
+						h = cortexpb.HistogramProtoToHistogram(hp.Histogram)
+					}
+
+					if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
+						if _, err = app.AppendHistogramSTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
+							startTimestampHistogramAppendFailCount++
+							i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
+						}
+					}
+
+					if ref != 0 {
+						if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+							succeededHistogramsCount++
+							ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
+							continue
+						}
+					} else {
+						// Copy the label set because both TSDB and the active series tracker may retain it.
+						copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
+						if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
+							succeededHistogramsCount++
+							ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
+							continue
+						}
+					}
+
+					failedHistogramsCount++
+
+					if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false); !rollback {
+						continue
+					}
+					// The error looks an issue on our side, so the appender must be
+					// discarded. Returning says so; the caller rolls back, and in the
+					// coalesced case that fails every request sharing the batch.
+					return err
+				}
+			} else {
+				discardedNativeHistogramCount += len(ts.Histograms)
 			}
-			// The error looks an issue on our side, so we should rollback.
-			// The deferred rollback above will close the appender; nothing to do here.
+
+			isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
+			shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
+			if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
+				db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
+					// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
+					return copiedLabels
+				})
+			}
+
+			maxExemplarsForUser := i.getMaxExemplars(userID)
+			if maxExemplarsForUser > 0 {
+				// app.AppendExemplar currently doesn't create the series, it must
+				// already exist.  If it does not then drop.
+				if ref == 0 && len(ts.Exemplars) > 0 {
+					updateFirstPartial(func() error {
+						return wrappedTSDBIngestExemplarErr(errExemplarRef,
+							model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
+					})
+					failedExemplarsCount += len(ts.Exemplars)
+				} else { // Note that else is explicit, rather than a continue in the above if, in case of additional logic post exemplar processing.
+					for _, ex := range ts.Exemplars {
+						e := exemplar.Exemplar{
+							Value:  ex.Value,
+							Ts:     ex.TimestampMs,
+							HasTs:  true,
+							Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
+						}
+
+						if _, err = app.AppendExemplar(ref, labels.EmptyLabels(), e); err == nil {
+							succeededExemplarsCount++
+							continue
+						}
+
+						// Error adding exemplar
+						updateFirstPartial(func() error {
+							return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
+						})
+						failedExemplarsCount++
+					}
+				}
+			}
+		}
+
+		// At this point all samples have been added to the appender, so we can track the time it took.
+		i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
+
+		if startTimestampSampleAppendFailCount > 0 || startTimestampHistogramAppendFailCount > 0 {
+			level.Debug(logutil.WithContext(ctx, i.logger)).Log(
+				"msg", "failed to append start timestamp in push",
+				"user", userID,
+				"sample_failures", startTimestampSampleAppendFailCount,
+				"histogram_failures", startTimestampHistogramAppendFailCount,
+			)
+		}
+
+		return nil
+	}
+
+	if coalescer := db.pushCoalescer; coalescer != nil {
+		task := &pushTask{
+			ctx:               ctx,
+			discardOutOfOrder: req.DiscardOutOfOrder,
+			appendFn:          appendSamples,
+		}
+		for _, ts := range req.Timeseries {
+			task.samples += len(ts.Samples) + len(ts.Histograms)
+		}
+		if i.cfg.PushCoalesce.MaxBatchBytes > 0 {
+			task.bytes = req.Size()
+		}
+		// Validate the label order before joining a batch, rather than during
+		// the append. It is the one deterministic error that forces the
+		// appender to be discarded, and a discarded batch fails every request
+		// in it instead of only the offending one. The hashes are computed in
+		// the same pass because the append loop needs them anyway.
+		seriesHashes = make([]uint64, len(req.Timeseries))
+		for tsIdx, ts := range req.Timeseries {
+			lbls := cortexpb.FromLabelAdaptersToLabels(ts.Labels)
+			if i.isLabelSetOutOfOrder(lbls) {
+				i.metrics.oooLabelsTotal.WithLabelValues(userID).Inc()
+				return nil, wrapWithUser(errors.Errorf("out-of-order label set found when push: %s", lbls), userID)
+			}
+			seriesHashes[tsIdx] = lbls.Hash()
+		}
+
+		if err := coalescer.push(task); err != nil {
+			// A context error belongs to the caller, so it is reported as it
+			// is. Everything else is a TSDB failure for this tenant.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
+			return nil, wrapWithUser(err, userID)
+		}
+	} else {
+		app := db.Appender(ctx).(extendedAppender)
+		headMax := db.Head().MaxTime()
+
+		// Even when OOO is enabled globally, we want to reject OOO samples in some cases.
+		// prometheus implementation: https://github.com/prometheus/prometheus/pull/14710
+		if req.DiscardOutOfOrder {
+			app.SetOptions(&storage.AppendOptions{DiscardOutOfOrder: true})
+		}
+
+		// Ensure the appender is always released so that we don't leak TSDB head
+		// series references, mmap'd chunks and pending state on early returns.
+		// `committed` is flipped to true immediately before app.Commit() because
+		// Prometheus closes the appender even on Commit failure (it self-rolls
+		// back internally on WAL error), so the deferred Rollback must not run
+		// afterwards.
+		committed := false
+		defer func() {
+			if committed {
+				return
+			}
+			if rollbackErr := app.Rollback(); rollbackErr != nil {
+				level.Warn(logutil.WithContext(ctx, i.logger)).Log("msg", "failed to rollback appender on early return", "user", userID, "err", rollbackErr)
+			}
+		}()
+
+		if err := appendSamples(app, headMax); err != nil {
 			return nil, wrapWithUser(err, userID)
 		}
 
-		if i.limits.EnableNativeHistograms(userID) {
-			ingestedBucketsObserver := i.metrics.ingestedHistogramBuckets.WithLabelValues(userID)
-			for _, hp := range ts.Histograms {
-				var (
-					err error
-					h   *histogram.Histogram
-					fh  *histogram.FloatHistogram
-				)
-
-				// Observe ingestion delay for all histograms (accepted and rejected)
-				observeDelay(hp.TimestampMs)
-
-				// Choose the decoder based on the histogram's proto type (the
-				// CountInt/CountFloat oneof), not the count value. A float
-				// histogram with a count of 0 (e.g. a staleness marker or an
-				// empty histogram) still has the CountFloat oneof set, so a
-				// value-based check (hp.GetCountFloat() > 0) would misroute it
-				// to the integer decoder, which panics. This mirrors the
-				// discriminator used everywhere else (e.g. util/validation).
-				if hp.IsFloatHistogram() {
-					fh = cortexpb.FloatHistogramProtoToFloatHistogram(hp.Histogram)
-				} else {
-					h = cortexpb.HistogramProtoToHistogram(hp.Histogram)
-				}
-
-				if hp.StartTimestampMs != 0 && hp.TimestampMs != 0 {
-					if _, err = app.AppendHistogramSTZeroSample(ref, copiedLabels, hp.TimestampMs, hp.StartTimestampMs, h, fh); err != nil && !errors.Is(err, storage.ErrOutOfOrderST) {
-						startTimestampHistogramAppendFailCount++
-						i.metrics.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram).Inc()
-					}
-				}
-
-				if ref != 0 {
-					if _, err = app.AppendHistogram(ref, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededHistogramsCount++
-						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
-						continue
-					}
-				} else {
-					// Copy the label set because both TSDB and the active series tracker may retain it.
-					copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
-					if ref, err = app.AppendHistogram(0, copiedLabels, hp.TimestampMs, h, fh); err == nil {
-						succeededHistogramsCount++
-						ingestedBucketsObserver.Observe(float64(hp.BucketCount()))
-						continue
-					}
-				}
-
-				failedHistogramsCount++
-
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false); !rollback {
-					continue
-				}
-				// The error looks an issue on our side, so we should rollback.
-				// The deferred rollback above will close the appender; nothing to do here.
-				return nil, wrapWithUser(err, userID)
-			}
-		} else {
-			discardedNativeHistogramCount += len(ts.Histograms)
+		startCommit := time.Now()
+		committed = true
+		if err := app.Commit(); err != nil {
+			return nil, wrapWithUser(err, userID)
 		}
 
-		isNHAppended := succeededHistogramsCount > oldSucceededHistogramsCount
-		shouldUpdateSeries := (succeededSamplesCount > oldSucceededSamplesCount) || isNHAppended
-		if i.cfg.ActiveSeriesMetricsEnabled && shouldUpdateSeries {
-			db.activeSeries.UpdateSeries(tsLabels, tsLabelsHash, startAppend, isNHAppended, func(l labels.Labels) labels.Labels {
-				// we must already have copied the labels if succeededSamplesCount or succeededHistogramsCount has been incremented.
-				return copiedLabels
-			})
-		}
-
-		maxExemplarsForUser := i.getMaxExemplars(userID)
-		if maxExemplarsForUser > 0 {
-			// app.AppendExemplar currently doesn't create the series, it must
-			// already exist.  If it does not then drop.
-			if ref == 0 && len(ts.Exemplars) > 0 {
-				updateFirstPartial(func() error {
-					return wrappedTSDBIngestExemplarErr(errExemplarRef,
-						model.Time(ts.Exemplars[0].TimestampMs), ts.Labels, ts.Exemplars[0].Labels)
-				})
-				failedExemplarsCount += len(ts.Exemplars)
-			} else { // Note that else is explicit, rather than a continue in the above if, in case of additional logic post exemplar processing.
-				for _, ex := range ts.Exemplars {
-					e := exemplar.Exemplar{
-						Value:  ex.Value,
-						Ts:     ex.TimestampMs,
-						HasTs:  true,
-						Labels: cortexpb.FromLabelAdaptersToLabelsWithCopy(ex.Labels),
-					}
-
-					if _, err = app.AppendExemplar(ref, labels.EmptyLabels(), e); err == nil {
-						succeededExemplarsCount++
-						continue
-					}
-
-					// Error adding exemplar
-					updateFirstPartial(func() error {
-						return wrappedTSDBIngestExemplarErr(err, model.Time(ex.TimestampMs), ts.Labels, ex.Labels)
-					})
-					failedExemplarsCount++
-				}
-			}
-		}
+		i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 	}
-
-	// At this point all samples have been added to the appender, so we can track the time it took.
-	i.TSDBState.appenderAddDuration.Observe(time.Since(startAppend).Seconds())
-
-	if startTimestampSampleAppendFailCount > 0 || startTimestampHistogramAppendFailCount > 0 {
-		level.Debug(logutil.WithContext(ctx, i.logger)).Log(
-			"msg", "failed to append start timestamp in push",
-			"user", userID,
-			"sample_failures", startTimestampSampleAppendFailCount,
-			"histogram_failures", startTimestampHistogramAppendFailCount,
-		)
-	}
-
-	startCommit := time.Now()
-	// Mark committed before calling Commit: Prometheus closes the appender on
-	// both success and failure of Commit (it self-rolls-back on WAL error), so
-	// the deferred Rollback must not fire afterwards.
-	committed = true
-	if err := app.Commit(); err != nil {
-		return nil, wrapWithUser(err, userID)
-	}
-
-	i.TSDBState.appenderCommitDuration.Observe(time.Since(startCommit).Seconds())
 
 	// If only invalid samples or histograms are pushed, don't change "last update", as TSDB was not modified.
 	if succeededSamplesCount > 0 || succeededHistogramsCount > 0 {
@@ -3132,6 +3218,21 @@ func (i *Ingester) createTSDB(userID string) (*userTSDB, error) {
 	// We set the limiter here because we don't want to limit
 	// series during WAL replay.
 	userDB.limiter = i.limiter
+
+	if i.cfg.PushCoalesce.Enabled {
+		userDB.pushCoalescer = newPushCoalescer(
+			i.cfg.PushCoalesce,
+			i.metrics.pushCoalesce,
+			userLogger,
+			func() extendedAppender {
+				// The appender carries the samples of every request in a batch,
+				// so it belongs to no single request's context. Prometheus'
+				// head appender ignores the context it is handed.
+				return db.Appender(context.Background()).(extendedAppender)
+			},
+			func() int64 { return db.Head().MaxTime() },
+		)
+	}
 
 	if db.Head().NumSeries() > 0 {
 		// If there are series in the head, use max time from head. If this time is too old,

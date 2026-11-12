@@ -22,7 +22,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
-			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false)
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, false, false)
 
 		require.Nil(t, m.unoptimizedRegexPatternLength)
 		require.Nil(t, m.unoptimizedRegexLabelCardinality)
@@ -35,7 +35,7 @@ func TestRegexMatcherLimitsMetricsFeatureFlag(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
-			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true, false)
 
 		require.NotNil(t, m.unoptimizedRegexPatternLength)
 		require.NotNil(t, m.unoptimizedRegexLabelCardinality)
@@ -53,7 +53,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
-			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true, false)
 
 		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
 
@@ -77,7 +77,7 @@ func TestUnoptimizedRegexRejectedMetric(t *testing.T) {
 		reg := prometheus.NewRegistry()
 		m := newIngesterMetrics(reg, false, false, false, false,
 			func() *InstanceLimits { return &InstanceLimits{} },
-			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true)
+			ingestionRate, &inflightPushRequests, &maxInflightQueryRequests, false, true, false)
 
 		require.NotNil(t, m.unoptimizedRegexRejectedTotal)
 
@@ -138,7 +138,8 @@ func TestIngesterMetrics(t *testing.T) {
 		&inflightPushRequests,
 		&maxInflightQueryRequests,
 		false,
-		true)
+		true,
+		false)
 
 	require.NotNil(t, m)
 

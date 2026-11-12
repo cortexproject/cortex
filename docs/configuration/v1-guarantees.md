@@ -158,6 +158,11 @@ Currently experimental features are:
   - `-ingester.head-queried-series-metrics-windows` time windows to report (default: 2h)
   - `-ingester.head-queried-series-metrics-window-duration` HLL sub-window size
   - `-ingester.head-queried-series-metrics-sample-rate` query sampling rate
+- Ingester: Push coalescing
+  - `-ingester.push-coalesce.enabled`
+  - `-ingester.push-coalesce.max-batch-requests`
+  - `-ingester.push-coalesce.max-batch-samples`
+  - `-ingester.push-coalesce.max-batch-bytes`
 - Parquet storage
   - Parquet Converter: the `-parquet-converter.*` CLI flags, including `-parquet-converter.enabled`,
     `-parquet-converter.max-num-columns` (automatically shards parquet files when the number of columns

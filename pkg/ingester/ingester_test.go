@@ -8614,3 +8614,100 @@ func TestWrappedTSDBIngestErrWithHeadMaxTime(t *testing.T) {
 	// A nil ingest error returns nil.
 	require.NoError(t, wrappedTSDBIngestErrWithHeadMaxTime(nil, model.Time(1575043969), model.Time(1575043969), lbls))
 }
+
+func TestIngester_checkRegexMatcherLimits_ContextCanceled(t *testing.T) {
+	const userID = "test-user"
+
+	cfg := defaultIngesterTestConfig(t)
+	cfg.EnableRegexMatcherLimits = true
+	limits := defaultLimitsTestConfig()
+	limits.MaxLabelCardinalityForUnoptimizedRegex = 3
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, t.TempDir(), prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	for idx := range 5 {
+		lbls := labels.FromStrings(labels.MetricName, "test_metric", "status", "val"+strconv.Itoa(idx))
+		req, _ := mockWriteRequest(t, lbls, float64(idx), 123000)
+		_, err := i.Push(ctx, req)
+		require.NoError(t, err)
+	}
+
+	db, err := i.getOrCreateTSDB(userID, false)
+	require.NoError(t, err)
+
+	matchers := []*labels.Matcher{labels.MustNewMatcher(labels.MatchRegexp, "status", "[a-zA-Z]+[0-9]+")}
+	require.True(t, isRegexUnOptimized(matchers[0]))
+
+	// With a live context the cardinality limit is enforced.
+	err = i.checkRegexMatcherLimits(ctx, userID, db, matchers, 0, math.MaxInt64)
+	require.True(t, validation.IsLimitError(err), "expected a limit error, got %v", err)
+
+	// A canceled request stops before listing label values and reports the cancellation,
+	// instead of being evaluated (or skipped) as if it were still running.
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	err = i.checkRegexMatcherLimits(canceledCtx, userID, db, matchers, 0, math.MaxInt64)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, validation.IsLimitError(err))
+}
+
+func TestIngester_QueryExemplars_ContextCanceled(t *testing.T) {
+	const userID = "test-user"
+
+	cfg := defaultIngesterTestConfig(t)
+	limits := defaultLimitsTestConfig()
+	limits.MaxExemplars = 10
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
+
+	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
+		return i.lifecycler.GetState()
+	})
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	_, err = i.Push(ctx, &cortexpb.WriteRequest{
+		Timeseries: []cortexpb.PreallocTimeseries{{
+			TimeSeries: &cortexpb.TimeSeries{
+				Labels:  []cortexpb.LabelAdapter{{Name: labels.MetricName, Value: "test_metric"}},
+				Samples: []cortexpb.Sample{{Value: 1, TimestampMs: 1000}},
+				Exemplars: []cortexpb.Exemplar{{
+					Labels:      []cortexpb.LabelAdapter{{Name: "traceID", Value: "123"}},
+					TimestampMs: 1000,
+					Value:       1,
+				}},
+			},
+		}},
+		Source: cortexpb.API,
+	})
+	require.NoError(t, err)
+
+	req := &client.ExemplarQueryRequest{
+		StartTimestampMs: math.MinInt64,
+		EndTimestampMs:   math.MaxInt64,
+		Matchers: []*client.LabelMatchers{
+			{Matchers: []*client.LabelMatcher{{Type: client.EQUAL, Name: labels.MetricName, Value: "test_metric"}}},
+		},
+	}
+
+	res, err := i.QueryExemplars(ctx, req)
+	require.NoError(t, err)
+	require.Len(t, res.Timeseries, 1)
+
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	res, err = i.QueryExemplars(canceledCtx, req)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, res)
+}

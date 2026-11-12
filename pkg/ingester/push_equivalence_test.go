@@ -1,9 +1,10 @@
 package ingester
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -256,7 +257,7 @@ func dumpHead(t *testing.T, ing *Ingester) map[string][]headSample {
 	require.Empty(t, set.Warnings().AsErrors())
 
 	for key := range out {
-		sort.Slice(out[key], func(i, j int) bool { return out[key][i].T < out[key][j].T })
+		slices.SortFunc(out[key], func(a, b headSample) int { return cmp.Compare(a.T, b.T) })
 	}
 	return out
 }
@@ -506,24 +507,22 @@ func TestIngesterPushCoalescing_ConcurrentPushesAreConsistent(t *testing.T) {
 	)
 
 	var wg sync.WaitGroup
-	for g := 0; g < goroutines; g++ {
-		wg.Add(1)
-		go func(g int) {
-			defer wg.Done()
+	for g := range goroutines {
+		wg.Go(func() {
 			name := fmt.Sprintf("concurrent_%d", g)
-			for n := 0; n < samplesPerSerie; n++ {
+			for n := range samplesPerSerie {
 				// Ascending timestamps per series, so nothing is out of order
 				// and every sample must be stored.
 				tMs := coalesceTestBaseMs + int64(n)*1000
 				_, err := ing.Push(ctx, oneSample(name, tMs, float64(n)).build())
 				require.NoError(t, err)
 			}
-		}(g)
+		})
 	}
 	wg.Wait()
 
 	head := dumpHead(t, ing)
-	for g := 0; g < goroutines; g++ {
+	for g := range goroutines {
 		key := coalesceTestSeries(fmt.Sprintf("concurrent_%d", g)).String()
 		got := head[key]
 		require.Lenf(t, got, samplesPerSerie, "series %s", key)

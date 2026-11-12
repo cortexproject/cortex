@@ -498,16 +498,14 @@ func TestPushCoalescer_Concurrent(t *testing.T) {
 	)
 
 	var wg sync.WaitGroup
-	for g := 0; g < goroutines; g++ {
-		wg.Add(1)
-		go func(g int) {
-			defer wg.Done()
-			for n := 0; n < perRoutine; n++ {
+	for g := range goroutines {
+		wg.Go(func() {
+			for n := range perRoutine {
 				task, appends := h.task(context.Background(), g*perRoutine+n)
 				require.NoError(t, h.c.push(task))
 				require.Equal(t, int32(1), *appends)
 			}
-		}(g)
+		})
 	}
 	wg.Wait()
 

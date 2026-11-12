@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/metrics"
-	"sort"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -145,7 +145,7 @@ func (p *benchPusher) request() *cortexpb.WriteRequest {
 	p.step++
 	ts := coalesceTestBaseMs + p.step*benchSampleIntervalMs
 
-	for i := 0; i < benchSamplesPerRequest; i++ {
+	for i := range benchSamplesPerRequest {
 		idx := (p.next + i) % len(p.series)
 		p.lbls[i] = p.series[idx]
 		p.samples[i] = cortexpb.Sample{TimestampMs: ts, Value: float64(idx)}
@@ -256,10 +256,8 @@ func startBackgroundLoad(n int) (stop func()) {
 		done atomic.Bool
 		wg   sync.WaitGroup
 	)
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for i := range n {
+		wg.Go(func() {
 			x := uint64(i)
 			for !done.Load() {
 				deadline := time.Now().Add(benchBackgroundSpin)
@@ -269,7 +267,7 @@ func startBackgroundLoad(n int) (stop func()) {
 				runtime.Gosched()
 			}
 			_ = x
-		}()
+		})
 	}
 	return func() {
 		done.Store(true)
@@ -356,12 +354,7 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 	_, err := ing.Push(ctx, pushers[0].request())
 	require.NoError(b, err)
 
-	commitsBefore := commitCount(b, reg)
-
-	perPusher := b.N / concurrency
-	if perPusher < 1 {
-		perPusher = 1
-	}
+	perPusher := max(b.N/concurrency, 1)
 	total := concurrency * perPusher
 
 	// Each pusher records its own latencies, so the measurement adds no shared
@@ -379,17 +372,15 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 		startCh  = make(chan struct{})
 	)
 
-	for p := 0; p < concurrency; p++ {
-		wg.Add(1)
+	for p := range concurrency {
 		ready.Add(1)
-		go func(p int) {
-			defer wg.Done()
+		wg.Go(func() {
 			pusher := pushers[p]
 
 			// Create every series this pusher writes, so that the measured
 			// section appends to existing series rather than paying series
 			// creation, which a production ingester does not do per push.
-			for n := 0; n < pusher.warmupRequests(); n++ {
+			for range pusher.warmupRequests() {
 				if _, err := ing.Push(ctx, pusher.request()); err != nil {
 					failed.Add(1)
 					firstErr.CompareAndSwap(nil, err)
@@ -398,7 +389,7 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 
 			ready.Done()
 			<-startCh
-			for n := 0; n < perPusher; n++ {
+			for range perPusher {
 				req := pusher.request()
 				start := time.Now()
 				if _, err := ing.Push(ctx, req); err != nil {
@@ -407,7 +398,7 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 				}
 				latencies[p] = append(latencies[p], time.Since(start))
 			}
-		}(p)
+		})
 	}
 
 	// Have every goroutine spawned, warmed up and parked before the clock
@@ -418,7 +409,7 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 		failed.Load(), firstErr.Load())
 
 	failed.Store(0)
-	commitsBefore = commitCount(b, reg)
+	commitsBefore := commitCount(b, reg)
 
 	stopBackground := startBackgroundLoad(background)
 	mutexWaitBefore := mutexWaitSeconds()
@@ -444,7 +435,7 @@ func benchmarkPushWithLoad(b *testing.B, concurrency int, coalesce PushCoalesceC
 	for _, l := range latencies {
 		all = append(all, l...)
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i] < all[j] })
+	slices.Sort(all)
 
 	b.ReportMetric(float64(commits)/float64(total), "commits/push")
 	if commits > 0 {

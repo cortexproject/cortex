@@ -1,8 +1,9 @@
 package ingester
 
 import (
+	"cmp"
 	"context"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -167,7 +168,7 @@ func dumpHeadAllTypes(t *testing.T, ing *Ingester) map[string][]headSample {
 	require.NoError(t, set.Err())
 
 	for key := range out {
-		sort.Slice(out[key], func(i, j int) bool { return out[key][i].T < out[key][j].T })
+		slices.SortFunc(out[key], func(a, b headSample) int { return cmp.Compare(a.T, b.T) })
 	}
 	return out
 }
@@ -199,7 +200,7 @@ func dumpExemplars(t *testing.T, ing *Ingester, seriesNames ...string) []string 
 			out = append(out, r.SeriesLabels.String()+" "+exemplarString(e))
 		}
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 

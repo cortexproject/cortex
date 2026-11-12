@@ -69,7 +69,7 @@ type ownedSeriesTestIngester struct {
 	distributorRing *ring.Ring
 }
 
-func prepareOwnedSeriesTestIngester(t *testing.T) *ownedSeriesTestIngester {
+func prepareOwnedSeriesTestIngester(t *testing.T, opts ...func(*Config, *validation.Limits)) *ownedSeriesTestIngester {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.LifecyclerConfig.NumTokens = ownedSeriesTestTokens
@@ -84,6 +84,9 @@ func prepareOwnedSeriesTestIngester(t *testing.T) *ownedSeriesTestIngester {
 	cfg.OwnedSeriesMetricsEnabled = true
 
 	limits := defaultLimitsTestConfig()
+	for _, opt := range opts {
+		opt(&cfg, &limits)
+	}
 	tenantLimits := &mutableTenantLimits{limits: map[string]*validation.Limits{}}
 
 	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
@@ -132,7 +135,9 @@ func (i *ownedSeriesTestIngester) pushSeries(t *testing.T, userID, prefix string
 	nowMs := time.Now().UnixMilli()
 	all := make([]labels.Labels, 0, n)
 	for s := range n {
-		lbls := labels.FromStrings(labels.MetricName, "metric", "series", fmt.Sprintf("%s-%d", prefix, s))
+		// Scramble the number, so that series spread over the whole token space
+		// rather than hashing into clusters of neighbouring tokens.
+		lbls := labels.FromStrings(labels.MetricName, "metric", "series", fmt.Sprintf("%s-%08x", prefix, uint32(s)*2654435761))
 		req, _ := mockWriteRequest(t, lbls, 1, nowMs)
 		_, err := i.Push(ctx, req)
 		require.NoError(t, err)
@@ -247,6 +252,64 @@ func TestIngester_OwnedSeries_NotInShardOwnsNothing(t *testing.T) {
 	require.Equal(t, 0, i.owned(t, userID))
 }
 
+// TestIngester_OwnedSeries_LimitHoldsWhenShardViewsDisagree covers series arriving
+// at an ingester which believes it is not in the tenant's shard, as happens while a
+// new shard size has reached the distributors but not yet this ingester. New series
+// count as owned when they arrive, so the per-tenant series limit still applies.
+func TestIngester_OwnedSeries_LimitHoldsWhenShardViewsDisagree(t *testing.T) {
+	const (
+		shardSize  = 6
+		localLimit = 100
+	)
+	i := prepareOwnedSeriesTestIngester(t, func(cfg *Config, limits *validation.Limits) {
+		cfg.OwnedSeriesLimitEnforcementEnabled = true
+		limits.MaxLocalSeriesPerUser = localLimit
+	})
+
+	userID := i.tenantWithShardMembership(t, shardSize, false)
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	i.pushSeries(t, userID, "first", 1)
+	i.updateActiveSeries(context.Background())
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	rejected := 0
+	for n := range 2 * localLimit {
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "metric", "series", fmt.Sprintf("more-%d", n)), 1, time.Now().UnixMilli())
+		if _, err := i.Push(ctx, req); err != nil {
+			require.True(t, isPerUserSeriesLimitErr(err), "unexpected error: %v", err)
+			rejected++
+		}
+	}
+	// The first series no longer counts once ownership is applied, so exactly
+	// localLimit new series fit.
+	require.Equal(t, localLimit, rejected, "series beyond the local limit must be rejected")
+}
+
+// TestIngester_OwnedSeries_ReopenedTenantIsRecounted covers a tenant whose TSDB was
+// closed while idle and opened again, which gives it a new tracker with no
+// ownership. The frequent recount must apply ownership to it straight away rather
+// than wait for the next active series update.
+func TestIngester_OwnedSeries_ReopenedTenantIsRecounted(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t)
+	const shardSize = 6
+
+	userID := i.tenantWithShardMembership(t, shardSize, true)
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	i.pushSeries(t, userID, "s", 10)
+	i.updateActiveSeries(context.Background())
+
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
+	// Stand in for the TSDB being closed and opened again.
+	db.activeSeries = NewActiveSeries()
+	series := i.pushSeries(t, userID, "after-reopen", ownedSeriesTestSeries)
+	require.Equal(t, ownedSeriesTestSeries, i.owned(t, userID), "a new tracker counts everything until ownership is applied")
+
+	i.recountOwnedSeriesIfChanged()
+	require.NotZero(t, db.activeSeries.currFingerprint)
+	require.Equal(t, i.routedHere(t, userID, series), i.owned(t, userID))
+}
+
 // TestIngester_OwnedSeries_ShardExpansion grows a tenant's shuffle shard while
 // this ingester holds the tenant's series, with no ring change. Growing the
 // shard keeps this ingester in it but moves some of the tenant's series to the new
@@ -306,6 +369,9 @@ func TestIngester_OwnedSeries_RingChangeRecountsWithoutWaiting(t *testing.T) {
 
 	require.Equal(t, i.routedHere(t, wholeRing, wholeRingSeries), i.owned(t, wholeRing))
 	require.Less(t, i.owned(t, wholeRing), wholeRingBefore, "a scale-up must move some of the whole-ring tenant's series away")
+
+	// Adding instances can move a shard. Either way this ingester counts what is
+	// routed to it, which is nothing once it is out of the shard.
 	require.Equal(t, i.routedHere(t, sharded, shardedSeries), i.owned(t, sharded))
 }
 
@@ -411,12 +477,76 @@ func TestSeriesOwnership_WithBitmap(t *testing.T) {
 		changed := applied.withBitmap(tokens, []bool{true, true, true}, 2)
 		require.Equal(t, uint64(2), changed.fingerprint)
 	})
-	t.Run("a different token list changes it", func(t *testing.T) {
-		changed := applied.withBitmap([]uint32{10, 20, 30}, []bool{true, false, true}, 2)
+	t.Run("a new token list with the same tokens keeps it, and adopts the list", func(t *testing.T) {
+		rebuilt := []uint32{10, 20, 30}
+		same := applied.withBitmap(rebuilt, []bool{true, false, true}, 2)
+		require.Equal(t, applied.fingerprint, same.fingerprint)
+		require.Same(t, &rebuilt[0], &same.tokens[0])
+	})
+	t.Run("different tokens change it", func(t *testing.T) {
+		changed := applied.withBitmap([]uint32{10, 20, 31}, []bool{true, false, true}, 2)
 		require.Equal(t, uint64(2), changed.fingerprint)
 	})
 	t.Run("unknown ownership is never kept", func(t *testing.T) {
 		unknown := seriesOwnership{}.withBitmap(nil, nil, 3)
 		require.Equal(t, uint64(3), unknown.fingerprint)
 	})
+}
+
+// TestIngester_OwnedSeries_TopologyChangeOutsideShardDoesNotRecountTenant covers
+// an instance joining the ring outside a sharded tenant's shard. That rebuilds the
+// tenant's subring, but leaves its ownership the same, so its series must not be
+// re-evaluated.
+func TestIngester_OwnedSeries_TopologyChangeOutsideShardDoesNotRecountTenant(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t)
+	const shardSize = 6
+
+	userID := i.tenantWithShardMembership(t, shardSize, true)
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	i.pushSeries(t, userID, "s", 500)
+	i.updateActiveSeries(context.Background())
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
+
+	members := func() map[string]ring.InstanceDesc {
+		m, err := i.distributorRing.ShuffleShard(userID, shardSize).GetInstanceDescsForOperation(ring.Reporting)
+		require.NoError(t, err)
+		return m
+	}
+
+	for n := range 20 {
+		before, fingerprint, owned := members(), db.activeSeries.currFingerprint, db.activeSeries.Owned()
+		i.addPeer(t, fmt.Sprintf("outside-%d", n))
+		if len(members()) != len(before) || !shardHasSameMembers(before, members()) {
+			// The new instance moved the shard. Try another.
+			i.updateActiveSeries(context.Background())
+			continue
+		}
+
+		i.recountOwnedSeriesIfChanged()
+		require.Equal(t, owned, db.activeSeries.Owned())
+		require.Equal(t, fingerprint, db.activeSeries.currFingerprint, "an unchanged shard must not re-evaluate the tenant's series")
+		return
+	}
+	t.Fatal("every added instance moved the shard")
+}
+
+func shardHasSameMembers(a, b map[string]ring.InstanceDesc) bool {
+	for id := range a {
+		if _, ok := b[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func TestIngester_OwnershipOperationFollowsExtendWrites(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	require.True(t, cfg.DistributorExtendWrites, "the default must match -distributor.extend-writes")
+
+	i := &Ingester{cfg: cfg}
+	require.Equal(t, ring.Write, i.ownershipOperation())
+
+	i.cfg.DistributorExtendWrites = false
+	require.Equal(t, ring.WriteNoExtend, i.ownershipOperation())
 }

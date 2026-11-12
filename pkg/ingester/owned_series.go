@@ -3,6 +3,7 @@ package ingester
 import (
 	"encoding/binary"
 	"hash/fnv"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -28,24 +29,19 @@ type seriesOwnership struct {
 	// the ring changes the whole ring's source, though it changes this
 	// ingester's ownership only in a few token ranges, if at all.
 	source uint64
+	// shardSize is the shuffle-shard size the ownership was computed for, or
+	// zero for ownership over the whole ring.
+	shardSize int
 }
 
 // sameBitmap reports whether tokens and positions are the bitmap o already holds.
-// Tokens are compared by identity: a ring replaces its token list, rather than
-// modifying it, when the topology changes.
+//
+// Tokens are compared by value. A topology change rebuilds every subring with a
+// new token list, even for a shard whose members did not change, and comparing
+// the lists' contents is far cheaper than re-evaluating every series of a tenant
+// whose ownership is the same.
 func (o seriesOwnership) sameBitmap(tokens []uint32, positions []bool) bool {
-	if len(o.tokens) != len(tokens) || len(o.positions) != len(positions) {
-		return false
-	}
-	if len(tokens) > 0 && &o.tokens[0] != &tokens[0] {
-		return false
-	}
-	for p := range positions {
-		if o.positions[p] != positions[p] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(o.tokens, tokens) && slices.Equal(o.positions, positions)
 }
 
 // withBitmap returns the ownership for a bitmap computed from source. When the
@@ -53,7 +49,9 @@ func (o seriesOwnership) sameBitmap(tokens []uint32, positions []bool) bool {
 // been applied to are not made to re-evaluate every series for nothing.
 func (o seriesOwnership) withBitmap(tokens []uint32, positions []bool, source uint64) seriesOwnership {
 	if o.fingerprint != 0 && o.sameBitmap(tokens, positions) {
-		o.source = source
+		// Keep the fingerprint, but adopt the new slices, so that the previous
+		// ring's can be freed.
+		o.tokens, o.positions, o.source = tokens, positions, source
 		return o
 	}
 	return seriesOwnership{tokens: tokens, positions: positions, fingerprint: source, source: source}
@@ -124,7 +122,7 @@ func (i *Ingester) ringOwnership() seriesOwnership {
 		return seriesOwnership{}
 	}
 
-	tokens, positions, err := s.ring.OwnedTokenPositions(i.lifecycler.ID, ring.Write)
+	tokens, positions, err := s.ring.OwnedTokenPositions(i.lifecycler.ID, i.ownershipOperation())
 	if err != nil {
 		// Keep the previous ownership rather than apply an empty one, which would
 		// count every series as owned by nobody.
@@ -155,41 +153,67 @@ func (i *Ingester) tenantOwnership(userID string, wholeRing seriesOwnership) ser
 	}
 
 	s := i.ownedSeries
+	previous := s.tenants[userID]
 	shardSize := i.limiter.getShardSize(userID)
+	if previous.shardSize > 0 && previous.shardSize != shardSize {
+		// The subring cached for the previous shard size will not be used again.
+		s.ring.CleanupShuffleShardCache(userID)
+	}
+
 	// This is the condition under which Ring.ShuffleShard returns the whole ring.
 	if shardSize <= 0 || s.ring.InstancesCount() <= shardSize {
 		return wholeRing
 	}
 
 	// The subring is cached by the ring, so this is cheap unless the ring's
-	// topology changed. Its fingerprint covers only the shard's own members, so
-	// a change elsewhere in the ring, such as another ingester restarting, does
-	// not recompute this tenant's ownership.
+	// topology changed. Its fingerprint covers only the shard's own members and
+	// their states, so a state change elsewhere in the ring, such as another
+	// ingester restarting, does not recompute this tenant's ownership. A topology
+	// change anywhere does, but if the bitmap comes out the same the tenant's
+	// series are not re-evaluated.
+	//
+	// ShuffleShard is part of the ReadRing interface, but OwnedTokenPositions is
+	// only on *ring.Ring: adding it to the interface would break every other
+	// implementation of ReadRing. Ring.ShuffleShard always returns a *ring.Ring.
 	subring, ok := s.ring.ShuffleShard(userID, shardSize).(*ring.Ring)
 	if !ok {
 		level.Error(i.logger).Log("msg", "shuffle shard subring is not a *ring.Ring, cannot compute owned series", "user", userID)
 		return seriesOwnership{}
 	}
 
-	previous := s.tenants[userID]
 	source := subringOwnershipFingerprint(subring.OwnershipFingerprint(), shardSize)
 	if source == previous.source {
 		return previous
 	}
 
-	// An ingester which is not in the tenant's shard owns none of its series.
-	tokens, positions, err := subring.OwnedTokenPositions(i.lifecycler.ID, ring.Write)
+	// An ingester which is not in the tenant's shard owns none of the series it
+	// holds for the tenant. If it and the distributors disagree about the shard,
+	// for example while a new shard size has reached the distributors and not
+	// yet this ingester, new series still arrive here, and they count as owned
+	// when they are created, so the tenant's limit still applies to them.
+	tokens, positions, err := subring.OwnedTokenPositions(i.lifecycler.ID, i.ownershipOperation())
 	if err != nil {
 		level.Error(i.logger).Log("msg", "failed to compute owned subring token positions", "user", userID, "err", err)
 		return seriesOwnership{}
 	}
-
 	ownership := previous.withBitmap(tokens, positions, source)
+	ownership.shardSize = shardSize
+
 	if ownership.fingerprint == previous.fingerprint {
 		// Unchanged. Remember the new source, so it is not computed again.
 		s.tenants[userID] = ownership
 	}
 	return ownership
+}
+
+// ownershipOperation returns the operation the distributor routes writes with, so
+// that ownership agrees with it: with -distributor.extend-writes, a write is also
+// sent to an extra instance while one of its replicas is not ACTIVE.
+func (i *Ingester) ownershipOperation() ring.Operation {
+	if i.cfg.DistributorExtendWrites {
+		return ring.Write
+	}
+	return ring.WriteNoExtend
 }
 
 // subringOwnershipFingerprint identifies the ownership of a tenant's subring,
@@ -233,11 +257,19 @@ func (i *Ingester) recountOwnedSeriesIfChanged() {
 	var changes []change
 	for _, userID := range i.getTSDBUsers() {
 		ownership := i.tenantOwnership(userID, wholeRing)
-		if applied, ok := s.tenants[userID]; ok && applied.fingerprint == ownership.fingerprint {
+		if ownership.fingerprint == 0 {
+			// It could not be computed. Leave the tracker as it is, and try again
+			// on the next check.
 			continue
 		}
 		userDB, err := i.getTSDB(userID)
 		if err != nil || userDB == nil {
+			continue
+		}
+		// Compare with the tracker itself rather than with what was last applied
+		// to this tenant: a TSDB closed while idle and opened again has a new
+		// tracker, which has no ownership yet.
+		if userDB.activeSeries.currFingerprint == ownership.fingerprint {
 			continue
 		}
 		changes = append(changes, change{userDB: userDB, ownership: ownership})

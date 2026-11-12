@@ -17,6 +17,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
 const ownedLimitTestLocalLimit = 100
@@ -25,9 +26,11 @@ const ownedLimitTestLocalLimit = 100
 // after a scale-up: its head holds more series than its local limit, but it owns
 // none of them any more, because the ring moved them to other ingesters.
 //
-// The ring is faked by installing ownership state in which this ingester owns no
-// token. The periodic metrics update, which would overwrite it with the real ring,
-// is pushed out of the test's reach.
+// The head is filled while the tenant's limit is still high. The ring change is
+// then faked by installing ownership state in which this ingester owns no token,
+// and the limit lowered, as the scale-up lowers the local limit. The periodic
+// updates, which would overwrite the ownership with the real ring, are pushed out
+// of the test's reach.
 func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, func(name string) error) {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
@@ -38,9 +41,10 @@ func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, fu
 	cfg.OwnedSeriesLimitEnforcementEnabled = true
 
 	limits := defaultLimitsTestConfig()
-	limits.MaxLocalSeriesPerUser = ownedLimitTestLocalLimit
+	limits.MaxLocalSeriesPerUser = 10 * ownedLimitTestLocalLimit
+	tenantLimits := &mutableTenantLimits{limits: map[string]*validation.Limits{}}
 
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, "", prometheus.NewRegistry())
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), i) })
@@ -54,20 +58,21 @@ func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, fu
 		return err
 	}
 
-	require.NoError(t, push("warmup"))
+	for n := range 151 {
+		require.NoError(t, push(fmt.Sprintf("moved_away_%d", n)))
+	}
 	db, err := i.getTSDB(userID)
 	require.NoError(t, err)
 
-	// From here on this ingester owns nothing: existing entries are re-evaluated,
-	// and new ones are created unowned.
+	// The scale-up: this ingester owns none of what it holds, and the local
+	// limit drops below what it holds.
 	updateMetricsWithRing(db.activeSeries, time.Now().Add(-time.Hour), []uint32{1})
-	require.Equal(t, 0, db.activeSeries.Owned())
+	lowered := limits
+	lowered.MaxLocalSeriesPerUser = ownedLimitTestLocalLimit
+	tenantLimits.mu.Lock()
+	tenantLimits.limits[userID] = &lowered
+	tenantLimits.mu.Unlock()
 
-	// Fill the head past the local limit. Each push is accepted because owned
-	// stays at 0.
-	for n := range 150 {
-		require.NoError(t, push(fmt.Sprintf("moved_away_%d", n)))
-	}
 	require.Equal(t, uint64(151), db.Head().NumSeries())
 	require.Equal(t, 151, db.activeSeries.Tracked())
 	require.Equal(t, 0, db.activeSeries.Owned())
@@ -109,9 +114,11 @@ func TestIngester_OwnedSeriesLimit_UntrackedHeadSeriesDoesNotDisableOwned(t *tes
 func TestIngester_OwnedSeriesLimit_ConcurrentNewSeries(t *testing.T) {
 	_, _, push := prepareIngesterHoldingUnownedSeries(t)
 
+	// New series count as owned when they arrive, so stay below the local limit:
+	// the point is that series in flight must not make the limit count the head.
 	const (
 		workers         = 32
-		seriesPerWorker = 20
+		seriesPerWorker = 2
 	)
 	var (
 		wg       sync.WaitGroup

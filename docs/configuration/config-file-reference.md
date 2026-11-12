@@ -4259,7 +4259,9 @@ lifecycler:
 # may exceed it for a tenant with high churn, because it counts idle series
 # which are still held. It runs independently of
 # -ingester.active-series-metrics-enabled, which only controls whether the
-# active series metrics are exported.
+# active series metrics are exported. The ingester also keeps its own copy of
+# the ring, to compute each shuffle-sharded tenant's subring, which grows with
+# the size of the ring.
 # CLI flag: -ingester.owned-series-metrics-enabled
 [owned_series_metrics_enabled: <boolean> | default = false]
 
@@ -4277,10 +4279,15 @@ lifecycler:
 
 # How often to check whether series ownership has changed, because the ring
 # changed or a tenant's shuffle-shard size changed, and if so recount owned
-# series without waiting for the next active series update. This bounds how
-# often the recount runs while the ring is changing, and is the longest a tenant
-# can be throttled against a local limit that has already shrunk after a ring
-# change. Only used when -ingester.owned-series-metrics-enabled is true.
+# series without waiting for the next active series update. Ring changes are
+# seen when this ingester's lifecycler next reads the ring, on its heartbeat,
+# which is also when its local limits change. A new series counts as owned as
+# soon as it arrives, whatever this ingester's view of the ring. This bounds how
+# often the recount runs while the ring is changing. It is also roughly how long
+# a tenant can be throttled after such a change, against a local limit that has
+# already shrunk while the owned count has not yet been recounted: the recount
+# itself takes time on top of it in a large ring. Only used when
+# -ingester.owned-series-metrics-enabled is true.
 # CLI flag: -ingester.owned-series-recompute-min-interval
 [owned_series_recompute_min_interval: <duration> | default = 15s]
 

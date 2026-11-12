@@ -17,6 +17,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cortexproject/cortex/pkg/cortexpb"
+	"github.com/cortexproject/cortex/pkg/ring"
 )
 
 func copyFn(l labels.Labels) labels.Labels { return l }
@@ -239,7 +242,6 @@ func TestActiveSeries_ActiveIsUnaffectedByOwnership(t *testing.T) {
 	ringTokens := []uint32{100, 200}
 
 	withRing := NewActiveSeries()
-	setRingState(withRing, ringTokens, 100) // owns token 100 only
 
 	withoutRing := NewActiveSeries()
 
@@ -254,6 +256,8 @@ func TestActiveSeries_ActiveIsUnaffectedByOwnership(t *testing.T) {
 		withRing.UpdateSeries(lbls, lbls.Hash(), key, now, i%3 == 0, copyFn)
 		withoutRing.UpdateSeries(lbls, lbls.Hash(), key, now, i%3 == 0, copyFn)
 	}
+
+	updateMetricsWithRing(withRing, now.Add(-time.Minute), ringTokens, 100) // owns token 100 only
 
 	assert.Equal(t, withoutRing.Active(), withRing.Active(),
 		"ownership tracking must not change the active series count")
@@ -288,7 +292,6 @@ func TestActiveSeries_OwnedCount_WithRingLoaded(t *testing.T) {
 	now := time.Now()
 
 	ringTokens := []uint32{100, 200}
-	setRingState(c, ringTokens, 100) // owns token 100
 
 	// key=50 → SearchToken finds 100 → owned
 	lblsOwned := labels.FromStrings("__name__", "metric_owned", "job", "test")
@@ -298,6 +301,9 @@ func TestActiveSeries_OwnedCount_WithRingLoaded(t *testing.T) {
 	lblsUnowned := labels.FromStrings("__name__", "metric_not_owned", "job", "test")
 	c.UpdateSeries(lblsUnowned, lblsUnowned.Hash(), 150, now, false, copyFn)
 
+	assert.Equal(t, 2, c.Owned(), "a series is owned when it arrives")
+
+	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens, 100) // owns token 100
 	assert.Equal(t, 2, c.Active(), "both series are active regardless of ownership")
 	assert.Equal(t, 1, c.Owned(), "only the owned series counts towards owned")
 }
@@ -424,10 +430,6 @@ func TestActiveSeries_CachedTotalsMatchStripes(t *testing.T) {
 	c.Purge(now.Add(-time.Minute), now.Add(-time.Minute))
 	assertTotalsMatchStripes("purge")
 
-	c.clear()
-	assertTotalsMatchStripes("clear")
-	assert.Equal(t, 0, c.Active())
-	assert.Equal(t, 0, c.Owned())
 }
 
 func TestActiveSeries_NativeHistogram_Owned(t *testing.T) {
@@ -740,7 +742,7 @@ func BenchmarkActiveSeries_MemoryPerEntry(b *testing.B) {
 				}
 				for i := range lbls {
 					if ownedTracking {
-						c.UpdateSeriesWithRef(lbls[i], lbls[i].Hash(), uint64(i+1), uint32(i)*7919, now, false, copyFn)
+						c.UpdateSeriesWithRef(lbls[i], lbls[i].Hash(), uint64(i+1), knownSeriesToken(uint32(i)*7919), now, false, copyFn)
 					} else {
 						c.UpdateSeries(lbls[i], lbls[i].Hash(), noRingToken, now, false, copyFn)
 					}
@@ -990,7 +992,6 @@ func TestActiveSeries_TrackedRevealsAnUnseenHead(t *testing.T) {
 	ringTokens := []uint32{100, 200}
 
 	c := NewActiveSeries()
-	setRingState(c, ringTokens, 100)
 
 	// Nothing pushed yet: this is the post-replay state.
 	assert.Equal(t, 0, c.Tracked(), "a tracker that has seen no samples holds nothing")
@@ -1008,7 +1009,7 @@ func TestActiveSeries_TrackedRevealsAnUnseenHead(t *testing.T) {
 
 	assert.Equal(t, 10, c.Tracked(), "tracked counts series regardless of ownership")
 	assert.Equal(t, 10, c.Active())
-	assert.Equal(t, 5, c.Owned())
+	assert.Equal(t, 10, c.Owned(), "series are owned when they arrive")
 
 	// Tracked survives the idle window, like owned does, because entries are retained.
 	updateMetricsWithRing(c, now.Add(time.Minute), ringTokens, 100)
@@ -1030,14 +1031,14 @@ func TestActiveSeries_DeleteSeriesReleasesExactlyTheDeletedHeadSeries(t *testing
 	ringTokens := []uint32{100, 200}
 
 	c := NewActiveSeries()
-	setRingState(c, ringTokens, 100) // keys <100 owned, keys in (100,200] not owned
 
 	gone := labels.FromStrings("__name__", "gone")
 	kept := labels.FromStrings("__name__", "kept")
 	goneUnowned := labels.FromStrings("__name__", "gone_unowned")
-	c.UpdateSeriesWithRef(gone, gone.Hash(), 11, 50, now, true, copyFn)
-	c.UpdateSeriesWithRef(kept, kept.Hash(), 12, 50, now, false, copyFn)
-	c.UpdateSeriesWithRef(goneUnowned, goneUnowned.Hash(), 13, 150, now, false, copyFn)
+	c.UpdateSeriesWithRef(gone, gone.Hash(), 11, knownSeriesToken(50), now, true, copyFn)
+	c.UpdateSeriesWithRef(kept, kept.Hash(), 12, knownSeriesToken(50), now, false, copyFn)
+	c.UpdateSeriesWithRef(goneUnowned, goneUnowned.Hash(), 13, knownSeriesToken(150), now, false, copyFn)
+	updateMetricsWithRing(c, now.Add(-10*time.Minute), ringTokens, 100) // keys <100 owned, keys in (100,200] not owned
 	require.Equal(t, 3, c.Tracked())
 	require.Equal(t, 2, c.Owned())
 	require.Equal(t, 3, c.Active())
@@ -1071,11 +1072,11 @@ func TestActiveSeries_DeleteSeriesKeepsSeriesRecreatedInTheHead(t *testing.T) {
 	setRingState(c, []uint32{100}, 100)
 
 	lbls := labels.FromStrings("__name__", "flapping")
-	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 21, 50, now, false, copyFn)
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 21, knownSeriesToken(50), now, false, copyFn)
 
 	// The head deletes ref 21; before the callback runs, a sample re-creates the
 	// series as ref 35.
-	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 35, 50, now.Add(time.Second), false, copyFn)
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 35, knownSeriesToken(50), now.Add(time.Second), false, copyFn)
 	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{21: lbls})
 
 	assert.Equal(t, 1, c.Tracked(), "the series is live again under a new reference and must stay tracked")
@@ -1113,7 +1114,7 @@ func TestActiveSeries_EntryWithoutRefAdoptsOne(t *testing.T) {
 
 	lbls := labels.FromStrings("__name__", "late_ref")
 	c.UpdateSeries(lbls, lbls.Hash(), noRingToken, now, false, copyFn)
-	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 42, noRingToken, now.Add(time.Second), false, copyFn)
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 42, knownSeriesToken(noRingToken), now.Add(time.Second), false, copyFn)
 
 	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{42: lbls})
 	assert.Equal(t, 0, c.Tracked(), "the adopted reference lets the callback release the entry")
@@ -1121,11 +1122,12 @@ func TestActiveSeries_EntryWithoutRefAdoptsOne(t *testing.T) {
 
 // TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership creates a
 // series while a ring change moves this instance from owning nothing to owning
-// everything, and forces the one ordering that matters: the push reaches the
-// stripe after the new ring state is published and after that stripe has been
-// recounted. The recount only re-evaluates entries when the ring changes, so if
-// the entry were created with the ownership from before the change it would stay
-// wrong until the next ring change.
+// everything, and forces the ordering that used to leave it wrong: the push
+// reaches the stripe after the new ring state is published and after that stripe
+// has been recounted. The recount only re-evaluates entries when the ring
+// changes, so an entry created with the ownership from before the change would
+// stay wrong until the next ring change. A new entry is now owned whatever the
+// ring says, so no ordering can leave it unowned.
 //
 // Holding the stripe lock stands in for the recount of that stripe: the recount
 // takes the same lock, and the stripe holds no entry yet for it to re-evaluate.
@@ -1158,4 +1160,79 @@ func TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership(t *testin
 	updateMetricsWithRing(c, keepUntil, ringTokens, 1)
 	require.Equal(t, 1, c.Tracked())
 	require.Equal(t, 1, c.Owned(), "the entry kept the ownership from before the ring change")
+}
+
+// TestActiveSeries_NewSeriesIsOwnedWhateverTheRing covers a series reaching this
+// instance in a token range its own view of the ring says it does not own, as
+// happens when it has gained ranges the distributor already routes to it and has
+// not yet seen the ring change. The series arrived because it was routed here, so
+// it must count as owned, or it would escape the limits.
+func TestActiveSeries_NewSeriesIsOwnedWhateverTheRing(t *testing.T) {
+	c := NewActiveSeries()
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens) // owns nothing
+
+	lbls := labels.FromStrings("__name__", "metric")
+	c.UpdateSeries(lbls, lbls.Hash(), 50, now, false, copyFn)
+	assert.Equal(t, 1, c.Owned(), "a series which arrived here counts as owned")
+
+	// Until the ring changes, the recount keeps it.
+	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens)
+	assert.Equal(t, 1, c.Owned())
+
+	// A ring change re-evaluates it.
+	updateMetricsWithRing(c, now.Add(-time.Minute), ringTokens, 200)
+	assert.Equal(t, 0, c.Owned())
+}
+
+// TestActiveSeries_TokenIsComputedOnlyForNewSeries covers how the tracker gets a
+// series' ring token: computed from its labels as the distributor does, once, when
+// the series is new.
+func TestActiveSeries_TokenIsComputedOnlyForNewSeries(t *testing.T) {
+	lbls := labels.FromStrings("__name__", "metric", "job", "a")
+	adapters := cortexpb.FromLabelsToLabelAdapters(lbls)
+	want, err := ring.TokenForLabels("tenant", adapters, true)
+	require.NoError(t, err)
+
+	c := NewActiveSeries()
+	now := time.Now()
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 1, seriesToken{userID: "tenant", labels: adapters, shardByAllLabels: true}, now, false, copyFn)
+
+	stripe := &c.stripes[lbls.Hash()%numActiveSeriesStripes]
+	stripe.mu.RLock()
+	entry := stripe.refs[lbls.Hash()][0]
+	stripe.mu.RUnlock()
+	assert.Equal(t, want, entry.key)
+	assert.False(t, entry.keyless)
+
+	t.Run("zero value has no token", func(t *testing.T) {
+		_, ok := seriesToken{}.resolve()
+		assert.False(t, ok)
+	})
+	t.Run("a known token is used as is", func(t *testing.T) {
+		key, ok := knownSeriesToken(42).resolve()
+		assert.True(t, ok)
+		assert.Equal(t, uint32(42), key)
+	})
+}
+
+// TestActiveSeries_SeriesWithoutTokenStaysOwned covers a series whose ring token
+// cannot be computed: sharding by metric name, for a series with no metric name.
+// It is tracked, counts as owned, and stays owned across ring changes, since its
+// ownership cannot be evaluated.
+func TestActiveSeries_SeriesWithoutTokenStaysOwned(t *testing.T) {
+	lbls := labels.FromStrings("job", "no-metric-name")
+	token := seriesToken{userID: "tenant", labels: cortexpb.FromLabelsToLabelAdapters(lbls), shardByAllLabels: false}
+	_, ok := token.resolve()
+	require.False(t, ok, "the token cannot be computed without a metric name")
+
+	c := NewActiveSeries()
+	now := time.Now()
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 1, token, now, false, copyFn)
+	require.Equal(t, 1, c.Tracked())
+	require.Equal(t, 1, c.Owned())
+
+	updateMetricsWithRing(c, now.Add(-time.Minute), []uint32{100, 200}) // owns nothing
+	assert.Equal(t, 1, c.Owned(), "a series whose ownership cannot be evaluated stays owned")
 }

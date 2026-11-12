@@ -45,13 +45,6 @@ func HashAddByte(h uint64, b byte) uint64 {
 	return h
 }
 
-// HashAddUint adds a uint64 to a fnv64a hash value, returning the updated hash.
-func HashAddUint(h uint64, i uint64) uint64 {
-	h ^= i
-	h *= prime64
-	return h
-}
-
 // HashNew32 initializes a new fnv32 hash value.
 func HashNew32() uint32 {
 	return offset32
@@ -71,12 +64,5 @@ func HashAdd32(h uint32, s string) uint32 {
 func HashAddByte32(h uint32, b byte) uint32 {
 	h *= prime32
 	h ^= uint32(b)
-	return h
-}
-
-// HashAddUint32 adds a uint32 to a fnv32 hash value, returning the updated hash.
-func HashAddUint32(h uint32, i uint32) uint32 {
-	h *= prime32
-	h ^= i
 	return h
 }

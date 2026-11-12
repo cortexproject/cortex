@@ -18,7 +18,11 @@ var errDescRingNoKVStore = errors.New("ring is not backed by a KV store")
 //
 // It answers everything a watched Ring does from the last Desc it was given. It
 // must not be started as a service.
+//
+// It exports no metrics, so it does not compute the detailed per-member ones a
+// watched ring updates on every topology change.
 func NewRingFromDesc(cfg Config, name string, logger log.Logger) (*Ring, error) {
+	cfg.DetailedMetricsEnabled = false
 	return NewWithStoreClientAndStrategy(cfg, name, "", &descClient{}, NewDefaultReplicationStrategy(), nil, logger)
 }
 

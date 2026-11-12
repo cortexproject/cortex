@@ -224,6 +224,14 @@ func (c *blocksPostingsForMatchersCache) Size() int {
 }
 
 func (c *blocksPostingsForMatchersCache) PostingsForMatchers(ctx context.Context, blockID ulid.ULID, ix tsdb.IndexReader, ms ...*labels.Matcher) (index.Postings, error) {
+	// On a cache miss the fetch runs in the caller's goroutine with a context that is
+	// detached from the caller (the result can be shared with other callers), so it is
+	// not interrupted when the caller goes away. Do not start a fetch for a caller that
+	// has already given up, e.g. when a querier spanning many blocks is cancelled while
+	// Select is still iterating over them.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return c.fetchPostings(blockID, ix, ms...)(ctx)
 }
 

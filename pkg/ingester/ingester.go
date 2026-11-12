@@ -2009,16 +2009,24 @@ func (i *Ingester) queryExemplars(ctx context.Context, userID string, req *clien
 	}
 
 	// It's not required to sort series from a single ingester because series are sorted by the Exemplar Storage before returning from Select.
+	// Select does not take a context, so cancellation is only noticed once it returns.
 	res, err := q.Select(from, through, matchers...)
 	c()
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	numExemplars := 0
 
 	result := &client.ExemplarQueryResponse{}
-	for _, es := range res {
+	for idx, es := range res {
+		if (idx+1)%util.CheckContextEveryNIterations == 0 && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+
 		ts := cortexpb.TimeSeries{
 			Labels:    cortexpb.FromLabelsToLabelAdapters(es.SeriesLabels),
 			Exemplars: cortexpb.FromExemplarsToExemplarProtos(es.Exemplars),
@@ -2713,8 +2721,19 @@ func (i *Ingester) checkRegexMatcherLimits(ctx context.Context, userID string, d
 	maxTotalValueLength := i.limits.MaxTotalLabelValueLengthForUnoptimizedRegex(userID)
 
 	for _, matcher := range unoptimizedMatchers {
+		// Stop if the request has been canceled: each LabelValues call lists every value
+		// of the label across the head and all blocks in range.
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		labelVals, _, err := labelQuerier.LabelValues(ctx, matcher.Name, nil)
 		if err != nil {
+			// A canceled request must not be treated as "no values": that would let the
+			// caller go on to run the query.
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			// If we can't get label values, skip this matcher and continue checking others
 			continue
 		}

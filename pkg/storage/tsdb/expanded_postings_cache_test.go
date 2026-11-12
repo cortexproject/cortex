@@ -396,3 +396,41 @@ func BenchmarkCacheGetPromise(b *testing.B) {
 		}
 	})
 }
+
+func TestPostingsCache_ShouldNotStartFetchWhenContextIsCanceled(t *testing.T) {
+	cacheCfg := PostingsCacheConfig{Enabled: true, Ttl: time.Hour, MaxBytes: 10 << 20}
+
+	for name, blockID := range map[string]ulid.ULID{
+		"head":  headULID,
+		"block": ulid.MustNew(1, nil),
+	} {
+		t.Run(name, func(t *testing.T) {
+			fetches := atomic.Int64{}
+			cfg := TSDBPostingsCacheConfig{
+				Head:   cacheCfg,
+				Blocks: cacheCfg,
+				PostingsForMatchers: func(context.Context, tsdb.IndexReader, ...*labels.Matcher) (index.Postings, error) {
+					fetches.Inc()
+					return index.EmptyPostings(), nil
+				},
+			}
+			cache := newBlocksPostingsForMatchersCache("user1", cfg, NewPostingCacheMetrics(prometheus.NewPedanticRegistry()), newSeedByHash(seedArraySize))
+			matcher := labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "test_metric")
+
+			// A caller that has already gone away must not start a fetch: the fetch would run
+			// to completion on a context that is detached from the caller.
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := cache.PostingsForMatchers(ctx, blockID, nil, matcher)
+			require.ErrorIs(t, err, context.Canceled)
+			require.Equal(t, int64(0), fetches.Load())
+			require.Equal(t, 0, cache.Size(), "a canceled caller must not leave an entry in the cache")
+
+			// The next caller still fetches and caches the postings.
+			_, err = cache.PostingsForMatchers(context.Background(), blockID, nil, matcher)
+			require.NoError(t, err)
+			require.Equal(t, int64(1), fetches.Load())
+			require.Equal(t, 1, cache.Size())
+		})
+	}
+}

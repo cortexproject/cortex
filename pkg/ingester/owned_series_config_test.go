@@ -28,6 +28,7 @@ func TestIngester_OwnedSeriesTrackingWithoutActiveSeriesMetrics(t *testing.T) {
 	cfg.ActiveSeriesMetricsEnabled = false
 	// Cycles run only when the test calls updateActiveSeries.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
+	cfg.OwnedSeriesRecomputeMinInterval = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 
 	reg := prometheus.NewRegistry()
@@ -82,6 +83,7 @@ func TestIngester_OwnedSeriesLimitEnforcementWithoutOwnedSeriesMetrics(t *testin
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
 			cfg := defaultIngesterTestConfig(t)
+			cfg.LifecyclerConfig.JoinAfter = 0
 			cfg.OwnedSeriesMetricsEnabled = tc.metricsEnabled
 			cfg.OwnedSeriesLimitEnforcementEnabled = tc.enforcementEnabled
 			cfg.BlocksStorageConfig.TSDB.Dir = t.TempDir()
@@ -100,6 +102,7 @@ func TestIngester_OwnedSeriesLimitEnforcementWithoutOwnedSeriesMetrics(t *testin
 
 			require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
 			t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), i) })
+			test.Poll(t, time.Second, ring.ACTIVE, func() any { return i.lifecycler.GetState() })
 
 			ctx := user.InjectOrgID(context.Background(), userID)
 			req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, "series"), 1, time.Now().UnixMilli())

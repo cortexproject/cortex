@@ -117,7 +117,7 @@ func TestActiveSeries_PurgeOpt(t *testing.T) {
 // ownedPositionsFor builds an ownership bitmap over ringTokens from the subset of
 // ring tokens this instance is a replica for. It lets these tests express
 // ownership in terms of tokens, which reads more naturally, while the ingester
-// itself consumes the bitmap that ring.OwnedTokenPositions produces.
+// itself consumes the bitmap that ring.Ring.OwnedTokenPositions produces.
 func ownedPositionsFor(ringTokens []uint32, ownedTokens ...uint32) []bool {
 	ownedSet := make(map[uint32]struct{}, len(ownedTokens))
 	for _, token := range ownedTokens {

@@ -1437,3 +1437,37 @@ func waitRingInstance(t *testing.T, timeout time.Duration, l *Lifecycler, check 
 		return check(instance)
 	})
 }
+
+// TestLifecycler_RingDesc checks that the lifecycler keeps a copy of the ring only
+// when asked to, and replaces it only when something ownership depends on changed.
+func TestLifecycler_RingDesc(t *testing.T) {
+	l := &Lifecycler{KVStore: &MockClient{}}
+	desc := &Desc{Ingesters: generateRingInstances(3, 1, 4)}
+
+	l.updateCounters(desc)
+	assert.Nil(t, l.RingDesc(), "no copy is kept unless asked for")
+
+	l.KeepRingDesc()
+	l.updateCounters(desc)
+	first := l.RingDesc()
+	require.NotNil(t, first)
+	assert.NotSame(t, desc, first, "the lifecycler must keep its own copy")
+	assert.Equal(t, desc.Ingesters, first.Ingesters)
+
+	heartbeat := cloneDesc(desc)
+	for id, instance := range heartbeat.Ingesters {
+		instance.Timestamp++
+		heartbeat.Ingesters[id] = instance
+	}
+	l.updateCounters(heartbeat)
+	assert.Same(t, first, l.RingDesc(), "a heartbeat must not replace the copy")
+
+	changed := cloneDesc(desc)
+	for id, instance := range changed.Ingesters {
+		instance.State = LEAVING
+		changed.Ingesters[id] = instance
+		break
+	}
+	l.updateCounters(changed)
+	assert.NotSame(t, first, l.RingDesc(), "a state change must replace the copy")
+}

@@ -4275,6 +4275,15 @@ lifecycler:
 # CLI flag: -ingester.owned-series-limit-enforcement-enabled
 [owned_series_limit_enforcement_enabled: <boolean> | default = false]
 
+# How often to check whether series ownership has changed, because the ring
+# changed or a tenant's shuffle-shard size changed, and if so recount owned
+# series without waiting for the next active series update. This bounds how
+# often the recount runs while the ring is changing, and is the longest a tenant
+# can be throttled against a local limit that has already shrunk after a ring
+# change. Only used when -ingester.owned-series-metrics-enabled is true.
+# CLI flag: -ingester.owned-series-recompute-min-interval
+[owned_series_recompute_min_interval: <duration> | default = 15s]
+
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]

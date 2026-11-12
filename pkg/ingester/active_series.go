@@ -24,8 +24,8 @@ type ringState struct {
 	// tokens is the ring's full sorted token list.
 	tokens []uint32
 	// ownedPositions is parallel to tokens and marks the positions whose replica
-	// set includes this ingester. Both come from Lifecycler.GetOwnedTokenPositions
-	// and are immutable.
+	// set includes this ingester. Both come from ring.Ring.OwnedTokenPositions,
+	// called on the ring the tenant's writes are routed within, and are immutable.
 	ownedPositions []bool
 }
 
@@ -53,10 +53,10 @@ type ActiveSeries struct {
 	// the writer (updateTokens) stores a new pointer on ring changes.
 	ring uatomic.Pointer[ringState]
 
-	// currFingerprint detects ring changes. It is the fingerprint reported by the
-	// lifecycler alongside the ownership bitmap, which changes if and only if
-	// ownership may have changed. Only accessed by the updateTokens caller
-	// (periodic updateActiveSeries goroutine), so no synchronization needed.
+	// currFingerprint detects ownership changes. It is the fingerprint passed in
+	// alongside the ownership bitmap, which changes if and only if ownership may
+	// have changed. Only accessed by the updateTokens caller, the ingester's
+	// update loop, so no synchronization needed.
 	currFingerprint uint64
 
 	// activeCutoffNanos is the idle cutoff used by the most recent UpdateMetrics,

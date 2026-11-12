@@ -157,16 +157,12 @@ type Lifecycler struct {
 	zonesCount            int
 	zones                 []string
 
-	// Ownership of ring token positions by this instance. ownedTokens is the
-	// ring's full sorted token list and ownedPositions is parallel to it.
-	//
-	// These are recomputed only when the ring topology actually changes, tracked
-	// by ownedFingerprint. Once published they are never mutated in place, so
-	// readers may keep using a snapshot after releasing countersLock.
-	ownedTokens        []uint32
-	ownedPositions     []bool
-	ownedFingerprint   uint64
-	ownedFingerprintOK bool
+	// ringDesc is a private copy of the ring as last read, kept only once
+	// KeepRingDesc has been called. It is replaced, never modified, and only
+	// when something series ownership depends on has changed, so that heartbeats
+	// alone do not copy the ring. Guarded by countersLock.
+	keepRingDesc atomic.Bool
+	ringDesc     *Desc
 
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
@@ -380,29 +376,6 @@ func (i *Lifecycler) getTokens() Tokens {
 	return i.tokenFile.Tokens
 }
 
-// GetOwnedTokenPositions returns the ring's full sorted token list together with a
-// parallel bitmap of the token positions owned by this instance, meaning the
-// positions whose replica set includes this instance.
-//
-// A caller answers "do I own this series?" with
-// positions[SearchToken(tokens, key)], which is a binary search plus an array
-// index. Both slices are immutable once returned, so the caller may hold on to
-// them while classifying many series.
-//
-// The returned fingerprint changes if and only if ownership may have changed, so
-// callers can use it to decide whether to redo work derived from the bitmap
-// without having to compare the bitmap itself. It is zero before the ring has
-// been read.
-//
-// Returns nil, nil before the ring has been read for the first time. Callers must
-// treat that as "ownership unknown" rather than "owns nothing", because an
-// ingester which has not yet seen the ring still holds its series.
-func (i *Lifecycler) GetOwnedTokenPositions() (tokens []uint32, positions []bool, fingerprint uint64) {
-	i.countersLock.RLock()
-	defer i.countersLock.RUnlock()
-	return i.ownedTokens, i.ownedPositions, i.ownedFingerprint
-}
-
 func (i *Lifecycler) setTokens(tokens Tokens) {
 	i.lifecyclerMetrics.tokensOwned.Set(float64(len(tokens)))
 
@@ -513,6 +486,28 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		return err
 	}
 	return <-errCh
+}
+
+// KeepRingDesc makes the lifecycler keep a copy of the ring each time it reads
+// it, returned by RingDesc. This lets a caller which needs its own view of the
+// ring, for example to compute shuffle-shard subrings, use the ring the lifecycler
+// already reads on every heartbeat instead of watching the KV store again.
+func (i *Lifecycler) KeepRingDesc() {
+	i.keepRingDesc.Store(true)
+}
+
+// RingDesc returns the copy of the ring kept since KeepRingDesc was called, as of
+// the last time the lifecycler read the ring, or nil if there is none yet. It is
+// the same view of the ring HealthyInstancesCount and ZonesCount are computed
+// from.
+//
+// The returned Desc is shared and must not be modified. It is replaced, rather
+// than modified, when the instances, their zones, tokens or states change, so a
+// caller can tell whether anything changed by comparing pointers.
+func (i *Lifecycler) RingDesc() *Desc {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+	return i.ringDesc
 }
 
 // HealthyInstancesCount returns the number of healthy instances for the Write operation
@@ -1148,48 +1143,6 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 		}
 	}
 
-	// Recompute which ring token positions this instance owns, but only when the
-	// ring topology has actually changed. The walk is proportional to the total
-	// token count times the replication factor, which is far too expensive to
-	// repeat on every heartbeat, and heartbeats are by far the most common reason
-	// this function runs.
-	//
-	// This deliberately happens outside countersLock: HealthyInstancesCount is on
-	// the per-series ingestion path, and holding the lock across the walk would
-	// stall ingestion.
-	var (
-		ownedFingerprint uint64
-		ownedTokens      []uint32
-		ownedPositions   []bool
-		ownedRecomputed  bool
-	)
-
-	if ringDesc != nil {
-		ownedFingerprint = ownershipFingerprint(ringDesc)
-
-		i.countersLock.RLock()
-		ownedUnchanged := i.ownedFingerprintOK && i.ownedFingerprint == ownedFingerprint
-		i.countersLock.RUnlock()
-
-		if !ownedUnchanged {
-			var err error
-			ownedTokens, ownedPositions, err = OwnedTokenPositions(
-				ringDesc,
-				i.ID,
-				Write,
-				i.cfg.RingConfig.ReplicationFactor,
-				i.cfg.RingConfig.ZoneAwarenessEnabled,
-			)
-			if err != nil {
-				// Keep the previous ownership rather than publishing an empty
-				// bitmap, which would read as "owns nothing" and under-count.
-				level.Error(i.logger).Log("msg", "failed to compute owned ring token positions", "ring", i.RingName, "err", err)
-			} else {
-				ownedRecomputed = true
-			}
-		}
-	}
-
 	zones := make([]string, 0, len(zonesMap))
 	for z := range zonesMap {
 		zones = append(zones, z)
@@ -1197,16 +1150,26 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 
 	slices.Sort(zones)
 
+	// The ring passed in belongs to the KV client, which may keep or modify it,
+	// so keep a copy. Copy only when it differs in something ownership depends
+	// on: a heartbeat alone changes only timestamps.
+	var ringDescCopy *Desc
+	if ringDesc != nil && i.keepRingDesc.Load() {
+		i.countersLock.RLock()
+		prev := i.ringDesc
+		i.countersLock.RUnlock()
+		if ownershipMayHaveChanged(prev, ringDesc) {
+			ringDescCopy = cloneDesc(ringDesc)
+		}
+	}
+
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
 	i.zonesCount = len(zones)
 	i.zones = zones
-	if ownedRecomputed {
-		i.ownedTokens = ownedTokens
-		i.ownedPositions = ownedPositions
-		i.ownedFingerprint = ownedFingerprint
-		i.ownedFingerprintOK = true
+	if ringDescCopy != nil {
+		i.ringDesc = ringDescCopy
 	}
 	i.countersLock.Unlock()
 }

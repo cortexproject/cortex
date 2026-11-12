@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,7 +99,7 @@ func TestOwnedTokenPositions_MatchesGet(t *testing.T) {
 			// caller would: once per ring change, not once per series.
 			bitmaps := make(map[string][]bool, len(ringDesc.Ingesters))
 			for instanceID := range ringDesc.Ingesters {
-				tokens, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, testData.replicationFactor, testData.zoneAwarenessEnabled)
+				tokens, owned, err := ring.OwnedTokenPositions(instanceID, Write)
 				require.NoError(t, err)
 				require.Equal(t, allTokens, tokens, "returned token list must be the ring's full sorted token list")
 				require.Len(t, owned, len(allTokens), "bitmap must be parallel to the token list")
@@ -141,7 +142,7 @@ func TestOwnedTokenPositions_Conservation(t *testing.T) {
 
 			ownersPerPosition := make([]int, len(allTokens))
 			for instanceID := range ringDesc.Ingesters {
-				_, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, testData.replicationFactor, testData.zoneAwarenessEnabled)
+				_, owned, err := newRingForOwnershipTest(ringDesc, testData.replicationFactor, testData.zoneAwarenessEnabled).OwnedTokenPositions(instanceID, Write)
 				require.NoError(t, err)
 
 				for p, isOwned := range owned {
@@ -164,7 +165,7 @@ func TestOwnedTokenPositions_Conservation(t *testing.T) {
 // instances. Callers must get an empty bitmap rather than a panic, because the
 // ingester asks this question during startup before the ring has been read.
 func TestOwnedTokenPositions_EmptyRing(t *testing.T) {
-	tokens, owned, err := OwnedTokenPositions(NewDesc(), "instance-1", Write, 3, false)
+	tokens, owned, err := newRingForOwnershipTest(NewDesc(), 3, false).OwnedTokenPositions("instance-1", Write)
 	require.NoError(t, err)
 	assert.Empty(t, tokens)
 	assert.Empty(t, owned)
@@ -206,7 +207,7 @@ func TestOwnedTokenPositions_AddrDiffersFromInstanceID(t *testing.T) {
 	totalOwned := 0
 
 	for instanceID, instanceDesc := range ringDesc.Ingesters {
-		tokens, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, replicationFactor, false)
+		tokens, owned, err := ring.OwnedTokenPositions(instanceID, Write)
 		require.NoError(t, err)
 		require.Equal(t, allTokens, tokens)
 
@@ -270,7 +271,7 @@ func TestOwnedTokenPositions_NonActiveInstancesExtendReplicaSet(t *testing.T) {
 			var transitioningOwned []bool
 
 			for instanceID := range ringDesc.Ingesters {
-				_, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, replicationFactor, false)
+				_, owned, err := ring.OwnedTokenPositions(instanceID, Write)
 				require.NoError(t, err)
 
 				if instanceID == transitioning {
@@ -325,65 +326,88 @@ func TestOwnedTokenPositions_NonActiveInstancesExtendReplicaSet(t *testing.T) {
 // TestOwnershipFingerprint pins down the fingerprint's two jobs. It must change
 // whenever ownership could have changed, because a false "unchanged" leaves every
 // ingester using a stale ownership bitmap. It must NOT change on a heartbeat,
-// because heartbeats are the overwhelmingly common reason the lifecycler reruns
-// this, and recomputing ownership each time would cost far more than the cheap
-// per-series lookup saves.
+// because heartbeats are the overwhelmingly common ring update, and recomputing
+// ownership each time would cost far more than the cheap per-series lookup saves.
+//
+// Rings are updated through updateRingState, as a watched ring is, because the
+// fingerprint relies on the topology timestamp that updateRingState maintains.
 func TestOwnershipFingerprint(t *testing.T) {
-	base := &Desc{Ingesters: map[string]InstanceDesc{
-		"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
-		"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
-	}}
-	baseFingerprint := ownershipFingerprint(base)
-
-	t.Run("is stable for equal rings", func(t *testing.T) {
-		same := &Desc{Ingesters: map[string]InstanceDesc{
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
+	base := func() *Desc {
+		return &Desc{Ingesters: map[string]InstanceDesc{
 			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
+			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
 		}}
-		assert.Equal(t, baseFingerprint, ownershipFingerprint(same),
-			"fingerprint must not depend on map iteration order")
+	}
+	newRing := func(t *testing.T) *Ring {
+		r, err := NewWithStoreClientAndStrategy(Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 1}, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), nil, log.NewNopLogger())
+		require.NoError(t, err)
+		r.updateRingState(base())
+		return r
+	}
+
+	t.Run("is zero while the ring has no instances", func(t *testing.T) {
+		r, err := NewWithStoreClientAndStrategy(Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 1}, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), nil, log.NewNopLogger())
+		require.NoError(t, err)
+		assert.Zero(t, r.OwnershipFingerprint())
+	})
+
+	t.Run("is stable for an equal ring", func(t *testing.T) {
+		r := newRing(t)
+		before := r.OwnershipFingerprint()
+		r.updateRingState(base())
+		assert.Equal(t, before, r.OwnershipFingerprint())
 	})
 
 	t.Run("ignores heartbeats", func(t *testing.T) {
-		heartbeat := &Desc{Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 9999},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 8888},
-		}}
-		assert.Equal(t, baseFingerprint, ownershipFingerprint(heartbeat),
-			"a heartbeat must not force an ownership recompute")
+		r := newRing(t)
+		before := r.OwnershipFingerprint()
+		heartbeat := base()
+		for id, instance := range heartbeat.Ingesters {
+			instance.Timestamp = 9999
+			heartbeat.Ingesters[id] = instance
+		}
+		r.updateRingState(heartbeat)
+		assert.Equal(t, before, r.OwnershipFingerprint(), "a heartbeat must not force an ownership recompute")
 	})
 
 	// Each of these changes the replica set, so each must invalidate the bitmap.
 	// The state case is the one Desc.RingCompare cannot distinguish from a
-	// heartbeat, which is why this fingerprint exists at all.
-	for name, changed := range map[string]*Desc{
-		"state change": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: LEAVING, Tokens: []uint32{100, 300}, Timestamp: 1000},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
-		}},
-		"token change": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 301}, Timestamp: 1000},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
-		}},
-		"zone change": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
-		}},
-		"instance added": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200, 400}, Timestamp: 1000},
-			"instance-3": {Addr: "10.0.0.3:9095", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{500}, Timestamp: 1000},
-		}},
-		"instance removed": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300}, Timestamp: 1000},
-		}},
-		"tokens moved between instances": {Ingesters: map[string]InstanceDesc{
-			"instance-1": {Addr: "10.0.0.1:9095", Zone: "zone-a", State: ACTIVE, Tokens: []uint32{100, 300, 400}, Timestamp: 1000},
-			"instance-2": {Addr: "10.0.0.2:9095", Zone: "zone-b", State: ACTIVE, Tokens: []uint32{200}, Timestamp: 1000},
-		}},
+	// heartbeat, which is why states are hashed on top of the topology timestamp.
+	for name, change := range map[string]func(d *Desc){
+		"state change": func(d *Desc) {
+			instance := d.Ingesters["instance-1"]
+			instance.State = LEAVING
+			d.Ingesters["instance-1"] = instance
+		},
+		"token change": func(d *Desc) {
+			instance := d.Ingesters["instance-1"]
+			instance.Tokens = []uint32{100, 301}
+			d.Ingesters["instance-1"] = instance
+		},
+		"zone change": func(d *Desc) {
+			instance := d.Ingesters["instance-1"]
+			instance.Zone = "zone-c"
+			d.Ingesters["instance-1"] = instance
+		},
+		"instance added": func(d *Desc) {
+			d.Ingesters["instance-3"] = InstanceDesc{Addr: "10.0.0.3:9095", Zone: "zone-c", State: ACTIVE, Tokens: []uint32{500}, Timestamp: 1000}
+		},
+		"instance removed": func(d *Desc) {
+			delete(d.Ingesters, "instance-2")
+		},
+		"tokens moved between instances": func(d *Desc) {
+			one, two := d.Ingesters["instance-1"], d.Ingesters["instance-2"]
+			one.Tokens, two.Tokens = []uint32{100, 300, 400}, []uint32{200}
+			d.Ingesters["instance-1"], d.Ingesters["instance-2"] = one, two
+		},
 	} {
 		t.Run("changes on "+name, func(t *testing.T) {
-			assert.NotEqual(t, baseFingerprint, ownershipFingerprint(changed))
+			r := newRing(t)
+			before := r.OwnershipFingerprint()
+			changed := base()
+			change(changed)
+			r.updateRingState(changed)
+			assert.NotEqual(t, before, r.OwnershipFingerprint())
 		})
 	}
 }
@@ -408,10 +432,12 @@ func BenchmarkOwnedTokenPositions(b *testing.B) {
 		break
 	}
 
+	ring := newRingForOwnershipTest(ringDesc, replicationFactor, true)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
-		_, owned, err := OwnedTokenPositions(ringDesc, instanceID, Write, replicationFactor, true)
+		_, owned, err := ring.OwnedTokenPositions(instanceID, Write)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -428,11 +454,153 @@ func BenchmarkOwnedTokenPositions(b *testing.B) {
 func TestOwnedTokenPositions_UnknownInstance(t *testing.T) {
 	ringDesc := &Desc{Ingesters: generateRingInstances(6, 3, 128)}
 
-	tokens, owned, err := OwnedTokenPositions(ringDesc, "instance-does-not-exist", Write, 3, false)
+	tokens, owned, err := newRingForOwnershipTest(ringDesc, 3, false).OwnedTokenPositions("instance-does-not-exist", Write)
 	require.NoError(t, err)
 	require.Len(t, owned, len(tokens))
 
 	for p, isOwned := range owned {
 		assert.False(t, isOwned, "unknown instance must not own token position %d", p)
 	}
+}
+
+// newWatchedRingForOwnershipTest builds a Ring updated through updateRingState, as
+// a ring watching the KV store is, so that the shuffle-shard subring cache and the
+// topology timestamp behave as they do in a running ingester.
+func newWatchedRingForOwnershipTest(t *testing.T, ringDesc *Desc, replicationFactor int, zoneAwarenessEnabled bool) *Ring {
+	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: replicationFactor, ZoneAwarenessEnabled: zoneAwarenessEnabled}
+	r, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), nil, log.NewNopLogger())
+	require.NoError(t, err)
+	r.updateRingState(ringDesc)
+	return r
+}
+
+// TestOwnedTokenPositions_SubringMatchesGet is MatchesGet for shuffle-sharded
+// tenants: on the subring a tenant's writes are routed within, an instance owns a
+// token position if and only if the subring routes a key in that position to it.
+// Instances outside the subring own nothing for that tenant.
+func TestOwnedTokenPositions_SubringMatchesGet(t *testing.T) {
+	const (
+		numInstances      = 30
+		numZones          = 3
+		replicationFactor = 3
+	)
+
+	for _, zoneAwarenessEnabled := range []bool{true, false} {
+		r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateRingInstances(numInstances, numZones, 128)}, replicationFactor, zoneAwarenessEnabled)
+
+		for _, shardSize := range []int{3, 6, 9, 15} {
+			t.Run(fmt.Sprintf("zone awareness %v, shard size %d", zoneAwarenessEnabled, shardSize), func(t *testing.T) {
+				subring, ok := r.ShuffleShard("tenant", shardSize).(*Ring)
+				require.True(t, ok)
+				require.Less(t, subring.InstancesCount(), numInstances, "the shard must be smaller than the ring for this test to mean anything")
+
+				tokens := subring.ringTokens
+				bufDescs, bufHosts, bufZones := MakeBuffersForGet()
+				ownedPositions := 0
+
+				for instanceID, instance := range r.ringDesc.Ingesters {
+					subTokens, owned, err := subring.OwnedTokenPositions(instanceID, Write)
+					require.NoError(t, err)
+					require.Equal(t, tokens, subTokens)
+					require.Len(t, owned, len(tokens))
+
+					_, inShard := subring.ringDesc.Ingesters[instanceID]
+					for p := range tokens {
+						if !inShard {
+							require.False(t, owned[p], "instance %s is not in the shard but owns position %d", instanceID, p)
+							continue
+						}
+
+						set, err := subring.Get(keyForPosition(tokens, p), Write, bufDescs, bufHosts, bufZones)
+						require.NoError(t, err)
+						require.Equal(t, set.Includes(instance.Addr), owned[p],
+							"ownership disagrees with subring routing at position %d for instance %s", p, instanceID)
+						if owned[p] {
+							ownedPositions++
+						}
+					}
+				}
+
+				require.Equal(t, replicationFactor*len(tokens), ownedPositions, "every subring position must be owned exactly RF times")
+			})
+		}
+	}
+}
+
+// TestOwnedTokenPositions_SubringDiffersFromRing shows why sharded tenants need
+// their own ownership: for a member of a tenant's shard, whole-ring ownership and
+// subring ownership disagree about many keys, because the two rings pick different
+// replica sets. Using whole-ring ownership for such a tenant miscounts its series.
+func TestOwnedTokenPositions_SubringDiffersFromRing(t *testing.T) {
+	r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateRingInstances(30, 3, 128)}, 3, true)
+	subring, ok := r.ShuffleShard("tenant", 6).(*Ring)
+	require.True(t, ok)
+
+	var member string
+	for id := range subring.ringDesc.Ingesters {
+		member = id
+		break
+	}
+
+	ringTokens, ringOwned, err := r.OwnedTokenPositions(member, Write)
+	require.NoError(t, err)
+	subTokens, subOwned, err := subring.OwnedTokenPositions(member, Write)
+	require.NoError(t, err)
+
+	disagreements := 0
+	for key := uint32(0); key < math.MaxUint32-1<<20; key += 1 << 20 {
+		if ringOwned[SearchToken(ringTokens, key)] != subOwned[SearchToken(subTokens, key)] {
+			disagreements++
+		}
+	}
+	require.Greater(t, disagreements, 0)
+}
+
+// TestOwnedTokenPositions_SubringSeesStateChanges checks that a state change in
+// the full ring reaches subring ownership. A state change is not a topology
+// change, so cached subrings are kept, but the cache refreshes their states on
+// every lookup. A member which is not ACTIVE extends the subring's replica sets,
+// so some positions then have more than RF owners.
+func TestOwnedTokenPositions_SubringSeesStateChanges(t *testing.T) {
+	const replicationFactor = 3
+
+	ringDesc := &Desc{Ingesters: generateRingInstances(30, 3, 128)}
+	r := newWatchedRingForOwnershipTest(t, ringDesc, replicationFactor, true)
+	subring := r.ShuffleShard("tenant", 6).(*Ring)
+
+	var leaving string
+	for id := range subring.ringDesc.Ingesters {
+		leaving = id
+		break
+	}
+
+	changed := &Desc{Ingesters: map[string]InstanceDesc{}}
+	for id, instance := range ringDesc.Ingesters {
+		if id == leaving {
+			instance.State = LEAVING
+		}
+		changed.Ingesters[id] = instance
+	}
+	r.updateRingState(changed)
+
+	subring = r.ShuffleShard("tenant", 6).(*Ring)
+	ownersPerPosition := make([]int, len(subring.ringTokens))
+	for id := range subring.ringDesc.Ingesters {
+		_, owned, err := subring.OwnedTokenPositions(id, Write)
+		require.NoError(t, err)
+		for p, isOwned := range owned {
+			if isOwned {
+				ownersPerPosition[p]++
+			}
+		}
+	}
+
+	extended := 0
+	for _, owners := range ownersPerPosition {
+		require.GreaterOrEqual(t, owners, replicationFactor)
+		if owners > replicationFactor {
+			extended++
+		}
+	}
+	require.Greater(t, extended, 0, "a LEAVING member must extend the subring's replica sets")
 }

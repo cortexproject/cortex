@@ -1118,3 +1118,44 @@ func TestActiveSeries_EntryWithoutRefAdoptsOne(t *testing.T) {
 	c.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{42: lbls})
 	assert.Equal(t, 0, c.Tracked(), "the adopted reference lets the callback release the entry")
 }
+
+// TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership creates a
+// series while a ring change moves this instance from owning nothing to owning
+// everything, and forces the one ordering that matters: the push reaches the
+// stripe after the new ring state is published and after that stripe has been
+// recounted. The recount only re-evaluates entries when the ring changes, so if
+// the entry were created with the ownership from before the change it would stay
+// wrong until the next ring change.
+//
+// Holding the stripe lock stands in for the recount of that stripe: the recount
+// takes the same lock, and the stripe holds no entry yet for it to re-evaluate.
+func TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership(t *testing.T) {
+	ringTokens := []uint32{1}
+	keepUntil := time.Now().Add(-time.Hour)
+
+	c := NewActiveSeries()
+	updateMetricsWithRing(c, keepUntil, ringTokens) // owns nothing
+
+	lbls := labels.FromStrings(labels.MetricName, "metric")
+	hash := lbls.Hash()
+	stripe := &c.stripes[hash%numActiveSeriesStripes]
+
+	stripe.mu.Lock()
+	pushed := make(chan struct{})
+	go func() {
+		defer close(pushed)
+		c.UpdateSeries(lbls, hash, 5, time.Now(), false, copyFn)
+	}()
+	// Let the push get as far as the stripe lock.
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish the new ring, as UpdateMetrics does before recounting any stripe.
+	require.True(t, setRingState(c, ringTokens, 1)) // owns everything
+	stripe.mu.Unlock()
+	<-pushed
+
+	// Recount with the ring unchanged, which keeps each entry's cached ownership.
+	updateMetricsWithRing(c, keepUntil, ringTokens, 1)
+	require.Equal(t, 1, c.Tracked())
+	require.Equal(t, 1, c.Owned(), "the entry kept the ownership from before the ring change")
+}

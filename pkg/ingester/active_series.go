@@ -137,10 +137,11 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint3
 func (c *ActiveSeries) UpdateSeriesWithRef(series labels.Labels, hash uint64, headRef uint64, key uint32, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
 	stripeID := hash % numActiveSeriesStripes
 
-	// Load ring state atomically — readers on the push path always see a consistent snapshot.
-	state := c.ring.Load()
+	// The ring state is handed down rather than loaded here: a new entry's ownership
+	// must be computed from the state read under the stripe lock. See
+	// findOrCreateEntryForSeries.
 	c.stripes[stripeID].updateSeriesTimestamp(
-		now, series, hash, headRef, key, nativeHistogram, labelsCopy, state.tokens, state.ownedPositions, c.activeCutoffNanos.Load())
+		now, series, hash, headRef, key, nativeHistogram, labelsCopy, &c.ring, c.activeCutoffNanos.Load())
 }
 
 // DeleteSeries releases the entries for series the TSDB head has just deleted. It
@@ -290,13 +291,13 @@ func (c *ActiveSeries) ActiveNativeHistogram() int {
 // updateSeriesTimestamp records a sample for a series, creating the entry if this
 // is the first time it has been seen. It reports whether an entry was created and,
 // if so, whether that entry is owned by this instance.
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, headRef uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool, activeCutoffNanos int64) {
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, headRef uint64, key uint32, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, ring *uatomic.Pointer[ringState], activeCutoffNanos int64) {
 	nowNanos := now.UnixNano()
 
 	e, ref := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
-		e, ref, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, headRef, key, series, nowNanos, nativeHistogram, labelsCopy, tokens, ownedPositions)
+		e, ref, entryTimeSet = s.findOrCreateEntryForSeries(fingerprint, headRef, key, series, nowNanos, nativeHistogram, labelsCopy, ring)
 	}
 
 	// Keep the entry pointing at the live head series. It changes only when the
@@ -368,7 +369,7 @@ func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series label
 	return nil, nil
 }
 
-func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, headRef uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, tokens []uint32, ownedPositions []bool) (nanos *uatomic.Int64, ref *uatomic.Uint64, entryTimeSet bool) {
+func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, headRef uint64, key uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, ring *uatomic.Pointer[ringState]) (nanos *uatomic.Int64, ref *uatomic.Uint64, entryTimeSet bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -381,7 +382,15 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, head
 
 	// Ownership decides which counters this series contributes to, not whether it
 	// is tracked. A series this instance does not own is still an active series.
-	owned := isOwned(key, tokens, ownedPositions)
+	//
+	// The ring state is read while holding the stripe lock, which the recount also
+	// takes. UpdateMetrics publishes a new state before recounting any stripe, so
+	// an entry created after this stripe's recount sees the new state, and one
+	// created before it is re-evaluated by the recount. Reading the state before
+	// taking the lock would let an entry be created with the previous ownership
+	// after the recount had already passed, and keep it until the next ring change.
+	state := ring.Load()
+	owned := isOwned(key, state.tokens, state.ownedPositions)
 
 	s.tracked.Inc()
 	s.active.Inc()

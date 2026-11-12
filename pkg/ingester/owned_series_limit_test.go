@@ -138,3 +138,88 @@ func TestIngester_OwnedSeriesLimit_ConcurrentNewSeries(t *testing.T) {
 	require.Zero(t, other.Load(), "unexpected non-limit push errors")
 	require.Zero(t, rejected.Load(), "%d of %d new series were rejected by the per-user limit although the ingester owns none of its head", rejected.Load(), workers*seriesPerWorker)
 }
+
+// TestIngester_OwnedSeriesInstanceLimit_CountsSeriesCreatedSinceSnapshot covers the
+// instance max_series limit between two updateActiveSeries cycles. The owned count
+// it reads is a snapshot taken once per cycle, so series created after it must be
+// added on top. Otherwise the limit, which protects the ingester from running out
+// of memory, lets any number of new series through until the next cycle.
+func TestIngester_OwnedSeriesInstanceLimit_CountsSeriesCreatedSinceSnapshot(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.ActiveSeriesMetricsEnabled = true
+	// Cycles run only when the test calls updateActiveSeries.
+	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
+	cfg.OwnedSeriesMetricsEnabled = true
+	cfg.OwnedSeriesLimitEnforcementEnabled = true
+	cfg.InstanceLimitsFn = func() *InstanceLimits { return &InstanceLimits{MaxInMemorySeries: 2} }
+
+	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, defaultLimitsTestConfig(), nil, "", prometheus.NewRegistry())
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), i) })
+	test.Poll(t, time.Second, ring.ACTIVE, func() any { return i.lifecycler.GetState() })
+
+	ctx := user.InjectOrgID(context.Background(), userID)
+	nowMs := time.Now().UnixMilli()
+	push := func(name string) error {
+		req, _ := mockWriteRequest(t, labels.FromStrings(labels.MetricName, name), 1, nowMs)
+		_, err := i.Push(ctx, req)
+		return err
+	}
+
+	require.NoError(t, push("first"))
+	i.updateActiveSeries(ctx)
+
+	require.NoError(t, push("second"), "one owned series plus one new one is within the limit of 2")
+	for _, name := range []string{"third", "fourth"} {
+		require.ErrorContains(t, push(name), "max series limit reached", "series %q must be rejected: the ingester already holds 2", name)
+	}
+
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), db.Head().NumSeries())
+}
+
+func TestInstanceOwnedSnapshot_Count(t *testing.T) {
+	tests := map[string]struct {
+		snapshot       instanceOwnedSnapshot
+		seriesCreated  int64
+		seriesInMemory int64
+		expected       int64
+	}{
+		"nothing created since the snapshot": {
+			snapshot:       instanceOwnedSnapshot{owned: 40, seriesCreated: 100},
+			seriesCreated:  100,
+			seriesInMemory: 100,
+			expected:       40,
+		},
+		"series created since the snapshot are added": {
+			snapshot:       instanceOwnedSnapshot{owned: 40, seriesCreated: 100},
+			seriesCreated:  130,
+			seriesInMemory: 130,
+			expected:       70,
+		},
+		// Head compaction deleted 30 series that had moved to other ingesters, and 30
+		// new ones were created. The in-memory count is unchanged, but the 30 new
+		// series still have to be counted.
+		"series created while as many were deleted are still counted": {
+			snapshot:       instanceOwnedSnapshot{owned: 40, seriesCreated: 100},
+			seriesCreated:  130,
+			seriesInMemory: 100,
+			expected:       70,
+		},
+		"never more than the series in memory": {
+			snapshot:       instanceOwnedSnapshot{owned: 90, seriesCreated: 100},
+			seriesCreated:  130,
+			seriesInMemory: 100,
+			expected:       100,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.expected, tc.snapshot.count(tc.seriesCreated, tc.seriesInMemory))
+		})
+	}
+}

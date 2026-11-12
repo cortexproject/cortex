@@ -4257,18 +4257,21 @@ lifecycler:
 # ratio between series in the TSDB head and recently active series. The value of
 # cortex_ingester_active_series is unchanged, but cortex_ingester_owned_series
 # may exceed it for a tenant with high churn, because it counts idle series
-# which are still held.
+# which are still held. It runs independently of
+# -ingester.active-series-metrics-enabled, which only controls whether the
+# active series metrics are exported.
 # CLI flag: -ingester.owned-series-metrics-enabled
 [owned_series_metrics_enabled: <boolean> | default = false]
 
 # Use the owned series count for limit enforcement instead of the total number
-# of series in the TSDB head. Requires owned-series-metrics-enabled. This
-# prevents tenants being throttled against a limit that has already shrunk after
-# a ring change, while the head still holds series that have moved elsewhere.
-# Note this applies to the instance-wide max_series limit as well as to
-# per-tenant limits, so max_series stops counting series which have been
-# reassigned to another ingester but are still resident until the next head
-# compaction.
+# of series in the TSDB head. Requires -ingester.owned-series-metrics-enabled.
+# Without it this flag has no effect: the limits count every series in memory,
+# and a warning is logged at startup. This prevents tenants being throttled
+# against a limit that has already shrunk after a ring change, while the head
+# still holds series that have moved elsewhere. Note this applies to the
+# instance-wide max_series limit as well as to per-tenant limits, so max_series
+# stops counting series which have been reassigned to another ingester but are
+# still resident until the next head compaction.
 # CLI flag: -ingester.owned-series-limit-enforcement-enabled
 [owned_series_limit_enforcement_enabled: <boolean> | default = false]
 

@@ -4391,6 +4391,27 @@ query_protection:
     # when resource thresholds are breached.
     # CLI flag: -ingester.query-protection.eviction.max-evictions-per-cycle
     [max_evictions_per_cycle: <int> | default = 1]
+
+push_coalesce:
+  # Experimental: merge the TSDB commits of concurrent write requests for the
+  # same tenant into a single commit. A request only ever waits for a commit
+  # that was already in flight, so this adds no latency of its own.
+  # CLI flag: -ingester.push-coalesce.enabled
+  [enabled: <boolean> | default = false]
+
+  # Maximum number of write requests a single coalesced commit may carry.
+  # CLI flag: -ingester.push-coalesce.max-batch-requests
+  [max_batch_requests: <int> | default = 32]
+
+  # Maximum number of samples a single coalesced commit may carry. 0 to disable
+  # the limit.
+  # CLI flag: -ingester.push-coalesce.max-batch-samples
+  [max_batch_samples: <int> | default = 2000]
+
+  # Maximum encoded size, in bytes, of the write requests a single coalesced
+  # commit may carry. 0 to disable the limit.
+  # CLI flag: -ingester.push-coalesce.max-batch-bytes
+  [max_batch_bytes: <int> | default = 0]
 ```
 
 ### `ingester_client_config`

@@ -3,7 +3,6 @@ package ingester
 import (
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -52,7 +51,7 @@ var emptyRingState = &ringState{}
 type ActiveSeries struct {
 	// Ring ownership state. Readers on the push path load atomically;
 	// the writer (updateTokens) stores a new pointer on ring changes.
-	ring atomic.Pointer[ringState]
+	ring uatomic.Pointer[ringState]
 
 	// currFingerprint detects ring changes. It is the fingerprint reported by the
 	// lifecycler alongside the ownership bitmap, which changes if and only if

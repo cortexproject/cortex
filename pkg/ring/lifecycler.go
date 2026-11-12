@@ -294,7 +294,7 @@ func (i *Lifecycler) CheckReady(ctx context.Context) error {
 
 func (i *Lifecycler) checkRingHealthForReadiness(ctx context.Context) error {
 	// Ensure the instance holds some tokens.
-	if len(i.GetTokens()) == 0 {
+	if len(i.getTokens()) == 0 {
 		return fmt.Errorf("this instance owns no tokens")
 	}
 
@@ -374,7 +374,7 @@ func (i *Lifecycler) ChangeState(ctx context.Context, state InstanceState) error
 	return <-errCh
 }
 
-func (i *Lifecycler) GetTokens() Tokens {
+func (i *Lifecycler) getTokens() Tokens {
 	i.stateMtx.RLock()
 	defer i.stateMtx.RUnlock()
 	return i.tokenFile.Tokens
@@ -989,7 +989,7 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 	sort.Sort(fromRing)
 
-	tokens := i.GetTokens()
+	tokens := i.getTokens()
 	sort.Sort(tokens)
 
 	if len(tokens) != len(fromRing) {
@@ -1019,15 +1019,15 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 		// Need to make sure we didn't change the num of tokens configured
 		myTokens, _ := ringDesc.TokensFor(i.ID)
 		if !alreadyInRing {
-			myTokens = i.GetTokens()
+			myTokens = i.getTokens()
 		}
 		needTokens := i.cfg.NumTokens - len(myTokens)
 
-		if needTokens == 0 && myTokens.Equals(i.GetTokens()) {
+		if needTokens == 0 && myTokens.Equals(i.getTokens()) {
 			// Tokens have been verified. No need to change them.
 			i.setState(targetState)
 			state := i.GetState()
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), state, i.getRegisteredAt())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
 			level.Info(i.logger).Log("msg", "auto joined with existing tokens", "ring", i.RingName, "state", state)
 			return ringDesc, true, nil
 		}
@@ -1049,7 +1049,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 
 		i.setState(targetState)
 		state := i.GetState()
-		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), state, i.getRegisteredAt())
+		ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), state, i.getRegisteredAt())
 		level.Info(i.logger).Log("msg", "auto joined with new tokens", "ring", i.RingName, "state", state)
 
 		return ringDesc, true, nil
@@ -1079,7 +1079,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 		if !ok {
 			// consul must have restarted
 			level.Info(i.logger).Log("msg", "found empty ring, inserting tokens", "ring", i.RingName)
-			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.GetTokens(), i.GetState(), i.getRegisteredAt())
+			ringDesc.AddIngester(i.ID, i.Addr, i.Zone, i.getTokens(), i.GetState(), i.getRegisteredAt())
 		} else {
 			instanceDesc.Timestamp = time.Now().Unix()
 			instanceDesc.State = i.GetState()

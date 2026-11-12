@@ -109,11 +109,11 @@ func TestLifecycler_RenewTokens(t *testing.T) {
 		return nil
 	})
 
-	originalTokens := l1.GetTokens()
+	originalTokens := l1.getTokens()
 	require.Len(t, originalTokens, 512)
 	require.IsIncreasing(t, originalTokens)
 	l1.RenewTokens(0.1, ctx)
-	newTokens := l1.GetTokens()
+	newTokens := l1.getTokens()
 	require.Len(t, newTokens, 512)
 	require.IsIncreasing(t, newTokens)
 	diff := 0
@@ -465,7 +465,7 @@ func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 		return checkNormalised(d, "ing1")
 	})
 
-	expectedTokens := l1.GetTokens()
+	expectedTokens := l1.getTokens()
 	expectedRegisteredAt := l1.getRegisteredAt()
 
 	// Wait 1 second because the registered timestamp has second precision. Without waiting
@@ -483,7 +483,7 @@ func TestLifecycler_ShouldHandleInstanceAbruptlyRestarted(t *testing.T) {
 		require.NoError(t, err)
 
 		return checkNormalised(d, "ing1") &&
-			expectedTokens.Equals(l2.GetTokens()) &&
+			expectedTokens.Equals(l2.getTokens()) &&
 			expectedRegisteredAt.Unix() == l2.getRegisteredAt().Unix()
 	})
 }

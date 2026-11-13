@@ -368,7 +368,7 @@ func (q *blocksStoreQuerier) LabelNames(ctx context.Context, hints *storage.Labe
 		convertedMatchers = convertMatchersToLabelMatcher(matchers)
 	)
 
-	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error) {
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, _ bucketindex.Blocks, minT, maxT int64) ([]ulid.ULID, error, error) {
 		nameSets, warnings, queriedBlocks, err, retryableError := q.fetchLabelNamesFromStore(spanCtx, userID, clients, minT, maxT, limit, convertedMatchers)
 		if err != nil {
 			return nil, err, retryableError
@@ -411,7 +411,7 @@ func (q *blocksStoreQuerier) LabelValues(ctx context.Context, name string, hints
 		resultMtx sync.Mutex
 	)
 
-	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error) {
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, _ bucketindex.Blocks, minT, maxT int64) ([]ulid.ULID, error, error) {
 		valueSets, warnings, queriedBlocks, err, retryableError := q.fetchLabelValuesFromStore(spanCtx, userID, name, clients, minT, maxT, limit, matchers...)
 		if err != nil {
 			return nil, err, retryableError
@@ -460,8 +460,9 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 		resultMtx sync.Mutex
 	)
 
-	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error) {
-		seriesSets, queriedBlocks, warnings, numChunks, err, retryableError := q.fetchSeriesFromStores(spanCtx, sp, userID, clients, minT, maxT, limit, matchers, maxChunksLimit, leftChunksLimit)
+	queryFunc := func(clients map[BlocksStoreClient][]ulid.ULID, knownBlocks bucketindex.Blocks, minT, maxT int64) ([]ulid.ULID, error, error) {
+		storeHints := storeGatewaySelectHints(sp, knownBlocks)
+		seriesSets, queriedBlocks, warnings, numChunks, err, retryableError := q.fetchSeriesFromStores(spanCtx, storeHints, userID, clients, minT, maxT, limit, matchers, maxChunksLimit, leftChunksLimit)
 		if err != nil {
 			return nil, err, retryableError
 		}
@@ -494,8 +495,24 @@ func (q *blocksStoreQuerier) selectSorted(ctx context.Context, sp *storage.Selec
 		resWarnings)
 }
 
+// storeGatewaySelectHints returns the select hints to send to store-gateways for the given blocks.
+// Projection hints are reset unless all blocks have the series hash column (parquet version >= 2).
+// The decision is taken once for all blocks before fanning out, because blocks are spread across
+// store-gateways and a series must have the same labels in every response to be merged.
+func storeGatewaySelectHints(sp *storage.SelectHints, blocks bucketindex.Blocks) *storage.SelectHints {
+	if sp == nil || !sp.ProjectionInclude || allParquetBlocksHaveHashColumn(blocks) {
+		return sp
+	}
+
+	// Copy so the caller's hints are not modified.
+	hints := *sp
+	hints.ProjectionInclude = false
+	hints.ProjectionLabels = nil
+	return &hints
+}
+
 func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logger log.Logger, minT, maxT int64, matchers []*labels.Matcher,
-	userID string, queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, minT, maxT int64) ([]ulid.ULID, error, error)) error {
+	userID string, queryFunc func(clients map[BlocksStoreClient][]ulid.ULID, knownBlocks bucketindex.Blocks, minT, maxT int64) ([]ulid.ULID, error, error)) error {
 	queryStoreAfter := q.limits.QueryStoreAfter(userID)
 	// If queryStoreAfter is enabled, we do manipulate the query maxt to query samples up until
 	// now - queryStoreAfter, because the most recent time range is covered by ingesters. This
@@ -567,7 +584,7 @@ func (q *blocksStoreQuerier) queryWithConsistencyCheck(ctx context.Context, logg
 
 		// Fetch series from stores. If an error occur we do not retry because retries
 		// are only meant to cover missing blocks.
-		queriedBlocks, err, retryableError = queryFunc(clients, minT, maxT)
+		queriedBlocks, err, retryableError = queryFunc(clients, knownBlocks, minT, maxT)
 		if err != nil {
 			return err
 		}

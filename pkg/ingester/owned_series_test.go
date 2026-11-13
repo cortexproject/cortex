@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -80,8 +81,7 @@ func prepareOwnedSeriesTestIngester(t *testing.T, opts ...func(*Config, *validat
 	cfg.DistributorShardByAllLabels = true
 	// Recounts run only when the test asks for them.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeInterval = time.Hour
-	cfg.ownedSeriesRingCheckPeriod = time.Hour
+	cfg.ownedSeriesCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 
 	limits := defaultLimitsTestConfig()
@@ -575,7 +575,7 @@ func TestIngester_OwnershipOperationFollowsExtendWrites(t *testing.T) {
 // a running ingester, since the ownership state belongs to that goroutine.
 func TestIngester_OwnedSeries_RingChangeIsAppliedWithinASecond(t *testing.T) {
 	i := prepareOwnedSeriesTestIngester(t, func(cfg *Config, _ *validation.Limits) {
-		cfg.ownedSeriesRingCheckPeriod = time.Second
+		cfg.ownedSeriesCheckPeriod = time.Second
 	})
 	const tenant = "whole-ring"
 	series := i.pushSeries(t, tenant, "w", ownedSeriesTestSeries)
@@ -627,4 +627,179 @@ func TestOwnedSeriesLimitCount(t *testing.T) {
 			require.Equal(t, tc.want, ownedSeriesLimitCount(tc.head, tc.owned, tc.tracked))
 		})
 	}
+}
+
+// TestIngester_OwnedSeries_SeriesRestoredFromTheWALAreJudged restarts an ingester
+// on the same WAL. The head is rebuilt without going through Push, so without
+// tracker entries every restored series would count as owned until head
+// compaction, including the ones the ring sends elsewhere, throttling tenants as
+// if owned series were not tracked. They must be judged by the ring like any other.
+func TestIngester_OwnedSeries_SeriesRestoredFromTheWALAreJudged(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.LifecyclerConfig.JoinAfter = 0
+	cfg.LifecyclerConfig.NumTokens = ownedSeriesTestTokens
+	cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 3
+	cfg.LifecyclerConfig.HeartbeatPeriod = 100 * time.Millisecond
+	cfg.DistributorShardByAllLabels = true
+	cfg.OwnedSeriesMetricsEnabled = true
+	cfg.OwnedSeriesLimitEnforcementEnabled = true
+	// The ingester's own loop judges the restored series within a second.
+	cfg.ownedSeriesCheckPeriod = time.Second
+	cfg.ActiveSeriesMetricsUpdatePeriod = time.Second
+	limits := defaultLimitsTestConfig()
+	dataDir := t.TempDir()
+
+	start := func() *Ingester {
+		i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, nil, dataDir, prometheus.NewRegistry())
+		require.NoError(t, err)
+		require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
+		test.Poll(t, 5*time.Second, ring.ACTIVE, func() any { return i.lifecycler.GetState() })
+		return i
+	}
+
+	first := start()
+	ingester := &ownedSeriesTestIngester{Ingester: first, cfg: cfg, limits: limits}
+	distributorRing, err := ring.New(cfg.LifecyclerConfig.RingConfig, "ingester", RingKey, log.NewNopLogger(), nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), distributorRing))
+	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), distributorRing) })
+	ingester.distributorRing = distributorRing
+	for n := range ownedSeriesTestPeers {
+		ingester.addPeer(t, fmt.Sprintf("peer-%d", n))
+	}
+
+	const tenant = "restarted"
+	series := ingester.pushSeries(t, tenant, "s", ownedSeriesTestSeries)
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), first))
+
+	second := start()
+	t.Cleanup(func() { _ = services.StopAndAwaitTerminated(context.Background(), second) })
+	ingester.Ingester = second
+	test.Poll(t, 5*time.Second, true, func() any {
+		desc, _ := second.lifecycler.RingDesc()
+		_, inRing := desc.GetIngesters()[second.lifecycler.ID]
+		return inRing && distributorRing.InstancesCount() == ownedSeriesTestPeers+1
+	})
+
+	db, err := second.getTSDB(tenant)
+	require.NoError(t, err)
+	require.Equal(t, uint64(ownedSeriesTestSeries), db.Head().NumSeries(), "the series are restored from the WAL")
+
+	// Restored series predate every ring read of this process, so the first view
+	// may judge them, even after a crash, when the instance is still ACTIVE in the
+	// ring and the next read is the first heartbeat.
+	restored := series[0]
+	stripe := &db.activeSeries.stripes[restored.Hash()%numActiveSeriesStripes]
+	stripe.mu.RLock()
+	createdRead := stripe.refs[restored.Hash()][0].createdRead
+	stripe.mu.RUnlock()
+	require.Zero(t, createdRead)
+
+	limitCount := func() int {
+		return ownedSeriesLimitCount(int(db.Head().NumSeries()), db.activeSeries.Owned(), db.activeSeries.Tracked())
+	}
+	test.Poll(t, 5*time.Second, ingester.routedHere(t, tenant, series), func() any { return limitCount() })
+	require.Less(t, limitCount(), ownedSeriesTestSeries, "series the ring sends elsewhere must not count")
+}
+
+// TestIngester_OwnedSeries_ShardSizeChangeIsAppliedWithinASecond checks that when a
+// tenant's shard size changes, which immediately changes its local limit, the
+// owned count follows within about a second. Until it does, the tenant can be
+// throttled against its new local limit.
+func TestIngester_OwnedSeries_ShardSizeChangeIsAppliedWithinASecond(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t, func(cfg *Config, _ *validation.Limits) {
+		cfg.ownedSeriesCheckPeriod = time.Second
+	})
+	const shardSize = 6
+
+	userID := i.tenantWithShardMembership(t, shardSize, true)
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	series := i.pushSeries(t, userID, "s", ownedSeriesTestSeries)
+	before := i.routedHere(t, userID, series)
+
+	// The new shard size changes the tenant's ownership, so every series is
+	// judged again, by a view read after all of them arrived.
+	i.tenantLimits.setShardSize(i.limits, userID, 2*shardSize)
+	want := i.routedHere(t, userID, series)
+	require.Less(t, want, before, "a larger shard moves some series to the new members")
+	test.Poll(t, 3*time.Second, want, func() any { return i.owned(t, userID) })
+}
+
+// TestIngester_OwnedSeries_PushRecordsTheRingRead checks that a series records the
+// lifecycler's ring read number current when its push arrived, so that no older
+// view of the ring judges it.
+func TestIngester_OwnedSeries_PushRecordsTheRingRead(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t)
+	lbls := i.pushSeries(t, "tenant", "s", 1)[0]
+
+	db, err := i.getTSDB("tenant")
+	require.NoError(t, err)
+	stripe := &db.activeSeries.stripes[lbls.Hash()%numActiveSeriesStripes]
+	stripe.mu.RLock()
+	entry := stripe.refs[lbls.Hash()][0]
+	stripe.mu.RUnlock()
+
+	require.NotZero(t, entry.createdRead, "the lifecycler has read the ring before any push")
+	require.LessOrEqual(t, entry.createdRead, i.lifecycler.RingReads())
+	require.False(t, entry.keyless)
+}
+
+// TestIngester_PurgeOwnedSeriesBackstopKeepsIdleSeries checks the cutoff of the
+// backstop purge run after head compaction. Idle series can stay in the head for
+// up to two block ranges and must keep counting as owned, so the cutoff must not
+// be the idle timeout.
+func TestIngester_PurgeOwnedSeriesBackstopKeepsIdleSeries(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.OwnedSeriesMetricsEnabled = true
+	i := &Ingester{cfg: cfg}
+	userDB := &userTSDB{activeSeries: NewActiveSeries()}
+	now := time.Now()
+	blockRange := cfg.BlocksStorageConfig.TSDB.BlockRanges[0]
+
+	idle := labels.FromStrings(labels.MetricName, "idle")
+	userDB.activeSeries.UpdateSeries(idle, idle.Hash(), 1, now.Add(-blockRange), false, func(l labels.Labels) labels.Labels { return l })
+	gone := labels.FromStrings(labels.MetricName, "gone")
+	userDB.activeSeries.UpdateSeries(gone, gone.Hash(), 1, now.Add(-2*blockRange-time.Minute), false, func(l labels.Labels) labels.Labels { return l })
+
+	i.purgeOwnedSeriesBackstop(userDB, now)
+	require.Equal(t, 1, userDB.activeSeries.Tracked(), "only the entry older than two block ranges is released")
+	require.Equal(t, 1, userDB.activeSeries.Owned())
+}
+
+// TestIngester_PurgeOwnedSeriesBackstopKeepsActiveInStep covers the backstop purge
+// run after head compaction, between two recounts. It must count active series
+// against the cutoff the last recount published, which the push and deletion paths
+// use, or the counters fall out of step with them until the next recount.
+func TestIngester_PurgeOwnedSeriesBackstopKeepsActiveInStep(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.OwnedSeriesMetricsEnabled = true
+	idle := cfg.ActiveSeriesMetricsIdleTimeout
+	i := &Ingester{cfg: cfg}
+	copyLabels := func(l labels.Labels) labels.Labels { return l }
+	t0 := time.Now()
+
+	t.Run("a deletion cannot take the count below zero", func(t *testing.T) {
+		userDB := &userTSDB{activeSeries: NewActiveSeries()}
+		a, b := labels.FromStrings("__name__", "a"), labels.FromStrings("__name__", "b")
+		userDB.activeSeries.UpdateSeriesWithRef(a, a.Hash(), 1, knownSeriesToken(1), t0, false, copyLabels)
+		userDB.activeSeries.UpdateSeriesWithRef(b, b.Hash(), 2, knownSeriesToken(1), t0, false, copyLabels)
+		userDB.activeSeries.UpdateMetrics(t0.Add(5*time.Minute).Add(-idle), nil, nil, 0, 0)
+
+		i.purgeOwnedSeriesBackstop(userDB, t0.Add(idle+20*time.Second))
+		userDB.activeSeries.DeleteSeries(map[chunks.HeadSeriesRef]labels.Labels{1: a})
+
+		require.Equal(t, 1, userDB.activeSeries.Active(), "b is still active as of the last recount")
+	})
+
+	t.Run("a reactivation after the backstop is counted", func(t *testing.T) {
+		userDB := &userTSDB{activeSeries: NewActiveSeries()}
+		a := labels.FromStrings("__name__", "a")
+		userDB.activeSeries.UpdateSeries(a, a.Hash(), 1, t0, false, copyLabels)
+		userDB.activeSeries.UpdateMetrics(t0.Add(5*time.Minute).Add(-idle), nil, nil, 0, 0)
+
+		i.purgeOwnedSeriesBackstop(userDB, t0.Add(idle+20*time.Second))
+		userDB.activeSeries.UpdateSeries(a, a.Hash(), 1, t0.Add(idle+30*time.Second), false, copyLabels)
+
+		require.Equal(t, 1, userDB.activeSeries.Active())
+	})
 }

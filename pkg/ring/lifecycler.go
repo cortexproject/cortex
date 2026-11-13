@@ -1173,11 +1173,16 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc, read uint32) {
 
 	// The ring passed in belongs to the KV client, which may keep or modify it,
 	// so keep a copy. Copy only when it differs in something ownership depends
-	// on: a heartbeat alone changes only timestamps.
-	var ringDescCopy *Desc
-	if ringDesc != nil && i.keepRingDesc.Load() {
+	// on: a heartbeat alone changes only timestamps. The copy is made outside the
+	// lock, which HealthyInstancesCount takes on the push path.
+	var (
+		ringDescCopy *Desc
+		prev         *Desc
+	)
+	keep := ringDesc != nil && i.keepRingDesc.Load()
+	if keep {
 		i.countersLock.RLock()
-		prev := i.ringDesc
+		prev = i.ringDesc
 		i.countersLock.RUnlock()
 		if ownershipMayHaveChanged(prev, ringDesc) {
 			ringDescCopy = cloneDesc(ringDesc)
@@ -1189,10 +1194,17 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc, read uint32) {
 	i.healthyInstancesCount = healthyInstancesCount
 	i.zonesCount = len(zones)
 	i.zones = zones
-	if ringDescCopy != nil {
-		i.ringDesc = ringDescCopy
-	}
-	if ringDesc != nil && read > i.ringDescRead {
+	// Reads can overlap, for example the first heartbeat runs on its own timer.
+	// Only the newest read may replace the copy, or an older ring would be
+	// labelled as a newer read.
+	if keep && read > i.ringDescRead {
+		switch {
+		case ringDescCopy != nil:
+			i.ringDesc = ringDescCopy
+		case i.ringDesc != prev && ownershipMayHaveChanged(i.ringDesc, ringDesc):
+			// An older read replaced the copy while this one was deciding. Rare.
+			i.ringDesc = cloneDesc(ringDesc)
+		}
 		i.ringDescRead = read
 	}
 	i.countersLock.Unlock()

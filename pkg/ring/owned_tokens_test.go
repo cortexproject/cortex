@@ -3,6 +3,9 @@ package ring
 import (
 	"fmt"
 	"math"
+	"math/rand"
+	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -330,7 +333,7 @@ func TestOwnedTokenPositions_NonActiveInstancesExtendReplicaSet(t *testing.T) {
 // ownership each time would cost far more than the cheap per-series lookup saves.
 //
 // Rings are updated through updateRingState, as a watched ring is, because the
-// fingerprint relies on the topology timestamp that updateRingState maintains.
+// fingerprint relies on the topology hash that updateRingState maintains.
 func TestOwnershipFingerprint(t *testing.T) {
 	base := func() *Desc {
 		return &Desc{Ingesters: map[string]InstanceDesc{
@@ -372,7 +375,7 @@ func TestOwnershipFingerprint(t *testing.T) {
 
 	// Each of these changes the replica set, so each must invalidate the bitmap.
 	// The state case is the one Desc.RingCompare cannot distinguish from a
-	// heartbeat, which is why states are hashed on top of the topology timestamp.
+	// heartbeat, which is why states are hashed on top of the topology hash.
 	for name, change := range map[string]func(d *Desc){
 		"state change": func(d *Desc) {
 			instance := d.Ingesters["instance-1"]
@@ -412,38 +415,137 @@ func TestOwnershipFingerprint(t *testing.T) {
 	}
 }
 
+// Benchmark rings are deliberately large: 1,000 instances with
+// 512 tokens each over 3 zones, with replication factor 3.
+const (
+	benchmarkRingInstances = 1000
+	benchmarkRingZones     = 3
+	benchmarkRingTokens    = 512
+	benchmarkRingRF        = 3
+)
+
+// generateBenchmarkRing returns a ring of numInstances instances spread over
+// numZones zones, each with numTokens tokens unique across the ring. It is
+// deterministic, and unlike generateUniqueRingInstances it does not rescan the
+// ring's tokens for every instance, which takes minutes at these sizes.
+func generateBenchmarkRing(numInstances, numZones, numTokens int) *Desc {
+	r := rand.New(rand.NewSource(1))
+	used := make(map[uint32]struct{}, numInstances*numTokens)
+	desc := NewDesc()
+	for i := range numInstances {
+		tokens := make([]uint32, 0, numTokens)
+		for len(tokens) < numTokens {
+			token := r.Uint32()
+			if _, ok := used[token]; ok {
+				continue
+			}
+			used[token] = struct{}{}
+			tokens = append(tokens, token)
+		}
+		slices.Sort(tokens)
+		id := fmt.Sprintf("ingester-%d", i)
+		desc.Ingesters[id] = InstanceDesc{
+			Addr:   fmt.Sprintf("10.0.%d.%d:9095", i/256, i%256),
+			Zone:   fmt.Sprintf("zone-%d", i%numZones),
+			State:  ACTIVE,
+			Tokens: tokens,
+		}
+	}
+	return desc
+}
+
+// newBenchmarkRing returns a ring, as the ingester builds it, set to desc.
+func newBenchmarkRing(b *testing.B, desc *Desc) *Ring {
+	r, err := NewRingFromDesc(Config{HeartbeatTimeout: time.Hour, ReplicationFactor: benchmarkRingRF, ZoneAwarenessEnabled: true}, "ingester", log.NewNopLogger())
+	require.NoError(b, err)
+	r.UpdateDesc(desc)
+	return r
+}
+
 // BenchmarkOwnedTokenPositions measures the cost of the once-per-ring-change
-// precompute. This is the price paid to make the per-series ownership check a
-// binary search plus an array index, so it is expected to be large relative to a
-// single Ring.Get and still negligible relative to the interval between ring
-// changes.
+// precompute, over the whole ring and over shuffle-shard subrings. This is the
+// price paid to make the per-series ownership check a binary search plus an
+// array index, so it is expected to be large relative to a single Ring.Get and
+// still small relative to the interval between ring changes.
 func BenchmarkOwnedTokenPositions(b *testing.B) {
-	const (
-		numInstances      = 100
-		numZones          = 3
-		replicationFactor = 3
-	)
-
-	ringDesc := &Desc{Ingesters: generateRingInstances(numInstances, numZones, numTokens)}
-
-	var instanceID string
-	for id := range ringDesc.Ingesters {
-		instanceID = id
-		break
+	for _, numInstances := range []int{100, benchmarkRingInstances} {
+		r := newBenchmarkRing(b, generateBenchmarkRing(numInstances, benchmarkRingZones, benchmarkRingTokens))
+		b.Run(fmt.Sprintf("whole_ring/instances=%d", numInstances), func(b *testing.B) {
+			benchmarkOwnedTokenPositions(b, r, "ingester-0")
+		})
 	}
 
-	ring := newRingForOwnershipTest(ringDesc, replicationFactor, true)
+	r := newBenchmarkRing(b, generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens))
+	for _, shardSize := range []int{10, 100, 250, 500} {
+		subring := r.ShuffleShard("tenant", shardSize).(*Ring)
+		var member string
+		for id := range subring.ringDesc.Ingesters {
+			member = id
+			break
+		}
+		b.Run(fmt.Sprintf("subring/instances=%d/shard_size=%d", benchmarkRingInstances, shardSize), func(b *testing.B) {
+			benchmarkOwnedTokenPositions(b, subring, member)
+		})
+	}
+}
 
+func benchmarkOwnedTokenPositions(b *testing.B, r *Ring, instanceID string) {
 	b.ReportAllocs()
-
 	for b.Loop() {
-		_, owned, err := ring.OwnedTokenPositions(instanceID, Write)
+		_, owned, err := r.OwnedTokenPositions(instanceID, Write)
 		if err != nil {
 			b.Fatal(err)
 		}
 		if len(owned) == 0 {
 			b.Fatal("expected a non-empty bitmap")
 		}
+	}
+}
+
+// BenchmarkRing_OwnershipFingerprint measures the check the ingester makes every
+// second, for the whole ring and for each sharded tenant's subring, to find out
+// whether ownership may have changed.
+func BenchmarkRing_OwnershipFingerprint(b *testing.B) {
+	r := newBenchmarkRing(b, generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens))
+	b.Run(fmt.Sprintf("whole_ring/instances=%d", benchmarkRingInstances), func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = r.OwnershipFingerprint()
+		}
+	})
+	for _, shardSize := range []int{10, 100, 250} {
+		b.Run(fmt.Sprintf("subring/shard_size=%d", shardSize), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				// As the ingester does: the subring comes from the ring's cache.
+				_ = r.ShuffleShard("tenant", shardSize).(*Ring).OwnershipFingerprint()
+			}
+		})
+	}
+}
+
+// BenchmarkRing_ShuffleShardMemory reports the heap held by a cached subring,
+// which the ingester keeps for every sharded tenant it holds series for.
+func BenchmarkRing_ShuffleShardMemory(b *testing.B) {
+	const numTenants = 50
+	desc := generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens)
+
+	for _, shardSize := range []int{10, 100, 250} {
+		b.Run(fmt.Sprintf("shard_size=%d", shardSize), func(b *testing.B) {
+			for b.Loop() {
+				r := newBenchmarkRing(b, desc)
+				var before, after runtime.MemStats
+				runtime.GC()
+				runtime.ReadMemStats(&before)
+				for t := range numTenants {
+					r.ShuffleShard(fmt.Sprintf("tenant-%d", t), shardSize)
+				}
+				runtime.GC()
+				runtime.ReadMemStats(&after)
+				b.ReportMetric(float64(int64(after.HeapAlloc)-int64(before.HeapAlloc))/numTenants, "B/subring")
+				runtime.KeepAlive(r)
+			}
+		})
 	}
 }
 
@@ -465,7 +567,7 @@ func TestOwnedTokenPositions_UnknownInstance(t *testing.T) {
 
 // newWatchedRingForOwnershipTest builds a Ring updated through updateRingState, as
 // a ring watching the KV store is, so that the shuffle-shard subring cache and the
-// topology timestamp behave as they do in a running ingester.
+// topology hash behave as they do in a running ingester.
 func newWatchedRingForOwnershipTest(t *testing.T, ringDesc *Desc, replicationFactor int, zoneAwarenessEnabled bool) *Ring {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: replicationFactor, ZoneAwarenessEnabled: zoneAwarenessEnabled}
 	r, err := NewWithStoreClientAndStrategy(cfg, testRingName, testRingKey, &MockClient{}, NewDefaultReplicationStrategy(), nil, log.NewNopLogger())
@@ -486,7 +588,7 @@ func TestOwnedTokenPositions_SubringMatchesGet(t *testing.T) {
 	)
 
 	for _, zoneAwarenessEnabled := range []bool{true, false} {
-		r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateRingInstances(numInstances, numZones, 128)}, replicationFactor, zoneAwarenessEnabled)
+		r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateUniqueRingInstances(numInstances, numZones, 128)}, replicationFactor, zoneAwarenessEnabled)
 
 		for _, shardSize := range []int{3, 6, 9, 15} {
 			t.Run(fmt.Sprintf("zone awareness %v, shard size %d", zoneAwarenessEnabled, shardSize), func(t *testing.T) {
@@ -532,7 +634,7 @@ func TestOwnedTokenPositions_SubringMatchesGet(t *testing.T) {
 // subring ownership disagree about many keys, because the two rings pick different
 // replica sets. Using whole-ring ownership for such a tenant miscounts its series.
 func TestOwnedTokenPositions_SubringDiffersFromRing(t *testing.T) {
-	r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateRingInstances(30, 3, 128)}, 3, true)
+	r := newWatchedRingForOwnershipTest(t, &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}, 3, true)
 	subring, ok := r.ShuffleShard("tenant", 6).(*Ring)
 	require.True(t, ok)
 
@@ -564,7 +666,7 @@ func TestOwnedTokenPositions_SubringDiffersFromRing(t *testing.T) {
 func TestOwnedTokenPositions_SubringSeesStateChanges(t *testing.T) {
 	const replicationFactor = 3
 
-	ringDesc := &Desc{Ingesters: generateRingInstances(30, 3, 128)}
+	ringDesc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}
 	r := newWatchedRingForOwnershipTest(t, ringDesc, replicationFactor, true)
 	subring := r.ShuffleShard("tenant", 6).(*Ring)
 
@@ -611,7 +713,7 @@ func TestOwnedTokenPositions_SubringSeesStateChanges(t *testing.T) {
 // position is owned by exactly RF instances, unlike with Write.
 func TestOwnedTokenPositions_WriteNoExtendDoesNotExtend(t *testing.T) {
 	const replicationFactor = 3
-	ringDesc := &Desc{Ingesters: generateRingInstances(9, 1, 128)}
+	ringDesc := &Desc{Ingesters: generateUniqueRingInstances(9, 1, 128)}
 	leaving := ringDesc.Ingesters["instance-1"]
 	leaving.State = LEAVING
 	ringDesc.Ingesters["instance-1"] = leaving
@@ -643,4 +745,19 @@ func TestOwnedTokenPositions_WriteNoExtendDoesNotExtend(t *testing.T) {
 	for p, n := range owners(WriteNoExtend) {
 		require.Equal(t, replicationFactor, n, "WriteNoExtend owns position %d exactly RF times", p)
 	}
+}
+
+// generateUniqueRingInstances is generateRingInstances with tokens unique across
+// instances. generateRingInstances draws each instance's tokens independently, so
+// two instances can share a token, and a subring then resolves that token through
+// the full ring's token map to an instance which may not be in the shard.
+func generateUniqueRingInstances(numInstances, numZones, numTokens int) map[string]InstanceDesc {
+	desc := NewDesc()
+	g := NewRandomTokenGenerator()
+	for i := 1; i <= numInstances; i++ {
+		id := fmt.Sprintf("instance-%d", i)
+		zone := fmt.Sprintf("zone-%d", i%numZones)
+		desc.Ingesters[id] = generateRingInstanceWithInfo(id, zone, g.GenerateTokens(desc, id, zone, numTokens, true), time.Now())
+	}
+	return desc.Ingesters
 }

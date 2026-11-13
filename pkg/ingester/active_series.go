@@ -27,9 +27,9 @@ const (
 //   - owned: entries whose ring token places them on this ingester, regardless of
 //     how recently they received a sample.
 //
-// The two use different retention, and that is deliberate. Entries live until
-// Purge is called with the TSDB head's minimum time, so owned counts everything
-// still pinned in the head. That makes owned a proxy for the memory the tenant
+// The two use different retention, and that is deliberate. With owned-series
+// tracking, entries live until the head deletes their series, which releases
+// them through DeleteSeries, so owned counts everything still held in the head. That makes owned a proxy for the memory the tenant
 // is actually holding here, which is what a series limit is protecting. Because
 // owned ignores the idle window while active applies it, owned may exceed active
 // for a tenant with high churn.
@@ -47,8 +47,9 @@ type ActiveSeries struct {
 	// here by a newer ring than the one ownership was computed from, so it is not
 	// judged by it. See lifecycler RingDesc.
 	//
-	// All of these are only accessed by UpdateMetrics, from the ingester's update
-	// loop, so no synchronization is needed.
+	// All of these are only accessed from the ingester's owned-series loop, by
+	// UpdateMetrics and the recount deciding whether to call it, so no
+	// synchronization is needed.
 	tokens          []uint32
 	ownedPositions  []bool
 	currFingerprint uint64
@@ -61,7 +62,43 @@ type ActiveSeries struct {
 	// retained, and then a returning series simply creates a new entry.
 	activeCutoffNanos uatomic.Int64
 
+	// totals holds each stripe counter totalled across every stripe. See
+	// activeSeriesTotals.
+	totals activeSeriesTotals
+
 	stripes [numActiveSeriesStripes]activeSeriesStripe
+}
+
+// activeSeriesTotals holds each of the per-stripe counters totalled across every
+// stripe, so that reading one does not have to add up 512 stripes.
+//
+// The per-tenant limit check reads two of these for every new series, and adding
+// up the stripes was the largest single cost on that path: about 630ns, more than
+// the rest of creating a series put together.
+//
+// Every mutation of a stripe counter applies the same delta here, while holding
+// that stripe's lock, so a total stays equal to the sum of the stripes rather
+// than being recomputed from a scan. An earlier revision of this file cached the
+// totals and had the periodic recount store an absolute sum computed from its
+// scan, which clobbered any increment made after the scan had read a stripe and
+// before the store landed. Applying deltas cannot lose an update: a stripe's own
+// mutations are serialised by its lock, and deltas from different stripes
+// commute, so they do not need to be ordered against each other.
+//
+// A reader can still observe a total between a stripe's update and the matching
+// delta, so it is off by at most that delta for the few instructions in between.
+// That is inherent to counters maintained without a global lock, and it is no
+// weaker than totalling 512 atomics, which cannot produce a consistent snapshot
+// across stripes either.
+//
+// The four counters deliberately share a cache line. They are mutated together by
+// whichever goroutine creates or releases an entry, so one line changing hands
+// costs less than four would.
+type activeSeriesTotals struct {
+	tracked               uatomic.Int64
+	active                uatomic.Int64
+	activeNativeHistogram uatomic.Int64
+	owned                 uatomic.Int64
 }
 
 // activeSeriesStripe holds a subset of the series timestamps for a single tenant.
@@ -74,9 +111,15 @@ type activeSeriesStripe struct {
 	mu   sync.RWMutex
 	refs map[uint64][]activeSeriesEntry
 
+	// totals is the tracker's cross-stripe totals. Every mutation of the counters
+	// below applies its delta there too, through the helpers, so that no reader
+	// has to visit the stripes. Set by NewActiveSeries and never nil.
+	totals *activeSeriesTotals
+
 	// Counters for this stripe. Every mutation happens while holding mu, so they
-	// cannot be lost, but they are atomics so that readers can total them across
-	// stripes without acquiring 512 locks.
+	// cannot be lost, but they are atomics so that a reader can total them across
+	// stripes without acquiring 512 locks, which is how tests check them against
+	// the cross-stripe totals.
 	tracked               uatomic.Int64 // All entries in this stripe, regardless of age or ownership.
 	active                uatomic.Int64 // Entries in this stripe within the idle window.
 	activeNativeHistogram uatomic.Int64 // Native histogram entries in this stripe within the idle window.
@@ -99,7 +142,11 @@ type activeSeriesEntry struct {
 	// ownership cannot be evaluated, so it always counts as owned.
 	keyless           bool
 	isNativeHistogram bool
-	nanos             *uatomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
+	// seeded marks an entry created from the TSDB head after a restart rather
+	// than by a sample. It has not received a sample since, so it does not count
+	// as active, and its kind is unknown until its first sample sets it.
+	seeded bool
+	nanos  *uatomic.Int64 // Unix timestamp in nanoseconds. Needs to be a pointer because we don't store pointers to entries in the stripe.
 	// headRef is the TSDB head series reference this entry describes, refreshed
 	// on every sample. Head series references are never reused within a TSDB, so
 	// it identifies the exact head series: when the head deletes a series, only
@@ -116,9 +163,46 @@ func NewActiveSeries() *ActiveSeries {
 	// Stripes are pre-allocated so that we only read on them and no lock is required.
 	for i := range numActiveSeriesStripes {
 		c.stripes[i].refs = map[uint64][]activeSeriesEntry{}
+		c.stripes[i].totals = &c.totals
 	}
 
 	return c
+}
+
+// addTracked, addActive, addOwned and storeCounts are the only places the stripe
+// counters are written, so that the cross-stripe totals can never be left behind
+// by a new call site. Each must be called while holding the stripe's lock.
+func (s *activeSeriesStripe) addTracked(delta int64) {
+	s.tracked.Add(delta)
+	s.totals.tracked.Add(delta)
+}
+
+// addActive moves the active count, and the native histogram count with it when
+// the entry is one, since every entry counted as a native histogram is also
+// counted as active.
+func (s *activeSeriesStripe) addActive(delta int64, nativeHistogram bool) {
+	s.active.Add(delta)
+	s.totals.active.Add(delta)
+	if nativeHistogram {
+		s.activeNativeHistogram.Add(delta)
+		s.totals.activeNativeHistogram.Add(delta)
+	}
+}
+
+func (s *activeSeriesStripe) addOwned(delta int64) {
+	s.owned.Add(delta)
+	s.totals.owned.Add(delta)
+}
+
+// storeCounts replaces this stripe's counters with the result of a full recount
+// of it, applying the difference to the totals. The difference comes from a swap
+// rather than a separate load, so that the delta is exactly what this stripe
+// moved by even though the counters are read and written separately.
+func (s *activeSeriesStripe) storeCounts(tracked, active, activeNativeHistogram, owned int64) {
+	s.totals.tracked.Add(tracked - s.tracked.Swap(tracked))
+	s.totals.active.Add(active - s.active.Swap(active))
+	s.totals.activeNativeHistogram.Add(activeNativeHistogram - s.activeNativeHistogram.Swap(activeNativeHistogram))
+	s.totals.owned.Add(owned - s.owned.Swap(owned))
 }
 
 // seriesToken describes a series' ring token, the hash the distributor routes it
@@ -168,7 +252,8 @@ func (t seriesToken) resolve() (uint32, bool) {
 // towards owned, never whether it is tracked at all, so the active count behaves
 // exactly as it did before owned-series tracking existed.
 func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint32, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
-	c.UpdateSeriesWithRef(series, hash, 0, knownSeriesToken(key), now, nativeHistogram, labelsCopy)
+	token := knownSeriesToken(key)
+	c.stripes[hash%numActiveSeriesStripes].updateSeriesTimestamp(now, series, hash, 0, &token, nativeHistogram, labelsCopy, &c.activeCutoffNanos)
 }
 
 // UpdateSeriesWithRef is UpdateSeries for callers that know the TSDB head series
@@ -176,9 +261,22 @@ func (c *ActiveSeries) UpdateSeries(series labels.Labels, hash uint64, key uint3
 // the series is new. Recording the reference lets DeleteSeries release the entry
 // exactly when the head drops that series.
 func (c *ActiveSeries) UpdateSeriesWithRef(series labels.Labels, hash uint64, headRef uint64, token seriesToken, now time.Time, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) {
-	stripeID := hash % numActiveSeriesStripes
-	c.stripes[stripeID].updateSeriesTimestamp(
-		now, series, hash, headRef, token, nativeHistogram, labelsCopy, c.activeCutoffNanos.Load())
+	c.stripes[hash%numActiveSeriesStripes].updateSeriesTimestamp(now, series, hash, headRef, &token, nativeHistogram, labelsCopy, &c.activeCutoffNanos)
+}
+
+// SeedSeries tracks a series which is in the TSDB head but has no entry, as after
+// a restart, when the head is rebuilt from the WAL without going through Push.
+// Without an entry such a series counts as owned until head compaction drops it,
+// even if the ring now sends it elsewhere, which after a rolling restart that
+// follows a scale-up would throttle tenants as if owned series were not tracked.
+//
+// The entry counts as owned until a view of the ring read after token.ringRead
+// judges it, like a new series. It is not active, since it has received no sample
+// since the restart: nanos should be outside the active window. Its first sample
+// makes it active and sets whether it is a native histogram.
+func (c *ActiveSeries) SeedSeries(series labels.Labels, hash uint64, headRef uint64, token seriesToken, nanos int64) {
+	key, keyed := token.resolve()
+	c.stripes[hash%numActiveSeriesStripes].seed(hash, headRef, key, keyed, token.ringRead, series, nanos)
 }
 
 // DeleteSeries releases the entries for series the TSDB head has just deleted. It
@@ -234,16 +332,18 @@ func (c *ActiveSeries) updateTokens(tokens []uint32, ownedPositions []bool, fing
 func (c *ActiveSeries) UpdateMetrics(keepUntil time.Time, tokens []uint32, ownedPositions []bool, fingerprint uint64, viewRead uint32) {
 	changed := c.updateTokens(tokens, ownedPositions, fingerprint)
 
-	j := judgement{all: changed, viewRead: viewRead, tokens: c.tokens, ownedPositions: c.ownedPositions}
-	if c.currFingerprint != 0 && !changed && viewRead != c.viewRead {
+	var j judgement
+	switch {
+	case c.currFingerprint == 0, fingerprint == 0:
+		// No ownership yet, or none known for this view: nothing is judged, and
+		// the view is not recorded, since nothing was computed from it.
+	case changed:
+		j = judgement{all: true, viewRead: viewRead, tokens: c.tokens, ownedPositions: c.ownedPositions}
+		c.viewRead = viewRead
+	case viewRead > c.viewRead:
 		// The same ownership, seen by a newer read. Judge the entries the
-		// previous view was too old for.
-		j.pending, j.pendingFrom = true, c.viewRead
-	}
-	if c.currFingerprint == 0 {
-		// No ownership yet: every entry is owned, and none is judged.
-		j = judgement{}
-	} else {
+		// previous view was too new for.
+		j = judgement{pending: true, pendingFrom: c.viewRead, viewRead: viewRead, tokens: c.tokens, ownedPositions: c.ownedPositions}
 		c.viewRead = viewRead
 	}
 
@@ -276,14 +376,16 @@ func (c *ActiveSeries) Purge(deleteBefore, activeCutoff time.Time) {
 	}
 }
 
+// activeCutoff returns the idle cutoff of the last recount, which the push and
+// deletion paths count active series against, or the zero time before any.
+func (c *ActiveSeries) activeCutoff() time.Time {
+	return time.Unix(0, c.activeCutoffNanos.Load())
+}
+
 // Active returns the number of series which received a sample more recently than
 // the idle timeout. Its value is not affected by ownership tracking.
 func (c *ActiveSeries) Active() int {
-	total := int64(0)
-	for s := range numActiveSeriesStripes {
-		total += c.stripes[s].active.Load()
-	}
-	return int(total)
+	return int(c.totals.active.Load())
 }
 
 // Owned returns the number of tracked series whose ring token places them on this
@@ -297,11 +399,7 @@ func (c *ActiveSeries) Active() int {
 // Before any ownership has been applied every series counts as owned, so this
 // equals Tracked.
 func (c *ActiveSeries) Owned() int {
-	total := int64(0)
-	for s := range numActiveSeriesStripes {
-		total += c.stripes[s].owned.Load()
-	}
-	return int(total)
+	return int(c.totals.owned.Load())
 }
 
 // Tracked returns the number of series this tracker holds an entry for, whatever
@@ -312,27 +410,23 @@ func (c *ActiveSeries) Owned() int {
 // against the head's series count is therefore how a caller tells whether the owned
 // count covers what is actually in memory, or only the part of it seen since start.
 func (c *ActiveSeries) Tracked() int {
-	total := int64(0)
-	for s := range numActiveSeriesStripes {
-		total += c.stripes[s].tracked.Load()
-	}
-	return int(total)
+	return int(c.totals.tracked.Load())
 }
 
 func (c *ActiveSeries) ActiveNativeHistogram() int {
-	total := int64(0)
-	for s := range numActiveSeriesStripes {
-		total += c.stripes[s].activeNativeHistogram.Load()
-	}
-	return int(total)
+	return int(c.totals.activeNativeHistogram.Load())
 }
 
 // updateSeriesTimestamp records a sample for a series, creating the entry if this
 // is the first time it has been seen.
-func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, headRef uint64, token seriesToken, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, activeCutoffNanos int64) {
+//
+// The token and the active cutoff are passed by reference because the update of
+// an existing series, which is the common case, needs neither until its
+// timestamp has moved, and this runs for every sample.
+func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.Labels, fingerprint uint64, headRef uint64, token *seriesToken, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels, activeCutoff *uatomic.Int64) {
 	nowNanos := now.UnixNano()
 
-	e, ref := s.findEntryForSeries(fingerprint, series)
+	e, ref, seeded := s.findEntryForSeries(fingerprint, series)
 	entryTimeSet := false
 	if e == nil {
 		// Only a series seen for the first time needs its token, and it is
@@ -355,12 +449,17 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 
 	if !entryTimeSet {
 		if prev := e.Load(); nowNanos > prev {
-			if entryTimeSet = e.CompareAndSwap(prev, nowNanos); entryTimeSet &&
-				activeCutoffNanos > 0 && prev < activeCutoffNanos && nowNanos >= activeCutoffNanos {
+			entryTimeSet = e.CompareAndSwap(prev, nowNanos)
+			switch {
+			case !entryTimeSet:
+			case seeded:
+				// The first sample of a series seeded from the head.
+				s.settleSeeded(fingerprint, series, nativeHistogram)
+			case crossedCutoff(prev, nowNanos, activeCutoff.Load()):
 				// This entry has just crossed back into the active window. Only the
 				// goroutine whose compare-and-swap moved the timestamp across the
 				// cutoff gets here, so the series is counted exactly once.
-				s.countReactivation(fingerprint, series)
+				s.countReactivation(fingerprint, series, nativeHistogram)
 			}
 		}
 	}
@@ -377,37 +476,101 @@ func (s *activeSeriesStripe) updateSeriesTimestamp(now time.Time, series labels.
 
 }
 
+// crossedCutoff reports whether a timestamp moving from prev to now has crossed
+// back into the active window. A zero cutoff means none has been published.
+func crossedCutoff(prev, now, cutoff int64) bool {
+	return cutoff > 0 && prev < cutoff && now >= cutoff
+}
+
 // countReactivation records that a retained entry has re-entered the active window.
-// It reports whether the entry was found, and whether it is a native histogram, which
-// is taken from the entry rather than from the incoming sample because the entry's
-// kind is fixed when it is created.
-func (s *activeSeriesStripe) countReactivation(fingerprint uint64, series labels.Labels) {
+// The entry takes the kind of the sample that reactivated it. Without retention
+// the entry would have been released when it went idle, and re-created by this
+// sample with this sample's kind, so a series which switched between float and
+// native histogram samples counts as what it is now.
+func (s *activeSeriesStripe) countReactivation(fingerprint uint64, series labels.Labels, nativeHistogram bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for _, entry := range s.refs[fingerprint] {
-		if labels.Equal(entry.lbs, series) {
-			s.active.Inc()
-			if entry.isNativeHistogram {
-				s.activeNativeHistogram.Inc()
-			}
+	for i := range s.refs[fingerprint] {
+		e := &s.refs[fingerprint][i]
+		if labels.Equal(e.lbs, series) {
+			e.isNativeHistogram = nativeHistogram
+			s.addActive(1, nativeHistogram)
 			return
 		}
 	}
 }
 
-func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) (*uatomic.Int64, *uatomic.Uint64) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+// settleSeeded gives a series seeded from the head its kind, from its first
+// sample, and counts it as active. Only the first call for an entry does anything.
+func (s *activeSeriesStripe) settleSeeded(fingerprint uint64, series labels.Labels, nativeHistogram bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Check if already exists within the entries.
-	for ix, entry := range s.refs[fingerprint] {
+	for i := range s.refs[fingerprint] {
+		e := &s.refs[fingerprint][i]
+		if !labels.Equal(e.lbs, series) {
+			continue
+		}
+		if !e.seeded {
+			return
+		}
+		e.seeded = false
+		e.isNativeHistogram = nativeHistogram
+		s.addActive(1, nativeHistogram)
+		return
+	}
+}
+
+// seed creates an entry for a series in the head which the tracker has not seen,
+// as owned, not active, and of unknown kind. See ActiveSeries.SeedSeries.
+func (s *activeSeriesStripe) seed(fingerprint uint64, headRef uint64, key uint32, keyed bool, createdRead uint32, series labels.Labels, nanos int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, entry := range s.refs[fingerprint] {
 		if labels.Equal(entry.lbs, series) {
-			return s.refs[fingerprint][ix].nanos, s.refs[fingerprint][ix].headRef
+			return
 		}
 	}
 
-	return nil, nil
+	s.addTracked(1)
+	s.addOwned(1)
+	e := activeSeriesEntry{
+		lbs:         series,
+		key:         key,
+		createdRead: createdRead,
+		owned:       true,
+		keyless:     !keyed,
+		seeded:      true,
+		nanos:       uatomic.NewInt64(nanos),
+	}
+	if headRef != 0 {
+		e.headRef = uatomic.NewUint64(headRef)
+	}
+	s.refs[fingerprint] = append(s.refs[fingerprint], e)
+
+	for prevOldest := s.oldestEntryTs.Load(); nanos < prevOldest; {
+		if s.oldestEntryTs.CompareAndSwap(prevOldest, 0) {
+			break
+		}
+	}
+}
+
+func (s *activeSeriesStripe) findEntryForSeries(fingerprint uint64, series labels.Labels) (*uatomic.Int64, *uatomic.Uint64, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Check if already exists within the entries. Index rather than range by
+	// value, so as not to copy each entry: this runs for every sample.
+	entries := s.refs[fingerprint]
+	for ix := range entries {
+		if e := &entries[ix]; labels.Equal(e.lbs, series) {
+			return e.nanos, e.headRef, e.seeded
+		}
+	}
+
+	return nil, nil, false
 }
 
 func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, headRef uint64, key uint32, keyed bool, createdRead uint32, series labels.Labels, nowNanos int64, nativeHistogram bool, labelsCopy func(labels.Labels) labels.Labels) (nanos *uatomic.Int64, ref *uatomic.Uint64, entryTimeSet bool) {
@@ -431,14 +594,11 @@ func (s *activeSeriesStripe) findOrCreateEntryForSeries(fingerprint uint64, head
 	//
 	// Ownership decides which counters a series contributes to, not whether it is
 	// tracked. A series this instance does not own is still an active series.
-	const owned = true
+	owned := true
 
-	s.tracked.Inc()
-	s.active.Inc()
-	s.owned.Inc()
-	if nativeHistogram {
-		s.activeNativeHistogram.Inc()
-	}
+	s.addTracked(1)
+	s.addActive(1, nativeHistogram)
+	s.addOwned(1)
 
 	e := activeSeriesEntry{
 		lbs:               labelsCopy(series),
@@ -494,17 +654,14 @@ func (s *activeSeriesStripe) deleteSeries(fingerprint uint64, series labels.Labe
 		}
 
 		e := entries[i]
-		s.tracked.Dec()
+		s.addTracked(-1)
 		if e.owned {
-			s.owned.Dec()
+			s.addOwned(-1)
 		}
 		// Mirror how the entry was counted: everything counts as active until the
 		// first recount publishes a cutoff, and after that only entries inside it.
-		if activeCutoffNanos == 0 || e.nanos.Load() >= activeCutoffNanos {
-			s.active.Dec()
-			if e.isNativeHistogram {
-				s.activeNativeHistogram.Dec()
-			}
+		if !e.seeded && (activeCutoffNanos == 0 || e.nanos.Load() >= activeCutoffNanos) {
+			s.addActive(-1, e.isNativeHistogram)
 		}
 
 		entries = append(entries[:i], entries[i+1:]...)
@@ -517,17 +674,6 @@ func (s *activeSeriesStripe) deleteSeries(fingerprint uint64, series labels.Labe
 	}
 }
 
-// updateMetrics recounts this stripe's active and owned series, refreshing each
-// entry's cached ownership if the ring changed.
-//
-// It removes nothing: releasing entries is Purge's job, and keeping idle entries
-// is what allows owned to track what is in the head rather than what is in the
-// idle window.
-//
-// There is no shortcut for "nothing expired" the way purge has, because entries
-// leave the active window silently now that they are not deleted, so the counts
-// have to be recomputed. The scan is the same order of work the purge it replaces
-// performed on a tenant that was churning.
 // judgement says which entries a recount evaluates the ownership of, and how.
 type judgement struct {
 	// all evaluates every entry.
@@ -549,6 +695,16 @@ func (j judgement) owned(e *activeSeriesEntry) bool {
 	return isOwned(e.key, j.tokens, j.ownedPositions)
 }
 
+// updateMetrics recounts this stripe's active and owned series, refreshing each
+// entry's cached ownership if the ring changed.
+//
+// It removes nothing: entries are released by deleteSeries when the head deletes
+// their series, and keeping idle entries is what allows owned to track what is in
+// the head rather than what is in the idle window.
+//
+// There is no shortcut for "nothing expired" the way purge has, because entries
+// leave the active window silently while they are retained, so the counts have to
+// be recomputed.
 func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, j judgement) {
 	var tracked, active, owned, activeNativeHistogram int
 	keepUntilNanos := keepUntil.UnixNano()
@@ -567,7 +723,7 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, j judgement) {
 				owned++
 			}
 
-			if entries[i].nanos.Load() >= keepUntilNanos {
+			if !entries[i].seeded && entries[i].nanos.Load() >= keepUntilNanos {
 				active++
 				if entries[i].isNativeHistogram {
 					activeNativeHistogram++
@@ -576,14 +732,11 @@ func (s *activeSeriesStripe) updateMetrics(keepUntil time.Time, j judgement) {
 		}
 	}
 
-	s.tracked.Store(int64(tracked))
-	s.active.Store(int64(active))
-	s.owned.Store(int64(owned))
-	s.activeNativeHistogram.Store(int64(activeNativeHistogram))
+	s.storeCounts(int64(tracked), int64(active), int64(activeNativeHistogram), int64(owned))
 }
 
-// purge removes entries last updated before keepUntil and returns the resulting
-// counts for this stripe.
+// purge removes entries last updated before deleteBefore and recounts this
+// stripe, counting as active the entries updated since activeCutoff.
 func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 	var tracked, active, owned, activeNativeHistogram int
 	deleteBeforeNanos := deleteBefore.UnixNano()
@@ -610,7 +763,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 			if entries[0].owned {
 				owned++
 			}
-			if ts >= activeCutoffNanos {
+			if !entries[0].seeded && ts >= activeCutoffNanos {
 				active++
 				if entries[0].isNativeHistogram {
 					activeNativeHistogram++
@@ -634,7 +787,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 				if entries[i].owned {
 					owned++
 				}
-				if ts >= activeCutoffNanos {
+				if !entries[i].seeded && ts >= activeCutoffNanos {
 					active++
 					if entries[i].isNativeHistogram {
 						activeNativeHistogram++
@@ -656,10 +809,7 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 	} else {
 		s.oldestEntryTs.Store(oldest)
 	}
-	s.tracked.Store(int64(tracked))
-	s.active.Store(int64(active))
-	s.owned.Store(int64(owned))
-	s.activeNativeHistogram.Store(int64(activeNativeHistogram))
+	s.storeCounts(int64(tracked), int64(active), int64(activeNativeHistogram), int64(owned))
 }
 
 // isOwned reports whether the series with the given ring token is owned by this
@@ -671,8 +821,8 @@ func (s *activeSeriesStripe) purge(deleteBefore, activeCutoff time.Time) {
 // When ownership is unknown, because the ring has not been read yet or the bitmap
 // does not match the token list, this returns true. Ownership is used to decide
 // what counts against a limit, so the safe direction is to assume the series is
-// ours: over-counting delays an unrelated scale-up, while under-counting would
-// let a tenant exceed its limit.
+// ours: over-counting can only throttle the tenant as if owned series were not
+// tracked, while under-counting would let it exceed its limit.
 func isOwned(key uint32, tokens []uint32, ownedPositions []bool) bool {
 	if len(tokens) == 0 || len(ownedPositions) != len(tokens) {
 		return true

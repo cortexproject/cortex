@@ -3,6 +3,7 @@ package ring
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,8 +17,10 @@ var errDescRingNoKVStore = errors.New("ring is not backed by a KV store")
 // read, so that a process can use a second view of a ring it already holds
 // without watching the store again.
 //
-// It answers everything a watched Ring does from the last Desc it was given. It
-// must not be started as a service.
+// It answers from the last Desc it was given, so anything which depends on
+// heartbeats being current, such as Get's health filter, is only as fresh as that
+// Desc. Ownership, membership and shuffle sharding do not. It must not be
+// started as a service.
 //
 // It exports no metrics, so it does not compute the detailed per-member ones a
 // watched ring updates on every topology change.
@@ -62,24 +65,23 @@ func cloneDesc(d *Desc) *Desc {
 
 // ownershipMayHaveChanged reports whether next differs from prev in anything
 // series ownership depends on: the set of instances, their zones, tokens and
-// states. Heartbeat timestamps are ignored. A nil prev always differs.
+// states. Addresses and heartbeat timestamps are ignored: neither changes a
+// replica set, and an instance restarted in Kubernetes usually comes back with a
+// new address. A nil prev always differs.
 func ownershipMayHaveChanged(prev, next *Desc) bool {
 	if prev == nil || next == nil {
 		return prev != next
 	}
-	switch prev.RingCompare(next) {
-	case Equal:
-		return false
-	case EqualButStatesAndTimestamps:
-		for id, instance := range next.Ingesters {
-			if prev.Ingesters[id].State != instance.State {
-				return true
-			}
-		}
-		return false
-	default:
+	if len(prev.Ingesters) != len(next.Ingesters) {
 		return true
 	}
+	for id, instance := range next.Ingesters {
+		before, ok := prev.Ingesters[id]
+		if !ok || before.Zone != instance.Zone || before.State != instance.State || !slices.Equal(before.Tokens, instance.Tokens) {
+			return true
+		}
+	}
+	return false
 }
 
 // descClient is the KV client of a Ring created by NewRingFromDesc. There is no

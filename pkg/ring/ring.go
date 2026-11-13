@@ -17,6 +17,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	shardUtil "github.com/cortexproject/cortex/pkg/ring/shard"
@@ -201,8 +202,10 @@ type Ring struct {
 
 	// topologyFingerprint identifies the instances, their zones and their tokens,
 	// which is everything replica sets depend on apart from instance states. It
-	// is computed on each topology change. See OwnershipFingerprint.
-	topologyFingerprint uint64
+	// is reset on each topology change and computed by the first call to
+	// OwnershipFingerprint after it, so that rings never asked for ownership do
+	// not pay for it. Zero means not computed yet.
+	topologyFingerprint atomic.Uint64
 
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
@@ -412,7 +415,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.previousRingZones = r.ringZones
 	r.ringZones = ringZones
 	r.lastTopologyChange = now
-	r.topologyFingerprint = topologyFingerprint(ringDesc)
+	r.topologyFingerprint.Store(0)
 	if r.shuffledSubringCache != nil {
 		// Invalidate all cached subrings.
 		r.shuffledSubringCache = make(map[subringCacheKey]*cachedSubring)
@@ -1072,8 +1075,6 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 		// For caching to work, remember this value.
 		lastTopologyChange: r.lastTopologyChange,
-
-		topologyFingerprint: topologyFingerprint(shardDesc),
 	}, shuffleShardExpiry
 }
 

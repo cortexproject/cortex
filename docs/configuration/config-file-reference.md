@@ -4260,8 +4260,11 @@ lifecycler:
 # which are still held. It runs independently of
 # -ingester.active-series-metrics-enabled, which only controls whether the
 # active series metrics are exported. The ingester also keeps its own copy of
-# the ring, to compute each shuffle-sharded tenant's subring, which grows with
-# the size of the ring.
+# the ring, built from the ring its lifecycler reads, to compute each
+# shuffle-sharded tenant's subring, which grows with the size of the ring and
+# with the number of shuffle-sharded tenants the ingester holds series for.
+# Series ownership is checked every second, and a new series counts as owned as
+# soon as it arrives.
 # CLI flag: -ingester.owned-series-metrics-enabled
 [owned_series_metrics_enabled: <boolean> | default = false]
 
@@ -4276,16 +4279,6 @@ lifecycler:
 # still resident until the next head compaction.
 # CLI flag: -ingester.owned-series-limit-enforcement-enabled
 [owned_series_limit_enforcement_enabled: <boolean> | default = false]
-
-# How often to check whether a tenant's shuffle-shard size has changed, and if
-# so recount its owned series without waiting for the next active series update.
-# Ring changes are seen when this ingester's lifecycler reads the ring, on its
-# heartbeat, and are applied within about a second, together with the local
-# limits computed from the same ring. A new series counts as owned as soon as it
-# arrives, and is only re-evaluated against a view of the ring read after it
-# arrived. Only used when -ingester.owned-series-metrics-enabled is true.
-# CLI flag: -ingester.owned-series-recompute-interval
-[owned_series_recompute_interval: <duration> | default = 15s]
 
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled

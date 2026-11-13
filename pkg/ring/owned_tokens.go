@@ -11,7 +11,7 @@ import (
 // zones and tokens, or their states.
 //
 // It is cheap enough to call on every check. The instances, their zones and
-// tokens are hashed once per topology change, by updateRingState, and the
+// tokens are hashed by the first call after each topology change, and the
 // fingerprint combines that hash with each instance's state. On a subring it
 // covers only the subring's members.
 //
@@ -38,7 +38,15 @@ func (r *Ring) OwnershipFingerprint() uint64 {
 		sep = []byte{0}
 	)
 
-	binary.LittleEndian.PutUint64(buf[:], r.topologyFingerprint)
+	topology := r.topologyFingerprint.Load()
+	if topology == 0 {
+		// Concurrent callers all hold the read lock, so they compute the same
+		// value from the same Desc, and storing it more than once is harmless. A
+		// topology change, which resets it, needs the write lock.
+		topology = max(topologyFingerprint(r.ringDesc), 1)
+		r.topologyFingerprint.Store(topology)
+	}
+	binary.LittleEndian.PutUint64(buf[:], topology)
 	_, _ = h.Write(buf[:])
 
 	for _, id := range sortedInstanceIDs(r.ringDesc) {
@@ -88,8 +96,11 @@ func sortedInstanceIDs(d *Desc) []string {
 // A position p is "owned" by an instance when that instance is a member of the
 // replica set this ring selects for any key k with SearchToken(tokens, k) == p.
 // In other words ownership answers "would a write for a series hashing into this
-// token range be replicated to me?", which is exactly the question the
-// distributor answers when it routes. It is NOT the narrower question "am I the
+// token range be replicated to me?", which is the question the distributor
+// answers when it routes, before it filters out unhealthy instances. Unlike
+// routing, ownership applies no health filter, so an instance which is not ACTIVE
+// owns the ranges it holds data for even while writes skip it. It is NOT the
+// narrower question "am I the
 // first instance in this token range": with a replication factor greater than
 // one every series is held by several instances, and all of them must count it,
 // because the per-instance series limit is itself scaled by the replication

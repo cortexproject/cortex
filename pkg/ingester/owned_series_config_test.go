@@ -29,8 +29,7 @@ func TestIngester_OwnedSeriesTrackingWithoutActiveSeriesMetrics(t *testing.T) {
 	cfg.ActiveSeriesMetricsEnabled = false
 	// Cycles run only when the test calls updateActiveSeries.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeInterval = time.Hour
-	cfg.ownedSeriesRingCheckPeriod = time.Hour
+	cfg.ownedSeriesCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 
 	reg := prometheus.NewRegistry()
@@ -129,7 +128,6 @@ func TestConfig_ValidateOwnedSeries(t *testing.T) {
 	require.NoError(t, func() error { cfg := valid(); return cfg.Validate(nil) }())
 
 	for name, breakIt := range map[string]func(*Config){
-		"recompute interval":       func(cfg *Config) { cfg.OwnedSeriesRecomputeInterval = 0 },
 		"active series update":     func(cfg *Config) { cfg.ActiveSeriesMetricsUpdatePeriod = 0 },
 		"lifecycler heartbeat off": func(cfg *Config) { cfg.LifecyclerConfig.HeartbeatPeriod = 0 },
 	} {

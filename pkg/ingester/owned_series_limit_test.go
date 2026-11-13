@@ -36,8 +36,7 @@ func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, fu
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.ActiveSeriesMetricsEnabled = true
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeInterval = time.Hour
-	cfg.ownedSeriesRingCheckPeriod = time.Hour
+	cfg.ownedSeriesCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 	cfg.OwnedSeriesLimitEnforcementEnabled = true
 
@@ -162,8 +161,7 @@ func TestIngester_OwnedSeriesInstanceLimit_CountsSeriesCreatedSinceSnapshot(t *t
 	cfg.ActiveSeriesMetricsEnabled = true
 	// Cycles run only when the test calls updateActiveSeries.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeInterval = time.Hour
-	cfg.ownedSeriesRingCheckPeriod = time.Hour
+	cfg.ownedSeriesCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 	cfg.OwnedSeriesLimitEnforcementEnabled = true
 	cfg.InstanceLimitsFn = func() *InstanceLimits { return &InstanceLimits{MaxInMemorySeries: 2} }

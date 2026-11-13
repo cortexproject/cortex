@@ -1472,7 +1472,16 @@ func TestLifecycler_RingDesc(t *testing.T) {
 		break
 	}
 	l.updateCounters(changed, 4)
-	assert.NotSame(t, kept, first(l.RingDesc()), "a state change must replace the copy")
+	latest, read := l.RingDesc()
+	assert.NotSame(t, kept, latest, "a state change must replace the copy")
+	assert.Equal(t, uint32(4), read)
+
+	// Reads can overlap. One that finishes after a newer one must not replace the
+	// copy, or an older ring would be labelled as the newer read.
+	l.updateCounters(desc, 3)
+	stillLatest, read := l.RingDesc()
+	assert.Same(t, latest, stillLatest)
+	assert.Equal(t, uint32(4), read)
 }
 
 func first[A, B any](a A, _ B) A { return a }

@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 // the KV store, given the same Desc.
 func TestNewRingFromDesc_AnswersLikeAWatchedRing(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
-	desc := &Desc{Ingesters: generateRingInstances(30, 3, 128)}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}
 
 	watched := newWatchedRingForOwnershipTest(t, cloneDesc(desc), 3, true)
 	fromDesc, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
@@ -43,7 +44,7 @@ func TestNewRingFromDesc_AnswersLikeAWatchedRing(t *testing.T) {
 // reaches them, as on a watched ring.
 func TestRing_UpdateDesc_StateChangeKeepsSubrings(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
-	desc := &Desc{Ingesters: generateRingInstances(30, 3, 128)}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}
 	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
 	require.NoError(t, err)
 	r.UpdateDesc(cloneDesc(desc))
@@ -73,7 +74,7 @@ func TestRing_UpdateDesc_StateChangeKeepsSubrings(t *testing.T) {
 // instances. The Desc is shared with the lifecycler.
 func TestRing_UpdateDesc_ExcludedZonesDoNotModifyTheInput(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 1, ExcludedZones: []string{"zone-0"}}
-	desc := &Desc{Ingesters: generateRingInstances(6, 3, 16)}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(6, 3, 16)}
 	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
 	require.NoError(t, err)
 
@@ -98,6 +99,13 @@ func TestOwnershipMayHaveChanged(t *testing.T) {
 	instance.Timestamp = 99
 	heartbeat.Ingesters["a"] = instance
 	assert.False(t, ownershipMayHaveChanged(base(), heartbeat), "a heartbeat must not count as a change")
+
+	moved := base()
+	instance = moved.Ingesters["a"]
+	instance.Addr = "a-restarted"
+	instance.RegisteredTimestamp = 99
+	moved.Ingesters["a"] = instance
+	assert.False(t, ownershipMayHaveChanged(base(), moved), "a new address must not count as a change")
 
 	for name, change := range map[string]func(d *Desc){
 		"state": func(d *Desc) {
@@ -152,7 +160,7 @@ func keys[V any](m map[string]V) []string {
 // unchanged, for the whole ring and for a subring.
 func TestOwnershipFingerprint_IgnoresAddressChanges(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
-	desc := &Desc{Ingesters: generateRingInstances(30, 3, 32)}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 32)}
 	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
 	require.NoError(t, err)
 	r.UpdateDesc(cloneDesc(desc))
@@ -175,14 +183,116 @@ func TestOwnershipFingerprint_IgnoresAddressChanges(t *testing.T) {
 // TestRing_UpdateDesc_DoesNothingOnAWatchedRing covers UpdateDesc called on a ring
 // whose state comes from watching the KV store, where it would race with the watch.
 func TestRing_UpdateDesc_DoesNothingOnAWatchedRing(t *testing.T) {
-	desc := &Desc{Ingesters: generateRingInstances(3, 1, 4)}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(3, 1, 4)}
 	watched := newWatchedRingForOwnershipTest(t, desc, 1, false)
 	watched.mtx.RLock()
 	before := watched.ringDesc
 	watched.mtx.RUnlock()
 
-	watched.UpdateDesc(&Desc{Ingesters: generateRingInstances(5, 1, 4)})
+	watched.UpdateDesc(&Desc{Ingesters: generateUniqueRingInstances(5, 1, 4)})
 	watched.mtx.RLock()
 	defer watched.mtx.RUnlock()
 	assert.Same(t, before, watched.ringDesc)
+}
+
+// TestOwnershipFingerprint_SubringIgnoresStateChangesOfOtherInstances checks that
+// a subring's fingerprint, unlike the whole ring's, does not change when an
+// instance outside the shard changes state, as happens on every restart during a
+// rolling deploy.
+func TestOwnershipFingerprint_SubringIgnoresStateChangesOfOtherInstances(t *testing.T) {
+	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
+	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 32)}
+	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	require.NoError(t, err)
+	r.UpdateDesc(cloneDesc(desc))
+	ringBefore := r.OwnershipFingerprint()
+	subring := r.ShuffleShard("tenant", 6).(*Ring)
+	subBefore := subring.OwnershipFingerprint()
+
+	changed := cloneDesc(desc)
+	for id, instance := range changed.Ingesters {
+		if _, member := subring.ringDesc.Ingesters[id]; !member {
+			instance.State = LEAVING
+			changed.Ingesters[id] = instance
+			break
+		}
+	}
+	r.UpdateDesc(changed)
+
+	assert.NotEqual(t, ringBefore, r.OwnershipFingerprint())
+	assert.Equal(t, subBefore, r.ShuffleShard("tenant", 6).(*Ring).OwnershipFingerprint())
+}
+
+// BenchmarkRing_UpdateDesc measures bringing the ingester's ring up to date with
+// a ring the lifecycler read: cheap for a change of instance states, which keeps
+// the cached subrings, and a full rebuild for a topology change.
+func BenchmarkRing_UpdateDesc(b *testing.B) {
+	desc := generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens)
+
+	stateChanged := cloneDesc(desc)
+	instance := stateChanged.Ingesters["ingester-1"]
+	instance.State = LEAVING
+	stateChanged.Ingesters["ingester-1"] = instance
+
+	topologyChanged := cloneDesc(desc)
+	instance = topologyChanged.Ingesters["ingester-1"]
+	instance.Tokens = append([]uint32(nil), instance.Tokens...)
+	instance.Tokens[0]++
+	topologyChanged.Ingesters["ingester-1"] = instance
+
+	for name, next := range map[string]*Desc{"state_change": stateChanged, "topology_change": topologyChanged} {
+		b.Run(name, func(b *testing.B) {
+			r := newBenchmarkRing(b, desc)
+			descs := [2]*Desc{next, desc}
+			b.ReportAllocs()
+			n := 0
+			for b.Loop() {
+				r.UpdateDesc(descs[n%2])
+				n++
+			}
+		})
+	}
+}
+
+// BenchmarkRing_NewRingFromDescMemory reports the heap held by the ingester's own
+// ring, built from the lifecycler's copy of the ring.
+func BenchmarkRing_NewRingFromDescMemory(b *testing.B) {
+	desc := generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens)
+	for b.Loop() {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		r := newBenchmarkRing(b, desc)
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		b.ReportMetric(float64(int64(after.HeapAlloc)-int64(before.HeapAlloc)), "B/ring")
+		runtime.KeepAlive(r)
+	}
+}
+
+// BenchmarkOwnershipMayHaveChanged measures the check the lifecycler makes on
+// every ring read to decide whether to keep a new copy of the ring, and the copy
+// itself, which is only made when the check says so.
+func BenchmarkOwnershipMayHaveChanged(b *testing.B) {
+	desc := generateBenchmarkRing(benchmarkRingInstances, benchmarkRingZones, benchmarkRingTokens)
+	heartbeat := cloneDesc(desc)
+	for id, instance := range heartbeat.Ingesters {
+		instance.Timestamp++
+		heartbeat.Ingesters[id] = instance
+	}
+
+	b.Run("heartbeat_only", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			if ownershipMayHaveChanged(desc, heartbeat) {
+				b.Fatal("a heartbeat must not change ownership")
+			}
+		}
+	})
+	b.Run("copy", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			_ = cloneDesc(desc)
+		}
+	})
 }

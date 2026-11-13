@@ -2811,7 +2811,19 @@ func (i *Ingester) queryStreamChunks(ctx context.Context, userID string, db *use
 		}
 	}
 
+	iterations := 0
 	for ss.Next() {
+		// Interrupt if the context has been canceled or has timed out. The check runs before
+		// the lazy and shard matchers because series they skip never reach SendQueryStream,
+		// which would otherwise be the only place where cancellation is noticed. Checking on
+		// the first iteration as well makes an already canceled request stop immediately.
+		if iterations%util.CheckContextEveryNIterations == 0 {
+			if err := ctx.Err(); err != nil {
+				return 0, 0, 0, 0, err
+			}
+		}
+		iterations++
+
 		series := ss.At()
 		lbls := series.Labels()
 

@@ -30,9 +30,20 @@ const (
 var (
 	writeOptions = &consul.WriteOptions{}
 
+	// backoffConfig is used by the long-running watch loops.
 	backoffConfig = backoff.Config{
 		MinBackoff: 1 * time.Second,
 		MaxBackoff: 1 * time.Minute,
+	}
+
+	// casBackoffConfig is used between CAS attempts after a failed read or
+	// write. It is kept short because CAS callers (e.g. ring heartbeats and
+	// shutdown paths) may not have a deadline: with the default 10 attempts
+	// the total wait is less than 13s (200ms+400ms+800ms+1.6s+5*2s upper
+	// bounds), well below the default 1m ring heartbeat timeout.
+	casBackoffConfig = backoff.Config{
+		MinBackoff: 100 * time.Millisecond,
+		MaxBackoff: 2 * time.Second,
 	}
 )
 
@@ -181,9 +192,26 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 	}
 
 	index := uint64(0)
+	// Keep error backoff across attempts: a successful read doesn't imply
+	// that writes have recovered. Conflicts and callback retries don't wait.
+	errorBackoff := backoff.New(ctx, casBackoffConfig)
+	retryAfterError := false
 	for i := 0; i < retries; i++ {
+		if retryAfterError {
+			errorBackoff.Wait()
+			retryAfterError = false
+		}
 		if i > 0 && sleepBeforeRetry > 0 {
-			time.Sleep(sleepBeforeRetry)
+			timer := time.NewTimer(sleepBeforeRetry)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
 		// Get with default options - don't want stale data to compare with
@@ -191,6 +219,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 		kvp, _, err := c.kv.Get(key, options.WithContext(ctx))
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error getting key", "key", key, "err", err)
+			retryAfterError = true
 			continue
 		}
 		var intermediate any
@@ -224,6 +253,9 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 			level.Error(c.logger).Log("msg", "error serialising value", "key", key, "err", err)
 			continue
 		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		ok, _, err := c.kv.CAS(&consul.KVPair{
 			Key:         key,
 			Value:       bytes,
@@ -231,6 +263,7 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 		}, writeOptions.WithContext(ctx))
 		if err != nil {
 			level.Error(c.logger).Log("msg", "error CASing", "key", key, "err", err)
+			retryAfterError = true
 			continue
 		}
 		if !ok {
@@ -238,6 +271,9 @@ func (c *Client) cas(ctx context.Context, key string, f func(in any) (out any, r
 			continue
 		}
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	return fmt.Errorf("failed to CAS %s", key)
 }

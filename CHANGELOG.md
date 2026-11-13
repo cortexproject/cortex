@@ -23,6 +23,7 @@
 * [BUGFIX] Querier: Fix the querier crashing instead of reporting the error when a blocks store set subservice fails. `blocksStoreReplicationSet` never initialised its `FailureWatcher`, so the failure callback dereferenced a nil pointer on the goroutine the service manager runs listeners on, and the resulting panic's stack trace buried the error logged for the actual cause. #7896
 * [BUGFIX] Compactor: Delete block deletion markers left in the global `markers/` location of a tenant after the block they refer to was removed. They were skipped at every bucket index update and kept the tenant location in the bucket forever. #7890
 * [BUGFIX] Ring: Fix an instance becoming permanently unable to acquire tokens. #7901
+* [BUGFIX] Consul: Back off CAS retries after failed reads or writes to reduce request amplification during outages, and honor context cancellation while waiting to retry. #7893
 * [BUGFIX] Ingester: Stop `QueryStream` from reading the TSDB index after the request is canceled or times out. The series loop noticed cancellation only when it sent a batch, so a query shard whose series all failed the shard matcher, or the lazy matchers of `-ingester.enable-matcher-optimization`, kept decoding every series in its postings after the querier had given up. The loop now checks the request context every 128 series and returns the context error. #7931
 
 ## 1.22.0 in progress

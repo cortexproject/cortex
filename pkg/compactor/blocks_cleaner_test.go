@@ -366,7 +366,7 @@ func testBlocksCleanerWithOptions(t *testing.T, options testBlocksCleanerOptions
 		cortex_bucket_parquet_blocks_count{user="user-6"} 1
 		# HELP cortex_bucket_parquet_unconverted_blocks_count Total number of unconverted parquet blocks in the bucket. Blocks marked for deletion are included.
 		# TYPE cortex_bucket_parquet_unconverted_blocks_count gauge
-		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 0
+		cortex_bucket_parquet_unconverted_blocks_count{user="user-5"} 1
 		cortex_bucket_parquet_unconverted_blocks_count{user="user-6"} 0
 	`),
 		"cortex_bucket_blocks_count",
@@ -1225,8 +1225,12 @@ func TestBlocksCleaner_ParquetMetrics(t *testing.T) {
 		},
 	}
 
+	mockNoCompactMarkCheckFunc := func(blockID ulid.ULID) bool {
+		return false
+	}
+
 	// Update metrics
-	cleaner.updateBucketMetrics("user1", true, idx, 0, 0)
+	cleaner.updateBucketMetrics("user1", true, idx, 0, 0, mockNoCompactMarkCheckFunc)
 
 	// Verify metrics
 	require.NoError(t, prom_testutil.CollectAndCompare(cleaner.tenantParquetBlocks, strings.NewReader(`

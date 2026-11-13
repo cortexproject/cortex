@@ -45,6 +45,7 @@ var (
 	errInvalidMaxAsyncConcurrency   = errors.New("invalid max_async_concurrency, must greater than 0")
 	errInvalidMaxAsyncBufferSize    = errors.New("invalid max_async_buffer_size, must greater than 0")
 	errInvalidMaxBackfillItems      = errors.New("invalid max_backfill_items, must greater than 0")
+	errInvalidIndexCacheTTL         = errors.New("invalid index cache ttl, must not be negative")
 )
 
 type IndexCacheConfig struct {
@@ -158,11 +159,15 @@ func (cfg *InMemoryIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, pr
 type MemcachedIndexCacheConfig struct {
 	ClientConfig MemcachedClientConfig `yaml:",inline"`
 	EnabledItems []string              `yaml:"enabled_items"`
+	TTL          time.Duration         `yaml:"ttl"`
 }
 
 func (cfg *MemcachedIndexCacheConfig) Validate() error {
 	if err := cfg.ClientConfig.Validate(); err != nil {
 		return err
+	}
+	if cfg.TTL < 0 {
+		return errInvalidIndexCacheTTL
 	}
 	return storecache.ValidateEnabledItems(cfg.EnabledItems)
 }
@@ -170,21 +175,27 @@ func (cfg *MemcachedIndexCacheConfig) Validate() error {
 func (cfg *MemcachedIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
 	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+	f.DurationVar(&cfg.TTL, prefix+"ttl", defaultTTL, "How long an index cache item is kept in memcached. 0 uses the default of 24h. Negative values are not allowed.")
 }
 
 type RedisIndexCacheConfig struct {
 	ClientConfig RedisClientConfig `yaml:",inline"`
 	EnabledItems []string          `yaml:"enabled_items"`
+	TTL          time.Duration     `yaml:"ttl"`
 }
 
 func (cfg *RedisIndexCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
 	cfg.ClientConfig.RegisterFlagsWithPrefix(f, prefix)
 	f.Var((*flagext.StringSlice)(&cfg.EnabledItems), prefix+"enabled-items", "Selectively cache index item types. Supported values are Postings, ExpandedPostings and Series")
+	f.DurationVar(&cfg.TTL, prefix+"ttl", defaultTTL, "How long an index cache item is kept in redis. 0 uses the default of 24h. Negative values are not allowed.")
 }
 
 func (cfg *RedisIndexCacheConfig) Validate() error {
 	if err := cfg.ClientConfig.Validate(); err != nil {
 		return err
+	}
+	if cfg.TTL < 0 {
+		return errInvalidIndexCacheTTL
 	}
 	return storecache.ValidateEnabledItems(cfg.EnabledItems)
 }
@@ -218,8 +229,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, remoteIndexCacheTTL(cfg.Memcached.TTL))
 			if err != nil {
 				return nil, err
 			}
@@ -230,8 +240,7 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 			if err != nil {
 				return nil, err
 			}
-			// TODO(yeya24): expose TTL
-			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, defaultTTL)
+			cache, err := storecache.NewRemoteIndexCache(logger, c, nil, iReg, remoteIndexCacheTTL(cfg.Redis.TTL))
 			if err != nil {
 				return nil, err
 			}
@@ -243,6 +252,16 @@ func NewIndexCache(cfg IndexCacheConfig, logger log.Logger, registerer prometheu
 	}
 
 	return newMultiLevelCache(registerer, cfg.MultiLevel, enabledItems, caches...), nil
+}
+
+// remoteIndexCacheTTL returns the TTL to use for a remote index cache backend,
+// falling back to the default when it is not set. A zero TTL can't be passed
+// through: redis rejects it and memcached would expire the item immediately.
+func remoteIndexCacheTTL(ttl time.Duration) time.Duration {
+	if ttl == 0 {
+		return defaultTTL
+	}
+	return ttl
 }
 
 func newInMemoryIndexCache(cfg InMemoryIndexCacheConfig, logger log.Logger, registerer prometheus.Registerer) (storecache.IndexCache, error) {

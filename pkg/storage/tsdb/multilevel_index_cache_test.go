@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/efficientgo/core/testutil"
@@ -48,6 +49,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 					ClientConfig: RedisClientConfig{
 						Addresses: s.Addr(),
 					},
+					TTL: time.Hour,
 				},
 				MultiLevel: multiLevelCfg,
 			},
@@ -61,6 +63,7 @@ func Test_MultiIndexCacheInstantiation(t *testing.T) {
 						Addresses:           s.Addr(),
 						MaxAsyncConcurrency: 1000,
 					},
+					TTL: time.Hour,
 				},
 				MultiLevel: multiLevelCfg,
 			},

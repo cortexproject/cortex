@@ -679,6 +679,34 @@ func Test_sortPlanForQuery(t *testing.T) {
 			expectedPlan: sortByLabels,
 			err:          false,
 		},
+		{
+			query:        "((topk(10, up)))",
+			expectedPlan: mergeOnly,
+			err:          false,
+		},
+		{
+			query:        "(sort_desc(sum by (job) (up)))",
+			expectedPlan: sortByValuesDesc,
+			err:          false,
+		},
+		{
+			query:          `(sort_by_label(sum by (job) (up), "job"))`,
+			expectedPlan:   sortByLabelValuesAsc,
+			expectedLabels: []string{"job"},
+			err:            false,
+		},
+		{
+			query:          `1 + ((sort_by_label_desc(sum by (job) (up), "job")))`,
+			expectedPlan:   sortByLabelValuesDesc,
+			expectedLabels: []string{"job"},
+			err:            false,
+		},
+		{
+			query:          `(sort_by_label(sum by (job) (up), "job")) + 1`,
+			expectedPlan:   sortByLabelValuesAsc,
+			expectedLabels: []string{"job"},
+			err:            false,
+		},
 	}
 
 	for _, tc := range tc {
@@ -770,6 +798,15 @@ func TestMergeResponse_SortByLabel(t *testing.T) {
 				vectorResponse(sample(2, "env", "a", "job", "x")),
 			},
 			expected: []Sample{sample(2, "env", "a", "job", "x"), sample(1, "env", "a", "job", "z")},
+		},
+		{
+			name:  "parenthesised sort_by_label uses natural sort order",
+			query: `(sort_by_label(sum by (job) (up), "job"))`,
+			resps: []Response{
+				vectorResponse(sample(1, "job", "job10"), sample(2, "job", "job1")),
+				vectorResponse(sample(3, "job", "job2")),
+			},
+			expected: []Sample{sample(2, "job", "job1"), sample(3, "job", "job2"), sample(1, "job", "job10")},
 		},
 		{
 			name:  "sort_by_label in a binary expression",

@@ -168,7 +168,9 @@ func setRingState(c *ActiveSeries, ringTokens []uint32, ownedTokens ...uint32) b
 // of ring tokens this instance is a replica for.
 func updateMetricsWithRing(c *ActiveSeries, keepUntil time.Time, ringTokens []uint32, ownedTokens ...uint32) {
 	positions := ownedPositionsFor(ringTokens, ownedTokens...)
-	c.UpdateMetrics(keepUntil, ringTokens, positions, testRingFingerprint(ringTokens, positions))
+	// The view of the ring is newer than any entry a test creates, which is
+	// created at read 0, so every entry is judged.
+	c.UpdateMetrics(keepUntil, ringTokens, positions, testRingFingerprint(ringTokens, positions), 1)
 }
 
 // sumStripes totals the per-stripe counters, which are the source the cached
@@ -483,22 +485,23 @@ func TestUpdateTokens_DetectsChange(t *testing.T) {
 	assert.True(t, setRingState(c, []uint32{100, 200, 300}, 100, 200))
 }
 
-func TestActiveSeries_UpdateTokens_ImmutableSnapshots(t *testing.T) {
-	// Verify that updateTokens publishes a new ringState each time rather than
-	// mutating the previous one, which is what makes the atomic.Pointer safe.
+func TestActiveSeries_UpdateTokens_AdoptsNewSlicesForTheSameOwnership(t *testing.T) {
 	c := NewActiveSeries()
+	tokens, positions := []uint32{100, 200}, []bool{true, false}
+	require.True(t, c.updateTokens(tokens, positions, 7))
 
-	setRingState(c, []uint32{100, 200}, 100)
-	state1 := c.ring.Load()
+	// A rebuilt ring hands over equal ownership in new slices, under the same
+	// fingerprint. They are adopted, so the old ones can be freed, but nothing
+	// is re-evaluated.
+	rebuilt, rebuiltPositions := []uint32{100, 200}, []bool{true, false}
+	require.False(t, c.updateTokens(rebuilt, rebuiltPositions, 7))
+	require.Same(t, &rebuilt[0], &c.tokens[0])
 
-	setRingState(c, []uint32{100, 200, 300}, 100, 300)
-	state2 := c.ring.Load()
+	require.True(t, c.updateTokens([]uint32{100, 200, 300}, []bool{true, false, true}, 8))
+	require.Len(t, c.tokens, 3)
 
-	assert.NotEqual(t, state1, state2)
-	assert.Len(t, state1.tokens, 2)
-	assert.Len(t, state2.tokens, 3)
-	assert.Len(t, state1.ownedPositions, 2)
-	assert.Len(t, state2.ownedPositions, 3)
+	require.False(t, c.updateTokens(nil, nil, 9), "no tokens is no ownership")
+	require.False(t, c.updateTokens([]uint32{1}, []bool{true}, 0), "zero is unknown ownership")
 }
 
 // --- Benchmarks. These predate owned-series tracking and are kept so that the
@@ -693,7 +696,7 @@ func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
 	b.Run("ring_unchanged", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
-			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, 1)
+			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, 1, 1)
 		}
 	})
 
@@ -702,7 +705,7 @@ func BenchmarkActiveSeries_UpdateMetrics(b *testing.B) {
 		fingerprint := uint64(1)
 		for b.Loop() {
 			fingerprint++
-			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, fingerprint)
+			c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownedPositions, fingerprint, 1)
 		}
 	})
 }
@@ -1120,48 +1123,6 @@ func TestActiveSeries_EntryWithoutRefAdoptsOne(t *testing.T) {
 	assert.Equal(t, 0, c.Tracked(), "the adopted reference lets the callback release the entry")
 }
 
-// TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership creates a
-// series while a ring change moves this instance from owning nothing to owning
-// everything, and forces the ordering that used to leave it wrong: the push
-// reaches the stripe after the new ring state is published and after that stripe
-// has been recounted. The recount only re-evaluates entries when the ring
-// changes, so an entry created with the ownership from before the change would
-// stay wrong until the next ring change. A new entry is now owned whatever the
-// ring says, so no ordering can leave it unowned.
-//
-// Holding the stripe lock stands in for the recount of that stripe: the recount
-// takes the same lock, and the stripe holds no entry yet for it to re-evaluate.
-func TestActiveSeries_EntryCreatedDuringRingChangeGetsCurrentOwnership(t *testing.T) {
-	ringTokens := []uint32{1}
-	keepUntil := time.Now().Add(-time.Hour)
-
-	c := NewActiveSeries()
-	updateMetricsWithRing(c, keepUntil, ringTokens) // owns nothing
-
-	lbls := labels.FromStrings(labels.MetricName, "metric")
-	hash := lbls.Hash()
-	stripe := &c.stripes[hash%numActiveSeriesStripes]
-
-	stripe.mu.Lock()
-	pushed := make(chan struct{})
-	go func() {
-		defer close(pushed)
-		c.UpdateSeries(lbls, hash, 5, time.Now(), false, copyFn)
-	}()
-	// Let the push get as far as the stripe lock.
-	time.Sleep(100 * time.Millisecond)
-
-	// Publish the new ring, as UpdateMetrics does before recounting any stripe.
-	require.True(t, setRingState(c, ringTokens, 1)) // owns everything
-	stripe.mu.Unlock()
-	<-pushed
-
-	// Recount with the ring unchanged, which keeps each entry's cached ownership.
-	updateMetricsWithRing(c, keepUntil, ringTokens, 1)
-	require.Equal(t, 1, c.Tracked())
-	require.Equal(t, 1, c.Owned(), "the entry kept the ownership from before the ring change")
-}
-
 // TestActiveSeries_NewSeriesIsOwnedWhateverTheRing covers a series reaching this
 // instance in a token range its own view of the ring says it does not own, as
 // happens when it has gained ranges the distributor already routes to it and has
@@ -1235,4 +1196,59 @@ func TestActiveSeries_SeriesWithoutTokenStaysOwned(t *testing.T) {
 
 	updateMetricsWithRing(c, now.Add(-time.Minute), []uint32{100, 200}) // owns nothing
 	assert.Equal(t, 1, c.Owned(), "a series whose ownership cannot be evaluated stays owned")
+}
+
+// TestActiveSeries_SeriesIsNotJudgedByAnOlderViewOfTheRing covers the rule that a
+// series is only judged by a view of the ring read after it arrived. A series
+// created at read 5 may have been routed here by a ring newer than this ingester's
+// read 5 view, so that view must not un-count it, even when ownership is applied
+// for the first time, or changes. A view from a later read judges it.
+func TestActiveSeries_SeriesIsNotJudgedByAnOlderViewOfTheRing(t *testing.T) {
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+	ownsNothing := ownedPositionsFor(ringTokens)
+	ownsNothingFingerprint := testRingFingerprint(ringTokens, ownsNothing)
+
+	c := NewActiveSeries()
+	old := labels.FromStrings("__name__", "old")
+	c.UpdateSeriesWithRef(old, old.Hash(), 1, seriesToken{key: 50, known: true, ringRead: 4}, now, false, copyFn)
+	recent := labels.FromStrings("__name__", "recent")
+	c.UpdateSeriesWithRef(recent, recent.Hash(), 2, seriesToken{key: 50, known: true, ringRead: 5}, now, false, copyFn)
+
+	// Ownership applied as of read 5: the old series is judged, the recent one not.
+	c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownsNothing, ownsNothingFingerprint, 5)
+	require.Equal(t, 1, c.Owned(), "only the series created before the view was read is judged")
+
+	// The same view again judges nothing new.
+	c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownsNothing, ownsNothingFingerprint, 5)
+	require.Equal(t, 1, c.Owned())
+
+	// A later read with the same ownership judges the series it was too new for.
+	c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownsNothing, ownsNothingFingerprint, 6)
+	require.Equal(t, 0, c.Owned())
+}
+
+// TestActiveSeries_NewerViewDoesNotRejudgeSettledSeries checks that a newer read
+// with unchanged ownership only judges the entries that were waiting for it, so
+// that a heartbeat does not re-evaluate every series.
+func TestActiveSeries_NewerViewDoesNotRejudgeSettledSeries(t *testing.T) {
+	now := time.Now()
+	ringTokens := []uint32{100, 200}
+	ownsAll := ownedPositionsFor(ringTokens, 100, 200)
+	ownsAllFingerprint := testRingFingerprint(ringTokens, ownsAll)
+
+	c := NewActiveSeries()
+	lbls := labels.FromStrings("__name__", "settled")
+	c.UpdateSeriesWithRef(lbls, lbls.Hash(), 1, seriesToken{key: 50, known: true, ringRead: 1}, now, false, copyFn)
+	c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownsAll, ownsAllFingerprint, 2)
+	require.Equal(t, 1, c.Owned())
+
+	// Corrupt the cached ownership. Only a judgement would correct it.
+	stripe := &c.stripes[lbls.Hash()%numActiveSeriesStripes]
+	stripe.mu.Lock()
+	stripe.refs[lbls.Hash()][0].owned = false
+	stripe.mu.Unlock()
+
+	c.UpdateMetrics(now.Add(-time.Minute), ringTokens, ownsAll, ownsAllFingerprint, 3)
+	require.Equal(t, 0, c.Owned(), "a settled entry is not judged again by a newer read with the same ownership")
 }

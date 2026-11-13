@@ -164,14 +164,17 @@ type Config struct {
 	// logs a warning at startup in that case.
 	OwnedSeriesLimitEnforcementEnabled bool `yaml:"owned_series_limit_enforcement_enabled"`
 
-	// OwnedSeriesRecomputeMinInterval is how often the ingester checks whether
-	// series ownership may have changed, because the ring changed or a tenant's
-	// shuffle-shard size changed, and if so recounts owned series straight away
-	// rather than at the next active series update. It bounds how often that
-	// recount can run during a rolling restart, when the ring changes every few
-	// seconds. Until the recount, which itself takes time in a large ring, a
-	// tenant can be throttled against a local limit that has already shrunk.
-	OwnedSeriesRecomputeMinInterval time.Duration `yaml:"owned_series_recompute_min_interval"`
+	// OwnedSeriesRecomputeInterval is how often the ingester checks whether a
+	// tenant's shuffle-shard size changed, and if so recounts its owned series
+	// straight away rather than at the next active series update. Ring changes
+	// are applied within about a second of the lifecycler reading them, so that
+	// the owned count changes together with the local limits.
+	OwnedSeriesRecomputeInterval time.Duration `yaml:"owned_series_recompute_interval"`
+
+	// ownedSeriesRingCheckPeriod is how often the ingester checks whether the
+	// lifecycler has read a changed ring, to recount owned series straight away.
+	// Not a flag: tests lengthen it.
+	ownedSeriesRingCheckPeriod time.Duration
 
 	// Use blocks storage.
 	BlocksStorageConfig cortex_tsdb.BlocksStorageConfig `yaml:"-"`
@@ -255,7 +258,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	// Matches the default of -distributor.extend-writes, for ingesters built
 	// without the distributor's config.
 	cfg.DistributorExtendWrites = true
-	f.DurationVar(&cfg.OwnedSeriesRecomputeMinInterval, "ingester.owned-series-recompute-min-interval", 15*time.Second, "How often to check whether series ownership has changed, because the ring changed or a tenant's shuffle-shard size changed, and if so recount owned series without waiting for the next active series update. Ring changes are seen when this ingester's lifecycler next reads the ring, on its heartbeat, which is also when its local limits change. A new series counts as owned as soon as it arrives, whatever this ingester's view of the ring. This bounds how often the recount runs while the ring is changing. It is also roughly how long a tenant can be throttled after such a change, against a local limit that has already shrunk while the owned count has not yet been recounted: the recount itself takes time on top of it in a large ring. Only used when -ingester.owned-series-metrics-enabled is true.")
+	f.DurationVar(&cfg.OwnedSeriesRecomputeInterval, "ingester.owned-series-recompute-interval", 15*time.Second, "How often to check whether a tenant's shuffle-shard size has changed, and if so recount its owned series without waiting for the next active series update. Ring changes are seen when this ingester's lifecycler reads the ring, on its heartbeat, and are applied within about a second, together with the local limits computed from the same ring. A new series counts as owned as soon as it arrives, and is only re-evaluated against a view of the ring read after it arrived. Only used when -ingester.owned-series-metrics-enabled is true.")
+	cfg.ownedSeriesRingCheckPeriod = time.Second
 
 	f.BoolVar(&cfg.UploadCompactedBlocksEnabled, "ingester.upload-compacted-blocks-enabled", true, "Enable uploading compacted blocks.")
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
@@ -293,8 +297,13 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 	}
 
 	// Validate the owned series update periods
-	if cfg.OwnedSeriesMetricsEnabled && cfg.OwnedSeriesRecomputeMinInterval <= 0 {
-		return fmt.Errorf("ingester.owned-series-recompute-min-interval must be greater than 0 when owned series metrics are enabled, got %v", cfg.OwnedSeriesRecomputeMinInterval)
+	if cfg.OwnedSeriesMetricsEnabled && cfg.OwnedSeriesRecomputeInterval <= 0 {
+		return fmt.Errorf("ingester.owned-series-recompute-interval must be greater than 0 when owned series metrics are enabled, got %v", cfg.OwnedSeriesRecomputeInterval)
+	}
+	if cfg.OwnedSeriesMetricsEnabled && cfg.LifecyclerConfig.HeartbeatPeriod <= 0 {
+		// Ownership is computed from the ring the lifecycler reads on its
+		// heartbeat, so without one it would never be refreshed.
+		return fmt.Errorf("ingester.heartbeat-period must be greater than 0 when owned series metrics are enabled, got %v", cfg.LifecyclerConfig.HeartbeatPeriod)
 	}
 	if cfg.activeSeriesTrackingEnabled() && cfg.ActiveSeriesMetricsUpdatePeriod <= 0 {
 		return fmt.Errorf("ingester.active-series-metrics-update-period must be greater than 0 when active or owned series metrics are enabled, got %v", cfg.ActiveSeriesMetricsUpdatePeriod)
@@ -611,6 +620,13 @@ func (u *userTSDB) compactHead(ctx context.Context, blockDuration int64) error {
 	return u.db.CompactOOOHead(ctx)
 }
 
+// ownedSeriesLimitCount is the series count the per-tenant limit is checked
+// against with owned-series enforcement: the owned series, plus the series in the
+// head without a tracker entry, which count as owned, capped at the head.
+func ownedSeriesLimitCount(head, owned, tracked int) int {
+	return min(head, owned+max(0, head-tracked))
+}
+
 // PreCreation implements SeriesLifecycleCallback interface.
 func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	if u.limiter == nil {
@@ -656,7 +672,7 @@ func (u *userTSDB) PreCreation(metric labels.Labels) error {
 	headSeriesCount := int(u.Head().NumSeries())
 	seriesCount := headSeriesCount
 	if u.ownedSeriesLimitEnabled {
-		seriesCount = min(headSeriesCount, u.activeSeries.Owned()+max(0, headSeriesCount-u.activeSeries.Tracked()))
+		seriesCount = ownedSeriesLimitCount(headSeriesCount, u.activeSeries.Owned(), u.activeSeries.Tracked())
 	}
 	if err := u.limiter.AssertMaxSeriesPerUser(u.userID, seriesCount); err != nil {
 		return err
@@ -1311,10 +1327,15 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 		defer t.Stop()
 	}
 
-	var ownedSeriesRecountTickerChan <-chan time.Time
-	if i.ownedSeries != nil && i.cfg.OwnedSeriesRecomputeMinInterval > 0 {
-		t := time.NewTicker(i.cfg.OwnedSeriesRecomputeMinInterval)
+	var ownedSeriesRecountTickerChan, ownedSeriesRingCheckTickerChan <-chan time.Time
+	if i.ownedSeries != nil && i.cfg.OwnedSeriesRecomputeInterval > 0 {
+		t := time.NewTicker(i.cfg.OwnedSeriesRecomputeInterval)
 		ownedSeriesRecountTickerChan = t.C
+		defer t.Stop()
+	}
+	if i.ownedSeries != nil && i.cfg.ownedSeriesRingCheckPeriod > 0 {
+		t := time.NewTicker(i.cfg.ownedSeriesRingCheckPeriod)
+		ownedSeriesRingCheckTickerChan = t.C
 		defer t.Stop()
 	}
 
@@ -1367,6 +1388,10 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateActiveSeries(ctx)
 		case <-ownedSeriesRecountTickerChan:
 			i.recountOwnedSeriesIfChanged()
+		case <-ownedSeriesRingCheckTickerChan:
+			if i.ownedSeriesRingChanged() {
+				i.recountOwnedSeriesIfChanged()
+			}
 		case <-activeQueriedSeriesTickerChan:
 			i.updateActiveQueriedSeries(ctx)
 		case <-headQueriedSeriesTickerChan:
@@ -1451,7 +1476,7 @@ func (i *Ingester) updateActiveSeries(ctx context.Context) {
 			// UpdateMetrics handles both the recount and, when ownership changed,
 			// re-evaluating each entry's ownership.
 			ownership := i.tenantOwnership(userID, wholeRing)
-			userDB.activeSeries.UpdateMetrics(purgeTime, ownership.tokens, ownership.positions, ownership.fingerprint)
+			userDB.activeSeries.UpdateMetrics(purgeTime, ownership.tokens, ownership.positions, ownership.fingerprint, i.ownedSeries.viewRead)
 			i.metrics.ownedSeriesPerUser.WithLabelValues(userID).Set(float64(userDB.activeSeries.Owned()))
 			if ownership.fingerprint != 0 {
 				i.ownedSeries.tenants[userID] = ownership
@@ -1857,6 +1882,14 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		}
 	}
 
+	// The lifecycler's ring read number as this push arrived, read once per push.
+	// Series this push creates are not judged by any view of the ring older than
+	// this, because the distributor may have routed them by a newer ring.
+	var ringRead uint32
+	if i.cfg.OwnedSeriesMetricsEnabled {
+		ringRead = i.lifecycler.RingReads()
+	}
+
 	for _, ts := range req.Timeseries {
 		// The labels must be sorted (in our case, it's guaranteed a write request
 		// has sorted labels once hit the ingester).
@@ -1875,7 +1908,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// rather than fail the push.
 		var tsToken seriesToken
 		if i.cfg.OwnedSeriesMetricsEnabled {
-			tsToken = seriesToken{userID: userID, labels: ts.Labels, shardByAllLabels: i.cfg.DistributorShardByAllLabels}
+			tsToken = seriesToken{userID: userID, labels: ts.Labels, shardByAllLabels: i.cfg.DistributorShardByAllLabels, ringRead: ringRead}
 		}
 
 		ref, copiedLabels := app.GetRef(tsLabels, tsLabelsHash)

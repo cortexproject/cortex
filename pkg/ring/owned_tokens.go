@@ -10,18 +10,18 @@ import (
 // OwnedTokenPositions depends on may have changed: the set of instances, their
 // zones and tokens, or their states.
 //
-// It is cheap enough to call on every check, because it does not hash any
-// tokens. Instances, zones and tokens only change together with the ring's
-// topology, which updateRingState already timestamps, so the fingerprint hashes
-// that timestamp and each instance's state.
+// It is cheap enough to call on every check. The instances, their zones and
+// tokens are hashed once per topology change, by updateRingState, and the
+// fingerprint combines that hash with each instance's state. On a subring it
+// covers only the subring's members.
 //
 // States have to be hashed separately because a state change is not a topology
 // change: Desc.RingCompare reports it the same way as a heartbeat. Yet ownership
 // depends on state, because a non-ACTIVE instance extends the replica set.
 //
-// Heartbeat timestamps are deliberately ignored. They change constantly, and
-// recomputing ownership on every heartbeat would cost far more than making the
-// per-series check cheap saves.
+// Instance addresses and heartbeat timestamps are deliberately ignored. Neither
+// changes any replica set. Heartbeats change constantly, and an instance which
+// restarts in Kubernetes usually comes back with a new address.
 //
 // It is zero while the ring has no instances, including before it has been read.
 func (r *Ring) OwnershipFingerprint() uint64 {
@@ -32,22 +32,16 @@ func (r *Ring) OwnershipFingerprint() uint64 {
 		return 0
 	}
 
-	ids := make([]string, 0, len(r.ringDesc.Ingesters))
-	for id := range r.ringDesc.Ingesters {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-
 	var (
 		h   = fnv.New64a()
 		buf [8]byte
 		sep = []byte{0}
 	)
 
-	binary.LittleEndian.PutUint64(buf[:], uint64(r.lastTopologyChange.UnixNano()))
+	binary.LittleEndian.PutUint64(buf[:], r.topologyFingerprint)
 	_, _ = h.Write(buf[:])
 
-	for _, id := range ids {
+	for _, id := range sortedInstanceIDs(r.ringDesc) {
 		_, _ = h.Write([]byte(id))
 		_, _ = h.Write(sep)
 		binary.LittleEndian.PutUint64(buf[:], uint64(r.ringDesc.Ingesters[id].State))
@@ -55,6 +49,37 @@ func (r *Ring) OwnershipFingerprint() uint64 {
 	}
 
 	return h.Sum64()
+}
+
+// topologyFingerprint hashes the instances of d, their zones and tokens.
+func topologyFingerprint(d *Desc) uint64 {
+	var (
+		h   = fnv.New64a()
+		buf [4]byte
+		sep = []byte{0}
+	)
+	for _, id := range sortedInstanceIDs(d) {
+		instance := d.Ingesters[id]
+		_, _ = h.Write([]byte(id))
+		_, _ = h.Write(sep)
+		_, _ = h.Write([]byte(instance.Zone))
+		_, _ = h.Write(sep)
+		for _, token := range instance.Tokens {
+			binary.LittleEndian.PutUint32(buf[:], token)
+			_, _ = h.Write(buf[:])
+		}
+		_, _ = h.Write(sep)
+	}
+	return h.Sum64()
+}
+
+func sortedInstanceIDs(d *Desc) []string {
+	ids := make([]string, 0, len(d.Ingesters))
+	for id := range d.Ingesters {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 // OwnedTokenPositions returns this ring's sorted token list together with a

@@ -145,3 +145,44 @@ func keys[V any](m map[string]V) []string {
 	}
 	return out
 }
+
+// TestOwnershipFingerprint_IgnoresAddressChanges covers an instance coming back
+// with a new address, as a restarted pod usually does. The ring treats it as a
+// topology change, but replica sets do not depend on addresses, so ownership is
+// unchanged, for the whole ring and for a subring.
+func TestOwnershipFingerprint_IgnoresAddressChanges(t *testing.T) {
+	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
+	desc := &Desc{Ingesters: generateRingInstances(30, 3, 32)}
+	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	require.NoError(t, err)
+	r.UpdateDesc(cloneDesc(desc))
+	before := r.OwnershipFingerprint()
+	subBefore := r.ShuffleShard("tenant", 6).(*Ring).OwnershipFingerprint()
+
+	moved := cloneDesc(desc)
+	for id, instance := range moved.Ingesters {
+		instance.Addr = "10.9.9.9:9095"
+		moved.Ingesters[id] = instance
+		break
+	}
+	require.Equal(t, Different, desc.RingCompare(moved), "an address change is a topology change")
+	r.UpdateDesc(moved)
+
+	assert.Equal(t, before, r.OwnershipFingerprint())
+	assert.Equal(t, subBefore, r.ShuffleShard("tenant", 6).(*Ring).OwnershipFingerprint())
+}
+
+// TestRing_UpdateDesc_DoesNothingOnAWatchedRing covers UpdateDesc called on a ring
+// whose state comes from watching the KV store, where it would race with the watch.
+func TestRing_UpdateDesc_DoesNothingOnAWatchedRing(t *testing.T) {
+	desc := &Desc{Ingesters: generateRingInstances(3, 1, 4)}
+	watched := newWatchedRingForOwnershipTest(t, desc, 1, false)
+	watched.mtx.RLock()
+	before := watched.ringDesc
+	watched.mtx.RUnlock()
+
+	watched.UpdateDesc(&Desc{Ingesters: generateRingInstances(5, 1, 4)})
+	watched.mtx.RLock()
+	defer watched.mtx.RUnlock()
+	assert.Same(t, before, watched.ringDesc)
+}

@@ -604,3 +604,43 @@ func TestOwnedTokenPositions_SubringSeesStateChanges(t *testing.T) {
 	}
 	require.Greater(t, extended, 0, "a LEAVING member must extend the subring's replica sets")
 }
+
+// TestOwnedTokenPositions_WriteNoExtendDoesNotExtend checks ownership for a
+// distributor running with -distributor.extend-writes=false, which routes with
+// WriteNoExtend: a non-ACTIVE instance does not extend the replica set, so every
+// position is owned by exactly RF instances, unlike with Write.
+func TestOwnedTokenPositions_WriteNoExtendDoesNotExtend(t *testing.T) {
+	const replicationFactor = 3
+	ringDesc := &Desc{Ingesters: generateRingInstances(9, 1, 128)}
+	leaving := ringDesc.Ingesters["instance-1"]
+	leaving.State = LEAVING
+	ringDesc.Ingesters["instance-1"] = leaving
+	ring := newRingForOwnershipTest(ringDesc, replicationFactor, false)
+
+	owners := func(op Operation) []int {
+		perPosition := make([]int, len(ring.ringTokens))
+		for id := range ringDesc.Ingesters {
+			_, owned, err := ring.OwnedTokenPositions(id, op)
+			require.NoError(t, err)
+			for p, isOwned := range owned {
+				if isOwned {
+					perPosition[p]++
+				}
+			}
+		}
+		return perPosition
+	}
+
+	extended := 0
+	for p, n := range owners(Write) {
+		require.GreaterOrEqual(t, n, replicationFactor, "position %d", p)
+		if n > replicationFactor {
+			extended++
+		}
+	}
+	require.Greater(t, extended, 0, "Write extends past the LEAVING instance")
+
+	for p, n := range owners(WriteNoExtend) {
+		require.Equal(t, replicationFactor, n, "WriteNoExtend owns position %d exactly RF times", p)
+	}
+}

@@ -4277,19 +4277,15 @@ lifecycler:
 # CLI flag: -ingester.owned-series-limit-enforcement-enabled
 [owned_series_limit_enforcement_enabled: <boolean> | default = false]
 
-# How often to check whether series ownership has changed, because the ring
-# changed or a tenant's shuffle-shard size changed, and if so recount owned
-# series without waiting for the next active series update. Ring changes are
-# seen when this ingester's lifecycler next reads the ring, on its heartbeat,
-# which is also when its local limits change. A new series counts as owned as
-# soon as it arrives, whatever this ingester's view of the ring. This bounds how
-# often the recount runs while the ring is changing. It is also roughly how long
-# a tenant can be throttled after such a change, against a local limit that has
-# already shrunk while the owned count has not yet been recounted: the recount
-# itself takes time on top of it in a large ring. Only used when
-# -ingester.owned-series-metrics-enabled is true.
-# CLI flag: -ingester.owned-series-recompute-min-interval
-[owned_series_recompute_min_interval: <duration> | default = 15s]
+# How often to check whether a tenant's shuffle-shard size has changed, and if
+# so recount its owned series without waiting for the next active series update.
+# Ring changes are seen when this ingester's lifecycler reads the ring, on its
+# heartbeat, and are applied within about a second, together with the local
+# limits computed from the same ring. A new series counts as owned as soon as it
+# arrives, and is only re-evaluated against a view of the ring read after it
+# arrived. Only used when -ingester.owned-series-metrics-enabled is true.
+# CLI flag: -ingester.owned-series-recompute-interval
+[owned_series_recompute_interval: <duration> | default = 15s]
 
 # Enable uploading compacted blocks.
 # CLI flag: -ingester.upload-compacted-blocks-enabled

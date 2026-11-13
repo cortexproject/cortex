@@ -70,8 +70,10 @@ type ownedSeriesState struct {
 	// ring change reaches the local limit and the owned count together.
 	ring *ring.Ring
 
-	// ringDesc is the lifecycler's ring that ring was last updated from.
+	// ringDesc is the lifecycler's ring that ring was last updated from, and
+	// viewRead the number of the lifecycler read it is up to date as of.
 	ringDesc *ring.Desc
+	viewRead uint32
 
 	// wholeRing is the ownership over the whole ring, shared by every tenant
 	// routed over it.
@@ -95,10 +97,23 @@ func newOwnedSeriesState(r *ring.Ring) *ownedSeriesState {
 // ownership depends on changed, so an unchanged pointer means nothing to do.
 func (i *Ingester) refreshOwnedSeriesRing() {
 	s := i.ownedSeries
-	if desc := i.lifecycler.RingDesc(); desc != nil && desc != s.ringDesc {
+	desc, read := i.lifecycler.RingDesc()
+	if desc == nil {
+		return
+	}
+	if desc != s.ringDesc {
 		s.ring.UpdateDesc(desc)
 		s.ringDesc = desc
 	}
+	s.viewRead = read
+}
+
+// ownedSeriesRingChanged reports whether the lifecycler has read a changed ring
+// since owned series were last recounted. It only compares pointers, so it is
+// cheap enough to check every second.
+func (i *Ingester) ownedSeriesRingChanged() bool {
+	desc, _ := i.lifecycler.RingDesc()
+	return desc != nil && desc != i.ownedSeries.ringDesc
 }
 
 // ringOwnership returns this ingester's ownership over the whole ring, computing
@@ -128,6 +143,10 @@ func (i *Ingester) ringOwnership() seriesOwnership {
 		// count every series as owned by nobody.
 		level.Error(i.logger).Log("msg", "failed to compute owned ring token positions", "err", err)
 		return s.wholeRing
+	}
+	if len(tokens) == 0 {
+		// Instances but no tokens yet, as at startup: nothing to apply.
+		return seriesOwnership{}
 	}
 
 	s.wholeRing = s.wholeRing.withBitmap(tokens, positions, source)
@@ -239,8 +258,9 @@ func subringOwnershipFingerprint(ringFingerprint uint64, shardSize int) uint64 {
 // includes series that moved away, so the tenant can be throttled.
 //
 // Only tenants whose ownership changed are recounted. It is called every
-// -ingester.owned-series-recompute-min-interval, which bounds how often it can
-// recount during a rolling restart, when the ring changes every few seconds.
+// -ingester.owned-series-recompute-interval, for changes of tenants' shard sizes,
+// and within about a second of the lifecycler reading a changed ring, so that the
+// owned count changes together with the local limits computed from that ring.
 func (i *Ingester) recountOwnedSeriesIfChanged() {
 	s := i.ownedSeries
 
@@ -280,7 +300,7 @@ func (i *Ingester) recountOwnedSeriesIfChanged() {
 
 	purgeTime := time.Now().Add(-i.cfg.ActiveSeriesMetricsIdleTimeout)
 	for _, c := range changes {
-		c.userDB.activeSeries.UpdateMetrics(purgeTime, c.ownership.tokens, c.ownership.positions, c.ownership.fingerprint)
+		c.userDB.activeSeries.UpdateMetrics(purgeTime, c.ownership.tokens, c.ownership.positions, c.ownership.fingerprint, s.viewRead)
 		i.metrics.ownedSeriesPerUser.WithLabelValues(c.userDB.userID).Set(float64(c.userDB.activeSeries.Owned()))
 		s.tenants[c.userDB.userID] = c.ownership
 	}

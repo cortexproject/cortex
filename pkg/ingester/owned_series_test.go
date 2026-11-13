@@ -80,7 +80,8 @@ func prepareOwnedSeriesTestIngester(t *testing.T, opts ...func(*Config, *validat
 	cfg.DistributorShardByAllLabels = true
 	// Recounts run only when the test asks for them.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeMinInterval = time.Hour
+	cfg.OwnedSeriesRecomputeInterval = time.Hour
+	cfg.ownedSeriesRingCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 
 	limits := defaultLimitsTestConfig()
@@ -121,7 +122,7 @@ func (i *ownedSeriesTestIngester) addPeer(t *testing.T, id string) {
 	want := i.distributorRing.InstancesCount() + 1
 	test.Poll(t, 5*time.Second, want, func() any { return i.distributorRing.InstancesCount() })
 	test.Poll(t, 5*time.Second, want, func() any {
-		desc := i.lifecycler.RingDesc()
+		desc, _ := i.lifecycler.RingDesc()
 		if desc == nil {
 			return 0
 		}
@@ -143,7 +144,19 @@ func (i *ownedSeriesTestIngester) pushSeries(t *testing.T, userID, prefix string
 		require.NoError(t, err)
 		all = append(all, lbls)
 	}
+	i.awaitNewerRingRead(t)
 	return all
+}
+
+// awaitNewerRingRead waits until the lifecycler has read the ring after
+// everything pushed so far. Until then series are too new to be judged by this
+// ingester's view of the ring, and count as owned.
+func (i *ownedSeriesTestIngester) awaitNewerRingRead(t *testing.T) {
+	after := i.lifecycler.RingReads()
+	test.Poll(t, 5*time.Second, true, func() any {
+		_, read := i.lifecycler.RingDesc()
+		return read > after
+	})
 }
 
 // routedHere counts the series the distributor would write to this ingester, by
@@ -421,7 +434,7 @@ func (i *ownedSeriesTestIngester) setPeerState(t *testing.T, id string, state ri
 		return desc, true, nil
 	}))
 	test.Poll(t, 5*time.Second, state, func() any {
-		desc := i.lifecycler.RingDesc()
+		desc, _ := i.lifecycler.RingDesc()
 		if desc == nil {
 			return nil
 		}
@@ -549,4 +562,69 @@ func TestIngester_OwnershipOperationFollowsExtendWrites(t *testing.T) {
 
 	i.cfg.DistributorExtendWrites = false
 	require.Equal(t, ring.WriteNoExtend, i.ownershipOperation())
+}
+
+// TestIngester_OwnedSeries_RingChangeIsAppliedWithinASecond checks that once the
+// lifecycler reads a changed ring, the owned count follows within about a second,
+// without waiting for the recompute interval or the next active series update,
+// both of which are an hour here. The lifecycler computes the local limits from
+// that same read, so the two change together, and a scale-up does not throttle
+// the tenant in between.
+//
+// The test only observes: the ingester's own update loop does every recount, as in
+// a running ingester, since the ownership state belongs to that goroutine.
+func TestIngester_OwnedSeries_RingChangeIsAppliedWithinASecond(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t, func(cfg *Config, _ *validation.Limits) {
+		cfg.ownedSeriesRingCheckPeriod = time.Second
+	})
+	const tenant = "whole-ring"
+	series := i.pushSeries(t, tenant, "w", ownedSeriesTestSeries)
+	before := i.routedHere(t, tenant, series)
+
+	for n := range 10 {
+		i.addPeer(t, fmt.Sprintf("new-peer-%d", n))
+	}
+
+	// addPeer has waited for the lifecycler to read the ring with the new peers.
+	want := i.routedHere(t, tenant, series)
+	require.Less(t, want, before, "a scale-up must move some series away")
+	test.Poll(t, 3*time.Second, want, func() any { return i.owned(t, tenant) })
+}
+
+// TestIngester_OwnedSeries_TenantFlipsBetweenShardedAndWholeRing covers a tenant
+// whose shard size goes from smaller than the ring to none and back, as an
+// override can change it at runtime.
+func TestIngester_OwnedSeries_TenantFlipsBetweenShardedAndWholeRing(t *testing.T) {
+	i := prepareOwnedSeriesTestIngester(t)
+	const shardSize = 6
+
+	userID := i.tenantWithShardMembership(t, shardSize, true)
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	series := i.pushSeries(t, userID, "s", ownedSeriesTestSeries)
+	i.updateActiveSeries(context.Background())
+	sharded := i.owned(t, userID)
+	require.Equal(t, i.routedHere(t, userID, series), sharded)
+
+	i.tenantLimits.setShardSize(i.limits, userID, 0)
+	i.recountOwnedSeriesIfChanged()
+	require.Equal(t, i.routedHere(t, userID, series), i.owned(t, userID))
+	require.NotEqual(t, sharded, i.owned(t, userID))
+
+	i.tenantLimits.setShardSize(i.limits, userID, shardSize)
+	i.recountOwnedSeriesIfChanged()
+	require.Equal(t, sharded, i.owned(t, userID))
+}
+
+func TestOwnedSeriesLimitCount(t *testing.T) {
+	for name, tc := range map[string]struct{ head, owned, tracked, want int }{
+		"every series tracked":                    {head: 100, owned: 40, tracked: 100, want: 40},
+		"untracked series count as owned":         {head: 100, owned: 40, tracked: 90, want: 50},
+		"nothing tracked counts the whole head":   {head: 100, owned: 0, tracked: 0, want: 100},
+		"capped at the head while it deletes":     {head: 90, owned: 95, tracked: 100, want: 90},
+		"deleted but not yet released, not owned": {head: 90, owned: 40, tracked: 100, want: 40},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tc.want, ownedSeriesLimitCount(tc.head, tc.owned, tc.tracked))
+		})
+	}
 }

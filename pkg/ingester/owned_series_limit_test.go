@@ -36,7 +36,8 @@ func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, fu
 	cfg.LifecyclerConfig.JoinAfter = 0
 	cfg.ActiveSeriesMetricsEnabled = true
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeMinInterval = time.Hour
+	cfg.OwnedSeriesRecomputeInterval = time.Hour
+	cfg.ownedSeriesRingCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 	cfg.OwnedSeriesLimitEnforcementEnabled = true
 
@@ -66,7 +67,10 @@ func prepareIngesterHoldingUnownedSeries(t *testing.T) (*Ingester, *userTSDB, fu
 
 	// The scale-up: this ingester owns none of what it holds, and the local
 	// limit drops below what it holds.
-	updateMetricsWithRing(db.activeSeries, time.Now().Add(-time.Hour), []uint32{1})
+	ringTokens := []uint32{1}
+	positions := ownedPositionsFor(ringTokens)
+	// A view of the ring newer than every series pushed, so they are all judged.
+	db.activeSeries.UpdateMetrics(time.Now().Add(-time.Hour), ringTokens, positions, testRingFingerprint(ringTokens, positions), i.lifecycler.RingReads()+1)
 	lowered := limits
 	lowered.MaxLocalSeriesPerUser = ownedLimitTestLocalLimit
 	tenantLimits.mu.Lock()
@@ -158,7 +162,8 @@ func TestIngester_OwnedSeriesInstanceLimit_CountsSeriesCreatedSinceSnapshot(t *t
 	cfg.ActiveSeriesMetricsEnabled = true
 	// Cycles run only when the test calls updateActiveSeries.
 	cfg.ActiveSeriesMetricsUpdatePeriod = time.Hour
-	cfg.OwnedSeriesRecomputeMinInterval = time.Hour
+	cfg.OwnedSeriesRecomputeInterval = time.Hour
+	cfg.ownedSeriesRingCheckPeriod = time.Hour
 	cfg.OwnedSeriesMetricsEnabled = true
 	cfg.OwnedSeriesLimitEnforcementEnabled = true
 	cfg.InstanceLimitsFn = func() *InstanceLimits { return &InstanceLimits{MaxInMemorySeries: 2} }

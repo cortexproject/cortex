@@ -163,6 +163,12 @@ type Lifecycler struct {
 	// alone do not copy the ring. Guarded by countersLock.
 	keepRingDesc atomic.Bool
 	ringDesc     *Desc
+	// ringReads numbers the lifecycler's reads of the ring. It is incremented
+	// before each read starts. ringDescRead is the number of the last read that
+	// completed, which ringDesc is up to date as of, whether or not that read
+	// replaced it. Guarded by countersLock.
+	ringReads    atomic.Uint32
+	ringDescRead uint32
 
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
@@ -501,13 +507,25 @@ func (i *Lifecycler) KeepRingDesc() {
 // the same view of the ring HealthyInstancesCount and ZonesCount are computed
 // from.
 //
+// It also returns the number of the read the copy is up to date as of. See
+// RingReads. Anything which happened before that read started is reflected in
+// the copy.
+//
 // The returned Desc is shared and must not be modified. It is replaced, rather
 // than modified, when the instances, their zones, tokens or states change, so a
 // caller can tell whether anything changed by comparing pointers.
-func (i *Lifecycler) RingDesc() *Desc {
+func (i *Lifecycler) RingDesc() (*Desc, uint32) {
 	i.countersLock.RLock()
 	defer i.countersLock.RUnlock()
-	return i.ringDesc
+	return i.ringDesc, i.ringDescRead
+}
+
+// RingReads returns the number of reads of the ring the lifecycler has started.
+// Comparing it with the read number RingDesc returns tells whether something
+// happened after the copy of the ring was read: anything which saw a number
+// equal to or greater than it may not be reflected in the copy.
+func (i *Lifecycler) RingReads() uint32 {
+	return i.ringReads.Load()
 }
 
 // HealthyInstancesCount returns the number of healthy instances for the Write operation
@@ -776,6 +794,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
+	read := i.ringReads.Inc()
 	err = i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -882,7 +901,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return addedInRing, err
@@ -1003,6 +1022,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
+	read := i.ringReads.Inc()
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -1052,7 +1072,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return err
@@ -1063,6 +1083,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
 	var ringDesc *Desc
 
+	read := i.ringReads.Inc()
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -1090,7 +1111,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return err
@@ -1126,7 +1147,7 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 	return i.updateConsul(ctx)
 }
 
-func (i *Lifecycler) updateCounters(ringDesc *Desc) {
+func (i *Lifecycler) updateCounters(ringDesc *Desc, read uint32) {
 	healthyInstancesCount := 0
 	zonesMap := map[string]struct{}{}
 
@@ -1170,6 +1191,9 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.zones = zones
 	if ringDescCopy != nil {
 		i.ringDesc = ringDescCopy
+	}
+	if ringDesc != nil && read > i.ringDescRead {
+		i.ringDescRead = read
 	}
 	i.countersLock.Unlock()
 }

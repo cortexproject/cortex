@@ -199,6 +199,11 @@ type Ring struct {
 	// When did a set of instances change the last time (instance changing state or heartbeat is ignored for this timestamp).
 	lastTopologyChange time.Time
 
+	// topologyFingerprint identifies the instances, their zones and their tokens,
+	// which is everything replica sets depend on apart from instance states. It
+	// is computed on each topology change. See OwnershipFingerprint.
+	topologyFingerprint uint64
+
 	// List of zones for which there's at least 1 instance in the ring. This list is guaranteed
 	// to be sorted alphabetically.
 	ringZones         []string
@@ -407,6 +412,7 @@ func (r *Ring) updateRingState(ringDesc *Desc) {
 	r.previousRingZones = r.ringZones
 	r.ringZones = ringZones
 	r.lastTopologyChange = now
+	r.topologyFingerprint = topologyFingerprint(ringDesc)
 	if r.shuffledSubringCache != nil {
 		// Invalidate all cached subrings.
 		r.shuffledSubringCache = make(map[subringCacheKey]*cachedSubring)
@@ -1066,6 +1072,8 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 
 		// For caching to work, remember this value.
 		lastTopologyChange: r.lastTopologyChange,
+
+		topologyFingerprint: topologyFingerprint(shardDesc),
 	}, shuffleShardExpiry
 }
 

@@ -30,11 +30,14 @@ func NewRingFromDesc(cfg Config, name string, logger log.Logger) (*Ring, error) 
 // a watched ring, an update which changes only instance states and timestamps is
 // cheap, and keeps the cached shuffle-shard subrings.
 //
-// The Ring keeps desc, which must not be modified afterwards.
+// The Ring keeps desc, which must not be modified afterwards. On any other Ring,
+// whose state comes from watching the KV store, it does nothing.
 func (r *Ring) UpdateDesc(desc *Desc) {
-	if client, ok := r.KVClient.(*descClient); ok {
-		client.setLastUpdate(time.Now())
+	client, ok := r.KVClient.(*descClient)
+	if !ok {
+		return
 	}
+	client.setLastUpdate(time.Now())
 	if len(r.cfg.ExcludedZones) > 0 {
 		// updateRingState deletes the instances of excluded zones from the Desc
 		// it is given, so give it a copy.

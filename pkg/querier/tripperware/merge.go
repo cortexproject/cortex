@@ -336,6 +336,7 @@ func sortPlanForQuery(q string) (sortPlan, []string, error) {
 	if err != nil {
 		return 0, nil, err
 	}
+	expr = unwrapParenExpr(expr)
 	// Check if the root expression is topk, bottomk, limitk, or limit_ratio
 	if aggr, ok := expr.(*promqlparser.AggregateExpr); ok {
 		if aggr.Op == promqlparser.TOPK || aggr.Op == promqlparser.BOTTOMK || aggr.Op == promqlparser.LIMITK || aggr.Op == promqlparser.LIMIT_RATIO {
@@ -343,7 +344,7 @@ func sortPlanForQuery(q string) (sortPlan, []string, error) {
 		}
 	}
 	checkForSort := func(expr promqlparser.Expr) (sortPlan, []string, bool) {
-		n, ok := expr.(*promqlparser.Call)
+		n, ok := unwrapParenExpr(expr).(*promqlparser.Call)
 		if !ok || n.Func == nil {
 			return 0, nil, false
 		}
@@ -379,18 +380,22 @@ func sortPlanForQuery(q string) (sortPlan, []string, error) {
 func stringsFromArgs(args promqlparser.Expressions) []string {
 	strs := make([]string, 0, len(args))
 	for _, arg := range args {
-		for {
-			p, ok := arg.(*promqlparser.ParenExpr)
-			if !ok {
-				break
-			}
-			arg = p.Expr
-		}
-		if s, ok := arg.(*promqlparser.StringLiteral); ok {
+		if s, ok := unwrapParenExpr(arg).(*promqlparser.StringLiteral); ok {
 			strs = append(strs, s.Val)
 		}
 	}
 	return strs
+}
+
+// unwrapParenExpr strips any number of enclosing parentheses from expr.
+func unwrapParenExpr(expr promqlparser.Expr) promqlparser.Expr {
+	for {
+		p, ok := expr.(*promqlparser.ParenExpr)
+		if !ok {
+			return expr
+		}
+		expr = p.Expr
+	}
 }
 
 // mergeSampleStreams deduplicates sample streams using a map.

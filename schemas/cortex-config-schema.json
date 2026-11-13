@@ -1719,6 +1719,13 @@
                       "type": "string",
                       "x-cli-flag": "blocks-storage.bucket-store.index-cache.memcached.timeout",
                       "x-format": "duration"
+                    },
+                    "ttl": {
+                      "default": "24h0m0s",
+                      "description": "How long an index cache item is kept in memcached. 0 uses the default of 24h. Negative values are not allowed.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.index-cache.memcached.ttl",
+                      "x-format": "duration"
                     }
                   },
                   "type": "object"
@@ -1907,6 +1914,13 @@
                       "description": "Override the expected name on the server certificate.",
                       "type": "string",
                       "x-cli-flag": "blocks-storage.bucket-store.index-cache.redis.tls-server-name"
+                    },
+                    "ttl": {
+                      "default": "24h0m0s",
+                      "description": "How long an index cache item is kept in redis. 0 uses the default of 24h. Negative values are not allowed.",
+                      "type": "string",
+                      "x-cli-flag": "blocks-storage.bucket-store.index-cache.redis.ttl",
+                      "x-format": "duration"
                     },
                     "username": {
                       "description": "Redis username.",

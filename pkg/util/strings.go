@@ -59,7 +59,15 @@ func MergeSlicesParallel(ctx context.Context, parallelism int, a ...[]string) ([
 			m := min(len(a), i+batchSize)
 			r, e := MergeSortedSlices(ctx, a[i:m]...)
 			if e != nil {
-				errCh <- e
+				// Only the first error is reported. Send without blocking so the
+				// remaining workers never wait on a full channel: a blocking send
+				// here deadlocks them (and the goroutine waiting on the WaitGroup)
+				// when several batches fail at once, for example because the
+				// context was canceled.
+				select {
+				case errCh <- e:
+				default:
+				}
 				wg.Done()
 				return
 			}

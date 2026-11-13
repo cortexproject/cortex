@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func BenchmarkMergeSlicesParallel(b *testing.B) {
@@ -112,6 +113,37 @@ func BenchmarkMergeSlicesParallel(b *testing.B) {
 			})
 		}
 	}
+}
+
+// TestMergeSlicesParallel_CanceledContextDoesNotLeak verifies that a canceled
+// context makes MergeSlicesParallel return the context error without leaking the
+// worker goroutines. When several batches observe the canceled context, each one
+// tries to report its error, and before the fix every batch after the first
+// blocked forever sending on the single-slot error channel (and so did the
+// goroutine waiting on the WaitGroup).
+func TestMergeSlicesParallel_CanceledContextDoesNotLeak(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Enough slices that the parallel path splits them into several batches, and
+	// enough strings per slice that each batch iterates past
+	// CheckContextEveryNIterations and notices the canceled context.
+	const numSlices = 8
+	const stringsPerSlice = 200
+
+	input := make([][]string, numSlices)
+	for i := range input {
+		s := make([]string, stringsPerSlice)
+		for j := range s {
+			s[j] = fmt.Sprintf("%05d", j)
+		}
+		input[i] = s
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := MergeSlicesParallel(ctx, 8, input...)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func sortUsingMap(resps ...[]string) []string {

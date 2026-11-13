@@ -1,6 +1,7 @@
 # Changelog
 
 ## master / unreleased
+* [BUGFIX] Querier: Close the per-query `storage.Querier` in the remote read handler once each sub-query completes. The handler was the only `storage.Querier` call site that did not call `Close()`, so it did not honor the interface contract and would leak any resources a querier releases in `Close()`. #7672
 
 * [FEATURE] Ruler: Add experimental support for federated rule groups. A rule group listing tenants in its `source_tenants` field is evaluated against those tenants while the resulting series and alerts are written to the tenant owning the rule group. Enabled with `-ruler.enable-federated-rules` (requires `-tenant-federation.enabled`), and restricted to selected tenants with `-ruler.allowed-federated-tenants` and `-ruler.disallowed-federated-tenants`. #7828
 * [FEATURE] Distributor: Add experimental OTLP metrics ingestion over gRPC (`opentelemetry.proto.collector.metrics.v1.MetricsService/Export`) on the gRPC server port. Enable it with `-distributor.otlp.grpc-enabled`. The tenant is read from the `X-Scope-OrgID` gRPC metadata, and the request size is limited by `-server.grpc-max-recv-msg-size-bytes`. #7873

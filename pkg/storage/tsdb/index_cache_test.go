@@ -3,6 +3,7 @@ package tsdb
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -40,6 +41,7 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 					ClientConfig: MemcachedClientConfig{
 						Addresses: "dns+localhost:11211",
 					},
+					TTL: time.Hour,
 				},
 			},
 		},
@@ -51,6 +53,7 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 						Addresses: "dns+localhost:11211",
 					},
 					EnabledItems: []string{"foo", "bar"},
+					TTL:          time.Hour,
 				},
 			},
 			expected: fmt.Errorf("unsupported item type foo"),
@@ -72,9 +75,65 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 						Addresses: "test",
 					},
 					EnabledItems: []string{"foo", "bar"},
+					TTL:          time.Hour,
 				},
 			},
 			expected: fmt.Errorf("unsupported item type foo"),
+		},
+		"zero memcached ttl should pass": {
+			cfg: IndexCacheConfig{
+				Backend: "memcached",
+				Memcached: MemcachedIndexCacheConfig{
+					ClientConfig: MemcachedClientConfig{
+						Addresses: "dns+localhost:11211",
+					},
+				},
+			},
+		},
+		"negative memcached ttl should fail": {
+			cfg: IndexCacheConfig{
+				Backend: "memcached",
+				Memcached: MemcachedIndexCacheConfig{
+					ClientConfig: MemcachedClientConfig{
+						Addresses: "dns+localhost:11211",
+					},
+					TTL: -time.Hour,
+				},
+			},
+			expected: errInvalidIndexCacheTTL,
+		},
+		"one redis address with ttl should pass": {
+			cfg: IndexCacheConfig{
+				Backend: "redis",
+				Redis: RedisIndexCacheConfig{
+					ClientConfig: RedisClientConfig{
+						Addresses: "test",
+					},
+					TTL: 7 * 24 * time.Hour,
+				},
+			},
+		},
+		"zero redis ttl should pass": {
+			cfg: IndexCacheConfig{
+				Backend: "redis",
+				Redis: RedisIndexCacheConfig{
+					ClientConfig: RedisClientConfig{
+						Addresses: "test",
+					},
+				},
+			},
+		},
+		"negative redis ttl should fail": {
+			cfg: IndexCacheConfig{
+				Backend: "redis",
+				Redis: RedisIndexCacheConfig{
+					ClientConfig: RedisClientConfig{
+						Addresses: "test",
+					},
+					TTL: -time.Second,
+				},
+			},
+			expected: errInvalidIndexCacheTTL,
 		},
 	}
 
@@ -83,4 +142,10 @@ func TestIndexCacheConfig_Validate(t *testing.T) {
 			assert.Equal(t, testData.expected, testData.cfg.Validate())
 		})
 	}
+}
+
+func TestRemoteIndexCacheTTL(t *testing.T) {
+	assert.Equal(t, defaultTTL, remoteIndexCacheTTL(0))
+	assert.Equal(t, time.Hour, remoteIndexCacheTTL(time.Hour))
+	assert.Equal(t, 30*24*time.Hour, remoteIndexCacheTTL(30*24*time.Hour))
 }

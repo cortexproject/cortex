@@ -943,6 +943,11 @@ blocks_storage:
         # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.enabled-items
         [enabled_items: <list of string> | default = []]
 
+        # How long an index cache item is kept in memcached. 0 uses the default
+        # of 24h. Negative values are not allowed.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.memcached.ttl
+        [ttl: <duration> | default = 24h]
+
       redis:
         # Comma separated list of redis addresses. Supported prefixes are: dns+
         # (looked up as an A/AAAA query), dnssrv+ (looked up as a SRV query,
@@ -1072,6 +1077,11 @@ blocks_storage:
         # ExpandedPostings and Series
         # CLI flag: -blocks-storage.bucket-store.index-cache.redis.enabled-items
         [enabled_items: <list of string> | default = []]
+
+        # How long an index cache item is kept in redis. 0 uses the default of
+        # 24h. Negative values are not allowed.
+        # CLI flag: -blocks-storage.bucket-store.index-cache.redis.ttl
+        [ttl: <duration> | default = 24h]
 
       multilevel:
         # The maximum number of concurrent asynchronous operations can occur

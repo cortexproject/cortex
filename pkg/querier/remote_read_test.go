@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -40,7 +41,7 @@ func TestRemoteReadHandler(t *testing.T) {
 			},
 		}, nil
 	})
-	handler := RemoteReadHandler(q, log.NewNopLogger())
+	handler := RemoteReadHandler(q, nil, log.NewNopLogger())
 
 	requestBody, err := proto.Marshal(&client.ReadRequest{
 		Queries: []*client.QueryRequest{
@@ -109,4 +110,100 @@ func (m mockQuerier) LabelNames(ctx context.Context, _ *storage.LabelHints, matc
 
 func (mockQuerier) Close() error {
 	return nil
+}
+
+type mockRemoteReadLimits struct {
+	haEnabled map[string]bool
+	label     string
+}
+
+func (m mockRemoteReadLimits) AcceptHASamples(userID string) bool { return m.haEnabled[userID] }
+func (m mockRemoteReadLimits) HAReplicaLabel(string) string       { return m.label }
+
+type matcherCapturingQuerier struct {
+	mockQuerier
+	got *[]*labels.Matcher
+}
+
+func (m matcherCapturingQuerier) Select(ctx context.Context, sortSeries bool, sp *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+	*m.got = matchers
+	return m.mockQuerier.Select(ctx, sortSeries, sp, matchers...)
+}
+
+func TestRemoteReadHandler_HAReplicaLabel(t *testing.T) {
+	t.Parallel()
+
+	queryMatchers := []*client.LabelMatcher{
+		{Type: client.EQUAL, Name: labels.MetricName, Value: "up"},
+		{Type: client.EQUAL, Name: "cluster", Value: "prom-team1"},
+		{Type: client.EQUAL, Name: "__replica__", Value: "replica1"},
+	}
+
+	for name, tc := range map[string]struct {
+		limits   RemoteReadLimits
+		userID   string
+		matchers []*client.LabelMatcher
+		expected []string
+	}{
+		"HA enabled removes the replica matcher": {
+			limits:   mockRemoteReadLimits{haEnabled: map[string]bool{"user-1": true}, label: "__replica__"},
+			userID:   "user-1",
+			matchers: queryMatchers,
+			expected: []string{`__name__="up"`, `cluster="prom-team1"`},
+		},
+		"HA disabled keeps the replica matcher": {
+			limits:   mockRemoteReadLimits{haEnabled: map[string]bool{}, label: "__replica__"},
+			userID:   "user-1",
+			matchers: queryMatchers,
+			expected: []string{`__name__="up"`, `cluster="prom-team1"`, `__replica__="replica1"`},
+		},
+		"a different replica label name keeps the matcher": {
+			limits:   mockRemoteReadLimits{haEnabled: map[string]bool{"user-1": true}, label: "other"},
+			userID:   "user-1",
+			matchers: queryMatchers,
+			expected: []string{`__name__="up"`, `cluster="prom-team1"`, `__replica__="replica1"`},
+		},
+		"nil limits keeps the replica matcher": {
+			limits:   nil,
+			userID:   "user-1",
+			matchers: queryMatchers,
+			expected: []string{`__name__="up"`, `cluster="prom-team1"`, `__replica__="replica1"`},
+		},
+		"the replica matcher is kept when it is the only one": {
+			limits:   mockRemoteReadLimits{haEnabled: map[string]bool{"user-1": true}, label: "__replica__"},
+			userID:   "user-1",
+			matchers: queryMatchers[2:],
+			expected: []string{`__replica__="replica1"`},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			var got []*labels.Matcher
+			q := storage.QueryableFunc(func(mint, maxt int64) (storage.Querier, error) {
+				return matcherCapturingQuerier{mockQuerier: mockQuerier{}, got: &got}, nil
+			})
+			handler := RemoteReadHandler(q, tc.limits, log.NewNopLogger())
+
+			requestBody, err := proto.Marshal(&client.ReadRequest{
+				Queries: []*client.QueryRequest{
+					{StartTimestampMs: 0, EndTimestampMs: 10, Matchers: tc.matchers},
+				},
+			})
+			require.NoError(t, err)
+			request, err := http.NewRequest("POST", "/query", bytes.NewReader(snappy.Encode(nil, requestBody)))
+			require.NoError(t, err)
+			request = request.WithContext(user.InjectOrgID(request.Context(), tc.userID))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			require.Equal(t, 200, recorder.Result().StatusCode)
+
+			actual := make([]string, 0, len(got))
+			for _, m := range got {
+				actual = append(actual, m.String())
+			}
+			require.Equal(t, tc.expected, actual)
+		})
+	}
 }

@@ -3,6 +3,7 @@ package querier
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
+	"github.com/thanos-io/thanos/pkg/store/storepb"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
@@ -38,6 +40,7 @@ import (
 	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/batch"
 	"github.com/cortexproject/cortex/pkg/querier/series"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/chunkcompat"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
@@ -2017,4 +2020,84 @@ func TestQuerier_ResourceBasedLimiter_Nil(t *testing.T) {
 
 	_, _, err = q.LabelNames(ctx, nil)
 	require.NoError(t, err)
+}
+
+func TestQuerier_SkipsVerticalShardThatCannotMatch(t *testing.T) {
+	t.Parallel()
+	const totalShards = 3
+	start := time.Now().Add(-2 * time.Hour)
+	end := time.Now()
+	ctx := user.InjectOrgID(context.Background(), "0")
+
+	tests := map[string]struct {
+		matchers []*labels.Matcher
+		// pinned is true when only one shard queries storage.
+		pinned bool
+	}{
+		"pinned sharding label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "up"),
+				labels.MustNewMatcher(labels.MatchEqual, "cluster", "c1"),
+			},
+			pinned: true,
+		},
+		"regex matcher on the sharding label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "up"),
+				labels.MustNewMatcher(labels.MatchRegexp, "cluster", "c1"),
+			},
+		},
+		"missing matcher on the sharding label": {
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, labels.MetricName, "up"),
+			},
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			t.Parallel()
+			var cfg Config
+			flagext.DefaultValues(&cfg)
+			cfg.ActiveQueryTrackerDir = ""
+
+			overrides := validation.NewOverrides(DefaultLimitsConfig(), nil)
+			distributor := &MockDistributor{}
+			distributor.On("QueryStream", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&client.QueryStreamResponse{}, nil)
+
+			queryingShards := 0
+			for shard := range int64(totalShards) {
+				storeQueryable := &wrappedSampleAndChunkQueryable{
+					QueryableWithFilter: UseAlwaysQueryable(NewMockStoreQueryable(&emptyChunkStore{})),
+				}
+				distributorQueryable := &wrappedSampleAndChunkQueryable{
+					QueryableWithFilter: newDistributorQueryable(distributor, cfg.IngesterLabelNamesWithMatchers, batch.NewChunkMergeIterator, nil, 1, overrides, nil),
+				}
+				queryable := NewQueryable(distributorQueryable, []QueryableWithFilter{storeQueryable}, cfg, overrides, nil, log.NewNopLogger(), nil)
+				q, err := queryable.Querier(util.TimeToMillis(start), util.TimeToMillis(end))
+				require.NoError(t, err)
+
+				shardInfo := &storepb.ShardInfo{TotalShards: totalShards, ShardIndex: shard, By: true, Labels: []string{"cluster"}}
+				encoded, err := shardInfo.Marshal()
+				require.NoError(t, err)
+				matchers := append(append([]*labels.Matcher{}, testData.matchers...), labels.MustNewMatcher(labels.MatchEqual, querysharding.CortexShardByLabel, base64.StdEncoding.EncodeToString(encoded)))
+
+				set := q.Select(ctx, false, &storage.SelectHints{Start: util.TimeToMillis(start), End: util.TimeToMillis(end)}, matchers...)
+				require.False(t, set.Next())
+				require.NoError(t, set.Err())
+
+				calls := len(storeQueryable.queriers[0].selectCallsArgs) + len(distributorQueryable.queriers[0].selectCallsArgs)
+				if calls > 0 {
+					require.Equal(t, 2, calls, "both the ingesters and the store must be queried")
+					queryingShards++
+				}
+			}
+
+			if testData.pinned {
+				require.Equal(t, 1, queryingShards)
+			} else {
+				require.Equal(t, totalShards, queryingShards)
+			}
+		})
+	}
 }

@@ -4817,7 +4817,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Maximum lookback duration for querying data from ingesters. Queries for data
 # older than this will only query the long-term storage. This is a per-tenant
 # limit that can be overridden in the runtime configuration. Must be less than
-# -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.
+# or equal to -limits.close-idle-tsdb-timeout when both are positive.
 # CLI flag: -limits.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
@@ -4829,15 +4829,16 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 
 # Lookback period for shuffle sharding of ingesters. This is a per-tenant limit
 # that can be overridden in the runtime configuration. Should be greater than or
-# equal to query-store-after and query-ingesters-within.
+# equal to query-ingesters-within.
 # CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
 
 # If TSDB has not received any data for this duration, and all blocks from TSDB
 # have been shipped, TSDB is closed and deleted from local disk. This is a
-# per-tenant limit that can be overridden in the runtime configuration. Should
-# be greater than or equal to -limits.query-ingesters-within to prevent
-# premature TSDB closure. 0 to disable.
+# per-tenant limit that can be overridden in the runtime configuration. When
+# positive, it must be greater than or equal to -limits.query-ingesters-within
+# and -limits.query-store-after, so that a TSDB is not closed while queriers
+# still read its data only from ingesters. 0 to disable.
 # CLI flag: -limits.close-idle-tsdb-timeout
 [close_idle_tsdb_timeout: <duration> | default = 0s]
 

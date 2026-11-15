@@ -1087,12 +1087,33 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "shuffle_sharding_ingesters_lookback_period (20h0m0s) is less than query_store_after (24h0m0s)",
 		},
-		"invalid: shuffleShardingLookback < queryIngestersWithin": {
+		"invalid: closeIdleTSDBTimeout < queryStoreAfter with queryIngestersWithin disabled": {
+			queryIngestersWithin:                   0,
+			queryStoreAfter:                        12 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			closeIdleTSDBTimeout:                   1 * time.Hour,
+			expectedError:                          "close_idle_tsdb_timeout (1h0m0s) must be greater than or equal to query_store_after (12h0m0s)",
+		},
+		"boundary: closeIdleTSDBTimeout == queryStoreAfter with queryIngestersWithin disabled": {
+			queryIngestersWithin:                   0,
+			queryStoreAfter:                        12 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			closeIdleTSDBTimeout:                   12 * time.Hour,
+			expectedError:                          "",
+		},
+		"valid: closeIdleTSDBTimeout with queryIngestersWithin and queryStoreAfter disabled": {
+			queryIngestersWithin:                   0,
+			queryStoreAfter:                        0,
+			shuffleShardingIngestersLookbackPeriod: 0,
+			closeIdleTSDBTimeout:                   1 * time.Hour,
+			expectedError:                          "",
+		},
+		"valid: shuffleShardingLookback between queryStoreAfter and queryIngestersWithin": {
 			queryIngestersWithin:                   25 * time.Hour,
 			queryStoreAfter:                        20 * time.Hour,
 			shuffleShardingIngestersLookbackPeriod: 22 * time.Hour,
 			closeIdleTSDBTimeout:                   26 * time.Hour,
-			expectedError:                          "shuffle_sharding_ingesters_lookback_period (22h0m0s) is less than query_ingesters_within (25h0m0s)",
+			expectedError:                          "",
 		},
 		"boundary: queryIngestersWithin exactly 1ms less than closeIdleTSDBTimeout": {
 			queryIngestersWithin:                   25*time.Hour - time.Millisecond,
@@ -1108,10 +1129,10 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "",
 		},
-		"boundary: shuffleShardingLookback exactly equal to queryIngestersWithin": {
+		"boundary: shuffleShardingLookback exactly equal to queryStoreAfter": {
 			queryIngestersWithin:                   25 * time.Hour,
 			queryStoreAfter:                        24 * time.Hour,
-			shuffleShardingIngestersLookbackPeriod: 25 * time.Hour,
+			shuffleShardingIngestersLookbackPeriod: 24 * time.Hour,
 			closeIdleTSDBTimeout:                   26 * time.Hour,
 			expectedError:                          "",
 		},
@@ -1137,9 +1158,10 @@ func TestLimits_ValidateQueryLimits(t *testing.T) {
 				QueryIngestersWithin:                   model.Duration(testData.queryIngestersWithin),
 				QueryStoreAfter:                        model.Duration(testData.queryStoreAfter),
 				ShuffleShardingIngestersLookbackPeriod: model.Duration(testData.shuffleShardingIngestersLookbackPeriod),
+				CloseIdleTSDBTimeout:                   model.Duration(testData.closeIdleTSDBTimeout),
 			}
 
-			err := limits.ValidateQueryLimits("test-tenant", testData.closeIdleTSDBTimeout)
+			err := limits.ValidateQueryLimits("test-tenant")
 
 			if testData.expectedError == "" {
 				assert.NoError(t, err, "expected no error but got: %v", err)
@@ -1263,8 +1285,10 @@ func TestQueryLimits_TenantOverridesValidation(t *testing.T) {
 
 	for testName, testData := range tests {
 		t.Run(testName, func(t *testing.T) {
-			limits := testData.tenantLimits[testData.tenantID]
-			err := limits.ValidateQueryLimits(testData.tenantID, closeIdleTSDBTimeout)
+			// The tenant inherits close_idle_tsdb_timeout from the defaults.
+			limits := *testData.tenantLimits[testData.tenantID]
+			limits.CloseIdleTSDBTimeout = model.Duration(closeIdleTSDBTimeout)
+			err := limits.ValidateQueryLimits(testData.tenantID)
 
 			if testData.expectedError == "" {
 				assert.NoError(t, err, "expected no error but got: %v", err)
@@ -1316,7 +1340,7 @@ func TestQueryLimits_PerTenantCloseIdleTSDBTimeout(t *testing.T) {
 				CloseIdleTSDBTimeout: model.Duration(testData.tenantCloseIdleTSDBTimeout),
 			}
 
-			err := limits.ValidateQueryLimits("test-tenant", time.Duration(limits.CloseIdleTSDBTimeout))
+			err := limits.ValidateQueryLimits("test-tenant")
 
 			if testData.expectedError == "" {
 				assert.NoError(t, err, "expected no error but got: %v", err)

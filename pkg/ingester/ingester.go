@@ -3556,18 +3556,19 @@ func (i *Ingester) closeAndDeleteIdleUserTSDBs(ctx context.Context) error {
 			return nil
 		}
 
-		// A non-positive close-idle timeout disables idle-based closing for this tenant,
-		// so we skip the idle check entirely (and don't record an idleTsdbChecks result,
-		// since no check is performed). A tenant marked for deletion is the one exception:
+		// A non-positive close-idle timeout, or an invalid one, disables idle-based closing for
+		// this tenant, so we skip the idle check entirely (and don't record an idleTsdbChecks
+		// result, since no check is performed). A tenant marked for deletion is the one exception:
 		// its local TSDB must still be closed and deleted regardless of the timeout.
-		if i.limits.CloseIdleTSDBTimeout(userID) <= 0 {
+		timeout := i.closeIdleTSDBTimeout(userID)
+		if timeout <= 0 {
 			userDB, err := i.getTSDB(userID)
 			if err != nil || userDB == nil || !userDB.deletionMarkFound.Load() {
 				continue
 			}
 		}
 
-		result := i.closeAndDeleteUserTSDBIfIdle(userID)
+		result := i.closeAndDeleteUserTSDBIfIdle(userID, timeout)
 
 		i.TSDBState.idleTsdbChecks.WithLabelValues(string(result)).Inc()
 	}
@@ -3590,14 +3591,39 @@ func (i *Ingester) expirePostingsCache(ctx context.Context) error {
 	return nil
 }
 
-func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string) tsdbCloseCheckResult {
+// closeIdleTSDBTimeout returns the close-idle TSDB timeout for the tenant, or 0 (disabled) when it is
+// shorter than the period in which queriers read the tenant's data only from ingesters. The runtime
+// config is not validated on ingesters, so a per-tenant override could otherwise close a TSDB that
+// queriers still read from.
+func (i *Ingester) closeIdleTSDBTimeout(userID string) time.Duration {
+	timeout := i.limits.CloseIdleTSDBTimeout(userID)
+	if timeout <= 0 {
+		return timeout
+	}
+
+	// With query_ingesters_within set, queriers read from ingesters up to that age; with it
+	// disabled, they read data younger than query_store_after only from ingesters.
+	minTimeout, minTimeoutName := i.limits.QueryIngestersWithin(userID), "query_ingesters_within"
+	if minTimeout <= 0 {
+		minTimeout, minTimeoutName = i.limits.QueryStoreAfter(userID), "query_store_after"
+	}
+
+	if timeout < minTimeout {
+		level.Error(i.logger).Log("msg", "invalid close_idle_tsdb_timeout, closing idle TSDB is disabled for the tenant", "user", userID, "err", fmt.Sprintf("close_idle_tsdb_timeout (%s) must be greater than or equal to %s (%s)", timeout, minTimeoutName, minTimeout))
+		return 0
+	}
+	return timeout
+}
+
+// closeAndDeleteUserTSDBIfIdle closes and deletes the tenant's TSDB if it has been idle for longer than
+// closeIdleTSDBTimeout, or if the tenant is marked for deletion. Callers must not pass a non-positive
+// timeout for a tenant whose TSDB should stay open: a TSDB counts as idle immediately with such a timeout.
+func (i *Ingester) closeAndDeleteUserTSDBIfIdle(userID string, closeIdleTSDBTimeout time.Duration) tsdbCloseCheckResult {
 	userDB, err := i.getTSDB(userID)
 	if err != nil || userDB == nil || userDB.shipper == nil {
 		// We will not delete local data when not using shipping to storage.
 		return tsdbShippingDisabled
 	}
-
-	closeIdleTSDBTimeout := i.limits.CloseIdleTSDBTimeout(userID)
 
 	if result := userDB.shouldCloseTSDB(closeIdleTSDBTimeout); !result.shouldClose() {
 		return result

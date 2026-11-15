@@ -656,7 +656,7 @@ func TestIngesterPerLabelsetLimitExceeded(t *testing.T) {
 	// Force set tenant to be deleted.
 	db, _ := ing.getTSDB(userID)
 	db.deletionMarkFound.Store(true)
-	require.Equal(t, tsdbTenantMarkedForDeletion, ing.closeAndDeleteUserTSDBIfIdle(userID))
+	require.Equal(t, tsdbTenantMarkedForDeletion, ing.closeAndDeleteUserTSDBIfIdle(userID, 0))
 	// LabelSet metrics cleaned up.
 	require.NoError(t, testutil.GatherAndCompare(registry, bytes.NewBufferString(``), "cortex_ingester_usage_per_labelset", "cortex_ingester_limits_per_labelset"))
 
@@ -5283,7 +5283,7 @@ func TestIngester_dontShipBlocksWhenTenantDeletionMarkerIsPresent(t *testing.T) 
 
 	numObjectsAfterMarkingTenantForDeletion := len(bucket.Objects())
 	require.Equal(t, numObjects, numObjectsAfterMarkingTenantForDeletion)
-	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
+	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID, 0))
 }
 
 func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testing.T) {
@@ -5324,7 +5324,7 @@ func TestIngester_seriesCountIsCorrectAfterClosingTSDBForDeletedTenant(t *testin
 
 	// If we try to close TSDB now, it should succeed, even though TSDB is not idle and empty.
 	require.Equal(t, uint64(1), db.Head().NumSeries())
-	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID))
+	require.Equal(t, tsdbTenantMarkedForDeletion, i.closeAndDeleteUserTSDBIfIdle(userID, 0))
 
 	// Closing should decrease series count.
 	require.Equal(t, int64(0), i.TSDBState.seriesCount.Load())
@@ -5410,7 +5410,7 @@ func TestIngester_closeAndDeleteUserTSDBIfIdle_shouldNotCloseTSDBIfShippingIsInP
 		defer db.stateMtx.RUnlock()
 		return db.state
 	})
-	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID))
+	assert.Equal(t, tsdbNotActive, i.closeAndDeleteUserTSDBIfIdle(userID, 0))
 }
 
 func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
@@ -5451,7 +5451,7 @@ func TestIngester_closingAndOpeningTsdbConcurrently(t *testing.T) {
 	}()
 
 	for range iterations {
-		i.closeAndDeleteUserTSDBIfIdle(userID)
+		i.closeAndDeleteUserTSDBIfIdle(userID, 0)
 	}
 
 	select {
@@ -5490,7 +5490,7 @@ func TestIngester_idleCloseEmptyTSDB(t *testing.T) {
 	i.shipBlocks(context.Background(), nil)
 
 	// Make sure we can close completely empty TSDB without problems.
-	require.Equal(t, tsdbIdleClosed, i.closeAndDeleteUserTSDBIfIdle(userID))
+	require.Equal(t, tsdbIdleClosed, i.closeAndDeleteUserTSDBIfIdle(userID, 0))
 
 	// Verify that it was closed.
 	db, err = i.getTSDB(userID)
@@ -6290,22 +6290,20 @@ func TestIngesterCompactAndCloseIdleTSDB(t *testing.T) {
     `), metricsToCheck...))
 }
 
-func TestIngesterCloseIdleTSDB_PerTenantTimeout(t *testing.T) {
+// closeIdleTSDBTestConfig returns an ingester config that compacts, ships and checks idle TSDBs
+// every closeIdleInterval, so that a test can observe the close-idle loop within seconds.
+func closeIdleTSDBTestConfig(t *testing.T, closeIdleInterval time.Duration) Config {
 	cfg := defaultIngesterTestConfig(t)
 	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second
+	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second // Required to enable shipping.
 	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
 	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
+	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = closeIdleInterval
+	return cfg
+}
 
-	limits := defaultLimitsTestConfig()
-	limits.EnableNativeHistograms = true
-	// Per-tenant limit enables close-idle for this tenant
-	limits.CloseIdleTSDBTimeout = model.Duration(1 * time.Second)
-
-	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
-
+func startCloseIdleTSDBTestIngester(t *testing.T, cfg Config, limits validation.Limits, tenantLimits validation.TenantLimits) *Ingester {
 	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
 	require.NoError(t, err)
 
@@ -6317,59 +6315,181 @@ func TestIngesterCloseIdleTSDB_PerTenantTimeout(t *testing.T) {
 	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
 		return i.lifecycler.GetState()
 	})
+	return i
+}
 
-	pushSingleSampleWithMetadata(t, i)
+func pushSingleSampleForUser(t *testing.T, i *Ingester, tenant string) {
+	ctx := user.InjectOrgID(context.Background(), tenant)
+	req, _ := mockWriteRequest(t, labels.FromStrings("__name__", "test"), 0, util.TimeToMillis(time.Now()))
+	_, err := i.Push(ctx, req)
+	require.NoError(t, err)
+}
 
-	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
+func hasTSDB(i *Ingester, tenant string) bool {
+	i.stoppedMtx.Lock()
+	defer i.stoppedMtx.Unlock()
+	_, ok := i.TSDBState.dbs[tenant]
+	return ok
+}
 
-	// Wait until TSDB has been closed via the per-tenant timeout.
-	test.Poll(t, 10*time.Second, 0, func() any {
-		i.stoppedMtx.Lock()
-		defer i.stoppedMtx.Unlock()
-		return len(i.TSDBState.dbs)
+// waitUntilTSDBCompactedAndShipped waits until the only thing keeping the tenant's TSDB open is
+// the close-idle timeout: its head has been compacted and every block has been shipped.
+func waitUntilTSDBCompactedAndShipped(t *testing.T, i *Ingester, tenant string) {
+	test.Poll(t, 10*time.Second, true, func() any {
+		db, err := i.getTSDB(tenant)
+		if err != nil || db == nil {
+			return false
+		}
+		return db.Head().NumSeries() == 0 && db.getOldestUnshippedBlockTime() == 0
 	})
+}
 
+func TestIngesterCloseIdleTSDB_PerTenantTimeout(t *testing.T) {
+	const otherUserID = "other-user"
+	closeIdleInterval := 100 * time.Millisecond
+	cfg := closeIdleTSDBTestConfig(t, closeIdleInterval)
+
+	// The default leaves close-idle disabled; only userID overrides it.
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.CloseIdleTSDBTimeout = 0
+
+	userLimits := limits
+	userLimits.CloseIdleTSDBTimeout = model.Duration(1 * time.Second)
+	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &userLimits})
+
+	i := startCloseIdleTSDBTestIngester(t, cfg, limits, tenantLimits)
+
+	pushSingleSampleForUser(t, i, userID)
+	pushSingleSampleForUser(t, i, otherUserID)
+	require.Equal(t, int64(2), i.TSDBState.seriesCount.Load())
+
+	// The TSDB of the tenant with the override is closed.
+	test.Poll(t, 10*time.Second, false, func() any {
+		return hasTSDB(i, userID)
+	})
 	require.Greater(t, testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))), float64(0))
+
+	// The TSDB of the tenant on the default stays open, even once it could be closed.
+	waitUntilTSDBCompactedAndShipped(t, i, otherUserID)
+	time.Sleep(5 * closeIdleInterval)
+	require.True(t, hasTSDB(i, otherUserID))
 }
 
 func TestIngesterCloseIdleTSDB_DisabledWhenZero(t *testing.T) {
-	cfg := defaultIngesterTestConfig(t)
-	cfg.LifecyclerConfig.JoinAfter = 0
-	cfg.BlocksStorageConfig.TSDB.ShipInterval = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.ShipConcurrency = 1
-	cfg.BlocksStorageConfig.TSDB.HeadCompactionInterval = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.HeadCompactionIdleTimeout = 1 * time.Second
-	cfg.BlocksStorageConfig.TSDB.CloseIdleTSDBInterval = 100 * time.Millisecond
+	closeIdleInterval := 100 * time.Millisecond
+	cfg := closeIdleTSDBTestConfig(t, closeIdleInterval)
 
 	limits := defaultLimitsTestConfig()
 	limits.EnableNativeHistograms = true
 	limits.CloseIdleTSDBTimeout = 0 // Disabled
 
-	tenantLimits := newMockTenantLimits(map[string]*validation.Limits{userID: &limits})
-
-	i, err := prepareIngesterWithBlocksStorageAndLimits(t, cfg, limits, tenantLimits, "", prometheus.NewRegistry())
-	require.NoError(t, err)
-
-	require.NoError(t, services.StartAndAwaitRunning(context.Background(), i))
-	t.Cleanup(func() {
-		require.NoError(t, services.StopAndAwaitTerminated(context.Background(), i))
-	})
-
-	test.Poll(t, 1*time.Second, ring.ACTIVE, func() any {
-		return i.lifecycler.GetState()
-	})
+	i := startCloseIdleTSDBTestIngester(t, cfg, limits, nil)
 
 	pushSingleSampleWithMetadata(t, i)
-
 	require.Equal(t, int64(1), i.TSDBState.seriesCount.Load())
 
-	// Wait a bit and confirm TSDB is NOT closed (timeout is disabled).
-	time.Sleep(500 * time.Millisecond)
+	// Once the head is compacted and shipped, only the disabled timeout keeps the TSDB open.
+	waitUntilTSDBCompactedAndShipped(t, i, userID)
 
-	i.stoppedMtx.Lock()
-	numDBs := len(i.TSDBState.dbs)
-	i.stoppedMtx.Unlock()
-	require.Equal(t, 1, numDBs)
+	// Let the close-idle loop run several more times: the TSDB must not be closed.
+	time.Sleep(5 * closeIdleInterval)
+	require.True(t, hasTSDB(i, userID))
+	require.Equal(t, float64(0), testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))))
+}
+
+func TestIngesterCloseIdleTSDB_DisabledWhenTimeoutInvalid(t *testing.T) {
+	closeIdleInterval := 100 * time.Millisecond
+	cfg := closeIdleTSDBTestConfig(t, closeIdleInterval)
+
+	// An override that queriers would reject: the ingester must ignore it and not close the TSDB,
+	// because queriers read the last hour of data only from ingesters.
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.CloseIdleTSDBTimeout = model.Duration(1 * time.Second)
+	limits.QueryIngestersWithin = model.Duration(1 * time.Hour)
+
+	i := startCloseIdleTSDBTestIngester(t, cfg, limits, nil)
+
+	pushSingleSampleWithMetadata(t, i)
+	waitUntilTSDBCompactedAndShipped(t, i, userID)
+
+	time.Sleep(5 * closeIdleInterval)
+	require.True(t, hasTSDB(i, userID))
+	require.Equal(t, float64(0), testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbIdleClosed))))
+}
+
+func TestIngesterCloseIdleTSDB_TenantMarkedForDeletionClosedWhenDisabled(t *testing.T) {
+	// A long interval keeps the timer out of the way; the test runs the loop itself.
+	cfg := closeIdleTSDBTestConfig(t, 1*time.Hour)
+
+	limits := defaultLimitsTestConfig()
+	limits.EnableNativeHistograms = true
+	limits.CloseIdleTSDBTimeout = 0 // Disabled
+
+	i := startCloseIdleTSDBTestIngester(t, cfg, limits, nil)
+
+	pushSingleSampleWithMetadata(t, i)
+	db, err := i.getTSDB(userID)
+	require.NoError(t, err)
+	require.NotNil(t, db)
+	db.deletionMarkFound.Store(true)
+
+	require.NoError(t, i.closeAndDeleteIdleUserTSDBs(context.Background()))
+
+	require.False(t, hasTSDB(i, userID))
+	require.Equal(t, float64(1), testutil.ToFloat64(i.TSDBState.idleTsdbChecks.WithLabelValues(string(tsdbTenantMarkedForDeletion))))
+}
+
+func TestIngester_closeIdleTSDBTimeout(t *testing.T) {
+	for name, tc := range map[string]struct {
+		closeIdleTSDBTimeout time.Duration
+		queryIngestersWithin time.Duration
+		queryStoreAfter      time.Duration
+		expected             time.Duration
+	}{
+		"disabled": {
+			closeIdleTSDBTimeout: 0,
+			queryIngestersWithin: 1 * time.Hour,
+			expected:             0,
+		},
+		"greater than query_ingesters_within": {
+			closeIdleTSDBTimeout: 2 * time.Hour,
+			queryIngestersWithin: 1 * time.Hour,
+			expected:             2 * time.Hour,
+		},
+		"equal to query_ingesters_within": {
+			closeIdleTSDBTimeout: 1 * time.Hour,
+			queryIngestersWithin: 1 * time.Hour,
+			expected:             1 * time.Hour,
+		},
+		"less than query_ingesters_within is disabled": {
+			closeIdleTSDBTimeout: 1 * time.Minute,
+			queryIngestersWithin: 1 * time.Hour,
+			queryStoreAfter:      30 * time.Minute,
+			expected:             0,
+		},
+		"less than query_store_after with query_ingesters_within disabled is disabled": {
+			closeIdleTSDBTimeout: 1 * time.Hour,
+			queryStoreAfter:      12 * time.Hour,
+			expected:             0,
+		},
+		"query_ingesters_within and query_store_after disabled": {
+			closeIdleTSDBTimeout: 1 * time.Minute,
+			expected:             1 * time.Minute,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			limits := defaultLimitsTestConfig()
+			limits.CloseIdleTSDBTimeout = model.Duration(tc.closeIdleTSDBTimeout)
+			limits.QueryIngestersWithin = model.Duration(tc.queryIngestersWithin)
+			limits.QueryStoreAfter = model.Duration(tc.queryStoreAfter)
+			overrides := validation.NewOverrides(limits, nil)
+
+			i := &Ingester{limits: overrides, logger: log.NewNopLogger()}
+			require.Equal(t, tc.expected, i.closeIdleTSDBTimeout(userID))
+		})
+	}
 }
 
 func verifyCompactedHead(t *testing.T, i *Ingester, expected bool) {

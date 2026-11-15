@@ -5678,7 +5678,7 @@
         },
         "close_idle_tsdb_timeout": {
           "default": "0s",
-          "description": "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to -limits.query-ingesters-within to prevent premature TSDB closure. 0 to disable.",
+          "description": "If TSDB has not received any data for this duration, and all blocks from TSDB have been shipped, TSDB is closed and deleted from local disk. This is a per-tenant limit that can be overridden in the runtime configuration. When positive, it must be greater than or equal to -limits.query-ingesters-within and -limits.query-store-after, so that a TSDB is not closed while queriers still read its data only from ingesters. 0 to disable.",
           "type": "string",
           "x-cli-flag": "limits.close-idle-tsdb-timeout",
           "x-format": "duration"
@@ -6106,7 +6106,7 @@
         },
         "query_ingesters_within": {
           "default": "0s",
-          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Must be less than -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.",
+          "description": "Maximum lookback duration for querying data from ingesters. Queries for data older than this will only query the long-term storage. This is a per-tenant limit that can be overridden in the runtime configuration. Must be less than or equal to -limits.close-idle-tsdb-timeout when both are positive.",
           "type": "string",
           "x-cli-flag": "limits.query-ingesters-within",
           "x-format": "duration"
@@ -6253,7 +6253,7 @@
         },
         "shuffle_sharding_ingesters_lookback_period": {
           "default": "0s",
-          "description": "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-store-after and query-ingesters-within.",
+          "description": "Lookback period for shuffle sharding of ingesters. This is a per-tenant limit that can be overridden in the runtime configuration. Should be greater than or equal to query-ingesters-within.",
           "type": "string",
           "x-cli-flag": "limits.shuffle-sharding-ingesters-lookback-period",
           "x-format": "duration"

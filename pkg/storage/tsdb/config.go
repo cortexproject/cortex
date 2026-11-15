@@ -155,6 +155,9 @@ type TSDBConfig struct {
 	WALCompressionType        string        `yaml:"wal_compression_type"`
 	WALSegmentSizeBytes       int           `yaml:"wal_segment_size_bytes"`
 	FlushBlocksOnShutdown     bool          `yaml:"flush_blocks_on_shutdown"`
+	// DeprecatedCloseIdleTSDBTimeout is kept so that configs from before close_idle_tsdb_timeout
+	// became a per-tenant limit keep working. Use limits.close_idle_tsdb_timeout instead.
+	DeprecatedCloseIdleTSDBTimeout time.Duration `yaml:"close_idle_tsdb_timeout,omitempty" doc:"hidden"`
 	// The size of the in-memory queue used before flushing chunks to the disk.
 	HeadChunksWriteQueueSize int `yaml:"head_chunks_write_queue_size"`
 
@@ -204,6 +207,7 @@ func (cfg *TSDBConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.WALCompressionType, "blocks-storage.tsdb.wal-compression-type", "", "TSDB WAL type. Supported values are: 'snappy', 'zstd' and '' (disable compression)")
 	f.IntVar(&cfg.WALSegmentSizeBytes, "blocks-storage.tsdb.wal-segment-size-bytes", wlog.DefaultSegmentSize, "TSDB WAL segments files max size (bytes).")
 	f.BoolVar(&cfg.FlushBlocksOnShutdown, "blocks-storage.tsdb.flush-blocks-on-shutdown", false, "True to flush blocks to storage on shutdown. If false, incomplete blocks will be reused after restart.")
+	f.DurationVar(&cfg.DeprecatedCloseIdleTSDBTimeout, "blocks-storage.tsdb.close-idle-tsdb-timeout", 0, "Deprecated (use -limits.close-idle-tsdb-timeout instead) and will be removed in v1.24.0.")
 	f.IntVar(&cfg.HeadChunksWriteQueueSize, "blocks-storage.tsdb.head-chunks-write-queue-size", chunks.DefaultWriteQueueSize, "The size of the in-memory queue used before flushing chunks to the disk.")
 	f.IntVar(&cfg.MaxExemplars, "blocks-storage.tsdb.max-exemplars", 0, "Deprecated (use the per-tenant max_exemplars limit instead) and will be removed in v1.24.0: the global fallback for the maximum number of exemplars stored in TSDB, used only when the per-tenant max_exemplars limit is 0. 0 or less means exemplars are disabled.")
 	f.BoolVar(&cfg.MemorySnapshotOnShutdown, "blocks-storage.tsdb.memory-snapshot-on-shutdown", false, "True to enable snapshotting of in-memory TSDB data on disk when shutting down.")

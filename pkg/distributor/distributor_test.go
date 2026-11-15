@@ -4939,9 +4939,9 @@ func TestDistributor_ShuffleShardingIngestersLookbackPeriod_Validation(t *testin
 			flagext.DefaultValues(limits)
 			limits.QueryStoreAfter = model.Duration(testData.queryStoreAfter)
 			limits.ShuffleShardingIngestersLookbackPeriod = model.Duration(testData.shuffleShardingIngestersLookbackPeriod)
+			limits.CloseIdleTSDBTimeout = model.Duration(13 * time.Hour)
 
-			// ValidateQueryLimits requires userID and closeIdleTSDBTimeout
-			err := limits.ValidateQueryLimits("test-user", 13*time.Hour)
+			err := limits.ValidateQueryLimits("test-user")
 
 			if testData.shouldBeValid {
 				assert.NoError(t, err, testData.description)

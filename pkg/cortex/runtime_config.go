@@ -5,7 +5,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v2"
 
@@ -81,7 +80,7 @@ func (l runtimeConfigLoader) load(r io.Reader) (any, error) {
 					if err := ul.Validate(l.cfg.NameValidationScheme, l.cfg.Distributor.ShardByAllLabels, l.cfg.Ingester.ActiveSeriesMetricsEnabled, l.cfg.Distributor.HATrackerConfig.UpdateTimeout, l.cfg.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 						return nil, err
 					}
-					if err := ul.ValidateQueryLimits(userID, time.Duration(ul.CloseIdleTSDBTimeout)); err != nil {
+					if err := ul.ValidateQueryLimits(userID); err != nil {
 						return nil, err
 					}
 				}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
@@ -27,6 +28,8 @@ import (
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
+	"github.com/weaveworks/common/logging"
+	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
@@ -359,6 +362,27 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 	return nil, nil
 }
 
+// wrapInternalQuerierRouter adds the middlewares that the querier would otherwise get from the external HTTP server.
+func (t *Cortex) wrapInternalQuerierRouter(router http.Handler) http.Handler {
+	// Add a middleware to extract the trace context and add a header.
+	router = nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
+		return "internalQuerier"
+	}))
+
+	// Log requests like the external HTTP server does for a standalone querier. It is wrapped inside the
+	// auth middleware, so that the log lines carry the tenant ID.
+	logMiddleware := middleware.NewLogMiddleware(logging.GoKit(util_log.Logger), t.Cfg.Server.LogRequestHeaders, t.Cfg.Server.LogRequestAtInfoLevel, nil, strings.Split(t.Cfg.Server.LogRequestExcludeHeadersList, ","))
+	logMiddleware.DisableRequestSuccessLog = t.Cfg.Server.DisableRequestSuccessLog
+	router = logMiddleware.Wrap(router)
+
+	// If queries are processed using the external HTTP Server, we need wrap the internal querier with
+	// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
+	// request context.
+	router = t.API.AuthMiddleware.Wrap(router)
+
+	return t.API.HTTPHeaderMiddleware.Wrap(router)
+}
+
 // initQuerier registers an internal HTTP router with a Prometheus API backed by the
 // Cortex Queryable. Then it does one of the following:
 //
@@ -442,17 +466,7 @@ func (t *Cortex) initQuerier() (serv services.Service, err error) {
 			t.Cfg.Worker.FrontendAddress = address
 		}
 
-		// Add a middleware to extract the trace context and add a header.
-		internalQuerierRouter = nethttp.MiddlewareFunc(opentracing.GlobalTracer(), internalQuerierRouter.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
-			return "internalQuerier"
-		}))
-
-		// If queries are processed using the external HTTP Server, we need wrap the internal querier with
-		// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the
-		// request context.
-		internalQuerierRouter = t.API.AuthMiddleware.Wrap(internalQuerierRouter)
-
-		internalQuerierRouter = t.API.HTTPHeaderMiddleware.Wrap(internalQuerierRouter)
+		internalQuerierRouter = t.wrapInternalQuerierRouter(internalQuerierRouter)
 	}
 
 	// If neither frontend address or scheduler address is configured, no worker is needed.

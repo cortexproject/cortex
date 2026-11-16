@@ -981,7 +981,7 @@ func TestDistributor_PushIngestionRateLimiter_Histograms(t *testing.T) {
 						assert.Nil(t, response)
 					}
 				}
-				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, "user")))
+				assert.Equal(t, float64(push.expectedNHDiscardedSampleMetricValue), testutil.ToFloat64(distributors[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.NativeHistogramRateLimited, "user", validation.SampleTypeHistogram)))
 			}
 		})
 	}
@@ -2142,7 +2142,11 @@ func TestDistributor_Push_LabelRemoval(t *testing.T) {
 			_, err = ds[0].Push(ctx, req)
 			require.NoError(t, err)
 
-			actualDiscardedSamples := testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
+			sampleType := validation.SampleTypeFloat
+			if histogram {
+				sampleType = validation.SampleTypeHistogram
+			}
+			actualDiscardedSamples := testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user", sampleType))
 			actualDiscardedExemplars := testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByUserConfigurationOverride, "user"))
 			require.Equal(t, float64(expectedDiscardedSamples), actualDiscardedSamples)
 			require.Equal(t, float64(expectedDiscardedExemplars), actualDiscardedExemplars)
@@ -4264,6 +4268,43 @@ func TestDistributorValidation(t *testing.T) {
 	}
 }
 
+func TestDistributorValidationTooOldHistogramDiscardedAsHistogram(t *testing.T) {
+	t.Parallel()
+	ctx := user.InjectOrgID(context.Background(), "1")
+	now := model.Now()
+	past := now.Add(-25 * time.Hour)
+	testHistogram := tsdbutil.GenerateTestHistogram(1)
+
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	limits.CreationGracePeriod = model.Duration(2 * time.Hour)
+	limits.RejectOldSamples = true
+	limits.RejectOldSamplesMaxAge = model.Duration(24 * time.Hour)
+	limits.MaxLabelNamesPerSeries = 10
+
+	ds, _, _, _ := prepare(t, prepConfig{
+		numIngesters:     3,
+		happyIngesters:   3,
+		numDistributors:  1,
+		shardByAllLabels: true,
+		limits:           &limits,
+	})
+
+	lbls := []labels.Labels{
+		labels.FromStrings(labels.MetricName, "testmetric", "foo", "bar"),
+	}
+	histograms := []cortexpb.WrappedHistogram{
+		cortexpb.WrapHistogram(cortexpb.HistogramToHistogramProto(int64(past), testHistogram)),
+	}
+
+	_, err := ds[0].Push(ctx, cortexpb.ToWriteRequest(lbls, nil, nil, histograms, cortexpb.API))
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, `timestamp too old: %d metric: "testmetric"`, past), err)
+
+	// The discarded sample must be attributed to the histogram type, not float.
+	require.Equal(t, float64(1), testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues("greater_than_max_sample_age", "1", validation.SampleTypeHistogram)))
+	require.Equal(t, float64(0), testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues("greater_than_max_sample_age", "1", validation.SampleTypeFloat)))
+}
+
 func TestRemoveReplicaLabel(t *testing.T) {
 	t.Parallel()
 	replicaLabel := "replica"
@@ -4613,7 +4654,11 @@ func TestDistributor_Push_RelabelDropWillExportMetricOfDroppedSamples(t *testing
 			assert.Equal(t, 1, len(timeseries))
 		}
 
-		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(1))
+		sampleType := validation.SampleTypeFloat
+		if histogramEnabled {
+			sampleType = validation.SampleTypeHistogram
+		}
+		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedSamples.WithLabelValues(validation.DroppedByRelabelConfiguration, id, sampleType)), float64(1))
 		require.Equal(t, testutil.ToFloat64(ds[0].validateMetrics.DiscardedExemplars.WithLabelValues(validation.DroppedByRelabelConfiguration, id)), float64(2))
 		receivedFloatSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "float"))
 		receivedHistogramSamples := testutil.ToFloat64(ds[0].receivedSamples.WithLabelValues(id, "histogram"))

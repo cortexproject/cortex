@@ -27,7 +27,6 @@ import (
 	"github.com/thanos-io/thanos/pkg/discovery/dns"
 	"github.com/thanos-io/thanos/pkg/querysharding"
 	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/server"
 
 	"github.com/cortexproject/cortex/pkg/alertmanager"
 	"github.com/cortexproject/cortex/pkg/alertmanager/alertstore"
@@ -131,7 +130,7 @@ func (t *Cortex) initAPI() (services.Service, error) {
 func (t *Cortex) initServer() (services.Service, error) {
 	// Cortex handles signals on its own.
 	DisableSignalHandling(&t.Cfg.Server)
-	serv, err := server.New(t.Cfg.Server)
+	serv, err := newServer(t.Cfg.Server)
 	if err != nil {
 		return nil, err
 	}

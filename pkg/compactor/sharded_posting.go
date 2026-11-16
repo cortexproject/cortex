@@ -34,5 +34,20 @@ func NewShardedPosting(ctx context.Context, postings index.Postings, partitionCo
 			})
 		}
 	}
+	// A failed postings iterator reports nothing from Next(), only from Err().
+	// tsdb.AllSortedPostings returns index.ErrPostings when the index read
+	// fails, so without this check the error is swallowed and the caller gets
+	// an empty or truncated series list with a nil error.
+	if err := postings.Err(); err != nil {
+		return nil, nil, err
+	}
+	// The cancellation check inside the loop only runs every
+	// util.CheckContextEveryNIterations iterations, so a context-aware postings
+	// iterator can stop in between and report the cancellation only through
+	// Err(). Fail closed on a cancelled context rather than returning a list
+	// that may be truncated.
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	return index.NewListPostings(series), symbols, nil
 }

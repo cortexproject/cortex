@@ -2009,7 +2009,8 @@ func (i *Ingester) queryExemplars(ctx context.Context, userID string, req *clien
 	}
 
 	// It's not required to sort series from a single ingester because series are sorted by the Exemplar Storage before returning from Select.
-	// Select does not take a context, so cancellation is only noticed once it returns.
+	// The exemplar querier drops the context passed to ExemplarQuerier and Select
+	// takes none, so cancellation is only noticed once Select returns.
 	res, err := q.Select(from, through, matchers...)
 	c()
 	if err != nil {

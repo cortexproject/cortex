@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"container/list"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/golang-lru/v2/expirable"
@@ -301,15 +301,20 @@ func (c *blocksPostingsForMatchersCache) fetchPostings(blockID ulid.ULID, ix tsd
 
 func (c *blocksPostingsForMatchersCache) result(ce *cacheEntryPromise[[]storage.SeriesRef]) func(ctx context.Context) (index.Postings, error) {
 	return func(ctx context.Context) (index.Postings, error) {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ce.done:
-			if ctx.Err() != nil {
+		if call := ce.call.Load(); call != nil {
+			select {
+			case <-ctx.Done():
 				return nil, ctx.Err()
+			case <-call.done:
 			}
-			return index.NewListPostings(ce.v), ce.err
+			if call.err != nil {
+				return nil, call.err
+			}
 		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return index.NewListPostings(ce.v), nil
 	}
 }
 
@@ -468,23 +473,42 @@ func (s *seedByHash) incrementSeed(userId string, v string) {
 	s.seedByHash[i]++
 }
 
-type lruCache[V any] struct {
-	cfg          PostingsCacheConfig
-	cachedValues *sync.Map
-	timeNow      func() time.Time
-	name         string
-	metrics      ExpandedPostingsCacheMetrics
+// inflight holds what concurrent callers wait on while a value is being fetched.
+// It is dropped once the fetch succeeds, so completed entries carry no channel.
+type inflight struct {
+	done chan struct{}
+	err  error
+}
 
-	// Fields from here should be locked
-	cachedMtx   sync.RWMutex
-	cached      *list.List
-	cachedBytes int64
+// cacheEntryPromise is the single object kept per cached key. It is linked in an
+// intrusive LRU list, so no separate list element or boxed key is allocated.
+type cacheEntryPromise[V any] struct {
+	key        string
+	prev, next *cacheEntryPromise[V]
+	v          V
+	// call is non-nil while the fetch runs, and stays set (with err) for a failed fetch.
+	call      atomic.Pointer[inflight]
+	tsNanos   int64
+	sizeBytes int64
+}
+
+// lruCache is a byte-bounded LRU with TTL. All map and list changes happen under
+// mu, and an entry is in cachedValues if and only if it is linked in the list.
+type lruCache[V any] struct {
+	cfg     PostingsCacheConfig
+	timeNow func() time.Time
+	name    string
+	metrics ExpandedPostingsCacheMetrics
+
+	mu           sync.Mutex
+	cachedValues map[string]*cacheEntryPromise[V]
+	front, back  *cacheEntryPromise[V] // least and most recently used
+	cachedBytes  int64
 }
 
 func newLruCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedPostingsCacheMetrics, timeNow func() time.Time) *lruCache[V] {
 	return &lruCache[V]{
-		cachedValues: new(sync.Map),
-		cached:       list.New(),
+		cachedValues: make(map[string]*cacheEntryPromise[V]),
 		cfg:          cfg,
 		timeNow:      timeNow,
 		name:         name,
@@ -493,167 +517,171 @@ func newLruCache[V any](cfg PostingsCacheConfig, name string, metrics *ExpandedP
 }
 
 func (c *lruCache[V]) clear() {
-	c.cachedMtx.Lock()
-	defer c.cachedMtx.Unlock()
-	c.cached = list.New()
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cachedValues = make(map[string]*cacheEntryPromise[V])
+	c.front, c.back = nil, nil
 	c.cachedBytes = 0
-	c.cachedValues = new(sync.Map)
 }
 
 func (c *lruCache[V]) expire() {
 	if c.cfg.Ttl <= 0 {
 		return
 	}
-	c.cachedMtx.RLock()
-	if _, r := c.shouldEvictHead(); !r {
-		c.cachedMtx.RUnlock()
-		return
-	}
-	c.cachedMtx.RUnlock()
-	c.cachedMtx.Lock()
-	defer c.cachedMtx.Unlock()
-	for reason, r := c.shouldEvictHead(); r; reason, r = c.shouldEvictHead() {
-		c.metrics.CacheEvicts.WithLabelValues(c.name, reason).Inc()
-		c.evictHead()
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.evictLocked()
 }
 
 func (c *lruCache[V]) size() int {
-	c.cachedMtx.RLock()
-	defer c.cachedMtx.RUnlock()
-	return c.cached.Len()
-}
-
-func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
-	r := &cacheEntryPromise[V]{
-		done: make(chan struct{}),
-	}
-	defer close(r.done)
-
-	if !c.cfg.Enabled {
-		r.v, _, r.err = fetch()
-		return r, false
-	}
-
-	loaded, ok := c.cachedValues.LoadOrStore(k, r)
-
-	if !ok {
-		c.metrics.CacheMiss.WithLabelValues(c.name, "miss").Inc()
-		r.v, r.sizeBytes, r.err = fetch()
-		r.sizeBytes += int64(len(k))
-		r.ts = c.timeNow()
-		c.created(k, r.sizeBytes)
-		c.expire()
-	}
-
-	if ok {
-		// If the promise is already in the cache, lets wait it to fetch the data.
-		<-loaded.(*cacheEntryPromise[V]).done
-
-		// LRU: move to back on access
-		c.cachedMtx.Lock()
-		if elem := loaded.(*cacheEntryPromise[V]).elem; elem != nil {
-			c.cached.MoveToBack(elem)
-		}
-		c.cachedMtx.Unlock()
-
-		// If is cached but is expired, lets try to replace the cache value.
-		if loaded.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) && c.cachedValues.CompareAndSwap(k, loaded, r) {
-			c.metrics.CacheMiss.WithLabelValues(c.name, "expired").Inc()
-			r.v, r.sizeBytes, r.err = fetch()
-			r.sizeBytes += int64(len(k))
-			c.updateSize(loaded.(*cacheEntryPromise[V]).sizeBytes, r.sizeBytes)
-			r.ts = c.timeNow()
-			// Replace the list element: remove old, push new to back
-			c.cachedMtx.Lock()
-			if oldElem := loaded.(*cacheEntryPromise[V]).elem; oldElem != nil {
-				c.cached.Remove(oldElem)
-			}
-			r.elem = c.cached.PushBack(k)
-			c.cachedMtx.Unlock()
-			loaded = r
-			ok = false
-		}
-	}
-
-	return loaded.(*cacheEntryPromise[V]), ok
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.cachedValues)
 }
 
 func (c *lruCache[V]) contains(k string) bool {
-	_, ok := c.cachedValues.Load(k)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, ok := c.cachedValues[k]
 	return ok
 }
 
-func (c *lruCache[V]) shouldEvictHead() (string, bool) {
-	h := c.cached.Front()
-	if h == nil {
-		return "", false
+// getPromiseForKey returns the entry for k, starting a fetch on a miss or after expiry.
+// It does not wait: callers wait through the entry's inflight call, honoring their context.
+func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error)) (*cacheEntryPromise[V], bool) {
+	if !c.cfg.Enabled {
+		e := &cacheEntryPromise[V]{key: k}
+		var err error
+		e.v, _, err = fetch()
+		if err != nil {
+			e.call.Store(&inflight{done: closedChan, err: err})
+		}
+		return e, false
 	}
 
-	if c.cachedBytes > c.cfg.MaxBytes {
-		return "full", true
+	c.mu.Lock()
+	reason := "miss"
+	if e, ok := c.cachedValues[k]; ok {
+		if e.call.Load() != nil || !c.isExpiredLocked(e, c.timeNow()) {
+			c.moveToBackLocked(e)
+			c.mu.Unlock()
+			return e, true
+		}
+		reason = "expired"
+		c.removeLocked(e)
 	}
+	e := &cacheEntryPromise[V]{key: k}
+	call := &inflight{done: make(chan struct{})}
+	e.call.Store(call)
+	c.cachedValues[k] = e
+	c.pushBackLocked(e)
+	c.mu.Unlock()
 
-	key := h.Value.(string)
+	c.metrics.CacheMiss.WithLabelValues(c.name, reason).Inc()
+	v, size, err := fetch()
 
-	if l, ok := c.cachedValues.Load(key); ok {
-		if l.(*cacheEntryPromise[V]).isExpired(c.cfg.Ttl, c.timeNow()) {
-			return "expired", true
+	c.mu.Lock()
+	if err != nil {
+		// Never cache failures: drop the entry so the next caller fetches again.
+		if c.cachedValues[k] == e {
+			c.removeLocked(e)
+		}
+		c.mu.Unlock()
+		call.err = err
+		close(call.done)
+		return e, false
+	}
+	e.v = v
+	e.tsNanos = c.timeNow().UnixNano()
+	e.sizeBytes = size + int64(len(k))
+	if c.cachedValues[k] == e {
+		if c.cfg.Ttl <= 0 {
+			c.removeLocked(e)
+		} else {
+			c.cachedBytes += e.sizeBytes
 		}
 	}
-
-	return "", false
+	e.call.Store(nil)
+	// As before, only a fresh miss triggers eviction; refreshing an expired key does not.
+	if reason == "miss" {
+		c.evictLocked()
+	}
+	c.mu.Unlock()
+	close(call.done)
+	return e, false
 }
 
-func (c *lruCache[V]) evictHead() {
-	front := c.cached.Front()
-	c.cached.Remove(front)
-	oldestKey := front.Value.(string)
-	if oldest, loaded := c.cachedValues.LoadAndDelete(oldestKey); loaded {
-		c.cachedBytes -= oldest.(*cacheEntryPromise[V]).sizeBytes
+func (c *lruCache[V]) isExpiredLocked(e *cacheEntryPromise[V], now time.Time) bool {
+	return now.UnixNano()-e.tsNanos >= c.cfg.Ttl.Nanoseconds()
+}
+
+// evictLocked drops least recently used entries while over budget, then expired ones.
+// Entries whose fetch is still running are never expired.
+func (c *lruCache[V]) evictLocked() {
+	now := c.timeNow()
+	for c.front != nil {
+		reason := ""
+		switch {
+		case c.cachedBytes > c.cfg.MaxBytes:
+			reason = "full"
+		case c.front.call.Load() == nil && c.isExpiredLocked(c.front, now):
+			reason = "expired"
+		default:
+			return
+		}
+		c.metrics.CacheEvicts.WithLabelValues(c.name, reason).Inc()
+		c.removeLocked(c.front)
 	}
 }
 
-func (c *lruCache[V]) created(key string, sizeBytes int64) {
-	if c.cfg.Ttl <= 0 {
-		c.cachedValues.Delete(key)
+func (c *lruCache[V]) pushBackLocked(e *cacheEntryPromise[V]) {
+	e.prev, e.next = c.back, nil
+	if c.back != nil {
+		c.back.next = e
+	} else {
+		c.front = e
+	}
+	c.back = e
+}
+
+func (c *lruCache[V]) unlinkLocked(e *cacheEntryPromise[V]) {
+	if e.prev != nil {
+		e.prev.next = e.next
+	} else {
+		c.front = e.next
+	}
+	if e.next != nil {
+		e.next.prev = e.prev
+	} else {
+		c.back = e.prev
+	}
+	e.prev, e.next = nil, nil
+}
+
+func (c *lruCache[V]) moveToBackLocked(e *cacheEntryPromise[V]) {
+	if c.back == e {
 		return
 	}
-	c.cachedMtx.Lock()
-	defer c.cachedMtx.Unlock()
-	elem := c.cached.PushBack(key)
-	// Store the element reference in the promise for O(1) LRU access
-	if p, ok := c.cachedValues.Load(key); ok {
-		p.(*cacheEntryPromise[V]).elem = elem
+	c.unlinkLocked(e)
+	c.pushBackLocked(e)
+}
+
+// removeLocked unlinks e and deletes it from the map. The bytes of an entry whose
+// fetch is still running are not counted yet, so they are not subtracted.
+func (c *lruCache[V]) removeLocked(e *cacheEntryPromise[V]) {
+	c.unlinkLocked(e)
+	delete(c.cachedValues, e.key)
+	if e.call.Load() == nil {
+		c.cachedBytes -= e.sizeBytes
 	}
-	c.cachedBytes += sizeBytes
 }
 
-func (c *lruCache[V]) updateSize(oldSize, newSizeBytes int64) {
-	if oldSize == newSizeBytes {
-		return
-	}
-
-	c.cachedMtx.Lock()
-	defer c.cachedMtx.Unlock()
-	c.cachedBytes += newSizeBytes - oldSize
-}
-
-type cacheEntryPromise[V any] struct {
-	ts        time.Time
-	sizeBytes int64
-	elem      *list.Element
-
-	done chan struct{}
-	v    V
-	err  error
-}
-
-func (ce *cacheEntryPromise[V]) isExpired(ttl time.Duration, now time.Time) bool {
-	ts := ce.ts
-	r := now.Sub(ts)
-	return r >= ttl
-}
+// closedChan is shared by results that are already complete when returned.
+var closedChan = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
 
 func memHashString(userId, v string) uint64 {
 	h := fnv1a.HashString64(userId)

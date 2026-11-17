@@ -25,6 +25,10 @@ type AnalyzeOutputNode struct {
 	OperatorID        *uint64                     `json:"operatorId,omitempty"`
 	Children          []*AnalyzeOutputNode        `json:"children,omitempty"`
 
+	// subqueryInner is the child evaluating the subquery expression, when this
+	// node is a subquery.
+	subqueryInner *AnalyzeOutputNode
+
 	once                sync.Once
 	totalSamples        int64
 	peakSamples         int64
@@ -67,7 +71,15 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 
 			switch a.OperatorTelemetry.LogicalNode().(type) {
 			case *logicalplan.Subquery:
-				// Skip aggregating samples for subquery
+				if child == a.subqueryInner {
+					a.mergeSubqueryInner(child)
+					continue
+				}
+				// Function parameters run on the parent's steps.
+				a.totalSamples += child.TotalSamples()
+				for i, s := range child.TotalSamplesPerStep() {
+					a.totalSamplesPerStep[i] += s
+				}
 			case *logicalplan.StepInvariantExpr:
 				childSamples := child.TotalSamples()
 				for i := range a.totalSamplesPerStep {
@@ -84,6 +96,61 @@ func (a *AnalyzeOutputNode) aggregateSamples() {
 	})
 }
 
+// mergeSubqueryInner adds the subquery's inner samples to the parent steps
+// whose window consumes them, like Prometheus (#19165): each parent step counts
+// every inner step in its window, so overlapping windows count a step more
+// than once. The window is applied for every parent step, including instant
+// queries, because the inner query may evaluate steps outside the window.
+func (a *AnalyzeOutputNode) mergeSubqueryInner(inner *AnalyzeOutputNode) {
+	info := a.OperatorTelemetry.Subquery()
+	innerSamples := inner.OperatorTelemetry.Samples()
+	if info == nil || innerSamples == nil {
+		return
+	}
+	perStep := inner.TotalSamplesPerStep()
+	if perStep == nil {
+		// No per-step data to window: attribute everything to the first step.
+		a.addAtStep(0, inner.TotalSamples())
+		return
+	}
+	c := info.Consumer
+	innerTs := func(k int) int64 { return innerSamples.StartTimestamp + int64(k)*innerSamples.Interval + c.Offset }
+	if c.AtTimestamp != nil {
+		var n int64
+		for k, s := range perStep {
+			if t := innerTs(k); t > *c.AtTimestamp-c.Range && t <= *c.AtTimestamp {
+				n += s
+			}
+		}
+		for step := range c.NumSteps {
+			a.addAtStep(step, n)
+		}
+		return
+	}
+	// Parent windows only move forward, so slide over the inner steps.
+	var sum int64
+	lo, hi := 0, 0
+	for step := range c.NumSteps {
+		maxt := c.Start + int64(step)*c.Interval
+		for hi < len(perStep) && innerTs(hi) <= maxt {
+			sum += perStep[hi]
+			hi++
+		}
+		for lo < hi && innerTs(lo) <= maxt-c.Range {
+			sum -= perStep[lo]
+			lo++
+		}
+		a.addAtStep(step, sum)
+	}
+}
+
+func (a *AnalyzeOutputNode) addAtStep(step int, n int64) {
+	a.totalSamples += n
+	if step < len(a.totalSamplesPerStep) {
+		a.totalSamplesPerStep[step] += n
+	}
+}
+
 func analyzeQuery(op model.VectorOperator) *AnalyzeOutputNode {
 	var operatorID *uint64
 	if ider, ok := op.(model.OperatorIDer); ok {
@@ -96,10 +163,17 @@ func analyzeQuery(op model.VectorOperator) *AnalyzeOutputNode {
 	}
 
 	children := obsv.Explain()
-	var childTelemetry []*AnalyzeOutputNode
+	var (
+		childTelemetry []*AnalyzeOutputNode
+		subqueryInner  *AnalyzeOutputNode
+	)
+	info := obsv.Subquery()
 	for _, child := range children {
 		if node := analyzeQuery(child); node != nil {
 			childTelemetry = append(childTelemetry, node)
+			if info != nil && child == info.Inner {
+				subqueryInner = node
+			}
 		}
 	}
 
@@ -107,6 +181,7 @@ func analyzeQuery(op model.VectorOperator) *AnalyzeOutputNode {
 		OperatorTelemetry: obsv,
 		OperatorID:        operatorID,
 		Children:          childTelemetry,
+		subqueryInner:     subqueryInner,
 	}
 }
 

@@ -12,67 +12,82 @@ import (
 	"github.com/thanos-io/promql-engine/extlabels"
 	"github.com/thanos-io/promql-engine/query"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type pair struct{ a, b int }
-
 type duplicateLabelCheckOperator struct {
-	once sync.Once
-	next model.VectorOperator
+	once    sync.Once
+	initErr error
+	next    model.VectorOperator
+	series  []labels.Labels
 
-	p []pair
-	c []uint64
+	// Equal labelsets share an output ID. A nil mapping is the no-alias fast path.
+	outputIDs []uint64
+	// Each output ID has one occupancy mask shared by floats and histograms.
+	seen []uint64
+
+	step      int64
+	origin    int64
+	hasOrigin bool
 }
 
 func NewDuplicateLabelCheck(next model.VectorOperator, opts *query.Options) model.VectorOperator {
 	oper := &duplicateLabelCheckOperator{
 		next: next,
+		step: max(opts.Step.Milliseconds(), 1),
 	}
 	return telemetry.NewOperator(telemetry.NewTelemetry(oper, opts), oper)
 }
 
 func (d *duplicateLabelCheckOperator) Next(ctx context.Context, buf []model.StepVector) (int, error) {
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return 0, err
 	}
-
 	if err := d.init(ctx); err != nil {
 		return 0, err
 	}
 
 	n, err := d.next.Next(ctx, buf)
-	if err != nil {
-		return 0, err
-	}
-	if n == 0 {
-		return 0, nil
+	if err != nil || n == 0 || d.outputIDs == nil {
+		return n, err
 	}
 
-	// TODO: currently there is a bug, we need to reset 'd.c's state
-	// if the current timestamp changes. With configured BatchSize we
-	// dont see all samples for a timestamp in the same batch, but this
-	// logic relies on that.
-	if len(d.p) > 0 {
-		for i := range d.p {
-			d.c[d.p[i].a] = 0
-			d.c[d.p[i].b] = 0
+	first := buf[0].T
+	if d.hasOrigin {
+		delta := first - d.origin
+		if delta < 0 || delta%d.step != 0 {
+			return 0, errors.New("duplicate label check: batch starts must be nondecreasing and step-aligned")
 		}
-		for i := range n {
-			sv := &buf[i]
-			for _, sid := range sv.SampleIDs {
-				d.c[sid] |= 2 << i
-			}
-		}
-		for i := range d.p {
-			if d.c[d.p[i].a]&d.c[d.p[i].b] > 0 {
-				return 0, extlabels.ErrDuplicateLabelSet
+		// Series chunks may cover the same timestamps in successive calls.
+		// Only advance occupancy when the batch start advances, preserving any
+		// overlap between batches of different lengths.
+		if shift := uint64(delta / d.step); shift != 0 {
+			for i := range d.seen {
+				d.seen[i] >>= shift
 			}
 		}
 	}
+	d.origin = first
+	d.hasOrigin = true
 
+	for i := range n {
+		offset := buf[i].T - first
+		if offset < 0 || offset%d.step != 0 || offset/d.step >= 64 {
+			return 0, errors.New("duplicate label check: samples must fit in a step-aligned 64-step window")
+		}
+		bit := uint64(1) << uint64(offset/d.step)
+		for _, ids := range [][]uint64{buf[i].SampleIDs, buf[i].HistogramIDs} {
+			for j, inputID := range ids {
+				outputID := d.outputIDs[inputID]
+				if d.seen[outputID]&bit != 0 {
+					return 0, extlabels.ErrDuplicateLabelSet
+				}
+				d.seen[outputID] |= bit
+				ids[j] = outputID
+			}
+		}
+	}
 	return n, nil
 }
 
@@ -80,11 +95,7 @@ func (d *duplicateLabelCheckOperator) Series(ctx context.Context) ([]labels.Labe
 	if err := d.init(ctx); err != nil {
 		return nil, err
 	}
-	series, err := d.next.Series(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return series, nil
+	return d.series, nil
 }
 
 func (d *duplicateLabelCheckOperator) Explain() (next []model.VectorOperator) {
@@ -96,26 +107,45 @@ func (d *duplicateLabelCheckOperator) String() string {
 }
 
 func (d *duplicateLabelCheckOperator) init(ctx context.Context) error {
-	var err error
 	d.once.Do(func() {
-		series, seriesErr := d.next.Series(ctx)
-		if seriesErr != nil {
-			err = seriesErr
+		input, err := d.next.Series(ctx)
+		if err != nil {
+			d.initErr = err
 			return
 		}
-		m := make(map[uint64]int, len(series))
-		p := make([]pair, 0)
-		c := make([]uint64, len(series))
-		for i := range series {
-			h := series[i].Hash()
-			if j, ok := m[h]; ok {
-				p = append(p, pair{a: i, b: j})
-			} else {
-				m[h] = i
+		d.series = input
+		if len(input) < 2 {
+			return
+		}
+
+		outputIDs := make(map[uint64]uint64, len(input))
+		for i, metric := range input {
+			hash := metric.Hash()
+			outputID, exists := outputIDs[hash]
+			if !exists {
+				outputID = uint64(i)
+				if d.outputIDs != nil {
+					outputID = uint64(len(d.series))
+					d.series = append(d.series, metric)
+				}
+				outputIDs[hash] = outputID
+			} else if d.outputIDs == nil {
+				// Allocate remapping state only after finding the first alias.
+				// Earlier input IDs are already their canonical output IDs.
+				d.outputIDs = make([]uint64, len(input))
+				for j := range i {
+					d.outputIDs[j] = uint64(j)
+				}
+				d.series = make([]labels.Labels, i, len(input))
+				copy(d.series, input[:i])
+			}
+			if d.outputIDs != nil {
+				d.outputIDs[i] = outputID
 			}
 		}
-		d.p = p
-		d.c = c
+		if d.outputIDs != nil {
+			d.seen = make([]uint64, len(d.series))
+		}
 	})
-	return err
+	return d.initErr
 }

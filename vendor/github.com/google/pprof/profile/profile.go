@@ -278,7 +278,7 @@ func (p *Profile) massageMappings() {
 
 	// Use heuristics to identify main binary and move it to the top of the list of mappings
 	for i, m := range p.Mapping {
-		file := strings.TrimSpace(strings.Replace(m.File, "(deleted)", "", -1))
+		file := strings.TrimSpace(strings.ReplaceAll(m.File, "(deleted)", ""))
 		if len(file) == 0 {
 			continue
 		}
@@ -344,9 +344,11 @@ func serialize(p *Profile) []byte {
 // Write writes the profile as a gzip-compressed marshaled protobuf.
 func (p *Profile) Write(w io.Writer) error {
 	zw := gzip.NewWriter(w)
-	defer zw.Close()
-	_, err := zw.Write(serialize(p))
-	return err
+	if _, err := zw.Write(serialize(p)); err != nil {
+		_ = zw.Close()
+		return err
+	}
+	return zw.Close()
 }
 
 // WriteUncompressed writes the profile as a marshaled protobuf.

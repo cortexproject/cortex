@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -38,13 +38,15 @@ func newDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetric
 				Namespace: namespace,
 				Name:      "sd_dns_lookups_total",
 				Help:      "The number of DNS-SD lookups.",
-			}),
+			},
+		),
 		dnsSDLookupFailuresCount: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: namespace,
 				Name:      "sd_dns_lookup_failures_total",
 				Help:      "The number of DNS-SD lookup failures.",
-			}),
+			},
+		),
 	}
 
 	m.metricRegisterer = discovery.NewMetricRegisterer(reg, []prometheus.Collector{

@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 // Code generated. DO NOT EDIT.
 
@@ -63,6 +63,11 @@ type UpdateBucketDetails struct {
 	// by Oracle.)
 	KmsKeyId *string `mandatory:"false" json:"kmsKeyId"`
 
+	// Specifies whether Object Storage should use intermediate cached Bucket Encryption Keys with server-side
+	// encryption using KMS (SSE-KMS) for new objects in the bucket. This reduces calls to OCI Vault Key Management
+	// Service (KMS). Existing objects are not affected.
+	IsBucketKeyEnabled *bool `mandatory:"false" json:"isBucketKeyEnabled"`
+
 	// The versioning status on the bucket. If in state `Enabled`, multiple versions of the same object can be kept in the bucket.
 	// When the object is overwritten or deleted, previous versions will still be available. When versioning is `Suspended`, the previous versions will still remain but new versions will no longer be created when overwitten or deleted.
 	// Versioning cannot be disabled on a bucket once enabled.
@@ -72,6 +77,15 @@ type UpdateBucketDetails struct {
 	// automatically between the 'Standard' and 'InfrequentAccess' tiers based on the access pattern of the objects.
 	// When auto tiering is `Disabled`, there will be no automatic transitions between storage tiers.
 	AutoTiering BucketAutoTieringEnum `mandatory:"false" json:"autoTiering,omitempty"`
+
+	// The bucket scope determines weather the bucket name must be unique within the tenancy and region (essentially the namespace) or across all tenancies in the region. The bucket scope also determines if the bucket supports S3 virtual-hosted style URL's or not.
+	// Allowed values:
+	// NAMESPACE: Only supports path-style bucket access, bucket name only needs to be unique within the tenancy and region.
+	// REGION: Supports both path-style and virtual-hosted URL style access, bucket name needs to be unique across all tenancies in the region.
+	// BucketScope can only be updated from NAMESPACE to REGION, it cannot be updated from REGION to NAMESPACE.
+	// Updating bucket scope is possible only if the bucket name is valid and there is no existing regionally unique
+	// bucket with the same name.
+	BucketScope BucketBucketScopeEnum `mandatory:"false" json:"bucketScope,omitempty"`
 }
 
 func (m UpdateBucketDetails) String() string {
@@ -93,8 +107,11 @@ func (m UpdateBucketDetails) ValidateEnumValue() (bool, error) {
 	if _, ok := GetMappingBucketAutoTieringEnum(string(m.AutoTiering)); !ok && m.AutoTiering != "" {
 		errMessage = append(errMessage, fmt.Sprintf("unsupported enum value for AutoTiering: %s. Supported values are: %s.", m.AutoTiering, strings.Join(GetBucketAutoTieringEnumStringValues(), ",")))
 	}
+	if _, ok := GetMappingBucketBucketScopeEnum(string(m.BucketScope)); !ok && m.BucketScope != "" {
+		errMessage = append(errMessage, fmt.Sprintf("unsupported enum value for BucketScope: %s. Supported values are: %s.", m.BucketScope, strings.Join(GetBucketBucketScopeEnumStringValues(), ",")))
+	}
 	if len(errMessage) > 0 {
-		return true, fmt.Errorf(strings.Join(errMessage, "\n"))
+		return true, fmt.Errorf("%s", strings.Join(errMessage, "\n"))
 	}
 	return false, nil
 }

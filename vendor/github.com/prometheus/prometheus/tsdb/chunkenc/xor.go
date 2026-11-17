@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -158,7 +158,7 @@ type xorAppender struct {
 	trailing uint8
 }
 
-func (a *xorAppender) Append(t int64, v float64) {
+func (a *xorAppender) Append(_, t int64, v float64) {
 	var tDelta uint64
 	num := binary.BigEndian.Uint16(a.b.bytes())
 	switch num {
@@ -177,6 +177,8 @@ func (a *xorAppender) Append(t int64, v float64) {
 		}
 
 		a.writeVDelta(v)
+	case math.MaxUint16:
+		panic("chunk capacity exceeded")
 	default:
 		tDelta = uint64(t - a.t)
 		dod := int64(tDelta - a.tDelta)
@@ -225,11 +227,11 @@ func (a *xorAppender) writeVDelta(v float64) {
 	xorWrite(a.b, v, a.v, &a.leading, &a.trailing)
 }
 
-func (*xorAppender) AppendHistogram(*HistogramAppender, int64, *histogram.Histogram, bool) (Chunk, bool, Appender, error) {
+func (*xorAppender) AppendHistogram(Appender, int64, int64, *histogram.Histogram, bool) (Chunk, bool, Appender, error) {
 	panic("appended a histogram sample to a float chunk")
 }
 
-func (*xorAppender) AppendFloatHistogram(*FloatHistogramAppender, int64, *histogram.FloatHistogram, bool) (Chunk, bool, Appender, error) {
+func (*xorAppender) AppendFloatHistogram(Appender, int64, int64, *histogram.FloatHistogram, bool) (Chunk, bool, Appender, error) {
 	panic("appended a float histogram sample to a float chunk")
 }
 
@@ -275,6 +277,10 @@ func (*xorIterator) AtFloatHistogram(*histogram.FloatHistogram) (int64, *histogr
 
 func (it *xorIterator) AtT() int64 {
 	return it.t
+}
+
+func (*xorIterator) AtST() int64 {
+	return 0
 }
 
 func (it *xorIterator) Err() error {
@@ -328,6 +334,27 @@ func (it *xorIterator) Next() ValueType {
 		it.t += int64(it.tDelta)
 
 		return it.readValue()
+	}
+
+	// Fast path: for the most common case of regular scrape intervals,
+	// dod is 0 which is encoded as a single 0 bit.
+	// Check the bit directly from the buffer to avoid the loop and switch below.
+	if it.br.valid >= 1 {
+		if (it.br.buffer>>(it.br.valid-1))&1 == 0 {
+			// dod == 0: timestamp delta unchanged.
+			it.br.valid--
+			it.t += int64(it.tDelta)
+
+			// Super fast path: if the value is also unchanged (next bit is 0),
+			// we can skip the xorRead call entirely.
+			if it.br.valid >= 1 && (it.br.buffer>>(it.br.valid-1))&1 == 0 {
+				it.br.valid--
+				it.numRead++
+				return ValFloat
+			}
+			return it.readValue()
+		}
+		// dod != 0: fall through to the normal path below.
 	}
 
 	var d byte
@@ -394,6 +421,39 @@ func (it *xorIterator) Next() ValueType {
 }
 
 func (it *xorIterator) readValue() ValueType {
+	// Fast path: read value encoding directly from the buffer when possible.
+	// The two most common cases are:
+	//   1. Value unchanged: single 0 bit.
+	//   2. Value changed, reuse leading/trailing zeros: 10-prefix + mbits significant bits.
+	if it.br.valid >= 1 {
+		if (it.br.buffer>>(it.br.valid-1))&1 == 0 {
+			// Value unchanged.
+			it.br.valid--
+			it.numRead++
+			return ValFloat
+		}
+		// Value changed. Try the reuse-leading/trailing fast path if the
+		// leading/trailing have been initialized and the buffer has enough bits.
+		if it.leading != 0xff {
+			mbits := 64 - it.leading - it.trailing
+			if it.br.valid >= 2+mbits {
+				if (it.br.buffer>>(it.br.valid-2))&1 == 0 {
+					// Reuse leading/trailing (control bits are 10).
+					it.br.valid -= 2 // Consume both control bits.
+					dataMask := (uint64(1) << mbits) - 1
+					bits := (it.br.buffer >> (it.br.valid - mbits)) & dataMask
+					it.br.valid -= mbits
+					vbits := math.Float64bits(it.val)
+					vbits ^= bits << it.trailing
+					it.val = math.Float64frombits(vbits)
+					it.numRead++
+					return ValFloat
+				}
+				// New leading/trailing (control bits are 11): fall through.
+			}
+		}
+	}
+
 	err := xorRead(&it.br, &it.val, &it.leading, &it.trailing)
 	if err != nil {
 		it.err = err

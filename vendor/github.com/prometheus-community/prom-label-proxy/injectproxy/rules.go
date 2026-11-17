@@ -174,7 +174,7 @@ var errModifyResponseFailed = errors.New("failed to process the API response")
 // modifyAPIResponse unwraps the Prometheus API response, passes the enforced
 // label value and the response to the given function and finally replaces the
 // result in the response.
-func modifyAPIResponse(f func([]string, *http.Request, *apiResponse) (interface{}, error)) func(*http.Response) error {
+func modifyAPIResponse(f func([]string, *http.Request, *apiResponse) (any, error)) func(*http.Response) error {
 	return func(resp *http.Response) error {
 		if resp.StatusCode != http.StatusOK {
 			// Pass non-200 responses as-is.
@@ -209,7 +209,7 @@ func modifyAPIResponse(f func([]string, *http.Request, *apiResponse) (interface{
 	}
 }
 
-func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiResponse) (interface{}, error) {
+func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiResponse) (any, error) {
 	var rgs rulesData
 	if err := json.Unmarshal(resp.Data, &rgs); err != nil {
 		return nil, fmt.Errorf("can't decode rules data: %w", err)
@@ -280,7 +280,7 @@ func (r *routes) filterRules(lvalues []string, req *http.Request, resp *apiRespo
 	return &rulesData{RuleGroups: filtered}, nil
 }
 
-func (r *routes) filterAlerts(lvalues []string, _ *http.Request, resp *apiResponse) (interface{}, error) {
+func (r *routes) filterAlerts(lvalues []string, _ *http.Request, resp *apiResponse) (any, error) {
 	var data alertsData
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		return nil, fmt.Errorf("can't decode alerts data: %w", err)

@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -9,6 +6,7 @@ package runtime
 import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/exported"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	azt "github.com/Azure/azure-sdk-for-go/sdk/internal/transport"
 )
 
 // PipelineOptions contains Pipeline options for SDK developers
@@ -88,7 +86,7 @@ func NewPipeline(module, version string, plOpts PipelineOptions, options *policy
 	policies = append(policies, exported.PolicyFunc(bodyDownloadPolicy))
 	transport := cp.Transport
 	if transport == nil {
-		transport = defaultHTTPClient
+		transport = azt.DefaultHTTPClient
 	}
 	return exported.NewPipeline(transport, policies...)
 }

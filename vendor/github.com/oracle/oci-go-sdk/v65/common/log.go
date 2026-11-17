@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -8,7 +8,9 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +50,41 @@ type DefaultSDKLogger struct {
 var defaultLogger sdkLogger
 var loggerLock sync.Mutex
 var file *os.File
+
+const (
+	sensitiveHeaderRedactionValue = "REDACTED"
+)
+
+var sensitiveExactHeaderNames = map[string]struct{}{
+	"authorization":       {},
+	"proxy-authorization": {},
+	"opc-obo-token":       {},
+	"x-api-key":           {},
+	"cookie":              {},
+	"set-cookie":          {},
+	"security-context":    {},
+	"password":            {},
+	"passphrase":          {},
+}
+
+var sensitiveCredentialHeaderSuffixes = []string{
+	"access-token",
+	"refresh-token",
+	"id-token",
+	"security-token",
+	"session-token",
+	"delegation-token",
+	"client-secret",
+	"private-key",
+}
+
+var (
+	headerDelimiterPattern      = regexp.MustCompile(`[-_]+`)
+	headerLinePattern           = regexp.MustCompile(`(?im)^(\s*)([^:\r\n]+)(\s*:\s*)(.*)$`)
+	jsonStringArrayFieldPattern = regexp.MustCompile(`"((?:[^"\\]|\\.)+)"(\s*:\s*)\[((?:"(?:[^"\\]|\\.)*"\s*,\s*)*"(?:[^"\\]|\\.)*"\s*)\]`)
+	jsonStringFieldPattern      = regexp.MustCompile(`"((?:[^"\\]|\\.)+)"(\s*:\s*)"((?:[^"\\]|\\.)*)"`)
+	jsonStringValuePattern      = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
+)
 
 // initializes the SDK defaultLogger as a defaultLogger
 func init() {
@@ -176,6 +213,104 @@ func CloseLogFile() error {
 	return file.Close()
 }
 
+// Normalizes a header name before matching it against sensitive header rules
+func normalizeHeaderName(name string) string {
+	return headerDelimiterPattern.ReplaceAllString(strings.TrimSpace(strings.ToLower(name)), "-")
+}
+
+// Returns true when a header name matches the sensitive header rules
+func isSensitiveHeaderName(name string) bool {
+	normalized := normalizeHeaderName(name)
+	if normalized == "" {
+		return false
+	}
+
+	// Check against set of exact header names
+	if _, ok := sensitiveExactHeaderNames[normalized]; ok {
+		return true
+	}
+	if normalized == "x-token" || strings.HasPrefix(normalized, "x-token-") {
+		return true
+	}
+	if normalized == "x-authorization" || strings.HasPrefix(normalized, "x-authorization-") {
+		return true
+	}
+	if strings.HasPrefix(normalized, "x-key-") {
+		return true
+	}
+
+	// Check if header matches or ends with suffix
+	for _, suffix := range sensitiveCredentialHeaderSuffixes {
+		if normalized == suffix || strings.HasSuffix(normalized, "-"+suffix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// RedactSensitiveHeadersForLogs returns a copy of headers with sensitive values replaced for logging
+func RedactSensitiveHeadersForLogs(headers http.Header) http.Header {
+	if headers == nil {
+		return nil
+	}
+
+	redacted := make(http.Header, len(headers))
+	for name, values := range headers {
+		if values == nil {
+			redacted[name] = nil
+			continue
+		}
+
+		copiedValues := append([]string(nil), values...)
+		if isSensitiveHeaderName(name) {
+			for i := range copiedValues {
+				copiedValues[i] = sensitiveHeaderRedactionValue
+			}
+		}
+		redacted[name] = copiedValues
+	}
+
+	return redacted
+}
+
+// Redacts sensitive values from line-oriented header text
+func redactSensitiveHeaderLines(value string) string {
+	return headerLinePattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := headerLinePattern.FindStringSubmatch(match)
+		if len(parts) < 4 || !isSensitiveHeaderName(parts[2]) {
+			return match
+		}
+		return parts[1] + parts[2] + parts[3] + sensitiveHeaderRedactionValue
+	})
+}
+
+// Redacts sensitive header values from serialized JSON logger text
+func redactSensitiveJsonStringFields(value string) string {
+	redactedArrays := jsonStringArrayFieldPattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := jsonStringArrayFieldPattern.FindStringSubmatch(match)
+		if len(parts) < 4 || !isSensitiveHeaderName(parts[1]) {
+			return match
+		}
+		return `"` + parts[1] + `"` + parts[2] + `[` +
+			jsonStringValuePattern.ReplaceAllString(parts[3], `"`+sensitiveHeaderRedactionValue+`"`) +
+			`]`
+	})
+
+	return jsonStringFieldPattern.ReplaceAllStringFunc(redactedArrays, func(match string) string {
+		parts := jsonStringFieldPattern.FindStringSubmatch(match)
+		if len(parts) < 3 || !isSensitiveHeaderName(parts[1]) {
+			return match
+		}
+		return `"` + parts[1] + `"` + parts[2] + `"` + sensitiveHeaderRedactionValue + `"`
+	})
+}
+
+// RedactSensitiveStringForLogs redacts sensitive header values from logger text
+func RedactSensitiveStringForLogs(value string) string {
+	return redactSensitiveJsonStringFields(redactSensitiveHeaderLines(value))
+}
+
 // LogLevel returns the current debug level
 func (l DefaultSDKLogger) LogLevel() int {
 	return l.currentLoggingLevel
@@ -191,29 +326,30 @@ func (l DefaultSDKLogger) Log(logLevel int, format string, v ...interface{}) err
 // Logln logs v appending a new line at the end
 // Deprecated
 func Logln(v ...interface{}) {
-	defaultLogger.Log(infoLogging, "%v\n", v...)
+	m := fmt.Sprint(v...)
+	defaultLogger.Log(infoLogging, "%s\n", RedactSensitiveStringForLogs(m))
 }
 
 // Logf logs v with the provided format
 func Logf(format string, v ...interface{}) {
-	defaultLogger.Log(infoLogging, format, v...)
+	defaultLogger.Log(infoLogging, "%s", RedactSensitiveStringForLogs(fmt.Sprintf(format, v...)))
 }
 
 // Debugf logs v with the provided format if debug mode is set
 func Debugf(format string, v ...interface{}) {
-	defaultLogger.Log(debugLogging, format, v...)
+	defaultLogger.Log(debugLogging, "%s", RedactSensitiveStringForLogs(fmt.Sprintf(format, v...)))
 }
 
-// Debug  logs v if debug mode is set
+// Debug logs v if debug mode is set
 func Debug(v ...interface{}) {
 	m := fmt.Sprint(v...)
-	defaultLogger.Log(debugLogging, "%s", m)
+	defaultLogger.Log(debugLogging, "%s", RedactSensitiveStringForLogs(m))
 }
 
 // Debugln logs v appending a new line if debug mode is set
 func Debugln(v ...interface{}) {
 	m := fmt.Sprint(v...)
-	defaultLogger.Log(debugLogging, "%s\n", m)
+	defaultLogger.Log(debugLogging, "%s\n", RedactSensitiveStringForLogs(m))
 }
 
 // IfDebug executes closure if debug is enabled

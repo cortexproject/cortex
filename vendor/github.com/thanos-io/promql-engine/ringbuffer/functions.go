@@ -828,7 +828,11 @@ func histogramRate(points []Sample, isCounter bool) (*histogram.FloatHistogram, 
 		}
 	}
 
-	h := last.CopyToSchema(minSchema)
+	h, err := last.CopyToSchema(minSchema)
+	if err != nil {
+		// Invalid bucket layout; fail rather than return a wrong result.
+		return nil, warn, err
+	}
 	if _, _, nhcbBoundsReconciled, err := h.Sub(prev); err != nil {
 		return nil, warn, err
 	} else if nhcbBoundsReconciled {
@@ -874,6 +878,9 @@ func madOverTime(points []Sample) (float64, bool, warnings.Warnings) {
 
 	if len(values) == 0 {
 		return 0, false, warn
+	}
+	if math.IsNaN(values[0]) {
+		return math.NaN(), true, warn
 	}
 	median := compute.Quantile(0.5, values)
 
@@ -946,23 +953,17 @@ func countOverTime(points []Sample) float64 {
 func avgOverTime(points []Sample) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	// we sniffed a histogram average
 	if points[0].V.H != nil {
-		mean := points[0].V.H.Copy()
-		for i, sample := range points[1:] {
+		var acc compute.AvgAcc
+		for _, sample := range points {
 			if sample.V.H == nil {
 				return 0, nil, false, warnings.WarnMixedFloatsHistograms, nil
 			}
-			count := float64(i + 2)
-			left := sample.V.H.Copy().Div(count)
-			right := mean.Copy().Div(count)
-			toAdd, _, _, err := left.Sub(right)
-			if err != nil {
-				return 0, nil, false, 0, err
-			}
-			if _, _, _, err = mean.Add(toAdd); err != nil {
-				return 0, nil, false, 0, err
+			if err := acc.Add(0, sample.V.H); err != nil {
+				return 0, nil, false, acc.Warnings(), err
 			}
 		}
-		return 0, mean, true, 0, nil
+		_, mean := acc.Value()
+		return 0, mean, true, acc.Warnings(), nil
 	}
 
 	// we sniffed a float average
@@ -1003,16 +1004,17 @@ func avgOverTime(points []Sample) (float64, *histogram.FloatHistogram, bool, war
 func sumOverTime(points []Sample) (float64, *histogram.FloatHistogram, bool, warnings.Warnings, error) {
 	// we sniffed a histogram sum
 	if points[0].V.H != nil {
-		res := points[0].V.H.Copy()
-		for _, v := range points[1:] {
+		var acc compute.SumAcc
+		for _, v := range points {
 			if v.V.H == nil {
 				return 0, nil, false, warnings.WarnMixedFloatsHistograms, nil
 			}
-			if _, _, _, err := res.Add(v.V.H); err != nil {
-				return 0, nil, false, 0, err
+			if err := acc.Add(0, v.V.H); err != nil {
+				return 0, nil, false, acc.Warnings(), err
 			}
 		}
-		return 0, res, true, 0, nil
+		_, res := acc.Value()
+		return 0, res, true, acc.Warnings(), nil
 	}
 
 	// we sniffed a float sum

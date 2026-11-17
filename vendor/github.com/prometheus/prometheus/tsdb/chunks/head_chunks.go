@@ -1,4 +1,4 @@
-// Copyright 2020 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,6 +15,7 @@ package chunks
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -32,7 +33,6 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
 
@@ -275,7 +275,14 @@ func NewChunkDiskMapper(reg prometheus.Registerer, dir string, pool chunkenc.Poo
 		m.pool = chunkenc.NewPool()
 	}
 
-	return m, m.openMMapFiles()
+	if err := m.openMMapFiles(); err != nil {
+		if m.writeQueue != nil {
+			m.writeQueue.stop()
+		}
+		err = errors.Join(err, m.dir.Close())
+		return nil, err
+	}
+	return m, nil
 }
 
 // Chunk encodings for out-of-order chunks.
@@ -304,7 +311,7 @@ func (cdm *ChunkDiskMapper) openMMapFiles() (returnErr error) {
 	cdm.closers = map[int]io.Closer{}
 	defer func() {
 		if returnErr != nil {
-			returnErr = tsdb_errors.NewMulti(returnErr, closeAllFromMap(cdm.closers)).Err()
+			returnErr = errors.Join(returnErr, closeAllFromMap(cdm.closers))
 
 			cdm.mmappedChunkFiles = nil
 			cdm.closers = nil
@@ -614,7 +621,7 @@ func (cdm *ChunkDiskMapper) cut() (seq, offset int, returnErr error) {
 		// The file should not be closed if there is no error,
 		// its kept open in the ChunkDiskMapper.
 		if returnErr != nil {
-			returnErr = tsdb_errors.NewMulti(returnErr, newFile.Close()).Err()
+			returnErr = errors.Join(returnErr, newFile.Close())
 		}
 	}()
 
@@ -812,10 +819,7 @@ func (cdm *ChunkDiskMapper) Chunk(ref ChunkDiskMapperRef) (chunkenc.Chunk, error
 	// Make a copy of the chunk data to prevent a panic occurring because the returned
 	// chunk data slice references an mmap-ed file which could be closed after the
 	// function returns but while the chunk is still in use.
-	chkDataCopy := make([]byte, len(chkData))
-	copy(chkDataCopy, chkData)
-
-	chk, err := cdm.pool.Get(chunkenc.Encoding(chkEnc), chkDataCopy)
+	chk, err := cdm.pool.Get(chunkenc.Encoding(chkEnc), bytes.Clone(chkData))
 	if err != nil {
 		return nil, &CorruptionErr{
 			Dir:       cdm.dir.Name(),
@@ -926,8 +930,7 @@ func (cdm *ChunkDiskMapper) IterateAllChunks(f func(seriesRef HeadSeriesRef, chu
 			// Extract the encoding from the byte. ChunkDiskMapper uses only the last 7 bits for the encoding.
 			chkEnc = cdm.RemoveMasks(chkEnc)
 			if err := f(seriesRef, chunkRef, mint, maxt, numSamples, chkEnc, isOOO); err != nil {
-				var cerr *CorruptionErr
-				if errors.As(err, &cerr) {
+				if cerr, ok := errors.AsType[*CorruptionErr](err); ok {
 					cerr.Dir = cdm.dir.Name()
 					cerr.FileIndex = segID
 					return cerr
@@ -970,7 +973,7 @@ func (cdm *ChunkDiskMapper) Truncate(fileNo uint32) error {
 	}
 	cdm.readPathMtx.RUnlock()
 
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	// Cut a new file only if the current file has some chunks.
 	if cdm.curFileSize() > HeadChunkFileHeaderSize {
 		// There is a known race condition here because between the check of curFileSize() and the call to CutNewFile()
@@ -979,7 +982,7 @@ func (cdm *ChunkDiskMapper) Truncate(fileNo uint32) error {
 		cdm.CutNewFile()
 	}
 	pendingDeletes, err := cdm.deleteFiles(removedFiles)
-	errs.Add(err)
+	errs = append(errs, err)
 
 	if len(chkFileIndices) == len(removedFiles) {
 		// All files were deleted. Reset the current sequence.
@@ -1003,7 +1006,7 @@ func (cdm *ChunkDiskMapper) Truncate(fileNo uint32) error {
 		cdm.evtlPosMtx.Unlock()
 	}
 
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 // deleteFiles deletes the given file sequences in order of the sequence.
@@ -1098,23 +1101,23 @@ func (cdm *ChunkDiskMapper) Close() error {
 	}
 	cdm.closed = true
 
-	errs := tsdb_errors.NewMulti(
+	errs := []error{
 		closeAllFromMap(cdm.closers),
 		cdm.finalizeCurFile(),
 		cdm.dir.Close(),
-	)
+	}
 	cdm.mmappedChunkFiles = map[int]*mmappedChunkFile{}
 	cdm.closers = map[int]io.Closer{}
 
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 func closeAllFromMap(cs map[int]io.Closer) error {
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, c := range cs {
-		errs.Add(c.Close())
+		errs = append(errs, c.Close())
 	}
-	return errs.Err()
+	return errors.Join(errs...)
 }
 
 const inBufferShards = 128 // 128 is a randomly chosen number.

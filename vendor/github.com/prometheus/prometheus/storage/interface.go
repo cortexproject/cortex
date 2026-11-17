@@ -1,4 +1,4 @@
-// Copyright 2014 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -30,6 +30,9 @@ import (
 // The errors exposed.
 var (
 	ErrNotFound = errors.New("not found")
+	// ErrCostSamplingUnsupported means the requested window cannot be sampled incrementally.
+	// It must not be returned with other failures, including failures closing rejected readers.
+	ErrCostSamplingUnsupported = errors.New("bounded query cost sampling is unavailable")
 	// ErrOutOfOrderSample is when out of order support is disabled and the sample is out of order.
 	ErrOutOfOrderSample = errors.New("out of order sample")
 	// ErrOutOfBounds is when out of order support is disabled and the sample is older than the min valid time for the append.
@@ -61,7 +64,8 @@ type SeriesRef uint64
 
 // Appendable allows creating Appender.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// Appendable will be removed soon (ETA: Q2 2026).
 type Appendable interface {
 	// Appender returns a new appender for the storage.
 	//
@@ -77,10 +81,16 @@ type SampleAndChunkQueryable interface {
 }
 
 // Storage ingests and manages samples, along with various indexes. All methods
-// are goroutine-safe. Storage implements storage.Appender.
+// are goroutine-safe.
 type Storage interface {
 	SampleAndChunkQueryable
+
+	// Appendable allows appending to storage.
+	// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+	// Appendable will be removed soon (ETA: Q2 2026).
 	Appendable
+	// AppendableV2 allows appending to storage.
+	AppendableV2
 
 	// StartTime returns the oldest timestamp stored in the storage.
 	StartTime() (int64, error)
@@ -100,6 +110,10 @@ type ExemplarStorage interface {
 // Use it when you need to have access to all samples without chunk encoding abstraction e.g promQL.
 type Queryable interface {
 	// Querier returns a new Querier on the storage.
+	//
+	// mint and maxt are inclusive time bounds in milliseconds. The returned
+	// Querier is scoped to this range and its methods only consider series
+	// data within [mint, maxt].
 	Querier(mint, maxt int64) (Querier, error)
 }
 
@@ -150,6 +164,16 @@ func (q *MockQuerier) Select(_ context.Context, sortSeries bool, hints *SelectHi
 type ChunkQueryable interface {
 	// ChunkQuerier returns a new ChunkQuerier on the storage.
 	ChunkQuerier(mint, maxt int64) (ChunkQuerier, error)
+}
+
+// CostSamplingQueryable optionally provides incremental density and point-size sampling.
+// The source must retain its selected backends across reloads and must not eagerly
+// encode a whole series or window. Unsupported windows return ErrCostSamplingUnsupported
+// after closing any opened readers; other failures remain errors.
+// False means unsupported; nil with true means a definitively empty backend.
+// Callers own each returned querier, but not the source itself.
+type CostSamplingQueryable interface {
+	CostSamplingQueryable() (SampleAndChunkQueryable, bool)
 }
 
 // ChunkQuerier provides querying access over time series data of a fixed time range.
@@ -242,11 +266,157 @@ type SelectHints struct {
 	ProjectionInclude bool
 }
 
+// Filter determines whether a value should be included in results.
+// Returns (accepted, score) where score is used for relevance ranking.
+// Score should be in range [0.0, 1.0] where 1.0 is perfect match.
+type Filter interface {
+	Accept(value string) (accepted bool, score float64)
+}
+
+// Ordering is a closed set of result orderings that searchers may natively
+// produce and that the merge layer can exploit for streaming k-way merges.
+// New orderings must be added explicitly here so that wire protocols,
+// downstream implementations, and merge strategies stay in sync.
+type Ordering uint8
+
+const (
+	// OrderByValueAsc orders results ascending by Value. This matches the
+	// natural index order and is the zero value of Ordering.
+	OrderByValueAsc Ordering = iota
+	// OrderByValueDesc orders results descending by Value.
+	OrderByValueDesc
+	// OrderByScoreDesc orders results descending by Score, breaking ties
+	// ascending by Value for determinism.
+	OrderByScoreDesc
+)
+
+// SearchResultSet is an iterator over search results.
+// Callers must call Close when done, regardless of whether all results were consumed.
+type SearchResultSet interface {
+	// Next advances the iterator. Returns false when exhausted or on error.
+	Next() bool
+	// At returns the current search result. Must only be called after a successful Next.
+	At() SearchResult
+	// Warnings returns warnings accumulated so far.
+	Warnings() annotations.Annotations
+	// Err returns any error that caused iteration to stop.
+	Err() error
+	// Close releases resources associated with this result set.
+	Close() error
+}
+
+type emptySearchResultSet struct{}
+
+func (emptySearchResultSet) Next() bool                        { return false }
+func (emptySearchResultSet) At() SearchResult                  { return SearchResult{} }
+func (emptySearchResultSet) Warnings() annotations.Annotations { return nil }
+func (emptySearchResultSet) Err() error                        { return nil }
+func (emptySearchResultSet) Close() error                      { return nil }
+
+// EmptySearchResultSet returns a SearchResultSet that contains no results.
+func EmptySearchResultSet() SearchResultSet { return emptySearchResultSet{} }
+
+type errSearchResultSet struct {
+	err      error
+	warnings annotations.Annotations
+}
+
+func (errSearchResultSet) Next() bool                          { return false }
+func (errSearchResultSet) At() SearchResult                    { return SearchResult{} }
+func (s errSearchResultSet) Warnings() annotations.Annotations { return s.warnings }
+func (s errSearchResultSet) Err() error                        { return s.err }
+func (errSearchResultSet) Close() error                        { return nil }
+
+// ErrSearchResultSet returns a SearchResultSet that immediately returns the given error.
+// Any supplied annotations.Annotations are merged and exposed via Warnings, allowing
+// callers to surface warnings accumulated before the error occurred.
+func ErrSearchResultSet(err error, warnings ...annotations.Annotations) SearchResultSet {
+	var warns annotations.Annotations
+	for _, w := range warnings {
+		warns.Merge(w)
+	}
+	return errSearchResultSet{err: err, warnings: warns}
+}
+
 // LabelHints specifies hints passed for label reads.
 // This is used only as an option for implementation to use.
+// Results are returned in natural (alphabetical) order.
 type LabelHints struct {
 	// Maximum number of results returned. Use a value of 0 to disable.
 	Limit int
+
+	// LimitSmallest requires Limit and will select the lexically smallest N
+	// values of the full set.
+	LimitSmallest bool
+}
+
+// AllowsEarlyStop reports whether a read may stop as soon as it holds Limit
+// values. It will return false when no Limit is set or LimitSmallest is true.
+func (h *LabelHints) AllowsEarlyStop() bool {
+	return h != nil && h.Limit > 0 && !h.LimitSmallest
+}
+
+// ApplyLimit reduces values to at most Limit entries. It keeps the lexically
+// smallest values when LimitSmallest is set, and otherwise the leading ones. A
+// nil receiver, and a Limit of zero or less, both leave values unchanged.
+//
+// The limited result set is returned, along with a bool which indicates if the result
+// has re-used the same input slice or if a newly allocated slice has been created.
+//
+// Do not mutate the returned slice if the returned allocated=false.
+func (h *LabelHints) ApplyLimit(values []string) (limited []string, allocated bool) {
+	if h == nil || h.Limit <= 0 || len(values) <= h.Limit {
+		return values, false
+	}
+	if h.LimitSmallest {
+		return smallestNValues(values, h.Limit), true
+	}
+	return values[:h.Limit], false
+}
+
+// SearchHints configures search operations with filtering and scoring.
+// Unlike LabelHints, SearchHints is specifically designed for search APIs
+// that need relevance scoring and ranking.
+type SearchHints struct {
+	// Filter determines which values to include and their relevance scores.
+	// A nil Filter accepts all values and each result has a score of 1.0.
+	Filter Filter
+
+	// Limit is the maximum number of results to return.
+	// Use 0 to disable limiting.
+	Limit int
+
+	// OrderBy selects the ordering of results. The zero value is
+	// OrderByValueAsc, which matches the natural index order.
+	OrderBy Ordering
+}
+
+// SearchResult represents a single search result with its relevance score.
+type SearchResult struct {
+	// Value is the label name or label value.
+	Value string
+
+	// Score represents relevance, with 1.0 being a perfect match.
+	// Score range is [0.0, 1.0].
+	Score float64
+}
+
+// Searcher provides search capabilities with relevance scoring.
+// This interface is designed for autocomplete and search UIs that need
+// to rank results by relevance rather than just filter them.
+//
+// For a given Value and SearchHints.Filter, Score must be deterministic
+// and identical across Searcher implementations.
+type Searcher interface {
+	// SearchLabelNames returns an iterator over label names matching the search criteria.
+	// Results include relevance scores based on the Filter.
+	// The caller must call Close on the returned SearchResultSet when done.
+	SearchLabelNames(ctx context.Context, hints *SearchHints, matchers ...*labels.Matcher) SearchResultSet
+
+	// SearchLabelValues returns an iterator over label values for the given label name.
+	// Results include relevance scores based on the Filter.
+	// The caller must call Close on the returned SearchResultSet when done.
+	SearchLabelValues(ctx context.Context, name string, hints *SearchHints, matchers ...*labels.Matcher) SearchResultSet
 }
 
 // QueryableFunc is an adapter to allow the use of ordinary functions as
@@ -261,7 +431,8 @@ func (f QueryableFunc) Querier(mint, maxt int64) (Querier, error) {
 
 // AppendOptions provides options for implementations of the Appender interface.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// AppendOptions will be removed soon (ETA: Q2 2026).
 type AppendOptions struct {
 	// DiscardOutOfOrder tells implementation that this append should not be out
 	// of order. An OOO append MUST be rejected with storage.ErrOutOfOrderSample
@@ -278,7 +449,8 @@ type AppendOptions struct {
 // I.e. timestamp order within batch is not validated, samples are not reordered per timestamp or by float/histogram
 // type.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// Appender will be removed soon (ETA: Q2 2026).
 type Appender interface {
 	AppenderTransaction
 
@@ -315,7 +487,8 @@ type GetRef interface {
 // ExemplarAppender provides an interface for adding samples to exemplar storage, which
 // within Prometheus is in-memory only.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// ExemplarAppender will be removed soon (ETA: Q2 2026).
 type ExemplarAppender interface {
 	// AppendExemplar adds an exemplar for the given series labels.
 	// An optional reference number can be provided to accelerate calls.
@@ -333,7 +506,8 @@ type ExemplarAppender interface {
 
 // HistogramAppender provides an interface for appending histograms to the storage.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// HistogramAppender will be removed soon (ETA: Q2 2026).
 type HistogramAppender interface {
 	// AppendHistogram adds a histogram for the given series labels. An
 	// optional reference number can be provided to accelerate calls. A
@@ -365,7 +539,8 @@ type HistogramAppender interface {
 
 // MetadataUpdater provides an interface for associating metadata to stored series.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// MetadataUpdater will be removed soon (ETA: Q2 2026).
 type MetadataUpdater interface {
 	// UpdateMetadata updates a metadata entry for the given series and labels.
 	// A series reference number is returned which can be used to modify the
@@ -379,7 +554,8 @@ type MetadataUpdater interface {
 
 // StartTimestampAppender provides an interface for appending ST to storage.
 //
-// WARNING: Work AppendableV2 is in progress. Appendable will be removed soon (ETA: Q2 2026).
+// WARNING(bwplotka): Switch to AppendableV2 is in progress (https://github.com/prometheus/prometheus/issues/17632).
+// StartTimestampAppender will be removed soon (ETA: Q2 2026).
 type StartTimestampAppender interface {
 	// AppendSTZeroSample adds synthetic zero sample for the given st timestamp,
 	// which will be associated with given series, labels and the incoming
@@ -473,9 +649,10 @@ type Series interface {
 }
 
 type mockSeries struct {
-	timestamps []int64
-	values     []float64
-	labelSet   []string
+	startTimestamps []int64
+	timestamps      []int64
+	values          []float64
+	labelSet        []string
 }
 
 func (s mockSeries) Labels() labels.Labels {
@@ -483,15 +660,19 @@ func (s mockSeries) Labels() labels.Labels {
 }
 
 func (s mockSeries) Iterator(chunkenc.Iterator) chunkenc.Iterator {
-	return chunkenc.MockSeriesIterator(s.timestamps, s.values)
+	return chunkenc.MockSeriesIterator(s.startTimestamps, s.timestamps, s.values)
 }
 
-// MockSeries returns a series with custom timestamps, values and labelSet.
-func MockSeries(timestamps []int64, values []float64, labelSet []string) Series {
+// MockSeries returns a series with custom start timestamp, timestamps, values,
+// and labelSet.
+// Start timestamps is optional, pass nil or empty slice to indicate no start
+// timestamps.
+func MockSeries(startTimestamps, timestamps []int64, values []float64, labelSet []string) Series {
 	return mockSeries{
-		timestamps: timestamps,
-		values:     values,
-		labelSet:   labelSet,
+		startTimestamps: startTimestamps,
+		timestamps:      timestamps,
+		values:          values,
+		labelSet:        labelSet,
 	}
 }
 

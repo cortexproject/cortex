@@ -1,5 +1,100 @@
 # Changes
 
+## [2.26.2](https://github.com/googleapis/gax-go/compare/v2.26.1...v2.26.2) (2026-09-26)
+
+
+### Bug Fixes
+
+* **o11y:** name client request spans as {Service}.{Method} ([#560](https://github.com/googleapis/gax-go/issues/560)) ([1a022c8](https://github.com/googleapis/gax-go/commit/1a022c86141e8e02574dfdfbc979cc95111411e0))
+
+## [2.26.1](https://github.com/googleapis/gax-go/compare/v2.26.0...v2.26.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* correct 1.27 protojson handling ([#558](https://github.com/googleapis/gax-go/issues/558)) ([c1e035d](https://github.com/googleapis/gax-go/commit/c1e035db278d4e60f22da30e5b4772788dd76b20))
+* **o11y:** remove deprioritized gcp.resource.destination.id span attribute ([#559](https://github.com/googleapis/gax-go/issues/559)) ([a6f48a2](https://github.com/googleapis/gax-go/commit/a6f48a2061f4cd09cd54054032a2200d519d0283))
+
+## [2.26.0](https://github.com/googleapis/gax-go/compare/v2.25.0...v2.26.0) (2026-09-22)
+
+
+### Features
+
+* **o11y:** add ClientLogging configuration ([95a5614](https://github.com/googleapis/gax-go/commit/95a5614930f1be8b152b9df8d05fa27e4b1ad9ac))
+* **o11y:** add recordActionableLog helper for L3 error logs ([3d6918a](https://github.com/googleapis/gax-go/commit/3d6918a7e86ee2e55b25f0c09e69f73bf91b6838))
+* **o11y:** add WithClientLogging CallOption ([0393829](https://github.com/googleapis/gax-go/commit/03938291cc30c7d01ad17a885f48e7edfe2623a5))
+* **o11y:** implement actionable error logging in Invoke ([a6867ed](https://github.com/googleapis/gax-go/commit/a6867ed2ea6da971192ba3a89aa9fcb3fa90cdc0))
+
+## [2.25.0](https://github.com/googleapis/gax-go/compare/v2.24.1...v2.25.0) (2026-09-21)
+
+
+### Features
+
+* update go min version to 1.26 ([#548](https://github.com/googleapis/gax-go/issues/548)) ([b943a7d](https://github.com/googleapis/gax-go/commit/b943a7d2b80b8c2acd519311084c92ec0a972b8b))
+
+## [2.24.1](https://github.com/googleapis/gax-go/compare/v2.24.0...v2.24.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* split implementation of ProtoJSONStream for 1.27 and later ([#532](https://github.com/googleapis/gax-go/issues/532)) ([d0623a1](https://github.com/googleapis/gax-go/commit/d0623a1d3c843a64e85ad8b4d4ea37695a668868))
+
+## [2.24.0](https://github.com/googleapis/gax-go/compare/v2.23.0...v2.24.0) (2026-08-20)
+
+
+### Features
+
+* **iterator:** remove build constraint ([#525](https://github.com/googleapis/gax-go/issues/525)) ([b3f4053](https://github.com/googleapis/gax-go/commit/b3f40539135c909c38030fda9b1a25503d576051))
+
+## [2.23.0](https://github.com/googleapis/gax-go/compare/v2.22.0...v2.23.0) (2026-07-07)
+
+
+### Features
+
+* **v2:** add http.response.status_code to TransportTelemetryData ([#513](https://github.com/googleapis/gax-go/issues/513)) ([7d5554f](https://github.com/googleapis/gax-go/commit/7d5554f433f669fba3db5c5b64ed67a30813c568))
+
+
+### Bug Fixes
+
+* correct min go version ([#517](https://github.com/googleapis/gax-go/issues/517)) ([fc62896](https://github.com/googleapis/gax-go/commit/fc62896b04d04db85c48585b9311ec4bbee1d9bc))
+
+## [2.22.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.22.0) (2026-04-14)
+
+## [2.21.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.21.0) (2026-04-01)
+
+### Features
+
+* hook transport telemetry into gax.Invoke and record (#496) ([d531001](https://github.com/googleapis/google-cloud-go/commit/d5310019d6c635956b61558627b13c2c2419044e))
+* update IsFeatureEnabled to not require EXPERIMENTAL (#497) ([a2a329e](https://github.com/googleapis/google-cloud-go/commit/a2a329e31d8ef8348a1ef7bea1c7072f8abcc145))
+
+## [2.20.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.20.0) (2026-03-25)
+
+### Features
+
+* add TelemetryErrorInfo and ExtractTelemetryErrorInfo (#487) ([defdded](https://github.com/googleapis/google-cloud-go/commit/defdded3eac5d97e32243ef79216f1865f3250fb))
+* hook metric recording into gax.Invoke (#494) ([1f3e9ae](https://github.com/googleapis/google-cloud-go/commit/1f3e9aefd21a1a18a6e4da1e03ea84a0b46f2d49))
+
+## [2.19.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.19.0) (2026-03-17)
+
+### Features
+
+* add ClientMetrics initialization core (#473) ([f53618c](https://github.com/googleapis/google-cloud-go/commit/f53618c2a9f19d5e5945395001fdc9b317e71faf))
+* add TransportTelemetryData for dynamic transport attributes (#481) ([8a7caf0](https://github.com/googleapis/google-cloud-go/commit/8a7caf0014c9ee9bcf448f16a2e1ae77407a78b8))
+* add WithClientMetrics CallOption (#479) ([76f0284](https://github.com/googleapis/google-cloud-go/commit/76f0284ef42fb92484531483975b7ccff9c54016))
+* pass logger to downstream via context (#474) ([434fa67](https://github.com/googleapis/google-cloud-go/commit/434fa6768b9ee50ed1050a2b5aa11dbe7dbd33a6))
+* update WithLogger to WithLoggerContext. (#478) ([1cb70ba](https://github.com/googleapis/google-cloud-go/commit/1cb70baf5fda8cbff587206f94b1b08e078bd175))
+
+### Bug Fixes
+
+* lazy initialization and getters for ClientMetrics (#485) ([fb6c5f4](https://github.com/googleapis/google-cloud-go/commit/fb6c5f4d56fc3177a2d0d2b8f9e8df6e4be95505))
+
+## [2.18.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.18.0) (2026-03-09)
+
+### Features
+
+* add callctx telemetry helpers (#472) ([fa319ff](https://github.com/googleapis/google-cloud-go/commit/fa319ffc309366ab21e41f5d7480f450eedd2be9))
+* move gax-go to use 1.25 as the lower bound of support (#469) ([01594ca](https://github.com/googleapis/google-cloud-go/commit/01594ca54717eebe7229a5168ef41be61191a720))
+
 ## [2.17.0](https://github.com/googleapis/google-cloud-go/releases/tag/v2.17.0) (2026-02-03)
 
 ### Features

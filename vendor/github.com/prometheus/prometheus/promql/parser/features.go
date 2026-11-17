@@ -18,14 +18,13 @@ import "github.com/prometheus/prometheus/util/features"
 // RegisterFeatures registers all PromQL features with the feature registry.
 // This includes operators (arithmetic and comparison/set), aggregators (standard
 // and experimental), and functions.
-func RegisterFeatures(r features.Collector) {
+func (pql *promQLParser) RegisterFeatures(r features.Collector) {
 	// Register core PromQL language keywords.
 	for keyword, itemType := range key {
 		if itemType.IsKeyword() {
-			// Handle experimental keywords separately.
 			switch keyword {
-			case "anchored", "smoothed":
-				r.Set(features.PromQL, keyword, EnableExtendedRangeSelectors)
+			case "fill", "fill_left", "fill_right":
+				r.Set(features.PromQL, keyword, pql.options.EnableBinopFillModifiers)
 			default:
 				r.Enable(features.PromQL, keyword)
 			}
@@ -42,16 +41,19 @@ func RegisterFeatures(r features.Collector) {
 	// Register aggregators.
 	for a := ItemType(aggregatorsStart + 1); a < aggregatorsEnd; a++ {
 		if a.IsAggregator() {
-			experimental := a.IsExperimentalAggregator() && !EnableExperimentalFunctions
+			experimental := a.IsExperimentalAggregator() && !pql.options.EnableExperimentalFunctions
 			r.Set(features.PromQLOperators, a.String(), !experimental)
 		}
 	}
 
 	// Register functions.
-	for f, fc := range Functions {
-		r.Set(features.PromQLFunctions, f, !fc.Experimental || EnableExperimentalFunctions)
+	for f, fc := range pql.options.functions() {
+		r.Set(features.PromQLFunctions, f, !fc.Experimental || pql.options.EnableExperimentalFunctions)
 	}
 
+	// Register duration expressions.
+	r.Enable(features.PromQL, "duration_expr")
+
 	// Register experimental parser features.
-	r.Set(features.PromQL, "duration_expr", ExperimentalDurationExpr)
+	r.Set(features.PromQL, "unquoted_utf8_names", pql.options.EnableUnquotedUTF8Names)
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -27,6 +27,12 @@ const (
 	InstancePrincipalDelegationToken AuthenticationType = "instance_principle_delegation_token"
 	// ResourcePrincipalDelegationToken is used for resource principal delegation token auth type
 	ResourcePrincipalDelegationToken AuthenticationType = "resource_principle_delegation_token"
+	// OAuth2DelegationToken is used for oauth delegation token auth type
+	OAuthDelegationToken AuthenticationType = "oauth_delegation_token"
+	// WorkloadIdentityFederation is used for token exchange grant auth type
+	WorkloadIdentityFederation AuthenticationType = "workload_identity_federation"
+	// PKCS11Authentication is used for PKCS#11 authentication
+	PKCS11Authentication AuthenticationType = "pkcs11_authentication"
 	// UnknownAuthenticationType is used for none meaningful auth type
 	UnknownAuthenticationType AuthenticationType = "unknown_auth_type"
 )
@@ -90,11 +96,18 @@ func IsConfigurationProviderValid(conf ConfigurationProvider) (ok bool, err erro
 	}
 
 	_, err = conf.PrivateRSAKey()
-	ok = err == nil
-	if err != nil {
-		return
+	if err == nil {
+		return true, nil
 	}
-	return true, nil
+
+	if signerConf, signerOK := conf.(signerProvider); signerOK {
+		_, err = signerConf.PrivateKeySigner()
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, err
 }
 
 // rawConfigurationProvider allows a user to simply construct a configuration provider from raw values.
@@ -606,7 +619,7 @@ func (p fileConfigurationProvider) AuthType() (AuthConfig, error) {
 	if val == "instance_principal" {
 		if filePath, err := presentOrError(info.DelegationTokenFilePath, hasDelegationTokenFile, info.PresentConfiguration, "delegationTokenFilePath"); err == nil {
 			if delegationToken, err := getTokenContent(filePath); err == nil && delegationToken != "" {
-				Debugf("delegation token content is %s, and error is %s ", delegationToken, err)
+				Debugf("delegation token loaded from config file")
 				return AuthConfig{InstancePrincipalDelegationToken, true, &delegationToken}, nil
 			}
 			return AuthConfig{UnknownAuthenticationType, true, nil}, err

@@ -98,6 +98,8 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 				return lhs, nil, lhs <= rhs, 0, nil
 			case parser.ATAN2:
 				return math.Atan2(lhs, rhs), nil, true, 0, nil
+			case parser.TRIM_LOWER, parser.TRIM_UPPER:
+				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
 			}
 		}
 	case hlhs == nil && hrhs != nil:
@@ -105,7 +107,7 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 			switch op {
 			case parser.MUL:
 				return 0, hrhs.Copy().Mul(lhs).Compact(0), true, 0, nil
-			case parser.ADD, parser.SUB, parser.DIV, parser.POW, parser.MOD, parser.EQLC, parser.NEQ, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
+			case parser.ADD, parser.SUB, parser.DIV, parser.POW, parser.MOD, parser.EQLC, parser.NEQ, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2, parser.TRIM_LOWER, parser.TRIM_UPPER:
 				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
 			}
 		}
@@ -116,6 +118,10 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 				return 0, hlhs.Copy().Mul(rhs).Compact(0), true, 0, nil
 			case parser.DIV:
 				return 0, hlhs.Copy().Div(rhs).Compact(0), true, 0, nil
+			case parser.TRIM_UPPER:
+				return 0, hlhs.Copy().TrimBuckets(rhs, true), true, 0, nil
+			case parser.TRIM_LOWER:
+				return 0, hlhs.Copy().TrimBuckets(rhs, false), true, 0, nil
 			case parser.ADD, parser.SUB, parser.POW, parser.MOD, parser.EQLC, parser.NEQ, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
 				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
 			}
@@ -141,6 +147,7 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 				if err != nil {
 					return 0, nil, false, 0, err
 				}
+				res.CounterResetHint = histogram.GaugeType
 				var warn warnings.Warnings
 				if counterResetCollision {
 					warn |= warnings.WarnCounterResetCollision
@@ -155,7 +162,7 @@ func binOp(op parser.ItemType, lhs, rhs float64, hlhs, hrhs *histogram.FloatHist
 			case parser.NEQ:
 				// This operation expects that both histograms are compacted.
 				return 0, hlhs, !hlhs.Equals(hrhs), 0, nil
-			case parser.MUL, parser.DIV, parser.POW, parser.MOD, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2:
+			case parser.MUL, parser.DIV, parser.POW, parser.MOD, parser.GTR, parser.LSS, parser.GTE, parser.LTE, parser.ATAN2, parser.TRIM_LOWER, parser.TRIM_UPPER:
 				return 0, nil, false, warnings.WarnIncompatibleTypesInBinOp, nil
 			}
 		}

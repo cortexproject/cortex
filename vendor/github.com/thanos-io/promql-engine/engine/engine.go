@@ -54,8 +54,30 @@ func IsUnimplemented(err error) bool {
 	return errors.Is(err, parse.ErrNotSupportedExpr) || errors.Is(err, parse.ErrNotImplemented)
 }
 
+// Opts configures the query engine. Only options supported by this engine are exposed.
 type Opts struct {
-	promql.EngineOpts
+	Logger *slog.Logger
+	Reg    prometheus.Registerer
+
+	// MaxSamples limits the number of samples loaded by a query.
+	MaxSamples int
+
+	// Timeout limits the duration of query execution.
+	Timeout time.Duration
+
+	// ActiveQueryTracker tracks queries and limits concurrent execution.
+	ActiveQueryTracker promql.QueryTracker
+
+	// LookbackDelta is the maximum age of a sample selected by an instant vector selector.
+	// Defaults to 5 minutes if not specified.
+	LookbackDelta time.Duration
+
+	// NoStepSubqueryIntervalFn returns the evaluation interval in milliseconds for
+	// a subquery without an explicit step. Its argument is the range in milliseconds.
+	NoStepSubqueryIntervalFn func(rangeMillis int64) int64
+
+	// EnablePerStepStats enables per-step sample statistics.
+	EnablePerStepStats bool
 
 	// LogicalOptimizers are optimizers that are run if the value is not nil. If it is nil then the default optimizers are run. Default optimizer list is available in the logicalplan package.
 	LogicalOptimizers []logicalplan.Optimizer
@@ -69,6 +91,15 @@ type Opts struct {
 
 	// SelectorBatchSize specifies the maximum number of samples to be returned by selectors in a single batch.
 	SelectorBatchSize int64
+
+	// EnableExperimentalFunctions enables parsing of experimental PromQL functions
+	// and aggregations. Defaults to false.
+	EnableExperimentalFunctions bool
+
+	// EnableUnquotedUTF8Names allows Unicode letters and non-leading dots in unquoted
+	// metric and label names, like Prometheus' promql-unquoted-utf8-names feature.
+	// Defaults to false.
+	EnableUnquotedUTF8Names bool
 
 	// EnableXFunctions enables custom xRate, xIncrease and xDelta functions.
 	// This will default to false.
@@ -103,19 +134,29 @@ type QueryOpts struct {
 func (opts QueryOpts) LookbackDelta() time.Duration { return opts.LookbackDeltaParam }
 func (opts QueryOpts) EnablePerStepStats() bool     { return opts.EnablePerStepStatsParam }
 
-func fromPromQLOpts(opts promql.QueryOpts) *QueryOpts {
+// UseStartTimestamps disables unsupported start-timestamp evaluation.
+func (QueryOpts) UseStartTimestamps() *bool { return new(false) }
+
+func fromPromQLOpts(opts promql.QueryOpts) (*QueryOpts, error) {
 	if opts == nil {
-		return &QueryOpts{}
+		return &QueryOpts{}, nil
+	}
+	if enabled := opts.UseStartTimestamps(); enabled != nil && *enabled {
+		return nil, errors.Wrap(parse.ErrNotImplemented, "start-timestamp evaluation")
 	}
 	return &QueryOpts{
 		LookbackDeltaParam:      opts.LookbackDelta(),
 		EnablePerStepStatsParam: opts.EnablePerStepStats(),
-	}
+	}, nil
 }
 
 // New creates a new query engine with the given options. The query engine will
 // use the storage passed in NewInstantQuery and NewRangeQuery for retrieving
 // data when executing queries.
+//
+// Storage must support concurrent Select calls and SeriesSet iteration on a
+// shared querier, as well as concurrent decoding of distinct sample iterators
+// returned by that querier. The engine does not serialize storage access.
 func New(opts Opts) *Engine {
 	return NewWithScanners(opts, nil)
 }
@@ -142,10 +183,13 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 		)
 	}
 
-	functions := make(map[string]*parser.Function, len(parser.Functions))
-	maps.Copy(functions, parser.Functions)
+	parserOpts := parser.Options{
+		Functions:                   maps.Clone(parser.Functions),
+		EnableExperimentalFunctions: opts.EnableExperimentalFunctions,
+		EnableUnquotedUTF8Names:     opts.EnableUnquotedUTF8Names,
+	}
 	if opts.EnableXFunctions {
-		maps.Copy(functions, parse.XFunctions)
+		maps.Copy(parserOpts.Functions, parse.XFunctions)
 	}
 
 	metrics := &engineMetrics{
@@ -179,7 +223,7 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 	}
 
 	return &Engine{
-		functions:          functions,
+		parser:             parser.NewParser(parserOpts),
 		scanners:           scanners,
 		activeQueryTracker: queryTracker,
 
@@ -203,14 +247,12 @@ func NewWithScanners(opts Opts, scanners engstorage.Scanners) *Engine {
 }
 
 var (
-	// Duplicate label checking logic uses a bitmap with 64 bits currently.
-	// As long as we use this method we need to have batches that are smaller
-	// then 64 steps.
-	ErrStepsBatchTooLarge = errors.New("'StepsBatch' must be less than 64")
+	// Duplicate label checking uses a bitmap supporting at most 64 steps.
+	ErrStepsBatchTooLarge = errors.New("'StepsBatch' must not exceed 64")
 )
 
 type Engine struct {
-	functions          map[string]*parser.Function
+	parser             parser.Parser
 	scanners           engstorage.Scanners
 	activeQueryTracker promql.QueryTracker
 
@@ -238,7 +280,7 @@ func (e *Engine) MakeInstantQuery(ctx context.Context, q storage.Queryable, opts
 	}
 	defer e.activeQueryTracker.Delete(idx)
 
-	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
+	expr, err := e.parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +378,7 @@ func (e *Engine) MakeRangeQuery(ctx context.Context, q storage.Queryable, opts *
 	}
 	defer e.activeQueryTracker.Delete(idx)
 
-	expr, err := parser.NewParser(qs, parser.WithFunctions(e.functions)).ParseExpr()
+	expr, err := e.parser.ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
@@ -426,12 +468,20 @@ func (e *Engine) MakeRangeQueryFromPlan(ctx context.Context, q storage.Queryable
 
 // NewInstantQuery implements the promql.Engine interface.
 func (e *Engine) NewInstantQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, ts time.Time) (promql.Query, error) {
-	return e.MakeInstantQuery(ctx, q, fromPromQLOpts(opts), qs, ts)
+	qOpts, err := fromPromQLOpts(opts)
+	if err != nil {
+		return nil, err
+	}
+	return e.MakeInstantQuery(ctx, q, qOpts, qs, ts)
 }
 
 // NewRangeQuery implements the promql.Engine interface.
 func (e *Engine) NewRangeQuery(ctx context.Context, q storage.Queryable, opts promql.QueryOpts, qs string, start, end time.Time, step time.Duration) (promql.Query, error) {
-	return e.MakeRangeQuery(ctx, q, fromPromQLOpts(opts), qs, start, end, step)
+	qOpts, err := fromPromQLOpts(opts)
+	if err != nil {
+		return nil, err
+	}
+	return e.MakeRangeQuery(ctx, q, qOpts, qs, start, end, step)
 }
 
 func (e *Engine) makeQueryOpts(start time.Time, end time.Time, step time.Duration, opts *QueryOpts) *query.Options {
@@ -618,11 +668,11 @@ loop:
 			matrix = append(matrix, s)
 		}
 		sort.Sort(matrix)
-		ret.Value = matrix
-		ret.Warnings = warnings.FromContext(ctx)
 		if matrix.ContainsSameLabelset() {
 			return newErrResult(ret, extlabels.ErrDuplicateLabelSet)
 		}
+		ret.Value = matrix
+		ret.Warnings = warnings.FromContext(ctx)
 		return ret
 	}
 

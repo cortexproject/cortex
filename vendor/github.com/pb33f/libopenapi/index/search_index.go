@@ -1,0 +1,441 @@
+// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// SPDX-License-Identifier: MIT
+
+package index
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
+)
+
+type ContextKey string
+
+const (
+	CurrentPathKey   ContextKey = "currentPath"
+	FoundIndexKey    ContextKey = "foundIndex"
+	RootIndexKey     ContextKey = "currentIndex"
+	IndexingFilesKey ContextKey = "indexingFiles" // Tracks files being indexed in current call chain
+)
+
+// GetIndexingFiles returns the set of files currently being indexed in the call chain.
+// Returns nil if not set.
+func GetIndexingFiles(ctx context.Context) map[string]bool {
+	if v := ctx.Value(IndexingFilesKey); v != nil {
+		return v.(map[string]bool)
+	}
+	return nil
+}
+
+// AddIndexingFile adds a file to the indexing set in the context.
+// Returns a new context with the updated set.
+func AddIndexingFile(ctx context.Context, filePath string) context.Context {
+	existing := GetIndexingFiles(ctx)
+	newSet := make(map[string]bool)
+	for k, v := range existing {
+		newSet[k] = v
+	}
+	newSet[filePath] = true
+	return context.WithValue(ctx, IndexingFilesKey, newSet)
+}
+
+// IsFileBeingIndexed checks if a file is currently being indexed in the call chain.
+// For HTTP URLs, it also checks if the PATH portion matches any indexed file,
+// since the same file might be referenced with different hostnames (which get normalized
+// to a common server).
+func IsFileBeingIndexed(ctx context.Context, filePath string) bool {
+	files := GetIndexingFiles(ctx)
+	if files == nil {
+		return false
+	}
+	// Direct match
+	if files[filePath] {
+		return true
+	}
+	// For HTTP URLs, also check if the path matches any indexed file's path
+	if strings.HasPrefix(filePath, "http") {
+		if u, err := url.Parse(filePath); err == nil {
+			// Check if the path portion matches any indexed file
+			for indexedFile := range files {
+				if strings.HasPrefix(indexedFile, "http") {
+					if indexedU, err2 := url.Parse(indexedFile); err2 == nil {
+						// Compare paths (the filename portion)
+						if u.Path == indexedU.Path || filepath.Base(u.Path) == filepath.Base(indexedU.Path) {
+							return true
+						}
+					}
+				} else {
+					// Compare with non-HTTP paths (just the filename)
+					if filepath.Base(u.Path) == filepath.Base(indexedFile) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+// SearchIndexForReferenceByReference searches the index for a matching reference using a background context.
+func (index *SpecIndex) SearchIndexForReferenceByReference(fullRef *Reference) (*Reference, *SpecIndex) {
+	r, idx, _ := index.SearchIndexForReferenceByReferenceWithContext(context.Background(), fullRef)
+	return r, idx
+}
+
+// SearchIndexForReference searches the index for a reference, first looking through the mapped references
+// and then externalSpecIndex for a match. If no match is found, it will recursively search the child indexes
+// extracted when parsing the OpenAPI Spec.
+func (index *SpecIndex) SearchIndexForReference(ref string) (*Reference, *SpecIndex) {
+	return index.SearchIndexForReferenceByReference(&Reference{FullDefinition: ref})
+}
+
+// SearchIndexForReferenceWithContext searches the index for a reference string with context for schema ID tracking.
+func (index *SpecIndex) SearchIndexForReferenceWithContext(ctx context.Context, ref string) (*Reference, *SpecIndex, context.Context) {
+	return index.SearchIndexForReferenceByReferenceWithContext(ctx, &Reference{FullDefinition: ref})
+}
+
+func (index *SpecIndex) SearchIndexForReferenceByReferenceWithContext(ctx context.Context, searchRef *Reference) (*Reference, *SpecIndex, context.Context) {
+	if index.cache != nil {
+		if v, ok := index.cache.Load(searchRef.FullDefinition); ok {
+			idx := index.extractIndex(v.(*Reference))
+			return v.(*Reference), idx, context.WithValue(ctx, CurrentPathKey, v.(*Reference).RemoteLocation)
+		}
+	}
+
+	// --- Step 1: JSON Schema $id resolution ---
+	// Resolve the ref against JSON Schema $id values first. Specs using JSON Schema 2020-12
+	// register schemas by their $id URI (e.g. "$id: https://example.com/a.json"), so a bare
+	// ref like "a.json" can match by normalizing it against the current $id base URI scope.
+	schemaIdBase := searchRef.SchemaIdBase
+	if schemaIdBase == "" {
+		if scope := GetSchemaIdScope(ctx); scope != nil && scope.BaseUri != "" {
+			schemaIdBase = scope.BaseUri
+		}
+	}
+
+	rawRef := searchRef.FullDefinition
+	if searchRef.RawRef != "" && schemaIdBase != "" {
+		rawRef = searchRef.RawRef
+	}
+	normalizedRef := resolveRefWithSchemaBase(rawRef, schemaIdBase)
+
+	if index.cache != nil && normalizedRef != searchRef.FullDefinition {
+		if v, ok := index.cache.Load(normalizedRef); ok {
+			idx := index.extractIndex(v.(*Reference))
+			return v.(*Reference), idx, context.WithValue(ctx, CurrentPathKey, v.(*Reference).RemoteLocation)
+		}
+	}
+
+	// Try the $id registry for an exact match, then fall back to path-only matching.
+	if resolved := index.ResolveRefViaSchemaId(normalizedRef); resolved != nil {
+		if index.cache != nil {
+			index.cache.Store(searchRef.FullDefinition, resolved)
+			if normalizedRef != searchRef.FullDefinition {
+				index.cache.Store(normalizedRef, resolved)
+			}
+		}
+		return resolved, resolved.Index, context.WithValue(ctx, CurrentPathKey, resolved.RemoteLocation)
+	}
+	pathRef := ""
+	if strings.HasPrefix(normalizedRef, "/") {
+		pathRef = normalizedRef
+	} else if strings.HasPrefix(rawRef, "/") {
+		pathRef = rawRef
+	}
+	if pathRef != "" {
+		if resolved := index.resolveRefViaSchemaIdPath(pathRef); resolved != nil {
+			if index.cache != nil {
+				index.cache.Store(searchRef.FullDefinition, resolved)
+				if normalizedRef != searchRef.FullDefinition {
+					index.cache.Store(normalizedRef, resolved)
+				}
+			}
+			return resolved, resolved.Index, context.WithValue(ctx, CurrentPathKey, resolved.RemoteLocation)
+		}
+	}
+
+	// --- Step 2: Parse the ref into URI components and build lookup paths ---
+	// Split the ref on "#/" to separate the file path (uri[0]) from the JSON Pointer
+	// fragment (uri[1]). Depending on whether the ref is absolute, relative, or HTTP,
+	// construct `roloLookup` (the file path for rolodex search), `ref` (the primary
+	// lookup key), and `refAlt` (an alternate absolute-path form of the key).
+	ref := normalizedRef
+	refAlt := ref
+	absPath := index.specAbsolutePath
+	if searchRef.RemoteLocation != "" {
+		absPath = searchRef.RemoteLocation
+	}
+	if absPath == "" && index.config != nil {
+		absPath = index.config.BasePath
+	}
+	var roloLookup string
+	uriFile, uriFragment, uriCut := strings.Cut(ref, "#/")
+	// match strings.Split(ref, "#/") len==2 semantics: exactly one separator.
+	singleFragment := uriCut && !strings.Contains(uriFragment, "#/")
+	if singleFragment {
+		if uriFile != "" {
+			if strings.HasPrefix(uriFile, "http") {
+				roloLookup = searchRef.FullDefinition
+			} else {
+				if filepath.IsAbs(uriFile) {
+					roloLookup = uriFile
+				} else {
+					if filepath.Ext(absPath) != "" {
+						absPath = filepath.Dir(absPath)
+					}
+					roloLookup = index.resolveRelativeFilePath(absPath, uriFile)
+				}
+			}
+		} else {
+
+			if filepath.Ext(uriFragment) != "" {
+				roloLookup = absPath
+			} else {
+				roloLookup = ""
+			}
+
+			ref = fmt.Sprintf("#/%s", uriFragment)
+			refAlt = fmt.Sprintf("%s#/%s", absPath, uriFragment)
+
+		}
+	} else {
+		if filepath.IsAbs(uriFile) {
+			roloLookup = uriFile
+		} else {
+			if strings.HasPrefix(uriFile, "http") {
+				roloLookup = ref
+			} else {
+				if filepath.Ext(absPath) != "" {
+					absPath = filepath.Dir(absPath)
+				}
+				roloLookup = index.resolveRelativeFilePath(absPath, uriFile)
+			}
+		}
+		ref = uriFile
+	}
+	if strings.Contains(ref, "%") {
+		// decode the url.
+		ref, _ = url.QueryUnescape(ref)
+		refAlt, _ = url.QueryUnescape(refAlt)
+	}
+
+	// --- Step 3: Local index lookup ---
+	// Search the current index's mapped refs, component schema definitions, and security
+	// schemes using both the primary key (`ref`) and the alternate absolute form (`refAlt`).
+	if r, ok := index.allMappedRefs[ref]; ok {
+		idx := index.extractIndex(r)
+		index.cache.Store(ref, r)
+		return r, idx, context.WithValue(ctx, CurrentPathKey, r.RemoteLocation)
+	}
+
+	if r, ok := index.allMappedRefs[refAlt]; ok {
+		idx := index.extractIndex(r)
+		idx.cache.Store(refAlt, r)
+		return r, idx, context.WithValue(ctx, CurrentPathKey, r.RemoteLocation)
+	}
+
+	if r, ok := index.allComponentSchemaDefinitions.Load(refAlt); ok {
+		rf := r.(*Reference)
+		idx := index.extractIndex(rf)
+		index.cache.Store(refAlt, r)
+		return rf, idx, context.WithValue(ctx, CurrentPathKey, rf.RemoteLocation)
+	}
+
+	// check security schemes
+	if index.allSecuritySchemes != nil {
+		if r, ok := index.allSecuritySchemes.Load(refAlt); ok {
+			rf := r.(*Reference)
+			idx := index.extractIndex(rf)
+			index.cache.Store(refAlt, r)
+			return rf, idx, context.WithValue(ctx, CurrentPathKey, rf.RemoteLocation)
+		}
+	}
+
+	// --- Step 4: Rolodex / external file lookup ---
+	// Open the target file via the rolodex (the multi-file filesystem abstraction), then
+	// search through that file's index for the ref. Handles self-references back to the
+	// current spec, relative path normalization, inline/ref schema scanning, and
+	// component-tree walking inside the remote file.
+	if roloLookup != "" {
+
+		roloLookup, _, _ = strings.Cut(roloLookup, "#")
+
+		b := filepath.Base(roloLookup)
+		sfn := index.GetSpecFileName()
+
+		abp := index.GetSpecAbsolutePath()
+
+		if b == sfn && roloLookup == abp {
+			// if the reference is the same as the spec file name, we should look through the index for the component
+			var r *Reference
+			if singleFragment {
+				r = index.FindComponentInRoot(ctx, fmt.Sprintf("#/%s", uriFragment))
+			}
+			return r, index, ctx
+		}
+		rFile, err := index.rolodex.Open(roloLookup)
+		if err != nil {
+			return nil, index, ctx
+		}
+
+		// extract the index from the rolodex file.
+		if rFile != nil {
+
+			n := rFile.GetFullPath()
+			refParsed := ref
+
+			// do we have a relative reference and an exact match on the suffix?
+			if strings.HasPrefix(ref, "./") {
+				refParsed = strings.ReplaceAll(ref, "./", "")
+			}
+
+			// if the reference starts with ../, then we need to create an absolute path from the current path context.
+			if strings.HasPrefix(ref, "../") {
+				// check if there is a current path in the context and then create an absolute path from it.
+				if currentPath, ok := ctx.Value(CurrentPathKey).(string); ok {
+					refParsed = filepath.Join(filepath.Dir(currentPath), ref)
+				}
+			}
+
+			// Normalize separators for Windows comparisons.
+			normPath := filepath.ToSlash(n)
+			normRef := filepath.ToSlash(refParsed)
+			if strings.HasSuffix(normPath, normRef) {
+				node, _ := rFile.GetContentAsYAMLNode()
+				if node != nil {
+					r := &Reference{
+						FullDefinition: n,
+						Definition:     n,
+						IsRemote:       true,
+						RemoteLocation: n,
+						Index:          rFile.GetIndex(),
+						Node:           node.Content[0],
+						ParentNode:     node,
+					}
+					index.cache.Store(ref, r)
+					return r, rFile.GetIndex(), context.WithValue(ctx, CurrentPathKey, rFile.GetFullPath())
+				}
+			}
+
+			idx := rFile.GetIndex()
+			if resolver := index.GetResolver(); resolver != nil {
+				index.resolverLock.Lock()
+				resolver.indexesVisited++
+				index.resolverLock.Unlock()
+			}
+			if idx != nil {
+
+				// check mapped refs.
+				if r, ok := idx.allMappedRefs[ref]; ok {
+					i := index.extractIndex(r)
+					return r, i, context.WithValue(ctx, CurrentPathKey, r.RemoteLocation)
+				}
+
+				// build a collection of all the inline schemas and search them
+				// for the reference.
+				var d []*Reference
+				d = append(d, idx.allInlineSchemaDefinitions...)
+				d = append(d, idx.allRefSchemaDefinitions...)
+				d = append(d, idx.allInlineSchemaObjectDefinitions...)
+				for _, s := range d {
+					if s.FullDefinition == ref {
+						i := index.extractIndex(s)
+						idx.cache.Store(ref, s)
+						index.cache.Store(ref, s)
+						return s, i, context.WithValue(ctx, CurrentPathKey, s.RemoteLocation)
+					}
+				}
+
+				// does component exist in the root?
+				node, _ := rFile.GetContentAsYAMLNode()
+				if node != nil {
+					var found *Reference
+					expFile, expFragment, expCut := strings.Cut(ref, "#/")
+					compId := ref
+
+					if expCut && !strings.Contains(expFragment, "#/") {
+						compId = fmt.Sprintf("#/%s", expFragment)
+						found = FindComponent(ctx, node, compId, expFile, idx)
+					}
+					if found == nil {
+						found = idx.FindComponent(ctx, ref)
+					}
+
+					if found != nil {
+						i := index.extractIndex(found)
+						i.cache.Store(ref, found)
+						return found, i, context.WithValue(ctx, CurrentPathKey, found.RemoteLocation)
+					}
+				}
+			}
+		}
+	}
+
+	// last ditch effort: search all rolodex indexes and root index.
+	// this is decoupled from the logger guard so search works even without a logger.
+	if rolo := index.GetRolodex(); rolo != nil {
+		for _, i := range rolo.GetIndexes() {
+			v := i.FindComponent(ctx, ref)
+			if v != nil {
+				return v, v.Index, ctx
+			}
+		}
+
+		// also try the root index, which is not included in GetIndexes().
+		// this handles the case where an external file contains a local #/ ref
+		// (e.g., #/components/schemas/Workspace) that the resolver expanded into
+		// an absolute path form (e.g., /path/to/file.yaml#/components/schemas/Workspace).
+		// the component actually lives in the root document, not in the external file.
+		if rootIdx := rolo.GetRootIndex(); rootIdx != nil && rootIdx != index {
+			v := rootIdx.FindComponent(ctx, ref)
+			if v != nil {
+				return v, v.Index, ctx
+			}
+			// if the ref contains a file path + fragment, extract the fragment
+			// and try it against the root index directly. This resolves cases where
+			// #/components/schemas/Name was expanded to /abs/path/file.yaml#/components/schemas/Name
+			// but the schema actually lives in the root document.
+			if parts := strings.SplitN(ref, "#/", 2); len(parts) == 2 && parts[0] != "" {
+				fragmentRef := fmt.Sprintf("#/%s", parts[1])
+				v = rootIdx.FindComponent(ctx, fragmentRef)
+				if v != nil {
+					return v, v.Index, ctx
+				}
+			}
+		}
+	}
+
+	if index.logger != nil {
+		rolodexIndexCount := -1
+		rootIndexPath := "<nil>"
+		if rolo := index.GetRolodex(); rolo != nil {
+			rolodexIndexCount = len(rolo.GetIndexes())
+			if ri := rolo.GetRootIndex(); ri != nil {
+				rootIndexPath = ri.GetSpecAbsolutePath()
+			}
+		}
+		index.logger.Error("unable to locate reference anywhere in the rolodex",
+			"reference", ref,
+			"indexPath", index.specAbsolutePath,
+			"hasRolodex", index.GetRolodex() != nil,
+			"rolodexIndexCount", rolodexIndexCount,
+			"rootIndexPath", rootIndexPath,
+		)
+	}
+	return nil, index, ctx
+}
+
+func (index *SpecIndex) extractIndex(r *Reference) *SpecIndex {
+	idx := r.Index
+	if idx != nil && r.Index.GetSpecAbsolutePath() != r.RemoteLocation {
+		for i := range r.Index.rolodex.indexes {
+			if r.Index.rolodex.indexes[i].GetSpecAbsolutePath() == r.RemoteLocation {
+				idx = r.Index.rolodex.indexes[i]
+				break
+			}
+		}
+	}
+	return idx
+}

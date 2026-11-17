@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -84,6 +84,18 @@ const (
 	RegionAPSingapore2 Region = "ap-singapore-2"
 	//RegionMERiyadh1 region Riyadh
 	RegionMERiyadh1 Region = "me-riyadh-1"
+	//RegionAPDelhi1 region Delhi
+	RegionAPDelhi1 Region = "ap-delhi-1"
+	//RegionAPBatam1 region Batam
+	RegionAPBatam1 Region = "ap-batam-1"
+	//RegionEUMadrid3 region Madrid
+	RegionEUMadrid3 Region = "eu-madrid-3"
+	//RegionEUTurin1 region Turin
+	RegionEUTurin1 Region = "eu-turin-1"
+	//RegionAPKulai2 region Kulai
+	RegionAPKulai2 Region = "ap-kulai-2"
+	//RegionAFCasablanca1 region Casablanca
+	RegionAFCasablanca1 Region = "af-casablanca-1"
 	//RegionUSLangley1 region Langley
 	RegionUSLangley1 Region = "us-langley-1"
 	//RegionUSLuke1 region Luke
@@ -104,6 +116,8 @@ const (
 	RegionAPIbaraki1 Region = "ap-ibaraki-1"
 	//RegionMEDccMuscat1 region Muscat
 	RegionMEDccMuscat1 Region = "me-dcc-muscat-1"
+	//RegionMEIbri1 region Ibri
+	RegionMEIbri1 Region = "me-ibri-1"
 	//RegionAPDccCanberra1 region Canberra
 	RegionAPDccCanberra1 Region = "ap-dcc-canberra-1"
 	//RegionEUDccMilan1 region Milan
@@ -128,6 +142,8 @@ const (
 	RegionEUJovanovac1 Region = "eu-jovanovac-1"
 	//RegionMEDccDoha1 region Doha
 	RegionMEDccDoha1 Region = "me-dcc-doha-1"
+	//RegionMEAlrayyan1 region Alrayyan
+	RegionMEAlrayyan1 Region = "me-alrayyan-1"
 	//RegionUSSomerset1 region Somerset
 	RegionUSSomerset1 Region = "us-somerset-1"
 	//RegionUSThames1 region Thames
@@ -150,6 +166,14 @@ const (
 	RegionAPSuwon1 Region = "ap-suwon-1"
 	//RegionAPChuncheon2 region Chuncheon
 	RegionAPChuncheon2 Region = "ap-chuncheon-2"
+	//RegionUSAshburn2 region Ashburn
+	RegionUSAshburn2 Region = "us-ashburn-2"
+	//RegionUSNewark1 region Newark
+	RegionUSNewark1 Region = "us-newark-1"
+	//RegionEUBudapest1 region Budapest
+	RegionEUBudapest1 Region = "eu-budapest-1"
+	//RegionSARiodejaneiro1 region Riodejaneiro
+	RegionSARiodejaneiro1 Region = "sa-riodejaneiro-1"
 )
 
 var shortNameRegion = map[string]Region{
@@ -193,6 +217,12 @@ var shortNameRegion = map[string]Region{
 	"vap": RegionSAValparaiso1,
 	"xsp": RegionAPSingapore2,
 	"ruh": RegionMERiyadh1,
+	"onm": RegionAPDelhi1,
+	"hsg": RegionAPBatam1,
+	"orf": RegionEUMadrid3,
+	"nrq": RegionEUTurin1,
+	"jbp": RegionAPKulai2,
+	"lej": RegionAFCasablanca1,
 	"lfi": RegionUSLangley1,
 	"luf": RegionUSLuke1,
 	"ric": RegionUSGovAshburn1,
@@ -203,6 +233,7 @@ var shortNameRegion = map[string]Region{
 	"nja": RegionAPChiyoda1,
 	"ukb": RegionAPIbaraki1,
 	"mct": RegionMEDccMuscat1,
+	"ibr": RegionMEIbri1,
 	"wga": RegionAPDccCanberra1,
 	"bgy": RegionEUDccMilan1,
 	"mxp": RegionEUDccMilan2,
@@ -215,6 +246,7 @@ var shortNameRegion = map[string]Region{
 	"str": RegionEUFrankfurt2,
 	"beg": RegionEUJovanovac1,
 	"doh": RegionMEDccDoha1,
+	"vve": RegionMEAlrayyan1,
 	"ebb": RegionUSSomerset1,
 	"ebl": RegionUSThames1,
 	"avz": RegionEUDccZurich1,
@@ -226,6 +258,10 @@ var shortNameRegion = map[string]Region{
 	"dtz": RegionAPSeoul2,
 	"dln": RegionAPSuwon1,
 	"bno": RegionAPChuncheon2,
+	"yxj": RegionUSAshburn2,
+	"pgc": RegionUSNewark1,
+	"jsk": RegionEUBudapest1,
+	"hnw": RegionSARiodejaneiro1,
 }
 
 var realm = map[string]string{
@@ -246,6 +282,9 @@ var realm = map[string]string{
 	"oc26": "oraclecloud26.com",
 	"oc29": "oraclecloud29.com",
 	"oc35": "oraclecloud35.com",
+	"oc42": "oraclecloud42.com",
+	"oc51": "oraclecloud51.com",
+	"oc52": "oraclecloud52.com",
 }
 
 var regionRealm = map[Region]string{
@@ -289,6 +328,12 @@ var regionRealm = map[Region]string{
 	RegionSAValparaiso1:   "oc1",
 	RegionAPSingapore2:    "oc1",
 	RegionMERiyadh1:       "oc1",
+	RegionAPDelhi1:        "oc1",
+	RegionAPBatam1:        "oc1",
+	RegionEUMadrid3:       "oc1",
+	RegionEUTurin1:        "oc1",
+	RegionAPKulai2:        "oc1",
+	RegionAFCasablanca1:   "oc1",
 
 	RegionUSLangley1: "oc2",
 	RegionUSLuke1:    "oc2",
@@ -304,6 +349,7 @@ var regionRealm = map[Region]string{
 	RegionAPIbaraki1: "oc8",
 
 	RegionMEDccMuscat1: "oc9",
+	RegionMEIbri1:      "oc9",
 
 	RegionAPDccCanberra1: "oc10",
 
@@ -321,7 +367,8 @@ var regionRealm = map[Region]string{
 
 	RegionEUJovanovac1: "oc20",
 
-	RegionMEDccDoha1: "oc21",
+	RegionMEDccDoha1:  "oc21",
+	RegionMEAlrayyan1: "oc21",
 
 	RegionUSSomerset1: "oc23",
 	RegionUSThames1:   "oc23",
@@ -338,4 +385,11 @@ var regionRealm = map[Region]string{
 	RegionAPSeoul2:     "oc35",
 	RegionAPSuwon1:     "oc35",
 	RegionAPChuncheon2: "oc35",
+
+	RegionUSAshburn2: "oc42",
+	RegionUSNewark1:  "oc42",
+
+	RegionEUBudapest1: "oc51",
+
+	RegionSARiodejaneiro1: "oc52",
 }

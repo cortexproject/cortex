@@ -32,6 +32,10 @@ func (s *Scanners) Close() error {
 	return s.querier.Close()
 }
 
+// NewPrometheusScanners shares a querier across concurrently executing selectors.
+// The storage must support concurrent selection, iteration of distinct series
+// sets, and creation/advancement of distinct sample iterators from that querier.
+// Reader synchronization, if needed, is the storage implementation's responsibility.
 func NewPrometheusScanners(queryable storage.Queryable, qOpts *query.Options, lplan logicalplan.Plan) (*Scanners, error) {
 	var min, max int64
 	if lplan != nil {

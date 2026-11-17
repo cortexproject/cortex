@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sony/gobreaker"
+	"github.com/sony/gobreaker/v2"
 )
 
 const (
@@ -63,7 +63,7 @@ type CircuitBreakerSetting struct {
 	successStatCodeMap map[int]bool
 	// successStatErrCodeMap is the error(s) of StatusCode and ErrorCode returned from service, which should be considered
 	// as the success or failure accounted by circuit breaker
-	// the default value is {409, "IncorrectState"}
+	// the default value is {409, "IncorrectState"}, {409, "LockConflict"}
 	successStatErrCodeMap map[StatErrCode]bool
 	// serviceName is the name of the service which can be set using withServiceName option for NewCircuitBreaker.
 	// the default value is empty string
@@ -131,16 +131,16 @@ func (ocb *OciCircuitBreaker) GetHistory() string {
 	return getHistoryString
 }
 
-// OciCircuitBreaker wraps all exposed configurable params of circuit breaker and 3P gobreaker CircuirBreaker
+// OciCircuitBreaker wraps all exposed configurable params of circuit breaker and 3P gobreaker CircuitBreaker
 type OciCircuitBreaker struct {
 	Cbst              *CircuitBreakerSetting
-	Cb                *gobreaker.CircuitBreaker
+	Cb                *gobreaker.CircuitBreaker[any]
 	historyQueue      []ResponseHistory
 	historyQueueMutex sync.Mutex
 }
 
 // NewOciCircuitBreaker is used for initializing specified oci circuit breaker configuration with circuit breaker settings
-func NewOciCircuitBreaker(cbst *CircuitBreakerSetting, gbcb *gobreaker.CircuitBreaker) *OciCircuitBreaker {
+func NewOciCircuitBreaker(cbst *CircuitBreakerSetting, gbcb *gobreaker.CircuitBreaker[any]) *OciCircuitBreaker {
 	ocb := new(OciCircuitBreaker)
 	ocb.Cbst = cbst
 	if ocb.Cbst.numberOfRecordedHistoryResponse == 0 {
@@ -158,14 +158,15 @@ type CircuitBreakerOption func(cbst *CircuitBreakerSetting)
 
 // NewGoCircuitBreaker is a function to initialize a CircuitBreaker object with the specified configuration
 // Add the interface, to allow the user directly use the 3P gobreaker.Setting's params.
-func NewGoCircuitBreaker(st gobreaker.Settings) *gobreaker.CircuitBreaker {
-	return gobreaker.NewCircuitBreaker(st)
+func NewGoCircuitBreaker(st gobreaker.Settings) *gobreaker.CircuitBreaker[any] {
+	return gobreaker.NewCircuitBreaker[any](st)
 }
 
 // DefaultCircuitBreakerSetting is used for set circuit breaker with default config
 func DefaultCircuitBreakerSetting() *CircuitBreakerSetting {
 	successStatErrCodeMap := map[StatErrCode]bool{
 		{409, "IncorrectState"}: false,
+		{409, "LockConflict"}:   false,
 	}
 	successStatCodeMap := map[int]bool{
 		429: false,
@@ -190,6 +191,7 @@ func DefaultCircuitBreakerSetting() *CircuitBreakerSetting {
 func DefaultCircuitBreakerSettingWithServiceName(servicename string) *CircuitBreakerSetting {
 	successStatErrCodeMap := map[StatErrCode]bool{
 		{409, "IncorrectState"}: false,
+		{409, "LockConflict"}:   false,
 	}
 	successStatCodeMap := map[int]bool{
 		429: false,
@@ -239,7 +241,7 @@ func NewCircuitBreaker(cbst *CircuitBreakerSetting) *OciCircuitBreaker {
 
 	st := gobreaker.Settings{}
 	customizeGoBreakerSetting(&st, cbst)
-	gbcb := gobreaker.NewCircuitBreaker(st)
+	gbcb := gobreaker.NewCircuitBreaker[any](st)
 
 	return NewOciCircuitBreaker(cbst, gbcb)
 }

@@ -1,6 +1,3 @@
-//go:build go1.18
-// +build go1.18
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -144,7 +141,7 @@ func (id *ResourceID) init(parent *ResourceID, resourceType ResourceType, name s
 		id.SubscriptionID = name
 	}
 
-	if resourceType.lastType() == locationsKey {
+	if strings.EqualFold(resourceType.lastType(), locationsKey) {
 		id.Location = name
 	}
 

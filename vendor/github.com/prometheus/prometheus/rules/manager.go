@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -29,6 +29,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/common/promslog"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -53,6 +56,8 @@ func EngineQueryFunc(engine promql.QueryEngine, q storage.Queryable) QueryFunc {
 		if err != nil {
 			return nil, err
 		}
+		defer q.Close()
+
 		res := q.Exec(ctx)
 		if res.Err != nil {
 			return nil, res.Err
@@ -82,6 +87,25 @@ func DefaultEvalIterationFunc(ctx context.Context, g *Group, evalTimestamp time.
 	g.metrics.IterationsScheduled.WithLabelValues(GroupKey(g.file, g.name)).Inc()
 
 	start := time.Now()
+
+	// Start the group evaluation span at the scheduled evaluation time.
+	// This allows our trace to show if the actual evaluation was delayed.
+	ctx, sp := otel.Tracer("").Start(ctx, "rule group", trace.WithTimestamp(evalTimestamp))
+	sp.SetAttributes(
+		attribute.String("name", g.Name()),
+		attribute.String("file", g.File()),
+		attribute.Stringer("interval", g.interval),
+		attribute.String("scheduled", evalTimestamp.Format(time.RFC3339Nano)),
+	)
+	defer sp.End()
+
+	// If there's a delay then record that as a dedicated span, so it's clear
+	// from the trace that the whole group evaluated later then scheduled.
+	if start.After(evalTimestamp) {
+		_, delaySp := otel.Tracer("").Start(ctx, "scheduleDelay", trace.WithTimestamp(evalTimestamp))
+		delaySp.End(trace.WithTimestamp(start))
+	}
+
 	g.Eval(ctx, evalTimestamp)
 	timeSinceStart := time.Since(start)
 
@@ -116,7 +140,7 @@ type ManagerOptions struct {
 	QueryFunc                 QueryFunc
 	NotifyFunc                NotifyFunc
 	Context                   context.Context
-	Appendable                storage.Appendable
+	AppendableV2              storage.AppendableV2
 	Queryable                 storage.Queryable
 	Logger                    *slog.Logger
 	Registerer                prometheus.Registerer
@@ -138,6 +162,9 @@ type ManagerOptions struct {
 
 	// FeatureRegistry is used to register rule manager features.
 	FeatureRegistry features.Collector
+
+	// Parser is the PromQL parser used for parsing rule expressions.
+	Parser parser.Parser
 }
 
 // NewManager returns an implementation of Manager, ready to be started
@@ -154,12 +181,22 @@ func NewManager(o *ManagerOptions) *Manager {
 		o.Context = context.Background()
 	}
 
+	// Default the logger first: the components built below capture it by value,
+	// so substituting it afterwards would leave them holding a nil logger.
+	if o.Logger == nil {
+		o.Logger = promslog.NewNopLogger()
+	}
+
 	if o.Metrics == nil {
 		o.Metrics = NewGroupMetrics(o.Registerer)
 	}
 
+	if o.Parser == nil {
+		o.Parser = parser.NewParser(parser.Options{})
+	}
+
 	if o.GroupLoader == nil {
-		o.GroupLoader = FileLoader{}
+		o.GroupLoader = FileLoader{parser: o.Parser, logger: o.Logger}
 	}
 
 	if o.RuleConcurrencyController == nil {
@@ -172,10 +209,6 @@ func NewManager(o *ManagerOptions) *Manager {
 
 	if o.RuleDependencyController == nil {
 		o.RuleDependencyController = ruleDependencyController{}
-	}
-
-	if o.Logger == nil {
-		o.Logger = promslog.NewNopLogger()
 	}
 
 	// Register rule manager features if a registry is provided.
@@ -301,7 +334,9 @@ func (m *Manager) Update(interval time.Duration, files []string, externalLabels 
 				m.GroupLastEvalTime.DeleteLabelValues(n)
 				m.GroupLastDuration.DeleteLabelValues(n)
 				m.GroupRules.DeleteLabelValues(n)
-				m.GroupSamples.DeleteLabelValues((n))
+				m.GroupSamples.DeleteLabelValues(n)
+				m.GroupLastRuleDurationSum.DeleteLabelValues(n)
+				m.GroupLastRestoreDuration.DeleteLabelValues(n)
 			}
 			wg.Done()
 		}(n, oldg)
@@ -320,14 +355,19 @@ type GroupLoader interface {
 }
 
 // FileLoader is the default GroupLoader implementation. It defers to rulefmt.ParseFile
-// and parser.ParseExpr.
-type FileLoader struct{}
-
-func (FileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
-	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme)
+// for loading and uses the configured Parser for expression parsing.
+type FileLoader struct {
+	parser parser.Parser
+	logger *slog.Logger
 }
 
-func (FileLoader) Parse(query string) (parser.Expr, error) { return parser.ParseExpr(query) }
+func (fl FileLoader) Load(identifier string, ignoreUnknownFields bool, nameValidationScheme model.ValidationScheme) (*rulefmt.RuleGroups, []error) {
+	return rulefmt.ParseFile(identifier, ignoreUnknownFields, nameValidationScheme, fl.parser, fl.logger)
+}
+
+func (fl FileLoader) Parse(query string) (parser.Expr, error) {
+	return fl.parser.ParseExpr(query)
+}
 
 // LoadGroups reads groups from a list of files.
 func (m *Manager) LoadGroups(
@@ -606,7 +646,12 @@ func FromMaps(maps ...map[string]string) labels.Labels {
 }
 
 // ParseFiles parses the rule files corresponding to glob patterns.
-func ParseFiles(patterns []string, nameValidationScheme model.ValidationScheme) error {
+func ParseFiles(
+	patterns []string,
+	nameValidationScheme model.ValidationScheme,
+	p parser.Parser,
+	logger *slog.Logger,
+) error {
 	files := map[string]string{}
 	for _, pat := range patterns {
 		fns, err := filepath.Glob(pat)
@@ -626,7 +671,7 @@ func ParseFiles(patterns []string, nameValidationScheme model.ValidationScheme) 
 		}
 	}
 	for fn, pat := range files {
-		_, errs := rulefmt.ParseFile(fn, false, nameValidationScheme)
+		_, errs := rulefmt.ParseFile(fn, false, nameValidationScheme, p, logger)
 		if len(errs) > 0 {
 			return fmt.Errorf("parse rules from file %q (pattern: %q): %w", fn, pat, errors.Join(errs...))
 		}

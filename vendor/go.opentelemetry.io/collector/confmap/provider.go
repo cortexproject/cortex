@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	yaml "go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // ProviderSettings are the settings to initialize a Provider.
@@ -263,6 +263,7 @@ func checkRawConfType(rawConf any) error {
 	default:
 		return fmt.Errorf(
 			"unsupported type=%T for retrieved config,"+
-				" ensure that values are wrapped in quotes", rawConf)
+				" ensure that values are wrapped in quotes", rawConf,
+		)
 	}
 }

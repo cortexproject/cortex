@@ -36,6 +36,11 @@ type VectorOperator interface {
 	// Next yields vectors of samples from all series for one or more execution steps.
 	// The caller provides a buffer (buf) to be filled with StepVectors.
 	// Returns the number of StepVectors written to buf and any error encountered.
+	// Timestamps are ascending and aligned to the query step. A batch spans at
+	// most 64 query steps, and its first timestamp must not decrease across calls.
+	// Series batching may split a step across calls, repeating or overlapping
+	// time windows. This requires a batch-aware consumer, such as an aggregation;
+	// subqueries and query results require complete steps instead.
 	// A return value of 0 indicates no more data is available.
 	Next(ctx context.Context, buf []StepVector) (int, error)
 

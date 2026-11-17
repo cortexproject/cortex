@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -28,6 +28,12 @@ type KeyProvider interface {
 	KeyID() (string, error)
 }
 
+// signerProvider is an optional extension for key providers backed by a non-exportable key.
+// When implemented, request signing uses the returned crypto.Signer directly.
+type signerProvider interface {
+	PrivateKeySigner() (crypto.Signer, error)
+}
+
 const signerVersion = "1"
 
 // SignerBodyHashPredicate a function that allows to disable/enable body hashing
@@ -41,7 +47,23 @@ type ociRequestSigner struct {
 	GenericHeaders []string
 	BodyHeaders    []string
 	ShouldHashBody SignerBodyHashPredicate
+	SigningMethod  SigningMethod
 }
+
+// SigningMethod wraps the information about signature scheme and options
+type SigningMethod struct {
+	SignatureScheme RSASignatureScheme
+	RSAPSSOptions   rsa.PSSOptions
+}
+
+// RSASignatureScheme type of the RSA Signature Scheme
+type RSASignatureScheme string
+
+// Set of constants representing the allowable values for RSASignatureScheme
+const (
+	PKCS1v15 RSASignatureScheme = "PKCS1v15"
+	PSS      RSASignatureScheme = "PSS"
+)
 
 var (
 	defaultGenericHeaders    = []string{"date", "(request-target)", "host"}
@@ -49,6 +71,8 @@ var (
 	defaultBodyHashPredicate = func(r *http.Request) bool {
 		return r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch
 	}
+	defaultSigningMethod = SigningMethod{
+		SignatureScheme: RSASignatureScheme(PKCS1v15)}
 )
 
 // DefaultGenericHeaders list of default generic headers that is used in signing
@@ -84,6 +108,7 @@ func NewSignerFromOCIRequestSigner(oldSigner HTTPRequestSigner, predicate Signer
 			GenericHeaders: oldS.GenericHeaders,
 			BodyHeaders:    oldS.BodyHeaders,
 			ShouldHashBody: predicate,
+			SigningMethod:  oldS.SigningMethod,
 		}
 		return s, nil
 
@@ -98,7 +123,8 @@ func RequestSigner(provider KeyProvider, genericHeaders, bodyHeaders []string) H
 		KeyProvider:    provider,
 		GenericHeaders: genericHeaders,
 		BodyHeaders:    bodyHeaders,
-		ShouldHashBody: defaultBodyHashPredicate}
+		ShouldHashBody: defaultBodyHashPredicate,
+		SigningMethod:  defaultSigningMethod}
 }
 
 // RequestSignerWithBodyHashingPredicate creates a signer that utilizes the specified headers for signing, as well as a predicate for using
@@ -108,7 +134,30 @@ func RequestSignerWithBodyHashingPredicate(provider KeyProvider, genericHeaders,
 		KeyProvider:    provider,
 		GenericHeaders: genericHeaders,
 		BodyHeaders:    bodyHeaders,
-		ShouldHashBody: shouldHashBody}
+		ShouldHashBody: shouldHashBody,
+		SigningMethod:  defaultSigningMethod}
+}
+
+// RequestSignerWithSigningMethodAndBodyHashingPredicate creates a signer with the specified signature scheme and
+// utilizes the specified headers for signing, as well as a predicate for using the body of the request and
+// bodyHeaders parameter as part of the signature
+func RequestSignerWithSigningMethodAndBodyHashingPredicate(provider KeyProvider, genericHeaders, bodyHeaders []string, shouldHashBody SignerBodyHashPredicate, signingMethod SigningMethod) HTTPRequestSigner {
+	return ociRequestSigner{
+		KeyProvider:    provider,
+		GenericHeaders: genericHeaders,
+		BodyHeaders:    bodyHeaders,
+		ShouldHashBody: shouldHashBody,
+		SigningMethod:  signingMethod}
+}
+
+// RequestSignerWithSigningMethod creates a signer with the specified signature scheme
+func RequestSignerWithSigningMethod(provider KeyProvider, genericHeaders, bodyHeaders []string, signingMethod SigningMethod) HTTPRequestSigner {
+	return ociRequestSigner{
+		KeyProvider:    provider,
+		GenericHeaders: genericHeaders,
+		BodyHeaders:    bodyHeaders,
+		ShouldHashBody: defaultBodyHashPredicate,
+		SigningMethod:  signingMethod}
 }
 
 func (signer ociRequestSigner) getSigningHeaders(r *http.Request) []string {
@@ -222,13 +271,39 @@ func (signer ociRequestSigner) computeSignature(request *http.Request) (signatur
 	hasher.Write([]byte(signingString))
 	hashed := hasher.Sum(nil)
 
-	privateKey, err := signer.KeyProvider.PrivateRSAKey()
-	if err != nil {
-		return
+	var unencodedSig []byte
+	var e error
+	if provider, ok := signer.KeyProvider.(signerProvider); ok {
+		var keySigner crypto.Signer
+		keySigner, err = provider.PrivateKeySigner()
+		if err != nil {
+			return
+		}
+
+		var opts crypto.SignerOpts = crypto.SHA256
+		if signer.SigningMethod.SignatureScheme == PSS {
+			pssOptions := signer.SigningMethod.RSAPSSOptions
+			pssOptions.Hash = crypto.SHA256
+			opts = &pssOptions
+		}
+		unencodedSig, e = keySigner.Sign(rand.Reader, hashed, opts)
+	} else {
+		var privateKey *rsa.PrivateKey
+		privateKey, err = signer.KeyProvider.PrivateRSAKey()
+		if err != nil {
+			return
+		}
+
+		switch signatureScheme := signer.SigningMethod.SignatureScheme; signatureScheme {
+		case PSS:
+			pssOptions := signer.SigningMethod.RSAPSSOptions
+			pssOptions.Hash = crypto.SHA256
+			unencodedSig, e = rsa.SignPSS(rand.Reader, privateKey, crypto.SHA256, hashed, &pssOptions)
+		default:
+			unencodedSig, e = rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hashed)
+		}
 	}
 
-	var unencodedSig []byte
-	unencodedSig, e := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hashed)
 	if e != nil {
 		err = fmt.Errorf("can not compute signature while signing the request %s: ", e.Error())
 		return

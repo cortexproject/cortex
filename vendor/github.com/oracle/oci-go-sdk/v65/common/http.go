@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package common
@@ -22,6 +22,10 @@ import (
 const (
 	//UsingExpectHeaderEnvVar is the key to determine whether expect 100-continue is enabled or not
 	UsingExpectHeaderEnvVar = "OCI_GOSDK_USING_EXPECT_HEADER"
+	//EncodePathParamsEnvVar determines if special characters in path params such as / and & are URL encoded
+	EncodePathParamsEnvVar = "OCI_GOSDK_ENCODE_PATH_PARAMS"
+	// EscapeJSONToASCIIEnvVar determines if non-ASCII characters in JSON strings are escaped
+	EscapeJSONToASCIIEnvVar = "OCI_GOSDK_ESCAPE_JSON_ASCII"
 )
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,6 +259,49 @@ func removeNilFieldsInJSONWithTaggedStruct(rawJSON []byte, value reflect.Value) 
 	return json.Marshal(fixedMap)
 }
 
+// escapeJSONToASCII takes a JSON payload and returns an equivalent JSON where all string values are escaped to ASCII
+func escapeJSONToASCII(rawJSON []byte) ([]byte, error) {
+	var rawInterface interface{}
+	decoder := json.NewDecoder(bytes.NewReader(rawJSON))
+	decoder.UseNumber()
+	if err := decoder.Decode(&rawInterface); err != nil {
+		return nil, err
+	}
+
+	// transform recursively visits the JSON value:
+	// 		- For objects (map[string[interface{}]]), recurse on each value
+	// 		- For arrays ([]interface{}), recurse on each element
+	// 		- For strings, produce a JSON-quoted ASCII-only representation
+	// 		- For other types, return as is
+	var transform func(interface{}) interface{}
+	transform = func(x interface{}) interface{} {
+		switch t := x.(type) {
+		case map[string]interface{}:
+			m := make(map[string]interface{}, len(t))
+			for key, val := range t {
+				m[key] = transform(val)
+			}
+			return m
+		case []interface{}:
+			s := make([]interface{}, len(t))
+			for i, val := range t {
+				s[i] = transform(val)
+			}
+			return s
+		case string:
+			// QuoteToASCII returns a 'quoted' JSON string containing only ASCII characters
+			// ex: input: "ハッピー" -> "\"\\u30cf\\u30c3\\u30d4\\u30fc\""
+			// Returns as json.RawMessage so it gets embedded directly
+			q := strconv.AppendQuoteToASCII(nil, t)
+			return json.RawMessage(q)
+		default:
+			return x
+		}
+	}
+
+	return json.Marshal(transform(rawInterface))
+}
+
 func addToBody(request *http.Request, value reflect.Value, field reflect.StructField, binaryBodySpecified *bool) (e error) {
 	Debugln("Marshaling to body from field:", field.Name)
 	if request.Body != nil {
@@ -275,6 +322,13 @@ func addToBody(request *http.Request, value reflect.Value, field reflect.StructF
 	marshaled, e := removeNilFieldsInJSONWithTaggedStruct(rawJSON, value)
 	if e != nil {
 		return
+	}
+
+	if IsEnvVarTrue(EscapeJSONToASCIIEnvVar) {
+		marshaled, e = escapeJSONToASCII(marshaled)
+		if e != nil {
+			return
+		}
 	}
 
 	if defaultLogger.LogLevel() == verboseLogging {
@@ -461,6 +515,11 @@ func addToPath(request *http.Request, value reflect.Value, field reflect.StructF
 		return fmt.Errorf("value cannot be empty for field %s in path", field.Name)
 	}
 
+	// encode path param if EncodePathParamsEnvVar is set
+	if IsEnvVarTrue(EncodePathParamsEnvVar) {
+		additionalURLPathPart = url.PathEscape(additionalURLPathPart)
+	}
+
 	if request.URL == nil {
 		request.URL = &url.URL{}
 		request.URL.Path = ""
@@ -540,7 +599,7 @@ func addToHeader(request *http.Request, value reflect.Value, field reflect.Struc
 		for i := 0; i < numOfElements; i++ {
 			collectionFormatStringValues[i], e = toStringValue(value.Index(i), field)
 			if e != nil {
-				Debugf("Header element could not be marshalled to a string: %w", e)
+				Debugf("Header element could not be marshalled to a string: %v", e)
 				return
 			}
 		}
@@ -949,11 +1008,23 @@ func valueFromPolymorphicJSON(content []byte, unmarshaler PolymorphicJSONUnmarsh
 	return
 }
 
+func readAndPreserveResponseBody(response *http.Response) ([]byte, error) {
+	if response == nil || response.Body == nil || response.Body == http.NoBody {
+		return nil, nil
+	}
+	body := response.Body
+	content, err := io.ReadAll(body)
+	if err != nil {
+		return nil, err
+	}
+	_ = body.Close()
+	response.Body = io.NopCloser(bytes.NewReader(content))
+	return content, nil
+}
+
 func valueFromJSONBody(response *http.Response, value *reflect.Value, unmarshaler PolymorphicJSONUnmarshaler) (val interface{}, err error) {
-	//Consumes the body, consider implementing it
-	//without body consumption
 	var content []byte
-	content, err = ioutil.ReadAll(response.Body)
+	content, err = readAndPreserveResponseBody(response)
 	if err != nil {
 		return
 	}
@@ -984,7 +1055,7 @@ func addFromBody(response *http.Response, value *reflect.Value, field reflect.St
 		return
 	case "plain-text":
 		//Expects UTF-8
-		byteArr, e := ioutil.ReadAll(response.Body)
+		byteArr, e := readAndPreserveResponseBody(response)
 		if e != nil {
 			return e
 		}

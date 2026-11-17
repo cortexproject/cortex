@@ -816,3 +816,39 @@ func Test_rejectQueryOrSetPriorityShouldMatchOnApiType(t *testing.T) {
 		})
 	}
 }
+
+func Test_rejectQueryOrSetPriorityShouldSetDefaultPriorityWhenNoAttributeMatches(t *testing.T) {
+	// A single priority that only ever matches query_range, so neither request below matches it.
+	limits := mockLimits{queryPriority: validation.QueryPriority{
+		Enabled:         true,
+		DefaultPriority: 5,
+		Priorities: []validation.PriorityDef{
+			{
+				Priority: 1,
+				QueryAttributes: []validation.QueryAttribute{
+					{ApiType: "query_range"},
+				},
+			},
+		},
+	}}
+
+	for name, path := range map[string]string{
+		"instant query": "/api/v1/query?time=1536716898&query=up",
+		"label names":   "/api/v1/labels",
+		"series":        "/api/v1/series?match%5B%5D=up",
+		"label values":  "/api/v1/label/foo/values",
+	} {
+		t.Run(name, func(t *testing.T) {
+			req, err := http.NewRequest("GET", path, http.NoBody)
+			require.NoError(t, err)
+			reqStats, ctx := stats.ContextWithEmptyStats(context.Background())
+			req = req.WithContext(ctx)
+
+			require.NoError(t, rejectQueryOrSetPriority(req, time.Now(), time.Duration(1), limits, "", rejectedQueriesPerTenant))
+
+			priority, assigned := reqStats.LoadPriority()
+			assert.True(t, assigned, "priority should have been assigned")
+			assert.Equal(t, int64(5), priority)
+		})
+	}
+}

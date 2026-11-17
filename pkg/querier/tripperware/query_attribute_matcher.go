@@ -77,10 +77,11 @@ func rejectQueryOrSetPriority(r *http.Request, now time.Time, lookbackDelta time
 				for _, attribute := range priority.QueryAttributes {
 					if matchAttributeForMetadataQuery(attribute, op, r, now) {
 						reqStats.SetPriority(priority.Priority)
-						break
+						return nil
 					}
 				}
 			}
+			reqStats.SetPriority(queryPriority.DefaultPriority)
 		}
 	}
 

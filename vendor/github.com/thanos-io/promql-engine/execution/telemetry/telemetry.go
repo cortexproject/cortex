@@ -31,6 +31,17 @@ type OperatorTelemetry interface {
 	Samples() *stats.QuerySamples
 	LogicalNode() logicalplan.Node
 	UpdatePeak(count int)
+	// Subquery returns how a subquery operator's parent consumes its inner
+	// query, or nil for any other operator.
+	Subquery() *SubqueryInfo
+}
+
+// SubqueryInfo lets query analysis attribute a subquery's inner samples to
+// the parent steps that consume them, as Prometheus does.
+type SubqueryInfo struct {
+	Consumer stats.SubqueryConsumer
+	// Inner is the operator evaluating the subquery expression.
+	Inner model.VectorOperator
 }
 
 func NewTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
@@ -40,11 +51,28 @@ func NewTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry 
 	return NewNoopTelemetry(operator)
 }
 
-func NewSubqueryTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
-	if opts.EnableAnalysis {
-		return NewTrackedTelemetry(operator, opts, &logicalplan.Subquery{})
+func NewSubqueryTelemetry(operator fmt.Stringer, opts *query.Options, subquery *logicalplan.Subquery, inner model.VectorOperator) OperatorTelemetry {
+	if !opts.EnableAnalysis {
+		return NewNoopTelemetry(operator)
 	}
-	return NewNoopTelemetry(operator)
+	t := NewTrackedTelemetry(operator, opts, &logicalplan.Subquery{})
+	interval := opts.Step.Milliseconds()
+	numSteps := 1
+	if interval > 0 {
+		numSteps = int((opts.End.UnixMilli()-opts.Start.UnixMilli())/interval) + 1
+	}
+	t.subquery = &SubqueryInfo{
+		Consumer: stats.SubqueryConsumer{
+			Start:       opts.Start.UnixMilli(),
+			Interval:    interval,
+			NumSteps:    numSteps,
+			Offset:      subquery.OriginalOffset.Milliseconds(),
+			Range:       subquery.Range.Milliseconds(),
+			AtTimestamp: subquery.Timestamp,
+		},
+		Inner: inner,
+	}
+	return t
 }
 
 func NewStepInvariantTelemetry(operator fmt.Stringer, opts *query.Options) OperatorTelemetry {
@@ -94,6 +122,8 @@ func (tm *NoopTelemetry) LogicalNode() logicalplan.Node {
 
 func (tm *NoopTelemetry) UpdatePeak(_ int) {}
 
+func (tm *NoopTelemetry) Subquery() *SubqueryInfo { return nil }
+
 type TrackedTelemetry struct {
 	fmt.Stringer
 
@@ -103,6 +133,7 @@ type TrackedTelemetry struct {
 	NextTime      time.Duration
 	LoadedSamples *stats.QuerySamples
 	logicalNode   logicalplan.Node
+	subquery      *SubqueryInfo
 }
 
 func NewTrackedTelemetry(operator fmt.Stringer, opts *query.Options, logicalPlanNode logicalplan.Node) *TrackedTelemetry {
@@ -163,6 +194,8 @@ func (ti *TrackedTelemetry) SetMaxSeriesCount(count int) { ti.Series = count }
 func (ti *TrackedTelemetry) UpdatePeak(count int) {
 	ti.Samples().UpdatePeak(count)
 }
+
+func (ti *TrackedTelemetry) Subquery() *SubqueryInfo { return ti.subquery }
 
 type ObservableVectorOperator interface {
 	model.VectorOperator

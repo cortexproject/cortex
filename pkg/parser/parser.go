@@ -8,11 +8,31 @@ import (
 	"github.com/thanos-io/promql-engine/execution/parse"
 )
 
-var functions = buildFunctions(true)
+var (
+	functions                   = buildFunctions(true)
+	enableExperimentalFunctions bool
+)
 
-func Setup(enableExperimentalFunctions, enableHoltWinters bool) {
-	promqlparser.EnableExperimentalFunctions = enableExperimentalFunctions
+func Setup(enableExperimental, enableHoltWinters bool) {
+	enableExperimentalFunctions = enableExperimental
 	buildFunctions(enableHoltWinters)
+}
+
+// EnableExperimentalFunctions reports whether experimental PromQL functions are enabled.
+func EnableExperimentalFunctions() bool {
+	return enableExperimentalFunctions
+}
+
+// NewEngineParser returns a parser for the PromQL engines: the global
+// promqlparser.Functions (with the holt_winters alias when enabled) plus the
+// Thanos extended functions, which promql-engine no longer registers globally.
+func NewEngineParser() promqlparser.Parser {
+	fns := maps.Clone(promqlparser.Functions)
+	maps.Copy(fns, parse.XFunctions)
+	return promqlparser.NewParser(promqlparser.Options{
+		EnableExperimentalFunctions: enableExperimentalFunctions,
+		Functions:                   fns,
+	})
 }
 
 func buildFunctions(enableHoltWinters bool) map[string]*promqlparser.Function {
@@ -42,5 +62,8 @@ func buildFunctions(enableHoltWinters bool) map[string]*promqlparser.Function {
 }
 
 func ParseExpr(qs string) (promqlparser.Expr, error) {
-	return promqlparser.NewParser(qs, promqlparser.WithFunctions(functions)).ParseExpr()
+	return promqlparser.NewParser(promqlparser.Options{
+		EnableExperimentalFunctions: enableExperimentalFunctions,
+		Functions:                   functions,
+	}).ParseExpr(qs)
 }

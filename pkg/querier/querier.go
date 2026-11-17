@@ -356,7 +356,12 @@ func createActiveQueryTracker(cfg Config, logger log.Logger) promql.QueryTracker
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
+		tracker, err := promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, util_log.GoKitLogToSlog(logger))
+		if err != nil {
+			// Older Prometheus versions panicked here; keep failing loudly at startup.
+			panic(err)
+		}
+		return tracker
 	}
 
 	return nil

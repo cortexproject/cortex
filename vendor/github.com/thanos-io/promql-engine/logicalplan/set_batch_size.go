@@ -48,6 +48,10 @@ func (m SelectorBatchSize) setBatchSize(node *Node, canBatch bool) {
 		if !isRangeVectorFunction(e) {
 			canBatch = false
 		}
+	case *Subquery:
+		// Subqueries advance by timestamp and need complete input steps.
+		// An aggregation inside the subquery may enable batching below itself.
+		canBatch = false
 	case *Binary:
 		if isManyToOneOrOneToMany(e) {
 			canBatch = false
@@ -55,6 +59,8 @@ func (m SelectorBatchSize) setBatchSize(node *Node, canBatch bool) {
 	case *VectorSelector:
 		if canBatch {
 			e.BatchSize = m.Size
+		} else {
+			e.BatchSize = 0
 		}
 		return
 	}

@@ -9,7 +9,6 @@ import (
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
-	promRules "github.com/prometheus/prometheus/rules"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
@@ -66,7 +65,7 @@ func TestClient_LoadAllRuleGroups(t *testing.T) {
 
 	client, err := NewLocalRulesClient(Config{
 		Directory: dir,
-	}, promRules.FileLoader{}, model.UTF8Validation)
+	}, NewFileLoader(), model.UTF8Validation)
 	require.NoError(t, err)
 
 	ctx := context.Background()

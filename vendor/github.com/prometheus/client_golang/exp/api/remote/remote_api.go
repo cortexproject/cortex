@@ -247,7 +247,7 @@ func (r *API) Write(ctx context.Context, msgType WriteMessageType, msg any, opts
 		}
 	case proto.Message:
 		// Generic proto.
-		*buf, err = (proto.MarshalOptions{}).MarshalAppend(*buf, m)
+		*buf, err = (proto.MarshalOptions{}).MarshalAppend((*buf)[:0], m)
 		if err != nil {
 			return WriteResponseStats{}, fmt.Errorf("encoding request %w", err)
 		}
@@ -458,12 +458,6 @@ const maxDecodedSize = 32 * 1024 * 1024
 // If the request body is not snappy-encoded, it returns an error.
 // Used by default in NewHandler.
 func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-	bufPool := sync.Pool{
-		New: func() any {
-			return bytes.NewBuffer(nil)
-		},
-	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			enc := r.Header.Get("Content-Encoding")
@@ -474,14 +468,15 @@ func SnappyDecodeMiddleware(logger *slog.Logger) func(http.Handler) http.Handler
 				return
 			}
 
-			buf := bufPool.Get().(*bytes.Buffer)
-			buf.Reset()
-			defer bufPool.Put(buf)
-
-			bodyBytes, err := io.ReadAll(io.TeeReader(r.Body, buf))
+			bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxDecodedSize+1))
 			if err != nil {
 				logger.Error("Error reading request body", "err", err)
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if int64(len(bodyBytes)) > maxDecodedSize {
+				logger.Error("Request body exceeds the limit", "limitBytes", maxDecodedSize)
+				http.Error(w, fmt.Sprintf("request body exceeds the %v bytes limit", maxDecodedSize), http.StatusRequestEntityTooLarge)
 				return
 			}
 
@@ -607,7 +602,10 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writeResponse.writeHeaders(msgType, w)
 
 	if storeErr != nil {
-		if writeResponse.statusCode == 0 {
+		// A storage error must never be reported as success, otherwise the
+		// sender drops the data. NewWriteResponse defaults to 204, so any
+		// non-error status is replaced.
+		if writeResponse.statusCode < 400 {
 			writeResponse.SetStatusCode(http.StatusInternalServerError)
 		}
 		if writeResponse.statusCode/100 == 5 { // 5xx
@@ -615,6 +613,9 @@ func (h *writeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, storeErr.Error(), writeResponse.statusCode)
 		return
+	}
+	if writeResponse.statusCode == 0 {
+		writeResponse.SetStatusCode(http.StatusNoContent)
 	}
 	w.WriteHeader(writeResponse.statusCode)
 }

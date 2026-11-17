@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -16,8 +17,8 @@ import (
 
 // Koanf is the configuration apparatus.
 type Koanf struct {
-	confMap     map[string]interface{}
-	confMapFlat map[string]interface{}
+	confMap     map[string]any
+	confMapFlat map[string]any
 	keyMap      KeyMap
 	conf        Conf
 	mu          sync.RWMutex
@@ -49,7 +50,7 @@ type KeyMap map[string][]string
 // Unmarshal() to unmarshal conf maps into arbitrary structs.
 type UnmarshalConf struct {
 	// Tag is the struct field tag to unmarshal.
-	// `koanf` is used if left empty.
+	// If empty, DecoderConfig.TagName (`koanf`) is used.
 	Tag string
 
 	// If this is set to true, instead of unmarshalling nested structures
@@ -79,20 +80,20 @@ func New(delim string) *Koanf {
 // NewWithConf returns a new instance of Koanf based on the Conf.
 func NewWithConf(conf Conf) *Koanf {
 	return &Koanf{
-		confMap:     make(map[string]interface{}),
-		confMapFlat: make(map[string]interface{}),
+		confMap:     make(map[string]any),
+		confMapFlat: make(map[string]any),
 		keyMap:      make(KeyMap),
 		conf:        conf,
 	}
 }
 
-// Load takes a Provider that either provides a parsed config map[string]interface{}
+// Load takes a Provider that either provides a parsed config map[string]any
 // in which case pa (Parser) can be nil, or raw bytes to be parsed, where a Parser
 // can be provided to parse. Additionally, options can be passed which modify the
 // load behavior, such as passing a custom merge function.
 func (ko *Koanf) Load(p Provider, pa Parser, opts ...Option) error {
 	var (
-		mp  map[string]interface{}
+		mp  map[string]any
 		err error
 	)
 
@@ -151,7 +152,7 @@ func (ko *Koanf) KeyMap() KeyMap {
 // All returns a map of all flattened key paths and their values.
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
-func (ko *Koanf) All() map[string]interface{} {
+func (ko *Koanf) All() map[string]any {
 	ko.mu.RLock()
 	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMapFlat)
@@ -160,7 +161,7 @@ func (ko *Koanf) All() map[string]interface{} {
 // Raw returns a copy of the full raw conf map.
 // Note that it uses maps.Copy to create a copy that uses
 // json.Marshal which changes the numeric types to float64.
-func (ko *Koanf) Raw() map[string]interface{} {
+func (ko *Koanf) Raw() map[string]any {
 	ko.mu.RLock()
 	defer ko.mu.RUnlock()
 	return maps.Copy(ko.confMap)
@@ -193,14 +194,14 @@ func (ko *Koanf) Print() {
 // instance with the config map `sub.a.b` where everything above
 // `parent.child` are cut out.
 func (ko *Koanf) Cut(path string) *Koanf {
-	out := make(map[string]interface{})
+	out := make(map[string]any)
 
 	// Cut only makes sense if the requested key path is a map.
-	if v, ok := ko.Get(path).(map[string]interface{}); ok {
+	if v, ok := ko.Get(path).(map[string]any); ok {
 		out = v
 	}
 
-	n := New(ko.conf.Delim)
+	n := NewWithConf(ko.conf)
 	_ = n.merge(out, new(options))
 	return n
 }
@@ -227,7 +228,7 @@ func (ko *Koanf) MergeAt(in *Koanf, path string) error {
 	}
 
 	// Unflatten the config map with the given key path.
-	n := maps.Unflatten(map[string]interface{}{
+	n := maps.Unflatten(map[string]any{
 		path: in.Raw(),
 	}, ko.conf.Delim)
 
@@ -235,9 +236,9 @@ func (ko *Koanf) MergeAt(in *Koanf, path string) error {
 }
 
 // Set sets the value at a specific key.
-func (ko *Koanf) Set(key string, val interface{}) error {
+func (ko *Koanf) Set(key string, val any) error {
 	// Unflatten the config map with the given key path.
-	n := maps.Unflatten(map[string]interface{}{
+	n := maps.Unflatten(map[string]any{
 		key: val,
 	}, ko.conf.Delim)
 
@@ -254,33 +255,35 @@ func (ko *Koanf) Marshal(p Parser) ([]byte, error) {
 // the mapstructure lib. If no path is specified, the whole map is unmarshalled.
 // `koanf` is the struct field tag used to match field names. To customize,
 // use UnmarshalWithConf(). It uses the mitchellh/mapstructure package.
-func (ko *Koanf) Unmarshal(path string, o interface{}) error {
+func (ko *Koanf) Unmarshal(path string, o any) error {
 	return ko.UnmarshalWithConf(path, o, UnmarshalConf{})
 }
 
 // UnmarshalWithConf is like Unmarshal but takes configuration params in UnmarshalConf.
 // See mitchellh/mapstructure's DecoderConfig for advanced customization
 // of the unmarshal behaviour.
-func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) error {
-	if c.DecoderConfig == nil {
-		c.DecoderConfig = &mapstructure.DecoderConfig{
+func (ko *Koanf) UnmarshalWithConf(path string, o any, c UnmarshalConf) error {
+	var dc mapstructure.DecoderConfig
+	if c.DecoderConfig != nil {
+		dc = *c.DecoderConfig
+	} else {
+		dc = mapstructure.DecoderConfig{
 			DecodeHook: mapstructure.ComposeDecodeHookFunc(
 				mapstructure.StringToTimeDurationHookFunc(),
 				textUnmarshalerHookFunc()),
-			Metadata:         nil,
 			WeaklyTypedInput: true,
 		}
 	}
 
-	c.DecoderConfig.Result = o
+	dc.Result = o
 
-	if c.Tag == "" {
-		c.DecoderConfig.TagName = "koanf"
-	} else {
-		c.DecoderConfig.TagName = c.Tag
+	if c.Tag != "" {
+		dc.TagName = c.Tag
+	} else if dc.TagName == "" {
+		dc.TagName = "koanf"
 	}
 
-	d, err := mapstructure.NewDecoder(c.DecoderConfig)
+	d, err := mapstructure.NewDecoder(&dc)
 	if err != nil {
 		return err
 	}
@@ -288,7 +291,7 @@ func (ko *Koanf) UnmarshalWithConf(path string, o interface{}, c UnmarshalConf) 
 	// Unmarshal using flat key paths.
 	mp := ko.Get(path)
 	if c.FlatPaths {
-		if f, ok := mp.(map[string]interface{}); ok {
+		if f, ok := mp.(map[string]any); ok {
 			fmp, _ := maps.Flatten(f, nil, ko.conf.Delim)
 			mp = fmp
 		}
@@ -306,8 +309,8 @@ func (ko *Koanf) Delete(path string) {
 
 	// No path. Erase the entire map.
 	if path == "" {
-		ko.confMap = make(map[string]interface{})
-		ko.confMapFlat = make(map[string]interface{})
+		ko.confMap = make(map[string]any)
+		ko.confMapFlat = make(map[string]any)
 		ko.keyMap = make(KeyMap)
 		return
 	}
@@ -324,9 +327,9 @@ func (ko *Koanf) Delete(path string) {
 	ko.keyMap = populateKeyParts(ko.keyMap, ko.conf.Delim)
 }
 
-// Get returns the raw, uncast interface{} value of a given key path
+// Get returns the raw, uncast any value of a given key path
 // in the config map. If the key path does not exist, nil is returned.
-func (ko *Koanf) Get(path string) interface{} {
+func (ko *Koanf) Get(path string) any {
 	// No path. Return the whole conf map.
 	if path == "" {
 		return ko.Raw()
@@ -334,13 +337,13 @@ func (ko *Koanf) Get(path string) interface{} {
 
 	// Does the path exist?
 	ko.mu.RLock()
+	defer ko.mu.RUnlock()
+
 	p, ok := ko.keyMap[path]
 	if !ok {
-		ko.mu.RUnlock()
 		return nil
 	}
 	res := maps.Search(ko.confMap, p)
-	ko.mu.RUnlock()
 
 	// Non-reference types are okay to return directly.
 	// Other types are "copied" with maps.Copy or json.Marshal
@@ -349,40 +352,44 @@ func (ko *Koanf) Get(path string) interface{} {
 	switch v := res.(type) {
 	case int, int8, int16, int32, int64, float32, float64, string, bool:
 		return v
-	case map[string]interface{}:
+	case map[string]any:
 		return maps.Copy(v)
+	case nil:
+		return nil
+	}
+
+	// Skip nil pointers before copying.
+	if rv := reflect.ValueOf(res); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return res
 	}
 
 	out, _ := copystructure.Copy(&res)
-	if ptrOut, ok := out.(*interface{}); ok {
+	if ptrOut, ok := out.(*any); ok {
 		return *ptrOut
 	}
 	return out
 }
 
-// Slices returns a list of Koanf instances constructed out of a
-// []map[string]interface{} interface at the given path.
+// Slices returns a list of Koanf instances constructed from the value
+// at path. It accepts []map[string]any or []any containing map[string]any
+// elements. Non-slice elements are skipped.
 func (ko *Koanf) Slices(path string) []*Koanf {
 	out := []*Koanf{}
 	if path == "" {
 		return out
 	}
 
-	// Does the path exist?
-	sl, ok := ko.Get(path).([]interface{})
-	if !ok {
-		return out
-	}
-
-	for _, s := range sl {
-		mp, ok := s.(map[string]interface{})
-		if !ok {
-			continue
+	switch v := ko.Get(path).(type) {
+	case []map[string]any:
+		for _, mp := range v {
+			out = ko.appendMap(mp, out)
 		}
-
-		k := New(ko.conf.Delim)
-		_ = k.merge(mp, new(options))
-		out = append(out, k)
+	case []any:
+		for _, item := range v {
+			if mp, ok := item.(map[string]any); ok {
+				out = ko.appendMap(mp, out)
+			}
+		}
 	}
 
 	return out
@@ -408,13 +415,23 @@ func (ko *Koanf) MapKeys(path string) []string {
 		return out
 	}
 
-	mp, ok := o.(map[string]interface{})
-	if !ok {
-		return out
-	}
-	out = make([]string, 0, len(mp))
-	for k := range mp {
-		out = append(out, k)
+	if mp, ok := o.(map[string]any); ok {
+		out = make([]string, 0, len(mp))
+		for k := range mp {
+			out = append(out, k)
+		}
+	} else {
+		// A value set with Set() or by a Provider such as `structs`` keeps its
+		// native map type. Use reflection for other map types.
+		rv := reflect.ValueOf(o)
+		if rv.Kind() != reflect.Map || rv.Type().Key().Kind() != reflect.String {
+			return out
+		}
+
+		out = make([]string, 0, rv.Len())
+		for _, k := range rv.MapKeys() {
+			out = append(out, k.String())
+		}
 	}
 	sort.Strings(out)
 	return out
@@ -425,19 +442,31 @@ func (ko *Koanf) Delim() string {
 	return ko.conf.Delim
 }
 
-func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
+func (ko *Koanf) merge(c map[string]any, opts *options) error {
 	ko.mu.Lock()
-	defer ko.mu.Unlock()
 
 	maps.IntfaceKeysToStrings(c)
 	if opts.merge != nil {
-		if err := opts.merge(c, ko.confMap); err != nil {
+		// Deep-copy confMap so the custom merge function can safely call
+		// ko.Get*() methods (which acquire a read lock) without deadlocking.
+		dest := maps.Copy(ko.confMap)
+
+		ko.mu.Unlock()
+		err := opts.merge(c, dest)
+		ko.mu.Lock()
+
+		if err != nil {
+			ko.mu.Unlock()
 			return err
 		}
+		ko.confMap = dest
 	} else if ko.conf.StrictMerge {
-		if err := maps.MergeStrict(c, ko.confMap); err != nil {
+		dest := maps.Copy(ko.confMap)
+		if err := maps.MergeStrict(c, dest); err != nil {
+			ko.mu.Unlock()
 			return err
 		}
+		ko.confMap = dest
 	} else {
 		maps.Merge(c, ko.confMap)
 	}
@@ -446,6 +475,7 @@ func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
 	ko.confMapFlat, ko.keyMap = maps.Flatten(ko.confMap, nil, ko.conf.Delim)
 	ko.keyMap = populateKeyParts(ko.keyMap, ko.conf.Delim)
 
+	ko.mu.Unlock()
 	return nil
 }
 
@@ -453,7 +483,7 @@ func (ko *Koanf) merge(c map[string]interface{}, opts *options) error {
 // converts and returns int64. If it's any other type,
 // forces it to a string and attempts to do a strconv.Atoi
 // to get an integer out.
-func toInt64(v interface{}) (int64, error) {
+func toInt64(v any) (int64, error) {
 	switch i := v.(type) {
 	case int:
 		return int64(i), nil
@@ -465,21 +495,57 @@ func toInt64(v interface{}) (int64, error) {
 		return int64(i), nil
 	case int64:
 		return i, nil
+	case uint8:
+		return int64(i), nil
+	case uint16:
+		return int64(i), nil
+	case uint32:
+		return int64(i), nil
+	case uint:
+		return uintToInt64(uint64(i))
+	case uint64:
+		return uintToInt64(i)
 	}
 
 	// Force it to a string and try to convert.
-	f, err := strconv.ParseFloat(fmt.Sprintf("%v", v), 64)
+	s := fmt.Sprintf("%v", v)
+
+	// Try parsing as int64 first, and on failure, attempt float64 parsing.
+	// Parsing directly as float64, when the number is beyond its upper limit (2^53)
+	// causes unnecessary precision loss when the value is actually an int.
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return i, nil
+	}
+
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
 		return 0, err
+	}
+
+	// int64(f) is undefined for numbers that are out of range and returns different
+	// results on different architectures. float64 cannot exactly represent MaxInt64,
+	// so check against the ACTUAL upper limit of 2^63.
+	// If neither match, return an error instead of the undefined result.
+	if math.IsNaN(f) || f < math.MinInt64 || f >= 1<<63 {
+		return 0, fmt.Errorf("value %v overflows int64", v)
 	}
 
 	return int64(f), nil
 }
 
-// toInt64 takes a `v interface{}` value and if it is a float type,
+// uintToInt64 converts an unsigned integer to int64 and throw an error on overflow.
+func uintToInt64(v uint64) (int64, error) {
+	if v > math.MaxInt64 {
+		return 0, fmt.Errorf("value %d overflows int64", v)
+	}
+
+	return int64(v), nil
+}
+
+// toInt64 takes a `v any` value and if it is a float type,
 // converts and returns a `float64`. If it's any other type, forces it to a
 // string and attempts to get a float out using `strconv.ParseFloat`.
-func toFloat64(v interface{}) (float64, error) {
+func toFloat64(v any) (float64, error) {
 	switch i := v.(type) {
 	case float32:
 		return float64(i), nil
@@ -499,7 +565,7 @@ func toFloat64(v interface{}) (float64, error) {
 // toBool takes an interface value and if it is a bool type,
 // returns it. If it's any other type, forces it to a string and attempts
 // to parse it as a bool using strconv.ParseBool.
-func toBool(v interface{}) (bool, error) {
+func toBool(v any) (bool, error) {
 	if b, ok := v.(bool); ok {
 		return b, nil
 	}
@@ -545,8 +611,8 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFuncType {
 	return func(
 		f reflect.Type,
 		t reflect.Type,
-		data interface{},
-	) (interface{}, error) {
+		data any,
+	) (any, error) {
 		if f.Kind() != reflect.String {
 			return data, nil
 		}
@@ -600,4 +666,11 @@ func textUnmarshalerHookFunc() mapstructure.DecodeHookFuncType {
 		}
 		return result, nil
 	}
+}
+
+// appendMap creates new Koanf instances from a map returns a slice of Koanf instances.
+func (ko *Koanf) appendMap(mp map[string]any, out []*Koanf) []*Koanf {
+	k := NewWithConf(ko.conf)
+	_ = k.merge(mp, new(options))
+	return append(out, k)
 }

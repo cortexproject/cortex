@@ -1655,7 +1655,7 @@ func TestHandler_remoteWriteV2_PartialWrite(t *testing.T) {
 	const invalidRef = 9
 
 	validMetadata := writev2.Metadata{Type: writev2.Metadata_METRIC_TYPE_COUNTER, HelpRef: 7, UnitRef: 8}
-	hist := writev2.FromIntHistogram(20, tsdbutil.GenerateTestHistogram(1))
+	hist := writev2.FromIntHistogram(0, 20, tsdbutil.GenerateTestHistogram(1))
 
 	tests := []struct {
 		name       string

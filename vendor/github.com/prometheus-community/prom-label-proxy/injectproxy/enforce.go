@@ -16,6 +16,7 @@ package injectproxy
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -25,9 +26,14 @@ import (
 type PromQLEnforcer struct {
 	labelMatchers  map[string]*labels.Matcher
 	errorOnReplace bool
+	parserOptions  parser.Options
 }
 
 func NewPromQLEnforcer(errorOnReplace bool, ms ...*labels.Matcher) *PromQLEnforcer {
+	return NewPromQLEnforcerWithOptions(errorOnReplace, defaultParserOptions(), ms...)
+}
+
+func NewPromQLEnforcerWithOptions(errorOnReplace bool, parserOptions parser.Options, ms ...*labels.Matcher) *PromQLEnforcer {
 	entries := make(map[string]*labels.Matcher)
 
 	for _, matcher := range ms {
@@ -37,6 +43,7 @@ func NewPromQLEnforcer(errorOnReplace bool, ms ...*labels.Matcher) *PromQLEnforc
 	return &PromQLEnforcer{
 		labelMatchers:  entries,
 		errorOnReplace: errorOnReplace,
+		parserOptions:  parserOptions,
 	}
 }
 
@@ -53,7 +60,8 @@ var (
 
 // Enforce the label matchers in a PromQL expression.
 func (ms *PromQLEnforcer) Enforce(q string) (string, error) {
-	expr, err := parser.ParseExpr(q)
+	p := parser.NewParser(ms.parserOptions)
+	expr, err := p.ParseExpr(q)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrQueryParse, err)
 	}
@@ -229,30 +237,21 @@ func (ms PromQLEnforcer) EnforceMatchers(targets []*labels.Matcher) ([]*labels.M
 					ok = matcher.Matches(target.Value)
 				case labels.MatchNotEqual:
 					if frm != nil {
-						for _, sm := range frm.SetMatches() {
-							if target.Matches(sm) {
-								ok = true
-								break
-							}
+						if slices.ContainsFunc(frm.SetMatches(), target.Matches) {
+							ok = true
 						}
 					}
 					ok = ok || (target.Value == "" && !matcher.Matches(""))
 				case labels.MatchRegexp:
 					if frm != nil {
-						for _, sm := range frm.SetMatches() {
-							if target.Matches(sm) {
-								ok = true
-								break
-							}
+						if slices.ContainsFunc(frm.SetMatches(), target.Matches) {
+							ok = true
 						}
 					}
 				case labels.MatchNotRegexp:
 					if frm != nil {
-						for _, sm := range frm.SetMatches() {
-							if target.Matches(sm) {
-								ok = true
-								break
-							}
+						if slices.ContainsFunc(frm.SetMatches(), target.Matches) {
+							ok = true
 						}
 					}
 					ok = ok || (target.Value == "" && !matcher.Matches(""))
@@ -267,11 +266,8 @@ func (ms PromQLEnforcer) EnforceMatchers(targets []*labels.Matcher) ([]*labels.M
 				case labels.MatchRegexp:
 					frm, _ := labels.NewFastRegexMatcher(target.Value)
 					if frm != nil {
-						for _, sm := range frm.SetMatches() {
-							if matcher.Matches(sm) {
-								ok = true
-								break
-							}
+						if slices.ContainsFunc(frm.SetMatches(), matcher.Matches) {
+							ok = true
 						}
 					}
 					ok = ok && (target.Value != "" || !matcher.Matches(""))
@@ -304,4 +300,8 @@ func (ms PromQLEnforcer) EnforceMatchers(targets []*labels.Matcher) ([]*labels.M
 	}
 
 	return res, nil
+}
+
+func defaultParserOptions() parser.Options {
+	return parser.Options{}
 }

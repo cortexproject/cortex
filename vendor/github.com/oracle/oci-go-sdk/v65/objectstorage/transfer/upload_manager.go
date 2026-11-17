@@ -117,13 +117,43 @@ func (uploadManager *UploadManager) UploadStream(ctx context.Context, request Up
 		err = errorInvalidStreamUploader
 		return
 	}
-	//check if the stream is empty
-	if isZeroLength(request.StreamReader) {
+	// Check if the stream is empty
+	emptyStream, streamReader, readErr := handleZeroLength(request.StreamReader)
+	if readErr != nil {
+		err = readErr
+		return
+	}
+	if emptyStream {
 		return uploadEmptyStream(ctx, request)
 	}
+	request.StreamReader = streamReader
 
 	response, err = uploadManager.StreamUploader.UploadStream(ctx, request)
 	return
+}
+
+// handleZeroLength checks whether a reader is empty without dropping any data
+func handleZeroLength(streamReader io.Reader) (bool, io.Reader, error) {
+	// Known-length readers can be checked without consuming stream data
+	switch streamReader.(type) {
+	case *bytes.Buffer, *bytes.Reader, *strings.Reader, *os.File:
+		return isZeroLength(streamReader), streamReader, nil
+	}
+
+	// Generic readers need a one-byte check, if data exists, put that byte back
+	firstByte := make([]byte, 1)
+	n, err := io.ReadFull(streamReader, firstByte)
+	if err == io.EOF && n == 0 {
+		return true, streamReader, nil
+	}
+	if err != nil || n == 0 {
+		if err == nil {
+			err = errors.New("failed to determine whether stream is empty: reader returned no data and no error")
+		}
+		return false, nil, err
+	}
+
+	return false, io.MultiReader(bytes.NewReader(firstByte[:n]), streamReader), nil
 }
 
 func isZeroLength(streamReader io.Reader) bool {
@@ -147,20 +177,24 @@ func isZeroLength(streamReader io.Reader) bool {
 
 func uploadEmptyStream(ctx context.Context, request UploadStreamRequest) (response UploadResponse, err error) {
 	putObjReq := objectstorage.PutObjectRequest{
-		NamespaceName:      request.UploadRequest.NamespaceName,
-		BucketName:         request.UploadRequest.BucketName,
-		ObjectName:         request.UploadRequest.ObjectName,
-		ContentLength:      new(int64),
-		PutObjectBody:      http.NoBody,
-		OpcMeta:            request.UploadRequest.Metadata,
-		IfMatch:            request.UploadRequest.IfMatch,
-		IfNoneMatch:        request.UploadRequest.IfNoneMatch,
-		ContentType:        request.UploadRequest.ContentType,
-		ContentLanguage:    request.UploadRequest.ContentLanguage,
-		ContentEncoding:    request.UploadRequest.ContentEncoding,
-		ContentMD5:         request.UploadRequest.ContentMD5,
-		OpcClientRequestId: request.UploadRequest.OpcClientRequestID,
-		RequestMetadata:    request.UploadRequest.RequestMetadata,
+		NamespaceName:           request.UploadRequest.NamespaceName,
+		BucketName:              request.UploadRequest.BucketName,
+		ObjectName:              request.UploadRequest.ObjectName,
+		ContentLength:           new(int64),
+		PutObjectBody:           http.NoBody,
+		OpcMeta:                 request.UploadRequest.Metadata,
+		IfMatch:                 request.UploadRequest.IfMatch,
+		IfNoneMatch:             request.UploadRequest.IfNoneMatch,
+		ContentType:             request.UploadRequest.ContentType,
+		ContentLanguage:         request.UploadRequest.ContentLanguage,
+		ContentEncoding:         request.UploadRequest.ContentEncoding,
+		ContentMD5:              request.UploadRequest.ContentMD5,
+		OpcClientRequestId:      request.UploadRequest.OpcClientRequestID,
+		RequestMetadata:         request.UploadRequest.RequestMetadata,
+		OpcSseCustomerAlgorithm: request.UploadRequest.OpcSseCustomerAlgorithm,
+		OpcSseCustomerKey:       request.UploadRequest.OpcSseCustomerKey,
+		OpcSseCustomerKeySha256: request.UploadRequest.OpcSseCustomerKeySha256,
+		OpcSseKmsKeyId:          request.UploadRequest.OpcSseKmsKeyId,
 	}
 	putObjResp, err := request.UploadRequest.ObjectStorageClient.PutObject(ctx, putObjReq)
 	spUploadResp := SinglepartUploadResponse{putObjResp}

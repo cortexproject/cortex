@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 // Code generated. DO NOT EDIT.
 
@@ -131,7 +131,7 @@ func (request HeadObjectRequest) RetryPolicy() *common.RetryPolicy {
 func (request HeadObjectRequest) ValidateEnumValue() (bool, error) {
 	errMessage := []string{}
 	if len(errMessage) > 0 {
-		return true, fmt.Errorf(strings.Join(errMessage, "\n"))
+		return true, fmt.Errorf("%s", strings.Join(errMessage, "\n"))
 	}
 	return false, nil
 }
@@ -199,6 +199,9 @@ type HeadObjectResponse struct {
 	// concatenating the binary representation of those hashes in order of their part numbers,
 	// and then calculating the SHA384 hash of the concatenated values.
 	OpcMultipartSha384 *string `presentIn:"header" name:"opc-multipart-sha384"`
+
+	// True if bucket key was enabled and used to encrypt the object during upload or reencrypt.
+	OpcBucketKeyEnabled *bool `presentIn:"header" name:"opc-bucket-key-enabled"`
 
 	// Content-Type header, as described in RFC 2616 (https://tools.ietf.org/html/rfc2616#section-14.17).
 	ContentType *string `presentIn:"header" name:"content-type"`

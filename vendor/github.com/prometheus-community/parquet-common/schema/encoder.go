@@ -94,7 +94,7 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				t, v := sampleIt.At()
 
 				chkIdx := e.schema.DataColumIdx(t)
-				reEncodedChunksAppenders[chkIdx][chunkenc.EncXOR].Append(t, v)
+				reEncodedChunksAppenders[chkIdx][chunkenc.EncXOR].Append(0, t, v)
 				chunk := reEncodedChunks[chkIdx][chunkenc.EncXOR][len(reEncodedChunks[chkIdx][chunkenc.EncXOR])-1]
 				if t < chunk.MinTime {
 					chunk.MinTime = t
@@ -120,7 +120,7 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				t, v := sampleIt.AtFloatHistogram(nil)
 
 				chkIdx := e.schema.DataColumIdx(t)
-				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncFloatHistogram].AppendFloatHistogram(nil, t, v, false)
+				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncFloatHistogram].AppendFloatHistogram(nil, 0, t, v, false)
 				if err != nil {
 					return nil, err
 				}
@@ -160,7 +160,7 @@ func (e *PrometheusParquetChunksEncoder) Encode(it chunks.Iterator) ([][]byte, e
 				t, v := sampleIt.AtHistogram(nil)
 
 				chkIdx := e.schema.DataColumIdx(t)
-				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncHistogram].AppendHistogram(nil, t, v, false)
+				newC, recoded, app, err := reEncodedChunksAppenders[chkIdx][chunkenc.EncHistogram].AppendHistogram(nil, 0, t, v, false)
 				if err != nil {
 					return nil, err
 				}

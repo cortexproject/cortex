@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,6 +15,8 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/prometheus/common/model"
@@ -23,7 +25,6 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 )
 
 type fanout struct {
@@ -82,17 +83,44 @@ func (f *fanout) Querier(mint, maxt int64) (Querier, error) {
 		querier, err := storage.Querier(mint, maxt)
 		if err != nil {
 			// Close already open Queriers, append potential errors to returned error.
-			errs := tsdb_errors.NewMulti(err, primary.Close())
-			for _, q := range secondaries {
-				errs.Add(q.Close())
+			errs := []error{
+				err,
+				primary.Close(),
 			}
-			return nil, errs.Err()
+			for _, q := range secondaries {
+				errs = append(errs, q.Close())
+			}
+			return nil, errors.Join(errs...)
 		}
 		if _, ok := querier.(noopQuerier); !ok {
 			secondaries = append(secondaries, querier)
 		}
 	}
 	return NewMergeQuerier([]Querier{primary}, secondaries, ChainedSeriesMerge), nil
+}
+
+// CostSamplingQueryable forwards a safe primary when every secondary is empty.
+func (f *fanout) CostSamplingQueryable() (SampleAndChunkQueryable, bool) {
+	provider, ok := f.primary.(CostSamplingQueryable)
+	if !ok {
+		return nil, false
+	}
+	source, supported := provider.CostSamplingQueryable()
+	if !supported {
+		return nil, false
+	}
+	for _, secondary := range f.secondaries {
+		provider, ok := secondary.(CostSamplingQueryable)
+		if !ok {
+			return nil, false
+		}
+		secondarySource, supported := provider.CostSamplingQueryable()
+		if !supported || secondarySource != nil {
+			// Merging even native sources can eagerly compact overlapping chunks.
+			return nil, false
+		}
+	}
+	return source, true
 }
 
 func (f *fanout) ChunkQuerier(mint, maxt int64) (ChunkQuerier, error) {
@@ -106,11 +134,14 @@ func (f *fanout) ChunkQuerier(mint, maxt int64) (ChunkQuerier, error) {
 		querier, err := storage.ChunkQuerier(mint, maxt)
 		if err != nil {
 			// Close already open Queriers, append potential errors to returned error.
-			errs := tsdb_errors.NewMulti(err, primary.Close())
-			for _, q := range secondaries {
-				errs.Add(q.Close())
+			errs := []error{
+				err,
+				primary.Close(),
 			}
-			return nil, errs.Err()
+			for _, q := range secondaries {
+				errs = append(errs, q.Close())
+			}
+			return nil, errors.Join(errs...)
 		}
 		secondaries = append(secondaries, querier)
 	}
@@ -130,13 +161,28 @@ func (f *fanout) Appender(ctx context.Context) Appender {
 	}
 }
 
+func (f *fanout) AppenderV2(ctx context.Context) AppenderV2 {
+	primary := f.primary.AppenderV2(ctx)
+	secondaries := make([]AppenderV2, 0, len(f.secondaries))
+	for _, storage := range f.secondaries {
+		secondaries = append(secondaries, storage.AppenderV2(ctx))
+	}
+	return &fanoutAppenderV2{
+		logger:      f.logger,
+		primary:     primary,
+		secondaries: secondaries,
+	}
+}
+
 // Close closes the storage and all its underlying resources.
 func (f *fanout) Close() error {
-	errs := tsdb_errors.NewMulti(f.primary.Close())
-	for _, s := range f.secondaries {
-		errs.Add(s.Close())
+	errs := []error{
+		f.primary.Close(),
 	}
-	return errs.Err()
+	for _, s := range f.secondaries {
+		errs = append(errs, s.Close())
+	}
+	return errors.Join(errs...)
 }
 
 // fanoutAppender implements Appender.
@@ -268,5 +314,94 @@ func (f *fanoutAppender) Rollback() (err error) {
 			f.logger.Error("Squashed rollback error on rollback", "err", rollbackErr)
 		}
 	}
-	return nil
+	return err
+}
+
+type fanoutAppenderV2 struct {
+	logger *slog.Logger
+
+	primary     AppenderV2
+	secondaries []AppenderV2
+}
+
+func (f *fanoutAppenderV2) Append(ref SeriesRef, l labels.Labels, st, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts AOptions) (SeriesRef, error) {
+	var partialErr *AppendPartialError
+
+	ref, err := f.primary.Append(ref, l, st, t, v, h, fh, opts)
+	partialErr, err = partialErr.Handle(err)
+	if err != nil {
+		return ref, err
+	}
+
+	for _, appender := range f.secondaries {
+		_, serr := appender.Append(ref, l, st, t, v, h, fh, opts)
+		partialErr, serr = partialErr.Handle(serr)
+		if serr != nil {
+			return ref, serr
+		}
+	}
+	return ref, partialErr.ToError()
+}
+
+var _ ExemplarAppenderV2 = &fanoutAppenderV2{}
+
+// AppendExemplars implements ExemplarAppenderV2.
+// It dispatches the exemplars to the primary that is required to and all
+// secondaries that optionally implement ExemplarAppenderV2.
+func (f *fanoutAppenderV2) AppendExemplars(ref SeriesRef, l labels.Labels, exemplars []exemplar.Exemplar) (SeriesRef, error) {
+	pa, ok := f.primary.(ExemplarAppenderV2)
+	if !ok {
+		return 0, fmt.Errorf("primary appender %T does not implement ExemplarAppenderV2", f.primary)
+	}
+
+	var partialErr *AppendPartialError
+
+	ref, err := pa.AppendExemplars(ref, l, exemplars)
+	partialErr, err = partialErr.Handle(err)
+	if err != nil {
+		return ref, err
+	}
+
+	for _, appender := range f.secondaries {
+		sa, ok := appender.(ExemplarAppenderV2)
+		if !ok {
+			continue
+		}
+		_, serr := sa.AppendExemplars(ref, l, exemplars)
+		partialErr, serr = partialErr.Handle(serr)
+		if serr != nil {
+			return ref, serr
+		}
+	}
+	return ref, partialErr.ToError()
+}
+
+func (f *fanoutAppenderV2) Commit() (err error) {
+	err = f.primary.Commit()
+
+	for _, appender := range f.secondaries {
+		if err == nil {
+			err = appender.Commit()
+		} else {
+			if rollbackErr := appender.Rollback(); rollbackErr != nil {
+				f.logger.Error("Squashed rollback error on commit", "err", rollbackErr)
+			}
+		}
+	}
+	return err
+}
+
+func (f *fanoutAppenderV2) Rollback() (err error) {
+	err = f.primary.Rollback()
+
+	for _, appender := range f.secondaries {
+		rollbackErr := appender.Rollback()
+		switch {
+		case err == nil:
+			err = rollbackErr
+		case rollbackErr != nil:
+			f.logger.Error("Squashed rollback error on rollback", "err", rollbackErr)
+		}
+	}
+	return err
 }

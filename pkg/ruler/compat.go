@@ -192,6 +192,27 @@ func (t *PusherAppendable) Appender(ctx context.Context) storage.Appender {
 	}
 }
 
+// AppenderV2 returns a storage.AppenderV2, which the Prometheus rules manager requires.
+func (t *PusherAppendable) AppenderV2(ctx context.Context) storage.AppenderV2 {
+	return &pusherAppenderV2{PusherAppender: t.Appender(ctx).(*PusherAppender)}
+}
+
+// pusherAppenderV2 adapts PusherAppender to storage.AppenderV2. Rules carry no
+// start timestamps or exemplars, so both are ignored.
+type pusherAppenderV2 struct {
+	*PusherAppender
+}
+
+func (a *pusherAppenderV2) Append(_ storage.SeriesRef, l labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	if opts.RejectOutOfOrder {
+		a.opts = &storage.AppendOptions{DiscardOutOfOrder: true}
+	}
+	if h != nil || fh != nil {
+		return a.AppendHistogram(0, l, t, h, fh)
+	}
+	return a.PusherAppender.Append(0, l, t, v)
+}
+
 // RulesLimits defines limits used by Ruler.
 type RulesLimits interface {
 	MaxQueryLength(userID string) time.Duration
@@ -460,7 +481,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 		tmplCache := &generatorURLTemplateCache{}
 
 		return rules.NewManager(&rules.ManagerOptions{
-			Appendable: NewPusherAppendable(p, userID, overrides,
+			AppendableV2: NewPusherAppendable(p, userID, overrides,
 				evalMetrics.TotalWritesVec.WithLabelValues(userID),
 				evalMetrics.FailedWritesVec.WithLabelValues(userID)),
 			Queryable:   q,

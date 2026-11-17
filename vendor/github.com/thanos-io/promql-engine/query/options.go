@@ -59,6 +59,9 @@ func NestedOptionsForSubquery(opts *Options, step, queryRange, offset time.Durat
 		EnableAnalysis:           opts.EnableAnalysis,
 		DecodingConcurrency:      opts.DecodingConcurrency,
 		SampleTracker:            opts.SampleTracker,
+		// Analysis attributes the inner query's samples to parent steps, so the
+		// inner query always tracks samples per step.
+		EnablePerStepStats: true,
 	}
 	if nOpts.SampleTracker == nil {
 		nOpts.SampleTracker = NewSampleTracker(0)

@@ -1,4 +1,4 @@
-// Copyright 2022 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -43,6 +43,7 @@ var (
 	ErrHistogramNegativeBucketCount     = Error{error: errors.New("histogram has a bucket whose observation count is negative")}
 	ErrHistogramSpanNegativeOffset      = Error{error: errors.New("histogram has a span whose offset is negative")}
 	ErrHistogramSpansBucketsMismatch    = Error{error: errors.New("histogram spans specify different number of buckets than provided")}
+	ErrHistogramSpanIndexOutOfRange     = Error{error: errors.New("histogram has a span whose bucket index is out of range")}
 	ErrHistogramCustomBucketsMismatch   = Error{error: errors.New("histogram custom bounds are too few")}
 	ErrHistogramCustomBucketsInvalid    = Error{error: errors.New("histogram custom bounds must be in strictly increasing order")}
 	ErrHistogramCustomBucketsInfinite   = Error{error: errors.New("histogram custom bounds must be finite")}
@@ -162,6 +163,33 @@ func (b Bucket[BC]) String() string {
 	return sb.String()
 }
 
+// FractionBelow returns the fraction (between 0 and 1) of this bucket's width
+// that lies at or below the value v, assuming v is strictly inside the bucket's
+// finite bounds (b.Lower < v < b.Upper). It uses linear interpolation when
+// linear is true (as done for custom (NHCB) buckets and the zero bucket) and
+// exponential interpolation otherwise (as done for standard exponential
+// native-histogram buckets, interpolating on a logarithmic scale). Multiply the
+// result by b.Count to get the estimated number of observations at or below v.
+//
+// The caller is responsible for handling values outside the bucket bounds and
+// buckets with an infinite bound; passing those here yields a meaningless
+// result.
+func (b Bucket[BC]) FractionBelow(v float64, linear bool) float64 {
+	if linear {
+		return (v - b.Lower) / (b.Upper - b.Lower)
+	}
+	// On a logarithmic scale the exponential bucket boundaries become linear,
+	// so the fraction is computed the same way as in the linear case but over
+	// the log2 of the bounds. Negative buckets are mirrored.
+	logLower := math.Log2(math.Abs(b.Lower))
+	logUpper := math.Log2(math.Abs(b.Upper))
+	logV := math.Log2(math.Abs(v))
+	if v > 0 {
+		return (logV - logLower) / (logUpper - logLower)
+	}
+	return 1 - ((logV - logUpper) / (logLower - logUpper))
+}
+
 // BucketIterator iterates over the buckets of a Histogram, returning decoded
 // buckets.
 type BucketIterator[BC BucketCount] interface {
@@ -230,14 +258,30 @@ func (b *baseBucketIterator[BC, IBC]) strippedAt() strippedBucket[BC] {
 // compactBuckets is a generic function used by both Histogram.Compact and
 // FloatHistogram.Compact. Set deltaBuckets to true if the provided buckets are
 // deltas. Set it to false if the buckets contain absolute counts.
-func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmptyBuckets int, deltaBuckets bool) ([]IBC, []Span) {
+// For float histograms, deltaBuckets is always false.
+// primaryBuckets hold the main histogram values, while compensationBuckets (if provided) store
+// Kahan compensation values. compensationBuckets can only be provided for float histograms
+// and are processed in parallel with primaryBuckets to maintain synchronization.
+func compactBuckets[IBC InternalBucketCount](
+	primaryBuckets []IBC, compensationBuckets []float64,
+	spans []Span, maxEmptyBuckets int, deltaBuckets bool,
+) (updatedPrimaryBuckets []IBC, updatedCompensationBuckets []float64, updatedSpans []Span) {
+	if deltaBuckets && compensationBuckets != nil {
+		panic("histogram type mismatch: deltaBuckets cannot be true when compensationBuckets is provided")
+	} else if compensationBuckets != nil && len(primaryBuckets) != len(compensationBuckets) {
+		panic(fmt.Errorf(
+			"primary buckets layout (%v) mismatch against associated compensation buckets layout (%v)",
+			primaryBuckets, compensationBuckets,
+		),
+		)
+	}
 	// Fast path: If there are no empty buckets AND no offset in any span is
 	// <= maxEmptyBuckets AND no span has length 0, there is nothing to do and we can return
 	// immediately. We check that first because it's cheap and presumably
 	// common.
 	nothingToDo := true
 	var currentBucketAbsolute IBC
-	for _, bucket := range buckets {
+	for _, bucket := range primaryBuckets {
 		if deltaBuckets {
 			currentBucketAbsolute += bucket
 		} else {
@@ -256,7 +300,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 			}
 		}
 		if nothingToDo {
-			return buckets, spans
+			return primaryBuckets, compensationBuckets, spans
 		}
 	}
 
@@ -268,12 +312,19 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	emptyBucketsHere := func() int {
 		i := 0
 		abs := currentBucketAbsolute
-		for uint32(i)+posInSpan < spans[iSpan].Length && abs == 0 {
+		comp := float64(0)
+		if compensationBuckets != nil {
+			comp = compensationBuckets[iBucket]
+		}
+		for uint32(i)+posInSpan < spans[iSpan].Length && abs == 0 && comp == 0 {
 			i++
-			if i+iBucket >= len(buckets) {
+			if i+iBucket >= len(primaryBuckets) {
 				break
 			}
-			abs = buckets[i+iBucket]
+			abs = primaryBuckets[i+iBucket]
+			if compensationBuckets != nil {
+				comp = compensationBuckets[i+iBucket]
+			}
 		}
 		return i
 	}
@@ -310,14 +361,22 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	spans = spans[:iSpan]
 	iSpan = 0
 
+	// If all spans were zero-length, no buckets remain valid.
+	if len(spans) == 0 {
+		if compensationBuckets != nil {
+			compensationBuckets = compensationBuckets[:0]
+		}
+		return primaryBuckets[:0], compensationBuckets, spans
+	}
+
 	// Cut out empty buckets from start and end of spans, no matter
 	// what. Also cut out empty buckets from the middle of a span but only
 	// if there are more than maxEmptyBuckets consecutive empty buckets.
-	for iBucket < len(buckets) {
+	for iBucket < len(primaryBuckets) && iSpan < len(spans) {
 		if deltaBuckets {
-			currentBucketAbsolute += buckets[iBucket]
+			currentBucketAbsolute += primaryBuckets[iBucket]
 		} else {
-			currentBucketAbsolute = buckets[iBucket]
+			currentBucketAbsolute = primaryBuckets[iBucket]
 		}
 		if nEmpty := emptyBucketsHere(); nEmpty > 0 {
 			if posInSpan > 0 &&
@@ -334,11 +393,14 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 				continue
 			}
 			// In all other cases, we cut out the empty buckets.
-			if deltaBuckets && iBucket+nEmpty < len(buckets) {
-				currentBucketAbsolute = -buckets[iBucket]
-				buckets[iBucket+nEmpty] += buckets[iBucket]
+			if deltaBuckets && iBucket+nEmpty < len(primaryBuckets) {
+				currentBucketAbsolute = -primaryBuckets[iBucket]
+				primaryBuckets[iBucket+nEmpty] += primaryBuckets[iBucket]
 			}
-			buckets = append(buckets[:iBucket], buckets[iBucket+nEmpty:]...)
+			primaryBuckets = append(primaryBuckets[:iBucket], primaryBuckets[iBucket+nEmpty:]...)
+			if compensationBuckets != nil {
+				compensationBuckets = append(compensationBuckets[:iBucket], compensationBuckets[iBucket+nEmpty:]...)
+			}
 			if posInSpan == 0 {
 				// Start of span.
 				if nEmpty == int(spans[iSpan].Length) {
@@ -388,8 +450,8 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 			iSpan++
 		}
 	}
-	if maxEmptyBuckets == 0 || len(buckets) == 0 {
-		return buckets, spans
+	if maxEmptyBuckets == 0 || len(primaryBuckets) == 0 {
+		return primaryBuckets, compensationBuckets, spans
 	}
 
 	// Finally, check if any offsets between spans are small enough to merge
@@ -397,7 +459,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 	iBucket = int(spans[0].Length)
 	if deltaBuckets {
 		currentBucketAbsolute = 0
-		for _, bucket := range buckets[:iBucket] {
+		for _, bucket := range primaryBuckets[:iBucket] {
 			currentBucketAbsolute += bucket
 		}
 	}
@@ -406,7 +468,7 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 		if int(spans[iSpan].Offset) > maxEmptyBuckets {
 			l := int(spans[iSpan].Length)
 			if deltaBuckets {
-				for _, bucket := range buckets[iBucket : iBucket+l] {
+				for _, bucket := range primaryBuckets[iBucket : iBucket+l] {
 					currentBucketAbsolute += bucket
 				}
 			}
@@ -416,33 +478,62 @@ func compactBuckets[IBC InternalBucketCount](buckets []IBC, spans []Span, maxEmp
 		}
 		// Merge span with previous one and insert empty buckets.
 		offset := int(spans[iSpan].Offset)
+		l := int(spans[iSpan].Length)
 		spans[iSpan-1].Length += uint32(offset) + spans[iSpan].Length
 		spans = append(spans[:iSpan], spans[iSpan+1:]...)
-		newBuckets := make([]IBC, len(buckets)+offset)
-		copy(newBuckets, buckets[:iBucket])
-		copy(newBuckets[iBucket+offset:], buckets[iBucket:])
+		newPrimaryBuckets := make([]IBC, len(primaryBuckets)+offset)
+		copy(newPrimaryBuckets, primaryBuckets[:iBucket])
+		copy(newPrimaryBuckets[iBucket+offset:], primaryBuckets[iBucket:])
 		if deltaBuckets {
-			newBuckets[iBucket] = -currentBucketAbsolute
-			newBuckets[iBucket+offset] += currentBucketAbsolute
+			newPrimaryBuckets[iBucket] = -currentBucketAbsolute
+			newPrimaryBuckets[iBucket+offset] += currentBucketAbsolute
+		}
+		primaryBuckets = newPrimaryBuckets
+		if compensationBuckets != nil {
+			newCompensationBuckets := make([]float64, len(compensationBuckets)+offset)
+			copy(newCompensationBuckets, compensationBuckets[:iBucket])
+			copy(newCompensationBuckets[iBucket+offset:], compensationBuckets[iBucket:])
+			compensationBuckets = newCompensationBuckets
 		}
 		iBucket += offset
-		buckets = newBuckets
-		currentBucketAbsolute = buckets[iBucket]
+		// The buckets of the merged span are now part of the previous span, so
+		// iBucket has to skip them as well to keep pointing at the first bucket
+		// of the span we look at next. The inserted empty buckets have reset the
+		// running absolute count to zero, so the deltas of the merged span add up
+		// to the absolute count of its last bucket.
+		if deltaBuckets {
+			currentBucketAbsolute = 0
+			for _, bucket := range primaryBuckets[iBucket : iBucket+l] {
+				currentBucketAbsolute += bucket
+			}
+		}
+		iBucket += l
 		// Note that with many merges, it would be more efficient to
 		// first record all the chunks of empty buckets to insert and
 		// then do it in one go through all the buckets.
 	}
 
-	return buckets, spans
+	return primaryBuckets, compensationBuckets, spans
 }
 
 func checkHistogramSpans(spans []Span, numBuckets int) error {
-	var spanBuckets int
+	var (
+		spanBuckets int
+		// Bucket indexes are int32, so track the index in int64 to
+		// detect offsets that add up past the int32 range and wrap.
+		endIdx int64
+	)
 	for n, span := range spans {
 		if n > 0 && span.Offset < 0 {
 			return fmt.Errorf("span number %d with offset %d: %w", n+1, span.Offset, ErrHistogramSpanNegativeOffset)
+		} else if n == 0 && span.Offset == math.MinInt32 {
+			return fmt.Errorf("span number %d starts at bucket index %d: %w", n+1, span.Offset, ErrHistogramSpanIndexOutOfRange)
 		}
 		spanBuckets += int(span.Length)
+		endIdx += int64(span.Offset) + int64(span.Length)
+		if endIdx-1 > math.MaxInt32 {
+			return fmt.Errorf("span number %d ends at bucket index %d: %w", n+1, endIdx-1, ErrHistogramSpanIndexOutOfRange)
+		}
 	}
 	if spanBuckets != numBuckets {
 		return fmt.Errorf("spans need %d buckets, have %d buckets: %w", spanBuckets, numBuckets, ErrHistogramSpansBucketsMismatch)

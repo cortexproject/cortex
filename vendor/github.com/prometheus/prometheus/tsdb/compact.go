@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -32,7 +32,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
@@ -169,10 +168,16 @@ type LeveledCompactorOptions struct {
 	// MaxBlockChunkSegmentSize is the max block chunk segment size. If it is 0 then the default chunks.DefaultChunkSegmentSize is used.
 	MaxBlockChunkSegmentSize int64
 
-	// MergeFunc is used for merging series together in vertical compaction. By default storage.NewCompactingChunkSeriesMerger(storage.ChainedSeriesMerge) is used.
+	// MergeFunc is used for merging series together in vertical compaction. By default storage.NewCompactingChunkSeriesMergerWithFloatEncoding(storage.ChainedSeriesMerge, opts.FloatChunkEncoding) is used.
 	MergeFunc storage.VerticalChunkSeriesMergeFunc
 
-	// BlockExcludeFilter is used to decide which blocks are exluded from compactions.
+	// FloatChunkEncoding returns the encoding used for float chunks re-encoded during
+	// vertical (overlapping) compaction. Consulted at compaction time, so it may
+	// reflect runtime-reloaded configuration. Nil means EncXOR. Ignored when MergeFunc
+	// is set.
+	FloatChunkEncoding func() chunkenc.Encoding
+
+	// BlockExcludeFilter is used to decide which blocks are excluded from compactions.
 	BlockExcludeFilter BlockExcludeFilterFunc
 
 	// EnableOverlappingCompaction enables compaction of overlapping blocks. In Prometheus it is always enabled.
@@ -212,7 +217,7 @@ func NewLeveledCompactorWithOptions(ctx context.Context, r prometheus.Registerer
 	}
 	mergeFunc := opts.MergeFunc
 	if mergeFunc == nil {
-		mergeFunc = storage.NewCompactingChunkSeriesMerger(storage.ChainedSeriesMerge)
+		mergeFunc = storage.NewCompactingChunkSeriesMergerWithFloatEncoding(storage.ChainedSeriesMerge, opts.FloatChunkEncoding)
 	}
 	maxBlockChunkSegmentSize := opts.MaxBlockChunkSegmentSize
 	if maxBlockChunkSegmentSize == 0 {
@@ -263,6 +268,13 @@ func (c *LeveledCompactor) Plan(dir string) ([]string, error) {
 			return nil, err
 		}
 		if c.blockExcludeFunc != nil && c.blockExcludeFunc(meta) {
+			// Compactions work from oldest to newest, uploads do the same (usually).
+			// If you continue here you'll skip compactions on this one block, but:
+			// * all further blocks are NOT yet uploaded
+			// * some or all further blocks are uploaded
+			//
+			// If we continue and there are newer blocks to pick from,
+			// then you will compact in a non-continuous way, leaving gaps of individual un-compacted blocks.
 			break
 		}
 		dms = append(dms, dirMeta{dir, meta})
@@ -271,6 +283,71 @@ func (c *LeveledCompactor) Plan(dir string) ([]string, error) {
 }
 
 func (c *LeveledCompactor) plan(dms []dirMeta) ([]string, error) {
+	if len(dms) == 0 {
+		return nil, nil
+	}
+
+	// Blocks created from a partial view of the head (stale-series and
+	// selected-series compactions) carry the from-stale-series or
+	// from-selected-series hint, which must survive compaction: a block that
+	// is fully made of partial-view data must keep its hint, otherwise it
+	// would wrongly count towards inOrderBlocksMaxTime and advance the
+	// WAL-replay cutoff past WAL-only data. To preserve the hint we never mix
+	// the classes during compaction: a partial-view block is only ever merged
+	// with other blocks of the same class. We therefore plan each class
+	// independently and prefer regular (no-hint) compaction over partial-view
+	// compaction so regular compaction is not starved.
+	// See https://github.com/prometheus/prometheus/issues/18379.
+	//
+	// Out-of-order blocks (the from-out-of-order hint) are deliberately NOT
+	// segregated here: they must be co-compacted with overlapping in-order
+	// blocks to resolve overlaps, so the resulting block legitimately
+	// contains in-order data. Their hint is instead propagated by
+	// CompactBlockMetas only when every source block is out-of-order; a
+	// mixed merge correctly drops the hint.
+	//
+	// Note: with EnableOverlappingCompaction this means a partial-view block
+	// that overlaps a block of a different class is never co-compacted with
+	// it and so is retained on disk separately until it ages out through
+	// normal retention; the two are never merged. This is intentional:
+	// merging would drop the hint and reintroduce #18379.
+	var stale, selected, nonHint []dirMeta
+	for _, dm := range dms {
+		switch {
+		case dm.meta.Compaction.FromStaleSeries():
+			stale = append(stale, dm)
+		case dm.meta.Compaction.FromSelectedSeries():
+			selected = append(selected, dm)
+		default:
+			nonHint = append(nonHint, dm)
+		}
+	}
+	classes := 0
+	for _, cls := range [][]dirMeta{stale, selected, nonHint} {
+		if len(cls) > 0 {
+			classes++
+		}
+	}
+	if classes > 1 {
+		// Prefer non-hint compaction so it is never starved by partial-view
+		// blocks accumulating in the data directory.
+		if res, err := c.planClass(nonHint); err != nil || len(res) > 0 {
+			return res, err
+		}
+		if res, err := c.planClass(stale); err != nil || len(res) > 0 {
+			return res, err
+		}
+		return c.planClass(selected)
+	}
+
+	return c.planClass(dms)
+}
+
+// planClass plans compaction for a single class of blocks: either all blocks
+// carry the same partial-view hint (from-stale-series or from-selected-series)
+// or none do. It must not be called with a mix of classes, so that those
+// hints are preserved through compaction (see plan).
+func (c *LeveledCompactor) planClass(dms []dirMeta) ([]string, error) {
 	if len(dms) == 0 {
 		return nil, nil
 	}
@@ -303,18 +380,18 @@ func (c *LeveledCompactor) plan(dms []dirMeta) ([]string, error) {
 	}
 
 	// Compact any blocks with big enough time range that have >5% tombstones.
-	for i := len(dms) - 1; i >= 0; i-- {
-		meta := dms[i].meta
+	for _, v := range slices.Backward(dms) {
+		meta := v.meta
 		if meta.MaxTime-meta.MinTime < c.ranges[len(c.ranges)/2] {
 			// If the block is entirely deleted, then we don't care about the block being big enough.
 			// TODO: This is assuming a single tombstone is for a distinct series, which might not be true.
 			if meta.Stats.NumTombstones > 0 && meta.Stats.NumTombstones >= meta.Stats.NumSeries {
-				return []string{dms[i].dir}, nil
+				return []string{v.dir}, nil
 			}
 			break
 		}
 		if float64(meta.Stats.NumTombstones)/float64(meta.Stats.NumSeries+1) > 0.05 {
-			return []string{dms[i].dir}, nil
+			return []string{v.dir}, nil
 		}
 	}
 
@@ -406,7 +483,7 @@ func splitByRange(ds []dirMeta, tr int64) [][]dirMeta {
 		} else {
 			t0 = tr * ((m.MinTime - tr + 1) / tr)
 		}
-		// Skip blocks that don't fall into the range. This can happen via mis-alignment or
+		// Skip blocks that don't fall into the range. This can happen via misalignment or
 		// by being a multiple of the intended range.
 		if m.MaxTime > t0+tr {
 			i++
@@ -441,6 +518,17 @@ func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta {
 	mint := blocks[0].MinTime
 	maxt := blocks[0].MaxTime
 
+	// inOrderBlocksMaxTime ignores blocks that are *totally* made of out-of-order
+	// data, so the from-out-of-order hint must be propagated to the merged block
+	// only when every source block carries it. The from-stale-series and
+	// from-selected-series hints, by contrast, are propagated when any source
+	// carries them: the planner guarantees such blocks are only merged with
+	// blocks of the same class (see plan), so any-source semantics are
+	// equivalent to all-sources for those hints while staying safe even if
+	// segregation were ever bypassed. Dropping any of these hints would let the
+	// merged block wrongly advance the WAL-replay cutoff. See #18379.
+	allOutOfOrder := true
+
 	for _, b := range blocks {
 		if b.MinTime < mint {
 			mint = b.MinTime
@@ -454,11 +542,28 @@ func CompactBlockMetas(uid ulid.ULID, blocks ...*BlockMeta) *BlockMeta {
 		for _, s := range b.Compaction.Sources {
 			sources[s] = struct{}{}
 		}
+		// Preserve the from-stale-series and from-selected-series hints when merging.
+		// The planner only ever groups stale/selected blocks with other stale/selected
+		// blocks (see plan), so the resulting block is fully made of stale/selected
+		// series and must keep the hint, otherwise it would wrongly count towards
+		// inOrderBlocksMaxTime. See #18379.
+		if b.Compaction.FromStaleSeries() {
+			res.Compaction.SetStaleSeries()
+		}
+		if b.Compaction.FromSelectedSeries() {
+			res.Compaction.SetSelectedSeries()
+		}
+		if !b.Compaction.FromOutOfOrder() {
+			allOutOfOrder = false
+		}
 		res.Compaction.Parents = append(res.Compaction.Parents, BlockDesc{
 			ULID:    b.ULID,
 			MinTime: b.MinTime,
 			MaxTime: b.MaxTime,
 		})
+	}
+	if allOutOfOrder {
+		res.Compaction.SetOutOfOrder()
 	}
 	res.Compaction.Level++
 
@@ -565,16 +670,16 @@ func (c *LeveledCompactor) CompactWithBlockPopulator(dest string, dirs []string,
 		return []ulid.ULID{uid}, nil
 	}
 
-	errs := tsdb_errors.NewMulti(err)
+	errs := []error{err}
 	if !errors.Is(err, context.Canceled) {
 		for _, b := range bs {
 			if err := b.setCompactionFailed(); err != nil {
-				errs.Add(fmt.Errorf("setting compaction failed for block: %s: %w", b.Dir(), err))
+				errs = append(errs, fmt.Errorf("setting compaction failed for block: %s: %w", b.Dir(), err))
 			}
 		}
 	}
 
-	return nil, errs.Err()
+	return nil, errors.Join(errs...)
 }
 
 func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, base *BlockMeta) ([]ulid.ULID, error) {
@@ -597,6 +702,12 @@ func (c *LeveledCompactor) Write(dest string, b BlockReader, mint, maxt int64, b
 		}
 		if base.Compaction.FromOutOfOrder() {
 			meta.Compaction.SetOutOfOrder()
+		}
+		if base.Compaction.FromStaleSeries() {
+			meta.Compaction.SetStaleSeries()
+		}
+		if base.Compaction.FromSelectedSeries() {
+			meta.Compaction.SetSelectedSeries()
 		}
 	}
 
@@ -651,7 +762,7 @@ func (c *LeveledCompactor) write(dest string, meta *BlockMeta, blockPopulator Bl
 	tmp := dir + tmpForCreationBlockDirSuffix
 	var closers []io.Closer
 	defer func(t time.Time) {
-		err = tsdb_errors.NewMulti(err, tsdb_errors.CloseAll(closers)).Err()
+		err = errors.Join(err, closeAll(closers))
 
 		// RemoveAll returns no error when tmp doesn't exist so it is safe to always run it.
 		if err := os.RemoveAll(tmp); err != nil {
@@ -708,13 +819,13 @@ func (c *LeveledCompactor) write(dest string, meta *BlockMeta, blockPopulator Bl
 	// though these are covered under defer. This is because in Windows,
 	// you cannot delete these unless they are closed and the defer is to
 	// make sure they are closed if the function exits due to an error above.
-	errs := tsdb_errors.NewMulti()
+	var errs []error
 	for _, w := range closers {
-		errs.Add(w.Close())
+		errs = append(errs, w.Close())
 	}
 	closers = closers[:0] // Avoid closing the writers twice in the defer.
-	if errs.Err() != nil {
-		return errs.Err()
+	if err := errors.Join(errs...); err != nil {
+		return err
 	}
 
 	// Populated block is empty, so exit early.
@@ -793,11 +904,9 @@ func (DefaultBlockPopulator) PopulateBlock(ctx context.Context, metrics *Compact
 		overlapping bool
 	)
 	defer func() {
-		errs := tsdb_errors.NewMulti(err)
-		if cerr := tsdb_errors.CloseAll(closers); cerr != nil {
-			errs.Add(fmt.Errorf("close: %w", cerr))
+		if cerr := closeAll(closers); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("close: %w", cerr))
 		}
-		err = errs.Err()
 		metrics.PopulatingBlocks.Set(0)
 	}()
 	metrics.PopulatingBlocks.Set(1)
@@ -832,6 +941,9 @@ func (DefaultBlockPopulator) PopulateBlock(ctx context.Context, metrics *Compact
 			return fmt.Errorf("open chunk reader for block %+v: %w", b.Meta(), err)
 		}
 		closers = append(closers, chunkr)
+
+		// Enable the head-chunk cache for compaction.
+		enableChunkCache(chunkr)
 
 		tombsr, err := b.Tombstones()
 		if err != nil {
@@ -910,9 +1022,9 @@ func (DefaultBlockPopulator) PopulateBlock(ctx context.Context, metrics *Compact
 			samples := uint64(chk.Chunk.NumSamples())
 			meta.Stats.NumSamples += samples
 			switch chk.Chunk.Encoding() {
-			case chunkenc.EncHistogram, chunkenc.EncFloatHistogram:
+			case chunkenc.EncHistogram, chunkenc.EncFloatHistogram, chunkenc.EncHistogramST, chunkenc.EncFloatHistogramST:
 				meta.Stats.NumHistogramSamples += samples
-			case chunkenc.EncXOR:
+			case chunkenc.EncXOR, chunkenc.EncXOR2:
 				meta.Stats.NumFloatSamples += samples
 			}
 		}

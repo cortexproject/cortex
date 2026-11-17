@@ -61,6 +61,7 @@ type SumAcc struct {
 	value             float64
 	compensation      float64
 	histSum           *histogram.FloatHistogram
+	histCompensation  *histogram.FloatHistogram
 	hasFloatVal       bool
 	hasError          bool // histogram error occurred; accumulator becomes no-op
 	warn              warnings.Warnings
@@ -80,25 +81,8 @@ func (s *SumAcc) AddVector(float64s []float64, histograms []*histogram.FloatHist
 		s.hasFloatVal = true
 	}
 
-	if len(histograms) > 0 {
-		// Track counter reset hints for collision detection.
-		for _, h := range histograms {
-			switch h.CounterResetHint {
-			case histogram.CounterReset:
-				s.counterResetState |= SeenCounterReset
-			case histogram.NotCounterReset:
-				s.counterResetState |= SeenNotCounterReset
-			}
-		}
-
-		var (
-			err  error
-			warn warnings.Warnings
-		)
-		s.histSum, warn, err = histogramSum(s.histSum, histograms)
-		s.warn |= warn
-		if err != nil {
-			s.hasError = true
+	for _, h := range histograms {
+		if err := s.addHistogram(h); err != nil {
 			return err
 		}
 	}
@@ -130,20 +114,11 @@ func (s *SumAcc) addHistogram(h *histogram.FloatHistogram) error {
 		s.histSum = h.Copy()
 		return nil
 	}
-	// The histogram being added must have an equal or larger schema.
-	// https://github.com/prometheus/prometheus/blob/57bcbf18880f7554ae34c5b341d52fc53f059a97/promql/engine.go#L2448-L2456
 	var (
 		err                  error
 		nhcbBoundsReconciled bool
 	)
-	if h.Schema >= s.histSum.Schema {
-		s.histSum, _, nhcbBoundsReconciled, err = s.histSum.Add(h)
-	} else {
-		t := h.Copy()
-		if s.histSum, _, nhcbBoundsReconciled, err = t.Add(s.histSum); err == nil {
-			s.histSum = t
-		}
-	}
+	s.histCompensation, _, nhcbBoundsReconciled, err = s.histSum.KahanAdd(h, s.histCompensation)
 	if nhcbBoundsReconciled {
 		s.warn |= warnings.WarnNHCBBoundsReconciledAgg
 	}
@@ -156,10 +131,15 @@ func (s *SumAcc) addHistogram(h *histogram.FloatHistogram) error {
 }
 
 func (s *SumAcc) Value() (float64, *histogram.FloatHistogram) {
-	if s.histSum != nil {
-		s.histSum.Compact(0)
+	h := s.histSum
+	if h != nil {
+		if s.histCompensation != nil {
+			// KahanAdd keeps the compensation in the same schema as the sum.
+			h, _, _, _ = h.Copy().Add(s.histCompensation)
+		}
+		h.Compact(0)
 	}
-	return s.value + s.compensation, s.histSum
+	return s.value + s.compensation, h
 }
 
 func (s *SumAcc) ValueType() ValueType {
@@ -186,6 +166,7 @@ func (s *SumAcc) Warnings() warnings.Warnings {
 
 func (s *SumAcc) Reset(_ float64) {
 	s.histSum = nil
+	s.histCompensation = nil
 	s.hasFloatVal = false
 	s.hasError = false
 	s.warn = 0
@@ -424,15 +405,16 @@ type AvgAcc struct {
 	avg         float64
 	incremental bool
 	count       int64
-	hasValue    bool
 	hasError    bool // histogram error occurred; accumulator becomes no-op
 
-	histSum           *histogram.FloatHistogram
-	histScratch       *histogram.FloatHistogram
-	histSumScratch    *histogram.FloatHistogram
-	histCount         float64
-	warn              warnings.Warnings
-	counterResetState CounterResetState
+	histSum                 *histogram.FloatHistogram
+	histScratch             *histogram.FloatHistogram
+	histCompensation        *histogram.FloatHistogram
+	histCompensationScratch *histogram.FloatHistogram
+	histIncremental         bool
+	histCount               float64
+	warn                    warnings.Warnings
+	counterResetState       CounterResetState
 }
 
 func NewAvgAcc() *AvgAcc {
@@ -446,7 +428,13 @@ func (a *AvgAcc) Add(v float64, h *histogram.FloatHistogram) error {
 	if h == nil {
 		return a.addFloat(v)
 	}
-	return a.addHistogram(h)
+	if err := a.addHistogram(h); err != nil {
+		a.histSum = nil
+		a.histCount = 0
+		a.hasError = true
+		return warnings.ConvertHistogramError(err)
+	}
+	return nil
 }
 
 func (a *AvgAcc) addHistogram(h *histogram.FloatHistogram) error {
@@ -462,47 +450,60 @@ func (a *AvgAcc) addHistogram(h *histogram.FloatHistogram) error {
 	if a.histSum == nil {
 		a.histSum = h.Copy()
 		a.histScratch = &histogram.FloatHistogram{}
-		a.histSumScratch = &histogram.FloatHistogram{}
 		return nil
 	}
 
-	var (
-		err                  error
-		nhcbBoundsReconciled bool
-	)
-	h.CopyTo(a.histScratch)
-	left := a.histScratch.Div(a.histCount)
-	a.histSum.CopyTo(a.histSumScratch)
-	right := a.histSumScratch.Div(a.histCount)
-	toAdd, _, nhcbBoundsReconciled, err := left.Sub(right)
-	if nhcbBoundsReconciled {
-		a.warn |= warnings.WarnNHCBBoundsReconciledAgg
-	}
-	if err == nil {
-		var nbr bool
-		a.histSum, _, nbr, err = a.histSum.Add(toAdd)
-		if nbr {
+	if !a.histIncremental {
+		// Try a compensated sum first. Keep the previous sum intact so that
+		// an overflow can switch to an incremental mean without losing it.
+		a.histSum.CopyTo(a.histScratch)
+		if a.histCompensation != nil {
+			if a.histCompensationScratch == nil {
+				a.histCompensationScratch = &histogram.FloatHistogram{}
+			}
+			a.histCompensation.CopyTo(a.histCompensationScratch)
+		}
+		c, _, reconciled, err := a.histScratch.KahanAdd(h, a.histCompensationScratch)
+		if err != nil {
+			return err
+		}
+		if reconciled {
 			a.warn |= warnings.WarnNHCBBoundsReconciledAgg
 		}
+		if !a.histScratch.HasOverflow() {
+			a.histSum, a.histScratch = a.histScratch, a.histSum
+			a.histCompensation, a.histCompensationScratch = c, a.histCompensation
+			return nil
+		}
+		a.histIncremental = true
+		a.histSum.Div(a.histCount - 1)
+		if a.histCompensation != nil {
+			a.histCompensation.Div(a.histCount - 1)
+		}
 	}
-	if err != nil {
-		a.histSum = nil
-		a.histCount = 0
-		a.hasError = true
-		return warnings.ConvertHistogramError(err)
+
+	q := (a.histCount - 1) / a.histCount
+	if a.histCompensation != nil {
+		a.histCompensation.Mul(q)
 	}
-	return nil
+	h.CopyTo(a.histScratch)
+	var (
+		err        error
+		reconciled bool
+	)
+	a.histCompensation, _, reconciled, err = a.histSum.Mul(q).KahanAdd(a.histScratch.Div(a.histCount), a.histCompensation)
+	if reconciled {
+		a.warn |= warnings.WarnNHCBBoundsReconciledAgg
+	}
+	return err
 }
 
 func (a *AvgAcc) addFloat(v float64) error {
 	a.count++
-	if !a.hasValue {
-		a.hasValue = true
+	if a.count == 1 {
 		a.kahanSum = v
 		return nil
 	}
-
-	a.hasValue = true
 
 	if !a.incremental {
 		newSum, newC := KahanSumInc(v, a.kahanSum, a.kahanC)
@@ -568,13 +569,26 @@ func (a *AvgAcc) AddVector(vs []float64, hs []*histogram.FloatHistogram) error {
 }
 
 func (a *AvgAcc) Value() (float64, *histogram.FloatHistogram) {
+	var h *histogram.FloatHistogram
 	if a.histSum != nil {
-		a.histSum.Compact(0)
+		h = a.histSum.Copy()
+		c := a.histCompensation
+		if !a.histIncremental {
+			h.Div(a.histCount)
+			if c != nil {
+				c = c.Copy().Div(a.histCount)
+			}
+		}
+		if c != nil {
+			// KahanAdd keeps the compensation in the same schema as the sum.
+			h, _, _, _ = h.Add(c)
+		}
+		h.Compact(0)
 	}
 	if a.incremental {
-		return a.avg + a.kahanC, a.histSum
+		return a.avg + a.kahanC, h
 	}
-	return (a.kahanSum + a.kahanC) / float64(a.count), a.histSum
+	return (a.kahanSum + a.kahanC) / float64(a.count), h
 }
 
 func (a *AvgAcc) ValueType() ValueType {
@@ -603,7 +617,6 @@ func (a *AvgAcc) Warnings() warnings.Warnings {
 }
 
 func (a *AvgAcc) Reset(_ float64) {
-	a.hasValue = false
 	a.hasError = false
 	a.incremental = false
 	a.kahanSum = 0
@@ -612,6 +625,9 @@ func (a *AvgAcc) Reset(_ float64) {
 
 	a.histCount = 0
 	a.histSum = nil
+	a.histCompensation = nil
+	a.histCompensationScratch = nil
+	a.histIncremental = false
 	a.warn = 0
 	a.counterResetState = 0
 }
@@ -897,44 +913,12 @@ func Quantile(q float64, points []float64) float64 {
 	upperIndex := math.Min(n-1, lowerIndex+1)
 
 	weight := rank - math.Floor(rank)
+	// An exact rank must return the sample itself: interpolating with weight 0
+	// turns an infinite neighbor into NaN (Inf*0). Matches Prometheus #19899.
+	if weight == 0 {
+		return points[int(lowerIndex)]
+	}
 	return points[int(lowerIndex)]*(1-weight) + points[int(upperIndex)]*weight
-}
-
-func histogramSum(current *histogram.FloatHistogram, histograms []*histogram.FloatHistogram) (*histogram.FloatHistogram, warnings.Warnings, error) {
-	if len(histograms) == 0 {
-		return current, 0, nil
-	}
-	if current == nil && len(histograms) == 1 {
-		return histograms[0].Copy(), 0, nil
-	}
-	var histSum *histogram.FloatHistogram
-	if current != nil {
-		histSum = current.Copy()
-	} else {
-		histSum = histograms[0].Copy()
-		histograms = histograms[1:]
-	}
-
-	var (
-		err                  error
-		warn                 warnings.Warnings
-		nhcbBoundsReconciled bool
-	)
-	for i := range histograms {
-		if histograms[i].Schema >= histSum.Schema {
-			histSum, _, nhcbBoundsReconciled, err = histSum.Add(histograms[i])
-		} else {
-			t := histograms[i].Copy()
-			histSum, _, nhcbBoundsReconciled, err = t.Add(histSum)
-		}
-		if nhcbBoundsReconciled {
-			warn |= warnings.WarnNHCBBoundsReconciledAgg
-		}
-		if err != nil {
-			return nil, warn, warnings.ConvertHistogramError(err)
-		}
-	}
-	return histSum, warn, nil
 }
 
 // compensatedSum returns the sum of the elements of the slice calculated with greater

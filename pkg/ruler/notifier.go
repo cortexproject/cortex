@@ -45,7 +45,7 @@ type rulerNotifier struct {
 	logger    gklog.Logger
 }
 
-func newRulerNotifier(o *notifier.Options, nameValidationScheme model.ValidationScheme, l gklog.Logger, registerer prometheus.Registerer, sdMetrics map[string]discovery.DiscovererMetrics) *rulerNotifier {
+func newRulerNotifier(o *notifier.Options, nameValidationScheme model.ValidationScheme, l gklog.Logger, registerer prometheus.Registerer, sdMetrics *discovery.SDMetrics) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	slogger := util_log.GoKitLogToSlog(l)
 	return &rulerNotifier{

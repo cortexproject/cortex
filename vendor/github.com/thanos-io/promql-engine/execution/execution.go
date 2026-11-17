@@ -50,7 +50,20 @@ func New(ctx context.Context, expr logicalplan.Node, storage storage.Scanners, o
 		End:   opts.End.UnixMilli(),
 		Step:  opts.Step.Milliseconds(),
 	}
-	return newOperator(ctx, expr, storage, opts, hints)
+	op, err := newOperator(ctx, expr, storage, opts, hints)
+	if err != nil {
+		return nil, err
+	}
+	// Internal duplicate checks may be disabled, but final vector results
+	// must still have unique labelsets. Reuse an existing root check when present.
+	switch expr.(type) {
+	case *logicalplan.CheckDuplicateLabels, logicalplan.Noop:
+		return op, nil
+	}
+	if expr.ReturnType() != parser.ValueTypeVector {
+		return op, nil
+	}
+	return exchange.NewDuplicateLabelCheck(op, opts), nil
 }
 
 func newOperator(ctx context.Context, expr logicalplan.Node, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -204,6 +217,9 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 	}
 
 	nOpts := query.NestedOptionsForSubquery(opts, t.Step, t.Range, t.Offset)
+	if t.Timestamp != nil {
+		nOpts.End = time.UnixMilli(*t.Timestamp).Add(-t.OriginalOffset)
+	}
 
 	hints.Start = nOpts.Start.UnixMilli()
 	hints.End = nOpts.End.UnixMilli()
@@ -212,12 +228,6 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 	inner, err := newOperator(ctx, t.Expr, storage, nOpts, hints)
 	if err != nil {
 		return nil, err
-	}
-
-	outerOpts := *opts
-	if t.Timestamp != nil {
-		outerOpts.Start = time.UnixMilli(*t.Timestamp)
-		outerOpts.End = time.UnixMilli(*t.Timestamp)
 	}
 
 	var scalarArg model.VectorOperator
@@ -247,7 +257,7 @@ func newSubqueryFunction(ctx context.Context, e *logicalplan.FunctionCall, t *lo
 		}
 	}
 
-	return scan.NewSubqueryOperator(inner, scalarArg, scalarArg2, &outerOpts, e, t)
+	return scan.NewSubqueryOperator(inner, scalarArg, scalarArg2, opts, e, t)
 }
 
 func newInstantVectorFunction(ctx context.Context, e *logicalplan.FunctionCall, storage storage.Scanners, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
@@ -389,7 +399,7 @@ func newRemoteMerge(ctx context.Context, e logicalplan.RemoteMerge, scanners sto
 
 func newRemoteExecution(ctx context.Context, e logicalplan.RemoteExecution, opts *query.Options, hints promstorage.SelectHints) (model.VectorOperator, error) {
 	// Create a new remote query scoped to the calculated start time.
-	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta), e.Query, e.QueryRangeStart, e.QueryRangeEnd, opts.Step)
+	qry, err := e.Engine.NewRangeQuery(ctx, promql.NewPrometheusQueryOpts(false, opts.LookbackDelta, new(false)), e.Query, e.QueryRangeStart, e.QueryRangeEnd, opts.Step)
 	if err != nil {
 		return nil, err
 	}

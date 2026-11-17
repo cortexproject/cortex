@@ -1,0 +1,826 @@
+// Copyright 2023 Princess B33f Heavy Industries / Dave Shanley
+// SPDX-License-Identifier: MIT
+
+package index
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/pb33f/libopenapi/datamodel"
+	"github.com/pb33f/libopenapi/internal/jsonnode"
+	"github.com/pb33f/libopenapi/utils"
+
+	"github.com/pb33f/go-yaml"
+)
+
+const (
+	YAML FileExtension = iota
+	JSON
+	JS
+	GO
+	TS
+	CS
+	C
+	CPP
+	PHP
+	PY
+	HTML
+	MD
+	JAVA
+	RS
+	ZIG
+	RB
+	UNSUPPORTED
+)
+
+// FileExtension is the type of file extension.
+type FileExtension int
+
+// contentDetectionCache is a simple cache for content type detection results
+// to avoid repeated fetches of the same URL
+var contentDetectionCache = make(map[string]FileExtension)
+var contentDetectionMutex sync.RWMutex
+
+// detectContentType attempts to identify if the data contains JSON or YAML content
+// by analyzing patterns in the first ~1KB of data
+func detectContentType(data []byte) FileExtension {
+	if len(data) == 0 {
+		return UNSUPPORTED
+	}
+
+	// Trim leading whitespace
+	data = bytes.TrimLeft(data, " \t\r\n")
+	if len(data) == 0 {
+		return UNSUPPORTED
+	}
+
+	// Check for JSON patterns
+	if data[0] == '{' || data[0] == '[' {
+		// Quick validation - count braces/brackets to ensure it's not malformed
+		if data[0] == '{' {
+			openBraces := 0
+			for _, b := range data {
+				if b == '{' {
+					openBraces++
+				} else if b == '}' {
+					openBraces--
+				}
+			}
+			if openBraces >= 0 {
+				return JSON
+			}
+		} else if data[0] == '[' {
+			openBrackets := 0
+			for _, b := range data {
+				if b == '[' {
+					openBrackets++
+				} else if b == ']' {
+					openBrackets--
+				}
+			}
+			if openBrackets >= 0 {
+				return JSON
+			}
+		}
+	}
+
+	// Check for YAML patterns
+	dataStr := string(data)
+	// YAML document markers
+	if strings.HasPrefix(dataStr, "---") {
+		return YAML
+	}
+
+	// Look for key-value patterns common in YAML
+	lines := strings.Split(dataStr, "\n")
+	yamlPatterns := 0
+	for i, line := range lines {
+		if i > 10 {
+			break // Only check first few lines for efficiency
+		}
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue // Skip empty lines and comments
+		}
+		// Look for key: value patterns
+		if strings.Contains(line, ":") && !strings.HasPrefix(line, "http") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				// Ensure it looks like a YAML key (not a URL)
+				if key != "" && !strings.Contains(key, " ") && !strings.Contains(key, "/") {
+					yamlPatterns++
+				}
+			}
+		}
+	}
+
+	// If we found multiple YAML-like patterns, it's probably YAML
+	if yamlPatterns >= 2 {
+		return YAML
+	}
+
+	return UNSUPPORTED
+}
+
+// fetchWithRetry fetches content from URL with retry logic
+func fetchWithRetry(url string, handler utils.RemoteURLHandler, maxSize int, logger *slog.Logger) ([]byte, error) {
+	const maxRetries = 3
+	const retryDelay = time.Second
+
+	var lastErr error
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if logger != nil {
+			logger.Debug("fetching content for type detection", "url", url, "attempt", attempt)
+		}
+
+		resp, err := handler(url)
+		if err != nil {
+			lastErr = err
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+				continue
+			}
+			break
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+				continue
+			}
+			break
+		}
+
+		// Create a limited reader to avoid reading huge files
+		limitedReader := io.LimitReader(resp.Body, int64(maxSize))
+		data, err := io.ReadAll(limitedReader)
+		if err != nil {
+			lastErr = err
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+				continue
+			}
+			break
+		}
+
+		return data, nil
+	}
+
+	return nil, fmt.Errorf("failed to fetch after %d attempts: %v", maxRetries, lastErr)
+}
+
+// detectRemoteContentType fetches a small portion of remote content to determine its type
+func detectRemoteContentType(url string, handler utils.RemoteURLHandler, logger *slog.Logger) FileExtension {
+	// Check cache first
+	contentDetectionMutex.RLock()
+	if cached, exists := contentDetectionCache[url]; exists {
+		contentDetectionMutex.RUnlock()
+		return cached
+	}
+	contentDetectionMutex.RUnlock()
+
+	// Fetch content with retry logic
+	const maxDetectionSize = 2048 // 2KB should be enough for detection
+	data, err := fetchWithRetry(url, handler, maxDetectionSize, logger)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("failed to fetch content for type detection", "url", url, "error", err)
+		}
+		// Cache the failure to avoid repeated attempts
+		contentDetectionMutex.Lock()
+		contentDetectionCache[url] = UNSUPPORTED
+		contentDetectionMutex.Unlock()
+		return UNSUPPORTED
+	}
+
+	// Detect content type
+	detectedType := detectContentType(data)
+
+	// Cache the result
+	contentDetectionMutex.Lock()
+	contentDetectionCache[url] = detectedType
+	contentDetectionMutex.Unlock()
+
+	if logger != nil {
+		typeStr := "UNSUPPORTED"
+		if detectedType == JSON {
+			typeStr = "JSON"
+		} else if detectedType == YAML {
+			typeStr = "YAML"
+		}
+		logger.Debug("detected content type", "url", url, "type", typeStr)
+	}
+
+	return detectedType
+}
+
+// ClearContentDetectionCache clears the content detection cache.
+// Call this between document lifecycles in long-running processes to bound memory.
+func ClearContentDetectionCache() {
+	contentDetectionMutex.Lock()
+	contentDetectionCache = make(map[string]FileExtension)
+	contentDetectionMutex.Unlock()
+}
+
+// RolodexFSWithContext is an interface like fs.FS, but with a context parameter for the Open method.
+type RolodexFSWithContext interface {
+	OpenWithContext(ctx context.Context, name string) (fs.File, error)
+}
+
+// RemoteFS is a file system that indexes remote files. It implements the fs.FS interface. Files are located remotely
+// and served via HTTP.
+type RemoteFS struct {
+	indexConfig       *SpecIndexConfig
+	rootURL           string
+	rootURLParsed     *url.URL
+	RemoteHandlerFunc utils.RemoteURLHandler
+	Files             sync.Map
+	ProcessingFiles   sync.Map
+	FetchTime         int64
+	FetchChannel      chan *RemoteFile
+	remoteErrors      []error
+	logger            *slog.Logger
+	extractedFiles    map[string]RolodexFile
+	rolodex           *Rolodex
+	errMutex          sync.Mutex
+}
+
+// RemoteFile is a file that has been indexed by the RemoteFS. It implements the RolodexFile interface.
+type RemoteFile struct {
+	filename         string
+	name             string
+	extension        FileExtension
+	data             []byte
+	fullPath         string
+	URL              *url.URL
+	lastModified     time.Time
+	seekingErrors    []error
+	index            atomic.Value // *SpecIndex
+	parsed           *yaml.Node
+	offset           int64
+	indexOnce        sync.Once
+	contentLock      sync.Mutex
+	indexingComplete chan struct{} // Closed when indexing is complete
+}
+
+// GetFileName returns the name of the file.
+func (f *RemoteFile) GetFileName() string {
+	return f.filename
+}
+
+// GetContent returns the content of the file as a string.
+func (f *RemoteFile) GetContent() string {
+	return string(f.data)
+}
+
+// GetContentAsYAMLNode returns the content of the file as a yaml.Node.
+func (f *RemoteFile) GetContentAsYAMLNode() (*yaml.Node, error) {
+	f.contentLock.Lock()
+	defer f.contentLock.Unlock()
+	idx := f.GetIndex()
+	if idx != nil && idx.root != nil {
+		return idx.GetRootNode(), nil
+	}
+	if f.parsed != nil {
+		if idx != nil && idx.root == nil {
+			idx.root = f.parsed
+		}
+		return f.parsed, nil
+	}
+	if f.data == nil {
+		return nil, fmt.Errorf("no data to parse for file: %s", f.fullPath)
+	}
+	var root yaml.Node
+	err := jsonnode.Unmarshal(f.data, &root)
+
+	if err != nil {
+		return nil, err
+	}
+	if idx != nil && idx.root == nil {
+		idx.root = &root
+	}
+	if f.parsed == nil {
+		f.parsed = &root
+	}
+	return &root, nil
+}
+
+// GetFileExtension returns the file extension of the file.
+func (f *RemoteFile) GetFileExtension() FileExtension {
+	return f.extension
+}
+
+// GetLastModified returns the last modified time of the file.
+func (f *RemoteFile) GetLastModified() time.Time {
+	return f.lastModified
+}
+
+// GetErrors returns any errors that occurred while reading the file.
+func (f *RemoteFile) GetErrors() []error {
+	return f.seekingErrors
+}
+
+// GetFullPath returns the full path of the file.
+func (f *RemoteFile) GetFullPath() string {
+	return f.fullPath
+}
+
+// fs.FileInfo interfaces
+
+// Name returns the name of the file.
+func (f *RemoteFile) Name() string {
+	return f.name
+}
+
+// Size returns the size of the file.
+func (f *RemoteFile) Size() int64 {
+	return int64(len(f.data))
+}
+
+// Mode returns the file mode bits for the file.
+func (f *RemoteFile) Mode() fs.FileMode {
+	return fs.FileMode(0)
+}
+
+// ModTime returns the modification time of the file.
+func (f *RemoteFile) ModTime() time.Time {
+	return f.lastModified
+}
+
+// IsDir returns true if the file is a directory.
+func (f *RemoteFile) IsDir() bool {
+	return false
+}
+
+// fs.File interfaces
+
+// Sys returns the underlying data source (always returns nil)
+func (f *RemoteFile) Sys() interface{} {
+	return nil
+}
+
+// Close closes the file (doesn't do anything, returns no error)
+func (f *RemoteFile) Close() error {
+	return nil
+}
+
+// Stat returns the FileInfo for the file.
+func (f *RemoteFile) Stat() (fs.FileInfo, error) {
+	return f, nil
+}
+
+// Read reads the file. Makes it compatible with io.Reader.
+func (f *RemoteFile) Read(b []byte) (int, error) {
+	if f.offset >= int64(len(f.data)) {
+		return 0, io.EOF
+	}
+	if f.offset < 0 {
+		return 0, &fs.PathError{Op: "read", Path: f.name, Err: fs.ErrInvalid}
+	}
+	n := copy(b, f.data[f.offset:])
+	f.offset += int64(n)
+	return n, nil
+}
+
+// Index indexes the file and returns a *SpecIndex, any errors are returned as well.
+func (f *RemoteFile) Index(ctx context.Context, config *SpecIndexConfig) (*SpecIndex, error) {
+	var result *SpecIndex
+	var resultErr error
+	f.indexOnce.Do(func() {
+
+		content := f.data
+		// first, we must parse the content of the file,
+		// the check is bypassed, so as long as it's readable, we're good.
+		info, _ := datamodel.ExtractSpecInfoWithDocumentCheck(content, true)
+		if config.SpecInfo == nil {
+			config.SpecInfo = info
+		}
+		index := NewSpecIndexWithConfigAndContext(ctx, info.RootNode, config)
+		index.specAbsolutePath = config.SpecAbsolutePath
+
+		if info.RootNode == nil && index.root == nil {
+			resultErr = fmt.Errorf("nothing was extracted from the file '%s'", f.fullPath)
+		} else {
+			result = index
+			f.index.Store(index)
+		}
+	})
+	if v := f.index.Load(); v != nil {
+		result = v.(*SpecIndex)
+	}
+	return result, resultErr
+}
+
+// GetIndex returns the index for the file.
+func (f *RemoteFile) GetIndex() *SpecIndex {
+	if v := f.index.Load(); v != nil {
+		return v.(*SpecIndex)
+	}
+	return nil
+}
+
+// WaitForIndexing blocks until the file's index is ready.
+// This is used to coordinate between concurrent goroutines when one is loading
+// a file and another needs to use its index.
+func (f *RemoteFile) WaitForIndexing() {
+	if f.indexingComplete != nil {
+		<-f.indexingComplete
+	}
+}
+
+// signalIndexingComplete marks the file as ready for use.
+// This should be called after indexing completes.
+func (f *RemoteFile) signalIndexingComplete() {
+	if f.indexingComplete != nil {
+		select {
+		case <-f.indexingComplete:
+			// Already closed, do nothing
+		default:
+			close(f.indexingComplete)
+		}
+	}
+}
+
+// NewRemoteFSWithConfig creates a new RemoteFS using the supplied SpecIndexConfig.
+func NewRemoteFSWithConfig(specIndexConfig *SpecIndexConfig) (*RemoteFS, error) {
+	if specIndexConfig == nil {
+		return nil, errors.New("no spec index config provided")
+	}
+	remoteRootURL := specIndexConfig.BaseURL
+	log := specIndexConfig.Logger
+	if log == nil {
+		log = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelError,
+		}))
+	}
+
+	rfs := &RemoteFS{
+		indexConfig:   specIndexConfig,
+		logger:        log,
+		rootURLParsed: remoteRootURL,
+		FetchChannel:  make(chan *RemoteFile),
+	}
+	if remoteRootURL != nil {
+		rfs.rootURL = remoteRootURL.String()
+	}
+	if specIndexConfig.RemoteURLHandler != nil {
+		rfs.RemoteHandlerFunc = specIndexConfig.RemoteURLHandler
+	} else {
+		// default http client
+		client := &http.Client{
+			Timeout: time.Second * 120,
+		}
+		rfs.RemoteHandlerFunc = func(url string) (*http.Response, error) {
+			return client.Get(url)
+		}
+	}
+	return rfs, nil
+}
+
+// NewRemoteFSWithRootURL creates a new RemoteFS using the supplied root URL.
+func NewRemoteFSWithRootURL(rootURL string) (*RemoteFS, error) {
+	remoteRootURL, err := url.Parse(rootURL)
+	if err != nil {
+		return nil, err
+	}
+	config := CreateOpenAPIIndexConfig()
+	config.BaseURL = remoteRootURL
+	return NewRemoteFSWithConfig(config)
+}
+
+// SetRemoteHandlerFunc sets the remote handler function.
+func (i *RemoteFS) SetRemoteHandlerFunc(handlerFunc utils.RemoteURLHandler) {
+	i.RemoteHandlerFunc = handlerFunc
+}
+
+// SetIndexConfig sets the index configuration.
+func (i *RemoteFS) SetIndexConfig(config *SpecIndexConfig) {
+	i.indexConfig = config
+}
+
+// GetFiles returns the files that have been indexed.
+func (i *RemoteFS) GetFiles() map[string]RolodexFile {
+	files := make(map[string]RolodexFile)
+	i.Files.Range(func(key, value interface{}) bool {
+		files[key.(string)] = value.(*RemoteFile)
+		return true
+	})
+	i.extractedFiles = files
+	return files
+}
+
+// GetErrors returns any errors that occurred during the indexing process.
+func (i *RemoteFS) GetErrors() []error {
+	i.errMutex.Lock()
+	defer i.errMutex.Unlock()
+	return append([]error(nil), i.remoteErrors...)
+}
+
+type waiterRemote struct {
+	f         string
+	done      bool
+	file      *RemoteFile
+	listeners int
+	error     error
+	mu        sync.Mutex
+}
+
+func remoteLookupCacheKey(u *url.URL) string {
+	if u == nil {
+		return ""
+	}
+	cloned := *u
+	cloned.Fragment = ""
+	return cloned.String()
+}
+
+func (i *RemoteFS) OpenWithContext(ctx context.Context, remoteURL string) (fs.File, error) {
+	if i.indexConfig != nil && !i.indexConfig.AllowRemoteLookup {
+		return nil, fmt.Errorf("remote lookup for '%s' is not allowed, please set "+
+			"AllowRemoteLookup to true as part of the index configuration", remoteURL)
+	}
+
+	if !strings.HasPrefix(remoteURL, "http") {
+		if i.logger != nil {
+			i.logger.Debug("[rolodex remote loader] not a remote file, ignoring", "file", remoteURL)
+		}
+		return nil, fmt.Errorf("not a remote file: %s", remoteURL)
+	}
+
+	remoteParsedURL, err := url.Parse(remoteURL)
+	if err != nil {
+		return nil, err
+	}
+	remoteParsedURLOriginal, _ := url.Parse(remoteURL)
+	i.normalizeRemoteURL(remoteParsedURL)
+	cacheKey := remoteLookupCacheKey(remoteParsedURL)
+
+	if cached := i.loadCachedRemoteFile(cacheKey, remoteParsedURL.Path); cached != nil {
+		return cached, nil
+	}
+
+	fileExt, err := i.detectRemoteFileType(remoteURL, remoteParsedURL)
+	if err != nil {
+		return nil, err
+	}
+
+	processingWaiter, inFlightFile, inFlightErr := i.acquireRemoteProcessingWaiter(cacheKey, remoteParsedURL.Path, remoteURL, remoteParsedURL)
+	if processingWaiter == nil {
+		return inFlightFile, inFlightErr
+	}
+
+	if remoteParsedURL.Scheme == "" {
+		schemeErr := fmt.Errorf("remote URL '%s' has no scheme, unable to fetch it", remoteURL)
+		i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, nil, schemeErr)
+		return nil, schemeErr
+	}
+
+	i.logger.Debug("[rolodex remote loader] loading remote file", "file", remoteURL, "remoteURL", remoteParsedURL.String())
+
+	response, clientErr := i.RemoteHandlerFunc(remoteParsedURL.String())
+	if clientErr != nil {
+		i.appendRemoteError(clientErr)
+		i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, nil, clientErr)
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		if response != nil {
+			i.logger.Error("client error", "error", clientErr, "status", response.StatusCode)
+		} else {
+			i.logger.Error("client error", "error", clientErr.Error())
+		}
+		return nil, clientErr
+	}
+	if response == nil {
+		emptyErr := fmt.Errorf("empty response from remote URL: %s", remoteParsedURL.String())
+		i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, nil, emptyErr)
+		return nil, emptyErr
+	}
+	defer func() {
+		if response.Body != nil {
+			_ = response.Body.Close()
+		}
+	}()
+	responseBytes, readError := io.ReadAll(response.Body)
+	if readError != nil {
+		i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, nil, readError)
+		return nil, fmt.Errorf("error reading bytes from remote file '%s': [%s]",
+			remoteParsedURL.String(), readError.Error())
+	}
+
+	if response.StatusCode >= 400 {
+		waitErr := fmt.Errorf("remote file '%s' returned status code %d", remoteParsedURL.String(), response.StatusCode)
+		i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, nil, waitErr)
+		i.logger.Error("unable to fetch remote document",
+			"file", remoteParsedURL.Path, "status", response.StatusCode, "resp", string(responseBytes))
+		return nil, fmt.Errorf("unable to fetch remote document '%s' (error %d)", remoteParsedURL.String(),
+			response.StatusCode)
+	}
+
+	remoteFile := i.createRemoteFile(remoteParsedURL, fileExt, responseBytes, response.Header)
+	copiedCfg := i.createRemoteIndexConfig(remoteParsedURL, remoteParsedURLOriginal)
+
+	if len(remoteFile.data) > 0 {
+		i.logger.Debug("[rolodex remote loaded] successfully loaded file", "file", remoteParsedURL.Path)
+	}
+
+	i.Files.Store(cacheKey, remoteFile)
+	i.releaseRemoteProcessingWaiter(processingWaiter, cacheKey, remoteFile, nil)
+
+	i.indexRemoteFile(ctx, remoteFile, copiedCfg, remoteParsedURL, remoteParsedURLOriginal)
+
+	return remoteFile, errors.Join(i.remoteErrors...)
+}
+
+func (i *RemoteFS) normalizeRemoteURL(remoteParsedURL *url.URL) {
+	if i.rootURLParsed == nil || remoteParsedURL == nil {
+		return
+	}
+	// a base URL without a scheme or host (e.g. 'example.com/specs/') cannot be fetched from,
+	// rewriting with it would strip the scheme from every absolute remote reference.
+	if i.rootURLParsed.Scheme == "" || i.rootURLParsed.Host == "" {
+		return
+	}
+	remoteParsedURL.Host = i.rootURLParsed.Host
+	remoteParsedURL.Scheme = i.rootURLParsed.Scheme
+}
+
+func (i *RemoteFS) loadCachedRemoteFile(cacheKey, legacyPath string) *RemoteFile {
+	if r, ok := i.Files.Load(cacheKey); ok {
+		return r.(*RemoteFile)
+	}
+	if cacheKey != legacyPath {
+		if legacy, ok := i.Files.Load(legacyPath); ok {
+			if legacyFile, ok := legacy.(*RemoteFile); ok && legacyFile.URL == nil {
+				return legacyFile
+			}
+		}
+	}
+	return nil
+}
+
+func (i *RemoteFS) detectRemoteFileType(remoteURL string, remoteParsedURL *url.URL) (FileExtension, error) {
+	fileExt := ExtractFileType(remoteParsedURL.Path)
+	if fileExt != UNSUPPORTED {
+		return fileExt, nil
+	}
+	if i.indexConfig != nil && i.indexConfig.AllowUnknownExtensionContentDetection {
+		if i.logger != nil {
+			i.logger.Debug("[rolodex remote loader] attempting content detection for unknown file extension", "url", remoteParsedURL.String())
+		}
+		fileExt = detectRemoteContentType(remoteParsedURL.String(), i.RemoteHandlerFunc, i.logger)
+		if fileExt == UNSUPPORTED {
+			defer func() {
+				contentDetectionMutex.Lock()
+				delete(contentDetectionCache, remoteParsedURL.String())
+				contentDetectionMutex.Unlock()
+			}()
+			i.appendRemoteError(fs.ErrInvalid)
+			if i.logger != nil {
+				i.logger.Warn("[rolodex remote loader] content detection failed, unsupported content type", "url", remoteParsedURL.String())
+			}
+			return UNSUPPORTED, &fs.PathError{Op: "open", Path: remoteURL, Err: fs.ErrInvalid}
+		}
+		if i.logger != nil {
+			typeStr := "UNSUPPORTED"
+			if fileExt == JSON {
+				typeStr = "JSON"
+			} else if fileExt == YAML {
+				typeStr = "YAML"
+			}
+			i.logger.Debug("[rolodex remote loader] content detection successful", "url", remoteParsedURL.String(), "detectedType", typeStr)
+		}
+		return fileExt, nil
+	}
+	i.appendRemoteError(fs.ErrInvalid)
+	if i.logger != nil {
+		i.logger.Warn("[rolodex remote loader] unknown file extension and content detection disabled", "file", remoteURL, "remoteURL", remoteParsedURL.String())
+	}
+	return UNSUPPORTED, &fs.PathError{Op: "open", Path: remoteURL, Err: fs.ErrInvalid}
+}
+
+func (i *RemoteFS) acquireRemoteProcessingWaiter(cacheKey, legacyPath, remoteURL string, remoteParsedURL *url.URL) (*waiterRemote, fs.File, error) {
+	processingWaiter := &waiterRemote{f: cacheKey}
+	processingWaiter.mu.Lock()
+
+	if cacheKey != legacyPath {
+		if existing, ok := i.ProcessingFiles.Load(legacyPath); ok {
+			processingWaiter.mu.Unlock()
+			file, err := i.waitForRemoteProcessing(existing.(*waiterRemote), remoteURL, remoteParsedURL, true)
+			return nil, file, err
+		}
+	}
+
+	if existing, loaded := i.ProcessingFiles.LoadOrStore(cacheKey, processingWaiter); loaded {
+		processingWaiter.mu.Unlock()
+		file, err := i.waitForRemoteProcessing(existing.(*waiterRemote), remoteURL, remoteParsedURL, false)
+		return nil, file, err
+	}
+
+	return processingWaiter, nil, nil
+}
+
+func (i *RemoteFS) waitForRemoteProcessing(wait *waiterRemote, remoteURL string, remoteParsedURL *url.URL, legacy bool) (fs.File, error) {
+	wait.mu.Lock()
+	defer wait.mu.Unlock()
+	if legacy {
+		i.logger.Debug("[rolodex remote loader] waiting for legacy in-flight fetch to complete", "file", remoteURL,
+			"remoteURL", remoteParsedURL.String())
+	} else {
+		i.logger.Debug("[rolodex remote loader] waiting for existing fetch to complete", "file", remoteURL,
+			"remoteURL", remoteParsedURL.String())
+		i.logger.Debug("[rolodex remote loader]: waiting done, remote completed, returning file", "file",
+			remoteParsedURL.String(), "listeners", wait.listeners)
+	}
+	return wait.file, wait.error
+}
+
+func (i *RemoteFS) releaseRemoteProcessingWaiter(waiter *waiterRemote, cacheKey string, file *RemoteFile, err error) {
+	waiter.file = file
+	waiter.error = err
+	waiter.done = true
+	i.ProcessingFiles.Delete(cacheKey)
+	waiter.mu.Unlock()
+}
+
+func (i *RemoteFS) appendRemoteError(err error) {
+	i.errMutex.Lock()
+	i.remoteErrors = append(i.remoteErrors, err)
+	i.errMutex.Unlock()
+}
+
+func (i *RemoteFS) createRemoteFile(remoteParsedURL *url.URL, fileExt FileExtension, responseBytes []byte, headers http.Header) *RemoteFile {
+	lastModifiedTime, parseErr := time.Parse(time.RFC1123, headers.Get("Last-Modified"))
+	if parseErr != nil {
+		lastModifiedTime = time.Now()
+	}
+	return &RemoteFile{
+		filename:         path.Base(remoteParsedURL.Path),
+		name:             remoteParsedURL.Path,
+		extension:        fileExt,
+		data:             responseBytes,
+		fullPath:         remoteParsedURL.String(),
+		URL:              remoteParsedURL,
+		lastModified:     lastModifiedTime,
+		indexingComplete: make(chan struct{}),
+	}
+}
+
+func (i *RemoteFS) createRemoteIndexConfig(remoteParsedURL, remoteParsedURLOriginal *url.URL) *SpecIndexConfig {
+	copiedCfg := *i.indexConfig
+	newBase := fmt.Sprintf("%s://%s%s", remoteParsedURLOriginal.Scheme, remoteParsedURLOriginal.Host,
+		path.Dir(remoteParsedURL.Path))
+	newBaseURL, _ := url.Parse(newBase)
+	if newBaseURL != nil {
+		copiedCfg.BaseURL = newBaseURL
+	}
+	copiedCfg.SpecAbsolutePath = remoteParsedURL.String()
+	copiedCfg.ExtractRefsSequentially = true
+	return &copiedCfg
+}
+
+func (i *RemoteFS) indexRemoteFile(
+	ctx context.Context,
+	remoteFile *RemoteFile,
+	copiedCfg *SpecIndexConfig,
+	remoteParsedURL, remoteParsedURLOriginal *url.URL,
+) {
+	indexingCtx := AddIndexingFile(ctx, remoteParsedURL.Path)
+	indexingCtx = AddIndexingFile(indexingCtx, remoteParsedURL.String())
+	indexingCtx = AddIndexingFile(indexingCtx, remoteParsedURLOriginal.String())
+
+	idx, idxError := remoteFile.Index(indexingCtx, copiedCfg)
+	if idxError != nil && idx == nil {
+		i.appendRemoteError(idxError)
+		remoteFile.signalIndexingComplete()
+		return
+	}
+	NewResolver(idx)
+	idx.BuildIndex()
+	if i.rolodex != nil {
+		i.rolodex.AddExternalIndex(idx, remoteParsedURL.String())
+	}
+	remoteFile.signalIndexingComplete()
+}
+
+// Open opens a file, returning it or an error. If the file is not found, the error is of type *PathError.
+func (i *RemoteFS) Open(remoteURL string) (fs.File, error) {
+	return i.OpenWithContext(context.Background(), remoteURL)
+}

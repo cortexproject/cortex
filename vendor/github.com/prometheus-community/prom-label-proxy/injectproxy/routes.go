@@ -15,17 +15,22 @@ package injectproxy
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/efficientgo/core/merrors"
 	"github.com/metalmatze/signal/server/signalhttp"
@@ -50,17 +55,25 @@ type routes struct {
 	errorOnReplace        bool
 	regexMatch            bool
 	rulesWithActiveAlerts bool
-
-	logger *log.Logger
+	parserOpts            parser.Options
 }
 
 type options struct {
-	enableLabelAPIs       bool
-	passthroughPaths      []string
-	errorOnReplace        bool
-	registerer            prometheus.Registerer
-	regexMatch            bool
-	rulesWithActiveAlerts bool
+	upstreamCaCert           string
+	upstreamClientCertFile   string
+	upstreamClientKeyFile    string
+	upstreamServerName       string
+	enableLabelAPIs          bool
+	passthroughPaths         []string
+	insecureSkipVerify       bool
+	errorOnReplace           bool
+	registerer               prometheus.Registerer
+	regexMatch               bool
+	rulesWithActiveAlerts    bool
+	labelMatchersForRulesAPI bool
+	parserOptions            parser.Options
+	rewriteHostHeader        string
+	httpTimeout              time.Duration
 }
 
 type Option interface {
@@ -80,6 +93,30 @@ func WithPrometheusRegistry(reg prometheus.Registerer) Option {
 	})
 }
 
+// WithUpstreamCaCert configures the proxy to use the custom ca certificate for the upstream.
+func WithUpstreamCaCert(caCert string) Option {
+	return optionFunc(func(o *options) {
+		o.upstreamCaCert = caCert
+	})
+}
+
+// WithUpstreamClientCert configures the proxy to present the given client
+// certificate and key for mutual TLS with the upstream.
+func WithUpstreamClientCert(certFile, keyFile string) Option {
+	return optionFunc(func(o *options) {
+		o.upstreamClientCertFile = certFile
+		o.upstreamClientKeyFile = keyFile
+	})
+}
+
+// WithUpstreamServerName configures the server name used to verify the
+// upstream's TLS certificate (also used as the SNI server name).
+func WithUpstreamServerName(name string) Option {
+	return optionFunc(func(o *options) {
+		o.upstreamServerName = name
+	})
+}
+
 // WithEnabledLabelsAPI enables proxying to labels API. If false, "501 Not implemented" will be return for those.
 func WithEnabledLabelsAPI() Option {
 	return optionFunc(func(o *options) {
@@ -93,6 +130,13 @@ func WithEnabledLabelsAPI() Option {
 func WithPassthroughPaths(paths []string) Option {
 	return optionFunc(func(o *options) {
 		o.passthroughPaths = paths
+	})
+}
+
+// insecureSkipVerify configures proxy to bypass validation of the server's TLS/SSL certificate.
+func WithInsecureSkipVerify() Option {
+	return optionFunc(func(o *options) {
+		o.insecureSkipVerify = true
 	})
 }
 
@@ -111,10 +155,47 @@ func WithActiveAlerts() Option {
 	})
 }
 
+// WithLabelMatchersForRulesAPI instructs the proxy to use label matchers when querying the Rules API.
+func WithLabelMatchersForRulesAPI() Option {
+	return optionFunc(func(o *options) {
+		o.labelMatchersForRulesAPI = true
+	})
+}
+
 // WithRegexMatch causes the proxy to handle tenant name as regexp
 func WithRegexMatch() Option {
 	return optionFunc(func(o *options) {
 		o.regexMatch = true
+	})
+}
+
+// WithPromqlExperimentalFunctions enables parsing of experimental functions in the PromQL parser.
+func WithPromqlExperimentalFunctions() Option {
+	return optionFunc(func(o *options) {
+		o.parserOptions.EnableExperimentalFunctions = true
+	})
+}
+
+// WithPromqlBinopFillModifiers enables binary operation fill modifiers in the PromQL parser.
+func WithPromqlBinopFillModifiers() Option {
+	return optionFunc(func(o *options) {
+		o.parserOptions.EnableBinopFillModifiers = true
+	})
+}
+
+// WithRewriteHostHeader configures the proxy to rewrite the Host header
+// to the given value when proxying requests to the upstream. This is useful
+// when the upstream is behind an ingress that routes based on the Host header.
+func WithRewriteHostHeader(host string) Option {
+	return optionFunc(func(o *options) {
+		o.rewriteHostHeader = host
+	})
+}
+
+// WithHTTPTimeout sets a timeout on proxied HTTP requests. If zero, no timeout is applied.
+func WithHTTPTimeout(d time.Duration) Option {
+	return optionFunc(func(o *options) {
+		o.httpTimeout = d
 	})
 }
 
@@ -192,9 +273,12 @@ type ExtractLabeler interface {
 	ExtractLabel(next http.HandlerFunc) http.Handler
 }
 
-// HTTPFormEnforcer enforces a label value extracted from the HTTP form and query parameters.
+// HTTPFormEnforcer enforces a label value extracted from the HTTP form and/or query parameters.
 type HTTPFormEnforcer struct {
 	ParameterName string
+	// QueryOnly when true extracts ParameterName only from the URL query parameters. Requests with non-empty
+	// POST form values for that parameter are rejected with HTTP 400.
+	QueryOnly bool
 }
 
 // ExtractLabel implements the ExtractLabeler interface.
@@ -237,7 +321,15 @@ func (hff HTTPFormEnforcer) getLabelValues(r *http.Request) ([]string, error) {
 		return nil, fmt.Errorf("the form data can not be parsed: %w", err)
 	}
 
-	formValues := removeEmptyValues(r.Form[hff.ParameterName])
+	values := r.Form
+	if hff.QueryOnly {
+		if len(removeEmptyValues(r.PostForm[hff.ParameterName])) > 0 {
+			return nil, fmt.Errorf("the %q parameter must not be provided in the POST form body when query-param-only mode is enabled", hff.ParameterName)
+		}
+		values = r.URL.Query()
+	}
+
+	formValues := removeEmptyValues(values[hff.ParameterName])
 	if len(formValues) == 0 {
 		return nil, fmt.Errorf("the %q query parameter must be provided", hff.ParameterName)
 	}
@@ -300,7 +392,16 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 		opt.registerer = prometheus.NewRegistry()
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(upstream)
+			r.SetXForwarded()
+			r.Out.Host = r.In.Host
+			if opt.rewriteHostHeader != "" {
+				r.Out.Host = opt.rewriteHostHeader
+			}
+		},
+	}
 
 	r := &routes{
 		upstream:              upstream,
@@ -310,7 +411,7 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 		errorOnReplace:        opt.errorOnReplace,
 		regexMatch:            opt.regexMatch,
 		rulesWithActiveAlerts: opt.rulesWithActiveAlerts,
-		logger:                log.Default(),
+		parserOpts:            opt.parserOptions,
 	}
 	mux := newStrictMux(newInstrumentedMux(http.NewServeMux(), opt.registerer))
 
@@ -319,10 +420,15 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 		mux.Handle("/api/v1/query", r.el.ExtractLabel(enforceMethods(r.query, "GET", "POST"))),
 		mux.Handle("/api/v1/query_range", r.el.ExtractLabel(enforceMethods(r.query, "GET", "POST"))),
 		mux.Handle("/api/v1/alerts", r.el.ExtractLabel(enforceMethods(r.passthrough, "GET"))),
-		mux.Handle("/api/v1/rules", r.el.ExtractLabel(enforceMethods(r.passthrough, "GET"))),
 		mux.Handle("/api/v1/series", r.el.ExtractLabel(enforceMethods(r.matcher, "GET", "POST"))),
 		mux.Handle("/api/v1/query_exemplars", r.el.ExtractLabel(enforceMethods(r.query, "GET", "POST"))),
 	)
+
+	if opt.labelMatchersForRulesAPI {
+		errs.Add(mux.Handle("/api/v1/rules", r.el.ExtractLabel(enforceMethods(r.matcher, "GET"))))
+	} else {
+		errs.Add(mux.Handle("/api/v1/rules", r.el.ExtractLabel(enforceMethods(r.passthrough, "GET"))))
+	}
 
 	if opt.enableLabelAPIs {
 		errs.Add(
@@ -388,14 +494,54 @@ func NewRoutes(upstream *url.URL, label string, extractLabeler ExtractLabeler, o
 	}
 
 	r.mux = mux
+	if opt.httpTimeout > 0 {
+		r.mux = http.TimeoutHandler(mux, opt.httpTimeout, "")
+	}
 	r.modifiers = map[string]func(*http.Response) error{
-		"/api/v1/rules":  modifyAPIResponse(r.filterRules),
 		"/api/v1/alerts": modifyAPIResponse(r.filterAlerts),
 	}
+	if !opt.labelMatchersForRulesAPI {
+		r.modifiers["/api/v1/rules"] = modifyAPIResponse(r.filterRules)
+	}
+
+	// Configure tls for proxy
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		InsecureSkipVerify: opt.insecureSkipVerify,
+		ServerName:         opt.upstreamServerName,
+	}
+
+	if opt.upstreamCaCert != "" {
+		caCert, err := os.ReadFile(opt.upstreamCaCert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate: %v", err)
+		}
+
+		caCertPool := x509.NewCertPool()
+		if ok := caCertPool.AppendCertsFromPEM(caCert); !ok {
+			return nil, fmt.Errorf("failed to append CA cert to pool")
+		}
+
+		transport.TLSClientConfig.RootCAs = caCertPool
+	}
+
+	if opt.upstreamClientCertFile != "" || opt.upstreamClientKeyFile != "" {
+		if opt.upstreamClientCertFile == "" || opt.upstreamClientKeyFile == "" {
+			return nil, fmt.Errorf("both client certificate and key files must be provided")
+		}
+
+		cert, err := tls.LoadX509KeyPair(opt.upstreamClientCertFile, opt.upstreamClientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate/key pair: %w", err)
+		}
+
+		transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	proxy.Transport = transport
 	proxy.ModifyResponse = r.ModifyResponse
 	proxy.ErrorHandler = r.errorHandler
-	proxy.ErrorLog = log.Default()
-
+	proxy.ErrorLog = slog.NewLogLogger(slog.Default().Handler(), slog.LevelError)
 	return r, nil
 }
 
@@ -413,8 +559,13 @@ func (r *routes) ModifyResponse(resp *http.Response) error {
 	return m(resp)
 }
 
-func (r *routes) errorHandler(rw http.ResponseWriter, _ *http.Request, err error) {
-	r.logger.Printf("http: proxy error: %v", err)
+func (r *routes) errorHandler(rw http.ResponseWriter, req *http.Request, err error) {
+	slog.Error("HTTP proxy error",
+		"error", err,
+		"path", req.URL.Path,
+		"method", req.Method,
+	)
+
 	if errors.Is(err, errModifyResponseFailed) {
 		rw.WriteHeader(http.StatusBadRequest)
 	}
@@ -424,11 +575,9 @@ func (r *routes) errorHandler(rw http.ResponseWriter, _ *http.Request, err error
 
 func enforceMethods(h http.HandlerFunc, methods ...string) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
-		for _, m := range methods {
-			if m == req.Method {
-				h(w, req)
-				return
-			}
+		if slices.Contains(methods, req.Method) {
+			h(w, req)
+			return
 		}
 		http.NotFound(w, req)
 	}
@@ -455,10 +604,10 @@ const keyLabel ctxKey = iota
 func MustLabelValues(ctx context.Context) []string {
 	labels, ok := ctx.Value(keyLabel).([]string)
 	if !ok {
-		panic(fmt.Sprintf("can't find the %q value in the context", keyLabel))
+		panic("can't find the keyLabel value in the context")
 	}
 	if len(labels) == 0 {
-		panic(fmt.Sprintf("empty %q value in the context", keyLabel))
+		panic("empty keyLabel value in the context")
 	}
 
 	sort.Strings(labels)
@@ -494,43 +643,13 @@ func (r *routes) passthrough(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *routes) query(w http.ResponseWriter, req *http.Request) {
-	var matcher *labels.Matcher
-
-	if len(MustLabelValues(req.Context())) > 1 {
-		if r.regexMatch {
-			prometheusAPIError(w, "Only one label value allowed with regex match", http.StatusBadRequest)
-			return
-		}
-
-		matcher = &labels.Matcher{
-			Name:  r.label,
-			Type:  labels.MatchRegexp,
-			Value: labelValuesToRegexpString(MustLabelValues(req.Context())),
-		}
-	} else {
-		matcherType := labels.MatchEqual
-		matcherValue := MustLabelValue(req.Context())
-		if r.regexMatch {
-			compiledRegex, err := regexp.Compile(matcherValue)
-			if err != nil {
-				prometheusAPIError(w, err.Error(), http.StatusBadRequest)
-				return
-			}
-			if compiledRegex.MatchString("") {
-				prometheusAPIError(w, "Regex should not match empty string", http.StatusBadRequest)
-				return
-			}
-			matcherType = labels.MatchRegexp
-		}
-
-		matcher = &labels.Matcher{
-			Name:  r.label,
-			Type:  matcherType,
-			Value: matcherValue,
-		}
+	matcher, err := r.newLabelMatcher(MustLabelValues(req.Context())...)
+	if err != nil {
+		prometheusAPIError(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
-	e := NewPromQLEnforcer(r.errorOnReplace, matcher)
+	e := NewPromQLEnforcerWithOptions(r.errorOnReplace, r.parserOpts, matcher)
 
 	// The `query` can come in the URL query string and/or the POST body.
 	// For this reason, we need to try to enforcing in both places.
@@ -620,28 +739,18 @@ func (r *routes) newLabelMatcher(vals ...string) (*labels.Matcher, error) {
 			return nil, errors.New("regex should not match empty string")
 		}
 
-		m, err := labels.NewMatcher(labels.MatchRegexp, r.label, re)
-		if err != nil {
-			return nil, err
-		}
-
-		return m, nil
+		return labels.NewMatcher(labels.MatchRegexp, r.label, re)
 	}
 
 	if len(vals) == 1 {
-		return &labels.Matcher{
-			Name:  r.label,
-			Type:  labels.MatchEqual,
-			Value: vals[0],
-		}, nil
+		return labels.NewMatcher(
+			labels.MatchEqual,
+			r.label,
+			vals[0],
+		)
 	}
 
-	m, err := labels.NewMatcher(labels.MatchRegexp, r.label, labelValuesToRegexpString(vals))
-	if err != nil {
-		return nil, err
-	}
-
-	return m, nil
+	return labels.NewMatcher(labels.MatchRegexp, r.label, labelValuesToRegexpString(vals))
 }
 
 // matcher modifies all the match[] HTTP parameters to match on the tenant label.
@@ -657,26 +766,44 @@ func (r *routes) matcher(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// The `match[]` parameters can come in the URL query string and/or in the
+	// POST body. Enforce the label in each place where matchers are present and
+	// only inject a bare matcher when none was provided at all, otherwise the
+	// injected matcher would be sent along with the (enforced) one from the
+	// body and widen the result.
 	q := req.URL.Query()
-	if err := injectMatcher(q, matcher); err != nil {
-		prometheusAPIError(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+	hasURLMatchers := len(q[matchersParam]) > 0
 
-	req.URL.RawQuery = q.Encode()
+	var (
+		bodyQ           url.Values
+		hasBodyMatchers bool
+	)
 	if req.Method == http.MethodPost {
 		if err := req.ParseForm(); err != nil {
+			prometheusAPIError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		bodyQ = req.PostForm
+		hasBodyMatchers = len(bodyQ[matchersParam]) > 0
+	}
 
-		q = req.PostForm
-		if err := injectMatcher(q, matcher); err != nil {
+	if hasURLMatchers || !hasBodyMatchers {
+		if err := r.injectMatcher(q, matcher); err != nil {
+			prometheusAPIError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+
+	if req.Method == http.MethodPost && (hasBodyMatchers || !hasURLMatchers) {
+		if err := r.injectMatcher(bodyQ, matcher); err != nil {
+			prometheusAPIError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		// We are replacing request body, close previous one (ParseForm ensures it is read fully and not nil).
 		_ = req.Body.Close()
-		newBody := q.Encode()
+		newBody := bodyQ.Encode()
 		req.Body = io.NopCloser(strings.NewReader(newBody))
 		req.ContentLength = int64(len(newBody))
 	}
@@ -684,7 +811,7 @@ func (r *routes) matcher(w http.ResponseWriter, req *http.Request) {
 	r.handler.ServeHTTP(w, req)
 }
 
-func injectMatcher(q url.Values, matcher *labels.Matcher) error {
+func (r *routes) injectMatcher(q url.Values, matcher *labels.Matcher) error {
 	matchers := q[matchersParam]
 	if len(matchers) == 0 {
 		q.Set(matchersParam, matchersToString(matcher))
@@ -692,8 +819,9 @@ func injectMatcher(q url.Values, matcher *labels.Matcher) error {
 	}
 
 	// Inject label into existing matchers.
+	p := parser.NewParser(r.parserOpts)
 	for i, m := range matchers {
-		ms, err := parser.ParseMetricSelector(m)
+		ms, err := p.ParseMetricSelector(m)
 		if err != nil {
 			return err
 		}
@@ -747,7 +875,7 @@ func removeEmptyValues(slice []string) []string {
 }
 
 func trimValues(slice []string) []string {
-	for i := 0; i < len(slice); i++ {
+	for i := range slice {
 		slice[i] = strings.TrimSpace(slice[i])
 	}
 

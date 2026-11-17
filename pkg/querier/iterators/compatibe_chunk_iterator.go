@@ -67,6 +67,11 @@ func (c *compatibleChunksIterator) AtT() int64 {
 	return t
 }
 
+// AtST returns 0: these iterators carry no start timestamps.
+func (c *compatibleChunksIterator) AtST() int64 {
+	return 0
+}
+
 func (c *compatibleChunksIterator) Err() error {
 	if c.err != nil {
 		return c.err

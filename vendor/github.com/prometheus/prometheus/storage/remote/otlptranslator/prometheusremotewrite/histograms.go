@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -20,13 +20,15 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/prometheus/common/model"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/value"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -34,9 +36,12 @@ const defaultZeroThreshold = 1e-128
 
 // addExponentialHistogramDataPoints adds OTel exponential histogram data points to the corresponding time series
 // as native histogram samples.
-func (c *PrometheusConverter) addExponentialHistogramDataPoints(ctx context.Context, dataPoints pmetric.ExponentialHistogramDataPointSlice,
-	resource pcommon.Resource, settings Settings, temporality pmetric.AggregationTemporality,
-	scope scope, meta Metadata,
+func (c *PrometheusConverter) addExponentialHistogramDataPoints(
+	ctx context.Context,
+	dataPoints pmetric.ExponentialHistogramDataPointSlice,
+	settings Settings,
+	temporality pmetric.AggregationTemporality,
+	appOpts storage.AOptions,
 ) (annotations.Annotations, error) {
 	var annots annotations.Annotations
 	for x := 0; x < dataPoints.Len(); x++ {
@@ -53,15 +58,13 @@ func (c *PrometheusConverter) addExponentialHistogramDataPoints(ctx context.Cont
 		}
 
 		lbls, err := c.createAttributes(
-			resource,
 			pt.Attributes(),
-			scope,
 			settings,
-			nil,
+			reservedLabelNames,
 			true,
-			meta,
+			appOpts.Metadata,
 			model.MetricNameLabel,
-			meta.MetricFamilyName,
+			appOpts.MetricFamilyName,
 		)
 		if err != nil {
 			return annots, err
@@ -72,8 +75,12 @@ func (c *PrometheusConverter) addExponentialHistogramDataPoints(ctx context.Cont
 		if err != nil {
 			return annots, err
 		}
-		// OTel exponential histograms are always Int Histograms.
-		if err = c.appender.AppendHistogram(lbls, meta, st, ts, hp, exemplars); err != nil {
+		// Appenders require exemplars sorted by timestamp.
+		slices.SortFunc(exemplars, exemplar.Compare)
+
+		appOpts.Exemplars = exemplars
+		// OTel exponential histograms are always integer histograms.
+		if _, err = c.appender.Append(0, lbls, st, ts, 0, hp, nil, appOpts); err != nil {
 			return annots, err
 		}
 	}
@@ -141,7 +148,7 @@ func exponentialToNativeHistogram(p pmetric.ExponentialHistogramDataPoint, tempo
 		}
 		h.Count = p.Count()
 		if p.Count() == 0 && h.Sum != 0 {
-			annots.Add(fmt.Errorf("exponential histogram data point has zero count, but non-zero sum: %f", h.Sum))
+			annots.Add(newCategorizedWarningf(WarningCategoryHistogramZeroCountNonZeroSum, "exponential histogram data point has zero count, but non-zero sum: %f", h.Sum))
 		}
 	}
 	return h, annots, nil
@@ -186,7 +193,10 @@ func convertBucketsLayout(bucketCounts []uint64, offset, scaleDown int32, adjust
 	// moving it into a local variable.
 	numBuckets := len(bucketCounts)
 
+	// bucketIdx is the index of the bucket currently being collected in count.
 	bucketIdx := offset>>scaleDown + 1
+	// lastIdx is the index of the last bucket appended to the spans.
+	lastIdx := bucketIdx - 1
 
 	initialOffset := offset
 	if adjustOffset {
@@ -198,18 +208,8 @@ func convertBucketsLayout(bucketCounts []uint64, offset, scaleDown int32, adjust
 		Length: 0,
 	})
 
-	for i := range numBuckets {
-		nextBucketIdx := (int32(i)+offset)>>scaleDown + 1
-		if bucketIdx == nextBucketIdx { // We have not collected enough buckets to merge yet.
-			count += int64(bucketCounts[i])
-			continue
-		}
-		if count == 0 {
-			count = int64(bucketCounts[i])
-			continue
-		}
-
-		gap := nextBucketIdx - bucketIdx - 1
+	appendBucket := func() {
+		gap := bucketIdx - lastIdx - 1
 		if gap > 2 {
 			// We have to create a new span, because we have found a gap
 			// of more than two buckets. The constant 2 is copied from the logic in
@@ -226,35 +226,36 @@ func convertBucketsLayout(bucketCounts []uint64, offset, scaleDown int32, adjust
 			}
 		}
 		appendDelta(count)
+		lastIdx = bucketIdx
+	}
+
+	for i := range numBuckets {
+		nextBucketIdx := (int32(i)+offset)>>scaleDown + 1
+		if bucketIdx == nextBucketIdx { // We have not collected enough buckets to merge yet.
+			count += int64(bucketCounts[i])
+			continue
+		}
+		// Empty buckets are not appended, they are covered by the gap
+		// before the next appended bucket.
+		if count != 0 {
+			appendBucket()
+		}
 		count = int64(bucketCounts[i])
 		bucketIdx = nextBucketIdx
 	}
 
-	// Need to use the last item's index. The offset is scaled and adjusted by 1 as described above.
-	gap := (int32(numBuckets)+offset-1)>>scaleDown + 1 - bucketIdx
-	if gap > 2 {
-		// We have to create a new span, because we have found a gap
-		// of more than two buckets. The constant 2 is copied from the logic in
-		// https://github.com/prometheus/client_golang/blob/27f0506d6ebbb117b6b697d0552ee5be2502c5f2/prometheus/histogram.go#L1296
-		spans = append(spans, histogram.Span{
-			Offset: gap,
-			Length: 0,
-		})
-	} else {
-		// We have found a small gap (or no gap at all).
-		// Insert empty buckets as needed.
-		for range gap {
-			appendDelta(0)
-		}
-	}
-	appendDelta(count)
+	// Always append the last bucket.
+	appendBucket()
 
 	return spans, deltas
 }
 
-func (c *PrometheusConverter) addCustomBucketsHistogramDataPoints(ctx context.Context, dataPoints pmetric.HistogramDataPointSlice,
-	resource pcommon.Resource, settings Settings, temporality pmetric.AggregationTemporality,
-	scope scope, meta Metadata,
+func (c *PrometheusConverter) addCustomBucketsHistogramDataPoints(
+	ctx context.Context,
+	dataPoints pmetric.HistogramDataPointSlice,
+	settings Settings,
+	temporality pmetric.AggregationTemporality,
+	appOpts storage.AOptions,
 ) (annotations.Annotations, error) {
 	var annots annotations.Annotations
 
@@ -272,15 +273,13 @@ func (c *PrometheusConverter) addCustomBucketsHistogramDataPoints(ctx context.Co
 		}
 
 		lbls, err := c.createAttributes(
-			resource,
 			pt.Attributes(),
-			scope,
 			settings,
-			nil,
+			reservedLabelNames,
 			true,
-			meta,
+			appOpts.Metadata,
 			model.MetricNameLabel,
-			meta.MetricFamilyName,
+			appOpts.MetricFamilyName,
 		)
 		if err != nil {
 			return annots, err
@@ -291,7 +290,11 @@ func (c *PrometheusConverter) addCustomBucketsHistogramDataPoints(ctx context.Co
 		if err != nil {
 			return annots, err
 		}
-		if err = c.appender.AppendHistogram(lbls, meta, st, ts, hp, exemplars); err != nil {
+		// Appenders require exemplars sorted by timestamp.
+		slices.SortFunc(exemplars, exemplar.Compare)
+
+		appOpts.Exemplars = exemplars
+		if _, err = c.appender.Append(0, lbls, st, ts, 0, hp, nil, appOpts); err != nil {
 			return annots, err
 		}
 	}
@@ -350,7 +353,7 @@ func explicitHistogramToCustomBucketsHistogram(p pmetric.HistogramDataPoint, tem
 		}
 		h.Count = p.Count()
 		if p.Count() == 0 && h.Sum != 0 {
-			annots.Add(fmt.Errorf("histogram data point has zero count, but non-zero sum: %f", h.Sum))
+			annots.Add(newCategorizedWarningf(WarningCategoryHistogramZeroCountNonZeroSum, "histogram data point has zero count, but non-zero sum: %f", h.Sum))
 		}
 	}
 	return h, annots, nil

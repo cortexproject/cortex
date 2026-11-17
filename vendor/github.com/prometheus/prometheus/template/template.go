@@ -1,4 +1,4 @@
-// Copyright 2013 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import (
 	"maps"
 	"math"
 	"net"
+	"net/netip"
 	"net/url"
 	"sort"
 	"strings"
@@ -191,8 +192,7 @@ func NewTemplateExpander(
 				if err != nil {
 					host = hostPort
 				}
-				ip := net.ParseIP(host)
-				if ip != nil {
+				if _, err := netip.ParseAddr(host); err == nil {
 					return hostPort
 				}
 				host = strings.Split(host, ".")[0]

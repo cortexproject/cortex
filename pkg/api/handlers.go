@@ -29,6 +29,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/api/queryapi"
 	"github.com/cortexproject/cortex/pkg/engine"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/codec"
 	"github.com/cortexproject/cortex/pkg/querier/stats"
@@ -226,6 +227,8 @@ func NewQuerierHandler(
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
+		false, // Disable search API.
+		0,     // Search limit, unused while search is disabled.
 		util_log.GoKitLogToSlog(logger),
 		func(context.Context) v1.RulesRetriever { return &querier.DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
@@ -246,10 +249,9 @@ func NewQuerierHandler(
 		prometheus.GathererFunc(func() ([]*dto.MetricFamily, error) { return nil, nil }),
 		reg,
 		statsRenderer,
-		false,
+		false, // Remote write disabled.
 		nil,
-		false,
-		false,
+		false, // OTLP disabled.
 		false,
 		false,
 		querierCfg.LookbackDelta,
@@ -257,6 +259,10 @@ func NewQuerierHandler(
 		false,
 		nil,
 		features.NewRegistry(),
+		v1.OpenAPIOptions{},
+		cortexparser.NewEngineParser(),
+		false, // Disable query cost.
+		querierCfg.Timeout,
 	)
 	// Let's clear all codecs to create the instrumented ones
 	api.ClearCodecs()

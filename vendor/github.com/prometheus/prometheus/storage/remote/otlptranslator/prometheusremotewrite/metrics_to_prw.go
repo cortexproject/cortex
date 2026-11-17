@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -26,11 +26,12 @@ import (
 	"github.com/prometheus/otlptranslator"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
-	"go.uber.org/multierr"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/util/annotations"
 )
 
@@ -62,14 +63,76 @@ type Settings struct {
 	LabelNamePreserveMultipleUnderscores bool
 }
 
+// cachedResourceLabels holds precomputed labels constant for all datapoints in a ResourceMetrics.
+// These are computed once per ResourceMetrics boundary and reused for all datapoints.
+type cachedResourceLabels struct {
+	jobLabel       string        // from service.name + service.namespace.
+	instanceLabel  string        // from service.instance.id.
+	promotedLabels labels.Labels // promoted resource attributes.
+	externalLabels map[string]string
+}
+
+// cachedScopeLabels holds precomputed scope metadata labels.
+// These are computed once per ScopeMetrics boundary and reused for all datapoints.
+type cachedScopeLabels struct {
+	scopeName      string
+	scopeVersion   string
+	scopeSchemaURL string
+	scopeAttrs     labels.Labels // otel_scope_* labels.
+}
+
 // PrometheusConverter converts from OTel write format to Prometheus remote write format.
 type PrometheusConverter struct {
 	everyN         everyNTimes
 	scratchBuilder labels.ScratchBuilder
 	builder        *labels.Builder
-	appender       CombinedAppender
+	appender       storage.AppenderV2
 	// seenTargetInfo tracks target_info samples within a batch to prevent duplicates.
 	seenTargetInfo map[targetInfoKey]struct{}
+
+	// Label caching for optimization - computed once per resource/scope boundary.
+	resourceLabels *cachedResourceLabels
+	scopeLabels    *cachedScopeLabels
+	labelNamer     otlptranslator.LabelNamer
+
+	// sanitizedLabels caches the results of label name sanitization within a request.
+	// This avoids repeated string allocations for the same label names.
+	sanitizedLabels map[string]string
+
+	// plusInfAnnots collects warning annotations about classic histogram data
+	// points that define +Inf as an explicit bound. Reset on every FromMetrics
+	// call.
+	plusInfAnnots annotations.Annotations
+	// collisionAnnots collects warning annotations about attribute names that
+	// collide after label name sanitization, causing their values to be
+	// concatenated. Reset on every FromMetrics call.
+	collisionAnnots annotations.Annotations
+	// recordedCollisions tracks the sanitized label names whose collision has
+	// already been recorded during the current FromMetrics call, so that a
+	// collision repeated across data points is recorded once instead of
+	// rebuilding the annotation per data point. Reset on
+	// every FromMetrics call.
+	recordedCollisions map[string]struct{}
+	// collisionSource records whether the attributes currently being converted are
+	// data point or resource attributes, so collision warnings can name the source.
+	collisionSource collisionAttrSource
+}
+
+// collisionAttrSource identifies which OTLP attribute source is being converted,
+// so label-name collision warnings can name it. The zero value is data point,
+// which covers every path except target_info (resource attributes).
+type collisionAttrSource int
+
+const (
+	collisionFromDataPoint collisionAttrSource = iota
+	collisionFromResource
+)
+
+func (s collisionAttrSource) String() string {
+	if s == collisionFromResource {
+		return "resource"
+	}
+	return "data point"
 }
 
 // targetInfoKey uniquely identifies a target_info sample by its labelset and timestamp.
@@ -78,12 +141,56 @@ type targetInfoKey struct {
 	timestamp  int64
 }
 
-func NewPrometheusConverter(appender CombinedAppender) *PrometheusConverter {
-	return &PrometheusConverter{
-		scratchBuilder: labels.NewScratchBuilder(0),
-		builder:        labels.NewBuilder(labels.EmptyLabels()),
-		appender:       appender,
+const maxSanitizedLabels = 64
+
+func NewPrometheusConverter(appender storage.AppenderV2) *PrometheusConverter {
+	c := &PrometheusConverter{}
+	c.Reset(appender)
+	return c
+}
+
+// Reset prepares c for conversion with appender. It must only be called after
+// Commit or Rollback has completed on the previous appender. Passing nil clears
+// request-local references before c is returned to a pool.
+func (c *PrometheusConverter) Reset(appender storage.AppenderV2) {
+	sanitizedLabels := c.sanitizedLabels
+	if len(sanitizedLabels) > maxSanitizedLabels {
+		sanitizedLabels = nil
+	} else {
+		clear(sanitizedLabels)
 	}
+
+	// Preserve only the bounded label cache across requests.
+	*c = PrometheusConverter{
+		appender:        appender,
+		sanitizedLabels: sanitizedLabels,
+	}
+
+	if appender == nil {
+		return
+	}
+
+	// Builders retain their input strings in backing arrays after Reset, so use
+	// fresh builders for every request.
+	c.scratchBuilder = labels.NewScratchBuilder(0)
+	c.builder = labels.NewBuilder(labels.EmptyLabels())
+	if c.sanitizedLabels == nil {
+		c.sanitizedLabels = make(map[string]string, maxSanitizedLabels)
+	}
+}
+
+// buildLabelName returns a sanitized label name, using the cache to avoid repeated allocations.
+func (c *PrometheusConverter) buildLabelName(label string) (string, error) {
+	if sanitized, ok := c.sanitizedLabels[label]; ok {
+		return sanitized, nil
+	}
+
+	sanitized, err := c.labelNamer.Build(label)
+	if err != nil {
+		return "", err
+	}
+	c.sanitizedLabels[label] = sanitized
+	return sanitized, nil
 }
 
 func TranslatorMetricFromOtelMetric(metric pmetric.Metric) otlptranslator.Metric {
@@ -128,7 +235,7 @@ func newScopeFromScopeMetrics(scopeMetrics pmetric.ScopeMetrics) scope {
 	}
 }
 
-// FromMetrics converts pmetric.Metrics to Prometheus remote write format.
+// FromMetrics appends pmetric.Metrics to storage.AppenderV2.
 func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metrics, settings Settings) (annots annotations.Annotations, errs error) {
 	namer := otlptranslator.MetricNamer{
 		Namespace:          settings.Namespace,
@@ -138,25 +245,43 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 	unitNamer := otlptranslator.UnitNamer{}
 	c.everyN = everyNTimes{n: 128}
 	c.seenTargetInfo = make(map[targetInfoKey]struct{})
+	c.collisionAnnots = nil
+	c.plusInfAnnots = nil
+	c.recordedCollisions = nil
+	c.collisionSource = collisionFromDataPoint
+	defer func() {
+		annots.Merge(c.collisionAnnots)
+		annots.Merge(c.plusInfAnnots)
+	}()
 	resourceMetricsSlice := md.ResourceMetrics()
 
-	for i := 0; i < resourceMetricsSlice.Len(); i++ {
+	for i := range resourceMetricsSlice.Len() {
 		resourceMetrics := resourceMetricsSlice.At(i)
 		resource := resourceMetrics.Resource()
 		scopeMetricsSlice := resourceMetrics.ScopeMetrics()
+		if err := c.setResourceContext(resource, settings); err != nil {
+			errs = errors.Join(errs, err)
+			continue
+		}
+
 		// keep track of the earliest and latest timestamp in the ResourceMetrics for
 		// use with the "target" info metric
 		earliestTimestamp := pcommon.Timestamp(math.MaxUint64)
 		latestTimestamp := pcommon.Timestamp(0)
-		for j := 0; j < scopeMetricsSlice.Len(); j++ {
+		for j := range scopeMetricsSlice.Len() {
 			scopeMetrics := scopeMetricsSlice.At(j)
 			scope := newScopeFromScopeMetrics(scopeMetrics)
+			if err := c.setScopeContext(scope, settings); err != nil {
+				errs = errors.Join(errs, err)
+				continue
+			}
+
 			metricSlice := scopeMetrics.Metrics()
 
 			// TODO: decide if instrumentation library information should be exported as labels
 			for k := 0; k < metricSlice.Len(); k++ {
 				if err := c.everyN.checkContext(ctx); err != nil {
-					errs = multierr.Append(errs, err)
+					errs = errors.Join(errs, err)
 					return annots, errs
 				}
 
@@ -164,7 +289,7 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				earliestTimestamp, latestTimestamp = findMinAndMaxTimestamps(metric, earliestTimestamp, latestTimestamp)
 				temporality, hasTemporality, err := aggregationTemporality(metric)
 				if err != nil {
-					errs = multierr.Append(errs, err)
+					errs = errors.Join(errs, err)
 					continue
 				}
 
@@ -175,16 +300,17 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 					//nolint:staticcheck // QF1001 Applying De Morgan’s law would make the conditions harder to read.
 					!(temporality == pmetric.AggregationTemporalityCumulative ||
 						(settings.AllowDeltaTemporality && temporality == pmetric.AggregationTemporalityDelta)) {
-					errs = multierr.Append(errs, fmt.Errorf("invalid temporality and type combination for metric %q", metric.Name()))
+					errs = errors.Join(errs, fmt.Errorf("invalid temporality and type combination for metric %q", metric.Name()))
 					continue
 				}
 
 				promName, err := namer.Build(TranslatorMetricFromOtelMetric(metric))
 				if err != nil {
-					errs = multierr.Append(errs, err)
+					errs = errors.Join(errs, err)
 					continue
 				}
-				meta := Metadata{
+
+				appOpts := storage.AOptions{
 					Metadata: metadata.Metadata{
 						Type: otelMetricTypeToPromMetricType(metric),
 						Unit: unitNamer.Build(metric.Unit()),
@@ -199,11 +325,11 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				case pmetric.MetricTypeGauge:
 					dataPoints := metric.Gauge().DataPoints()
 					if dataPoints.Len() == 0 {
-						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
+						annots.Add(newCategorizedWarningf(WarningCategoryEmptyDataPoints, "empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					if err := c.addGaugeNumberDataPoints(ctx, dataPoints, resource, settings, scope, meta); err != nil {
-						errs = multierr.Append(errs, err)
+					if err := c.addGaugeNumberDataPoints(ctx, dataPoints, settings, appOpts); err != nil {
+						errs = errors.Join(errs, err)
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return annots, errs
 						}
@@ -211,11 +337,11 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				case pmetric.MetricTypeSum:
 					dataPoints := metric.Sum().DataPoints()
 					if dataPoints.Len() == 0 {
-						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
+						annots.Add(newCategorizedWarningf(WarningCategoryEmptyDataPoints, "empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					if err := c.addSumNumberDataPoints(ctx, dataPoints, resource, settings, scope, meta); err != nil {
-						errs = multierr.Append(errs, err)
+					if err := c.addSumNumberDataPoints(ctx, dataPoints, settings, appOpts); err != nil {
+						errs = errors.Join(errs, err)
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return annots, errs
 						}
@@ -223,23 +349,23 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				case pmetric.MetricTypeHistogram:
 					dataPoints := metric.Histogram().DataPoints()
 					if dataPoints.Len() == 0 {
-						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
+						annots.Add(newCategorizedWarningf(WarningCategoryEmptyDataPoints, "empty data points. %s is dropped", metric.Name()))
 						break
 					}
 					if settings.ConvertHistogramsToNHCB {
 						ws, err := c.addCustomBucketsHistogramDataPoints(
-							ctx, dataPoints, resource, settings, temporality, scope, meta,
+							ctx, dataPoints, settings, temporality, appOpts,
 						)
 						annots.Merge(ws)
 						if err != nil {
-							errs = multierr.Append(errs, err)
+							errs = errors.Join(errs, err)
 							if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 								return annots, errs
 							}
 						}
 					} else {
-						if err := c.addHistogramDataPoints(ctx, dataPoints, resource, settings, scope, meta); err != nil {
-							errs = multierr.Append(errs, err)
+						if err := c.addHistogramDataPoints(ctx, dataPoints, settings, appOpts); err != nil {
+							errs = errors.Join(errs, err)
 							if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 								return annots, errs
 							}
@@ -248,21 +374,19 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				case pmetric.MetricTypeExponentialHistogram:
 					dataPoints := metric.ExponentialHistogram().DataPoints()
 					if dataPoints.Len() == 0 {
-						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
+						annots.Add(newCategorizedWarningf(WarningCategoryEmptyDataPoints, "empty data points. %s is dropped", metric.Name()))
 						break
 					}
 					ws, err := c.addExponentialHistogramDataPoints(
 						ctx,
 						dataPoints,
-						resource,
 						settings,
 						temporality,
-						scope,
-						meta,
+						appOpts,
 					)
 					annots.Merge(ws)
 					if err != nil {
-						errs = multierr.Append(errs, err)
+						errs = errors.Join(errs, err)
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return annots, errs
 						}
@@ -270,17 +394,17 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 				case pmetric.MetricTypeSummary:
 					dataPoints := metric.Summary().DataPoints()
 					if dataPoints.Len() == 0 {
-						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
+						annots.Add(newCategorizedWarningf(WarningCategoryEmptyDataPoints, "empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					if err := c.addSummaryDataPoints(ctx, dataPoints, resource, settings, scope, meta); err != nil {
-						errs = multierr.Append(errs, err)
+					if err := c.addSummaryDataPoints(ctx, dataPoints, settings, appOpts); err != nil {
+						errs = errors.Join(errs, err)
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return annots, errs
 						}
 					}
 				default:
-					errs = multierr.Append(errs, errors.New("unsupported metric type"))
+					errs = errors.Join(errs, errors.New("unsupported metric type"))
 				}
 			}
 		}
@@ -288,7 +412,7 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 			// We have at least one metric sample for this resource.
 			// Generate a corresponding target_info series.
 			if err := c.addResourceTargetInfo(resource, settings, earliestTimestamp.AsTime(), latestTimestamp.AsTime()); err != nil {
-				errs = multierr.Append(errs, err)
+				errs = errors.Join(errs, err)
 			}
 		}
 	}
@@ -311,8 +435,11 @@ func NewPromoteResourceAttributes(otlpCfg config.OTLPConfig) *PromoteResourceAtt
 	}
 }
 
+// LabelNameBuilder is a function that builds/sanitizes label names.
+type LabelNameBuilder func(string) (string, error)
+
 // addPromotedAttributes adds labels for promoted resourceAttributes to the builder.
-func (s *PromoteResourceAttributes) addPromotedAttributes(builder *labels.Builder, resourceAttributes pcommon.Map, labelNamer otlptranslator.LabelNamer) error {
+func (s *PromoteResourceAttributes) addPromotedAttributes(builder *labels.Builder, resourceAttributes pcommon.Map, buildLabelName LabelNameBuilder) error {
 	if s == nil {
 		return nil
 	}
@@ -322,13 +449,11 @@ func (s *PromoteResourceAttributes) addPromotedAttributes(builder *labels.Builde
 		resourceAttributes.Range(func(name string, value pcommon.Value) bool {
 			if _, exists := s.attrs[name]; !exists {
 				var normalized string
-				normalized, err = labelNamer.Build(name)
+				normalized, err = buildLabelName(name)
 				if err != nil {
 					return false
 				}
-				if builder.Get(normalized) == "" {
-					builder.Set(normalized, value.AsString())
-				}
+				builder.Set(normalized, value.AsString())
 			}
 			return true
 		})
@@ -338,15 +463,93 @@ func (s *PromoteResourceAttributes) addPromotedAttributes(builder *labels.Builde
 	resourceAttributes.Range(func(name string, value pcommon.Value) bool {
 		if _, exists := s.attrs[name]; exists {
 			var normalized string
-			normalized, err = labelNamer.Build(name)
+			normalized, err = buildLabelName(name)
 			if err != nil {
 				return false
 			}
-			if builder.Get(normalized) == "" {
-				builder.Set(normalized, value.AsString())
-			}
+			builder.Set(normalized, value.AsString())
 		}
 		return true
 	})
 	return err
+}
+
+// setResourceContext precomputes and caches resource-level labels.
+// Called once per ResourceMetrics boundary, before processing any datapoints.
+// If an error is returned, resource level cache is reset.
+func (c *PrometheusConverter) setResourceContext(resource pcommon.Resource, settings Settings) error {
+	resourceAttrs := resource.Attributes()
+	c.resourceLabels = &cachedResourceLabels{
+		externalLabels: settings.ExternalLabels,
+	}
+
+	c.labelNamer = otlptranslator.LabelNamer{
+		UTF8Allowed: settings.AllowUTF8,
+		// The deprecated field is still the only way to opt into this
+		// behaviour, which is exposed as a Prometheus config option.
+		UnderscoreLabelSanitization: settings.LabelNameUnderscoreSanitization, //nolint:staticcheck
+		PreserveMultipleUnderscores: settings.LabelNamePreserveMultipleUnderscores,
+	}
+
+	if serviceName, ok := resourceAttrs.Get(string(semconv.ServiceNameKey)); ok {
+		val := serviceName.AsString()
+		if serviceNamespace, ok := resourceAttrs.Get(string(semconv.ServiceNamespaceKey)); ok {
+			val = serviceNamespace.AsString() + "/" + val
+		}
+		c.resourceLabels.jobLabel = val
+	}
+
+	if instance, ok := resourceAttrs.Get(string(semconv.ServiceInstanceIDKey)); ok {
+		c.resourceLabels.instanceLabel = instance.AsString()
+	}
+
+	if settings.PromoteResourceAttributes != nil {
+		c.builder.Reset(labels.EmptyLabels())
+		if err := settings.PromoteResourceAttributes.addPromotedAttributes(c.builder, resourceAttrs, c.buildLabelName); err != nil {
+			c.clearResourceContext()
+			return err
+		}
+		c.resourceLabels.promotedLabels = c.builder.Labels()
+	}
+	return nil
+}
+
+// setScopeContext precomputes and caches scope-level labels.
+// Called once per ScopeMetrics boundary, before processing any metrics.
+// If an error is returned, scope level cache is reset.
+func (c *PrometheusConverter) setScopeContext(scope scope, settings Settings) error {
+	if !settings.PromoteScopeMetadata || scope.name == "" {
+		c.scopeLabels = nil
+		return nil
+	}
+
+	c.scopeLabels = &cachedScopeLabels{
+		scopeName:      scope.name,
+		scopeVersion:   scope.version,
+		scopeSchemaURL: scope.schemaURL,
+	}
+	c.builder.Reset(labels.EmptyLabels())
+	var err error
+	scope.attributes.Range(func(k string, v pcommon.Value) bool {
+		var name string
+		name, err = c.buildLabelName("otel_scope_" + k)
+		if err != nil {
+			return false
+		}
+		c.builder.Set(name, v.AsString())
+		return true
+	})
+	if err != nil {
+		c.scopeLabels = nil
+		return err
+	}
+
+	c.scopeLabels.scopeAttrs = c.builder.Labels()
+	return nil
+}
+
+// clearResourceContext clears cached labels between ResourceMetrics.
+func (c *PrometheusConverter) clearResourceContext() {
+	c.resourceLabels = nil
+	c.scopeLabels = nil
 }

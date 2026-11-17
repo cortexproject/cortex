@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -65,6 +65,14 @@ func DecodeReadRequest(r *http.Request) (*prompb.ReadRequest, error) {
 	compressed, err := io.ReadAll(io.LimitReader(r.Body, decodeReadLimit))
 	if err != nil {
 		return nil, err
+	}
+
+	decodedLen, err := snappy.DecodedLen(compressed)
+	if err != nil {
+		return nil, err
+	}
+	if decodedLen > decodeReadLimit {
+		return nil, fmt.Errorf("snappy: decoded length %d exceeds limit %d", decodedLen, decodeReadLimit)
 	}
 
 	reqBuf, err := snappy.Decode(nil, compressed)
@@ -283,7 +291,7 @@ func StreamChunkedReadResponses(
 				return ss.Warnings(), fmt.Errorf("write to stream: %w", err)
 			}
 
-			// We immediately flush the Write() so it is safe to return to the pool.
+			// The Write() has consumed b, so it is safe to return to the pool.
 			marshalPool.Put(&b)
 			chks = chks[:0]
 			frameBytesLeft = maxDataLength
@@ -564,6 +572,12 @@ func (c *concreteSeriesIterator) AtT() int64 {
 	return c.series.floats[c.floatsCur].Timestamp
 }
 
+// TODO(krajorama,ywwg): implement AtST. Maybe. concreteSeriesIterator is used
+// for turning query results into an iterable, but query results do not have ST.
+func (*concreteSeriesIterator) AtST() int64 {
+	return 0
+}
+
 const noTS = int64(math.MaxInt64)
 
 // Next implements chunkenc.Iterator.
@@ -832,6 +846,11 @@ func (it *chunkedSeriesIterator) AtT() int64 {
 	return it.cur.AtT()
 }
 
+// TODO(krajorama,ywwg): test AtST once we have a chunk format that provides ST.
+func (it *chunkedSeriesIterator) AtST() int64 {
+	return it.cur.AtST()
+}
+
 func (it *chunkedSeriesIterator) Err() error {
 	return it.err
 }
@@ -989,7 +1008,7 @@ func DecodeOTLPWriteRequest(r *http.Request) (pmetricotlp.ExportRequest, error) 
 		return pmetricotlp.NewExportRequest(), fmt.Errorf("unsupported compression: %s. Only \"gzip\" or no compression supported", r.Header.Get("Content-Encoding"))
 	}
 
-	body, err := io.ReadAll(reader)
+	body, err := io.ReadAll(io.LimitReader(reader, decodeReadLimit))
 	if err != nil {
 		r.Body.Close()
 		return pmetricotlp.NewExportRequest(), err

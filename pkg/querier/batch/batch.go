@@ -177,3 +177,8 @@ func (a *iteratorAdapter) AtFloatHistogram(h *histogram.FloatHistogram) (int64, 
 func (a *iteratorAdapter) AtT() int64 {
 	return a.curr.Timestamps[a.curr.Index]
 }
+
+// AtST returns 0: batches do not carry start timestamps.
+func (a *iteratorAdapter) AtST() int64 {
+	return 0
+}

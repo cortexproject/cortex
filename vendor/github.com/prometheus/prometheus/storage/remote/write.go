@@ -1,4 +1,4 @@
-// Copyright 2017 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -31,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
+	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/wlog"
 )
 
@@ -72,6 +73,8 @@ type WriteStorage struct {
 	scraper           ReadyScrapeManager
 	quit              chan struct{}
 
+	recordBuf *record.BuffersPool
+
 	// For timestampTracker.
 	highestTimestamp        *maxTimestamp
 	enableTypeAndUnitLabels bool
@@ -102,6 +105,7 @@ func NewWriteStorage(logger *slog.Logger, reg prometheus.Registerer, dir string,
 				Help:      "Highest timestamp that has come into the remote storage via the Appender interface, in seconds since epoch. Initialized to 0 when no data has been received yet. Deprecated, check prometheus_remote_storage_queue_highest_timestamp_seconds which is more accurate.",
 			}),
 		},
+		recordBuf:               record.NewBuffersPool(),
 		enableTypeAndUnitLabels: enableTypeAndUnitLabels,
 	}
 	if reg != nil {
@@ -215,6 +219,9 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 			rwConf.SendNativeHistograms,
 			rws.enableTypeAndUnitLabels,
 			rwConf.ProtobufMessage,
+			rws.recordBuf,
+			rwConf.FailedRequestLogging,
+			rwConf.ConvertNHCBToClassic,
 		)
 		// Keep track of which queues are new so we know which to start.
 		newHashes = append(newHashes, hash)
@@ -238,8 +245,20 @@ func (rws *WriteStorage) ApplyConfig(conf *config.Config) error {
 // Appender implements storage.Storage.
 func (rws *WriteStorage) Appender(context.Context) storage.Appender {
 	return &timestampTracker{
-		writeStorage:         rws,
-		highestRecvTimestamp: rws.highestTimestamp,
+		baseTimestampTracker: baseTimestampTracker{
+			writeStorage:         rws,
+			highestRecvTimestamp: rws.highestTimestamp,
+		},
+	}
+}
+
+// AppenderV2 implements storage.Storage.
+func (rws *WriteStorage) AppenderV2(context.Context) storage.AppenderV2 {
+	return &timestampTrackerV2{
+		baseTimestampTracker: baseTimestampTracker{
+			writeStorage:         rws,
+			highestRecvTimestamp: rws.highestTimestamp,
+		},
 	}
 }
 
@@ -282,14 +301,20 @@ func (rws *WriteStorage) Close() error {
 	return nil
 }
 
-type timestampTracker struct {
-	writeStorage         *WriteStorage
-	appendOptions        *storage.AppendOptions
+type baseTimestampTracker struct {
+	writeStorage *WriteStorage
+
 	samples              int64
 	exemplars            int64
 	histograms           int64
 	highestTimestamp     int64
 	highestRecvTimestamp *maxTimestamp
+}
+
+type timestampTracker struct {
+	baseTimestampTracker
+
+	appendOptions *storage.AppendOptions
 }
 
 func (t *timestampTracker) SetOptions(opts *storage.AppendOptions) {
@@ -306,6 +331,7 @@ func (t *timestampTracker) Append(_ storage.SeriesRef, _ labels.Labels, ts int64
 }
 
 func (t *timestampTracker) AppendExemplar(storage.SeriesRef, labels.Labels, exemplar.Exemplar) (storage.SeriesRef, error) {
+	// highestTimestamp excludes exemplars, as not all queues send them.
 	t.exemplars++
 	return 0, nil
 }
@@ -339,13 +365,14 @@ func (t *timestampTracker) AppendHistogramSTZeroSample(_ storage.SeriesRef, _ la
 }
 
 func (*timestampTracker) UpdateMetadata(storage.SeriesRef, labels.Labels, metadata.Metadata) (storage.SeriesRef, error) {
-	// TODO: Add and increment a `metadata` field when we get around to wiring metadata in remote_write.
-	// UpdateMetadata is no-op for remote write (where timestampTracker is being used) for now.
+	// Intentionally a no-op. dataIn measures records that create work for the
+	// sharded queue and is used to estimate queue load and backlog. A metadata
+	// update only changes cached per-series state; it does not enqueue an item.
 	return 0, nil
 }
 
 // Commit implements storage.Appender.
-func (t *timestampTracker) Commit() error {
+func (t *baseTimestampTracker) Commit() error {
 	t.writeStorage.samplesIn.incr(t.samples + t.exemplars + t.histograms)
 
 	samplesIn.Add(float64(t.samples))
@@ -356,6 +383,34 @@ func (t *timestampTracker) Commit() error {
 }
 
 // Rollback implements storage.Appender.
-func (*timestampTracker) Rollback() error {
+func (*baseTimestampTracker) Rollback() error {
 	return nil
 }
+
+type timestampTrackerV2 struct {
+	baseTimestampTracker
+}
+
+// Append implements storage.AppenderV2.
+func (t *timestampTrackerV2) Append(ref storage.SeriesRef, _ labels.Labels, _, ts int64, _ float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AOptions) (storage.SeriesRef, error) {
+	switch {
+	case fh != nil, h != nil:
+		t.histograms++
+	default:
+		t.samples++
+	}
+	if ts > t.highestTimestamp {
+		t.highestTimestamp = ts
+	}
+	t.exemplars += int64(len(opts.Exemplars))
+	return ref, nil
+}
+
+// AppendExemplars implements storage.ExemplarAppenderV2.
+func (t *timestampTrackerV2) AppendExemplars(ref storage.SeriesRef, _ labels.Labels, exemplars []exemplar.Exemplar) (storage.SeriesRef, error) {
+	// highestTimestamp excludes exemplars, as not all queues send them.
+	t.exemplars += int64(len(exemplars))
+	return ref, nil
+}
+
+var _ storage.ExemplarAppenderV2 = &timestampTrackerV2{}

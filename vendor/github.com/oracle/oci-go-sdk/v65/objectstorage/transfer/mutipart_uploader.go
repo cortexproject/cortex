@@ -107,8 +107,6 @@ func (uploader *multipartUpload) uploadPart(ctx context.Context, request UploadR
 		UploadPartNum:           common.Int(part.partNum),
 		UploadPartBody:          ioutil.NopCloser(bytes.NewReader(part.partBody)),
 		ContentLength:           common.Int64(part.size),
-		IfMatch:                 request.IfMatch,
-		IfNoneMatch:             request.IfNoneMatch,
 		OpcClientRequestId:      request.OpcClientRequestID,
 		RequestMetadata:         request.RequestMetadata,
 		ContentMD5:              part.opcMD5,

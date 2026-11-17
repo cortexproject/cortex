@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -32,6 +32,7 @@ import (
 	remoteapi "github.com/prometheus/client_golang/exp/api/remote"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/sigv4"
 	"go.yaml.in/yaml/v2"
@@ -81,6 +82,13 @@ func Load(s string, logger *slog.Logger) (*Config, error) {
 	err := yaml.UnmarshalStrict([]byte(s), cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	// When the config body is empty, UnmarshalYAML is never called, so
+	// TSDBConfig may still be nil.
+	if cfg.StorageConfig.TSDBConfig == nil {
+		retention := DefaultTSDBRetentionConfig
+		cfg.StorageConfig.TSDBConfig = &TSDBConfig{Retention: &retention}
 	}
 
 	b := labels.NewScratchBuilder(0)
@@ -149,6 +157,10 @@ func LoadFile(filename string, agentMode bool, logger *slog.Logger) (*Config, er
 	return cfg, nil
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 // The defaults applied before parsing the respective config sections.
 var (
 	// DefaultConfig is the default top-level configuration.
@@ -158,7 +170,6 @@ var (
 		OTLPConfig:   DefaultOTLPConfig,
 	}
 
-	f bool
 	// DefaultGlobalConfig is the default global configuration.
 	DefaultGlobalConfig = GlobalConfig{
 		ScrapeInterval:     model.Duration(1 * time.Minute),
@@ -173,16 +184,18 @@ var (
 		ScrapeProtocols: nil,
 		// When the native histogram feature flag is enabled,
 		// ScrapeNativeHistograms default changes to true.
-		ScrapeNativeHistograms:         &f,
+		ScrapeNativeHistograms:         boolPtr(false),
 		ConvertClassicHistogramsToNHCB: false,
 		AlwaysScrapeClassicHistograms:  false,
+		ExtraScrapeMetrics:             boolPtr(false),
 		MetricNameValidationScheme:     model.UTF8Validation,
 		MetricNameEscapingScheme:       model.AllowUTF8,
 	}
 
 	DefaultRuntimeConfig = RuntimeConfig{
 		// Go runtime tuning.
-		GoGC: getGoGC(),
+		GoGC:     getGoGC(),
+		LogLevel: LogLevel("info"),
 	}
 
 	// DefaultScrapeConfig is the default scrape configuration. Users of this
@@ -272,6 +285,9 @@ var (
 		// For backwards compatibility.
 		LabelNamePreserveMultipleUnderscores: true,
 	}
+
+	// DefaultTSDBRetentionConfig is the default TSDB retention configuration.
+	DefaultTSDBRetentionConfig TSDBRetentionConfig
 )
 
 // Config is the top-level configuration for Prometheus's config files.
@@ -401,6 +417,13 @@ func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 		c.Runtime = DefaultRuntimeConfig
 	}
 
+	// If no storage.tsdb section is present, TSDBConfig is nil and its
+	// UnmarshalYAML never runs. Inject the default retention here.
+	if c.StorageConfig.TSDBConfig == nil {
+		retention := DefaultTSDBRetentionConfig
+		c.StorageConfig.TSDBConfig = &TSDBConfig{Retention: &retention}
+	}
+
 	for _, rf := range c.RuleFiles {
 		if !patRulePath.MatchString(rf) {
 			return fmt.Errorf("invalid rule file path %q", rf)
@@ -475,6 +498,18 @@ type GlobalConfig struct {
 	RuleQueryOffset model.Duration `yaml:"rule_query_offset,omitempty"`
 	// File to which PromQL queries are logged.
 	QueryLogFile string `yaml:"query_log_file,omitempty"`
+	// QueryMaxSeries is the maximum number of series a query may touch before it
+	// is rejected. It is only enforced when the query-cost feature is enabled.
+	// Zero means no limit.
+	QueryMaxSeries uint64 `yaml:"query_max_series,omitempty"`
+	// QueryMaxSamplesRead is the maximum number of samples a query may read
+	// before it is rejected. It is only enforced when the query-cost feature is
+	// enabled. Zero means no limit.
+	QueryMaxSamplesRead uint64 `yaml:"query_max_samples_read,omitempty"`
+	// QueryMaxDuration is the maximum wall-clock duration a query may take before
+	// it is rejected. It is only enforced when the query-cost feature is enabled.
+	// Zero falls back to the --query.timeout flag.
+	QueryMaxDuration model.Duration `yaml:"query_max_duration,omitempty"`
 	// File to which scrape failures are logged.
 	ScrapeFailureLogFile string `yaml:"scrape_failure_log_file,omitempty"`
 	// The labels to add to any timeseries that this Prometheus instance scrapes.
@@ -513,6 +548,10 @@ type GlobalConfig struct {
 	ConvertClassicHistogramsToNHCB bool `yaml:"convert_classic_histograms_to_nhcb,omitempty"`
 	// Whether to scrape a classic histogram, even if it is also exposed as a native histogram.
 	AlwaysScrapeClassicHistograms bool `yaml:"always_scrape_classic_histograms,omitempty"`
+	// Whether to enable additional scrape metrics.
+	// When enabled, Prometheus stores samples for scrape_timeout_seconds,
+	// scrape_sample_limit, and scrape_body_size_bytes.
+	ExtraScrapeMetrics *bool `yaml:"extra_scrape_metrics,omitempty"`
 }
 
 // ScrapeProtocol represents supported protocol for scraping metrics.
@@ -551,6 +590,7 @@ var (
 	PrometheusText1_0_0  ScrapeProtocol = "PrometheusText1.0.0"
 	OpenMetricsText0_0_1 ScrapeProtocol = "OpenMetricsText0.0.1"
 	OpenMetricsText1_0_0 ScrapeProtocol = "OpenMetricsText1.0.0"
+	OpenMetricsText2_0_0 ScrapeProtocol = "OpenMetricsText2.0.0"
 	UTF8NamesHeader      string         = model.EscapingKey + "=" + model.AllowUTF8
 
 	ScrapeProtocolsHeaders = map[ScrapeProtocol]string{
@@ -559,6 +599,7 @@ var (
 		PrometheusText1_0_0:  "text/plain;version=1.0.0",
 		OpenMetricsText0_0_1: "application/openmetrics-text;version=0.0.1",
 		OpenMetricsText1_0_0: "application/openmetrics-text;version=1.0.0",
+		OpenMetricsText2_0_0: "application/openmetrics-text;version=2.0.0",
 	}
 
 	// DefaultScrapeProtocols is the set of scrape protocols that will be proposed
@@ -652,6 +693,9 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	if gc.ScrapeNativeHistograms == nil {
 		gc.ScrapeNativeHistograms = DefaultGlobalConfig.ScrapeNativeHistograms
 	}
+	if gc.ExtraScrapeMetrics == nil {
+		gc.ExtraScrapeMetrics = DefaultGlobalConfig.ExtraScrapeMetrics
+	}
 	if gc.ScrapeProtocols == nil {
 		if DefaultGlobalConfig.ScrapeProtocols != nil {
 			// This is the case where the defaults are set due to a feature flag.
@@ -683,19 +727,47 @@ func (c *GlobalConfig) isZero() bool {
 		c.EvaluationInterval == 0 &&
 		c.RuleQueryOffset == 0 &&
 		c.QueryLogFile == "" &&
+		c.QueryMaxSeries == 0 &&
+		c.QueryMaxSamplesRead == 0 &&
+		c.QueryMaxDuration == 0 &&
 		c.ScrapeFailureLogFile == "" &&
 		c.ScrapeProtocols == nil &&
 		c.ScrapeNativeHistograms == nil &&
 		!c.ConvertClassicHistogramsToNHCB &&
-		!c.AlwaysScrapeClassicHistograms
+		!c.AlwaysScrapeClassicHistograms &&
+		c.BodySizeLimit == 0 &&
+		c.SampleLimit == 0 &&
+		c.TargetLimit == 0 &&
+		c.LabelLimit == 0 &&
+		c.LabelNameLengthLimit == 0 &&
+		c.LabelValueLengthLimit == 0 &&
+		c.KeepDroppedTargets == 0 &&
+		c.MetricNameValidationScheme == model.UnsetValidation &&
+		c.MetricNameEscapingScheme == "" &&
+		c.ExtraScrapeMetrics == nil
 }
 
 const DefaultGoGCPercentage = 75
+
+// LogLevel is a YAML representation of a promslog logging level.
+type LogLevel string
+
+// UnmarshalYAML validates and normalizes a log level.
+func (l *LogLevel) UnmarshalYAML(unmarshal func(any) error) error {
+	level := promslog.NewLevel()
+	if err := level.UnmarshalYAML(unmarshal); err != nil {
+		return err
+	}
+	*l = LogLevel(level.String())
+	return nil
+}
 
 // RuntimeConfig configures the values for the process behavior.
 type RuntimeConfig struct {
 	// The Go garbage collection target percentage.
 	GoGC int `yaml:"gogc,omitempty"`
+	// The minimum severity emitted by the process logger.
+	LogLevel LogLevel `yaml:"log_level,omitempty"`
 
 	// Below are guidelines for adding a new field:
 	//
@@ -715,7 +787,7 @@ type RuntimeConfig struct {
 
 // isZero returns true iff the global config is the zero value.
 func (c *RuntimeConfig) isZero() bool {
-	return c.GoGC == 0
+	return c.GoGC == 0 && c.LogLevel == ""
 }
 
 type ScrapeConfigs struct {
@@ -796,6 +868,11 @@ type ScrapeConfig struct {
 	// blank in config files but must have a value if a ScrapeConfig is created
 	// programmatically.
 	MetricNameEscapingScheme string `yaml:"metric_name_escaping_scheme,omitempty"`
+	// Whether to enable additional scrape metrics.
+	// When enabled, Prometheus stores samples for scrape_timeout_seconds,
+	// scrape_sample_limit, and scrape_body_size_bytes.
+	// If not set (nil), inherits the value from the global configuration.
+	ExtraScrapeMetrics *bool `yaml:"extra_scrape_metrics,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -822,7 +899,7 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	if err := discovery.UnmarshalYAMLWithInlineConfigs(c, unmarshal); err != nil {
 		return err
 	}
-	if len(c.JobName) == 0 {
+	if c.JobName == "" {
 		return errors.New("job_name is empty")
 	}
 
@@ -896,6 +973,9 @@ func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
 	}
 	if c.ScrapeNativeHistograms == nil {
 		c.ScrapeNativeHistograms = globalConfig.ScrapeNativeHistograms
+	}
+	if c.ExtraScrapeMetrics == nil {
+		c.ExtraScrapeMetrics = globalConfig.ExtraScrapeMetrics
 	}
 
 	if c.ScrapeProtocols == nil {
@@ -1022,7 +1102,7 @@ func ToEscapingScheme(s string, v model.ValidationScheme) (model.EscapingScheme,
 		case model.LegacyValidation:
 			return model.UnderscoreEscaping, nil
 		case model.UnsetValidation:
-			return model.NoEscaping, fmt.Errorf("v is unset: %s", v)
+			return model.NoEscaping, fmt.Errorf("ValidationScheme is unset: %s", v)
 		default:
 			panic(fmt.Errorf("unhandled validation scheme: %s", v))
 		}
@@ -1045,6 +1125,11 @@ func (c *ScrapeConfig) AlwaysScrapeClassicHistogramsEnabled() bool {
 	return c.AlwaysScrapeClassicHistograms != nil && *c.AlwaysScrapeClassicHistograms
 }
 
+// ExtraScrapeMetricsEnabled returns whether to enable extra scrape metrics.
+func (c *ScrapeConfig) ExtraScrapeMetricsEnabled() bool {
+	return c.ExtraScrapeMetrics != nil && *c.ExtraScrapeMetrics
+}
+
 // StorageConfig configures runtime reloadable configuration options.
 type StorageConfig struct {
 	TSDBConfig      *TSDBConfig      `yaml:"tsdb,omitempty"`
@@ -1058,6 +1143,40 @@ type TSDBRetentionConfig struct {
 
 	// Maximum number of bytes that can be stored for blocks.
 	Size units.Base2Bytes `yaml:"size,omitempty"`
+
+	// Maximum percentage of disk used for TSDB storage.
+	Percentage float64 `yaml:"percentage,omitempty"`
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (t *TSDBRetentionConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	*t = TSDBRetentionConfig{}
+	type plain TSDBRetentionConfig
+	if err := unmarshal((*plain)(t)); err != nil {
+		return err
+	}
+	if t.Size < 0 {
+		return fmt.Errorf("'storage.tsdb.retention.size' must be greater than or equal to 0, got %v", t.Size)
+	}
+	if t.Percentage < 0 || t.Percentage > 100 {
+		return fmt.Errorf("'storage.tsdb.retention.percentage' must be in the range [0, 100], got %v", t.Percentage)
+	}
+	return nil
+}
+
+const (
+	// FloatChunkEncodingXOR selects standard XOR encoding for float chunks.
+	FloatChunkEncodingXOR = "xor"
+	// FloatChunkEncodingXOR2 selects XOR2 encoding for float chunks.
+	FloatChunkEncodingXOR2 = "xor2"
+)
+
+// ChunkEncodingConfig configures per-chunk-type encoding overrides.
+type ChunkEncodingConfig struct {
+	// Floats selects the encoding used for float chunks.
+	// Valid values are "xor", "xor2", and "" (empty/absent). When empty, the
+	// encoding follows the --enable-feature=xor2-encoding flag.
+	Floats string `yaml:"floats,omitempty"`
 }
 
 // TSDBConfig configures runtime reloadable configuration options.
@@ -1073,6 +1192,13 @@ type TSDBConfig struct {
 	// This should not be used directly and must be converted into OutOfOrderTimeWindow.
 	OutOfOrderTimeWindowFlag model.Duration `yaml:"out_of_order_time_window,omitempty"`
 
+	// StaleSeriesCompactionThreshold is a number between 0.0-1.0 indicating the % of stale series in
+	// the in-memory Head block. If the % of stale series crosses this threshold, stale series compaction is run immediately.
+	StaleSeriesCompactionThreshold float64 `yaml:"stale_series_compaction_threshold,omitempty"`
+
+	// ChunkEncoding configures per-chunk-type encoding overrides.
+	ChunkEncoding ChunkEncodingConfig `yaml:"chunk_encoding,omitempty"`
+
 	Retention *TSDBRetentionConfig `yaml:"retention,omitempty"`
 }
 
@@ -1085,6 +1211,18 @@ func (t *TSDBConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 
 	t.OutOfOrderTimeWindow = time.Duration(t.OutOfOrderTimeWindowFlag).Milliseconds()
+
+	switch t.ChunkEncoding.Floats {
+	case "", FloatChunkEncodingXOR, FloatChunkEncodingXOR2:
+		// Valid; no action required.
+	default:
+		return fmt.Errorf("'storage.tsdb.chunk_encoding.floats' must be 'xor' or 'xor2', or the field must be omitted entirely, got %q", t.ChunkEncoding.Floats)
+	}
+
+	if t.Retention == nil {
+		retention := DefaultTSDBRetentionConfig
+		t.Retention = &retention
+	}
 
 	return nil
 }
@@ -1387,6 +1525,8 @@ type RemoteWriteConfig struct {
 	// ProtobufMessage specifies the protobuf message to use against the remote
 	// receiver as specified in https://prometheus.io/docs/specs/remote_write_spec_2_0/
 	ProtobufMessage remoteapi.WriteMessageType `yaml:"protobuf_message,omitempty"`
+	// FailedRequestLogging enables debug logging of remote write V2 request on send error.
+	FailedRequestLogging bool `yaml:"failed_request_logging,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -1396,6 +1536,13 @@ type RemoteWriteConfig struct {
 	SigV4Config      *sigv4.SigV4Config      `yaml:"sigv4,omitempty"`
 	AzureADConfig    *azuread.AzureADConfig  `yaml:"azuread,omitempty"`
 	GoogleIAMConfig  *googleiam.Config       `yaml:"google_iam,omitempty"`
+
+	// EXPERIMENTAL: Converts native histograms with custom buckets (NHCB) to classic histograms
+	// after applying write_relabel_configs. This enables using NHCB locally (for cheaper storage
+	// and histogram atomicity) while sending classic histograms to external systems that do not
+	// support native histograms yet. Useful for migration scenarios and external system support
+	// without sacrificing local storage efficiency.
+	ConvertNHCBToClassic bool `yaml:"convert_nhcb_to_classic,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -1430,6 +1577,10 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	// We cannot make it a pointer as the parser panics for inlined pointer structs.
 	// Thus we just do its validation here.
 	if err := c.HTTPClientConfig.Validate(); err != nil {
+		return err
+	}
+
+	if err := c.QueueConfig.Validate(); err != nil {
 		return err
 	}
 
@@ -1523,6 +1674,29 @@ type QueueConfig struct {
 
 	// Samples older than the limit will be dropped.
 	SampleAgeLimit model.Duration `yaml:"sample_age_limit,omitempty"`
+}
+
+// Validate checks QueueConfig fields for invalid values.
+func (c *QueueConfig) Validate() error {
+	if c.MaxShards <= 0 {
+		return errors.New("remote write queue max_shards must be positive")
+	}
+	if c.MinShards <= 0 {
+		return errors.New("remote write queue min_shards must be positive")
+	}
+	if c.MinShards > c.MaxShards {
+		return errors.New("remote write queue min_shards must not be greater than max_shards")
+	}
+	if c.MaxSamplesPerSend <= 0 {
+		return errors.New("remote write queue max_samples_per_send must be positive")
+	}
+	if c.Capacity <= 0 {
+		return errors.New("remote write queue capacity must be positive")
+	}
+	if c.MaxBackoff < c.MinBackoff {
+		return errors.New("remote write queue max_backoff must not be less than min_backoff")
+	}
+	return nil
 }
 
 // MetadataConfig is the configuration for sending metadata to remote

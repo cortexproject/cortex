@@ -1,4 +1,4 @@
-// Copyright 2024 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -86,10 +86,14 @@ func (*HistogramStatsIterator) AtHistogram(*histogram.Histogram) (int64, *histog
 // performs a counter reset detection on the fly. It will return an explicit
 // hint (not UnknownCounterReset) if the previous sample has been accessed with
 // the same iterator.
+//
+// The returned histogram contains only Count, Sum, CounterResetHint, and Schema.
+// Bucket data is intentionally omitted.
 func (hsi *HistogramStatsIterator) AtFloatHistogram(fh *histogram.FloatHistogram) (int64, *histogram.FloatHistogram) {
 	populateFH := func(src *histogram.FloatHistogram, detectReset bool) {
 		h := histogram.FloatHistogram{
 			CounterResetHint: src.CounterResetHint,
+			Schema:           src.Schema,
 			Count:            src.Count,
 			Sum:              src.Sum,
 		}

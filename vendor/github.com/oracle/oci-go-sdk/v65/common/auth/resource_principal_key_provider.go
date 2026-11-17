@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 
 package auth
@@ -89,12 +89,12 @@ func ResourcePrincipalConfigurationProvider() (ConfigurationProviderWithClaimAcc
 	case ResourcePrincipalVersion2_2:
 		rpst := requireEnv(ResourcePrincipalRPSTEnvVar)
 		if rpst == nil {
-			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalVersionEnvVar)
+			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalRPSTEnvVar)
 			return nil, resourcePrincipalError{err: err}
 		}
 		private := requireEnv(ResourcePrincipalPrivatePEMEnvVar)
 		if private == nil {
-			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalVersionEnvVar)
+			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalPrivatePEMEnvVar)
 			return nil, resourcePrincipalError{err: err}
 		}
 		passphrase := requireEnv(ResourcePrincipalPrivatePEMPassphraseEnvVar)
@@ -220,12 +220,12 @@ func ResourcePrincipalConfigurationProviderForRegion(region common.Region) (Conf
 	case ResourcePrincipalVersion2_2:
 		rpst := requireEnv(ResourcePrincipalRPSTEnvVar)
 		if rpst == nil {
-			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalVersionEnvVar)
+			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalRPSTEnvVar)
 			return nil, resourcePrincipalError{err: err}
 		}
 		private := requireEnv(ResourcePrincipalPrivatePEMEnvVar)
 		if private == nil {
-			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalVersionEnvVar)
+			err := fmt.Errorf("can not create resource principal, environment variable: %s, not present", ResourcePrincipalPrivatePEMEnvVar)
 			return nil, resourcePrincipalError{err: err}
 		}
 		passphrase := requireEnv(ResourcePrincipalPrivatePEMPassphraseEnvVar)

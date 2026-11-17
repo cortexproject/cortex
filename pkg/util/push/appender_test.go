@@ -7,22 +7,49 @@ import (
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testMeta holds the metadata the OTLP translator passes through AppendV2Options.
+type testMeta struct {
+	Type             model.MetricType
+	Help             string
+	Unit             string
+	MetricFamilyName string
+}
+
+func (m testMeta) opts(es []exemplar.Exemplar) storage.AppendV2Options {
+	return storage.AppendV2Options{
+		MetricFamilyName: m.MetricFamilyName,
+		Metadata:         metadata.Metadata{Type: m.Type, Help: m.Help, Unit: m.Unit},
+		Exemplars:        es,
+	}
+}
+
+func appendSample(c *collectingAppender, ls labels.Labels, m testMeta, st, t int64, v float64, es []exemplar.Exemplar) error {
+	_, err := c.Append(0, ls, st, t, v, nil, nil, m.opts(es))
+	return err
+}
+
+func appendHistogram(c *collectingAppender, ls labels.Labels, m testMeta, st, t int64, h *histogram.Histogram, es []exemplar.Exemplar) error {
+	_, err := c.Append(0, ls, st, t, 0, h, nil, m.opts(es))
+	return err
+}
 
 func TestCollectingAppender_AppendSample_SingleSeries(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "cpu_usage", "job", "test")
 
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type: model.MetricTypeGauge, Help: "CPU usage", Unit: "percent",
 		MetricFamilyName: "cpu_usage",
 	}
 
-	err := c.AppendSample(ls, meta, 0, 1000, 42.5, nil)
+	err := appendSample(c, ls, meta, 0, 1000, 42.5, nil)
 	require.NoError(t, err)
 
 	ts := c.TimeSeries()
@@ -46,14 +73,14 @@ func TestCollectingAppender_AppendSample_MultipleSamplesSameSeries(t *testing.T)
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "requests_total")
 
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type:             model.MetricTypeCounter,
 		MetricFamilyName: "requests_total",
 	}
 
-	require.NoError(t, c.AppendSample(ls, meta, 0, 1000, 1, nil))
-	require.NoError(t, c.AppendSample(ls, meta, 0, 2000, 2, nil))
-	require.NoError(t, c.AppendSample(ls, meta, 0, 3000, 3, nil))
+	require.NoError(t, appendSample(c, ls, meta, 0, 1000, 1, nil))
+	require.NoError(t, appendSample(c, ls, meta, 0, 2000, 2, nil))
+	require.NoError(t, appendSample(c, ls, meta, 0, 3000, 3, nil))
 
 	ts := c.TimeSeries()
 	require.Len(t, ts, 1)
@@ -67,13 +94,13 @@ func TestCollectingAppender_AppendSample_MultipleSamplesSameSeries(t *testing.T)
 
 func TestCollectingAppender_AppendSample_MultipleSeries(t *testing.T) {
 	c := newCollectingAppender()
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type:             model.MetricTypeGauge,
 		MetricFamilyName: "metric",
 	}
 
-	require.NoError(t, c.AppendSample(labels.FromStrings("__name__", "metric", "a", "1"), meta, 0, 1000, 10, nil))
-	require.NoError(t, c.AppendSample(labels.FromStrings("__name__", "metric", "a", "2"), meta, 0, 1000, 20, nil))
+	require.NoError(t, appendSample(c, labels.FromStrings("__name__", "metric", "a", "1"), meta, 0, 1000, 10, nil))
+	require.NoError(t, appendSample(c, labels.FromStrings("__name__", "metric", "a", "2"), meta, 0, 1000, 20, nil))
 
 	ts := c.TimeSeries()
 	require.Len(t, ts, 2)
@@ -97,7 +124,7 @@ func TestCollectingAppender_AppendSample_MultipleSeries(t *testing.T) {
 func TestCollectingAppender_AppendSample_WithExemplars(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "latency")
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type:             model.MetricTypeHistogram,
 		MetricFamilyName: "latency",
 	}
@@ -105,7 +132,7 @@ func TestCollectingAppender_AppendSample_WithExemplars(t *testing.T) {
 		{Labels: labels.FromStrings("trace_id", "abc"), Value: 0.5, Ts: 1001, HasTs: true},
 	}
 
-	err := c.AppendSample(ls, meta, 0, 1000, 0.42, exemplars)
+	err := appendSample(c, ls, meta, 0, 1000, 0.42, exemplars)
 	require.NoError(t, err)
 
 	ts := c.TimeSeries()
@@ -119,7 +146,7 @@ func TestCollectingAppender_AppendSample_WithExemplars(t *testing.T) {
 func TestCollectingAppender_AppendHistogram(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "request_duration_seconds")
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type: model.MetricTypeHistogram, Help: "Request latency", Unit: "seconds",
 		MetricFamilyName: "request_duration_seconds",
 	}
@@ -137,7 +164,7 @@ func TestCollectingAppender_AppendHistogram(t *testing.T) {
 		NegativeBuckets:  nil,
 	}
 
-	err := c.AppendHistogram(ls, meta, 0, 2000, h, nil)
+	err := appendHistogram(c, ls, meta, 0, 2000, h, nil)
 	require.NoError(t, err)
 
 	ts := c.TimeSeries()
@@ -154,27 +181,15 @@ func TestCollectingAppender_AppendHistogram(t *testing.T) {
 	assert.Equal(t, "request_duration_seconds", md[0].MetricFamilyName)
 }
 
-func TestCollectingAppender_AppendHistogram_NilHistogramIgnored(t *testing.T) {
-	c := newCollectingAppender()
-	ls := labels.FromStrings("__name__", "x")
-	meta := prometheusremotewrite.Metadata{MetricFamilyName: "x"}
-
-	err := c.AppendHistogram(ls, meta, 0, 1000, nil, nil)
-	require.NoError(t, err)
-
-	ts := c.TimeSeries()
-	require.Len(t, ts, 0)
-}
-
 func TestCollectingAppender_Metadata_EmptyMetricFamilyNameIgnored(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "y")
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type:             model.MetricTypeGauge,
 		MetricFamilyName: "",
 	}
 
-	err := c.AppendSample(ls, meta, 0, 1000, 1, nil)
+	err := appendSample(c, ls, meta, 0, 1000, 1, nil)
 	require.NoError(t, err)
 
 	md := c.Metadata()
@@ -183,13 +198,13 @@ func TestCollectingAppender_Metadata_EmptyMetricFamilyNameIgnored(t *testing.T) 
 
 func TestCollectingAppender_Metadata_DeduplicatedByFamilyName(t *testing.T) {
 	c := newCollectingAppender()
-	meta := prometheusremotewrite.Metadata{
+	meta := testMeta{
 		Type: model.MetricTypeCounter, Help: "help", Unit: "bytes",
 		MetricFamilyName: "http_requests_total",
 	}
 
-	require.NoError(t, c.AppendSample(labels.FromStrings("__name__", "http_requests_total", "method", "GET"), meta, 0, 1000, 1, nil))
-	require.NoError(t, c.AppendSample(labels.FromStrings("__name__", "http_requests_total", "method", "POST"), meta, 0, 1000, 1, nil))
+	require.NoError(t, appendSample(c, labels.FromStrings("__name__", "http_requests_total", "method", "GET"), meta, 0, 1000, 1, nil))
+	require.NoError(t, appendSample(c, labels.FromStrings("__name__", "http_requests_total", "method", "POST"), meta, 0, 1000, 1, nil))
 
 	md := c.Metadata()
 	require.Len(t, md, 1)
@@ -205,9 +220,9 @@ func TestCollectingAppender_TimeSeries_EmptyInitially(t *testing.T) {
 func TestCollectingAppender_MixedSamplesAndHistograms(t *testing.T) {
 	c := newCollectingAppender()
 	ls := labels.FromStrings("__name__", "mixed")
-	meta := prometheusremotewrite.Metadata{MetricFamilyName: "mixed", Type: model.MetricTypeGauge}
+	meta := testMeta{MetricFamilyName: "mixed", Type: model.MetricTypeGauge}
 
-	require.NoError(t, c.AppendSample(ls, meta, 0, 1000, 1.0, nil))
+	require.NoError(t, appendSample(c, ls, meta, 0, 1000, 1.0, nil))
 
 	h := &histogram.Histogram{
 		CounterResetHint: histogram.GaugeType,
@@ -219,7 +234,7 @@ func TestCollectingAppender_MixedSamplesAndHistograms(t *testing.T) {
 		PositiveSpans:    []histogram.Span{{Offset: 0, Length: 1}},
 		PositiveBuckets:  []int64{1},
 	}
-	require.NoError(t, c.AppendHistogram(ls, meta, 0, 2000, h, nil))
+	require.NoError(t, appendHistogram(c, ls, meta, 0, 2000, h, nil))
 
 	ts := c.TimeSeries()
 	require.Len(t, ts, 1)

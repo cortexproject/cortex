@@ -209,7 +209,7 @@ func createTestLogicalPlan(t *testing.T, startTime time.Time, endTime time.Time,
 		qOpts.Step = step
 	}
 
-	expr, err := parser.NewParser(q, parser.WithFunctions(parser.Functions)).ParseExpr()
+	expr, err := parser.NewParser(parser.Options{}).ParseExpr(q)
 	require.NoError(t, err)
 
 	planOpts := logicalplan.PlanOptions{

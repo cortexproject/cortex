@@ -36,10 +36,11 @@ var instantVectorFuncs = map[string]functionCall{
 	"acosh": simpleFunc(math.Acosh),
 	"atanh": simpleFunc(math.Atanh),
 	"rad": simpleFunc(func(v float64) float64 {
-		return v * math.Pi / 180
+		// Parenthesized to avoid intermediate overflow, as Prometheus #19901.
+		return v * (math.Pi / 180)
 	}),
 	"deg": simpleFunc(func(v float64) float64 {
-		return v * 180 / math.Pi
+		return v * (180 / math.Pi)
 	}),
 	"sgn": simpleFunc(func(v float64) float64 {
 		var sign float64

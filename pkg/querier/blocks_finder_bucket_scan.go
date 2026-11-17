@@ -19,7 +19,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
@@ -31,6 +30,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/users"
 )
@@ -202,7 +202,7 @@ func (d *BucketScanBlocksFinder) scanBucket(ctx context.Context) (returnErr erro
 	resMetas := map[string]bucketindex.Blocks{}
 	resMetasLookup := map[string]map[ulid.ULID]*bucketindex.Block{}
 	resDeletionMarks := map[string]map[ulid.ULID]*bucketindex.BlockDeletionMark{}
-	resErrs := tsdb_errors.NewMulti()
+	resErrs := multierror.New()
 
 	// Create a pool of workers which will synchronize metas. The pool size
 	// is limited in order to avoid to concurrently sync a lot of tenants in

@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -88,7 +88,7 @@ type Config struct {
 	// with the configured separator in order.
 	SourceLabels model.LabelNames `yaml:"source_labels,flow,omitempty" json:"source_labels,omitempty"`
 	// Separator is the string between concatenated values from the source labels.
-	Separator string `yaml:"separator,omitempty" json:"separator,omitempty"`
+	Separator string `yaml:"separator" json:"separator"`
 	// Regex against which the concatenation is matched.
 	Regex Regexp `yaml:"regex,omitempty" json:"regex,omitempty"`
 	// Modulus to take of the hash of concatenated values from the source labels.
@@ -97,7 +97,7 @@ type Config struct {
 	// Regexp interpolation is allowed for the replace action.
 	TargetLabel string `yaml:"target_label,omitempty" json:"target_label,omitempty"`
 	// Replacement is the regex replacement pattern to be used.
-	Replacement string `yaml:"replacement,omitempty" json:"replacement,omitempty"`
+	Replacement string `yaml:"replacement" json:"replacement"`
 	// Action is the action to be performed for the relabeling.
 	Action Action `yaml:"action,omitempty" json:"action,omitempty"`
 	// NameValidationScheme to use when validating labels.
@@ -228,10 +228,10 @@ func (re *Regexp) UnmarshalYAML(unmarshal func(any) error) error {
 
 // MarshalYAML implements the yaml.Marshaler interface.
 func (re Regexp) MarshalYAML() (any, error) {
-	if re.String() != "" {
-		return re.String(), nil
+	if re.Regexp == nil {
+		return nil, nil
 	}
-	return nil, nil
+	return re.String(), nil
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
@@ -269,22 +269,8 @@ func (re Regexp) String() string {
 	return str[5 : len(str)-2]
 }
 
-// Process returns a relabeled version of the given label set. The relabel configurations
-// are applied in order of input.
-// There are circumstances where Process will modify the input label.
-// If you want to avoid issues with the input label set being modified, at the cost of
-// higher memory usage, you can use lbls.Copy().
-// If a label set is dropped, EmptyLabels and false is returned.
-func Process(lbls labels.Labels, cfgs ...*Config) (ret labels.Labels, keep bool) {
-	lb := labels.NewBuilder(lbls)
-	if !ProcessBuilder(lb, cfgs...) {
-		return labels.EmptyLabels(), false
-	}
-	return lb.Labels(), true
-}
-
-// ProcessBuilder is like Process, but the caller passes a labels.Builder
-// containing the initial set of labels, which is mutated by the rules.
+// ProcessBuilder applies relabeling configurations (rules) to the labels in lb.
+// The rules are applied in order of input. Returns false if the rule says to drop.
 func ProcessBuilder(lb *labels.Builder, cfgs ...*Config) (keep bool) {
 	for _, cfg := range cfgs {
 		keep = relabel(cfg, lb)

@@ -9,9 +9,10 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	prom_tsdb "github.com/prometheus/prometheus/tsdb"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/prometheus/prometheus/util/annotations"
+
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 /*
@@ -75,7 +76,7 @@ func (q *blockBaseQuerier) Close() error {
 		return errors.New("block querier already closed")
 	}
 
-	errs := tsdb_errors.NewMulti(
+	errs := multierror.New(
 		q.index.Close(),
 		q.chunks.Close(),
 		q.tombstones.Close(),

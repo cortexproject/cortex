@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
-	promqlparser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 var (
@@ -668,9 +668,10 @@ func Test_sortPlanForQuery(t *testing.T) {
 		},
 	}
 
+	cortexparser.Setup(true, true)
+	t.Cleanup(func() { cortexparser.Setup(false, true) })
 	for _, tc := range tc {
 		t.Run(tc.query, func(t *testing.T) {
-			promqlparser.EnableExperimentalFunctions = true
 			p, err := sortPlanForQuery(tc.query)
 			if tc.err {
 				assert.Error(t, err)

@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -94,6 +94,9 @@ type AggregateExpr struct {
 	Param    Expr     // Parameter used by some aggregators.
 	Grouping []string // The labels by which to group the Vector.
 	Without  bool     // Whether to drop the given labels rather than keep them.
+
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
+
 	PosRange posrange.PositionRange
 }
 
@@ -108,6 +111,8 @@ type BinaryExpr struct {
 
 	// If a comparison operator, return 0/1 rather than filtering.
 	ReturnBool bool
+
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
 }
 
 // DurationExpr represents a binary expression between two duration expressions.
@@ -116,8 +121,8 @@ type DurationExpr struct {
 	LHS, RHS Expr     // The operands on the respective sides of the operator.
 	Wrapped  bool     // Set when the duration is wrapped in parentheses.
 
-	StartPos posrange.Pos // For unary operations and step(), the start position of the operator.
-	EndPos   posrange.Pos // For step(), the end position of the operator.
+	StartPos posrange.Pos // The start position of unary operations and duration function calls.
+	EndPos   posrange.Pos // The end position of duration function calls, including the closing parenthesis.
 }
 
 // Call represents a function call.
@@ -231,6 +236,8 @@ type VectorSelector struct {
 	// Smoothed is true when the VectorSelector is smoothed.
 	Smoothed bool
 
+	unquotedUTF8Names bool // Whether the printer can emit unquoted Unicode letters and dots in names.
+
 	PosRange posrange.PositionRange
 }
 
@@ -318,6 +325,19 @@ type VectorMatching struct {
 	// Include contains additional labels that should be included in
 	// the result from the side with the lower cardinality.
 	Include []string
+	// Fill-in values to use when a series from one side does not find a match on the other side.
+	FillValues VectorMatchFillValues
+}
+
+// VectorMatchFillValues contains the fill values to use for Vector matching
+// when one side does not find a match on the other side.
+// When a fill value is nil, no fill is applied for that side, and there
+// is no output for the match group if there is no match.
+type VectorMatchFillValues struct {
+	// RHS is the fill value to use for the right-hand side.
+	RHS *float64
+	// LHS is the fill value to use for the left-hand side.
+	LHS *float64
 }
 
 // Visitor allows visiting a Node and its child nodes. The Visit method is
@@ -474,7 +494,7 @@ func (e *BinaryExpr) PositionRange() posrange.PositionRange {
 }
 
 func (e *DurationExpr) PositionRange() posrange.PositionRange {
-	if e.Op == STEP {
+	if e.Op == MIN_OF || e.Op == MAX_OF || (e.RHS == nil && e.LHS == nil) {
 		return posrange.PositionRange{
 			Start: e.StartPos,
 			End:   e.EndPos,
@@ -483,7 +503,7 @@ func (e *DurationExpr) PositionRange() posrange.PositionRange {
 	if e.RHS == nil {
 		return posrange.PositionRange{
 			Start: e.StartPos,
-			End:   e.RHS.PositionRange().End,
+			End:   e.LHS.PositionRange().End,
 		}
 	}
 	if e.LHS == nil {

@@ -34,7 +34,7 @@ func (c *ActiveSeriesTrackerConfig) Validate() error {
 	if c.Name == "" {
 		return errActiveSeriesTrackerEmptyName
 	}
-	matchers, err := parser.ParseMetricSelector(c.Matchers)
+	matchers, err := parser.NewParser(parser.Options{}).ParseMetricSelector(c.Matchers)
 	if err != nil {
 		return fmt.Errorf("active series tracker %q: %w", c.Name, err)
 	}

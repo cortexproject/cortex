@@ -1,4 +1,4 @@
-// Copyright (c) 2016, 2018, 2025, Oracle and/or its affiliates.  All rights reserved.
+// Copyright (c) 2016, 2018, 2026, Oracle and/or its affiliates.  All rights reserved.
 // This software is dual-licensed to you under the Universal Permissive License (UPL) 1.0 as shown at https://oss.oracle.com/licenses/upl or Apache License 2.0 as shown at http://www.apache.org/licenses/LICENSE-2.0. You may choose either license.
 // Code generated. DO NOT EDIT.
 
@@ -50,6 +50,12 @@ type BucketSummary struct {
 	// For more information, see Resource Tags (https://docs.oracle.com/iaas/Content/General/Concepts/resourcetags.htm).
 	// Example: `{"Operations": {"CostCenter": "42"}}`
 	DefinedTags map[string]map[string]interface{} `mandatory:"false" json:"definedTags"`
+
+	// The bucket scope determines weather the bucket name must be unique within the tenancy and region (essentially the namespace) or across all tenancies in the region. The bucket scope also determines if the bucket supports S3 virtual-hosted style URL's or not.
+	// Allowed values:
+	// NAMESPACE: Only supports path-style bucket access, bucket name only needs to be unique within the tenancy and region.
+	// REGION: Supports both path-style and virtual-hosted URL style access, bucket name needs to be unique across all tenancies in the region.
+	BucketScope BucketBucketScopeEnum `mandatory:"false" json:"bucketScope,omitempty"`
 }
 
 func (m BucketSummary) String() string {
@@ -62,8 +68,11 @@ func (m BucketSummary) String() string {
 func (m BucketSummary) ValidateEnumValue() (bool, error) {
 	errMessage := []string{}
 
+	if _, ok := GetMappingBucketBucketScopeEnum(string(m.BucketScope)); !ok && m.BucketScope != "" {
+		errMessage = append(errMessage, fmt.Sprintf("unsupported enum value for BucketScope: %s. Supported values are: %s.", m.BucketScope, strings.Join(GetBucketBucketScopeEnumStringValues(), ",")))
+	}
 	if len(errMessage) > 0 {
-		return true, fmt.Errorf(strings.Join(errMessage, "\n"))
+		return true, fmt.Errorf("%s", strings.Join(errMessage, "\n"))
 	}
 	return false, nil
 }

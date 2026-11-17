@@ -1,4 +1,4 @@
-// Copyright 2015 The Prometheus Authors
+// Copyright The Prometheus Authors
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -16,6 +16,7 @@ package parser
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"runtime"
@@ -30,6 +31,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser/posrange"
+	"github.com/prometheus/prometheus/util/features"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -39,15 +41,129 @@ var parserPool = sync.Pool{
 	},
 }
 
-// ExperimentalDurationExpr is a flag to enable experimental duration expression parsing.
-var ExperimentalDurationExpr bool
+// Options holds the configuration for the PromQL parser.
+type Options struct {
+	EnableExperimentalFunctions bool
+	EnableBinopFillModifiers    bool
+	// EnableUnquotedUTF8Names allows Unicode letters and non-leading dots in unquoted names.
+	EnableUnquotedUTF8Names bool
+	// Functions is the set of functions the parser accepts, keyed by name.
+	// If nil, the default set in the package-level Functions variable is
+	// used. Otherwise it replaces the default set: to extend the default set,
+	// start from a clone of Functions. An empty map accepts no functions.
+	// NewParser copies the map, so later changes to it do not affect the parser.
+	Functions map[string]*Function
+}
 
-// EnableExtendedRangeSelectors is a flag to enable experimental extended range selectors.
-var EnableExtendedRangeSelectors bool
+// functions returns the set of functions the parser accepts.
+func (o Options) functions() map[string]*Function {
+	if o.Functions != nil {
+		return o.Functions
+	}
+	return Functions
+}
 
+// Parser provides PromQL parsing methods. Create one with NewParser.
 type Parser interface {
-	ParseExpr() (Expr, error)
-	Close()
+	// ParseExpr parses the input into an expression AST. On error, the returned
+	// Expr may still be non-nil and hold the partially-built AST, so that tooling
+	// (such as a language server) can inspect or print what was parsed. A partial
+	// AST is well-formed for inspection and printing but must not be evaluated.
+	ParseExpr(input string) (Expr, error)
+	ParseMetric(input string) (labels.Labels, error)
+	// ParseMetricSelector parses the input as a metric selector and returns its
+	// label matchers. On error, the returned matchers may still hold what was
+	// parsed, so that tooling can inspect or print them. Partial matchers are
+	// well-formed for that purpose but must not be used to select series.
+	ParseMetricSelector(input string) ([]*labels.Matcher, error)
+	ParseMetricSelectors(matchers []string) ([][]*labels.Matcher, error)
+	ParseSeriesDesc(input string) (labels.Labels, []SequenceValue, error)
+	RegisterFeatures(r features.Collector)
+}
+
+type promQLParser struct {
+	options Options
+}
+
+// NewParser returns a new PromQL Parser configured with the given options.
+func NewParser(opts Options) Parser {
+	// Copy the functions so that later changes to the caller's map
+	// cannot affect, or race with, parsing.
+	opts.Functions = maps.Clone(opts.Functions)
+	return &promQLParser{options: opts}
+}
+
+func (pql *promQLParser) ParseExpr(input string) (Expr, error) {
+	p := newParser(input, pql.options)
+	defer p.Close()
+	return p.parseExpr()
+}
+
+func (pql *promQLParser) ParseMetric(input string) (m labels.Labels, err error) {
+	p := newParser(input, pql.options)
+	defer p.Close()
+	defer p.recover(&err)
+
+	parseResult := p.parseGenerated(START_METRIC)
+	if parseResult != nil {
+		m = parseResult.(labels.Labels)
+	}
+
+	if len(p.parseErrors) != 0 {
+		err = p.parseErrors
+	}
+
+	return m, err
+}
+
+func (pql *promQLParser) ParseMetricSelector(input string) (m []*labels.Matcher, err error) {
+	p := newParser(input, pql.options)
+	defer p.Close()
+	defer p.recover(&err)
+
+	parseResult := p.parseGenerated(START_METRIC_SELECTOR)
+	if parseResult != nil {
+		m = parseResult.(*VectorSelector).LabelMatchers
+	}
+
+	if len(p.parseErrors) != 0 {
+		err = p.parseErrors
+	}
+
+	return m, err
+}
+
+func (pql *promQLParser) ParseMetricSelectors(matchers []string) ([][]*labels.Matcher, error) {
+	var matcherSets [][]*labels.Matcher
+	for _, s := range matchers {
+		ms, err := pql.ParseMetricSelector(s)
+		if err != nil {
+			return nil, err
+		}
+		matcherSets = append(matcherSets, ms)
+	}
+	return matcherSets, nil
+}
+
+func (pql *promQLParser) ParseSeriesDesc(input string) (lbls labels.Labels, values []SequenceValue, err error) {
+	p := newParser(input, pql.options)
+	p.lex.seriesDesc = true
+
+	defer p.Close()
+	defer p.recover(&err)
+
+	parseResult := p.parseGenerated(START_SERIES_DESCRIPTION)
+	if parseResult != nil {
+		result := parseResult.(*seriesDescription)
+		lbls = result.labels
+		values = result.values
+	}
+
+	if len(p.parseErrors) != 0 {
+		err = p.parseErrors
+	}
+
+	return lbls, values, err
 }
 
 type parser struct {
@@ -67,41 +183,37 @@ type parser struct {
 
 	generatedParserResult any
 	parseErrors           ParseErrors
+
+	// lastHistogramCounterResetHintSet is set to true when the most recently
+	// built histogram had a counter_reset_hint explicitly specified.
+	// This is used to populate CounterResetHintSet in SequenceValue.
+	lastHistogramCounterResetHintSet bool
+
+	options Options
 }
 
-type Opt func(p *parser)
-
-func WithFunctions(functions map[string]*Function) Opt {
-	return func(p *parser) {
-		p.functions = functions
-	}
-}
-
-// NewParser returns a new parser.
-func NewParser(input string, opts ...Opt) *parser { //nolint:revive // unexported-return
+// newParser returns a new low-level parser instance from the pool.
+func newParser(input string, opts Options) *parser {
 	p := parserPool.Get().(*parser)
 
-	p.functions = Functions
+	p.functions = opts.functions()
 	p.injecting = false
 	p.parseErrors = nil
 	p.generatedParserResult = nil
 	p.lastClosing = posrange.Pos(0)
+	p.options = opts
 
 	// Clear lexer struct before reusing.
 	p.lex = Lexer{
-		input: input,
-		state: lexStatements,
-	}
-
-	// Apply user define options.
-	for _, opt := range opts {
-		opt(p)
+		input:             input,
+		state:             lexStatements,
+		unquotedUTF8Names: opts.EnableUnquotedUTF8Names,
 	}
 
 	return p
 }
 
-func (p *parser) ParseExpr() (expr Expr, err error) {
+func (p *parser) parseExpr() (expr Expr, err error) {
 	defer p.recover(&err)
 
 	parseResult := p.parseGenerated(START_EXPRESSION)
@@ -158,12 +270,10 @@ func (errs ParseErrors) Error() string {
 
 // EnrichParseError enriches a single or list of parse errors (used for unit tests and promtool).
 func EnrichParseError(err error, enrich func(parseErr *ParseErr)) {
-	var parseErr *ParseErr
-	if errors.As(err, &parseErr) {
+	if parseErr, ok := errors.AsType[*ParseErr](err); ok {
 		enrich(parseErr)
 	}
-	var parseErrors ParseErrors
-	if errors.As(err, &parseErrors) {
+	if parseErrors, ok := errors.AsType[ParseErrors](err); ok {
 		for i, e := range parseErrors {
 			enrich(&e)
 			parseErrors[i] = e
@@ -171,69 +281,16 @@ func EnrichParseError(err error, enrich func(parseErr *ParseErr)) {
 	}
 }
 
-// ParseExpr returns the expression parsed from the input.
-func ParseExpr(input string) (expr Expr, err error) {
-	p := NewParser(input)
-	defer p.Close()
-	return p.ParseExpr()
-}
-
-// ParseMetric parses the input into a metric.
-func ParseMetric(input string) (m labels.Labels, err error) {
-	p := NewParser(input)
-	defer p.Close()
-	defer p.recover(&err)
-
-	parseResult := p.parseGenerated(START_METRIC)
-	if parseResult != nil {
-		m = parseResult.(labels.Labels)
-	}
-
-	if len(p.parseErrors) != 0 {
-		err = p.parseErrors
-	}
-
-	return m, err
-}
-
-// ParseMetricSelector parses the provided textual metric selector into a list of
-// label matchers.
-func ParseMetricSelector(input string) (m []*labels.Matcher, err error) {
-	p := NewParser(input)
-	defer p.Close()
-	defer p.recover(&err)
-
-	parseResult := p.parseGenerated(START_METRIC_SELECTOR)
-	if parseResult != nil {
-		m = parseResult.(*VectorSelector).LabelMatchers
-	}
-
-	if len(p.parseErrors) != 0 {
-		err = p.parseErrors
-	}
-
-	return m, err
-}
-
-// ParseMetricSelectors parses a list of provided textual metric selectors into lists of
-// label matchers.
-func ParseMetricSelectors(matchers []string) (m [][]*labels.Matcher, err error) {
-	var matcherSets [][]*labels.Matcher
-	for _, s := range matchers {
-		matchers, err := ParseMetricSelector(s)
-		if err != nil {
-			return nil, err
-		}
-		matcherSets = append(matcherSets, matchers)
-	}
-	return matcherSets, nil
-}
-
 // SequenceValue is an omittable value in a sequence of time series values.
 type SequenceValue struct {
 	Value     float64
 	Omitted   bool
 	Histogram *histogram.FloatHistogram
+	// CounterResetHintSet is true if the counter reset hint was explicitly
+	// specified in the test file using counter_reset_hint:... syntax.
+	// This allows distinguishing between "no hint specified" (don't care)
+	// vs "counter_reset_hint:unknown" (verify it's unknown).
+	CounterResetHintSet bool
 }
 
 func (v SequenceValue) String() string {
@@ -249,30 +306,6 @@ func (v SequenceValue) String() string {
 type seriesDescription struct {
 	labels labels.Labels
 	values []SequenceValue
-}
-
-// ParseSeriesDesc parses the description of a time series. It is only used in
-// the PromQL testing framework code.
-func ParseSeriesDesc(input string) (labels labels.Labels, values []SequenceValue, err error) {
-	p := NewParser(input)
-	p.lex.seriesDesc = true
-
-	defer p.Close()
-	defer p.recover(&err)
-
-	parseResult := p.parseGenerated(START_SERIES_DESCRIPTION)
-	if parseResult != nil {
-		result := parseResult.(*seriesDescription)
-
-		labels = result.labels
-		values = result.values
-	}
-
-	if len(p.parseErrors) != 0 {
-		err = p.parseErrors
-	}
-
-	return labels, values, err
 }
 
 // addParseErrf formats the error and appends it to the list of parsing errors.
@@ -322,7 +355,8 @@ func (p *parser) unexpected(context, expected string) {
 	p.addParseErr(p.yyParser.lval.item.PositionRange(), errors.New(errMsg.String()))
 }
 
-var errUnexpected = errors.New("unexpected error")
+// ErrUnexpected is returned when the parser recovers from a runtime panic.
+var ErrUnexpected = errors.New("unexpected error")
 
 // recover is the handler that turns panics into returns from the top level of Parse.
 func (*parser) recover(errp *error) {
@@ -334,7 +368,7 @@ func (*parser) recover(errp *error) {
 		buf = buf[:runtime.Stack(buf, false)]
 
 		fmt.Fprintf(os.Stderr, "parser panic: %v\n%s", e, buf)
-		*errp = errUnexpected
+		*errp = ErrUnexpected
 	case e != nil:
 		*errp = e.(error)
 	}
@@ -413,17 +447,24 @@ func (p *parser) InjectItem(typ ItemType) {
 	p.injecting = true
 }
 
-func (*parser) newBinaryExpression(lhs Node, op Item, modifiers, rhs Node) *BinaryExpr {
+func (p *parser) newBinaryExpression(lhs Node, op Item, modifiers, rhs Node) *BinaryExpr {
 	ret := modifiers.(*BinaryExpr)
+	ret.unquotedUTF8Names = p.options.EnableUnquotedUTF8Names
 
 	ret.LHS = lhs.(Expr)
 	ret.RHS = rhs.(Expr)
 	ret.Op = op.Typ
 
+	if !p.options.EnableBinopFillModifiers && (ret.VectorMatching.FillValues.LHS != nil || ret.VectorMatching.FillValues.RHS != nil) {
+		p.addParseErrf(ret.PositionRange(), "binop fill modifiers are experimental and not enabled")
+		return ret
+	}
+
 	return ret
 }
 
-func (*parser) assembleVectorSelector(vs *VectorSelector) {
+func (p *parser) assembleVectorSelector(vs *VectorSelector) {
+	vs.unquotedUTF8Names = p.options.EnableUnquotedUTF8Names
 	// If the metric name was set outside the braces, add a matcher for it.
 	// If the metric name was inside the braces we don't need to do anything.
 	if vs.Name != "" {
@@ -437,6 +478,7 @@ func (*parser) assembleVectorSelector(vs *VectorSelector) {
 
 func (p *parser) newAggregateExpr(op Item, modifier, args Node, overread bool) (ret *AggregateExpr) {
 	ret = modifier.(*AggregateExpr)
+	ret.unquotedUTF8Names = p.options.EnableUnquotedUTF8Names
 	arguments := args.(Expressions)
 
 	ret.PosRange = posrange.PositionRange{
@@ -458,7 +500,7 @@ func (p *parser) newAggregateExpr(op Item, modifier, args Node, overread bool) (
 
 	desiredArgs := 1
 	if ret.Op.IsAggregatorWithParam() {
-		if !EnableExperimentalFunctions && ret.Op.IsExperimentalAggregator() {
+		if !p.options.EnableExperimentalFunctions && ret.Op.IsExperimentalAggregator() {
 			p.addParseErrf(ret.PositionRange(), "%s() is experimental and must be enabled with --enable-feature=promql-experimental-functions", ret.Op)
 			return ret
 		}
@@ -496,25 +538,30 @@ func (p *parser) mergeMaps(left, right *map[string]any) (ret *map[string]any) {
 }
 
 func (p *parser) histogramsIncreaseSeries(base, inc *histogram.FloatHistogram, times uint64) ([]SequenceValue, error) {
-	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
+	// Capture the hint set flag immediately after inc histogram is built.
+	// The base histogram's hint set flag was already captured.
+	hintSet := p.lastHistogramCounterResetHintSet
+	return p.histogramsSeries(base, inc, times, hintSet, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 		res, _, _, err := a.Add(b)
 		return res, err
 	})
 }
 
 func (p *parser) histogramsDecreaseSeries(base, inc *histogram.FloatHistogram, times uint64) ([]SequenceValue, error) {
-	return p.histogramsSeries(base, inc, times, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
+	// Capture the hint set flag immediately after inc histogram is built.
+	hintSet := p.lastHistogramCounterResetHintSet
+	return p.histogramsSeries(base, inc, times, hintSet, func(a, b *histogram.FloatHistogram) (*histogram.FloatHistogram, error) {
 		res, _, _, err := a.Sub(b)
 		return res, err
 	})
 }
 
-func (*parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uint64,
+func (*parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uint64, counterResetHintSet bool,
 	combine func(*histogram.FloatHistogram, *histogram.FloatHistogram) (*histogram.FloatHistogram, error),
 ) ([]SequenceValue, error) {
 	ret := make([]SequenceValue, times+1)
 	// Add an additional value (the base) for time 0, which we ignore in tests.
-	ret[0] = SequenceValue{Histogram: base}
+	ret[0] = SequenceValue{Histogram: base, CounterResetHintSet: counterResetHintSet}
 	cur := base
 	for i := uint64(1); i <= times; i++ {
 		if cur.Schema > inc.Schema {
@@ -526,7 +573,7 @@ func (*parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uint6
 		if err != nil {
 			return ret, err
 		}
-		ret[i] = SequenceValue{Histogram: cur}
+		ret[i] = SequenceValue{Histogram: cur, CounterResetHintSet: counterResetHintSet}
 	}
 
 	return ret, nil
@@ -535,6 +582,8 @@ func (*parser) histogramsSeries(base, inc *histogram.FloatHistogram, times uint6
 // buildHistogramFromMap is used in the grammar to take then individual parts of the histogram and complete it.
 func (p *parser) buildHistogramFromMap(desc *map[string]any) *histogram.FloatHistogram {
 	output := &histogram.FloatHistogram{}
+	// Reset the flag for each new histogram being built.
+	p.lastHistogramCounterResetHintSet = false
 
 	val, ok := (*desc)["schema"]
 	if ok {
@@ -595,6 +644,8 @@ func (p *parser) buildHistogramFromMap(desc *map[string]any) *histogram.FloatHis
 
 	val, ok = (*desc)["counter_reset_hint"]
 	if ok {
+		// Mark that the counter reset hint was explicitly specified.
+		p.lastHistogramCounterResetHintSet = true
 		resetHint, ok := val.(Item)
 
 		if ok {
@@ -624,6 +675,16 @@ func (p *parser) buildHistogramFromMap(desc *map[string]any) *histogram.FloatHis
 	output.NegativeSpans = spans
 
 	return output
+}
+
+// newHistogramSequenceValue creates a SequenceValue for a histogram,
+// setting CounterResetHintSet based on whether counter_reset_hint was
+// explicitly specified in the histogram description.
+func (p *parser) newHistogramSequenceValue(h *histogram.FloatHistogram) SequenceValue {
+	return SequenceValue{
+		Histogram:           h,
+		CounterResetHintSet: p.lastHistogramCounterResetHintSet,
+	}
 }
 
 func (p *parser) buildHistogramBucketsAndSpans(desc *map[string]any, bucketsKey, offsetKey string,
@@ -768,6 +829,9 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 			if len(n.VectorMatching.MatchingLabels) > 0 {
 				p.addParseErrf(n.PositionRange(), "vector matching only allowed between instant vectors")
 			}
+			if n.VectorMatching.FillValues.LHS != nil || n.VectorMatching.FillValues.RHS != nil {
+				p.addParseErrf(n.PositionRange(), "filling in missing series only allowed between instant vectors")
+			}
 			n.VectorMatching = nil
 		case n.Op.IsSetOperator(): // Both operands are Vectors.
 			if n.VectorMatching.Card == CardOneToMany || n.VectorMatching.Card == CardManyToOne {
@@ -775,6 +839,9 @@ func (p *parser) checkAST(node Node) (typ ValueType) {
 			}
 			if n.VectorMatching.Card != CardManyToMany {
 				p.addParseErrf(n.PositionRange(), "set operations must always be many-to-many")
+			}
+			if n.VectorMatching.FillValues.LHS != nil || n.VectorMatching.FillValues.RHS != nil {
+				p.addParseErrf(n.PositionRange(), "filling in missing series not allowed for set operators")
 			}
 		}
 
@@ -1030,10 +1097,6 @@ func (p *parser) addOffsetExpr(e Node, expr *DurationExpr) {
 }
 
 func (p *parser) setAnchored(e Node) {
-	if !EnableExtendedRangeSelectors {
-		p.addParseErrf(e.PositionRange(), "anchored modifier is experimental and not enabled")
-		return
-	}
 	switch s := e.(type) {
 	case *VectorSelector:
 		s.Anchored = true
@@ -1041,8 +1104,12 @@ func (p *parser) setAnchored(e Node) {
 			p.addParseErrf(e.PositionRange(), "anchored and smoothed modifiers cannot be used together")
 		}
 	case *MatrixSelector:
-		s.VectorSelector.(*VectorSelector).Anchored = true
-		if s.VectorSelector.(*VectorSelector).Smoothed {
+		vs, ok := s.VectorSelector.(*VectorSelector)
+		if !ok {
+			return
+		}
+		vs.Anchored = true
+		if vs.Smoothed {
 			p.addParseErrf(e.PositionRange(), "anchored and smoothed modifiers cannot be used together")
 		}
 	case *SubqueryExpr:
@@ -1053,10 +1120,6 @@ func (p *parser) setAnchored(e Node) {
 }
 
 func (p *parser) setSmoothed(e Node) {
-	if !EnableExtendedRangeSelectors {
-		p.addParseErrf(e.PositionRange(), "smoothed modifier is experimental and not enabled")
-		return
-	}
 	switch s := e.(type) {
 	case *VectorSelector:
 		s.Smoothed = true
@@ -1064,8 +1127,12 @@ func (p *parser) setSmoothed(e Node) {
 			p.addParseErrf(e.PositionRange(), "anchored and smoothed modifiers cannot be used together")
 		}
 	case *MatrixSelector:
-		s.VectorSelector.(*VectorSelector).Smoothed = true
-		if s.VectorSelector.(*VectorSelector).Anchored {
+		vs, ok := s.VectorSelector.(*VectorSelector)
+		if !ok {
+			return
+		}
+		vs.Smoothed = true
+		if vs.Anchored {
 			p.addParseErrf(e.PositionRange(), "anchored and smoothed modifiers cannot be used together")
 		}
 	case *SubqueryExpr:
@@ -1148,9 +1215,65 @@ func (p *parser) getAtModifierVars(e Node) (**int64, *ItemType, *posrange.Pos, b
 	return timestampp, preprocp, endPosp, true
 }
 
-func (p *parser) experimentalDurationExpr(e Expr) {
-	if !ExperimentalDurationExpr {
-		p.addParseErrf(e.PositionRange(), "experimental duration expression is not enabled")
+// durationLiteralOutOfRange reports whether val, interpreted as seconds, would
+// overflow a time.Duration (int64 nanoseconds).
+func durationLiteralOutOfRange(val float64) bool {
+	return val > 1<<63/1e9 || val < -(1<<63)/1e9
+}
+
+// wrapParenDurationExpr marks a duration expression as parenthesised so
+// Expr.String() round-trips. A bare *NumberLiteral has no Wrapped flag, so it
+// is wrapped in a unary-plus *DurationExpr (see DurationExpr.writeTo).
+func (*parser) wrapParenDurationExpr(expr Expr, start, end posrange.Pos) Expr {
+	if de, ok := expr.(*DurationExpr); ok {
+		de.Wrapped = true
+		return de
+	}
+	return &DurationExpr{
+		Op:       ADD,
+		RHS:      expr,
+		Wrapped:  true,
+		StartPos: start,
+		EndPos:   end,
+	}
+}
+
+// applyUnaryOpToDurationExpr applies a unary operator to a duration expression
+// node, which may be a *DurationExpr or a *NumberLiteral. When wrapped is true
+// (parenthesised form), the Wrapped flag is set on *DurationExpr nodes.
+func (p *parser) applyUnaryOpToDurationExpr(op Item, expr Node, wrapped bool) Node {
+	e, ok := expr.(Expr)
+	if !ok {
+		p.addParseErrf(op.PositionRange(), "expected number literal or duration expression")
+		return &NumberLiteral{Val: 0}
+	}
+	if wrapped {
+		pr := e.PositionRange()
+		e = p.wrapParenDurationExpr(e, pr.Start, pr.End)
+	}
+	switch de := e.(type) {
+	case *DurationExpr:
+		if op.Typ == SUB {
+			return &DurationExpr{
+				Op:       SUB,
+				RHS:      de,
+				StartPos: op.Pos,
+			}
+		}
+		return de
+	case *NumberLiteral:
+		if op.Typ == SUB {
+			de.Val *= -1
+		}
+		if durationLiteralOutOfRange(de.Val) {
+			p.addParseErrf(op.PositionRange(), "duration out of range")
+			return &NumberLiteral{Val: 0}
+		}
+		de.PosRange.Start = op.Pos
+		return de
+	default:
+		p.addParseErrf(op.PositionRange(), "expected number literal or duration expression")
+		return &NumberLiteral{Val: 0}
 	}
 }
 

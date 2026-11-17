@@ -33,7 +33,7 @@ func extractQueryOpts(r *http.Request) (promql.QueryOpts, error) {
 		duration = convertMsToDuration(parsedDuration)
 	}
 
-	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration), nil
+	return promql.NewPrometheusQueryOpts(r.FormValue("stats") == "all", duration, nil), nil
 }
 
 const (

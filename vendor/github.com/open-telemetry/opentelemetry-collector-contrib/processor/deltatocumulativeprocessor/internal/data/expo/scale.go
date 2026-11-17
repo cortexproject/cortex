@@ -73,19 +73,26 @@ func Downscale(bs Buckets, from, to Scale) {
 // area at a later time.
 func Collapse(bs Buckets) {
 	counts := bs.BucketCounts()
+
+	offsetWasOdd := bs.Offset()%2 != 0
+	shift := 0
+	if offsetWasOdd {
+		shift--
+	}
+
 	size := counts.Len() / 2
-	if counts.Len()%2 != 0 || bs.Offset()%2 != 0 {
+	if counts.Len()%2 != 0 || offsetWasOdd {
 		size++
 	}
 
-	// merging needs to happen in pairs aligned to i=0. if offset is non-even,
-	// we need to shift the whole merging by one to make above condition true.
-	shift := 0
-	if bs.Offset()%2 != 0 {
+	if offsetWasOdd {
 		bs.SetOffset(bs.Offset() - 1)
-		shift--
 	}
 	bs.SetOffset(bs.Offset() / 2)
+
+	if counts.Len() == 0 {
+		return
+	}
 
 	for i := 0; i < size; i++ {
 		// size is ~half of len. we add two buckets per iteration.
@@ -132,10 +139,11 @@ func Limit(maxBuckets int, scale Scale, arel, brel pmetric.ExponentialHistogramD
 		up--
 	}
 
-	// Keep downscaling until the number of buckets is within the limit.
+	// Match Collapse: round the lower index down and the exclusive upper index
+	// up, including negative indexes, so the merged range stays within the limit.
 	for up-lo > maxBuckets {
-		lo /= 2
-		up /= 2
+		lo >>= 1
+		up = (up + 1) >> 1
 		scale--
 	}
 

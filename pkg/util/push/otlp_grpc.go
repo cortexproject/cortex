@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/distributor"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -64,6 +65,8 @@ func (s *OTLPGRPCServer) Export(ctx context.Context, req pmetricotlp.ExportReque
 			logger = util_log.WithSourceIPs(source, logger)
 		}
 	}
+
+	ctx = clientid.InjectIntoContext(ctx, clientid.ExtractFromGRPCContext(ctx))
 
 	userID, err := users.TenantID(ctx)
 	if err != nil {

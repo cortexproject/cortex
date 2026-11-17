@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/pmetric/pmetricotlp"
 	"google.golang.org/grpc"
@@ -30,6 +32,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
 	"github.com/cortexproject/cortex/pkg/util/fakeauth"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -305,4 +308,27 @@ func TestOTLPGRPCCode(t *testing.T) {
 func TestTruncate(t *testing.T) {
 	assert.Equal(t, "abc", truncate("abc", 5))
 	assert.Equal(t, "ab", truncate("abc", 2))
+}
+
+func TestOTLPGRPCServer_PushReceivesClientID(t *testing.T) {
+	for name, md := range map[string]metadata.MD{
+		"header present": metadata.Pairs("x-scope-orgid", testOTLPGRPCTenant, "x-scope-clientid", "team-a"),
+		"header absent":  metadata.Pairs("x-scope-orgid", testOTLPGRPCTenant),
+	} {
+		t.Run(name, func(t *testing.T) {
+			var gotClientID string
+			push := func(ctx context.Context, _ *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				gotClientID = clientid.FromContext(ctx)
+				return &cortexpb.WriteResponse{}, nil
+			}
+			srv := newTestOTLPGRPCServer(distributor.OTLPConfig{}, nil, push, nil)
+
+			// The server's auth middleware (not under test here) is what turns
+			// the org-ID metadata into the tenant in the context.
+			ctx := user.InjectOrgID(metadata.NewIncomingContext(context.Background(), md), testOTLPGRPCTenant)
+			_, err := srv.Export(ctx, generateOTLPWriteRequest())
+			require.NoError(t, err)
+			assert.Equal(t, strings.Join(md.Get("x-scope-clientid"), ""), gotClientID)
+		})
+	}
 }

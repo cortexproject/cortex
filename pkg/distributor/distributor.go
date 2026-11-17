@@ -35,7 +35,10 @@ import (
 	ingester_client "github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/ring"
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
+	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
+	"github.com/cortexproject/cortex/pkg/util/clientlimiter"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/labelset"
@@ -103,7 +106,14 @@ type Distributor struct {
 	ingestionRateLimiter                *limiter.RateLimiter
 	nativeHistogramIngestionRateLimiter *limiter.RateLimiter
 
-	// Manager for subservices (HA Tracker, distributor ring and client pool)
+	// Per-(tenant, X-Scope-ClientID) rate limiter (see
+	// docs/proposals/client-identity-ingestion-rate-limiting.md). Needs no
+	// ring: every distributor gossips its own counters and merges every
+	// other distributor's via a memberlist-backed KV client.
+	clientIdentityLimiter *clientlimiter.GossipLimiter
+
+	// Manager for subservices (HA Tracker, distributor ring, and the
+	// client-identity rate limit gossip loop)
 	subservices        *services.Manager
 	subservicesWatcher *services.FailureWatcher
 
@@ -171,6 +181,14 @@ type Config struct {
 	// for testing and for extending the ingester by adding calls to the client
 	IngesterClientFactory ring_client.PoolFactory `yaml:"-"`
 
+	// Client-identity rate limiting (see
+	// docs/proposals/client-identity-ingestion-rate-limiting.md): KV store
+	// backing the memberlist gossip of per-(tenant, client) request counters
+	// across distributors, and the fixed-window length counters are kept
+	// over / gossiped and pruned at.
+	ClientRateLimitKVStore kv.Config     `yaml:"client_rate_limit_kvstore"`
+	ClientRateLimitWindow  time.Duration `yaml:"client_rate_limit_window"`
+
 	// when true the distributor does not validate the label name, Cortex doesn't directly use
 	// this (and should never use it) but this feature is used by other projects built on top of it
 	SkipLabelNameValidation bool `yaml:"-"`
@@ -220,6 +238,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.PoolConfig.RegisterFlags(f)
 	cfg.HATrackerConfig.RegisterFlagsWithPrefix("distributor.", "", f)
 	cfg.DistributorRing.RegisterFlags(f)
+	cfg.ClientRateLimitKVStore.RegisterFlagsWithPrefix("distributor.client-identity-rate-limit.", "distributor-client-identity-rate-limit/", f)
+	f.DurationVar(&cfg.ClientRateLimitWindow, "distributor.client-identity-rate-limit.window", time.Second, "EXPERIMENTAL: Length of the fixed window per-(tenant, client) request counters are kept over, and the interval they're gossiped to and pruned from other distributors at. See docs/proposals/client-identity-ingestion-rate-limiting.md.")
 
 	f.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "remote_write API max receive message size (bytes).")
 	f.IntVar(&cfg.OTLPMaxRecvMsgSize, "distributor.otlp-max-recv-msg-size", 100<<20, "Maximum OTLP request size in bytes that the Distributor can accept.")
@@ -324,6 +344,23 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		nativeHistogramIngestionRateStrategy = newLocalNativeHistogramIngestionRateStrategy(limits)
 	}
 
+	regWithPrefix := prometheus.WrapRegistererWithPrefix("cortex_", reg)
+	clientIdentityLimiter := clientlimiter.NewGossipLimiter(
+		regWithPrefix,
+		"distributor",
+		newClientIdentityIngestionStrategy(limits),
+		// Built lazily on first use so deployments where no tenant opts in
+		// never start a KV client or watch.
+		func() (kv.Client, error) {
+			return kv.NewClient(cfg.ClientRateLimitKVStore, clientlimiter.GetClientCounterDescCodec(), kv.RegistererWithKVName(regWithPrefix, "distributor-client-identity"), log)
+		},
+		clientlimiter.NewReplicaID(),
+		cfg.ClientRateLimitWindow,
+		10*time.Second,
+		log,
+	)
+	subservices = append(subservices, clientIdentityLimiter)
+
 	d := &Distributor{
 		cfg:                                 cfg,
 		log:                                 log,
@@ -331,6 +368,7 @@ func New(cfg Config, clientConfig ingester_client.Config, limits *validation.Ove
 		ingesterPool:                        NewPool(cfg.PoolConfig, ingestersRing, cfg.IngesterClientFactory, log),
 		distributorsLifeCycler:              distributorsLifeCycler,
 		distributorsRing:                    distributorsRing,
+		clientIdentityLimiter:               clientIdentityLimiter,
 		limits:                              limits,
 		ingestionRateLimiter:                limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
 		nativeHistogramIngestionRateLimiter: limiter.NewRateLimiter(nativeHistogramIngestionRateStrategy, 10*time.Second),
@@ -871,6 +909,23 @@ func (d *Distributor) Push(ctx context.Context, req *cortexpb.WriteRequest) (*co
 		// Client may discard the data or slow down and re-send.
 		// Prometheus v2.26 added a remote-write option 'retry_on_http_429'.
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "ingestion rate limit (%v) exceeded while adding %d samples and %d metadata", d.ingestionRateLimiter.Limit(now, userID), totalSamples, len(validatedMetadata))
+	}
+
+	// Client-identity rate limit (see
+	// docs/proposals/client-identity-ingestion-rate-limiting.md): an
+	// additional, optional check below the tenant-level one above. Gated on
+	// both a non-zero per-tenant limit and a non-empty X-Scope-ClientID --
+	// either being false means this is a no-op and behavior is identical to
+	// today, exactly as the proposal requires.
+	if clientLimit := limits.ClientIdentityIngestionRateLimit; clientLimit > 0 {
+		if clientID := clientid.FromContext(ctx); clientID != "" {
+			if !d.clientIdentityLimiter.AllowN(now, userID, clientID, totalN) {
+				d.validateMetrics.DiscardedSamples.WithLabelValues(validation.ClientIdentityRateLimited, userID).Add(float64(totalSamples))
+				d.validateMetrics.DiscardedExemplars.WithLabelValues(validation.ClientIdentityRateLimited, userID).Add(float64(validatedExemplars))
+				d.validateMetrics.DiscardedMetadata.WithLabelValues(validation.ClientIdentityRateLimited, userID).Add(float64(len(validatedMetadata)))
+				return nil, httpgrpc.Errorf(http.StatusTooManyRequests, "client identity rate limit (%v) exceeded for client %q while adding %d samples and %d metadata", clientLimit, clientID, totalSamples, len(validatedMetadata))
+			}
+		}
 	}
 
 	// totalN included samples and metadata. Ingester follows this pattern when computing its ingestion rate.

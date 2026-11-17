@@ -16,7 +16,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	thanos_metadata "github.com/thanos-io/thanos/pkg/block/metadata"
@@ -39,6 +38,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/backoff"
 	cortex_errors "github.com/cortexproject/cortex/pkg/util/errors"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/cortexproject/cortex/pkg/util/users"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -282,7 +282,7 @@ func (u *ThanosBucketStores) syncUsersBlocks(ctx context.Context, f func(context
 
 	wg := &sync.WaitGroup{}
 	jobs := make(chan job)
-	errs := tsdb_errors.NewMulti()
+	errs := multierror.New()
 	errsMx := sync.Mutex{}
 
 	// Scan users in the bucket.

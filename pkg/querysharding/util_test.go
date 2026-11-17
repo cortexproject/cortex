@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/thanos/pkg/querysharding"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 func TestDisableBinaryExpressionAnalyzer_Analyze(t *testing.T) {
@@ -84,7 +86,7 @@ func TestDisableBinaryExpressionAnalyzer_Analyze(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create the actual thanos analyzer
-			thanosAnalyzer := querysharding.NewQueryAnalyzer()
+			thanosAnalyzer := querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 
 			// Wrap it with our disable binary expression analyzer
 			analyzer := NewDisableBinaryExpressionAnalyzer(thanosAnalyzer)
@@ -122,7 +124,7 @@ func TestDisableBinaryExpressionAnalyzer_ComparedToOriginal(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Test with original analyzer
-			originalAnalyzer := querysharding.NewQueryAnalyzer()
+			originalAnalyzer := querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 			originalResult, err := originalAnalyzer.Analyze(tc.query)
 			require.NoError(t, err)
 

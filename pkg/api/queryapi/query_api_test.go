@@ -489,7 +489,7 @@ func createTestLogicalPlan(t *testing.T, start, end int64, stepDuration int64) [
 
 	// using a different metric name here so that we can check with debugger which query (from query string vs http request body)
 	// is being executed by the queriers
-	expr, err := parser.NewParser("up", parser.WithFunctions(parser.Functions)).ParseExpr()
+	expr, err := parser.NewParser(parser.Options{}).ParseExpr("up")
 	require.NoError(t, err)
 
 	planOpts := logicalplan.PlanOptions{

@@ -16,8 +16,9 @@ import (
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/tsdb/chunks"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"golang.org/x/sync/errgroup"
+
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 type ShardedBlockPopulator struct {
@@ -46,8 +47,12 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	)
 	symbols = make(map[string]struct{})
 	defer func() {
-		errs := tsdb_errors.NewMulti(err)
-		if cerr := tsdb_errors.CloseAll(closers); cerr != nil {
+		errs := multierror.New(err)
+		closeErrs := multierror.New()
+		for _, c := range closers {
+			closeErrs.Add(c.Close())
+		}
+		if cerr := closeErrs.Err(); cerr != nil {
 			errs.Add(errors.Wrap(cerr, "close"))
 		}
 		err = errs.Err()

@@ -26,6 +26,7 @@ type testSample struct {
 }
 
 func (s testSample) T() int64                      { return s.t }
+func (s testSample) ST() int64                     { return 0 }
 func (s testSample) F() float64                    { return s.v }
 func (s testSample) H() *histogram.Histogram       { return nil }
 func (s testSample) FH() *histogram.FloatHistogram { return nil }

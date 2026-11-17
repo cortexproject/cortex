@@ -352,8 +352,12 @@ func TestShouldSortSeriesIfQueryingMultipleQueryables(t *testing.T) {
 					var queryEngine promql.QueryEngine
 					if thanosEngine {
 						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
+							Logger:                   opts.Logger,
+							MaxSamples:               opts.MaxSamples,
+							Timeout:                  opts.Timeout,
+							LookbackDelta:            opts.LookbackDelta,
+							NoStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
+							LogicalOptimizers:        logicalplan.AllOptimizers,
 						})
 					} else {
 						queryEngine = promql.NewEngine(opts)
@@ -575,8 +579,12 @@ func TestQuerier(t *testing.T) {
 					var queryEngine promql.QueryEngine
 					if thanosEngine {
 						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
+							Logger:                   opts.Logger,
+							MaxSamples:               opts.MaxSamples,
+							Timeout:                  opts.Timeout,
+							LookbackDelta:            opts.LookbackDelta,
+							NoStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
+							LogicalOptimizers:        logicalplan.AllOptimizers,
 						})
 					} else {
 						queryEngine = promql.NewEngine(opts)
@@ -678,8 +686,12 @@ func TestNoHistoricalQueryToIngester(t *testing.T) {
 					var queryEngine promql.QueryEngine
 					if thanosEngine {
 						queryEngine = engine.New(engine.Opts{
-							EngineOpts:        opts,
-							LogicalOptimizers: logicalplan.AllOptimizers,
+							Logger:                   opts.Logger,
+							MaxSamples:               opts.MaxSamples,
+							Timeout:                  opts.Timeout,
+							LookbackDelta:            opts.LookbackDelta,
+							NoStepSubqueryIntervalFn: opts.NoStepSubqueryIntervalFn,
+							LogicalOptimizers:        logicalplan.AllOptimizers,
 						})
 					} else {
 						queryEngine = promql.NewEngine(opts)
@@ -1763,7 +1775,7 @@ func Test_EnableExperimentalPromQLFunctions(t *testing.T) {
 	defer cortexparser.Setup(false, false)
 
 	// Verify experimental functions flag is set
-	require.True(t, parser.EnableExperimentalFunctions)
+	require.True(t, cortexparser.EnableExperimentalFunctions())
 
 	// double_exponential_smoothing function should exist
 	doubleExponentialSmoothingFunc, ok := parser.Functions["double_exponential_smoothing"]

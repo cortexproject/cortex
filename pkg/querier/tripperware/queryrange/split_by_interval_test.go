@@ -302,7 +302,7 @@ func TestSplitByDay(t *testing.T) {
 			path:               queryAll,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 2,
-			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
+			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day}, mockLimits{}, querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser()), lookbackDelta),
 		},
 		{
 			path:               longQuery,
@@ -316,7 +316,7 @@ func TestSplitByDay(t *testing.T) {
 			path:               longQuery,
 			expectedBody:       string(mergedHTTPResponseBody),
 			expectedQueryCount: 8,
-			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day, DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{MaxShardsPerQuery: 10}}, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta),
+			intervalFn:         dynamicIntervalFn(Config{SplitQueriesByInterval: day, DynamicQuerySplitsConfig: DynamicQuerySplitsConfig{MaxShardsPerQuery: 10}}, mockLimits{}, querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser()), lookbackDelta),
 		},
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
@@ -628,7 +628,7 @@ func Test_dynamicIntervalFn(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			_, interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
+			_, interval, err := dynamicIntervalFn(cfg, mockLimits{}, querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser()), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 
 			if !tc.expectedError {
@@ -759,7 +759,7 @@ func Test_dynamicIntervalFn_verticalSharding(t *testing.T) {
 				},
 			}
 			ctx := user.InjectOrgID(context.Background(), "1")
-			ctx, interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(), lookbackDelta)(ctx, tc.req)
+			ctx, interval, err := dynamicIntervalFn(cfg, mockLimits{queryVerticalShardSize: tc.maxVerticalShardSize}, querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser()), lookbackDelta)(ctx, tc.req)
 			require.Equal(t, tc.expectedInterval, interval)
 
 			if tc.expectedVerticalShardSize > 0 {

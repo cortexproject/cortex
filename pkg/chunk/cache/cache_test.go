@@ -27,7 +27,7 @@ func fillCache(t *testing.T, cache cache.Cache) ([]string, []chunkenc.Chunk) {
 		promChunk := chunkenc.NewXORChunk()
 		appender, err := promChunk.Appender()
 		require.NoError(t, err)
-		appender.Append(int64(ts), float64(i))
+		appender.Append(0, int64(ts), float64(i))
 
 		cleanChunk, err := chunkenc.FromData(promChunk.Encoding(), promChunk.Bytes())
 		require.NoError(t, err)

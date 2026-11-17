@@ -184,6 +184,8 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		nil,   // Only needed for admin APIs.
 		"",    // This is for snapshots, which is disabled when admin APIs are disabled. Hence empty.
 		false, // Disable admin APIs.
+		false, // Disable search API.
+		0,
 		promslog.NewNopLogger(),
 		func(context.Context) v1.RulesRetriever { return &DummyRulesRetriever{} },
 		0, 0, 0, // Remote read samples and concurrency limit.
@@ -201,12 +203,15 @@ func createPrometheusAPI(q storage.SampleAndChunkQueryable, engine promql.QueryE
 		false,
 		false,
 		false,
-		false,
 		5*time.Minute,
 		false,
 		false,
 		nil,
 		features.NewRegistry(),
+		v1.OpenAPIOptions{},
+		nil,
+		false,
+		0,
 	)
 
 	promRouter := route.New().WithPrefix("/api/v1")

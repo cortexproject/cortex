@@ -51,20 +51,20 @@ func GenerateChunk(t require.TestingT, step time.Duration, from model.Time, poin
 	switch pe {
 	case chunkenc.EncXOR:
 		for range points {
-			appender.Append(int64(ts), float64(ts))
+			appender.Append(0, int64(ts), float64(ts))
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncHistogram:
 		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
 		for i := range points {
-			_, _, appender, err = appender.AppendHistogram(nil, int64(ts), histograms[i], true)
+			_, _, appender, err = appender.AppendHistogram(nil, 0, int64(ts), histograms[i], true)
 			require.NoError(t, err)
 			ts = ts.Add(step)
 		}
 	case chunkenc.EncFloatHistogram:
 		histograms := histogram_util.GenerateTestHistograms(int(from), int(step/time.Millisecond), points)
 		for i := range points {
-			_, _, appender, err = appender.AppendFloatHistogram(nil, int64(ts), histograms[i].ToFloat(nil), true)
+			_, _, appender, err = appender.AppendFloatHistogram(nil, 0, int64(ts), histograms[i].ToFloat(nil), true)
 			require.NoError(t, err)
 			ts = ts.Add(step)
 		}

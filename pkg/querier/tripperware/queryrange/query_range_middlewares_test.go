@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/querier/tripperware"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -57,7 +58,7 @@ func TestRoundTrip(t *testing.T) {
 		next: http.DefaultTransport,
 	}
 
-	qa := querysharding.NewQueryAnalyzer()
+	qa := querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 	queyrangemiddlewares, _, err := Middlewares(Config{},
 		log.NewNopLogger(),
 		mockLimits{},
@@ -183,7 +184,7 @@ func TestRoundTripWithAndWithoutDistributedExec(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			qa := querysharding.NewQueryAnalyzer()
+			qa := querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 			queyrangemiddlewares, _, err := Middlewares(Config{},
 				log.NewNopLogger(),
 				mockLimits{},

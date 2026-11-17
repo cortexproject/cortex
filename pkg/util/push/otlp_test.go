@@ -147,7 +147,7 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 			},
 			expectedSeries:   []prompb.TimeSeries{},
 			expectedMetadata: []prompb.MetricMetadata{},
-			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
+			expectedErr:      "invalid temporality and type combination for metric \"test_1\"\ninvalid temporality and type combination for metric \"test_2\"",
 		},
 		{
 			description:           "[allowDeltaTemporality: true] delta type should be converted",
@@ -205,7 +205,7 @@ func TestOTLP_AllowDeltaTemporality(t *testing.T) {
 			},
 			expectedSeries:   []prompb.TimeSeries{},
 			expectedMetadata: []prompb.MetricMetadata{},
-			expectedErr:      `invalid temporality and type combination for metric "test_1"; invalid temporality and type combination for metric "test_2"`,
+			expectedErr:      "invalid temporality and type combination for metric \"test_1\"\ninvalid temporality and type combination for metric \"test_2\"",
 		},
 		{
 			description:           "[allowDeltaTemporality: true, exponential histogram] delta histogram should be converted",

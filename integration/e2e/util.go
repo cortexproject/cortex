@@ -451,14 +451,14 @@ func GenerateHistogramSeriesV2(name string, ts time.Time, i uint32, customBucket
 		} else {
 			fh = tsdbutil.GenerateTestFloatHistogram(int64(i))
 		}
-		ph = writev2.FromFloatHistogram(tsMillis, fh)
+		ph = writev2.FromFloatHistogram(0, tsMillis, fh)
 	} else {
 		if customBucket {
 			h = tsdbutil.GenerateTestCustomBucketsHistogram(int64(i))
 		} else {
 			h = tsdbutil.GenerateTestHistogram(int64(i))
 		}
-		ph = writev2.FromIntHistogram(tsMillis, h)
+		ph = writev2.FromIntHistogram(0, tsMillis, h)
 	}
 
 	// Generate the series

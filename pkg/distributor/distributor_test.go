@@ -3899,7 +3899,7 @@ func (i *mockIngester) QueryStream(ctx context.Context, req *client.QueryRequest
 		}
 		chunks := []chunkenc.Chunk{c}
 		for _, sample := range ts.Samples {
-			appender.Append(sample.TimestampMs, sample.Value)
+			appender.Append(0, sample.TimestampMs, sample.Value)
 		}
 
 		wireChunks := []client.Chunk{}

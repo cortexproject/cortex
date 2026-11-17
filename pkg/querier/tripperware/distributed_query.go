@@ -5,10 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/thanos-io/promql-engine/logicalplan"
 	"github.com/thanos-io/promql-engine/query"
 	"github.com/weaveworks/common/httpgrpc"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 const (
@@ -57,7 +58,7 @@ func (d distributedQueryMiddleware) newLogicalPlan(qs string, start time.Time, e
 		EnablePerStepStats: false,
 	}
 
-	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()
+	expr, err := cortexparser.NewEngineParser().ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}

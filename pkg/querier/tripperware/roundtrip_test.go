@@ -22,6 +22,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -369,7 +370,7 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 				mockCodec{},
 				mockCodec{},
 				tc.limits,
-				querysharding.NewQueryAnalyzer(),
+				querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser()),
 				time.Minute,
 				tc.maxSubQuerySteps,
 				0,

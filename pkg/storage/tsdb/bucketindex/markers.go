@@ -9,13 +9,13 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/pkg/errors"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
 	"github.com/thanos-io/thanos/pkg/block/metadata"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/parquet"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 const (
@@ -119,7 +119,7 @@ func MigrateBlockDeletionMarksToGlobalLocation(ctx context.Context, bkt objstore
 		return errors.Wrap(err, "list blocks")
 	}
 
-	errs := tsdb_errors.NewMulti()
+	errs := multierror.New()
 
 	for _, blockID := range blocks {
 		for mark, globalFilePath := range MarkersMap {

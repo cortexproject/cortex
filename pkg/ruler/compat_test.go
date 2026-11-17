@@ -229,7 +229,7 @@ func TestPusherAppendable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := context.Background()
 
-			lbls, err := parser.ParseMetric(tc.series)
+			lbls, err := parser.NewParser(parser.Options{}).ParseMetric(tc.series)
 			require.NoError(t, err)
 
 			pusher.response = &cortexpb.WriteResponse{}
@@ -292,7 +292,7 @@ func TestPusherErrors(t *testing.T) {
 
 			pa := NewPusherAppendable(pusher, "user-1", &ruleLimits{}, writes, failures)
 
-			lbls, err := parser.ParseMetric("foo_bar")
+			lbls, err := parser.NewParser(parser.Options{}).ParseMetric("foo_bar")
 			require.NoError(t, err)
 
 			a := pa.Appender(ctx)
@@ -379,7 +379,7 @@ func TestPusherAppender_Commit_StaleMarkers(t *testing.T) {
 
 			pa := NewPusherAppendable(pusher, "user-1", &ruleLimits{}, writes, failures)
 
-			lbls, err := parser.ParseMetric("foo_bar")
+			lbls, err := parser.NewParser(parser.Options{}).ParseMetric("foo_bar")
 			require.NoError(t, err)
 
 			a := pa.Appender(ctx)

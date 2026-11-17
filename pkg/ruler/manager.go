@@ -54,7 +54,7 @@ type DefaultMultiTenantManager struct {
 	// Per-user notifiers with separate queues.
 	notifiersMtx              sync.Mutex
 	notifiers                 map[string]*rulerNotifier
-	notifiersDiscoveryMetrics map[string]discovery.DiscovererMetrics
+	notifiersDiscoveryMetrics *discovery.SDMetrics
 
 	// Per-user externalLabels.
 	userExternalLabels *userExternalLabels
@@ -671,7 +671,7 @@ func (m *DefaultMultiTenantManager) ValidateRuleGroup(g rulefmt.RuleGroup) []err
 		}
 
 		// Validate other rule fields using Prometheus validation
-		for _, err := range r.Validate(rulefmt.RuleNode{}, m.cfg.NameValidationScheme) {
+		for _, err := range r.Validate(rulefmt.RuleNode{}, m.cfg.NameValidationScheme, parser.NewEngineParser()) {
 			// Skip expression validation errors since we handle them above
 			if !strings.Contains(err.Error(), "could not parse expression") {
 				var ruleName string

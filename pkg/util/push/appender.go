@@ -4,11 +4,12 @@ import (
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/prompb"
-	"github.com/prometheus/prometheus/storage/remote/otlptranslator/prometheusremotewrite"
+	"github.com/prometheus/prometheus/storage"
 )
 
-// collectingAppender implements prometheusremotewrite.CombinedAppender by
+// collectingAppender implements storage.AppenderV2 for the OTLP translator by
 // accumulating samples, histograms, exemplars and metadata into buffers that
 // can be converted to prompb TimeSeries and MetricMetadata.
 type collectingAppender struct {
@@ -24,7 +25,7 @@ type collectedSeries struct {
 }
 
 // newCollectingAppender returns a new collectingAppender that implements
-// prometheusremotewrite.CombinedAppender and accumulates all appended data
+// storage.AppenderV2 and accumulates all appended data
 // for later retrieval via TimeSeries() and Metadata().
 func newCollectingAppender() *collectingAppender {
 	return &collectingAppender{
@@ -33,40 +34,40 @@ func newCollectingAppender() *collectingAppender {
 	}
 }
 
-func (c *collectingAppender) AppendSample(ls labels.Labels, meta prometheusremotewrite.Metadata, ct, t int64, v float64, es []exemplar.Exemplar) error {
-	c.recordMetadata(meta)
+// Append records one sample. The start timestamp is dropped: prompb v1 cannot carry it.
+func (c *collectingAppender) Append(_ storage.SeriesRef, ls labels.Labels, _, t int64, v float64, h *histogram.Histogram, fh *histogram.FloatHistogram, opts storage.AppendV2Options) (storage.SeriesRef, error) {
+	c.recordMetadata(opts.MetricFamilyName, opts.Metadata)
 	s := c.getOrCreateSeries(ls)
-	s.samples = append(s.samples, prompb.Sample{Value: v, Timestamp: t})
-	for _, e := range es {
+	switch {
+	case fh != nil:
+		s.histograms = append(s.histograms, prompb.FromFloatHistogram(t, fh))
+	case h != nil:
+		s.histograms = append(s.histograms, prompb.FromIntHistogram(t, h))
+	default:
+		s.samples = append(s.samples, prompb.Sample{Value: v, Timestamp: t})
+	}
+	for _, e := range opts.Exemplars {
 		s.exemplars = append(s.exemplars, exemplarToProm(e))
 	}
-	return nil
+	return 0, nil
 }
 
-func (c *collectingAppender) AppendHistogram(ls labels.Labels, meta prometheusremotewrite.Metadata, ct, t int64, h *histogram.Histogram, es []exemplar.Exemplar) error {
-	if h == nil {
-		return nil
-	}
-	c.recordMetadata(meta)
-	s := c.getOrCreateSeries(ls)
-	s.histograms = append(s.histograms, prompb.FromIntHistogram(t, h))
-	for _, e := range es {
-		s.exemplars = append(s.exemplars, exemplarToProm(e))
-	}
-	return nil
-}
+// Commit is a no-op: the collected data is read with TimeSeries and Metadata.
+func (c *collectingAppender) Commit() error { return nil }
 
-func (c *collectingAppender) recordMetadata(meta prometheusremotewrite.Metadata) {
-	key := meta.MetricFamilyName
-	if key == "" {
+// Rollback is a no-op for the same reason as Commit.
+func (c *collectingAppender) Rollback() error { return nil }
+
+func (c *collectingAppender) recordMetadata(family string, meta metadata.Metadata) {
+	if family == "" {
 		return
 	}
-	if _, ok := c.metadata[key]; ok {
+	if _, ok := c.metadata[family]; ok {
 		return
 	}
-	c.metadata[key] = prompb.MetricMetadata{
+	c.metadata[family] = prompb.MetricMetadata{
 		Type:             prompb.FromMetadataType(meta.Type),
-		MetricFamilyName: meta.MetricFamilyName,
+		MetricFamilyName: family,
 		Help:             meta.Help,
 		Unit:             meta.Unit,
 	}

@@ -20,7 +20,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/prometheus/prometheus/rules"
 	prom_storage "github.com/prometheus/prometheus/storage"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/promql-engine/execution/parse"
@@ -44,6 +43,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester"
 	"github.com/cortexproject/cortex/pkg/overrides"
 	"github.com/cortexproject/cortex/pkg/parquetconverter"
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 	"github.com/cortexproject/cortex/pkg/purger"
 	"github.com/cortexproject/cortex/pkg/querier"
 	"github.com/cortexproject/cortex/pkg/querier/tenantfederation"
@@ -56,6 +56,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	"github.com/cortexproject/cortex/pkg/ruler"
+	rulestorelocal "github.com/cortexproject/cortex/pkg/ruler/rulestore/local"
 	"github.com/cortexproject/cortex/pkg/scheduler"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storegateway"
@@ -562,7 +563,7 @@ func (t *Cortex) initFlusher() (serv services.Service, err error) {
 // to optimize Prometheus query requests.
 func (t *Cortex) initQueryFrontendTripperware() (serv services.Service, err error) {
 	var queryAnalyzer querysharding.Analyzer
-	queryAnalyzer = querysharding.NewQueryAnalyzer()
+	queryAnalyzer = querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 	if t.Cfg.Querier.EnableParquetQueryable {
 		// Disable vertical sharding for binary expression with ignore for parquet queryable.
 		queryAnalyzer = cortexquerysharding.NewDisableBinaryExpressionAnalyzer(queryAnalyzer)
@@ -679,7 +680,7 @@ func (t *Cortex) initRulerStorage() (serv services.Service, err error) {
 		maps.Copy(parser.Functions, parse.XFunctions)
 	}
 
-	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rules.FileLoader{}, util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.NameValidationScheme)
+	t.RulerStorage, err = ruler.NewRuleStore(context.Background(), t.Cfg.RulerStorage, t.OverridesConfig, rulestorelocal.NewFileLoader(), util_log.Logger, prometheus.DefaultRegisterer, t.Cfg.NameValidationScheme)
 	return
 }
 
@@ -687,7 +688,12 @@ func createActiveQueryTracker(cfg querier.Config, logger *slog.Logger) promql.Qu
 	dir := cfg.ActiveQueryTrackerDir
 
 	if dir != "" {
-		return promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+		tracker, err := promql.NewActiveQueryTracker(dir, cfg.MaxConcurrent, logger)
+		if err != nil {
+			// Older Prometheus versions panicked here; keep failing loudly at startup.
+			panic(err)
+		}
+		return tracker
 	}
 
 	return nil

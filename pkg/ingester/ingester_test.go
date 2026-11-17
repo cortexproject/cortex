@@ -4883,7 +4883,7 @@ func mockWriteRequest(t *testing.T, lbls labels.Labels, value float64, timestamp
 	chunk := chunkenc.NewXORChunk()
 	app, err := chunk.Appender()
 	require.NoError(t, err)
-	app.Append(timestampMs, value)
+	app.Append(0, timestampMs, value)
 	chunk.Compact()
 
 	expectedQueryStreamResChunks := &client.QueryStreamResponse{
@@ -4929,9 +4929,9 @@ func mockHistogramWriteRequest(t *testing.T, lbls labels.Labels, value int64, ti
 	app, err := c.Appender()
 	require.NoError(t, err)
 	if float {
-		_, _, _, err = app.AppendFloatHistogram(nil, timestampMs, fh, true)
+		_, _, _, err = app.AppendFloatHistogram(nil, 0, timestampMs, fh, true)
 	} else {
-		_, _, _, err = app.AppendHistogram(nil, timestampMs, h, true)
+		_, _, _, err = app.AppendHistogram(nil, 0, timestampMs, h, true)
 	}
 	require.NoError(t, err)
 	c.Compact()

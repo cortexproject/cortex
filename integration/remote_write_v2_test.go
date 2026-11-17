@@ -972,7 +972,7 @@ func TestPRW2PartialWrite(t *testing.T) {
 	})
 
 	t.Run("dropped data is excluded from the written stats headers", func(t *testing.T) {
-		h := writev2.FromIntHistogram(tsMillis, tsdbutil.GenerateTestHistogram(1))
+		h := writev2.FromIntHistogram(0, tsMillis, tsdbutil.GenerateTestHistogram(1))
 
 		timeseries := []writev2.TimeSeries{
 			// Written: 1 sample and 1 exemplar.

@@ -254,7 +254,8 @@ func testQueryableFunc(querierTestConfig *querier.TestConfig, reg prometheus.Reg
 }
 
 func testSetup(t *testing.T, querierTestConfig *querier.TestConfig) (*promql.Engine, storage.QueryableFunc, Pusher, log.Logger, RulesLimits, prometheus.Registerer) {
-	tracker := promql.NewActiveQueryTracker(t.TempDir(), 20, promslog.NewNopLogger())
+	tracker, err := promql.NewActiveQueryTracker(t.TempDir(), 20, promslog.NewNopLogger())
+	require.NoError(t, err)
 
 	timeout := time.Minute * 2
 
@@ -437,12 +438,12 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	wg.Wait()
 
-	// Ensure we have metrics in the notifier.
-	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
+	// Ensure we have metrics in the notifier. Prometheus labels this counter per Alertmanager.
+	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(fmt.Sprintf(`
 		# HELP prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
 		# TYPE prometheus_notifications_dropped_total counter
-		prometheus_notifications_dropped_total 0
-	`), "prometheus_notifications_dropped_total"))
+		prometheus_notifications_dropped_total{alertmanager="%s/api/v2/alerts"} 0
+	`, ts.URL)), "prometheus_notifications_dropped_total"))
 }
 
 func TestNotifierSendExternalLabels(t *testing.T) {

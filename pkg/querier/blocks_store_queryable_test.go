@@ -2505,7 +2505,10 @@ func TestBlocksStoreQuerier_PromQLExecution(t *testing.T) {
 				var queryEngine promql.QueryEngine
 				if thanosEngine {
 					queryEngine = engine.New(engine.Opts{
-						EngineOpts:        opts,
+						Logger:            opts.Logger,
+						MaxSamples:        opts.MaxSamples,
+						Timeout:           opts.Timeout,
+						LookbackDelta:     opts.LookbackDelta,
 						LogicalOptimizers: logicalplan.AllOptimizers,
 					})
 				}
@@ -2789,7 +2792,7 @@ func mockSeriesResponse(lbls labels.Labels, samples []cortexpb.Sample, histogram
 			panic(err)
 		}
 
-		appender.Append(sample.TimestampMs, sample.Value)
+		appender.Append(0, sample.TimestampMs, sample.Value)
 		chunkData := chunk.Bytes()
 		res.Series.Chunks = append(res.Series.Chunks, storepb.AggrChunk{
 			MinTime: sample.TimestampMs,
@@ -2804,7 +2807,7 @@ func mockSeriesResponse(lbls labels.Labels, samples []cortexpb.Sample, histogram
 		if err != nil {
 			panic(err)
 		}
-		_, _, _, err = appender.AppendHistogram(nil, h.TimestampMs, cortexpb.HistogramProtoToHistogram(h), true)
+		_, _, _, err = appender.AppendHistogram(nil, 0, h.TimestampMs, cortexpb.HistogramProtoToHistogram(h), true)
 		if err != nil {
 			panic(err)
 		}
@@ -2822,7 +2825,7 @@ func mockSeriesResponse(lbls labels.Labels, samples []cortexpb.Sample, histogram
 		if err != nil {
 			panic(err)
 		}
-		_, _, _, err = appender.AppendFloatHistogram(nil, fh.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(fh), true)
+		_, _, _, err = appender.AppendFloatHistogram(nil, 0, fh.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(fh), true)
 		if err != nil {
 			panic(err)
 		}

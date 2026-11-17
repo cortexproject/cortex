@@ -449,7 +449,7 @@ http_requests_total`,
 				next: http.DefaultTransport,
 			}
 
-			qa := thanosquerysharding.NewQueryAnalyzer()
+			qa := thanosquerysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 			roundtripper := NewRoundTripper(downstream, tt.codec, nil, ShardByMiddleware(log.NewNopLogger(), mockLimits{shardSize: tt.shardSize}, tt.codec, qa))
 
 			ctx := user.InjectOrgID(context.Background(), "1")

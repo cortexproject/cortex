@@ -31,7 +31,7 @@ func CreateTestLogicalPlan(qs string, start time.Time, end time.Time, step time.
 		EnablePerStepStats: false,
 	}
 
-	expr, err := parser.NewParser(qs, parser.WithFunctions(parser.Functions)).ParseExpr()
+	expr, err := parser.NewParser(parser.Options{}).ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}

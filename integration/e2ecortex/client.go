@@ -414,7 +414,7 @@ func (c *Client) Query(query string, ts time.Time) (model.Value, error) {
 		err   error
 	)
 	for retries.Ongoing() {
-		value, _, err = c.querierClient.Query(context.Background(), query, ts)
+		value, _, _, err = c.querierClient.Query(context.Background(), query, ts)
 		if err == nil {
 			break
 		}
@@ -452,7 +452,7 @@ func (c *Client) QueryRange(query string, start, end time.Time, step time.Durati
 		err   error
 	)
 	for retries.Ongoing() {
-		value, _, err = c.querierClient.QueryRange(context.Background(), query, promv1.Range{
+		value, _, _, err = c.querierClient.QueryRange(context.Background(), query, promv1.Range{
 			Start: start,
 			End:   end,
 			Step:  step,
@@ -678,19 +678,19 @@ func (c *Client) query(addr string, headers map[string]string) (*http.Response, 
 
 // Series finds series by label matchers.
 func (c *Client) Series(matches []string, start, end time.Time) ([]model.LabelSet, error) {
-	result, _, err := c.querierClient.Series(context.Background(), matches, start, end)
+	result, _, _, err := c.querierClient.Series(context.Background(), matches, start, end)
 	return result, err
 }
 
 // LabelValues gets label values
 func (c *Client) LabelValues(label string, start, end time.Time, matches []string) (model.LabelValues, error) {
-	result, _, err := c.querierClient.LabelValues(context.Background(), label, matches, start, end)
+	result, _, _, err := c.querierClient.LabelValues(context.Background(), label, matches, start, end)
 	return result, err
 }
 
 // LabelNames gets label names
 func (c *Client) LabelNames(start, end time.Time, matchers ...string) (model.LabelNames, error) {
-	result, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
+	result, _, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
 	return result, err
 }
 

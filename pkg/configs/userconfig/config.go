@@ -262,7 +262,7 @@ func (c RulesConfig) parseV2Formatted(nameValidationScheme model.ValidationSchem
 	ruleMap := map[string]rulefmt.RuleGroups{}
 
 	for fn, content := range c.Files {
-		rgs, errs := rulefmt.Parse([]byte(content), false, nameValidationScheme)
+		rgs, errs := rulefmt.Parse([]byte(content), false, nameValidationScheme, parser.NewEngineParser(), util_log.SLogger)
 		for _, err := range errs { // return just the first error, if any
 			return nil, err
 		}
@@ -289,7 +289,7 @@ func (c RulesConfig) parseV2(nameValidationScheme model.ValidationScheme) (map[s
 	groups := map[string][]rules.Rule{}
 
 	for fn, content := range c.Files {
-		rgs, errs := rulefmt.Parse([]byte(content), false, nameValidationScheme)
+		rgs, errs := rulefmt.Parse([]byte(content), false, nameValidationScheme, parser.NewEngineParser(), util_log.SLogger)
 		if len(errs) > 0 {
 			return nil, fmt.Errorf("error parsing %s: %v", fn, errs[0])
 		}

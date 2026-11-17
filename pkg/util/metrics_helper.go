@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/model/labels"
-	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"google.golang.org/protobuf/proto"
 
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/cortexproject/cortex/pkg/util/multierror"
 )
 
 var (
@@ -949,7 +949,7 @@ func GetLabels(c prometheus.Collector, filter map[string]string) ([]labels.Label
 		c.Collect(ch)
 	}()
 
-	errs := tsdb_errors.NewMulti()
+	errs := multierror.New()
 	var result []labels.Labels
 	dtoMetric := &dto.Metric{}
 	lbls := labels.NewBuilder(labels.EmptyLabels())

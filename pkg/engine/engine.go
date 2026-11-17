@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	thanosengine "github.com/thanos-io/promql-engine/engine"
 	"github.com/thanos-io/promql-engine/logicalplan"
+
+	cortexparser "github.com/cortexproject/cortex/pkg/parser"
 )
 
 type engineKeyType struct{}
@@ -59,17 +61,28 @@ type Engine struct {
 }
 
 func New(opts promql.EngineOpts, thanosEngineCfg ThanosEngineConfig, reg prometheus.Registerer) *Engine {
+	if opts.Parser == nil {
+		opts.Parser = cortexparser.NewEngineParser()
+	}
 	prometheusEngine := promql.NewEngine(opts)
 
 	var thanosEngine *thanosengine.Engine
 	if thanosEngineCfg.Enabled {
 		thanosEngine = thanosengine.New(thanosengine.Opts{
-			EngineOpts:          opts,
-			LogicalOptimizers:   thanosEngineCfg.LogicalOptimizers,
-			EnableAnalysis:      true,
-			EnableXFunctions:    thanosEngineCfg.EnableXFunctions,
-			DecodingConcurrency: thanosEngineCfg.DecodingConcurrency,
-			SelectorBatchSize:   thanosEngineCfg.SelectorBatchSize,
+			Logger:                      opts.Logger,
+			Reg:                         opts.Reg,
+			MaxSamples:                  opts.MaxSamples,
+			Timeout:                     opts.Timeout,
+			ActiveQueryTracker:          opts.ActiveQueryTracker,
+			LookbackDelta:               opts.LookbackDelta,
+			NoStepSubqueryIntervalFn:    opts.NoStepSubqueryIntervalFn,
+			EnablePerStepStats:          opts.EnablePerStepStats,
+			EnableExperimentalFunctions: cortexparser.EnableExperimentalFunctions(),
+			LogicalOptimizers:           thanosEngineCfg.LogicalOptimizers,
+			EnableAnalysis:              true,
+			EnableXFunctions:            thanosEngineCfg.EnableXFunctions,
+			DecodingConcurrency:         thanosEngineCfg.DecodingConcurrency,
+			SelectorBatchSize:           thanosEngineCfg.SelectorBatchSize,
 		})
 	}
 

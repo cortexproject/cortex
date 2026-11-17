@@ -45,7 +45,7 @@ func Run(conf Config) error {
 	}
 
 	for _, query := range conf.Queries {
-		ctlResp, _, err := ctlAPI.QueryRange(context.Background(), query.Query, v1.Range{
+		ctlResp, _, _, err := ctlAPI.QueryRange(context.Background(), query.Query, v1.Range{
 			Start: query.Start,
 			End:   query.End,
 			Step:  query.StepSize,
@@ -55,7 +55,7 @@ func Run(conf Config) error {
 			return err
 		}
 
-		tstResp, _, err := tstAPI.QueryRange(context.Background(), query.Query, v1.Range{
+		tstResp, _, _, err := tstAPI.QueryRange(context.Background(), query.Query, v1.Range{
 			Start: query.Start,
 			End:   query.End,
 			Step:  query.StepSize,

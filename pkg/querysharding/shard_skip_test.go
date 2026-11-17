@@ -211,7 +211,7 @@ load 1m
 	t.Cleanup(func() { require.NoError(t, storage.Close()) })
 
 	engine := promql.NewEngine(promql.EngineOpts{MaxSamples: 1e6, Timeout: time.Minute})
-	analyzer := querysharding.NewQueryAnalyzer()
+	analyzer := querysharding.NewQueryAnalyzer(cortexparser.NewEngineParser())
 	evalTime := time.Unix(0, 0).Add(15 * time.Minute)
 
 	tests := []struct {

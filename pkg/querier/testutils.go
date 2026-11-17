@@ -120,7 +120,7 @@ func ConvertToChunks(t *testing.T, samples []cortexpb.Sample, histograms []*cort
 		require.NoError(t, err)
 
 		for _, s := range samples {
-			appender.Append(s.TimestampMs, s.Value)
+			appender.Append(0, s.TimestampMs, s.Value)
 		}
 	} else if len(histograms) > 0 {
 		if histograms[0].IsFloatHistogram() {
@@ -128,7 +128,7 @@ func ConvertToChunks(t *testing.T, samples []cortexpb.Sample, histograms []*cort
 			appender, err := chk.Appender()
 			require.NoError(t, err)
 			for _, h := range histograms {
-				_, _, _, err = appender.AppendFloatHistogram(nil, h.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(*h), true)
+				_, _, _, err = appender.AppendFloatHistogram(nil, 0, h.TimestampMs, cortexpb.FloatHistogramProtoToFloatHistogram(*h), true)
 			}
 			require.NoError(t, err)
 		} else {
@@ -136,7 +136,7 @@ func ConvertToChunks(t *testing.T, samples []cortexpb.Sample, histograms []*cort
 			appender, err := chk.Appender()
 			require.NoError(t, err)
 			for _, h := range histograms {
-				_, _, _, err = appender.AppendHistogram(nil, h.TimestampMs, cortexpb.HistogramProtoToHistogram(*h), true)
+				_, _, _, err = appender.AppendHistogram(nil, 0, h.TimestampMs, cortexpb.HistogramProtoToHistogram(*h), true)
 			}
 			require.NoError(t, err)
 		}

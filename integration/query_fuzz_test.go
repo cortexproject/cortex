@@ -2515,7 +2515,7 @@ func TestHasOrVectorFallback(t *testing.T) {
 		{`(sum without (job) (stddev_over_time(up[4m]) == -up)) or vector(2.0099)`, true},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
-			expr, err := parser.ParseExpr(tc.query)
+			expr, err := parser.NewParser(parser.Options{}).ParseExpr(tc.query)
 			require.NoError(t, err)
 			if got := hasOrVectorFallback(expr); got != tc.want {
 				t.Fatalf("hasOrVectorFallback(%q) = %v, want %v", tc.query, got, tc.want)

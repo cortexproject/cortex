@@ -2,6 +2,7 @@ package compactor
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/stretchr/testify/require"
@@ -102,4 +104,92 @@ func TestShardPostingAndSymbolBasedOnPartitionID(t *testing.T) {
 	for _, visited := range expectedSymbols {
 		require.True(t, visited)
 	}
+}
+
+// seriesThenErrPostings yields refs and then fails, so that Err() only becomes
+// non-nil once the iterator is exhausted. This is the shape of a postings
+// iterator that breaks part way through a block.
+type seriesThenErrPostings struct {
+	refs []storage.SeriesRef
+	idx  int
+	err  error
+}
+
+func (p *seriesThenErrPostings) Next() bool {
+	if p.idx >= len(p.refs) {
+		return false
+	}
+	p.idx++
+	return true
+}
+
+func (p *seriesThenErrPostings) Seek(storage.SeriesRef) bool { return false }
+
+func (p *seriesThenErrPostings) At() storage.SeriesRef { return p.refs[p.idx-1] }
+
+func (p *seriesThenErrPostings) Err() error {
+	if p.idx >= len(p.refs) {
+		return p.err
+	}
+	return nil
+}
+
+// labelsFnForRef builds a single label per series ref, enough for sharding.
+func labelsFnForRef(ref storage.SeriesRef, builder *labels.ScratchBuilder, _ *[]chunks.Meta) error {
+	builder.Reset()
+	builder.Add(MetricLabelName, MetricName)
+	builder.Add(TestLabelName, strconv.FormatUint(uint64(ref), 10))
+	builder.Sort()
+	return nil
+}
+
+func TestNewShardedPostingPropagatesPostingsError(t *testing.T) {
+	expectedErr := errors.New("postings failed")
+
+	t.Run("error before any series", func(t *testing.T) {
+		shardedPostings, syms, err := NewShardedPosting(context.Background(), index.ErrPostings(expectedErr), 1, 0, labelsFnForRef)
+		require.ErrorIs(t, err, expectedErr)
+		require.Nil(t, shardedPostings)
+		require.Nil(t, syms)
+	})
+
+	t.Run("error after some series", func(t *testing.T) {
+		postings := &seriesThenErrPostings{
+			refs: []storage.SeriesRef{1, 2, 3},
+			err:  expectedErr,
+		}
+		shardedPostings, syms, err := NewShardedPosting(context.Background(), postings, 1, 0, labelsFnForRef)
+		require.ErrorIs(t, err, expectedErr)
+		require.Nil(t, shardedPostings)
+		require.Nil(t, syms)
+	})
+
+	t.Run("no error keeps returning the sharded postings", func(t *testing.T) {
+		postings := &seriesThenErrPostings{
+			refs: []storage.SeriesRef{1, 2, 3},
+		}
+		shardedPostings, syms, err := NewShardedPosting(context.Background(), postings, 1, 0, labelsFnForRef)
+		require.NoError(t, err)
+		require.NotNil(t, syms)
+
+		var got []storage.SeriesRef
+		for shardedPostings.Next() {
+			got = append(got, shardedPostings.At())
+		}
+		require.NoError(t, shardedPostings.Err())
+		require.Equal(t, []storage.SeriesRef{1, 2, 3}, got)
+	})
+}
+
+func TestNewShardedPostingReturnsContextError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Fewer series than util.CheckContextEveryNIterations, so the in-loop check
+	// never runs and only the post-loop check can catch the cancellation.
+	postings := &seriesThenErrPostings{refs: []storage.SeriesRef{1, 2, 3}}
+	shardedPostings, syms, err := NewShardedPosting(ctx, postings, 1, 0, labelsFnForRef)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, shardedPostings)
+	require.Nil(t, syms)
 }

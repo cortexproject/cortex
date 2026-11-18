@@ -602,10 +602,9 @@ func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error))
 		}
 	}
 	e.call.Store(nil)
-	// As before, only a fresh miss triggers eviction; refreshing an expired key does not.
-	if reason == "miss" {
-		c.evictLocked()
-	}
+	// Enforce the byte budget and sweep expired entries on every completed fetch,
+	// including the refresh of an expired key.
+	c.evictLocked()
 	c.mu.Unlock()
 	close(call.done)
 	return e, false

@@ -172,6 +172,53 @@ func TestPostingsCache_WaiterHonorsContextWhileFetchRuns(t *testing.T) {
 	checkLruInvariants(t, cache)
 }
 
+// A fetch that panics, recovered by the caller as recoverIngester does in QueryStream,
+// must wake callers waiting on it and must not leave the key stuck in flight.
+func TestLruCache_FetchPanicDoesNotPoisonKey(t *testing.T) {
+	cfg := PostingsCacheConfig{Enabled: true, MaxBytes: 10 << 20, Ttl: time.Hour}
+	c := &blocksPostingsForMatchersCache{}
+	cache := newLruCache[[]storage.SeriesRef](cfg, "test", NewPostingCacheMetrics(prometheus.NewPedanticRegistry()), time.Now)
+
+	release := make(chan struct{})
+	panicked := make(chan any, 1)
+	go func() {
+		defer func() { panicked <- recover() }()
+		cache.getPromiseForKey("key", func() ([]storage.SeriesRef, int64, error) {
+			<-release
+			panic("boom")
+		})
+	}()
+	require.Eventually(t, func() bool { return cache.contains("key") }, time.Second, time.Millisecond)
+
+	waiter, loaded := cache.getPromiseForKey("key", func() ([]storage.SeriesRef, int64, error) {
+		t.Fatal("concurrent caller must not fetch")
+		return nil, 0, nil
+	})
+	require.True(t, loaded)
+	close(release)
+	require.Equal(t, "boom", <-panicked)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, err := c.result(waiter)(ctx)
+	require.ErrorIs(t, err, errFetchPanicked, "a waiter on a panicked fetch must be woken, not left until its deadline")
+	require.False(t, cache.contains("key"))
+	checkLruInvariants(t, cache)
+
+	var fetched atomic.Bool
+	p, loaded := cache.getPromiseForKey("key", func() ([]storage.SeriesRef, int64, error) {
+		fetched.Store(true)
+		return []storage.SeriesRef{7}, 8, nil
+	})
+	require.False(t, loaded)
+	require.True(t, fetched.Load(), "the next caller must fetch again")
+	postings, err := c.result(p)(ctx)
+	require.NoError(t, err)
+	require.True(t, postings.Next())
+	require.Equal(t, storage.SeriesRef(7), postings.At())
+	checkLruInvariants(t, cache)
+}
+
 // BenchmarkLruCache_BytesPerEntry reports real heap bytes per cached entry for keys of
 // about 190 bytes, alongside the bytes the cache accounts for.
 func BenchmarkLruCache_BytesPerEntry(b *testing.B) {

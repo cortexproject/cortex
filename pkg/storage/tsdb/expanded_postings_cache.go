@@ -578,7 +578,7 @@ func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error))
 	c.mu.Unlock()
 
 	c.metrics.CacheMiss.WithLabelValues(c.name, reason).Inc()
-	v, size, err := fetch()
+	v, size, err := c.runFetch(k, e, call, fetch)
 
 	c.mu.Lock()
 	if err != nil {
@@ -608,6 +608,30 @@ func (c *lruCache[V]) getPromiseForKey(k string, fetch func() (V, int64, error))
 	c.mu.Unlock()
 	close(call.done)
 	return e, false
+}
+
+// errFetchPanicked is returned to callers waiting on a fetch that panicked.
+var errFetchPanicked = errors.New("expanded postings fetch panicked")
+
+// runFetch calls fetch. If it panics, the entry is dropped and its waiters are woken with
+// errFetchPanicked before the panic continues, so the key is not left in flight forever.
+func (c *lruCache[V]) runFetch(k string, e *cacheEntryPromise[V], call *inflight, fetch func() (V, int64, error)) (v V, size int64, err error) {
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		c.mu.Lock()
+		if c.cachedValues[k] == e {
+			c.removeLocked(e)
+		}
+		c.mu.Unlock()
+		call.err = errFetchPanicked
+		close(call.done)
+	}()
+	v, size, err = fetch()
+	completed = true
+	return v, size, err
 }
 
 func (c *lruCache[V]) isExpiredLocked(e *cacheEntryPromise[V], now time.Time) bool {

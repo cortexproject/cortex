@@ -98,6 +98,11 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 			continue
 		}
 
+		// Skip ingesters that are scaling down and won't accept writes. Keep the current ingester so it doesn't get reassigned
+		if instance.State == READONLY && i != id {
+			continue
+		}
+
 		instanceTokens = append(instanceTokens, instance.Tokens)
 
 		// Do not add the current instance on the tokensPerInstanceWithDistance map as it will be used to create the heap
@@ -160,6 +165,10 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 	distancesHeap := &tokenDistanceHeap{}
 
 	for _, perInstance := range tokensPerInstanceWithDistance {
+		// Don't add ingesters with no tokens to the heap
+		if len(perInstance.tokens) == 0 {
+			continue
+		}
 		sort.Slice(perInstance.tokens, func(i, j int) bool {
 			return perInstance.tokens[i].distance > perInstance.tokens[j].distance
 		})
@@ -203,6 +212,11 @@ func (g *MinimizeSpreadTokenGenerator) GenerateTokens(ring *Desc, id, zone strin
 			newToken = uint32(int64(tokenToSplit.prev) + expectedDistanceStep - maxTokenValue)
 		} else {
 			newToken = uint32(int64(tokenToSplit.prev) + expectedDistanceStep)
+		}
+
+		// If we hit a token we don't expect (e.g. readonly ingester), find the next available slot
+		for _, taken := usedTokens[newToken]; taken && newToken != tokenToSplit.token; _, taken = usedTokens[newToken] {
+			newToken++
 		}
 
 		if _, ok := usedTokens[newToken]; !ok {

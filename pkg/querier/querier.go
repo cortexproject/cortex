@@ -28,6 +28,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/lazyquery"
 	"github.com/cortexproject/cortex/pkg/querier/partialdata"
 	querier_stats "github.com/cortexproject/cortex/pkg/querier/stats"
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/limiter"
@@ -537,6 +538,14 @@ func (q querier) Select(ctx context.Context, sortSeries bool, sp *storage.Select
 			limitErr := validation.LimitError(fmt.Sprintf(validation.ErrQueryTooLong, endTime.Sub(startTime), maxQueryLength))
 			return storage.ErrSeriesSet(limitErr)
 		}
+	}
+
+	// A vertically sharded selector that pins every sharding label belongs to a single shard. In any
+	// other shard every series it selects would be dropped by the shard matcher in ingesters and
+	// store-gateways, so skip querying them.
+	if querysharding.ShardCannotMatchSelector(matchers) {
+		level.Debug(log).Log("msg", "skipping select because the vertical shard cannot match any series", "matchers", fmt.Sprint(matchers))
+		return storage.EmptySeriesSet()
 	}
 
 	// Reset projection hints if querying ingesters or projection is not included.

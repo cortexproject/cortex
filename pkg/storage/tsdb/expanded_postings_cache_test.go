@@ -170,25 +170,28 @@ func TestFifoCacheExpire(t *testing.T) {
 					return timeNow().Add(2 * c.cfg.Ttl)
 				}
 
+				refreshedEntrySize := int64(18 + keySize)
 				for i := range numberOfKeys {
 					key := RepeatStringIfNeeded(fmt.Sprintf("key%d", i), keySize)
-					originalSize := cache.cachedBytes
 					p, loaded := cache.getPromiseForKey(key, func() (int, int64, error) {
 						return 2, 18, nil
 					})
 					require.False(t, loaded)
 					// New value
 					require.Equal(t, 2, p.v)
-					// Total Size Updated
-					require.Equal(t, originalSize+10, cache.cachedBytes)
+					// The first refresh also sweeps every other expired entry, so the cache only
+					// holds the keys refreshed so far.
+					require.Equal(t, int64(i+1)*refreshedEntrySize, cache.cachedBytes)
+					require.Equal(t, i+1, cache.size())
 				}
 
+				// Only key0 was still cached when refreshed; the others had been swept and were plain misses.
 				err := testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
 		# HELP cortex_ingester_expanded_postings_cache_miss_total Total number of miss requests to the cache.
 		# TYPE cortex_ingester_expanded_postings_cache_miss_total counter
-		cortex_ingester_expanded_postings_cache_miss_total{cache="test",reason="expired"} %v
+		cortex_ingester_expanded_postings_cache_miss_total{cache="test",reason="expired"} 1
 		cortex_ingester_expanded_postings_cache_miss_total{cache="test",reason="miss"} %v
-`, numberOfKeys, numberOfKeys)), "cortex_ingester_expanded_postings_cache_miss_total")
+`, 2*numberOfKeys-1)), "cortex_ingester_expanded_postings_cache_miss_total")
 				require.NoError(t, err)
 
 				cache.timeNow = func() time.Time {
@@ -199,12 +202,12 @@ func TestFifoCacheExpire(t *testing.T) {
 					return 2, 18, nil
 				})
 
-				// Should expire all keys expired keys
+				// Should expire all refreshed keys, on top of the entries swept by the first refresh
 				err = testutil.GatherAndCompare(r, bytes.NewBufferString(fmt.Sprintf(`
 		# HELP cortex_ingester_expanded_postings_cache_evicts_total Total number of evictions in the cache, excluding items that got evicted due to TTL.
 		# TYPE cortex_ingester_expanded_postings_cache_evicts_total counter
         cortex_ingester_expanded_postings_cache_evicts_total{cache="test",reason="expired"} %v
-`, numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts_total")
+`, (numberOfKeys-1)+numberOfKeys)), "cortex_ingester_expanded_postings_cache_evicts_total")
 				require.NoError(t, err)
 			}
 		})

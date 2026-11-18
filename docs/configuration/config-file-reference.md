@@ -2974,15 +2974,6 @@ tsdb:
   # CLI flag: -blocks-storage.tsdb.flush-blocks-on-shutdown
   [flush_blocks_on_shutdown: <boolean> | default = false]
 
-  # If TSDB has not received any data for this duration, and all blocks from
-  # TSDB have been shipped, TSDB is closed and deleted from local disk. If set
-  # to positive value, this value must be greater than
-  # -limits.query-ingesters-within flag to make sure that TSDB is not closed
-  # prematurely, which could cause partial query results. 0 or negative value
-  # disables closing of idle TSDB.
-  # CLI flag: -blocks-storage.tsdb.close-idle-tsdb-timeout
-  [close_idle_tsdb_timeout: <duration> | default = 0s]
-
   # The size of the in-memory queue used before flushing chunks to the disk.
   # CLI flag: -blocks-storage.tsdb.head-chunks-write-queue-size
   [head_chunks_write_queue_size: <int> | default = 0]
@@ -4826,7 +4817,7 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # Maximum lookback duration for querying data from ingesters. Queries for data
 # older than this will only query the long-term storage. This is a per-tenant
 # limit that can be overridden in the runtime configuration. Must be less than
-# -blocks-storage.tsdb.close-idle-tsdb-timeout when both are positive.
+# or equal to -limits.close-idle-tsdb-timeout when both are positive.
 # CLI flag: -limits.query-ingesters-within
 [query_ingesters_within: <duration> | default = 0s]
 
@@ -4841,6 +4832,15 @@ The `limits_config` configures default and per-tenant limits imposed by Cortex s
 # equal to query-ingesters-within.
 # CLI flag: -limits.shuffle-sharding-ingesters-lookback-period
 [shuffle_sharding_ingesters_lookback_period: <duration> | default = 0s]
+
+# If TSDB has not received any data for this duration, and all blocks from TSDB
+# have been shipped, TSDB is closed and deleted from local disk. This is a
+# per-tenant limit that can be overridden in the runtime configuration. When
+# positive, it must be greater than or equal to -limits.query-ingesters-within
+# and -limits.query-store-after, so that a TSDB is not closed while queriers
+# still read its data only from ingesters. 0 to disable.
+# CLI flag: -limits.close-idle-tsdb-timeout
+[close_idle_tsdb_timeout: <duration> | default = 0s]
 
 # The maximum number of rows that can be fetched when querying parquet storage.
 # Each row maps to a series in a parquet file. This limit applies before

@@ -2,6 +2,7 @@ package queryeviction
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -208,6 +209,66 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 	}
 
 	assert.Equal(t, float64(3), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))))
+}
+
+func TestEvictionsTotal_IncrementedBeforeCancelObserved(t *testing.T) {
+	reg := NewQueryRegistry(testMetricFunc)
+	evictor := startEvictor(t, newMockMonitor(0.95, 0.0), reg, testEvictorConfig(0.9, 0, 0))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stats := &querier_stats.QueryStats{}
+	stats.AddFetchedSamples(1000)
+
+	// Read the eviction counter inside the cancel callback, i.e. on the evictor
+	// goroutine at the instant the cancellation signal fires: the eviction must
+	// already be accounted in evictionsTotal before it becomes externally
+	// observable. The sync.Once keeps the callback idempotent so a re-picked
+	// victim cannot close the channel twice.
+	var (
+		once            sync.Once
+		counterAtCancel float64
+	)
+	evicted := make(chan struct{})
+	reg.Register(func() {
+		once.Do(func() {
+			counterAtCancel = promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU)))
+			cancel()
+			close(evicted)
+		})
+	}, stats, "up", "user1", "")
+	_ = ctx
+
+	waitEvicted(t, evicted)
+	assert.Equal(t, float64(1), counterAtCancel)
+}
+
+func TestEvictedVictim_RemovedFromRegistry(t *testing.T) {
+	reg := NewQueryRegistry(testMetricFunc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stats := &querier_stats.QueryStats{}
+	stats.AddFetchedSamples(1000)
+
+	// The sync.Once keeps the callback idempotent: if the evictor wrongly
+	// re-picked the still-registered victim on a later cycle, the second
+	// Cancel would otherwise panic on the double close.
+	var once sync.Once
+	evicted := make(chan struct{})
+	reg.Register(func() {
+		once.Do(func() {
+			cancel()
+			close(evicted)
+		})
+	}, stats, "up", "user1", "")
+	_ = ctx
+
+	startEvictor(t, newMockMonitor(0.95, 0.0), reg, testEvictorConfig(0.9, 0, 0))
+	waitEvicted(t, evicted)
+
+	// The evictor deregisters the victim before cancelling it, so once the
+	// eviction is observable the victim must already have left the registry
+	// and can never be re-picked (and double-counted) while still unwinding.
+	assert.Equal(t, 0, reg.Len())
 }
 
 func TestNewQueryEvictor_ReturnsNilWhenDisabled(t *testing.T) {

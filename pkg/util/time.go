@@ -128,7 +128,12 @@ func FindMinMaxTime(r *http.Request, expr parser.Expr, lookbackDelta time.Durati
 
 	var startTime, endTime int64
 	if isQuery {
-		if t, err := ParseTimeParam(r, "time", now.UnixMilli()); err == nil {
+		// ParseTimeParam takes its default in seconds: it formats the value and hands it to
+		// ParseTime, which reads a bare number as seconds since epoch. Passing milliseconds
+		// here overflows UnixNano() and wraps to a timestamp far away from now. Seconds also
+		// match the instant query decoders, which default to now.Unix() and forward that
+		// truncated time to the querier, so this window covers what is actually evaluated.
+		if t, err := ParseTimeParam(r, "time", now.Unix()); err == nil {
 			startTime = t
 			endTime = t
 		}

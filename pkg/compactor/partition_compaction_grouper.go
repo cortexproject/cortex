@@ -29,6 +29,14 @@ var (
 	DUMMY_BLOCK_ID = ulid.ULID{}
 )
 
+// defaultCompactionDelayCleanupIntervalMultiplier is how many cleanup intervals a
+// compaction group's time range end must be in the past before the group becomes
+// eligible for compaction, when -compactor.block-ranges-compaction-delay does not
+// configure a delay for that range. The cleanup interval also drives how often the
+// bucket index is refreshed, so waiting for two of them keeps grouping from acting on
+// a bucket index that is missing recently uploaded blocks.
+const defaultCompactionDelayCleanupIntervalMultiplier = 2
+
 type PartitionCompactionGrouper struct {
 	ctx                      context.Context
 	logger                   log.Logger
@@ -283,13 +291,31 @@ func (g *PartitionCompactionGrouper) groupBlocksByRange(blocks []*metadata.Meta,
 		}
 
 		if len(group.blocks) > 1 {
-			if time.UnixMilli(group.rangeEnd).Before(time.Now().Add(-2 * g.compactorCfg.CleanupInterval)) {
+			if time.UnixMilli(group.rangeEnd).Before(time.Now().Add(-g.compactionDelayForRange(tr))) {
 				ret = append(ret, group)
 			}
 		}
 	}
 
 	return ret
+}
+
+// compactionDelayForRange returns the minimum age the end of a compaction group's time
+// range must reach before the group becomes eligible for compaction. The configured
+// delays are matched to the configured block ranges by position; any range without a
+// configured delay falls back to defaultCompactionDelayCleanupIntervalMultiplier times
+// the cleanup interval, which keeps the grouping decision at least two bucket index
+// refreshes behind the blocks it is grouping.
+func (g *PartitionCompactionGrouper) compactionDelayForRange(tr int64) time.Duration {
+	if len(g.compactorCfg.BlockRangesCompactionDelay) == len(g.compactorCfg.BlockRanges) {
+		for i, blockRange := range g.compactorCfg.BlockRanges {
+			if blockRange.Milliseconds() == tr {
+				return g.compactorCfg.BlockRangesCompactionDelay[i]
+			}
+		}
+	}
+
+	return defaultCompactionDelayCleanupIntervalMultiplier * g.compactorCfg.CleanupInterval
 }
 
 func (g *PartitionCompactionGrouper) sortBlockGroups(groups []blocksGroupWithPartition) {

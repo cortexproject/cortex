@@ -8,9 +8,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/gogo/protobuf/types"
 	"github.com/oklog/ulid"
 	ulidv2 "github.com/oklog/ulid/v2"
 	"github.com/prometheus-community/parquet-common/convert"
@@ -23,10 +25,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/thanos/pkg/block"
+	"github.com/thanos-io/thanos/pkg/store/hintspb"
 	"github.com/thanos-io/thanos/pkg/store/storepb"
+	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cortexproject/cortex/pkg/querysharding"
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
 	"github.com/cortexproject/cortex/pkg/storage/bucket/filesystem"
 	cortex_parquet "github.com/cortexproject/cortex/pkg/storage/parquet"
@@ -471,6 +476,66 @@ func generateStorageBlockWithMultipleSeries(t *testing.T, storageDir, userID, me
 	}
 	require.NoError(t, app.Commit())
 	require.NoError(t, db.Snapshot(userDir, true))
+}
+
+// TestParquetBucketStores_Series_QuerySharding verifies that the Parquet store honours the query
+// sharding info of a Series request, so each series is returned by exactly one query shard.
+func TestParquetBucketStores_Series_QuerySharding(t *testing.T) {
+	const (
+		userID      = "user-1"
+		metricName  = "test_metric"
+		numSeries   = 20
+		totalShards = 3
+	)
+
+	cfg := prepareStorageConfig(t)
+	cfg.BucketStore.BucketStoreType = string(cortex_tsdb.ParquetBucketStore)
+
+	storageDir := t.TempDir()
+	generateStorageBlockWithMultipleSeries(t, storageDir, userID, metricName, numSeries, 0, 100, 15)
+
+	bkt, err := filesystem.NewBucketClient(filesystem.Config{Directory: storageDir})
+	require.NoError(t, err)
+	uBucket := bucket.NewUserBucketClient(userID, bkt, validation.NewOverrides(validation.Limits{}, nil))
+	blockIDs, err := convertToParquetBlocksForTesting(filepath.Join(storageDir, userID), uBucket)
+	require.NoError(t, err)
+
+	stores, err := NewBucketStores(cfg, NewNoShardingStrategy(log.NewNopLogger(), nil), objstore.WithNoopInstr(bkt), defaultLimitsOverrides(t), mockLoggingLevel(), log.NewNopLogger(), prometheus.NewRegistry())
+	require.NoError(t, err)
+
+	anyHints, err := types.MarshalAny(&hintspb.SeriesRequestHints{BlockMatchers: []storepb.LabelMatcher{
+		{Type: storepb.LabelMatcher_RE, Name: block.BlockIDLabel, Value: strings.Join(blockIDs, "|")},
+	}})
+	require.NoError(t, err)
+	ctx := user.InjectOrgID(setUserIDToGRPCContext(context.Background(), userID), userID)
+
+	seen := map[string]int{}
+	for shardIndex := range totalShards {
+		shardInfo := &storepb.ShardInfo{ShardIndex: int64(shardIndex), TotalShards: totalShards, By: true, Labels: []string{"series"}}
+		srv := newBucketStoreSeriesServer(ctx)
+		require.NoError(t, stores.Series(&storepb.SeriesRequest{
+			MinTime:                 0,
+			MaxTime:                 100,
+			Matchers:                []storepb.LabelMatcher{{Type: storepb.LabelMatcher_EQ, Name: labels.MetricName, Value: metricName}},
+			PartialResponseStrategy: storepb.PartialResponseStrategy_ABORT,
+			Hints:                   anyHints,
+			ShardInfo:               shardInfo,
+		}, srv))
+
+		require.Less(t, len(srv.SeriesSet), numSeries, "shard %d must not return every series", shardIndex)
+		matcher := shardInfo.Matcher(&querysharding.Buffers)
+		for _, series := range srv.SeriesSet {
+			assert.True(t, matcher.MatchesZLabels(series.Labels), "series %v does not belong to shard %d", series.PromLabels(), shardIndex)
+			seen[series.PromLabels().Get("series")]++
+		}
+		matcher.Close()
+	}
+
+	// Every series is returned by exactly one shard.
+	require.Len(t, seen, numSeries)
+	for value, count := range seen {
+		assert.Equal(t, 1, count, "series %s returned by %d shards", value, count)
+	}
 }
 
 // TestParquetBucketStores_Series_MultiShard verifies that when a parquet block is split into

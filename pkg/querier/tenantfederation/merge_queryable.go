@@ -39,20 +39,20 @@ const (
 // If the label "__tenant_id__" is already existing, its value is overwritten
 // by the tenant ID and the previous value is exposed through a new label
 // prefixed with "original_". This behaviour is not implemented recursively.
-func NewQueryable(upstream storage.Queryable, cfg Config, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
+func NewQueryable(upstream storage.Queryable, cfg Config, resolver users.Resolver, byPassWithSingleQuerier bool, reg prometheus.Registerer) storage.Queryable {
 	return NewMergeQueryable(
 		defaultTenantLabel,
 		cfg.MaxConcurrent,
-		tenantQuerierCallback(upstream),
+		tenantQuerierCallback(upstream, resolver),
 		byPassWithSingleQuerier,
 		cfg.AllowPartialData,
 		reg,
 	)
 }
 
-func tenantQuerierCallback(queryable storage.Queryable) MergeQuerierCallback {
+func tenantQuerierCallback(queryable storage.Queryable, resolver users.Resolver) MergeQuerierCallback {
 	return func(ctx context.Context, mint int64, maxt int64) ([]string, []storage.Querier, error) {
-		tenantIDs, err := users.TenantIDs(ctx)
+		tenantIDs, err := resolver.TenantIDs(ctx)
 		if err != nil {
 			return nil, nil, err
 		}

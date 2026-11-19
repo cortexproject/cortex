@@ -41,6 +41,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/ruler/rulestore"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/concurrency"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/grpcclient"
@@ -60,6 +61,7 @@ var (
 	errInvalidTenantShardSize     = errors.New("invalid tenant shard size, the value must be greater than 0")
 	errInvalidMaxConcurrentEvals  = errors.New("invalid max concurrent evals, the value must be greater than 0")
 	errInvalidQueryResponseFormat = errors.New("invalid query response format")
+	errInvalidNotificationRetries = errors.New("invalid notification backoff retries, the value must not be negative")
 )
 
 const (
@@ -142,6 +144,11 @@ type Config struct {
 	NotificationQueueCapacity int `yaml:"notification_queue_capacity"`
 	// HTTP timeout duration when sending notifications to the Alertmanager.
 	NotificationTimeout time.Duration `yaml:"notification_timeout"`
+	// Retries of the notifications that failed with a retriable error. Unlike
+	// everywhere else in Cortex, MaxRetries set to 0 disables the retries instead
+	// of making them infinite, so that the default does not change the behaviour
+	// of the ruler.
+	NotificationBackoff backoff.Config `yaml:"notification_backoff"`
 	// Client configs for interacting with the Alertmanager
 	Notifier NotifierConfig `yaml:"alertmanager_client"`
 
@@ -168,11 +175,21 @@ type Config struct {
 	EnabledTenants  flagext.StringSliceCSV `yaml:"enabled_tenants"`
 	DisabledTenants flagext.StringSliceCSV `yaml:"disabled_tenants"`
 
+	ListRulesMaxRules uint `yaml:"list_rules_max_rules"`
+
+	// Federated rule groups query data from the tenants listed in `source_tenants`.
+	EnableFederatedRules       bool                   `yaml:"enable_federated_rules"`
+	AllowedFederatedTenants    flagext.StringSliceCSV `yaml:"allowed_federated_tenants"`
+	DisallowedFederatedTenants flagext.StringSliceCSV `yaml:"disallowed_federated_tenants"`
+
 	RingCheckPeriod time.Duration `yaml:"-"`
 
 	// Field will be populated during runtime.
 	LookbackDelta        time.Duration `yaml:"-"`
 	PrometheusHTTPPrefix string        `yaml:"-"`
+	// Populated from the tenant federation config.
+	TenantFederationRegexMatcherEnabled bool `yaml:"-"`
+	TenantFederationMaxTenant           int  `yaml:"-"`
 
 	EnableQueryStats      bool `yaml:"query_stats_enabled"`
 	DisableRuleGroupLabel bool `yaml:"disable_rule_group_label"`
@@ -210,6 +227,10 @@ func (cfg *Config) Validate(limits validation.Limits, log log.Logger) error {
 
 	if !slices.Contains(supportedQueryResponseFormats, cfg.QueryResponseFormat) {
 		return errInvalidQueryResponseFormat
+	}
+
+	if cfg.NotificationBackoff.MaxRetries < 0 {
+		return errInvalidNotificationRetries
 	}
 
 	if err := cfg.ThanosEngine.Validate(); err != nil {
@@ -250,6 +271,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.AlertmanagerRefreshInterval, "ruler.alertmanager-refresh-interval", 1*time.Minute, "How long to wait between refreshing DNS resolutions of Alertmanager hosts.")
 	f.IntVar(&cfg.NotificationQueueCapacity, "ruler.notification-queue-capacity", 10000, "Capacity of the queue for notifications to be sent to the Alertmanager.")
 	f.DurationVar(&cfg.NotificationTimeout, "ruler.notification-timeout", 10*time.Second, "HTTP timeout duration when sending notifications to the Alertmanager.")
+	f.IntVar(&cfg.NotificationBackoff.MaxRetries, "ruler.notification.backoff-retries", 0, "Maximum number of times to retry a notification that the Alertmanager failed to accept with a retriable error, which is a transport error or a 5xx response. A notification that is not retried is dropped and the alert is not delivered until the next evaluation of its rule group. Retries happen within -ruler.notification-timeout and delay the other notifications of the same tenant, so keep this number small. Set to 0 to disable the retries.")
+	f.DurationVar(&cfg.NotificationBackoff.MinBackoff, "ruler.notification.backoff-min-period", 100*time.Millisecond, "Minimum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.")
+	f.DurationVar(&cfg.NotificationBackoff.MaxBackoff, "ruler.notification.backoff-max-period", 1*time.Second, "Maximum delay between notification retries. Only applies when -ruler.notification.backoff-retries is greater than 0.")
 
 	f.DurationVar(&cfg.SearchPendingFor, "ruler.search-pending-for", 5*time.Minute, "Time to spend searching for a pending ruler when shutting down.")
 	f.BoolVar(&cfg.EnableSharding, "ruler.enable-sharding", false, "Distribute rule evaluation using ring backend")
@@ -268,7 +292,13 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.EnabledTenants, "ruler.enabled-tenants", "Comma separated list of tenants whose rules this ruler can evaluate. If specified, only these tenants will be handled by ruler, otherwise this ruler can process rules from all tenants. Subject to sharding.")
 	f.Var(&cfg.DisabledTenants, "ruler.disabled-tenants", "Comma separated list of tenants whose rules this ruler cannot evaluate. If specified, a ruler that would normally pick the specified tenant(s) for processing will ignore them instead. Subject to sharding.")
 
-	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message.")
+	f.UintVar(&cfg.ListRulesMaxRules, "ruler.list-rules-max-rules", 0, "Maximum number of rules returned by the Prometheus ListRules API. If there are more rulegroups, the response will include a pagination token which can be used to fetch the next set. The API will always return at least one rulegroup, even if it contains more rules than the limit. Defaults to 0, which is unlimited")
+
+	f.BoolVar(&cfg.EnableFederatedRules, "ruler.enable-federated-rules", false, "[Experimental] Enable federated rule groups. A federated rule group lists the tenants to query in its `source_tenants` field, while the resulting series and alerts always belong to the tenant owning the rule group. Requires -tenant-federation.enabled=true.")
+	f.Var(&cfg.AllowedFederatedTenants, "ruler.allowed-federated-tenants", "[Experimental] Comma separated list of tenants allowed to create federated rule groups. If specified, only these tenants can create federated rule groups, otherwise all tenants can.")
+	f.Var(&cfg.DisallowedFederatedTenants, "ruler.disallowed-federated-tenants", "[Experimental] Comma separated list of tenants that cannot create federated rule groups. If specified, a tenant that would normally be allowed to create federated rule groups is denied instead.")
+
+	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report query statistics for ruler queries to complete as a per user metric and as an info level log message. When -ruler.frontend-address is configured, fetched series/chunks/samples statistics are not available in the Ruler. Enable -frontend.enabled-ruler-query-stats to get the statistics from the Query Frontend.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics")
 
 	f.BoolVar(&cfg.EnableHAEvaluation, "ruler.enable-ha-evaluation", false, "Enable high availability")
@@ -297,6 +327,9 @@ type MultiTenantManager interface {
 	Stop()
 	// ValidateRuleGroup validates a rulegroup
 	ValidateRuleGroup(rulefmt.RuleGroup) []error
+	// ValidateFederatedRuleGroup checks that userID may own a federated rule group
+	// and returns its source tenants sorted and de-duplicated.
+	ValidateFederatedRuleGroup(userID string, sourceTenants []string) ([]string, error)
 }
 
 // Ruler evaluates rules.
@@ -1192,14 +1225,14 @@ func (r *Ruler) filterBackupRuleGroups(userID string, ruleGroups []*rulespb.Rule
 
 // GetRules retrieves the running rules from this ruler and all running rulers in the ring if
 // sharding is enabled
-func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest, maxRules uint) (*RulesResponse, error) {
 	userID, err := users.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
 	if r.cfg.EnableSharding {
-		resp, err := r.getShardedRules(ctx, userID, rulesRequest)
+		resp, err := r.getShardedRules(ctx, userID, rulesRequest, maxRules)
 		if resp == nil {
 			return &RulesResponse{
 				Groups:    make([]*GroupStateDesc, 0),
@@ -1209,11 +1242,11 @@ func (r *Ruler) GetRules(ctx context.Context, rulesRequest RulesRequest) (*Rules
 		return resp, err
 	}
 
-	response, err := r.getLocalRules(userID, rulesRequest, false)
+	response, err := r.getLocalRules(userID, rulesRequest, maxRules, false)
 	return &response, err
 }
 
-func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeBackups bool) (RulesResponse, error) {
+func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, maxRules uint, includeBackups bool) (RulesResponse, error) {
 	groups := r.manager.GetRules(userID)
 
 	groupDescs := make([]*GroupStateDesc, 0, len(groups))
@@ -1375,7 +1408,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		combinedRuleStateDescs = append(combinedRuleStateDescs, backupGroupDescs...)
 	}
 
-	if rulesRequest.MaxRuleGroups <= 0 {
+	if rulesRequest.MaxRuleGroups <= 0 && maxRules == 0 {
 		return RulesResponse{
 			Groups:    combinedRuleStateDescs,
 			NextToken: "",
@@ -1398,7 +1431,7 @@ func (r *Ruler) getLocalRules(userID string, rulesRequest RulesRequest, includeB
 		}
 	}
 
-	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups))
+	resultingGroupDescs, nextToken := generatePage(resultingGroupDescs, int(rulesRequest.MaxRuleGroups), maxRules)
 	return RulesResponse{
 		Groups:    resultingGroupDescs,
 		NextToken: nextToken,
@@ -1519,7 +1552,7 @@ func (r *Ruler) getShardSizeForUser(userID string) int {
 	return max(newShardSize, r.cfg.Ring.ReplicationFactor)
 }
 
-func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest RulesRequest, maxRules uint) (*RulesResponse, error) {
 	ring := ring.ReadRing(r.ring)
 
 	if shardSize := r.limits.RulerTenantShardSize(userID); shardSize > 0 && r.cfg.ShardingStrategy == util.ShardingStrategyShuffle {
@@ -1598,17 +1631,15 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string, rulesRequest
 		return nil
 	})
 
-	if err == nil {
-		if r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules {
-			return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, true), nil
-		}
-		return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, false), nil
+	if err != nil {
+		return &RulesResponse{
+			Groups:    make([]*GroupStateDesc, 0),
+			NextToken: "",
+		}, err
 	}
 
-	return &RulesResponse{
-		Groups:    make([]*GroupStateDesc, 0),
-		NextToken: "",
-	}, err
+	backup := r.cfg.RulesBackupEnabled() || r.cfg.APIDeduplicateRules
+	return mergeGroupStateDesc(merged, rulesRequest.MaxRuleGroups, maxRules, backup), nil
 }
 
 // Rules implements the rules service
@@ -1619,7 +1650,7 @@ func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, er
 		return nil, fmt.Errorf("no user id found in context")
 	}
 
-	response, err := r.getLocalRules(userID, *in, r.cfg.RulesBackupEnabled())
+	response, err := r.getLocalRules(userID, *in, 0, r.cfg.RulesBackupEnabled())
 	if err != nil {
 		return nil, err
 	}
@@ -1712,7 +1743,7 @@ func (r *Ruler) ListAllRules(w http.ResponseWriter, req *http.Request) {
 		if userRules, err = r.store.LoadRuleGroups(ctx, userRules); err != nil {
 			return errors.Wrapf(err, "failed to load ruler config for user %s", userID)
 		}
-		data := map[string]map[string][]rulefmt.RuleGroup{userID: userRules[userID].Formatted()}
+		data := map[string]map[string][]rulespb.RuleGroup{userID: userRules[userID].FormattedRuleGroups()}
 
 		select {
 		case iter <- data:

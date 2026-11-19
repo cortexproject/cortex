@@ -9,6 +9,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -27,6 +28,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore/providers/s3"
+	"gopkg.in/yaml.v3"
 
 	"github.com/cortexproject/cortex/integration/ca"
 	"github.com/cortexproject/cortex/integration/e2e"
@@ -273,7 +275,7 @@ func TestRulerSharding(t *testing.T) {
 	// Generate multiple rule groups, with 1 rule each.
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		ruleName := fmt.Sprintf("test_%d", i)
 
 		expectedNames[i] = ruleName
@@ -373,7 +375,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 		"rule_label_2":    "val2",
 		"duplicate_label": "rule_val",
 	}
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 		expectedNames[i] = ruleName
@@ -490,7 +492,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 				}
@@ -503,7 +505,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				ruleNames := []string{}
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleName := rule["name"]
 					ruleNames = append(ruleNames, ruleName.(string))
 
@@ -519,9 +521,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -537,9 +539,9 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 				alertsCount := 0
 				for _, ruleGroup := range ruleGroups {
 					for _, rule := range ruleGroup.Rules {
-						r := rule.(map[string]interface{})
+						r := rule.(map[string]any)
 						if v, OK := r["alerts"]; OK {
-							alerts := v.([]interface{})
+							alerts := v.([]any)
 							alertsCount = alertsCount + len(alerts)
 						}
 					}
@@ -553,7 +555,7 @@ func testRulerAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 			},
 			resultCheckFn: func(t assert.TestingT, ruleGroups []*ruler.RuleGroup) {
 				for _, ruleGroup := range ruleGroups {
-					rule := ruleGroup.Rules[0].(map[string]interface{})
+					rule := ruleGroup.Rules[0].(map[string]any)
 					ruleType := rule["type"]
 					assert.Equal(t, "alerting", ruleType, "Expected 'alerting' rule type but got %s", ruleType)
 					responseJson, err := json.Marshal(rule)
@@ -609,7 +611,7 @@ func testRulesPaginationAPIWithSharding(t *testing.T, enableRulesBackup bool) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -775,7 +777,7 @@ func TestRulesPaginationAPIWithShardingAndNextToken(t *testing.T) {
 	expectedNames := make([]string, numRulesGroups)
 	alertCount := 0
 	evalInterval, _ := model.ParseDuration("1s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(100)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1156,7 +1158,7 @@ func TestRulerMetricsForInvalidQueries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push some series to Cortex -- enough so that we can hit some limits.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "foo", Value: fmt.Sprintf("%d", i)})
 
 		res, err := c.Push(series)
@@ -1470,7 +1472,7 @@ func TestRulerHAEvaluation(t *testing.T) {
 	ruleGroups := make([]rulefmt.RuleGroup, numRulesGroups)
 	expectedNames := make([]string, numRulesGroups)
 	evalInterval, _ := model.ParseDuration("2s")
-	for i := 0; i < numRulesGroups; i++ {
+	for i := range numRulesGroups {
 		num := random.Intn(10)
 		ruleName := fmt.Sprintf("test_%d", i)
 
@@ -1802,7 +1804,7 @@ func TestRulerEvalWithQueryFrontend(t *testing.T) {
 	}
 }
 
-func parseAlertFromRule(t *testing.T, rules interface{}) *alertingRule {
+func parseAlertFromRule(t *testing.T, rules any) *alertingRule {
 	responseJson, err := json.Marshal(rules)
 	require.NoError(t, err)
 
@@ -1931,4 +1933,204 @@ func TestRulerXFunctionsWithThanosEngine(t *testing.T) {
 	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
 
 	require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(m), e2e.WaitMissingMetrics))
+}
+
+func TestRulerFederatedRules(t *testing.T) {
+	s, err := e2e.NewScenario(networkName)
+	require.NoError(t, err)
+	defer s.Close()
+
+	// Start dependencies.
+	consul := e2edb.NewConsul()
+	minio := e2edb.NewMinio(9000, bucketName, rulestoreBucketName)
+	require.NoError(t, s.StartAndWaitReady(consul, minio))
+
+	baseFlags := mergeFlags(
+		BlocksStorageFlags(),
+		RulerFlags(),
+		map[string]string{
+			// All the data lives in the ingester, so the store-gateway does not need to be reachable.
+			"-querier.store-gateway-addresses": "localhost:12345",
+			// Enable the bucket index so we can skip the initial bucket scan.
+			"-blocks-storage.bucket-store.bucket-index.enabled": "true",
+			// Evaluate rules often, so that we don't need to wait for metrics to show up.
+			"-ruler.evaluation-interval": "2s",
+			"-ruler.poll-interval":       "2s",
+			// We run single ingester only, no replication.
+			"-distributor.replication-factor": "1",
+			// Federated rule groups.
+			"-tenant-federation.enabled":       "true",
+			"-ruler.enable-federated-rules":    "true",
+			"-ruler.allowed-federated-tenants": "infra",
+		},
+	)
+
+	const (
+		namespace = "test"
+		owner     = "infra"
+	)
+	sourceTenants := []string{"team-a", "team-b"}
+
+	distributor := e2ecortex.NewDistributor("distributor", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), baseFlags, "")
+	ingester := e2ecortex.NewIngester("ingester", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), baseFlags, "")
+	require.NoError(t, s.StartAndWaitReady(distributor, ingester))
+	require.NoError(t, distributor.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+	// Push one series per source tenant.
+	for _, tenant := range sourceTenants {
+		c, err := e2ecortex.NewClient(distributor.HTTPEndpoint(), "", "", "", tenant)
+		require.NoError(t, err)
+
+		series, _ := generateSeries("metric", time.Now(), prompb.Label{Name: "tenant", Value: tenant})
+		res, err := c.Push(series)
+		require.NoError(t, err)
+		require.Equal(t, 200, res.StatusCode)
+	}
+
+	for _, tc := range []struct {
+		name             string
+		viaQueryFrontend bool
+	}{
+		{name: "ruler", viaQueryFrontend: false},
+		{name: "query_frontend", viaQueryFrontend: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Evaluate the rules either directly from the ruler or through the query frontend.
+			var (
+				queryFrontend *e2ecortex.CortexService
+				querier       *e2ecortex.CortexService
+				rulerFlags    = baseFlags
+			)
+			if tc.viaQueryFrontend {
+				queryFrontend = e2ecortex.NewQueryFrontend("query-frontend", baseFlags, "")
+				require.NoError(t, s.Start(queryFrontend))
+				querier = e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), mergeFlags(baseFlags, map[string]string{
+					"-querier.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+				}), "")
+				rulerFlags = mergeFlags(baseFlags, map[string]string{
+					"-ruler.frontend-address": queryFrontend.NetworkGRPCEndpoint(),
+				})
+			} else {
+				querier = e2ecortex.NewQuerier("querier", e2ecortex.RingStoreConsul, consul.NetworkHTTPEndpoint(), baseFlags, "")
+			}
+			ruler := e2ecortex.NewRuler("ruler", consul.NetworkHTTPEndpoint(), rulerFlags, "")
+			require.NoError(t, s.StartAndWaitReady(querier, ruler))
+			t.Cleanup(func() {
+				_ = s.Stop(ruler)
+				_ = s.Stop(querier)
+				if queryFrontend != nil {
+					_ = s.Stop(queryFrontend)
+				}
+			})
+
+			queryAddress := querier.HTTPEndpoint()
+			if tc.viaQueryFrontend {
+				queryAddress = queryFrontend.HTTPEndpoint()
+			}
+
+			// Wait until the querier and ruler have updated the ring.
+			require.NoError(t, querier.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+			require.NoError(t, ruler.WaitSumMetrics(e2e.Equals(512), "cortex_ring_tokens_total"))
+
+			groupName := "federated_" + tc.name
+			recordName := "federated_metric_" + tc.name
+			alertName := "FederatedMetricPresent_" + tc.name
+
+			ruleGroup := ruleGroupWithRule(groupName, recordName, "count by (__tenant_id__) (metric)")
+			ruleGroup.Rules = append(ruleGroup.Rules, rulefmt.Rule{
+				Alert:  alertName,
+				Expr:   "count by (__tenant_id__) (metric) > 0",
+				Labels: map[string]string{"severity": "warning"},
+			})
+			federatedGroup, err := yaml.Marshal(rulespb.RuleGroup{
+				RuleGroup:     ruleGroup,
+				SourceTenants: sourceTenants,
+			})
+			require.NoError(t, err)
+
+			// A tenant that is not allowed to create federated rule groups is rejected.
+			teamA, err := e2ecortex.NewClient("", queryAddress, "", ruler.HTTPEndpoint(), sourceTenants[0])
+			require.NoError(t, err)
+			require.ErrorContains(t, teamA.SetRuleGroupYAML(federatedGroup, namespace), "403")
+
+			infra, err := e2ecortex.NewClient("", queryAddress, "", ruler.HTTPEndpoint(), owner)
+			require.NoError(t, err)
+			require.NoError(t, infra.SetRuleGroupYAML(federatedGroup, namespace))
+
+			// The stored rule group keeps its source tenants.
+			res, err := infra.GetRuleGroup(namespace, groupName)
+			require.NoError(t, err)
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, res.Body.Close())
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, res.StatusCode)
+			require.Contains(t, string(body), "source_tenants:\n    - team-a\n    - team-b\n")
+
+			// Wait until the ruler has loaded and successfully evaluated the group.
+			rgMatcher := ruleGroupMatcher(owner, namespace, groupName)
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(2), []string{"cortex_prometheus_rule_group_rules"}, e2e.WithLabelMatchers(rgMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_prometheus_rule_evaluations_total"}, e2e.WithLabelMatchers(rgMatcher), e2e.WaitMissingMetrics))
+			require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(0), []string{"cortex_prometheus_rule_evaluation_failures_total"}, e2e.WithLabelMatchers(rgMatcher), e2e.WaitMissingMetrics))
+
+			if tc.viaQueryFrontend {
+				// The federated queries reach the query frontend with the joined source tenants as tenant.
+				require.NoError(t, ruler.WaitSumMetricsWithOptions(e2e.Equals(1), []string{"cortex_ruler_query_frontend_clients"}, e2e.WaitMissingMetrics))
+				require.NoError(t, queryFrontend.WaitSumMetricsWithOptions(e2e.GreaterOrEqual(1), []string{"cortex_query_frontend_queries_total"}, e2e.WithLabelMatchers(
+					labels.MustNewMatcher(labels.MatchEqual, "user", "team-a|team-b"),
+					labels.MustNewMatcher(labels.MatchEqual, "source", "ruler"),
+				), e2e.WaitMissingMetrics))
+			}
+
+			// The recording rule result is stored in the owning tenant with one series per source tenant.
+			var result model.Vector
+			require.Eventually(t, func() bool {
+				value, err := infra.Query(recordName, time.Now())
+				if err != nil {
+					return false
+				}
+				result = value.(model.Vector)
+				return len(result) == len(sourceTenants)
+			}, 30*time.Second, time.Second)
+
+			resultTenants := make([]string, 0, len(result))
+			for _, sample := range result {
+				require.Equal(t, model.SampleValue(1), sample.Value)
+				resultTenants = append(resultTenants, string(sample.Metric["__tenant_id__"]))
+			}
+			sort.Strings(resultTenants)
+			require.Equal(t, sourceTenants, resultTenants)
+
+			// The source tenants do not get the result.
+			value, err := teamA.Query(recordName, time.Now())
+			require.NoError(t, err)
+			require.Empty(t, value.(model.Vector))
+
+			// The alerting rule fires once per source tenant, keeping the __tenant_id__ label.
+			var alerts []*Alert
+			require.Eventually(t, func() bool {
+				groups, _, err := infra.GetPrometheusRules(e2ecortex.RuleFilter{RuleNames: []string{alertName}})
+				if err != nil || len(groups) != 1 || len(groups[0].Rules) != 1 {
+					return false
+				}
+				rule := parseAlertFromRule(t, groups[0].Rules[0])
+				alerts = rule.Alerts
+				return rule.State == "firing" && len(alerts) == len(sourceTenants)
+			}, 30*time.Second, time.Second)
+
+			alertTenants := make([]string, 0, len(alerts))
+			for _, alert := range alerts {
+				require.Equal(t, "firing", alert.State)
+				require.Equal(t, alertName, alert.Labels.Get(model.AlertNameLabel))
+				require.Equal(t, "warning", alert.Labels.Get("severity"))
+				alertTenants = append(alertTenants, alert.Labels.Get("__tenant_id__"))
+			}
+			sort.Strings(alertTenants)
+			require.Equal(t, sourceTenants, alertTenants)
+
+			// The source tenants do not see the rule group nor its alerts.
+			groups, _, err := teamA.GetPrometheusRules(e2ecortex.RuleFilter{RuleNames: []string{alertName}})
+			require.NoError(t, err)
+			require.Empty(t, groups)
+		})
+	}
 }

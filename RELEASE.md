@@ -139,6 +139,7 @@ To publish a stable release:
    ./tools/generate-sbom.sh /path/to/cortex
    ```
    This generates SBOMs for the Go modules and all container images (cortex, query-tee, test-exporter, thanosconvert) and packages them into `dist/sbom.tar.gz`.
+   The Go modules SBOM is generated from a clean checkout of the release tag, so the tag must exist in your local repository. Untracked files in your working tree are not included.
 1. Download the artifacts attached to the published release
    ```bash
    curl -H "Authorization: Bearer <your GitHub API token>" -s https://api.github.com/repos/cortexproject/cortex/releases/tags/<release tag> \

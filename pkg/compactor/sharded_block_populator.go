@@ -23,7 +23,10 @@ import (
 type ShardedBlockPopulator struct {
 	partitionCount int
 	partitionID    int
-	logger         log.Logger
+	// blockMergeFanIn groups the per-block series sets into subtrees before the
+	// final merge. 0 or 1 keeps the single flat merge.
+	blockMergeFanIn int
+	logger          log.Logger
 }
 
 // PopulateBlock fills the index and chunk writers with new data gathered as the union
@@ -131,7 +134,7 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 		iCtx, cancel := context.WithCancel(ctx)
 		// Merge series using specified chunk series merger.
 		// The default one is the compacting series merger.
-		set = NewBackgroundChunkSeriesSet(iCtx, storage.NewMergeChunkSeriesSet(sets, 0, mergeFunc))
+		set = NewBackgroundChunkSeriesSet(iCtx, storage.NewMergeChunkSeriesSet(c.mergeSubtrees(iCtx, sets, mergeFunc), 0, mergeFunc))
 		defer cancel()
 	}
 
@@ -221,4 +224,31 @@ func (c ShardedBlockPopulator) PopulateBlock(ctx context.Context, metrics *tsdb.
 	}
 
 	return nil
+}
+
+// mergeSubtrees groups sets into subtrees, each advanced by its own goroutine,
+// and returns the subtree roots for the caller to merge.
+//
+// A flat merge over every block issues all of its index reads from the single
+// goroutine that advances the heap, so the disk sees a queue depth near one
+// whatever it has provisioned. Grouping gives one in-flight read per subtree.
+// Returns sets unchanged when disabled or when there is nothing to group.
+func (c ShardedBlockPopulator) mergeSubtrees(ctx context.Context, sets []storage.ChunkSeriesSet, mergeFunc storage.VerticalChunkSeriesMergeFunc) []storage.ChunkSeriesSet {
+	fanIn := c.blockMergeFanIn
+	if fanIn < 2 || len(sets) <= fanIn {
+		return sets
+	}
+
+	subtrees := (len(sets) + fanIn - 1) / fanIn
+	// Split the single-set lookahead across the subtrees so total series held
+	// in memory stays comparable to the flat merge.
+	buffer := max(defaultBackgroundChunkSeriesSetBuffer/subtrees, 8)
+
+	roots := make([]storage.ChunkSeriesSet, 0, subtrees)
+	for i := 0; i < len(sets); i += fanIn {
+		group := sets[i:min(i+fanIn, len(sets))]
+		roots = append(roots, NewBackgroundChunkSeriesSetWithBuffer(ctx, storage.NewMergeChunkSeriesSet(group, 0, mergeFunc), buffer))
+	}
+	level.Info(c.logger).Log("msg", "grouped series sets into merge subtrees", "series_sets_count", len(sets), "subtrees", len(roots), "fan_in", fanIn, "subtree_buffer", buffer)
+	return roots
 }

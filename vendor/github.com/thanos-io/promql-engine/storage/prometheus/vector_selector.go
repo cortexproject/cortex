@@ -26,6 +26,8 @@ type vectorScanner struct {
 	labels    labels.Labels
 	signature uint64
 	samples   *storage.MemoizedSeriesIterator
+	rawSeries SignedSeries
+	exhausted bool
 }
 
 type vectorSelector struct {
@@ -50,6 +52,9 @@ type vectorSelector struct {
 
 	shard     int
 	numShards int
+
+	reusableChunkIter chunkenc.Iterator
+	reusableMemoized  *storage.MemoizedSeriesIterator
 
 	selectTimestamp bool
 
@@ -151,15 +156,30 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 
 	for ; o.currentSeries-fromSeries < o.seriesBatchSize && o.currentSeries < int64(len(o.scanners)); o.currentSeries++ {
 		var (
-			series   = o.scanners[o.currentSeries]
-			seriesTs = ts
+			series          = &o.scanners[o.currentSeries]
+			seriesTs        = ts
+			seriesExhausted = series.exhausted
 		)
-		for currStep := 0; currStep < n && seriesTs <= o.maxt; currStep++ {
+		// Initialize iterators lazily per series. An instant query visits each
+		// series once, so its iterator and memoized wrapper can be handed to the
+		// next one; a range query revisits every series and each keeps its own.
+		if series.samples == nil && !seriesExhausted {
+			if o.opts.IsInstantQuery() {
+				o.reusableChunkIter = series.rawSeries.Iterator(o.reusableChunkIter)
+				// Reset rebinds the wrapper to new iterator.
+				o.reusableMemoized.Reset(o.reusableChunkIter)
+				series.samples = o.reusableMemoized
+			} else {
+				series.samples = storage.NewMemoizedIterator(series.rawSeries.Iterator(nil), o.lookbackDelta)
+			}
+		}
+		for currStep := 0; !seriesExhausted && currStep < n && seriesTs <= o.maxt; currStep++ {
 			currStepSamples = 0
-			t, v, h, ok, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
+			t, v, h, ok, atEnd, err := selectPoint(series.samples, seriesTs, o.lookbackDelta, o.offset)
 			if err != nil {
 				return 0, err
 			}
+			seriesExhausted = atEnd
 			if o.selectTimestamp {
 				v = float64(t) / 1000
 			}
@@ -183,6 +203,13 @@ func (o *vectorSelector) Next(ctx context.Context, buf []model.StepVector) (int,
 			if err := o.updateSampleTracker(totalSamples); err != nil {
 				return 0, err
 			}
+		}
+
+		if o.opts.IsInstantQuery() {
+			series.samples = nil
+		} else if seriesExhausted {
+			series.exhausted = true
+			series.samples = nil
 		}
 	}
 
@@ -209,7 +236,7 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 			o.scanners[i] = vectorScanner{
 				labels:    s.Labels(),
 				signature: s.Signature,
-				samples:   storage.NewMemoizedIterator(s.Iterator(nil), o.lookbackDelta),
+				rawSeries: s,
 			}
 			b.Reset(s.Labels())
 			// if we have pushed down a timestamp function into the scan we need to drop
@@ -226,19 +253,26 @@ func (o *vectorSelector) loadSeries(ctx context.Context) error {
 		if o.seriesBatchSize == 0 || numSeries < o.seriesBatchSize {
 			o.seriesBatchSize = numSeries
 		}
+
+		// One memoized wrapper per selector instead of one per series.
+		if o.opts.IsInstantQuery() {
+			o.reusableMemoized = storage.NewMemoizedEmptyIterator(o.lookbackDelta)
+		}
 	})
 	return err
 }
 
 func (o *vectorSelector) updateSampleTracker(totalSamples int) error {
-	if o.lastTrackedSamples > 0 {
-		o.opts.SampleTracker.Remove(o.lastTrackedSamples)
-	}
-	if totalSamples > 0 {
-		o.opts.SampleTracker.Add(totalSamples)
+	delta := totalSamples - o.lastTrackedSamples
+	if delta > 0 {
+		o.opts.SampleTracker.Add(delta)
+		o.lastTrackedSamples = totalSamples
+		return o.opts.SampleTracker.CheckLimit()
+	} else if delta < 0 {
+		o.opts.SampleTracker.Remove(-delta)
 	}
 	o.lastTrackedSamples = totalSamples
-	return o.opts.SampleTracker.CheckLimit()
+	return nil
 }
 
 func (o *vectorSelector) shouldCheckSampleLimit(fromSeries int64) bool {
@@ -255,7 +289,7 @@ func (o *vectorSelector) shouldCheckSampleLimit(fromSeries int64) bool {
 }
 
 // TODO(fpetkovski): Add max samples limit.
-func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset int64) (int64, float64, *histogram.FloatHistogram, bool, error) {
+func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset int64) (_ int64, _ float64, _ *histogram.FloatHistogram, ok, exhausted bool, _ error) {
 	refTime := ts - offset
 	var t int64
 	var v float64
@@ -265,7 +299,7 @@ func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset i
 	switch valueType {
 	case chunkenc.ValNone:
 		if it.Err() != nil {
-			return 0, 0, nil, false, it.Err()
+			return 0, 0, nil, false, false, it.Err()
 		}
 	case chunkenc.ValFloatHistogram, chunkenc.ValHistogram:
 		t, fh = it.AtFloatHistogram()
@@ -275,14 +309,14 @@ func selectPoint(it *storage.MemoizedSeriesIterator, ts, lookbackDelta, offset i
 		panic(errors.Newf("unknown value type %v", valueType))
 	}
 	if valueType == chunkenc.ValNone || t > refTime {
-		var ok bool
-		t, v, fh, ok = it.PeekPrev()
-		if !ok || t <= refTime-lookbackDelta {
-			return 0, 0, nil, false, nil
+		var hasPrev bool
+		t, v, fh, hasPrev = it.PeekPrev()
+		if !hasPrev || t <= refTime-lookbackDelta {
+			return 0, 0, nil, false, valueType == chunkenc.ValNone, nil
 		}
 	}
 	if value.IsStaleNaN(v) || (fh != nil && value.IsStaleNaN(fh.Sum)) {
-		return 0, 0, nil, false, nil
+		return 0, 0, nil, false, false, nil
 	}
-	return t, v, fh, true, nil
+	return t, v, fh, true, false, nil
 }

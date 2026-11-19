@@ -176,6 +176,25 @@ func TestConfigValidation(t *testing.T) {
 			expectedError: errInvalidHTTPPrefix,
 		},
 		{
+			name: "should fail validation if federated rules are enabled without tenant federation",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Ruler.EnableFederatedRules = true
+				return configuration
+			},
+			expectedError: errRulerFederatedRulesRequireTenantFederation,
+		},
+		{
+			name: "should pass validation if federated rules are enabled with tenant federation",
+			getTestConfig: func() *Config {
+				configuration := newDefaultConfig()
+				configuration.Ruler.EnableFederatedRules = true
+				configuration.TenantFederation.Enabled = true
+				return configuration
+			},
+			expectedError: nil,
+		},
+		{
 			name: "should fail validation for invalid resource to monitor",
 			getTestConfig: func() *Config {
 				configuration := newDefaultConfig()
@@ -319,6 +338,25 @@ func TestConfigValidation_DeprecatedLimits(t *testing.T) {
 			check: func(t *testing.T, cfg *Config) {
 				assert.Equal(t, model.Duration(45*time.Second), cfg.LimitsConfig.HATrackerFailoverTimeout)
 			},
+		},
+		{
+			name: "old blocks storage YAML field sets the default close-idle TSDB timeout limit",
+			yaml: "blocks_storage:\n  tsdb:\n    close_idle_tsdb_timeout: 14h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(14*time.Hour), cfg.LimitsConfig.CloseIdleTSDBTimeout)
+			},
+		},
+		{
+			name: "old blocks storage CLI flag sets the default close-idle TSDB timeout limit",
+			args: []string{"-blocks-storage.tsdb.close-idle-tsdb-timeout=14h"},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(14*time.Hour), cfg.LimitsConfig.CloseIdleTSDBTimeout)
+			},
+		},
+		{
+			name:          "old and new close-idle TSDB timeout set to different values",
+			yaml:          "blocks_storage:\n  tsdb:\n    close_idle_tsdb_timeout: 14h\nlimits:\n  close_idle_tsdb_timeout: 15h\n",
+			expectedError: "are both set: remove blocks_storage.tsdb.close_idle_tsdb_timeout",
 		},
 		{
 			name: "old and new set to the same value",

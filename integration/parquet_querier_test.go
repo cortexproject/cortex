@@ -99,7 +99,7 @@ func TestParquetFuzz(t *testing.T) {
 	start := now.Add(-time.Hour * 24)
 	end := now.Add(-time.Hour)
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "series", strconv.Itoa(i%3), "status_code", statusCodes[i%5]))
 		lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "series", strconv.Itoa((i+1)%3), "status_code", statusCodes[(i+1)%5]))
 	}
@@ -121,7 +121,7 @@ func TestParquetFuzz(t *testing.T) {
 	require.NoError(t, s.StartAndWaitReady(cortex))
 
 	// Wait until we convert the blocks
-	cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 		found := false
 		foundBucketIndex := false
 
@@ -144,7 +144,7 @@ func TestParquetFuzz(t *testing.T) {
 	numberOfIndexesUpdate := 0
 	lastUpdate := att.LastModified
 
-	cortex_testutil.Poll(t, 30*time.Second, 5, func() interface{} {
+	cortex_testutil.Poll(t, 30*time.Second, 5, func() any {
 		att, err := bkt.Attributes(context.Background(), "bucket-index.json.gz")
 		require.NoError(t, err)
 		if lastUpdate != att.LastModified {
@@ -283,7 +283,7 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait until we convert the blocks to parquet AND bucket index is updated
-	cortex_testutil.Poll(t, 300*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 300*time.Second, true, func() any {
 		// Check if parquet marker exists
 		markerFound := false
 		err := userBucket.Iter(context.Background(), "", func(name string) error {
@@ -316,7 +316,7 @@ func TestParquetProjectionPushdownFuzz(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for data to be queryable before running the projection hints tests
-	cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+	cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 		labelSets, err := c.Series([]string{`{job="api-server"}`}, start, end)
 		if err != nil {
 			t.Logf("Series query failed: %v", err)
@@ -505,7 +505,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 
 			// Generate unique series so the converter produces a deterministic series count.
 			lbls := make([]labels.Labels, 0, totalSeries)
-			for i := 0; i < seriesPerMetric; i++ {
+			for i := range seriesPerMetric {
 				lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_a", "job", "test", "instance", strconv.Itoa(i)))
 				lbls = append(lbls, labels.FromStrings(labels.MetricName, "test_series_b", "job", "test", "instance", strconv.Itoa(i)))
 			}
@@ -549,7 +549,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			}
 
 			// Wait until the block is converted to parquet and the bucket index is updated.
-			cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+			cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 				found := false
 				foundBucketIndex := false
 				err := bkt.Iter(context.Background(), "", func(name string) error {
@@ -571,7 +571,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			require.Equal(t, expectedShards, marker.Shards, "block should be split into multiple parquet shards")
 
 			// Verify each shard's parquet files (labels + chunks) exist in object storage.
-			for shardID := 0; shardID < expectedShards; shardID++ {
+			for shardID := range expectedShards {
 				labelsFile := fmt.Sprintf("%s/%d.labels.parquet", id.String(), shardID)
 				chunksFile := fmt.Sprintf("%s/%d.chunks.parquet", id.String(), shardID)
 
@@ -585,7 +585,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			}
 
 			// Verify the block is registered in the bucket index as a parquet block with the expected shard count.
-			cortex_testutil.Poll(t, 60*time.Second, true, func() interface{} {
+			cortex_testutil.Poll(t, 60*time.Second, true, func() any {
 				idx, err := bucketindex.ReadIndex(ctx, storage.GetBucket(), "user-1", nil, log.Logger)
 				if err != nil {
 					return false
@@ -602,7 +602,7 @@ func TestParquetMultiShardQuery(t *testing.T) {
 			require.NoError(t, err)
 
 			// Wait until all series are queryable across both shards.
-			cortex_testutil.Poll(t, 120*time.Second, true, func() interface{} {
+			cortex_testutil.Poll(t, 120*time.Second, true, func() any {
 				labelSets, err := c.Series([]string{`{job="test"}`}, start, end)
 				if err != nil {
 					return false

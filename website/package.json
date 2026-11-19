@@ -19,7 +19,9 @@
   "browserslist": [
     "defaults"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "d3": "7.9.0"
+  },
   "devDependencies": {
     "autoprefixer": "^10.5.0",
     "postcss-cli": "^11.0.1",

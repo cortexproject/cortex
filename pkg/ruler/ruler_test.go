@@ -669,6 +669,7 @@ func TestGetRules(t *testing.T) {
 		shardingStrategy           string
 		shuffleShardSize           float64
 		rulesRequest               RulesRequest
+		maxRules                   uint
 		expectedCount              map[string]int
 		expectedClientCallCount    int
 		rulerStateMap              map[string]ring.InstanceState
@@ -916,10 +917,10 @@ func TestGetRules(t *testing.T) {
 				"user3": 0,
 			},
 		},
-		"No Sharding with Alert state filter for inactive alerts": {
+		"No Sharding with Alert state filter for unknown alerts": {
 			sharding: false,
 			rulesRequest: RulesRequest{
-				State:         unknownStateFilter, // Prometheus v2.x uses "unknown" for unevaluated alerts
+				State:         unknownStateFilter, // Prometheus uses the "unknown" state for alerting rules that have not been evaluated yet.
 				MaxRuleGroups: -1,
 			},
 			rulerStateMap: rulerStateMapAllActive,
@@ -1004,6 +1005,52 @@ func TestGetRules(t *testing.T) {
 				"user3": 3,
 			},
 			replicationFactor:       3,
+			expectedClientCallCount: len(expectedRules),
+		},
+		// maxRules caps the page by rule count rather than by group count, so it
+		// applies even though the request asks for no group limit. Groups are paged in
+		// token order, and a group is only included if it fits whole: user1 gets
+		// namespace/third (2 rules) then namespace/second (1), stopping before
+		// namespace/first (2) would take it to 5.
+		"No Sharding with maxRules truncating the page": {
+			sharding:      false,
+			rulesRequest:  RulesRequest{MaxRuleGroups: -1},
+			maxRules:      3,
+			rulerStateMap: rulerStateMapAllActive,
+			expectedCount: map[string]int{
+				"user1": 3,
+				"user2": 3,
+				"user3": 3,
+			},
+		},
+		"Default Sharding with maxRules truncating the page": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			rulerStateMap:    rulerStateMapAllActive,
+			rulesRequest:     RulesRequest{MaxRuleGroups: -1},
+			maxRules:         3,
+			expectedCount: map[string]int{
+				"user1": 3,
+				"user2": 3,
+				"user3": 3,
+			},
+			expectedClientCallCount: len(expectedRules),
+		},
+		// A rule group is indivisible, so when the first group in token order is bigger
+		// than maxRules it is returned whole and the response exceeds the limit. user1
+		// and user3 both lead with a 2 rule group; user2 leads with a 1 rule group and
+		// so stays at the limit.
+		"Default Sharding with maxRules smaller than the leading rule group": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyDefault,
+			rulerStateMap:    rulerStateMapAllActive,
+			rulesRequest:     RulesRequest{MaxRuleGroups: -1},
+			maxRules:         1,
+			expectedCount: map[string]int{
+				"user1": 2,
+				"user2": 1,
+				"user3": 2,
+			},
 			expectedClientCallCount: len(expectedRules),
 		},
 		"Shuffle Sharding and ShardSize = 2 with Rule Type Filter": {
@@ -1316,7 +1363,13 @@ func TestGetRules(t *testing.T) {
 					cfg.Ring.InstanceZone = tc.rulerAZMap[id]
 				}
 
-				r, _ := buildRuler(t, cfg, nil, store, rulerAddrMap)
+				// Use a no-op GroupEvalIterationFunc to keep rules in their pre-evaluation state ("unknown"
+				// alert state and "unknown" health). The scheduled evaluation of a group can otherwise fire
+				// within the test window (the first evaluation is slotted at a hash-based offset within the
+				// group interval) and move rules out of the state asserted by the state/health filter cases.
+				noopEvalIterationFunc := func(ctx context.Context, g *promRules.Group, evalTimestamp time.Time) {}
+
+				r, _ := buildRulerWithIterFunc(t, cfg, nil, store, rulerAddrMap, noopEvalIterationFunc)
 				r.limits = &ruleLimits{tenantShard: tc.shuffleShardSize}
 				rulerAddrMap[id] = r
 				if r.ring != nil {
@@ -1383,7 +1436,7 @@ func TestGetRules(t *testing.T) {
 			for u := range allRulesByUser {
 				ctx := user.InjectOrgID(context.Background(), u)
 				forEachRuler(func(_ string, r *Ruler) {
-					ruleStateDescriptions, err := r.GetRules(ctx, tc.rulesRequest)
+					ruleStateDescriptions, err := r.GetRules(ctx, tc.rulesRequest, tc.maxRules)
 					if tc.expectedError != nil {
 						require.Error(t, tc.expectedError)
 						return
@@ -1639,7 +1692,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		}
 	}
 	ctx := user.InjectOrgID(context.Background(), tenantId)
-	ruleStateDescriptions, err := rulerAddrMap["ruler1"].GetRules(ctx, RulesRequest{MaxRuleGroups: -1})
+	ruleStateDescriptions, err := rulerAddrMap["ruler1"].GetRules(ctx, RulesRequest{MaxRuleGroups: -1}, 0)
 	require.NoError(t, err)
 	require.Equal(t, 5, len(ruleStateDescriptions.Groups))
 	stateByKey := map[string]*GroupStateDesc{}
@@ -1660,7 +1713,7 @@ func TestGetRulesFromBackup(t *testing.T) {
 		RuleGroupNames: []string{"b1"},
 		Type:           recordingRuleFilter,
 		MaxRuleGroups:  -1,
-	})
+	}, 0)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(ruleStateDescriptions.Groups))
 	require.Equal(t, "b1", ruleStateDescriptions.Groups[0].Group.Name)
@@ -1869,7 +1922,7 @@ func getRulesHATest(replicationFactor int) func(t *testing.T) {
 
 		getRules := func(ruler string) {
 			ctx := user.InjectOrgID(context.Background(), tenantId)
-			ruleStateDescriptions, err := rulerAddrMap[ruler].GetRules(ctx, RulesRequest{MaxRuleGroups: -1})
+			ruleStateDescriptions, err := rulerAddrMap[ruler].GetRules(ctx, RulesRequest{MaxRuleGroups: -1}, 0)
 			require.NoError(t, err)
 			require.Equal(t, 5, len(ruleStateDescriptions.Groups))
 			stateByKey := map[string]*GroupStateDesc{}
@@ -2643,7 +2696,7 @@ func setupRuleGroupsStore(t *testing.T, ruleGroups []ruleGroupKey) (*objstore.In
 
 	// "upload" rule groups
 	for _, key := range ruleGroups {
-		desc := rulespb.ToProto(key.user, key.namespace, rulefmt.RuleGroup{Name: key.group})
+		desc := rulespb.ToProto(key.user, key.namespace, rulespb.RuleGroup{Name: key.group})
 		require.NoError(t, rs.SetRuleGroup(context.Background(), key.user, key.namespace, desc))
 	}
 

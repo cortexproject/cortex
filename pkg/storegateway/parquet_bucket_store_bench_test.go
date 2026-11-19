@@ -66,9 +66,10 @@ func BenchmarkParquetBucketStore_SeriesBatch(b *testing.B) {
 					},
 				},
 				BucketStore: cortex_tsdb.BucketStoreConfig{
-					SyncDir:                filepath.Join(tmpDir, "sync"),
-					BucketStoreType:        "parquet",
-					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+					SyncDir:                 filepath.Join(tmpDir, "sync"),
+					BucketStoreType:         "parquet",
+					ParquetQueryConcurrency: 4,
+					BlockDiscoveryStrategy:  string(cortex_tsdb.RecursiveDiscovery),
 				},
 			}
 			bucketClient, err := bucket.NewClient(context.Background(), storageCfg.Bucket, nil, "test", log.NewNopLogger(), prometheus.NewRegistry())
@@ -159,9 +160,10 @@ func BenchmarkParquetBucketStore_MultiShard(b *testing.B) {
 					},
 				},
 				BucketStore: cortex_tsdb.BucketStoreConfig{
-					SyncDir:                filepath.Join(tmpDir, "sync"),
-					BucketStoreType:        "parquet",
-					BlockDiscoveryStrategy: string(cortex_tsdb.RecursiveDiscovery),
+					SyncDir:                 filepath.Join(tmpDir, "sync"),
+					BucketStoreType:         "parquet",
+					ParquetQueryConcurrency: 4,
+					BlockDiscoveryStrategy:  string(cortex_tsdb.RecursiveDiscovery),
 				},
 			}
 			bucketClient, err := bucket.NewClient(ctx, storageCfg.Bucket, nil, "test", log.NewNopLogger(), prometheus.NewRegistry())

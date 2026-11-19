@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
+	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
@@ -426,6 +427,135 @@ func TestRuler_rules_limit(t *testing.T) {
 	require.JSONEq(t, string(expectedResponse), string(actual))
 }
 
+func TestRuler_rules_max_rules(t *testing.T) {
+	// mockRulesNamespaces gives user1 two groups of two rules each: namespace2/fail
+	// sorts before namespace1/group1 in rule group token order, so it is the group
+	// that survives truncation. Filters and pagination vary how many rules a single
+	// request returns.
+	for _, tc := range []struct {
+		name              string
+		rules             map[string]rulespb.RuleGroupList
+		userID            string
+		maxRules          uint
+		queryParams       string
+		expectedGroups    int
+		expectedRules     int
+		expectedNextToken string
+	}{
+		{
+			name:           "limit disabled returns every rule",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       0,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:           "count below the limit",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       10,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:           "count exactly at the limit",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       4,
+			expectedGroups: 2,
+			expectedRules:  4,
+		},
+		{
+			name:              "count over the limit is truncated, summed across groups",
+			rules:             mockRulesNamespaces,
+			userID:            "user1",
+			maxRules:          3,
+			expectedGroups:    1,
+			expectedRules:     2,
+			expectedNextToken: GetRuleGroupNextToken("namespace2", "fail"),
+		},
+		{
+			name:           "only the rules matching the filters are counted",
+			rules:          mockRulesNamespaces,
+			userID:         "user1",
+			maxRules:       3,
+			queryParams:    "?type=alert",
+			expectedGroups: 2,
+			expectedRules:  2,
+		},
+		{
+			name:              "paginating below the limit succeeds",
+			rules:             mockRulesNamespaces,
+			userID:            "user1",
+			maxRules:          3,
+			queryParams:       "?group_limit=1",
+			expectedGroups:    1,
+			expectedRules:     2,
+			expectedNextToken: GetRuleGroupNextToken("namespace2", "fail"),
+		},
+		{
+			// A rule group is indivisible, so the response is allowed to exceed the
+			// limit rather than return an unusable empty page. It is the only group, so
+			// there is nothing left to page to and no token is returned.
+			name:           "a lone rule group over the limit is returned whole",
+			rules:          mockRules,
+			userID:         "user1",
+			maxRules:       1,
+			expectedGroups: 1,
+			expectedRules:  2,
+		},
+		{
+			name:           "limit applies per request: tenant under the limit",
+			rules:          mockRules,
+			userID:         "user2",
+			maxRules:       1,
+			expectedGroups: 1,
+			expectedRules:  1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := defaultRulerConfig(t)
+			cfg.ListRulesMaxRules = tc.maxRules
+
+			r := newTestRuler(t, cfg, newMockRuleStore(tc.rules, nil), nil)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			req := requestFor(t, http.MethodGet, "https://localhost:8080/api/prom/api/v1/rules"+tc.queryParams, nil, tc.userID)
+			w := httptest.NewRecorder()
+			a.PrometheusRules(w, req)
+
+			resp := w.Result()
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			// util_api.Response holds Data as an any, so decode into a shape that
+			// exposes the rule groups directly.
+			parsed := struct {
+				Status    string        `json:"status"`
+				Data      RuleDiscovery `json:"data"`
+				ErrorType v1.ErrorType  `json:"errorType"`
+				Error     string        `json:"error"`
+			}{}
+			require.NoError(t, json.Unmarshal(body, &parsed))
+
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, "success", parsed.Status)
+			require.Empty(t, parsed.Error)
+			require.Len(t, parsed.Data.RuleGroups, tc.expectedGroups)
+
+			rulesCount := 0
+			for _, g := range parsed.Data.RuleGroups {
+				rulesCount += len(g.Rules)
+			}
+			require.Equal(t, tc.expectedRules, rulesCount)
+			require.Equal(t, tc.expectedNextToken, parsed.Data.GroupNextToken)
+		})
+	}
+}
+
 func TestRuler_alerts(t *testing.T) {
 	store := newMockRuleStore(mockRules, nil)
 	cfg := defaultRulerConfig(t)
@@ -785,4 +915,133 @@ func requestFor(t *testing.T, method string, url string, body io.Reader, userID 
 	ctx := user.InjectOrgID(req.Context(), userID)
 
 	return req.WithContext(ctx)
+}
+
+func TestRuler_CreateFederated(t *testing.T) {
+	const federatedGroup = `
+name: test
+interval: 15s
+source_tenants: [team-b, team-a, team-b]
+rules:
+- record: up_rule
+  expr: sum by (__tenant_id__) (up)
+`
+	const plainGroup = `
+name: test
+interval: 15s
+rules:
+- record: up_rule
+  expr: up
+`
+
+	tc := []struct {
+		name   string
+		cfg    func(cfg *Config)
+		user   string
+		input  string
+		status int
+		err    string
+		output string
+	}{
+		{
+			name:   "federated rules disabled",
+			cfg:    func(*Config) {},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 400,
+			err:    "federated rules are disabled\n",
+		},
+		{
+			name:   "plain group accepted when federated rules are disabled",
+			cfg:    func(*Config) {},
+			user:   "infra",
+			input:  plainGroup,
+			status: 202,
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up\n",
+		},
+		{
+			name: "tenant not allowed",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.AllowedFederatedTenants = []string{"infra"}
+			},
+			user:   "team-a",
+			input:  federatedGroup,
+			status: 403,
+			err:    "tenant is not allowed to create federated rule groups: team-a\n",
+		},
+		{
+			name: "invalid source tenant",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+			},
+			user:   "infra",
+			input:  strings.Replace(federatedGroup, "team-a", "team|a", 1),
+			status: 400,
+			err:    "invalid source tenant \"team|a\"",
+		},
+		{
+			name: "too many source tenants",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.TenantFederationMaxTenant = 1
+			},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 400,
+			err:    "too many source tenants (limit: 1 actual: 2)\n",
+		},
+		{
+			name: "stored with normalized source tenants",
+			cfg: func(cfg *Config) {
+				cfg.EnableFederatedRules = true
+				cfg.AllowedFederatedTenants = []string{"infra"}
+			},
+			user:   "infra",
+			input:  federatedGroup,
+			status: 202,
+			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: sum by (__tenant_id__) (up)\nsource_tenants:\n    - team-a\n    - team-b\n",
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			store := newMockRuleStore(make(map[string]rulespb.RuleGroupList), nil)
+			cfg := defaultRulerConfig(t)
+			tt.cfg(&cfg)
+
+			r := newTestRuler(t, cfg, store, nil)
+			defer services.StopAndAwaitTerminated(context.Background(), r) //nolint:errcheck
+
+			a := NewAPI(r, r.store, log.NewNopLogger())
+
+			router := mux.NewRouter()
+			router.Path("/api/v1/rules").Methods("GET").HandlerFunc(a.ListRules)
+			router.Path("/api/v1/rules/{namespace}").Methods("POST").HandlerFunc(a.CreateRuleGroup)
+			router.Path("/api/v1/rules/{namespace}/{groupName}").Methods("GET").HandlerFunc(a.GetRuleGroup)
+
+			req := requestFor(t, http.MethodPost, "https://localhost:8080/api/v1/rules/namespace", strings.NewReader(tt.input), tt.user)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, tt.status, w.Code)
+
+			if tt.err != "" {
+				require.Contains(t, w.Body.String(), tt.err)
+				return
+			}
+
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules/namespace/test", nil, tt.user)
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+			require.Equal(t, tt.output, w.Body.String())
+
+			// The rule group listing exposes source_tenants as well.
+			req = requestFor(t, http.MethodGet, "https://localhost:8080/api/v1/rules", nil, tt.user)
+			w = httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			require.Equal(t, 200, w.Code)
+			require.Equal(t, strings.Contains(tt.input, "source_tenants"), strings.Contains(w.Body.String(), "source_tenants"))
+		})
+	}
 }

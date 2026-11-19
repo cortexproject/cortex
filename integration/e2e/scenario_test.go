@@ -154,7 +154,7 @@ func TestStartStop(t *testing.T) {
 
 	m1 := e2edb.NewMinio(9000, bktName)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		require.NoError(t, s.Start(m1))
 		require.NoError(t, s.Stop(m1))
 	}

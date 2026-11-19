@@ -30,14 +30,19 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/httpgrpcutil"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 const testMaxOutstandingPerTenant = 5
 
 func setupScheduler(t *testing.T, reg prometheus.Registerer, distributedExecEnabled bool) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
+	return setupSchedulerWithTenantResolver(t, reg, distributedExecEnabled, nil)
+}
+
+func setupSchedulerWithTenantResolver(t *testing.T, reg prometheus.Registerer, distributedExecEnabled bool, tenantResolver users.Resolver) (*Scheduler, schedulerpb.SchedulerForFrontendClient, schedulerpb.SchedulerForQuerierClient) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), reg, distributedExecEnabled)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, tenantResolver, log.NewNopLogger(), reg, distributedExecEnabled)
 	require.NoError(t, err)
 
 	server := grpc.NewServer()
@@ -702,7 +707,7 @@ func (f *frontendMock) getRequest(queryID uint64) *httpgrpc.HTTPResponse {
 func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, false)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, nil, log.NewNopLogger(), nil, false)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"
@@ -749,7 +754,7 @@ func TestQueryFragmentRegistryCleanupSingleFragment(t *testing.T) {
 func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, true)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, nil, log.NewNopLogger(), nil, true)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"
@@ -841,7 +846,7 @@ func TestQueryFragmentRegistryCleanupMultipleFragments(t *testing.T) {
 func TestQueryFragmentRegistryNoLeak(t *testing.T) {
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
-	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, log.NewNopLogger(), nil, false)
+	s, err := NewScheduler(cfg, frontendv1.MockLimits{Queriers: 2, MaxOutstanding: testMaxOutstandingPerTenant}, nil, log.NewNopLogger(), nil, false)
 	require.NoError(t, err)
 
 	frontendAddr := "frontend1"
@@ -960,5 +965,33 @@ func TestSchedulerTrackedRequestsMetric(t *testing.T) {
 			cortex_query_scheduler_tracked_requests 0
 		`), "cortex_query_scheduler_tracked_requests")
 		return err == nil
+	})
+}
+
+func TestSchedulerTenantResolver(t *testing.T) {
+	enqueue := func(t *testing.T, tenantResolver users.Resolver) *schedulerpb.SchedulerToFrontend {
+		_, frontendClient, _ := setupSchedulerWithTenantResolver(t, nil, false, tenantResolver)
+		frontendLoop := initFrontendLoop(t, frontendClient, "frontend-12345")
+
+		require.NoError(t, frontendLoop.Send(&schedulerpb.FrontendToScheduler{
+			Type:        schedulerpb.ENQUEUE,
+			QueryID:     1,
+			UserID:      "tenant-a|tenant-b",
+			HttpRequest: &httpgrpc.HTTPRequest{Method: "GET", Url: "/hello"},
+		}))
+		resp, err := frontendLoop.Recv()
+		require.NoError(t, err)
+		return resp
+	}
+
+	t.Run("default resolver rejects multiple tenants", func(t *testing.T) {
+		resp := enqueue(t, nil)
+		require.Equal(t, schedulerpb.ERROR, resp.Status)
+		require.Contains(t, resp.Error, "unsupported character '|'")
+	})
+
+	t.Run("injected resolver is used", func(t *testing.T) {
+		resp := enqueue(t, users.NewMultiResolver())
+		require.Equal(t, schedulerpb.OK, resp.Status)
 	})
 }

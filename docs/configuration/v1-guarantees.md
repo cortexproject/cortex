@@ -38,6 +38,7 @@ Currently experimental features are:
 - Ruler
   - Evaluate rules to query frontend instead of ingesters (enabled via `-ruler.frontend-address`).
   - When `-ruler.frontend-address` is specified, the response format can be specified (via `-ruler.query-response-format`).
+  - Federated rule groups (`-ruler.enable-federated-rules`, `-ruler.allowed-federated-tenants`, `-ruler.disallowed-federated-tenants`).
 - S3 Server Side Encryption (SSE) using KMS (including per-tenant KMS config overrides).
 - Alertmanager:
   - Receiver integrations firewall (configured via `-alertmanager.receivers-firewall.*`)
@@ -46,6 +47,7 @@ Currently experimental features are:
 - TLS configuration in Etcd client.
 - OpenStack Swift storage support.
 - Oracle Cloud Infrastructure (OCI) Object Storage support.
+- Alibaba Cloud OSS storage support.
 - Metric relabeling in the distributor.
 - Ingester: do not unregister from ring on shutdown (`-ingester.unregister-on-shutdown=false`)
 - Distributor:
@@ -102,6 +104,7 @@ Currently experimental features are:
   - `alertmanager-sharding-ring.final-sleep` (duration) CLI flag
 - OTLP Receiver
   - Ingest delta temporality OTLP metrics (`-distributor.otlp.allow-delta-temporality=true`)
+  - Ingest OTLP metrics over gRPC (`-distributor.otlp.grpc-enabled=true`)
 - Persistent tokens in the Ruler Ring:
   - `-ruler.ring.tokens-file-path` (path) CLI flag
 - String interning for metrics labels

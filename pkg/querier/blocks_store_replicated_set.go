@@ -58,11 +58,12 @@ func newBlocksStoreReplicationSet(
 	zoneStableShuffleSharding bool,
 ) (*blocksStoreReplicationSet, error) {
 	s := &blocksStoreReplicationSet{
-		storesRing:        storesRing,
-		clientsPool:       newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
-		shardingStrategy:  shardingStrategy,
-		balancingStrategy: balancingStrategy,
-		limits:            limits,
+		storesRing:         storesRing,
+		clientsPool:        newStoreGatewayClientPool(client.NewRingServiceDiscovery(storesRing), clientConfig, logger, reg),
+		shardingStrategy:   shardingStrategy,
+		balancingStrategy:  balancingStrategy,
+		limits:             limits,
+		subservicesWatcher: services.NewFailureWatcher(),
 
 		zoneAwarenessEnabled:      zoneAwarenessEnabled,
 		zoneStableShuffleSharding: zoneStableShuffleSharding,

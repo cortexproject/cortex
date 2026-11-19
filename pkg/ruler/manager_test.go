@@ -1,24 +1,35 @@
 package ruler
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/prometheus/common/promslog"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ruler/rulespb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/backoff"
 	"github.com/cortexproject/cortex/pkg/util/test"
+	"github.com/cortexproject/cortex/pkg/util/users"
 )
 
 func TestSyncRuleGroups(t *testing.T) {
@@ -451,4 +462,333 @@ func TestValidateRuleGroup_RejectsEmptyGroupName(t *testing.T) {
 	// Should have validation errors
 	require.NotEmpty(t, errs, "Expected validation errors for empty group name")
 	require.Contains(t, errs[0].Error(), "rule group name must not be empty", "Error should mention empty group name")
+}
+
+func TestSyncRuleGroups_FederatedRuleGroups(t *testing.T) {
+	const owner = "infra"
+
+	newGroup := func(file, name string) *promRules.Group {
+		return promRules.NewGroup(promRules.GroupOptions{
+			Name: name,
+			File: file,
+			Opts: &promRules.ManagerOptions{Logger: promslog.NewNopLogger()},
+		})
+	}
+	federated := &rulespb.RuleGroupDesc{
+		Name:          "federated",
+		Namespace:     "ns",
+		Interval:      time.Minute,
+		User:          owner,
+		SourceTenants: []string{"team-a", "team-b"},
+		Rules:         []*rulespb.RuleDesc{{Record: "federated_rule", Expr: "up"}},
+	}
+	plain := &rulespb.RuleGroupDesc{
+		Name:      "plain",
+		Namespace: "ns",
+		Interval:  time.Minute,
+		User:      owner,
+		Rules:     []*rulespb.RuleDesc{{Record: "plain_rule", Expr: "up"}},
+	}
+
+	// Federated rule groups require the multi tenant resolver, like in production.
+	users.WithDefaultResolver(users.NewMultiResolver())
+	t.Cleanup(func() { users.WithDefaultResolver(users.NewSingleResolver()) })
+
+	newFederatedManager := func(t *testing.T, cfg Config, captured map[string]string) *DefaultMultiTenantManager {
+		cfg.RulePath = t.TempDir()
+		iterFunc := func(ctx context.Context, g *promRules.Group, _ time.Time) {
+			tenantIDs, err := users.TenantIDs(ctx)
+			require.NoError(t, err)
+			captured[g.Name()] = users.JoinTenantIDs(tenantIDs)
+		}
+		waitDurations := []time.Duration{time.Millisecond, time.Millisecond, time.Millisecond}
+		m, err := NewDefaultMultiTenantManagerWithIterationFunc(iterFunc, cfg, &ruleLimits{}, RuleManagerFactory([][]*promRules.Group{{}, {}, {}}, waitDurations), nil, prometheus.NewRegistry(), log.NewNopLogger())
+		require.NoError(t, err)
+		t.Cleanup(m.Stop)
+		return m
+	}
+
+	evaluate := func(m *DefaultMultiTenantManager, name string) {
+		file := m.mapper.ruleFilePath(owner, "ns")
+		m.ruleGroupIterationFuncFor(owner)(user.InjectOrgID(context.Background(), owner), newGroup(file, name), time.Now())
+	}
+
+	readRuleFile := func(t *testing.T, m *DefaultMultiTenantManager) string {
+		content, err := afero.ReadFile(m.mapper.FS, m.mapper.ruleFilePath(owner, "ns"))
+		require.NoError(t, err)
+		return string(content)
+	}
+
+	t.Run("federated groups query their source tenants", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		require.NotNil(t, getManager(m, owner))
+		require.Contains(t, readRuleFile(t, m), "federated_rule")
+
+		evaluate(m, "federated")
+		evaluate(m, "plain")
+		require.Equal(t, "team-a|team-b", captured["federated"])
+		require.Equal(t, owner, captured["plain"])
+
+		// Storing the same group without source tenants stops the injection at the next
+		// evaluation, even though the prometheus manager keeps the existing group.
+		noSourceTenants := *federated
+		noSourceTenants.SourceTenants = nil
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&noSourceTenants, plain}})
+		require.Contains(t, readRuleFile(t, m), "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups are skipped when disabled", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		require.NotNil(t, getManager(m, owner))
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups are skipped when the owner is not allowed", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, AllowedFederatedTenants: []string{"other"}}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+	})
+
+	t.Run("federated groups are skipped when they exceed the current max tenant", func(t *testing.T) {
+		captured := map[string]string{}
+		// The group was stored with two source tenants before the limit was lowered.
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, TenantFederationMaxTenant: 1}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups with regex metacharacters are skipped when the regex matcher is enabled", func(t *testing.T) {
+		captured := map[string]string{}
+		// The group was stored while the regex matcher was disabled.
+		regexTenant := *federated
+		regexTenant.SourceTenants = []string{"team.a", "team-b"}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true, TenantFederationRegexMatcherEnabled: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {&regexTenant, plain}})
+		content := readRuleFile(t, m)
+		require.Contains(t, content, "plain_rule")
+		require.NotContains(t, content, "federated_rule")
+
+		evaluate(m, "federated")
+		require.Equal(t, owner, captured["federated"])
+	})
+
+	t.Run("federated groups are forgotten when the user is removed", func(t *testing.T) {
+		captured := map[string]string{}
+		m := newFederatedManager(t, Config{EnableFederatedRules: true}, captured)
+
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{owner: {federated}})
+		m.SyncRuleGroups(context.Background(), map[string]rulespb.RuleGroupList{})
+		m.federatedGroupsMtx.RLock()
+		defer m.federatedGroupsMtx.RUnlock()
+		require.Empty(t, m.federatedGroups)
+	})
+}
+
+const testAlertsPayload = `[{"labels":{"alertname":"TestAlert"}}]`
+
+func newTestNotificationRequest(t *testing.T, url string) *http.Request {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader([]byte(testAlertsPayload)))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func newTestNotificationRetriesCounter() prometheus.Counter {
+	return prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "cortex",
+		Name:      "ruler_notification_retries_total",
+		Help:      "Total number of notifications to the Alertmanager retried after a retriable failure.",
+	})
+}
+
+func TestSendNotification(t *testing.T) {
+	for name, tc := range map[string]struct {
+		failures        int
+		failureStatus   int
+		maxRetries      int
+		expectedCalls   int64
+		expectedStatus  int
+		expectedRetries float64
+	}{
+		"the retries are disabled by default": {
+			failures:        1,
+			failureStatus:   http.StatusServiceUnavailable,
+			maxRetries:      0,
+			expectedCalls:   1,
+			expectedStatus:  http.StatusServiceUnavailable,
+			expectedRetries: 0,
+		},
+		"a server error is retried until the Alertmanager accepts the alerts": {
+			failures:        1,
+			failureStatus:   http.StatusServiceUnavailable,
+			maxRetries:      2,
+			expectedCalls:   2,
+			expectedStatus:  http.StatusOK,
+			expectedRetries: 1,
+		},
+		"a server error is retried no more than the configured number of times": {
+			failures:        10,
+			failureStatus:   http.StatusServiceUnavailable,
+			maxRetries:      2,
+			expectedCalls:   3,
+			expectedStatus:  http.StatusServiceUnavailable,
+			expectedRetries: 2,
+		},
+		"a client error is not retried": {
+			failures:        1,
+			failureStatus:   http.StatusBadRequest,
+			maxRetries:      2,
+			expectedCalls:   1,
+			expectedStatus:  http.StatusBadRequest,
+			expectedRetries: 0,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			calls := atomic.NewInt64(0)
+			callsWithTheAlerts := atomic.NewInt64(0)
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Every attempt, and not only the first one, must carry the alerts.
+				if body, err := io.ReadAll(r.Body); err == nil && string(body) == testAlertsPayload {
+					callsWithTheAlerts.Inc()
+				}
+				if calls.Inc() <= int64(tc.failures) {
+					w.WriteHeader(tc.failureStatus)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			retries := newTestNotificationRetriesCounter()
+			resp, err := sendNotification(context.Background(), server.Client(), newTestNotificationRequest(t, server.URL), backoff.Config{
+				MinBackoff: time.Millisecond,
+				MaxBackoff: 5 * time.Millisecond,
+				MaxRetries: tc.maxRetries,
+			}, retries, log.NewNopLogger())
+
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+			require.Equal(t, tc.expectedCalls, calls.Load())
+			require.Equal(t, tc.expectedCalls, callsWithTheAlerts.Load())
+			require.Equal(t, tc.expectedRetries, testutil.ToFloat64(retries))
+		})
+	}
+}
+
+func TestSendNotificationRetriesAConnectionClosedByTheAlertmanager(t *testing.T) {
+	calls := atomic.NewInt64(0)
+	connections := atomic.NewInt64(0)
+
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Inc() > 1 {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// Close the connection without replying, which is what the ruler gets as an
+		// EOF when the Alertmanager closes a connection it considers idle.
+		conn, _, err := w.(http.Hijacker).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Inc()
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	retries := newTestNotificationRetriesCounter()
+	resp, err := sendNotification(context.Background(), server.Client(), newTestNotificationRequest(t, server.URL), backoff.Config{
+		MinBackoff: time.Millisecond,
+		MaxBackoff: 5 * time.Millisecond,
+		MaxRetries: 1,
+	}, retries, log.NewNopLogger())
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, float64(1), testutil.ToFloat64(retries))
+	// The retry cannot reuse the connection the Alertmanager closed.
+	require.GreaterOrEqual(t, connections.Load(), int64(2))
+}
+
+func TestSendNotificationStopsWhenTheNotificationTimeoutIsReached(t *testing.T) {
+	calls := atomic.NewInt64(0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Inc()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	// The notification timeout, which the ruler puts on the context of the
+	// notification, leaves time for one retry out of the hundred configured.
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	retries := newTestNotificationRetriesCounter()
+	start := time.Now()
+	_, err := sendNotification(ctx, server.Client(), newTestNotificationRequest(t, server.URL), backoff.Config{
+		MinBackoff: 60 * time.Millisecond,
+		MaxBackoff: 60 * time.Millisecond,
+		MaxRetries: 100,
+	}, retries, log.NewNopLogger())
+
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Less(t, time.Since(start), time.Second)
+	require.Less(t, calls.Load(), int64(100))
+}
+
+func TestSendNotificationDoesNotRetryARequestThatCannotBeReplayed(t *testing.T) {
+	calls := atomic.NewInt64(0)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Inc()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	req := newTestNotificationRequest(t, server.URL)
+	req.GetBody = nil
+
+	retries := newTestNotificationRetriesCounter()
+	resp, err := sendNotification(context.Background(), server.Client(), req, backoff.Config{
+		MinBackoff: time.Millisecond,
+		MaxBackoff: 5 * time.Millisecond,
+		MaxRetries: 2,
+	}, retries, log.NewNopLogger())
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	require.Equal(t, int64(1), calls.Load())
+	require.Equal(t, float64(0), testutil.ToFloat64(retries))
 }

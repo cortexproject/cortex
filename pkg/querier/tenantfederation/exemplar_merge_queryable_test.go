@@ -122,9 +122,6 @@ func getFixtureExemplarResult2() []exemplar.QueryResult {
 }
 
 func Test_MergeExemplarQuerier_Select(t *testing.T) {
-	// set a multi tenant resolver
-	users.WithDefaultResolver(users.NewMultiResolver())
-
 	tests := []struct {
 		name             string
 		upstream         mockExemplarQueryable
@@ -331,7 +328,7 @@ func Test_MergeExemplarQuerier_Select(t *testing.T) {
 				MaxConcurrent:    defaultMaxConcurrency,
 				AllowPartialData: test.allowPartialData,
 			}
-			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, true, reg)
+			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, users.NewMultiResolver(), true, reg)
 			ctx := user.InjectOrgID(context.Background(), test.orgId)
 			q, err := exemplarQueryable.ExemplarQuerier(ctx)
 			require.NoError(t, err)
@@ -368,7 +365,6 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 	tenantFederationConfig := Config{UserSyncInterval: time.Second}
 	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 	require.NoError(t, err)
-	users.WithDefaultResolver(regexResolver)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 	// wait update knownUsers
@@ -479,7 +475,7 @@ func Test_MergeExemplarQuerier_Select_WhenUseRegexResolver(t *testing.T) {
 				MaxConcurrent:    defaultMaxConcurrency,
 				AllowPartialData: test.allowPartialData,
 			}
-			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, false, reg)
+			exemplarQueryable := NewExemplarQueryable(&test.upstream, cfg, regexResolver, false, reg)
 			ctx := user.InjectOrgID(context.Background(), test.orgId)
 			q, err := exemplarQueryable.ExemplarQuerier(ctx)
 			require.NoError(t, err)

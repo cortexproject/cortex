@@ -19,19 +19,19 @@ func TestV2AlertGroups(t *testing.T) {
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.161+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.163Z","labels":{"group":"group_1","name":"alert_1"}}],` +
-			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}},` +
+			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}},` +
 			`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.165+02:00","fingerprint":"465de60f606461c3",` +
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.165+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.167Z","labels":{"group":"group_2","name":"alert_3"}}],` +
-			`"labels":{"group":"group_2"},"receiver":{"name":"dummy"}}` +
+			`"labels":{"group":"group_2"},"receiver":{"name":"dummy"},"routeLabels":{}}` +
 			`]`),
 		[]byte(`[` +
 			`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.163+02:00","fingerprint":"c4b8b79a607bee77",` +
 			`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.163+02:00",` +
 			`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 			`"updatedAt":"2021-04-21T07:47:32.165Z","labels":{"group":"group_1","name":"alert_2"}}],` +
-			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}}` +
+			`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}}` +
 			`]`),
 		[]byte(`[]`),
 	}
@@ -45,12 +45,12 @@ func TestV2AlertGroups(t *testing.T) {
 		`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.163+02:00",` +
 		`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 		`"updatedAt":"2021-04-21T07:47:32.165Z","labels":{"group":"group_1","name":"alert_2"}}],` +
-		`"labels":{"group":"group_1"},"receiver":{"name":"dummy"}},` +
+		`"labels":{"group":"group_1"},"receiver":{"name":"dummy"},"routeLabels":{}},` +
 		`{"alerts":[{"annotations":{},"endsAt":"2021-04-21T10:47:32.165+02:00","fingerprint":"465de60f606461c3",` +
 		`"receivers":[{"name":"dummy"}],"startsAt":"2021-04-21T09:47:32.165+02:00",` +
 		`"status":{"inhibitedBy":[],"mutedBy":[],"silencedBy":[],"state":"unprocessed"},` +
 		`"updatedAt":"2021-04-21T07:47:32.167Z","labels":{"group":"group_2","name":"alert_3"}}],` +
-		`"labels":{"group":"group_2"},"receiver":{"name":"dummy"}}]`)
+		`"labels":{"group":"group_2"},"receiver":{"name":"dummy"},"routeLabels":{}}]`)
 
 	out, err := V2AlertGroups{}.MergeResponses(in)
 	require.NoError(t, err)
@@ -63,6 +63,13 @@ func v2group(label, receiver string, alerts ...*v2_models.GettableAlert) *v2_mod
 		Labels:   v2_models.LabelSet{"some-label": label},
 		Receiver: &v2_models.ReceiverReference{Name: &receiver},
 	}
+}
+
+// v2routedGroup is v2group with route labels, as returned by routes that set `labels`.
+func v2routedGroup(label, receiver, routeLabel string, alerts ...*v2_models.GettableAlert) *v2_models.AlertGroup {
+	group := v2group(label, receiver, alerts...)
+	group.RouteLabels = v2_models.LabelSet{"owner": routeLabel}
+	return group
 }
 
 func v2groups(groups ...*v2_models.AlertGroup) v2_models.AlertGroups {
@@ -125,6 +132,25 @@ func TestMergeV2AlertGroups(t *testing.T) {
 			out: v2groups(
 				v2group("g1", "r1", alert1, alert2),
 				v2group("g2", "r1", alert1, alert3)),
+		},
+		{
+			name: "two groups with same labels and receiver but different route labels, should return two groups",
+			in:   v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
+			out:  v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
+		},
+		{
+			name: "same routed groups from multiple replicas, should merge per route",
+			in: v2groups(
+				v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2),
+				v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert3)),
+			out: v2groups(
+				v2routedGroup("g1", "r1", "a", alert1),
+				v2routedGroup("g1", "r1", "b", alert2, alert3)),
+		},
+		{
+			name: "unordered groups with same labels and receiver, should return groups ordered by route labels",
+			in:   v2groups(v2routedGroup("g1", "r1", "b", alert2), v2routedGroup("g1", "r1", "a", alert1)),
+			out:  v2groups(v2routedGroup("g1", "r1", "a", alert1), v2routedGroup("g1", "r1", "b", alert2)),
 		},
 		{
 			name: "many unordered groups, should return groups ordered by labels then receiver",

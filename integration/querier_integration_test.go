@@ -51,7 +51,7 @@ func testMetadataQueriesWithBlocksStorage(
 
 		labelValuesTests []labelValuesTest
 
-		labelNames []string
+		labelNames model.LabelNames
 	}{
 		"query metadata entirely inside the head range": {
 			from: firstSeriesInIngesterHeadTs,
@@ -87,7 +87,7 @@ func testMetadataQueriesWithBlocksStorage(
 					matches: []string{lastSeriesInStorageName},
 				},
 			},
-			labelNames: []string{labels.MetricName, firstSeriesInIngesterHeadName},
+			labelNames: model.LabelNames{labels.MetricName, model.LabelName(firstSeriesInIngesterHeadName)},
 		},
 		"query metadata entirely inside the ingester range but outside the head range": {
 			from: lastSeriesInIngesterBlocksTs,
@@ -124,7 +124,7 @@ func testMetadataQueriesWithBlocksStorage(
 					matches: []string{firstSeriesInIngesterHeadName},
 				},
 			},
-			labelNames: []string{labels.MetricName, lastSeriesInIngesterBlocksName},
+			labelNames: model.LabelNames{labels.MetricName, model.LabelName(lastSeriesInIngesterBlocksName)},
 		},
 		"query metadata partially inside the ingester range": {
 			from: lastSeriesInStorageTs.Add(-blockRangePeriod),
@@ -167,7 +167,7 @@ func testMetadataQueriesWithBlocksStorage(
 					matches: []string{lastSeriesInStorageName, lastSeriesInIngesterBlocksName},
 				},
 			},
-			labelNames: []string{labels.MetricName, lastSeriesInStorageName, lastSeriesInIngesterBlocksName, firstSeriesInIngesterHeadName},
+			labelNames: model.LabelNames{labels.MetricName, model.LabelName(lastSeriesInStorageName), model.LabelName(lastSeriesInIngesterBlocksName), model.LabelName(firstSeriesInIngesterHeadName)},
 		},
 		"query metadata entirely outside the ingester range should return the head data as well": {
 			from: lastSeriesInStorageTs.Add(-2 * blockRangePeriod),
@@ -204,7 +204,7 @@ func testMetadataQueriesWithBlocksStorage(
 					matches: []string{firstSeriesInIngesterHeadName},
 				},
 			},
-			labelNames: []string{labels.MetricName, lastSeriesInStorageName, firstSeriesInIngesterHeadName},
+			labelNames: model.LabelNames{labels.MetricName, model.LabelName(lastSeriesInStorageName), model.LabelName(firstSeriesInIngesterHeadName)},
 		},
 	}
 

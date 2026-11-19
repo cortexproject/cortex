@@ -66,36 +66,13 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			requestTotal.WithLabelValues(labelValueOTLP).Inc()
 		}
 
-		prwReq := cortexpb.WriteRequest{
-			Source:                  cortexpb.API,
-			Metadata:                nil,
-			SkipLabelNameValidation: false,
-		}
-
-		// otlp to prompb TimeSeries
-		promTsList, promMetadata, err := convertToPromTS(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
-		if err != nil && len(promTsList) == 0 {
+		prwReq, err := convertOTLPToWriteRequest(r.Context(), req.Metrics(), cfg, overrides, userID, logger)
+		if err != nil && len(prwReq.Timeseries) == 0 {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// convert prompb to cortexpb TimeSeries
-		tsList := make([]cortexpb.PreallocTimeseries, 0, len(promTsList))
-		for _, v := range promTsList {
-			tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
-				Labels:     makeLabels(v.Labels),
-				Samples:    makeSamples(v.Samples),
-				Exemplars:  makeExemplars(v.Exemplars),
-				Histograms: makeHistograms(v.Histograms),
-			}})
-		}
-
-		metadata := makeMetadata(promMetadata)
-
-		prwReq.Timeseries = tsList
-		prwReq.Metadata = metadata
-
-		if _, err := push(ctx, &prwReq); err != nil {
+		if _, err := push(ctx, prwReq); err != nil {
 			if errors.Is(err, context.Canceled) {
 				err = httpgrpc.Errorf(util_api.StatusClientClosedRequest, "%s", err.Error())
 			}
@@ -112,6 +89,39 @@ func OTLPHandler(maxRecvMsgSize int, overrides *validation.Overrides, cfg distri
 			http.Error(w, string(resp.Body), int(resp.Code))
 		}
 	})
+}
+
+// convertOTLPToWriteRequest converts OTLP metrics into a Cortex WriteRequest. It is
+// shared by the HTTP and the gRPC OTLP receivers.
+//
+// The returned error is non-nil when some metrics could not be converted. The returned
+// request is never nil, and it holds every series that did convert. The caller decides
+// whether a partial conversion is a failure.
+func convertOTLPToWriteRequest(ctx context.Context, md pmetric.Metrics, cfg distributor.OTLPConfig, overrides *validation.Overrides, userID string, logger log.Logger) (*cortexpb.WriteRequest, error) {
+	prwReq := &cortexpb.WriteRequest{
+		Source:                  cortexpb.API,
+		Metadata:                nil,
+		SkipLabelNameValidation: false,
+	}
+
+	// otlp to prompb TimeSeries
+	promTsList, promMetadata, convErr := convertToPromTS(ctx, md, cfg, overrides, userID, logger)
+
+	// convert prompb to cortexpb TimeSeries
+	tsList := make([]cortexpb.PreallocTimeseries, 0, len(promTsList))
+	for _, v := range promTsList {
+		tsList = append(tsList, cortexpb.PreallocTimeseries{TimeSeries: &cortexpb.TimeSeries{
+			Labels:     makeLabels(v.Labels),
+			Samples:    makeSamples(v.Samples),
+			Exemplars:  makeExemplars(v.Exemplars),
+			Histograms: makeHistograms(v.Histograms),
+		}})
+	}
+
+	prwReq.Timeseries = tsList
+	prwReq.Metadata = makeMetadata(promMetadata)
+
+	return prwReq, convErr
 }
 
 func makeMetadata(promMetadata []prompb.MetricMetadata) []*cortexpb.MetricMetadata {

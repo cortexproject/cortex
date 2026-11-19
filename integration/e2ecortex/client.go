@@ -336,6 +336,12 @@ func otlpWriteRequest(name, unit string, temporality pmetric.AggregationTemporal
 	return pmetricotlp.NewExportRequestFromMetrics(d)
 }
 
+// OTLPWriteRequest builds an OTLP export request with one counter and one exemplar. Use it
+// to push over OTLP gRPC, which the HTTP client does not support.
+func OTLPWriteRequest(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) pmetricotlp.ExportRequest {
+	return otlpWriteRequest(name, unit, temporality, labels...)
+}
+
 func (c *Client) OTLPPushExemplar(name, unit string, temporality pmetric.AggregationTemporality, labels ...prompb.Label) (*http.Response, error) {
 	data, err := otlpWriteRequest(name, unit, temporality, labels...).MarshalProto()
 	if err != nil {
@@ -683,7 +689,7 @@ func (c *Client) LabelValues(label string, start, end time.Time, matches []strin
 }
 
 // LabelNames gets label names
-func (c *Client) LabelNames(start, end time.Time, matchers ...string) ([]string, error) {
+func (c *Client) LabelNames(start, end time.Time, matchers ...string) (model.LabelNames, error) {
 	result, _, err := c.querierClient.LabelNames(context.Background(), matchers, start, end)
 	return result, err
 }
@@ -818,12 +824,15 @@ func (c *Client) GetRuleGroups() (map[string][]rulefmt.RuleGroup, error) {
 
 // SetRuleGroup configures the provided rulegroup to the ruler.
 func (c *Client) SetRuleGroup(rulegroup rulefmt.RuleGroup, namespace string) error {
-	// Create write request
 	data, err := yaml.Marshal(rulegroup)
 	if err != nil {
 		return err
 	}
+	return c.SetRuleGroupYAML(data, namespace)
+}
 
+// SetRuleGroupYAML configures the provided YAML encoded rulegroup to the ruler.
+func (c *Client) SetRuleGroupYAML(data []byte, namespace string) error {
 	// Create HTTP request
 	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/prom/rules/%s", c.rulerAddress, url.PathEscape(namespace)), bytes.NewReader(data))
 	if err != nil {
@@ -1095,8 +1104,9 @@ func (c *Client) GetAlertsV2(ctx context.Context) ([]model.Alert, error) {
 }
 
 type AlertGroup struct {
-	Labels model.LabelSet `json:"labels"`
-	Alerts []model.Alert  `json:"alerts"`
+	Labels      model.LabelSet `json:"labels"`
+	RouteLabels model.LabelSet `json:"routeLabels"`
+	Alerts      []model.Alert  `json:"alerts"`
 }
 
 func (c *Client) GetAlertGroups(ctx context.Context) ([]AlertGroup, error) {

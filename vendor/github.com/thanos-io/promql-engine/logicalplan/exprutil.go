@@ -63,6 +63,8 @@ func IsConstantExpr(expr Node) bool {
 		return IsConstantExpr(texpr.Expr)
 	case *Parens:
 		return IsConstantExpr(texpr.Expr)
+	case *Unary:
+		return IsConstantExpr(texpr.Expr)
 	case *FunctionCall:
 		constArgs := true
 		for _, arg := range texpr.Args {

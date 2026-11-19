@@ -318,6 +318,48 @@ func TestUpdater_UpdateIndex_ShouldSkipBlockMarkedForDeletionWithMissingGlobalMa
 	assert.Empty(t, nonCompactBlocks)
 }
 
+func TestUpdater_UpdateIndex_ShouldDeleteOrphanedGlobalDeletionMarks(t *testing.T) {
+	const userID = "user-1"
+
+	bkt, _ := testutil.PrepareFilesystemBucket(t)
+
+	ctx := context.Background()
+	logger := log.NewNopLogger()
+
+	bkt = BucketWithGlobalMarkers(bkt)
+	block1 := testutil.MockStorageBlock(t, bkt, userID, 10, 20)
+	block2 := testutil.MockStorageBlock(t, bkt, userID, 20, 30)
+	testutil.MockStorageDeletionMark(t, bkt, userID, block2)
+
+	// Orphaned marker: the block does not exist at all.
+	orphanID := ulid.MustNew(ulid.Now()+1, nil)
+	mark, err := json.Marshal(metadata.DeletionMark{ID: orphanID, Version: metadata.DeletionMarkVersion1, DeletionTime: time.Now().Add(-24 * time.Hour).Unix()})
+	require.NoError(t, err)
+	orphanPath := path.Join(userID, BlockDeletionMarkFilepath(orphanID))
+	require.NoError(t, bkt.Upload(ctx, orphanPath, bytes.NewReader(mark)))
+
+	// Global marker of a block which still has files but no local marker is left untouched.
+	partialID := ulid.MustNew(ulid.Now()+2, nil)
+	partialPath := path.Join(userID, BlockDeletionMarkFilepath(partialID))
+	require.NoError(t, bkt.Upload(ctx, partialPath, bytes.NewReader(mark)))
+	require.NoError(t, bkt.Upload(ctx, path.Join(userID, partialID.String(), "index"), strings.NewReader("x")))
+
+	w := NewUpdater(bkt, userID, nil, logger)
+	idx, _, _, err := w.UpdateIndex(ctx, nil)
+	require.NoError(t, err)
+	assertBucketIndexEqual(t, idx, bkt, userID,
+		[]tsdb.BlockMeta{block1, block2},
+		[]*metadata.DeletionMark{{ID: block2.ULID, Version: metadata.DeletionMarkVersion1, DeletionTime: idx.BlockDeletionMarks[0].DeletionTime}})
+
+	exists, err := bkt.Exists(ctx, orphanPath)
+	require.NoError(t, err)
+	assert.False(t, exists)
+
+	exists, err = bkt.Exists(ctx, partialPath)
+	require.NoError(t, err)
+	assert.True(t, exists)
+}
+
 func TestUpdater_UpdateIndex_NoTenantInTheBucket(t *testing.T) {
 	const userID = "user-1"
 

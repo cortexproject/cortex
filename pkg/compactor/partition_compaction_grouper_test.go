@@ -2294,3 +2294,242 @@ type expectedCompactionJob struct {
 	rangeStart     int64
 	rangeEnd       int64
 }
+
+// testBlockRanges mirrors the default -compactor.block-ranges.
+var testBlockRanges = cortextsdb.DurationList{2 * time.Hour, 12 * time.Hour, 24 * time.Hour}
+
+// elapsedRange returns an aligned time range of size r that ended between r and 2r ago,
+// along with how long ago it ended. Stepping one full range back from the current window
+// keeps the range's age comfortably above the margins the delay tests rely on, whatever
+// time of day the test runs at.
+func elapsedRange(r time.Duration) (rangeStart, rangeEnd int64, age time.Duration) {
+	rangeEnd = getRangeStartBasedOnNow(r) - r.Milliseconds()
+	rangeStart = rangeEnd - r.Milliseconds()
+	age = time.Duration(time.Now().UnixMilli()-rangeEnd) * time.Millisecond
+	return rangeStart, rangeEnd, age
+}
+
+// blockMetaForRange returns the meta of a block spanning [minTime, maxTime].
+func blockMetaForRange(id uint64, minTime, maxTime int64) *metadata.Meta {
+	return &metadata.Meta{ULID: ulid.MustNew(id, nil), MinTime: minTime, MaxTime: maxTime}
+}
+
+func TestPartitionCompactionGrouper_CompactionDelayForRange(t *testing.T) {
+	const cleanupInterval = 15 * time.Minute
+	defaultDelay := defaultCompactionDelayCleanupIntervalMultiplier * cleanupInterval
+	configuredDelays := cortextsdb.DurationList{2 * time.Hour, 150 * time.Minute, 30 * time.Minute}
+
+	tests := map[string]struct {
+		blockRangesCompactionDelay cortextsdb.DurationList
+		timeRange                  time.Duration
+		expected                   time.Duration
+	}{
+		"falls back to the default delay for the first range when no delay is configured": {
+			timeRange: 2 * time.Hour,
+			expected:  defaultDelay,
+		},
+		"falls back to the default delay for the middle range when no delay is configured": {
+			timeRange: 12 * time.Hour,
+			expected:  defaultDelay,
+		},
+		"uses the configured delay of the first range": {
+			blockRangesCompactionDelay: configuredDelays,
+			timeRange:                  2 * time.Hour,
+			expected:                   2 * time.Hour,
+		},
+		"uses the configured delay of the middle range": {
+			blockRangesCompactionDelay: configuredDelays,
+			timeRange:                  12 * time.Hour,
+			expected:                   150 * time.Minute,
+		},
+		"uses the configured delay of the last range": {
+			blockRangesCompactionDelay: configuredDelays,
+			timeRange:                  24 * time.Hour,
+			expected:                   30 * time.Minute,
+		},
+		"honours a configured zero delay instead of falling back to the default": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{0, 150 * time.Minute, 30 * time.Minute},
+			timeRange:                  2 * time.Hour,
+			expected:                   0,
+		},
+		"falls back to the default delay for a time range that is not a configured block range": {
+			blockRangesCompactionDelay: configuredDelays,
+			timeRange:                  8 * time.Hour,
+			expected:                   defaultDelay,
+		},
+		"falls back to the default delay when the configured delay does not cover every range": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{2 * time.Hour},
+			timeRange:                  2 * time.Hour,
+			expected:                   defaultDelay,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			g := &PartitionCompactionGrouper{
+				compactorCfg: Config{
+					BlockRanges:                testBlockRanges,
+					BlockRangesCompactionDelay: testData.blockRangesCompactionDelay,
+					CleanupInterval:            cleanupInterval,
+				},
+			}
+
+			require.Equal(t, testData.expected, g.compactionDelayForRange(testData.timeRange.Milliseconds()))
+		})
+	}
+}
+
+func TestPartitionCompactionGrouper_GroupBlocksByRange_CompactionDelay(t *testing.T) {
+	// Two blocks filling an elapsed 2h range, so the only thing deciding whether they are
+	// grouped is the delay applied to the 2h range.
+	rangeStart, rangeEnd, age := elapsedRange(2 * time.Hour)
+	blocks := []*metadata.Meta{
+		blockMetaForRange(1, rangeStart, rangeEnd),
+		blockMetaForRange(2, rangeStart, rangeEnd),
+	}
+
+	// The gate is rangeEnd < now-delay, so a delay shorter than the range age lets the group
+	// through and a longer one holds it back. The clock only advances while the test runs,
+	// which makes the range older, so the eligible cases can sit 1ms from the boundary while
+	// the ineligible ones need a margin wider than the test's own runtime.
+	tests := map[string]struct {
+		blockRangesCompactionDelay cortextsdb.DurationList
+		expectGroup                bool
+	}{
+		"eligible with a zero delay": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{0, 0, 0},
+			expectGroup:                true,
+		},
+		"eligible when the delay is 1ms shorter than the range age": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{age - time.Millisecond, 0, 0},
+			expectGroup:                true,
+		},
+		"not eligible when the delay exceeds the range age": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{age + time.Minute, 0, 0},
+			expectGroup:                false,
+		},
+		// Proves the lookup is positional: the 2h range must ignore the entries belonging to
+		// the 12h and 24h ranges, even when those are long enough to block everything.
+		"reads only the entry of its own range": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{0, 365 * 24 * time.Hour, 365 * 24 * time.Hour},
+			expectGroup:                true,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			g := &PartitionCompactionGrouper{
+				compactorCfg: Config{
+					BlockRanges:                testBlockRanges,
+					BlockRangesCompactionDelay: testData.blockRangesCompactionDelay,
+					CleanupInterval:            15 * time.Minute,
+				},
+			}
+
+			groups := g.groupBlocksByRange(blocks, (2 * time.Hour).Milliseconds())
+
+			if !testData.expectGroup {
+				require.Empty(t, groups)
+				return
+			}
+
+			require.Len(t, groups, 1)
+			require.Equal(t, rangeEnd, groups[0].rangeEnd)
+			require.Len(t, groups[0].blocks, len(blocks))
+		})
+	}
+}
+
+func TestPartitionCompactionGrouper_GroupBlocksByRange_CompactionDelayOfNonFirstRange(t *testing.T) {
+	// Two blocks inside an elapsed 12h range, so grouping at the 12h range depends on the
+	// second entry of the delay list. The first entry is set long enough to block everything,
+	// proving the 12h range does not read it.
+	rangeStart, rangeEnd, age := elapsedRange(12 * time.Hour)
+	blocks := []*metadata.Meta{
+		blockMetaForRange(1, rangeStart, rangeStart+2*H),
+		blockMetaForRange(2, rangeStart+2*H, rangeStart+4*H),
+	}
+	blockingDelay := 365 * 24 * time.Hour
+
+	tests := map[string]struct {
+		blockRangesCompactionDelay cortextsdb.DurationList
+		expectGroup                bool
+	}{
+		"eligible when the 12h delay has elapsed": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{blockingDelay, 0, blockingDelay},
+			expectGroup:                true,
+		},
+		"not eligible when the 12h delay exceeds the range age": {
+			blockRangesCompactionDelay: cortextsdb.DurationList{0, age + time.Minute, 0},
+			expectGroup:                false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			g := &PartitionCompactionGrouper{
+				compactorCfg: Config{
+					BlockRanges:                testBlockRanges,
+					BlockRangesCompactionDelay: testData.blockRangesCompactionDelay,
+					CleanupInterval:            15 * time.Minute,
+				},
+			}
+
+			groups := g.groupBlocksByRange(blocks, (12 * time.Hour).Milliseconds())
+
+			if !testData.expectGroup {
+				require.Empty(t, groups)
+				return
+			}
+
+			require.Len(t, groups, 1)
+			require.Equal(t, rangeEnd, groups[0].rangeEnd)
+			require.Len(t, groups[0].blocks, len(blocks))
+		})
+	}
+}
+
+func TestPartitionCompactionGrouper_GroupBlocksByRange_DefaultDelayFollowsCleanupInterval(t *testing.T) {
+	rangeStart, rangeEnd, age := elapsedRange(2 * time.Hour)
+	blocks := []*metadata.Meta{
+		blockMetaForRange(1, rangeStart, rangeEnd),
+		blockMetaForRange(2, rangeStart, rangeEnd),
+	}
+
+	// With no delay configured the gate must still be twice the cleanup interval, so a
+	// cleanup interval either side of age/2 decides whether the group is eligible.
+	tests := map[string]struct {
+		cleanupInterval time.Duration
+		expectGroup     bool
+	}{
+		"eligible once twice the cleanup interval has elapsed": {
+			cleanupInterval: (age - time.Minute) / defaultCompactionDelayCleanupIntervalMultiplier,
+			expectGroup:     true,
+		},
+		"not eligible before twice the cleanup interval has elapsed": {
+			cleanupInterval: (age + time.Minute) / defaultCompactionDelayCleanupIntervalMultiplier,
+			expectGroup:     false,
+		},
+	}
+
+	for testName, testData := range tests {
+		t.Run(testName, func(t *testing.T) {
+			g := &PartitionCompactionGrouper{
+				compactorCfg: Config{
+					BlockRanges:     testBlockRanges,
+					CleanupInterval: testData.cleanupInterval,
+				},
+			}
+
+			groups := g.groupBlocksByRange(blocks, (2 * time.Hour).Milliseconds())
+
+			if !testData.expectGroup {
+				require.Empty(t, groups)
+				return
+			}
+
+			require.Len(t, groups, 1)
+			require.Equal(t, rangeEnd, groups[0].rangeEnd)
+		})
+	}
+}

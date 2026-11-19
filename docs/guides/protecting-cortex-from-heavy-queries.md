@@ -19,19 +19,19 @@ There are number of static limits that you could configure to block heavy querie
 
 ### Max outstanding requests per tenant
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/#query_frontend_config:~:text=max_outstanding_requests_per_tenant for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config:~:text=max_outstanding_requests_per_tenant for details.
 
 ### Max data bytes fetched per (sharded) query
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/#query_frontend_config:~:text=max_fetched_data_bytes_per_query for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config:~:text=max_fetched_data_bytes_per_query for details.
 
 ### Max series fetched per (sharded) query
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/#query_frontend_config:~:text=max_fetched_series_per_query for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config:~:text=max_fetched_series_per_query for details.
 
 ### Max chunks fetched per (sharded) query
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/#query_frontend_config:~:text=max_fetched_chunk_bytes_per_query for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/#limits_config:~:text=max_fetched_chunk_bytes_per_query for details.
 
 ### Max samples fetched per (sharded) query
 
@@ -57,4 +57,4 @@ ingester:
         heap_utilization: 0.8
 ```
 
-See https://cortexmetrics.io/docs/configuration/configuration-file/:~:text=query_protection for details.
+See https://cortexmetrics.io/docs/configuration/configuration-file/#ingester_config:~:text=query_protection for details.

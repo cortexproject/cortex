@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<!--
+  Cortex architecture — interactive diagram.
+
+  A self-contained successor to images/architecture.png. Open it directly in a
+  browser; file:// works and there is no build step. Its one dependency is D3,
+  which the website build copies next to this file from the pinned `d3` entry in
+  website/package.json -- so the published page loads it same-origin and makes
+  no third-party request. Opening this file from a bare checkout falls back to
+  the pinned CDN build; see the <script> tags at the bottom.
+
+  Everything the diagram renders lives in the NODES and EDGES arrays below, so
+  the data can be lifted out to JSON and the render code dropped into a Hugo
+  shortcode later without rewriting either.
+
+  Palette note: the three path hues are documented categorical slots validated
+  for colour-vision deficiency on the all-pairs pairlist in both light and dark
+  mode. Do not substitute them by eye -- a node-link diagram lets any two marks
+  sit side by side, and only three-hue subsets clear that gate. The aqua slot
+  sits below 3:1 against the light surface, which is why the table view is part
+  of the page rather than an extra: it is the relief channel that makes the
+  low-contrast fill legible another way.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cortex architecture — interactive diagram</title>
+<meta name="description" content="An interactive diagram of the Cortex architecture: the write path, read path, blocks lifecycle and optional services, with the protocol, endpoint and hash ring behind every hop.">
+<link rel="canonical" href="https://cortexmetrics.io/diagrams/cortex-architecture.html">
+<meta name="color-scheme" content="light dark">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Cortex architecture — interactive diagram">
+<meta property="og:description" content="The write path, read path and blocks lifecycle of Cortex, as the code wires them up. Hover a connector for its protocol and endpoint; select a component for its ring, endpoints and source file.">
+<meta property="og:url" content="https://cortexmetrics.io/diagrams/cortex-architecture.html">
+<!-- Inline favicon: three strokes in the diagram's own path colours. A data URI
+     rather than website/static/favicons/, so this file stays standalone under
+     file:// and the site build needs no extra copy. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23fcfcfb'/%3E%3Cg stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M7 9h18' stroke='%23eb6834'/%3E%3Cpath d='M7 16h18' stroke='%232a78d6'/%3E%3Cpath d='M7 23h18' stroke='%231baf7a'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  /* ---------- tokens -------------------------------------------------------
+     Light is the default unconditionally, including under an OS dark setting,
+     so the page matches the rest of cortexmetrics.io, which is light-only.
+     Dark is opt-in through the in-page toggle, which stamps data-theme on the
+     root element; there is deliberately no prefers-color-scheme rule. */
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --rule: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --lane: rgba(11, 11, 11, 0.022);
+
+    --path-write: #eb6834;   /* categorical slot 2 */
+    --path-read: #2a78d6;    /* categorical slot 1 */
+    --path-blocks: #1baf7a;  /* categorical slot 3 */
+    --path-ring: #898781;    /* neutral chrome, not a series colour */
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --hairline: #2c2c2a;
+    --rule: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --lane: rgba(255, 255, 255, 0.035);
+
+    --path-write: #d95926;
+    --path-read: #3987e5;
+    --path-blocks: #199e70;
+    --path-ring: #898781;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1640px; margin: 0 auto; padding: 28px 24px 64px; }
+
+  header h1 { margin: 0 0 6px; font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  header p { margin: 0; max-width: 76ch; color: var(--text-secondary); font-size: 14px; }
+  header a { color: inherit; }
+
+  /* ---------- controls: one row above everything it scopes ---------------- */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 22px 30px; align-items: flex-start;
+    margin: 22px 0 14px; padding: 14px 16px;
+    background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .group { display: flex; flex-direction: column; gap: 7px; }
+  .group > .label {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  button {
+    font: inherit; font-size: 13px; color: var(--text-secondary);
+    background: transparent; border: 1px solid var(--rule);
+    border-radius: 7px; padding: 5px 11px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    min-height: 30px;
+  }
+  button:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+  button:focus-visible { outline: 2px solid var(--path-read); outline-offset: 2px; }
+  button[aria-pressed="true"], button.on {
+    color: var(--text-primary); border-color: var(--text-secondary);
+    background: var(--lane); font-weight: 550;
+  }
+  button[aria-pressed="false"] { opacity: 0.55; }
+
+  .swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; margin-left: -1px; }
+  .seg button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+  .seg button:last-child { border-radius: 0 7px 7px 0; }
+
+  /* ---------- layout ------------------------------------------------------ */
+  .stage { display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 18px; align-items: start; }
+  @media (max-width: 1180px) { .stage { grid-template-columns: minmax(0, 1fr); } }
+
+  .canvas {
+    background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 6px; overflow: hidden;
+  }
+  svg.diagram { display: block; width: 100%; height: auto; touch-action: none; }
+
+  /* ---------- diagram marks ---------------------------------------------- */
+  .lane rect { fill: var(--lane); }
+  .lane text {
+    fill: var(--muted); font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+
+  .node { cursor: pointer; }
+  .node .box {
+    fill: var(--surface-1); stroke: var(--rule); stroke-width: 1.25;
+  }
+  .node[data-optional="true"] .box { stroke-dasharray: 5 3.5; }
+  .node .name { fill: var(--text-primary); font-size: 13.5px; font-weight: 600; }
+  .node .sub { fill: var(--muted); font-size: 10.5px; }
+  .node .tag { fill: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: 0.06em; }
+
+  /* Category identity rides on the box outline rather than an inner bar: edges
+     attach to the box edge, and an inner bar collides with their arrowheads.
+     These must precede the interaction rules below, which deliberately change
+     only stroke-width so the category hue survives hover and selection. */
+  .node.cat-write  .box { stroke: var(--path-write); }
+  .node.cat-read   .box { stroke: var(--path-read); }
+  .node.cat-blocks .box { stroke: var(--path-blocks); }
+
+  .node:hover .box { stroke-width: 3; }
+  .node.selected .box { stroke-width: 3.5; fill: var(--lane); }
+  .node:focus-visible { outline: none; }
+  .node:focus-visible .box { stroke: var(--text-primary); stroke-width: 3; }
+
+  .edge .line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .edge .hit { fill: none; stroke: transparent; stroke-width: 22; cursor: pointer; }
+  .edge .dot { fill: var(--surface-1); stroke-width: 2; }
+
+  /* Colour lives in CSS, not in presentation attributes: var() in an SVG
+     attribute is not reliably supported, and routing it through classes means
+     a theme switch repaints everything for free. */
+  .edge.write .line, .edge.write .dot { stroke: var(--path-write); }
+  .edge.read  .line, .edge.read  .dot { stroke: var(--path-read); }
+  .edge.blocks .line, .edge.blocks .dot { stroke: var(--path-blocks); }
+  .edge.ring  .line { stroke: var(--path-ring); stroke-width: 1; }
+
+  #arrow-write  path { fill: var(--path-write); }
+  #arrow-read   path { fill: var(--path-read); }
+  #arrow-blocks path { fill: var(--path-blocks); }
+  #arrow-ring   path { fill: var(--path-ring); }
+
+  .lg-write  line { stroke: var(--path-write); }
+  .lg-read   line { stroke: var(--path-read); }
+  .lg-blocks line { stroke: var(--path-blocks); }
+  .lg-ring   line { stroke: var(--path-ring); }
+
+  .dim { opacity: 0.12; }
+  .edge, .node { transition: opacity 160ms ease-out; }
+
+  /* ---------- side panel -------------------------------------------------- */
+  .panel {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; font-size: 13.5px;
+  }
+  .panel h2 { margin: 0 0 2px; font-size: 16px; font-weight: 650; }
+  .panel .kicker {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  .panel p { margin: 0 0 12px; color: var(--text-secondary); }
+  .panel dl { margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; }
+  .panel dt { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .panel dd { margin: 0; }
+  .panel ul { margin: 0 0 12px; padding-left: 0; list-style: none; }
+  .panel li { padding: 2px 0; border-bottom: 1px solid var(--hairline); }
+  .panel li:last-child { border-bottom: 0; }
+  .panel .hint { color: var(--muted); font-size: 12.5px; }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; overflow-wrap: anywhere;
+  }
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 5px;
+    border: 1px solid var(--rule); color: var(--text-secondary);
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; margin-right: 5px;
+  }
+
+  /* ---------- legend & table view ---------------------------------------- */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: center;
+    margin-top: 14px; padding: 12px 16px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    font-size: 12.5px; color: var(--text-secondary);
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 7px; }
+  .legend svg { display: block; overflow: visible; }
+
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  caption {
+    text-align: left; font-weight: 650; font-size: 14px;
+    padding: 16px 0 8px; color: var(--text-primary);
+  }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .tables {
+    margin-top: 16px; padding: 4px 18px 20px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+  }
+  [hidden] { display: none !important; }
+
+  footer { margin-top: 22px; color: var(--muted); font-size: 12.5px; max-width: 92ch; }
+  footer a { color: var(--text-secondary); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+
+<body data-palette="#2a78d6,#eb6834,#1baf7a">
+<div class="wrap">
+
+  <header>
+    <h1>Cortex architecture</h1>
+    <p>
+      The write path, read path and blocks lifecycle, as the code actually wires them up.
+      Hover a connector for its protocol and endpoint; select a component for its ring,
+      endpoints and source file. Nothing here is generated &mdash; the topology is
+      hand-maintained, so treat the source references in each panel as the authority.
+    </p>
+  </header>
+
+  <div class="controls">
+    <div class="group">
+      <span class="label" id="lbl-show">Show</span>
+      <div class="chips" id="filters" role="group" aria-labelledby="lbl-show"></div>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lbl-fe">Query queue</span>
+      <div class="seg" id="fe-mode" role="group" aria-labelledby="lbl-fe">
+        <button type="button" data-mode="v2" aria-pressed="true">Query-scheduler</button>
+        <button type="button" data-mode="v1" aria-pressed="false">Frontend queue</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lbl-ruler">Ruler evaluates via</span>
+      <div class="seg" id="ruler-mode" role="group" aria-labelledby="lbl-ruler">
+        <button type="button" data-mode="own" aria-pressed="true">Own querier stack</button>
+        <button type="button" data-mode="frontend" aria-pressed="false">Query-frontend</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lbl-pq">Parquet queryable</span>
+      <div class="seg" id="parquet-mode" role="group" aria-labelledby="lbl-pq">
+        <button type="button" data-mode="off" aria-pressed="true">Off</button>
+        <button type="button" data-mode="on" aria-pressed="false">On</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label" id="lbl-flow">Walk a flow</span>
+      <div class="chips" id="flows" role="group" aria-labelledby="lbl-flow"></div>
+    </div>
+
+    <div class="group">
+      <span class="label">View</span>
+      <div class="chips">
+        <button type="button" id="toggle-table" aria-pressed="false">Table view</button>
+        <button type="button" id="toggle-theme">Dark mode</button>
+        <button type="button" id="reset-view">Reset zoom</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="canvas">
+      <svg class="diagram" id="svg" viewBox="0 0 1380 900"
+           preserveAspectRatio="xMidYMid meet" role="img"
+           aria-label="Node-link diagram of Cortex components and the data flows between them.
+                       An equivalent table is available via the table view toggle."></svg>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="tables" id="tables" hidden>
+    <table id="t-nodes"><caption>Components</caption></table>
+    <table id="t-edges"><caption>Flows</caption></table>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<!-- D3 7.9.0, resolved relative to this file: /diagrams/ on the website,
+     tools/diagram/ locally. tools/website/web-pre.sh copies it there from the
+     pinned `d3` dependency in website/package.json, so the site loads it
+     same-origin and makes no third-party request. No integrity/crossorigin on
+     that tag on purpose: same-origin makes SRI redundant, and under file:// the
+     response has an opaque origin, so SRI would block the script outright
+     rather than skip the check.
+
+     A bare checkout has no sibling copy, so fall back to the pinned CDN build
+     for local preview -- that fetch is cross-origin, so SRI does apply. To
+     preview with no network at all, put the npm copy next to this file (it is
+     gitignored):
+       (cd website && npm ci) && cp website/node_modules/d3/dist/d3.min.js tools/diagram/ -->
+<script src="d3.min.js"></script>
+<script>
+if (!window.d3) {
+  document.write('<scr' + 'ipt src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"' +
+    ' integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"' +
+    ' crossorigin="anonymous"><\/scr' + 'ipt>');
+}
+</script>
+<script>
+"use strict";
+
+/* =======================================================================
+   TOPOLOGY -- the single source of truth.
+
+   Coordinates are hand-placed on purpose. A force layout would reshuffle on
+   every load and destroy the left-to-right, top-to-bottom reading order that
+   makes a pipeline diagram legible.
+
+   x / y are box centres in the SVG viewBox; h is uniform.
+   ======================================================================= */
+
+const H = 54;
+const DOCS = "https://cortexmetrics.io/docs/architecture/";
+
+const CATEGORIES = {
+  external: { label: "Clients & sinks",       hued: false },
+  write:    { label: "Write path",            hued: true },
+  read:     { label: "Read path",             hued: true },
+  blocks:   { label: "Blocks lifecycle",      hued: true },
+  optional: { label: "Rules & alerting",      hued: false },
+  infra:    { label: "Infrastructure",        hued: false },
+};
+
+const LANES = [
+  { x0: 40,   x1: 280,  y0: 50, y1: 700, label: "Rules & alerting" },
+  { x0: 300,  x1: 570,  y0: 50, y1: 700, label: "Write path" },
+  { x0: 590,  x1: 800,  y0: 50, y1: 700, label: "Hash ring" },
+  { x0: 820,  x1: 1090, y0: 50, y1: 700, label: "Read path" },
+  { x0: 1168, x1: 1345, y0: 50, y1: 700, label: "Caches" },
+  { x0: 40,   x1: 1345, y0: 752, y1: 848, label: "Object storage & blocks lifecycle", inside: true },
+];
+
+const NODES = [
+  /* ---- clients and sinks ---- */
+  { id: "prometheus", label: "Prometheus / OTel", sub: "remote write · OTLP",
+    cat: "external", x: 435, y: 95, w: 190,
+    role: "Scrapes targets and pushes batched, snappy-compressed protobuf to Cortex. Every request must carry a tenant ID header; authentication is delegated to an external reverse proxy." },
+  { id: "grafana", label: "Grafana / API client", sub: "PromQL",
+    cat: "external", x: 955, y: 95, w: 190,
+    role: "Issues PromQL queries against the Prometheus-compatible query API. Reads should be directed at the query-frontend when one is deployed." },
+  { id: "notify", label: "Notification channels", sub: "email · PagerDuty · Slack",
+    cat: "external", x: 160, y: 95, w: 210,
+    role: "Downstream receivers the Alertmanager routes notifications to." },
+
+  /* ---- write path ---- */
+  { id: "distributor", label: "Distributor", cat: "write", x: 435, y: 215,
+    state: "stateless", target: "distributor",
+    ring: { prefix: "collectors/", key: "distributor" },
+    status: "/distributor/ring", src: "pkg/distributor/distributor.go", anchor: "distributor",
+    role: "First stop on the write path. Validates each sample against per-tenant limits, then hashes the series, looks up the owning ingesters in the ring, and sends batches to them in parallel.",
+    detail: "Waits for a quorum of half-plus-one ingesters before acking the write. The HA tracker optionally deduplicates samples from redundant Prometheus pairs using the cluster and replica labels — it needs Consul or etcd, because memberlist gossip propagates leader changes too slowly.",
+    endpoints: ["POST /api/v1/push", "POST /api/v1/otlp/v1/metrics", "GET /distributor/ring", "GET /distributor/ha_tracker"] },
+  { id: "ingester", label: "Ingester", cat: "write", x: 435, y: 465,
+    state: "semi-stateful", target: "ingester",
+    ring: { prefix: "collectors/", key: "ring" },
+    status: "/ingester/ring", src: "pkg/ingester/ingester.go", anchor: "ingester",
+    role: "Holds recent series in an in-memory per-tenant TSDB and periodically ships completed blocks to object storage. Also serves not-yet-flushed series on the read path.",
+    detail: "Batching in memory is the write de-amplification that keeps storage pressure — and cost — down. A lifecycler publishes state into the ring: PENDING, JOINING, ACTIVE, LEAVING, UNHEALTHY. Crash exposure is mitigated by replication (typically 3) plus a write-ahead log.",
+    endpoints: ["gRPC Ingester.Push / PushStream", "gRPC Ingester.QueryStream", "GET /ingester/ring", "POST /ingester/flush"] },
+
+  /* ---- read path ---- */
+  { id: "query-frontend", label: "Query-frontend", cat: "read", x: 955, y: 215,
+    state: "stateless", optional: true, target: "query-frontend",
+    src: "pkg/frontend/config.go", anchor: "query-frontend",
+    role: "Optional accelerator in front of the queriers. Step-aligns and splits queries, serves what it can from the results cache, and hands the rest to a queue that queriers pull from.",
+    detail: "Holds the queue itself (v1) or forwards to a query-scheduler (v2, via -frontend.scheduler-address). Run at least two replicas so fair scheduling has something to balance. With -frontend.downstream-url it can accelerate any Prometheus-API-compatible backend instead.",
+    endpoints: ["GET /prometheus/api/v1/query", "GET /prometheus/api/v1/query_range", "gRPC Frontend.Process (v1)", "gRPC FrontendForQuerier.QueryResult"] },
+  { id: "query-scheduler", label: "Query-scheduler", cat: "read", x: 955, y: 340,
+    state: "stateless", optional: true, target: "query-scheduler",
+    src: "pkg/scheduler/scheduler.go", anchor: "query-scheduler", beyondPng: true,
+    role: "Optional. Moves the query queue out of the query-frontend so frontends and queues can scale independently.",
+    detail: "Requires -frontend.scheduler-address on the frontend and -querier.scheduler-address on the querier. Note the result does not travel back through the scheduler: the querier returns it straight to the frontend.",
+    endpoints: ["gRPC SchedulerForFrontend.FrontendLoop", "gRPC SchedulerForQuerier.QuerierLoop"] },
+  { id: "querier", label: "Querier", cat: "read", x: 955, y: 465,
+    state: "stateless", target: "querier",
+    src: "pkg/querier/", anchor: "querier",
+    role: "Executes PromQL. Fetches recent series from ingesters and historical series from store-gateways, then deduplicates samples sharing a timestamp — an artefact of replication.",
+    detail: "Acts as a worker: it dials the frontend or scheduler and pulls queries, rather than being dialled. It also reads the bucket index directly to discover blocks.",
+    endpoints: ["GET /prometheus/api/v1/* (when run without a frontend)"] },
+
+  /* ---- blocks lifecycle ---- */
+  { id: "store-gateway", label: "Store-gateway", cat: "blocks", x: 955, y: 590,
+    state: "semi-stateful", target: "store-gateway",
+    ring: { prefix: "collectors/", key: "store-gateway" },
+    status: "/store-gateway/ring", src: "pkg/storegateway/gateway.go", anchor: "store-gateway",
+    role: "Serves series out of blocks in object storage, keeping an almost up-to-date view of the bucket.",
+    detail: "Discovers its shard's blocks either by periodically scanning the bucket (default) or by downloading the bucket index. Queriers pick owners per block through the ring using the BlocksRead operation, which only accepts ACTIVE instances.",
+    endpoints: ["gRPC StoreGateway.Series", "gRPC StoreGateway.LabelNames / LabelValues", "GET /store-gateway/ring"] },
+  { id: "compactor", label: "Compactor", cat: "blocks", x: 400, y: 800,
+    state: "stateless", target: "compactor",
+    ring: { prefix: "collectors/", key: "compactor" },
+    status: "/compactor/ring", src: "pkg/compactor/compactor.go", anchor: "compactor",
+    role: "Merges each tenant's small blocks into larger optimised ones, and keeps the per-tenant bucket index current.",
+    detail: "Compaction deduplicates replicated samples and shrinks the index, so queries touch fewer, better blocks. The bucket index it maintains (bucket-index.json.gz) is what queriers, store-gateways and rulers read to discover new blocks — it is the contract between the compactor and every reader.",
+    endpoints: ["GET /compactor/ring"] },
+  { id: "parquet", label: "Parquet-converter", cat: "blocks", x: 960, y: 800,
+    state: "stateless", optional: true, target: "parquet-converter",
+    ring: { prefix: "collectors/", key: "parquet-converter" },
+    status: "/parquet-converter/ring", src: "pkg/parquetconverter/converter.go",
+    beyondPng: true, beyondDocs: true,
+    role: "Converts TSDB blocks into parquet shards for the parquet queryable.",
+    detail: "Enabled alongside -querier.enable-parquet-queryable. Present in the code but not yet described in the architecture documentation.",
+    endpoints: ["GET /parquet-converter/ring"] },
+
+  /* ---- rules & alerting ---- */
+  { id: "ruler", label: "Ruler", cat: "optional", x: 160, y: 465,
+    state: "semi-stateful", optional: true, target: "ruler",
+    ring: { prefix: "rulers/", key: "ring" },
+    status: "/ruler/ring", src: "pkg/ruler/ruler.go", anchor: "ruler",
+    role: "Optional. Evaluates recording and alerting rules, writing results back through the distributor and pushing alerts to the Alertmanager.",
+    detail: "Owns rule groups through its own ring and evaluates only what it owns. By default it builds its own querier stack and reads ingesters and store-gateways directly; with -ruler.frontend-address it sends queries to the query-frontend instead, picking up splitting and caching. Note its ring shares the key \"ring\" with the ingester and is told apart only by the rulers/ KV prefix.",
+    endpoints: ["GET /prometheus/api/v1/rules", "GET /prometheus/api/v1/alerts", "gRPC Ruler.Rules", "GET /ruler/ring"] },
+  { id: "alertmanager", label: "Alertmanager", cat: "optional", x: 160, y: 215,
+    state: "semi-stateful", optional: true, target: "alertmanager",
+    ring: { prefix: "alertmanagers/", key: "alertmanager" },
+    status: "/multitenant_alertmanager/ring", src: "pkg/alertmanager/multitenant.go", anchor: "alertmanager",
+    role: "Optional. Accepts alert notifications from the ruler, deduplicates and groups them, and routes them to the right notification channel.",
+    detail: "The Prometheus Alertmanager plus multi-tenancy. Silences and active alerts are persisted to disk and gossiped between replicas, so a simultaneous loss of every replica loses data.",
+    endpoints: ["gRPC Alertmanager.HandleRequest / UpdateState / ReadState", "GET /multitenant_alertmanager/ring"] },
+  /* ---- infrastructure ---- */
+  { id: "results-cache", label: "Results cache", sub: "memcached · redis",
+    cat: "infra", x: 1255, y: 215, w: 150,
+    role: "Caches query-frontend results, so a repeated or overlapping query does not re-run.",
+    detail: "Configured with the frontend rather than the bucket store (-query-range.results-cache), and used only by the query-frontend. Step-aligning queries is what makes the results reusable across requests." },
+  { id: "metadata-cache", label: "Metadata cache", sub: "meta.json · listings",
+    cat: "infra", x: 1255, y: 307, w: 150,
+    role: "Caches the bucket's metadata operations, so working out which blocks exist does not mean listing object storage over and over.",
+    detail: "The most widely shared of the caches: the querier, the store-gateway and the compactor all use it. Holds meta.json content, existence and attributes, the block index's attributes, the bucket index, and the tenant, block and chunk listings — plus the compactor's partitioned-group listings. The bucket index is cached by content only: its existence deliberately is not, so a freshly written index gets picked up promptly. -blocks-storage.bucket-store.metadata-cache" },
+  { id: "chunks-cache", label: "Chunks cache", sub: "chunk ranges",
+    cat: "infra", x: 1255, y: 391, w: 150,
+    role: "Caches ranges of bytes out of the chunk files, so fetching samples for a series does not always reach object storage.",
+    detail: "Shared by the store-gateway and the querier. Fetches are split into fixed-size subranges so neighbouring queries reuse the same cached pieces. -blocks-storage.bucket-store.chunks-cache" },
+  { id: "parquet-labels-cache", label: "Parquet labels", sub: "labels file", parquet: "on",
+    cat: "infra", x: 1255, y: 475, w: 150,
+    role: "Caches byte ranges of the parquet labels file for the parquet queryable.",
+    detail: "Only used when the parquet queryable is enabled (-querier.enable-parquet-queryable), by the querier and by the store-gateway's parquet bucket stores. The plain store-gateway path passes an empty config for it. -blocks-storage.bucket-store.parquet-labels-cache" },
+  { id: "parquet-rows-cache", label: "Parquet rows", sub: "row ranges", parquet: "on",
+    cat: "infra", x: 1255, y: 559, w: 150,
+    role: "Caches which parquet row ranges satisfy a query, so the same predicate need not be re-resolved.",
+    detail: "Like the labels cache, only in play with the parquet queryable, and used by both the querier and the store-gateway's parquet stores. Unlike the others it is not layered into the caching bucket — it is used directly. -blocks-storage.bucket-store.parquet-row-ranges-cache" },
+  { id: "index-cache", label: "Index cache", sub: "postings · series",
+    cat: "infra", x: 1255, y: 643, w: 150,
+    role: "Caches TSDB index lookups — postings, series and expanded postings — for the blocks a store-gateway owns.",
+    detail: "The only cache here used by exactly one component: the store-gateway. It is a Thanos index cache held inside the store rather than a wrapper around the bucket, which is why the querier has no link to it. -blocks-storage.bucket-store.index-cache" },
+  { id: "epc", label: "Expanded postings", sub: "in-process, per tenant",
+    cat: "infra", x: 435, y: 590, w: 170, optional: true, beyondDocs: true,
+    role: "Caches expanded postings inside the ingester, so repeated queries against the in-memory head do not re-resolve the same matchers.",
+    detail: "Unlike every other cache here this one is in-process and per-tenant — there is no memcached or redis behind it and no network hop, which is why it is drawn beside the ingester rather than in the cache column. Head and compacted blocks are configured separately. Experimental, and configured under blocks-storage.tsdb.expanded_postings_cache rather than with the bucket-store caches." },
+  { id: "kv", label: "Ring KV store", sub: "Consul · etcd · memberlist",
+    cat: "infra", x: 695, y: 340, w: 190,
+    role: "Holds the hash rings. Instances register tokens — random 32-bit numbers — and a series is owned by the smallest token above its hash, plus the next replication-factor-minus-one tokens on distinct instances.",
+    detail: "Rings are identified by a KV prefix plus a ring key, which is why the ingester and the ruler can both use the key \"ring\" without colliding. The HA tracker also lives here but supports Consul and etcd only." },
+  { id: "objstore", label: "Object storage", sub: "S3 · GCS · Azure · Swift",
+    cat: "infra", x: 695, y: 800, w: 220,
+    role: "Holds TSDB blocks and the bucket index, plus ruler rule groups and alertmanager configuration and state.",
+    detail: "Blocks live under <tenant>/<ULID>/, rule groups under rules/<tenant>/, alertmanager configs under alerts/<tenant>. The local filesystem backend is single-node only." },
+];
+
+/* Edges. `route` is a list of explicit waypoints between the two anchor
+   points; `straight` means "draw a line between the two box edges", which is
+   how ring participation is drawn -- thin, neutral, and free to cross
+   anything, exactly as in the original diagram. */
+const EDGES = [
+  /* ---- write ---- */
+  { id: "prom>dist", from: "prometheus", to: "distributor", path: "write",
+    fromSide: "bottom", toSide: "top",
+    protocol: "HTTP POST", endpoint: "/api/v1/push · /api/v1/otlp/v1/metrics",
+    note: "Snappy-compressed protobuf remote write, or OTLP. X-Scope-OrgID identifies the tenant." },
+  { id: "dist>ing", from: "distributor", to: "ingester", path: "write",
+    fromSide: "bottom", toSide: "top",
+    protocol: "gRPC", endpoint: "Ingester.Push / Ingester.PushStream",
+    note: "Fanned out to the replication factor's worth of ingesters in parallel; acks after a quorum of half-plus-one." },
+  { id: "ruler>dist", from: "ruler", to: "distributor", path: "write",
+    fromSide: "top", fromOff: 70, toSide: "left",
+    route: [[230, 415], [285, 415], [285, 215]],
+    protocol: "in-process or gRPC", endpoint: "Distributor.Push",
+    note: "Recording-rule results are written back in through the distributor like any other sample." },
+
+  /* ---- read ---- */
+  { id: "graf>qf", from: "grafana", to: "query-frontend", path: "read",
+    fromSide: "bottom", toSide: "top",
+    protocol: "HTTP", endpoint: "/prometheus/api/v1/query · query_range · series · labels",
+    note: "Point reads at the query-frontend when one is deployed; the queriers are still required to execute them." },
+  { id: "qf>sched", from: "query-frontend", to: "query-scheduler", path: "read",
+    fromSide: "bottom", toSide: "top", mode: "v2",
+    protocol: "gRPC", endpoint: "SchedulerForFrontend.FrontendLoop",
+    note: "v2 frontend only. The frontend forwards to a randomly chosen scheduler." },
+  { id: "sched>qr", from: "query-scheduler", to: "querier", path: "read",
+    fromSide: "bottom", toSide: "top", mode: "v2",
+    protocol: "gRPC", endpoint: "SchedulerForQuerier.QuerierLoop",
+    note: "The querier dials the scheduler and pulls work. The scheduler never dials the querier." },
+  { id: "qf>qr", from: "query-frontend", to: "querier", path: "read",
+    fromSide: "bottom", toSide: "top", toOff: 45,
+    route: [[955, 272], [1075, 272], [1075, 410], [1000, 410]], mode: "v1",
+    protocol: "gRPC", endpoint: "Frontend.Process",
+    note: "v1 frontend: the queue lives in the frontend itself and the querier pulls from it over a bidirectional stream." },
+  { id: "qr>qf", from: "querier", to: "query-frontend", path: "read",
+    fromSide: "top", fromOff: -35, toSide: "left", toOff: -13,
+    route: [[920, 410], [835, 410], [835, 202]],
+    protocol: "gRPC", endpoint: "FrontendForQuerier.QueryResult",
+    note: "The result goes back to the query-frontend — never through the scheduler — and the frontend answers the client." },
+  { id: "qr>ing", from: "querier", to: "ingester", path: "read",
+    fromSide: "left", fromOff: -14, toSide: "right", toOff: -14,
+    protocol: "gRPC", endpoint: "Ingester.QueryStream",
+    note: "Fetches series not yet flushed. Uses the ring's Read operation, which accepts ACTIVE, PENDING, LEAVING, JOINING and READONLY instances." },
+  { id: "qr>sg", from: "querier", to: "store-gateway", path: "read",
+    fromSide: "bottom", toSide: "top",
+    protocol: "gRPC", endpoint: "StoreGateway.Series",
+    note: "Historical series. Owners are resolved per block by hashing the block ID into the store-gateway ring." },
+  { id: "ruler>ing", from: "ruler", to: "ingester", path: "read",
+    fromSide: "right", fromOff: -14, toSide: "left", toOff: -14, rulerMode: "own",
+    protocol: "gRPC", endpoint: "Ingester.QueryStream",
+    note: "By default the ruler builds its own querier stack, so rule evaluation reads ingesters directly." },
+  { id: "ruler>sg", from: "ruler", to: "store-gateway", path: "read",
+    fromSide: "right", fromOff: 14, toSide: "bottom", toOff: -55,
+    route: [[290, 479], [290, 668], [900, 668]], rulerMode: "own",
+    protocol: "gRPC", endpoint: "StoreGateway.Series",
+    note: "The other half of the ruler's own querier stack: historical series for rule evaluation." },
+  { id: "ruler>qf", from: "ruler", to: "query-frontend", path: "read",
+    fromSide: "right", fromOff: -14, toSide: "top", toOff: 30,
+    route: [[272, 451], [272, 150], [900, 150]], rulerMode: "frontend",
+    protocol: "gRPC", endpoint: "-ruler.frontend-address",
+    note: "With -ruler.frontend-address the ruler queries the frontend instead, so rule evaluation benefits from splitting and result caching." },
+
+  /* ---- blocks ---- */
+  { id: "ing>obj", from: "ingester", to: "objstore", path: "blocks",
+    fromSide: "right", fromOff: 13, toSide: "top", toOff: -30,
+    route: [[560, 478], [560, 712], [665, 712]],
+    protocol: "Thanos shipper", endpoint: "<tenant>/<ULID>/",
+    note: "Completed TSDB blocks are shipped roughly every 2 hours, which is why queriers must merge ingesters with long-term storage." },
+  { id: "qr>obj", from: "querier", to: "objstore", path: "blocks",
+    fromSide: "left", fromOff: 14, toSide: "top", toOff: 30,
+    route: [[800, 479], [800, 724], [725, 724]],
+    protocol: "object storage API", endpoint: "bucket-index.json.gz",
+    note: "Reads the bucket index and block metadata to work out which blocks a query needs." },
+  { id: "sg>obj", from: "store-gateway", to: "objstore", path: "blocks",
+    fromSide: "bottom", toSide: "top", toOff: 60, route: [[955, 746], [755, 746]],
+    protocol: "object storage API", endpoint: "index-header · chunks",
+    note: "Lazily loads index-headers and fetches chunks for the blocks it owns." },
+  { id: "comp>obj", from: "compactor", to: "objstore", path: "blocks",
+    fromSide: "right", toSide: "left",
+    protocol: "object storage API", endpoint: "read + write",
+    note: "Reads source blocks, writes compacted ones, maintains bucket-index.json.gz, and deletes what it has superseded." },
+  { id: "pq>obj", from: "parquet", to: "objstore", path: "blocks",
+    fromSide: "left", toSide: "right", parquet: "on",
+    protocol: "object storage API", endpoint: "read + write",
+    note: "Downloads TSDB blocks and writes parquet shards beside them." },
+  { id: "ruler>obj", from: "ruler", to: "objstore", path: "blocks",
+    fromSide: "right", toSide: "top", toOff: -60,
+    route: [[330, 465], [330, 724], [635, 724]],
+    protocol: "object storage API", endpoint: "rules/<tenant>/<namespace>/",
+    note: "Rule groups are loaded from — and written to — the rule store." },
+  { id: "am>obj", from: "alertmanager", to: "objstore", path: "blocks",
+    fromSide: "left", toSide: "top", toOff: -90,
+    route: [[48, 215], [48, 746], [605, 746]],
+    protocol: "object storage API", endpoint: "alerts/<tenant> · alertmanager/<tenant>/",
+    note: "Per-tenant configuration, plus full and gossiped notification state." },
+
+  { id: "qf>rcache", from: "query-frontend", to: "results-cache", path: "read",
+    fromSide: "right", toSide: "left",
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Split-by-interval subquery results, step-aligned to improve the hit rate." },
+
+  { id: "qr>metadata", from: "querier", to: "metadata-cache", path: "blocks",
+    fromSide: "right", fromOff: -16, toSide: "left", toOff: -10,
+    route: [[1054, 449], [1054, 297]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Block metadata and the bucket index, so planning a query does not mean re-listing the bucket." },
+  { id: "qr>chunks", from: "querier", to: "chunks-cache", path: "blocks",
+    fromSide: "right", fromOff: -7, toSide: "left", toOff: -7,
+    route: [[1068, 458], [1068, 384]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Chunk byte ranges for series the querier reads straight out of the bucket." },
+  { id: "qr>plabels", from: "querier", to: "parquet-labels-cache", path: "blocks",
+    fromSide: "right", fromOff: 11, toSide: "left", toOff: -7, parquet: "on",
+    route: [[1082, 476], [1082, 468]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Only with -querier.enable-parquet-queryable: byte ranges of the parquet labels file." },
+  { id: "qr>prows", from: "querier", to: "parquet-rows-cache", path: "blocks",
+    fromSide: "right", fromOff: 2, toSide: "left", toOff: -7, parquet: "on",
+    route: [[1096, 467], [1096, 552]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Only with the parquet queryable: which row ranges satisfy a predicate." },
+
+  { id: "sg>metadata", from: "store-gateway", to: "metadata-cache", path: "blocks",
+    fromSide: "right", fromOff: -17, toSide: "left", toOff: 4,
+    route: [[1110, 573], [1110, 311]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "The store-gateway shares this cache with the querier and the compactor — all three discover blocks through it." },
+  { id: "sg>chunks", from: "store-gateway", to: "chunks-cache", path: "blocks",
+    fromSide: "right", fromOff: -9, toSide: "left", toOff: 7,
+    route: [[1124, 581], [1124, 398]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Chunk byte ranges for the blocks this store-gateway owns." },
+  { id: "sg>plabels", from: "store-gateway", to: "parquet-labels-cache", path: "blocks",
+    fromSide: "right", fromOff: -1, toSide: "left", toOff: 7, parquet: "on",
+    route: [[1138, 589], [1138, 482]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Used by the store-gateway's parquet bucket stores, which only exist with the parquet queryable enabled." },
+  { id: "sg>prows", from: "store-gateway", to: "parquet-rows-cache", path: "blocks",
+    fromSide: "right", fromOff: 7, toSide: "left", toOff: 7, parquet: "on",
+    route: [[1152, 597], [1152, 566]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Row-range results for the store-gateway's parquet path." },
+  { id: "sg>index", from: "store-gateway", to: "index-cache", path: "blocks",
+    fromSide: "right", fromOff: 15, toSide: "left",
+    route: [[1166, 605], [1166, 643]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "Postings and series lookups. The only cache with a single consumer — the querier never reads the index cache." },
+
+  { id: "comp>metadata", from: "compactor", to: "metadata-cache", path: "blocks",
+    fromSide: "bottom", toSide: "right", toOff: 10,
+    route: [[400, 868], [1362, 868], [1362, 317]],
+    protocol: "memcached / redis", endpoint: "read + write",
+    note: "The compactor and its blocks cleaner cache tenant and block listings, meta.json attributes, and partitioned-group listings." },
+
+  { id: "ing>epc", from: "ingester", to: "epc", path: "read",
+    fromSide: "bottom", toSide: "top",
+    protocol: "in-process", endpoint: "expanded postings",
+    note: "No network hop: the cache lives inside the ingester process, per tenant, for the head and for compacted blocks." },
+
+  /* ---- ring participation & control ---- */
+  { id: "dist>kv", from: "distributor", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "collectors/distributor · ha-tracker/",
+    note: "Reads the ingester ring for every write, publishes its own ring entry, and elects HA replicas." },
+  { id: "ing>kv", from: "ingester", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "collectors/ring",
+    note: "The lifecycler publishes tokens and state, and heartbeats. A missed heartbeat means UNHEALTHY." },
+  { id: "sg>kv", from: "store-gateway", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "collectors/store-gateway", note: "Block sharding across store-gateways." },
+  { id: "comp>kv", from: "compactor", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "collectors/compactor", note: "Splits tenants across compactor replicas." },
+  { id: "pq>kv", from: "parquet", to: "kv", path: "ring", straight: true, parquet: "on",
+    protocol: "KV", endpoint: "collectors/parquet-converter", note: "Shards conversion work." },
+  { id: "ruler>kv", from: "ruler", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "rulers/ring", note: "Decides which ruler owns which rule group." },
+  { id: "am>kv", from: "alertmanager", to: "kv", path: "ring", straight: true,
+    protocol: "KV", endpoint: "alertmanagers/alertmanager", note: "Shards tenants across alertmanager replicas." },
+  { id: "ruler>am", from: "ruler", to: "alertmanager", path: "ring",
+    fromSide: "top", toSide: "bottom",
+    protocol: "HTTP POST", endpoint: "/api/v2/alerts",
+    note: "Configured with -ruler.alertmanager-url. Firing alerts are pushed as they fire." },
+  { id: "am>notify", from: "alertmanager", to: "notify", path: "ring",
+    fromSide: "top", toSide: "bottom",
+    protocol: "provider APIs / SMTP", endpoint: "receivers",
+    note: "After deduplicating, grouping, inhibiting and silencing." },
+];
+
+/* Guided flows. Steps reference edge ids; the read flow adapts to the queue
+   mode, because v1 and v2 are genuinely different topologies. */
+const FLOWS = [
+  { id: "write", label: "Write", steps: () => [
+      ["prom>dist", "Prometheus remote-writes a batch of samples. The tenant header is mandatory; auth happened upstream in a reverse proxy."],
+      ["dist>kv",   "The distributor validates the samples, hashes each series, and asks the ring which ingesters own it."],
+      ["dist>ing",  "Batches go to the owning ingesters in parallel. The write is acked once a quorum of half-plus-one responds."],
+      ["ing>obj",   "Ingesters keep the series in memory — that de-amplification is the cost saving — and ship blocks out roughly every 2 hours."],
+    ] },
+  { id: "read", label: "Read", steps: (s) => s.feMode === "v2" ? [
+      ["graf>qf",   "The frontend receives the query. It step-aligns it, may split it by interval, and serves what the results cache already has."],
+      ["qf>sched",  "What is left is forwarded to a randomly chosen query-scheduler, which holds the queue."],
+      ["sched>qr",  "A querier pulls the query off the queue. Queriers are workers: they dial in, they are not dialled."],
+      ["qr>ing",    "The querier fetches recent, not-yet-flushed series from the ingesters."],
+      ["qr>sg",     "In parallel it fetches historical series from the store-gateways owning the relevant blocks."],
+      ["qr>qf",     "The querier deduplicates samples sharing a timestamp and returns the result to the frontend — not to the scheduler."],
+    ] : [
+      ["graf>qf",   "The frontend receives the query, step-aligns it, may split it, and serves what the results cache already has."],
+      ["qf>qr",     "The queue lives inside the frontend. A querier pulls the query from it over a bidirectional stream."],
+      ["qr>ing",    "The querier fetches recent, not-yet-flushed series from the ingesters."],
+      ["qr>sg",     "In parallel it fetches historical series from the store-gateways owning the relevant blocks."],
+      ["qr>qf",     "The querier deduplicates and returns the result to the frontend, which answers the client."],
+    ] },
+  { id: "rules", label: "Rule evaluation", steps: (s) => [
+      ["ruler>kv", "The ruler consults its own ring to decide which rule groups it owns, and evaluates only those."],
+      ["ruler>obj", "It loads those groups from the rule store in object storage."],
+      ...(s.rulerMode === "own"
+        ? [["ruler>ing", "Evaluating a rule means running a query. By default the ruler has its own querier stack and reads ingesters directly."],
+           ["ruler>sg",  "...and store-gateways for anything already flushed to blocks."]]
+        : [["ruler>qf",  "With -ruler.frontend-address the query goes to the query-frontend instead, picking up splitting and caching."]]),
+      ["ruler>dist", "Recording-rule results are pushed back in through the distributor, like any other write."],
+      ["ruler>am",   "Alerting rules that fire are posted to the Alertmanager."],
+      ["am>notify",  "Which deduplicates, groups and routes them to the actual receivers."],
+    ] },
+  { id: "blocks", label: "Blocks lifecycle", steps: () => [
+      ["ing>obj",  "An ingester ships a freshly cut 2-hour block into the bucket."],
+      ["comp>obj", "The compactor merges small blocks into larger ones, dropping replicated duplicates, shrinking the index, and refreshing the per-tenant bucket index."],
+      ["sg>obj",   "Store-gateways discover the blocks in their shard — from that bucket index, or by scanning the bucket — and lazily load index-headers and chunks."],
+      ["qr>obj",   "Queriers read the same bucket index to plan which blocks a query needs."],
+      ["sg>metadata", "Block discovery goes through the metadata cache rather than re-listing the bucket — the querier, the store-gateway and the compactor all share it."],
+      ["sg>chunks", "Chunk byte ranges are cached too, so repeated queries over the same series avoid the object store entirely."],
+    ] },
+];
+
+/* =======================================================================
+   Derived indexes
+   ======================================================================= */
+
+const byId = new Map(NODES.map(n => [n.id, n]));
+NODES.forEach(n => { n.w = n.w || 170; n.h = H; });
+
+const PATH_COLOR = {
+  write: "var(--path-write)",
+  read: "var(--path-read)",
+  blocks: "var(--path-blocks)",
+  ring: "var(--path-ring)",
+};
+const PATH_LABEL = {
+  write: "Write path",
+  read: "Read path",
+  blocks: "Blocks & storage",
+  ring: "Ring / control",
+};
+
+const state = {
+  feMode: "v2",
+  rulerMode: "own",
+  parquet: "off",
+  visible: new Set(["write", "read", "blocks", "ring"]),
+  selected: null,
+  hovered: null,
+  flow: null,
+  flowStep: 0,
+};
+
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* =======================================================================
+   Geometry
+   ======================================================================= */
+
+const box = n => ({
+  x0: n.x - n.w / 2, x1: n.x + n.w / 2,
+  y0: n.y - n.h / 2, y1: n.y + n.h / 2,
+});
+
+function anchor(n, side, off = 0) {
+  const b = box(n);
+  switch (side) {
+    case "top":    return [n.x + off, b.y0];
+    case "bottom": return [n.x + off, b.y1];
+    case "left":   return [b.x0, n.y + off];
+    case "right":  return [b.x1, n.y + off];
+    default:       return [n.x, n.y];
+  }
+}
+
+/* Where the centre-to-centre line leaves a box. Used for the straight ring
+   edges so they always terminate cleanly on the border. */
+function borderPoint(n, tx, ty) {
+  const dx = tx - n.x, dy = ty - n.y;
+  if (dx === 0 && dy === 0) return [n.x, n.y];
+  const sx = dx === 0 ? Infinity : (n.w / 2) / Math.abs(dx);
+  const sy = dy === 0 ? Infinity : (n.h / 2) / Math.abs(dy);
+  const s = Math.min(sx, sy);
+  return [n.x + dx * s, n.y + dy * s];
+}
+
+/* Infer which side an edge should leave from when it is not stated. */
+function inferSides(e, a, b) {
+  const ab = box(a), bb = box(b);
+  if (bb.y0 > ab.y1) return ["bottom", "top"];
+  if (bb.y1 < ab.y0) return ["top", "bottom"];
+  if (bb.x0 > ab.x1) return ["right", "left"];
+  return ["left", "right"];
+}
+
+function points(e) {
+  const a = byId.get(e.from), b = byId.get(e.to);
+  if (e.straight) {
+    const p = borderPoint(a, b.x, b.y);
+    const q = borderPoint(b, a.x, a.y);
+    return [p, q];
+  }
+  const [dfs, dts] = inferSides(e, a, b);
+  const p = anchor(a, e.fromSide || dfs, e.fromOff || 0);
+  const q = anchor(b, e.toSide || dts, e.toOff || 0);
+  const mid = (e.route || []).map(([x, y]) => [x, y]);
+  if (mid.length) return [p, ...mid, q];
+
+  /* No waypoints given: straight if aligned, otherwise one elbow. */
+  const fs = e.fromSide || dfs;
+  if (Math.abs(p[0] - q[0]) < 0.5 || Math.abs(p[1] - q[1]) < 0.5) return [p, q];
+  return (fs === "top" || fs === "bottom")
+    ? [p, [p[0], q[1]], q]
+    : [p, [q[0], p[1]], q];
+}
+
+/* Rounded orthogonal polyline. d3.path() gives us arcTo, which rounds each
+   corner without any trigonometry on our side. */
+function polyline(pts, r = 11) {
+  const ctx = d3.path();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [x, y] = pts[i];
+    const [nx, ny] = pts[i + 1];
+    const prev = pts[i - 1];
+    const rr = Math.min(r,
+      Math.hypot(x - prev[0], y - prev[1]) / 2,
+      Math.hypot(nx - x, ny - y) / 2);
+    ctx.arcTo(x, y, nx, ny, rr);
+  }
+  const last = pts[pts.length - 1];
+  ctx.lineTo(last[0], last[1]);
+  return ctx.toString();
+}
+
+/* =======================================================================
+   Render
+   ======================================================================= */
+
+const svg = d3.select("#svg");
+const root = svg.append("g");
+
+/* Arrowheads: one marker per path colour, since a marker resolves CSS
+   variables against its own computed style rather than the referencing path. */
+const defs = svg.append("defs");
+Object.keys(PATH_COLOR).forEach(k => {
+  defs.append("marker")
+    .attr("id", "arrow-" + k)
+    .attr("viewBox", "0 0 10 10")
+    .attr("refX", 8).attr("refY", 5)
+    .attr("markerWidth", k === "ring" ? 5 : 5.5)
+    .attr("markerHeight", k === "ring" ? 5 : 5.5)
+    .attr("orient", "auto-start-reverse")
+    .append("path")
+      .attr("d", "M 0 1.2 L 9 5 L 0 8.8 z");
+});
+
+/* lanes ---------------------------------------------------------------- */
+const laneG = root.append("g").attr("class", "lanes").attr("aria-hidden", "true");
+const lane = laneG.selectAll("g").data(LANES).join("g").attr("class", "lane");
+lane.append("rect")
+  .attr("x", d => d.x0).attr("y", d => d.y0)
+  .attr("width", d => d.x1 - d.x0).attr("height", d => d.y1 - d.y0)
+  .attr("rx", 12);
+lane.append("text")
+  // The horizontal band labels itself along its own bottom edge. Above the band
+  // is where the object-storage approach runs travel; its top-left is crossed by
+  // the Configs API link down to PostgreSQL, and its top-right is where the
+  // metadata cache sits.
+  .attr("x", d => d.x0 + 12)
+  .attr("y", d => d.inside ? d.y1 - 9 : d.y0 - 9)
+  .text(d => d.label);
+
+/* edges ---------------------------------------------------------------- */
+const edgeG = root.append("g").attr("class", "edges");
+const edgeSel = edgeG.selectAll("g.edge")
+  .data(EDGES, d => d.id)
+  .join("g")
+    .attr("class", d => "edge " + d.path)
+    .attr("data-id", d => d.id);
+
+edgeSel.append("path").attr("class", "hit").attr("d", d => polyline(points(d)));
+edgeSel.append("path")
+  .attr("class", "line")
+  .attr("d", d => polyline(points(d)))
+  .attr("marker-end", d => "url(#arrow-" + d.path + ")");
+
+edgeSel.select(".hit")
+  .on("mouseenter", (ev, d) => { state.hovered = d.id; describeEdge(d); apply(); })
+  .on("mouseleave", () => { state.hovered = null; restore(); apply(); });
+
+/* nodes ---------------------------------------------------------------- */
+const nodeG = root.append("g").attr("class", "nodes");
+const nodeSel = nodeG.selectAll("g.node")
+  .data(NODES, d => d.id)
+  .join("g")
+    .attr("class", d => "node cat-" + d.cat)
+    .attr("data-id", d => d.id)
+    .attr("data-optional", d => d.optional ? "true" : "false")
+    .attr("tabindex", 0)
+    .attr("role", "button")
+    .attr("aria-label", d => d.label + ". " + (d.role || ""));
+
+nodeSel.append("rect")
+  .attr("class", "box")
+  .attr("x", d => d.x - d.w / 2).attr("y", d => d.y - d.h / 2)
+  .attr("width", d => d.w).attr("height", d => d.h)
+  .attr("rx", 8);
+
+nodeSel.append("text")
+  .attr("class", "name")
+  .attr("x", d => d.x).attr("y", d => d.y + (d.sub ? -3 : 5))
+  .attr("text-anchor", "middle")
+  .text(d => d.label);
+nodeSel.filter(d => d.sub).append("text")
+  .attr("class", "sub")
+  .attr("x", d => d.x).attr("y", d => d.y + 13)
+  .attr("text-anchor", "middle")
+  .text(d => d.sub);
+nodeSel.filter(d => d.optional || d.beyondDocs).append("text")
+  .attr("class", "tag")
+  .attr("x", d => d.x + d.w / 2 - 7).attr("y", d => d.y - d.h / 2 + 12)
+  .attr("text-anchor", "end")
+  .text(d => d.beyondDocs ? "EXPERIMENTAL" : "OPTIONAL");
+
+nodeSel
+  .on("click", (ev, d) => { select(d.id); })
+  .on("keydown", (ev, d) => {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(d.id); }
+  })
+  .on("mouseenter", (ev, d) => { state.hovered = "node:" + d.id; apply(); })
+  .on("mouseleave", () => { state.hovered = null; apply(); });
+
+/* zoom ------------------------------------------------------------------ */
+const zoom = d3.zoom().scaleExtent([0.55, 3.2])
+  .on("zoom", ev => root.attr("transform", ev.transform));
+svg.call(zoom).on("dblclick.zoom", null);
+d3.select("#reset-view").on("click", () =>
+  svg.transition().duration(reduceMotion ? 0 : 300).call(zoom.transform, d3.zoomIdentity));
+
+/* =======================================================================
+   Visibility, dimming, emphasis
+   ======================================================================= */
+
+function flowSteps() {
+  const f = FLOWS.find(f => f.id === state.flow);
+  return f ? f.steps(state) : null;
+}
+
+function edgeActive(e) {
+  if (e.mode && e.mode !== state.feMode) return false;
+  if (e.rulerMode && e.rulerMode !== state.rulerMode) return false;
+  if (e.parquet && e.parquet !== state.parquet) return false;
+  // A walkthrough overrides the filter row: otherwise a step can narrate an
+  // edge the reader has hidden, and the diagram silently disagrees with itself.
+  const steps = flowSteps();
+  if (steps && steps.some(([id]) => id === e.id)) return true;
+  return state.visible.has(e.path);
+}
+
+/* A node is greyed out only when the modes make it genuinely unused. */
+function nodeActive(n) {
+  if (n.id === "query-scheduler" && state.feMode !== "v2") return false;
+  // The parquet caches and the converter that feeds them are only in play with
+  // -querier.enable-parquet-queryable.
+  if (n.parquet && n.parquet !== state.parquet) return false;
+  if (n.id === "parquet" && state.parquet !== "on") return false;
+  return true;
+}
+
+function apply() {
+  const steps = flowSteps();
+  const focusEdges = new Set();
+  const focusNodes = new Set();
+
+  if (steps) {
+    const [eid] = steps[state.flowStep];
+    focusEdges.add(eid);
+    const e = EDGES.find(x => x.id === eid);
+    if (e) { focusNodes.add(e.from); focusNodes.add(e.to); }
+  } else if (state.hovered && state.hovered.startsWith("node:")) {
+    const id = state.hovered.slice(5);
+    focusNodes.add(id);
+    EDGES.filter(e => edgeActive(e) && (e.from === id || e.to === id))
+      .forEach(e => { focusEdges.add(e.id); focusNodes.add(e.from); focusNodes.add(e.to); });
+  } else if (state.hovered) {
+    focusEdges.add(state.hovered);
+    const e = EDGES.find(x => x.id === state.hovered);
+    if (e) { focusNodes.add(e.from); focusNodes.add(e.to); }
+  } else if (state.selected) {
+    const id = state.selected;
+    focusNodes.add(id);
+    EDGES.filter(e => edgeActive(e) && (e.from === id || e.to === id))
+      .forEach(e => { focusEdges.add(e.id); focusNodes.add(e.from); focusNodes.add(e.to); });
+  }
+
+  const focusing = focusEdges.size > 0 || focusNodes.size > 0;
+
+  edgeSel
+    .attr("display", d => edgeActive(d) ? null : "none")
+    .classed("dim", d => focusing && !focusEdges.has(d.id));
+
+  nodeSel
+    .classed("selected", d => d.id === state.selected)
+    .classed("dim", d => {
+      if (!nodeActive(d)) return true;
+      return focusing && !focusNodes.has(d.id);
+    });
+
+  animate(focusEdges);
+}
+
+/* Flow dots run only for what is currently emphasised: idle animation is
+   noise, and reduced-motion users get none at all. */
+let raf = null;
+function animate(ids) {
+  edgeG.selectAll("circle.dot").remove();
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  if (reduceMotion || ids.size === 0) return;
+
+  const runners = [];
+  edgeSel.filter(d => ids.has(d.id) && d.path !== "ring").each(function (d) {
+    const line = d3.select(this).select("path.line").node();
+    if (!line) return;
+    const dot = d3.select(this).append("circle")
+      .attr("class", "dot").attr("r", 4);
+    runners.push({ line, dot, len: line.getTotalLength() });
+  });
+  if (!runners.length) return;
+
+  const t0 = performance.now();
+  const tick = now => {
+    const t = ((now - t0) / 1500) % 1;
+    runners.forEach(r => {
+      const p = r.line.getPointAtLength(t * r.len);
+      r.dot.attr("cx", p.x).attr("cy", p.y);
+    });
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+}
+
+/* =======================================================================
+   Side panel
+   ======================================================================= */
+
+const panel = d3.select("#panel");
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function describeNode(n) {
+  const rows = [];
+  if (n.state) rows.push(["State", n.state]);
+  if (n.target) rows.push(["Target", '<code>-target=' + esc(n.target) + '</code>']);
+  if (n.ring) rows.push(["Ring", '<code>' + esc(n.ring.prefix) + '</code> + key <code>' + esc(n.ring.key) + '</code>']);
+  if (n.status) rows.push(["Ring status", '<code>' + esc(n.status) + '</code>']);
+  if (n.src) rows.push(["Source", '<code>' + esc(n.src) + '</code>']);
+
+  let html = "";
+  html += '<div class="kicker">' + esc(CATEGORIES[n.cat].label) + '</div>';
+  html += "<h2>" + esc(n.label) + "</h2>";
+  html += '<div style="margin:6px 0 12px">';
+  if (n.optional) html += '<span class="badge">Optional</span>';
+  if (n.beyondDocs) html += '<span class="badge">Not yet in the docs</span>';
+  else if (n.beyondPng) html += '<span class="badge">Not in the old diagram</span>';
+  html += "</div>";
+  html += "<p>" + esc(n.role || "") + "</p>";
+  if (n.detail) html += '<p>' + esc(n.detail) + "</p>";
+  if (rows.length) {
+    html += "<dl>";
+    rows.forEach(([k, v]) => { html += "<dt>" + esc(k) + "</dt><dd>" + v + "</dd>"; });
+    html += "</dl>";
+  }
+  if (n.endpoints && n.endpoints.length) {
+    html += '<div class="kicker">Endpoints</div><ul>';
+    n.endpoints.forEach(e => { html += '<li><span class="mono">' + esc(e) + "</span></li>"; });
+    html += "</ul>";
+  }
+  if (n.anchor) {
+    html += '<p class="hint"><a href="' + DOCS + "#" + esc(n.anchor) + '" target="_blank" rel="noopener">Read the architecture docs &rarr;</a></p>';
+  }
+  panel.html(html);
+}
+
+function describeEdge(e) {
+  const a = byId.get(e.from), b = byId.get(e.to);
+  let html = "";
+  html += '<div class="kicker">' + esc(PATH_LABEL[e.path]) + "</div>";
+  html += "<h2>" + esc(a.label) + " &rarr; " + esc(b.label) + "</h2>";
+  html += "<dl>";
+  html += "<dt>Protocol</dt><dd>" + esc(e.protocol) + "</dd>";
+  html += "<dt>Endpoint</dt><dd><code>" + esc(e.endpoint) + "</code></dd>";
+  html += "</dl>";
+  html += "<p>" + esc(e.note) + "</p>";
+  panel.html(html);
+}
+
+function idlePanel() {
+  panel.html(
+    '<div class="kicker">Nothing selected</div>' +
+    "<h2>Pick a component</h2>" +
+    "<p>Select any box for its role, statefulness, hash ring, endpoints and source file. " +
+    "Hover a connector for the protocol and endpoint behind that hop.</p>" +
+    '<p class="hint">Every fact here is also in the table view, which is the readable-as-text ' +
+    "equivalent of the diagram.</p>"
+  );
+}
+
+function restore() {
+  if (state.flow) { showFlowStep(); return; }
+  if (state.selected) describeNode(byId.get(state.selected));
+  else idlePanel();
+}
+
+function select(id) {
+  state.flow = null;
+  renderFlowButtons();
+  state.selected = state.selected === id ? null : id;
+  restore();
+  apply();
+}
+
+/* =======================================================================
+   Controls
+   ======================================================================= */
+
+/* Filters dim; they never recolour. A component keeps its hue when its
+   neighbours are hidden, so "the read path is blue" stays learnable. */
+const filterDefs = [
+  { key: "write", label: "Write path" },
+  { key: "read", label: "Read path" },
+  { key: "blocks", label: "Blocks & storage" },
+  { key: "ring", label: "Ring & control" },
+];
+d3.select("#filters").selectAll("button")
+  .data(filterDefs).join("button")
+    .attr("type", "button")
+    .attr("aria-pressed", d => state.visible.has(d.key))
+    .html(d => '<span class="swatch" style="background:' + PATH_COLOR[d.key] + '"></span>' + d.label)
+    .on("click", function (ev, d) {
+      if (state.visible.has(d.key)) state.visible.delete(d.key);
+      else state.visible.add(d.key);
+      d3.select(this).attr("aria-pressed", state.visible.has(d.key));
+      apply();
+    });
+
+d3.selectAll("#fe-mode button").on("click", function () {
+  state.feMode = this.dataset.mode;
+  d3.selectAll("#fe-mode button").attr("aria-pressed", function () {
+    return this.dataset.mode === state.feMode;
+  });
+  state.flowStep = 0;
+  restore(); apply();
+});
+
+d3.selectAll("#parquet-mode button").on("click", function () {
+  state.parquet = this.dataset.mode;
+  d3.selectAll("#parquet-mode button").attr("aria-pressed", function () {
+    return this.dataset.mode === state.parquet;
+  });
+  state.flowStep = 0;
+  restore(); apply();
+});
+
+d3.selectAll("#ruler-mode button").on("click", function () {
+  state.rulerMode = this.dataset.mode;
+  d3.selectAll("#ruler-mode button").attr("aria-pressed", function () {
+    return this.dataset.mode === state.rulerMode;
+  });
+  state.flowStep = 0;
+  restore(); apply();
+});
+
+function renderFlowButtons() {
+  const wrap = d3.select("#flows");
+  const btns = wrap.selectAll("button.flow").data(FLOWS, d => d.id);
+  btns.join(enter => enter.append("button")
+      .attr("class", "flow").attr("type", "button")
+      .text(d => d.label)
+      .on("click", (ev, d) => {
+        state.flow = state.flow === d.id ? null : d.id;
+        state.flowStep = 0;
+        state.selected = null;
+        renderFlowButtons();
+        restore(); apply();
+      }))
+    .attr("aria-pressed", d => d.id === state.flow);
+
+  const has = !!state.flow;
+  let nav = wrap.selectAll("button.nav").data(has ? ["prev", "next"] : []);
+  nav.exit().remove();
+  nav.join(enter => enter.append("button")
+      .attr("class", "nav").attr("type", "button")
+      .text(d => d === "prev" ? "‹ Back" : "Next ›")
+      .on("click", (ev, d) => {
+        const steps = flowSteps();
+        if (!steps) return;
+        state.flowStep = d === "next"
+          ? (state.flowStep + 1) % steps.length
+          : (state.flowStep - 1 + steps.length) % steps.length;
+        showFlowStep(); apply();
+      }));
+}
+
+function showFlowStep() {
+  const steps = flowSteps();
+  if (!steps) { idlePanel(); return; }
+  const f = FLOWS.find(f => f.id === state.flow);
+  const [eid, text] = steps[state.flowStep];
+  const e = EDGES.find(x => x.id === eid);
+  const a = e && byId.get(e.from), b = e && byId.get(e.to);
+
+  let html = "";
+  html += '<div class="kicker">' + esc(f.label) + " &middot; step " +
+          (state.flowStep + 1) + " of " + steps.length + "</div>";
+  if (a && b) html += "<h2>" + esc(a.label) + " &rarr; " + esc(b.label) + "</h2>";
+  html += "<p>" + esc(text) + "</p>";
+  if (e) {
+    html += "<dl><dt>Protocol</dt><dd>" + esc(e.protocol) + "</dd>";
+    html += "<dt>Endpoint</dt><dd><code>" + esc(e.endpoint) + "</code></dd></dl>";
+  }
+  panel.html(html);
+}
+
+/* table view ----------------------------------------------------------- */
+d3.select("#toggle-table").on("click", function () {
+  const showing = d3.select("#tables").property("hidden");
+  d3.select("#tables").property("hidden", !showing);
+  d3.select(this).attr("aria-pressed", showing);
+});
+
+function buildTables() {
+  const nt = d3.select("#t-nodes");
+  nt.append("thead").append("tr").selectAll("th")
+    .data(["Component", "Group", "Kind", "State", "Ring prefix", "Ring key", "Target", "Source"])
+    .join("th").text(d => d);
+  nt.append("tbody").selectAll("tr")
+    .data(NODES).join("tr").selectAll("td")
+      .data(n => [
+        n.label,
+        CATEGORIES[n.cat].label,
+        n.beyondDocs ? "experimental" : (n.optional ? "optional" : (n.cat === "external" || n.cat === "infra" ? "external" : "required")),
+        n.state || "—",
+        n.ring ? n.ring.prefix : "—",
+        n.ring ? n.ring.key : "—",
+        n.target ? "-target=" + n.target : "—",
+        n.src || "—",
+      ])
+      .join("td").text(d => d);
+
+  const et = d3.select("#t-edges");
+  et.append("thead").append("tr").selectAll("th")
+    .data(["From", "To", "Path", "Protocol", "Endpoint", "Only when", "Notes"])
+    .join("th").text(d => d);
+  et.append("tbody").selectAll("tr")
+    .data(EDGES).join("tr").selectAll("td")
+      .data(e => [
+        byId.get(e.from).label,
+        byId.get(e.to).label,
+        PATH_LABEL[e.path],
+        e.protocol,
+        e.endpoint,
+        e.mode ? "frontend " + e.mode
+          : e.rulerMode ? "ruler: " + (e.rulerMode === "own" ? "own querier stack" : "via query-frontend")
+          : e.parquet ? "parquet queryable " + e.parquet
+          : "always",
+        e.note,
+      ])
+      .join("td").text(d => d);
+}
+
+/* theme ---------------------------------------------------------------- */
+/* Light is the default on every load, matching the rest of cortexmetrics.io;
+   the OS setting is deliberately not consulted. Dark is a per-visit opt-in. */
+const themeBtn = d3.select("#toggle-theme");
+function isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
+function syncThemeLabel() { themeBtn.text(isDark() ? "Light mode" : "Dark mode"); }
+themeBtn.on("click", () => {
+  document.documentElement.setAttribute("data-theme", isDark() ? "light" : "dark");
+  syncThemeLabel();
+});
+
+/* legend --------------------------------------------------------------- */
+function buildLegend() {
+  const l = d3.select("#legend");
+  l.append("span").attr("class", "item").html("<strong>Legend</strong>");
+
+  filterDefs.forEach(f => {
+    l.append("span").attr("class", "item").html(
+      '<svg class="lg-' + f.key + '" width="26" height="10" aria-hidden="true">' +
+      '<line x1="1" y1="5" x2="25" y2="5" stroke-width="' + (f.key === "ring" ? 1 : 2) +
+      '" stroke-linecap="round"/></svg>' + f.label);
+  });
+
+  l.append("span").attr("class", "item").html(
+    '<svg width="24" height="14" aria-hidden="true"><rect x="1" y="1" width="22" height="12" rx="3" ' +
+    'fill="none" stroke="var(--rule)" stroke-width="1.25"/></svg>required');
+  l.append("span").attr("class", "item").html(
+    '<svg width="24" height="14" aria-hidden="true"><rect x="1" y="1" width="22" height="12" rx="3" ' +
+    'fill="none" stroke="var(--rule)" stroke-width="1.25" stroke-dasharray="5 3.5"/></svg>optional');
+  l.append("span").attr("class", "item")
+    .html('<span class="badge">Experimental</span>in the code, not yet in the docs');
+}
+
+/* footer --------------------------------------------------------------- */
+d3.select("#footer").html(
+  "Components and connections are hand-maintained against the tree, not generated, so the " +
+  "source paths in each panel are the authority. The diagram deliberately shows more than " +
+  "<code>docs/architecture.md</code> does: the query-scheduler, the OTLP ingest endpoint, the " +
+  "HA tracker and the parquet-converter all exist in the code, and the last of those is marked " +
+  "experimental because the documentation does not cover it yet. Omitted to keep the picture " +
+  "readable: the overrides-exporter, flusher, purger, tenant-federation and distributed query " +
+  "execution. " +
+  'This page supersedes <code>tools/diagram/cortex-architecture.drawio</code>, which still ' +
+  "depicts the removed chunks-storage architecture."
+);
+
+/* =======================================================================
+   Boot
+   ======================================================================= */
+buildLegend();
+buildTables();
+renderFlowButtons();
+syncThemeLabel();
+idlePanel();
+apply();
+</script>
+</body>
+</html>

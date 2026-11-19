@@ -24,9 +24,9 @@ func TestActiveSeriesTrackerPerTenant(t *testing.T) {
 	defer s.Close()
 
 	// Write runtime config with per-tenant active series trackers.
-	runtimeConfig := map[string]interface{}{
-		"overrides": map[string]interface{}{
-			"user-1": map[string]interface{}{
+	runtimeConfig := map[string]any{
+		"overrides": map[string]any{
+			"user-1": map[string]any{
 				"active_series_trackers": []map[string]string{
 					{"name": "api_metrics", "matchers": `{__name__=~"api_.*"}`},
 					{"name": "node_metrics", "matchers": `{__name__=~"node_.*"}`},
@@ -123,9 +123,9 @@ func TestActiveSeriesTrackerPerTenant(t *testing.T) {
 	require.Equal(t, 0.0, sum[0])
 
 	// Now update runtime config: remove node_metrics tracker for user-1.
-	runtimeConfig2 := map[string]interface{}{
-		"overrides": map[string]interface{}{
-			"user-1": map[string]interface{}{
+	runtimeConfig2 := map[string]any{
+		"overrides": map[string]any{
+			"user-1": map[string]any{
 				"active_series_trackers": []map[string]string{
 					{"name": "api_metrics", "matchers": `{__name__=~"api_.*"}`},
 				},

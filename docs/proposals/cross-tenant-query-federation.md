@@ -59,7 +59,7 @@ Label selectors containing the tenant label should behave like any other labels.
 
 The tenant ID is currently read from the `X-Scope-OrgID` HTTP header. The tenant ID has those [documented limitations][cortex_tenant_id] of values being allowed.
 
-[cortex_tenant_id]: https://cortexmetrics.io/docs/guides/limitations/#tenant-id-naming
+[cortex_tenant_id]: https://cortexmetrics.io/docs/guides/tenant-id-naming-conventions/#tenant-id-naming
 
 #### Proposal
 

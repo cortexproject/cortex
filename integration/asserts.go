@@ -64,7 +64,7 @@ func assertServiceMetricsPrefixes(t *testing.T, serviceType ServiceType, service
 	blacklist := getBlacklistedMetricsPrefixesByService(serviceType)
 
 	// Ensure no metric name matches the blacklisted prefixes.
-	for _, metricLine := range strings.Split(metrics, "\n") {
+	for metricLine := range strings.SplitSeq(metrics, "\n") {
 		metricLine = strings.TrimSpace(metricLine)
 		if metricLine == "" || strings.HasPrefix(metricLine, "#") {
 			continue

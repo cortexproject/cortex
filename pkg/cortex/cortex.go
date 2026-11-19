@@ -71,8 +71,9 @@ import (
 )
 
 var (
-	errInvalidHTTPPrefix                       = errors.New("HTTP prefix should be empty or start with /")
-	errTimeoutClassificationRequiresQueryStats = errors.New("timeout classification requires query stats to be enabled (frontend.query-stats-enabled)")
+	errInvalidHTTPPrefix                          = errors.New("HTTP prefix should be empty or start with /")
+	errRulerFederatedRulesRequireTenantFederation = errors.New("-ruler.enable-federated-rules requires -tenant-federation.enabled")
+	errTimeoutClassificationRequiresQueryStats    = errors.New("timeout classification requires query stats to be enabled (frontend.query-stats-enabled)")
 )
 
 // The design pattern for Cortex is a series of config objects, which are
@@ -305,13 +306,16 @@ func (c *Config) Validate(log log.Logger) error {
 	if err := c.Ruler.Validate(c.LimitsConfig, log); err != nil {
 		return errors.Wrap(err, "invalid ruler config")
 	}
+	if c.Ruler.EnableFederatedRules && !c.TenantFederation.Enabled {
+		return errRulerFederatedRulesRequireTenantFederation
+	}
 	if err := c.BlocksStorage.Validate(); err != nil {
 		return errors.Wrap(err, "invalid TSDB config")
 	}
 	if err := c.LimitsConfig.Validate(c.NameValidationScheme, c.Distributor.ShardByAllLabels, c.Ingester.ActiveSeriesMetricsEnabled, c.Distributor.HATrackerConfig.UpdateTimeout, c.Distributor.HATrackerConfig.UpdateTimeoutJitterMax); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.LimitsConfig.ValidateQueryLimits("default", c.BlocksStorage.TSDB.CloseIdleTSDBTimeout); err != nil {
+	if err := c.LimitsConfig.ValidateQueryLimits("default"); err != nil {
 		return errors.Wrap(err, "invalid query routing config")
 	}
 	if err := c.ResourceMonitor.Validate(); err != nil {
@@ -386,6 +390,7 @@ func (c *Config) deprecatedLimits() []deprecatedLimit {
 		{"querier.query_store_after", "limits.query_store_after", "querier.query-store-after", "limits.query-store-after", c.Querier.DeprecatedQueryStoreAfter, &c.LimitsConfig.QueryStoreAfter, defaults.QueryStoreAfter},
 		{"querier.shuffle_sharding_ingesters_lookback_period", "limits.shuffle_sharding_ingesters_lookback_period", "querier.shuffle-sharding-ingesters-lookback-period", "limits.shuffle-sharding-ingesters-lookback-period", c.Querier.DeprecatedShuffleShardingIngestersLookbackPeriod, &c.LimitsConfig.ShuffleShardingIngestersLookbackPeriod, defaults.ShuffleShardingIngestersLookbackPeriod},
 		{"distributor.ha_tracker.ha_tracker_failover_timeout", "limits.ha_tracker_failover_timeout", "", "distributor.ha-tracker.failover-timeout", c.Distributor.HATrackerConfig.DeprecatedFailoverTimeout, &c.LimitsConfig.HATrackerFailoverTimeout, defaults.HATrackerFailoverTimeout},
+		{"blocks_storage.tsdb.close_idle_tsdb_timeout", "limits.close_idle_tsdb_timeout", "blocks-storage.tsdb.close-idle-tsdb-timeout", "limits.close-idle-tsdb-timeout", c.BlocksStorage.TSDB.DeprecatedCloseIdleTSDBTimeout, &c.LimitsConfig.CloseIdleTSDBTimeout, defaults.CloseIdleTSDBTimeout},
 	}
 }
 

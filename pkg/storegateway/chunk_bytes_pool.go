@@ -52,3 +52,11 @@ func (p *chunkBytesPool) Put(b *[]byte) {
 	p.poolByteStats.WithLabelValues("put", "cap").Add(float64(cap(*b)))
 	p.pool.Put(b)
 }
+
+func (p *chunkBytesPool) UsedBytes() uint64 {
+	return p.pool.UsedBytes()
+}
+
+func (p *chunkBytesPool) MaxBytes() uint64 {
+	return p.pool.MaxBytes()
+}

@@ -254,6 +254,7 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 		if errors.Is(err, ErrBlockDeletionMarkNotFound) {
 			// This could happen if the block is permanently deleted between the "list objects" and now.
 			level.Warn(w.logger).Log("msg", "skipped missing block deletion mark when updating bucket index", "block", id.String())
+			w.deleteOrphanedGlobalDeletionMark(ctx, id)
 			continue
 		}
 		if errors.Is(err, ErrBlockDeletionMarkCorrupted) {
@@ -268,6 +269,35 @@ func (w *Updater) updateBlockMarks(ctx context.Context, old []*BlockDeletionMark
 	}
 
 	return out, deletedBlocks, totalBlocksBlocksMarkedForNoCompaction, nil
+}
+
+// deleteOrphanedGlobalDeletionMark removes the block deletion mark from the global markers location
+// when the block it refers to no longer exists in the storage. Without this, the stale marker would
+// be listed (and skipped) at every update of the bucket index, and would keep the tenant's location in
+// the storage forever. The marker is removed only if the block location is empty, so that a block
+// which is being marked for deletion is never affected. This is best effort: failures are only logged.
+func (w *Updater) deleteOrphanedGlobalDeletionMark(ctx context.Context, id ulid.ULID) {
+	// The listing is not stopped at the first object: returning an error from the callback makes some
+	// clients (e.g. S3) leave the listing undrained, and is counted and retried as a failed operation.
+	// A block location holds only a handful of objects.
+	hasObjects := false
+	err := w.bkt.Iter(ctx, id.String()+objstore.DirDelim, func(string) error {
+		hasObjects = true
+		return nil
+	}, objstore.WithRecursiveIter())
+	if err != nil {
+		level.Warn(w.logger).Log("msg", "failed to check whether the block of an orphaned deletion mark exists", "block", id.String(), "err", err)
+		return
+	}
+	if hasObjects {
+		return
+	}
+
+	if err := w.bkt.Delete(ctx, BlockDeletionMarkFilepath(id)); err != nil && !w.bkt.IsObjNotFoundErr(err) {
+		level.Warn(w.logger).Log("msg", "failed to delete orphaned block deletion mark", "block", id.String(), "err", err)
+		return
+	}
+	level.Info(w.logger).Log("msg", "deleted orphaned block deletion mark of a block which no longer exists", "block", id.String())
 }
 
 func (w *Updater) updateBlockDeletionMarkIndexEntry(ctx context.Context, id ulid.ULID) (*BlockDeletionMark, error) {

@@ -27,6 +27,7 @@ For the sake of clarity, in this document we have grouped API endpoints by servi
 | [Fgprof](#fgprof) | _All services_ || `GET /debug/fgprof` |
 | [Remote write](#remote-write) | Distributor || `POST /api/v1/push` |
 | [OTLP receiver](#otlp-receiver) | Distributor || `POST /api/v1/otlp/v1/metrics` |
+| [OTLP receiver (gRPC)](#otlp-receiver-grpc) | Distributor || gRPC `opentelemetry.proto.collector.metrics.v1.MetricsService/Export` |
 | [Tenants stats](#tenants-stats) | Distributor || `GET /distributor/all_user_stats` |
 | [HA tracker status](#ha-tracker-status) | Distributor || `GET /distributor/ha_tracker` |
 | [Flush blocks](#flush-blocks) | Ingester || `GET,POST /ingester/flush` |
@@ -97,6 +98,8 @@ In this documentation you will find the usage of some placeholders for the path 
 ### Authentication
 
 When multi-tenancy is enabled, endpoints requiring authentication are expected to be called with the `X-Scope-OrgID` HTTP request header set to the tenant ID. Otherwise, when multi-tenancy is disabled, Cortex doesn't require any request to have the `X-Scope-OrgID` header.
+
+The gRPC endpoints read the tenant ID from the `X-Scope-OrgID` gRPC metadata key. When multi-tenancy is enabled, a gRPC request without it is rejected with the `UNAUTHENTICATED` status code.
 
 Multi-tenancy can be enabled/disabled via the CLI flag `-auth.enabled` or its respective YAML config option.
 
@@ -229,6 +232,34 @@ POST /api/v1/otlp/v1/metrics
 Entrypoint for the OTLP Receiver
 
 This API endpoint accepts a HTTP POST request using [OTLP](https://opentelemetry.io/docs/specs/otlp/) format
+
+_Requires [authentication](#authentication)._
+
+### OTLP Receiver (gRPC)
+
+```
+gRPC opentelemetry.proto.collector.metrics.v1.MetricsService/Export
+```
+
+Entrypoint for the OTLP Receiver over gRPC. It is experimental, and it is disabled by default. Enable it with `-distributor.otlp.grpc-enabled=true`.
+
+This gRPC service accepts the standard [OTLP](https://opentelemetry.io/docs/specs/otlp/) metrics export request on the distributor gRPC server port (`-server.grpc-listen-port`). The conversion to Prometheus series is the same as for the HTTP endpoint, and it uses the same `-distributor.otlp.*` flags.
+
+- The tenant is read from the `X-Scope-OrgID` gRPC metadata. When `-auth.enabled=true`, a request without it is rejected with `UNAUTHENTICATED`.
+- The maximum request size is set by `-server.grpc-max-recv-msg-size-bytes` (default 4 MiB), not by `-distributor.otlp-max-recv-msg-size`. The server rejects a larger request with `RESOURCE_EXHAUSTED`. Increase the limit, or decrease the batch size in the OpenTelemetry Collector.
+- When some metrics cannot be converted (for example delta temporality metrics when `-distributor.otlp.allow-delta-temporality=false`), the other metrics are ingested, and the response is a partial success with an error message. The `rejected_data_points` field is always 0, because the number of dropped data points is not known.
+
+Errors are returned with status codes that let OTLP clients decide if they retry:
+
+| Distributor result | gRPC status code | Retried by OTLP clients |
+|---|---|---|
+| Request deduplicated by the HA tracker | `OK` | No |
+| Invalid request (HTTP 4xx) | `INVALID_ARGUMENT` | No |
+| Missing or wrong tenant | `UNAUTHENTICATED` / `PERMISSION_DENIED` | No |
+| Rate limited (HTTP 429) | `UNAVAILABLE` | Yes |
+| Server error (HTTP 5xx) | `UNAVAILABLE` | Yes |
+| Client canceled the request | `CANCELED` | No |
+| Deadline exceeded | `DEADLINE_EXCEEDED` | Yes |
 
 _Requires [authentication](#authentication)._
 

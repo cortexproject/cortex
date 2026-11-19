@@ -155,3 +155,22 @@ func TestMultiResolver(t *testing.T) {
 		t.Run(tc.name, tc.test(r))
 	}
 }
+
+func TestInjectResolver(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "tenant-a|tenant-b")
+
+	// The default resolver only supports a single tenant.
+	_, err := TenantIDs(ctx)
+	assert.Error(t, err)
+
+	ctx = InjectResolver(ctx, NewMultiResolver())
+	tenantIDs, err := TenantIDs(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"tenant-a", "tenant-b"}, tenantIDs)
+
+	_, err = TenantID(ctx)
+	assert.Equal(t, user.ErrTooManyOrgIDs, err)
+
+	// A nil resolver keeps the context as is.
+	assert.Equal(t, ctx, InjectResolver(ctx, nil))
+}

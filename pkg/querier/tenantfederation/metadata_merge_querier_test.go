@@ -79,9 +79,6 @@ func (m *mockMetadataQuerier) MetricsMetadata(ctx context.Context, _ *client.Met
 }
 
 func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
-	// set a multi tenant resolver
-	users.WithDefaultResolver(users.NewMultiResolver())
-
 	tests := []struct {
 		name               string
 		tenantIdToMetadata map[string][]scrape.MetricMetadata
@@ -186,7 +183,7 @@ func Test_mergeMetadataQuerier_MetricsMetadata(t *testing.T) {
 				AllowPartialData: test.allowPartialData,
 			}
 
-			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, reg)
+			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, users.NewMultiResolver(), reg)
 			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 			if test.expectedErr != "" {
 				require.Error(t, err)
@@ -219,7 +216,6 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 	tenantFederationConfig := Config{UserSyncInterval: time.Second}
 	regexResolver, err := NewRegexResolver(usersScannerConfig, tenantFederationConfig, reg, bucketClientFactory, log.NewNopLogger())
 	require.NoError(t, err)
-	users.WithDefaultResolver(regexResolver)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), regexResolver))
 
 	// wait update knownUsers
@@ -313,7 +309,7 @@ func Test_mergeMetadataQuerier_MetricsMetadata_WhenUseRegexResolver(t *testing.T
 				AllowPartialData: test.allowPartialData,
 			}
 
-			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, reg)
+			mergeMetadataQuerier := NewMetadataQuerier(&upstream, cfg, regexResolver, reg)
 			metadata, err := mergeMetadataQuerier.MetricsMetadata(user.InjectOrgID(context.Background(), test.orgId), &client.MetricsMetadataRequest{Limit: -1, LimitPerMetric: -1, Metric: ""})
 			if test.expectedErr != "" {
 				require.Error(t, err)

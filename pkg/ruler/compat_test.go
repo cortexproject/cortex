@@ -1,6 +1,7 @@
 package ruler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/tsdbutil"
 	"github.com/stretchr/testify/require"
@@ -310,6 +312,98 @@ func TestPusherErrors(t *testing.T) {
 	}
 }
 
+func TestPusherAppender_Commit_StaleMarkers(t *testing.T) {
+	staleNaN := math.Float64frombits(value.StaleNaN)
+
+	for name, tc := range map[string]struct {
+		samples          []float64
+		withHistogram    bool
+		returnedError    error
+		expectedError    error
+		expectedFailures int
+	}{
+		"only staleness markers, 4xx: reported as success so the caller stops retrying": {
+			samples:       []float64{staleNaN, staleNaN},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: nil,
+		},
+		"only staleness markers, 429: still an error, the rate limiter rejected the whole request and the limit is transient": {
+			samples:       []float64{staleNaN},
+			returnedError: httpgrpc.Errorf(http.StatusTooManyRequests, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, "test error"),
+		},
+		"only staleness markers, 5xx: still an error, retrying is correct": {
+			samples:          []float64{staleNaN},
+			returnedError:    httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedError:    httpgrpc.Errorf(http.StatusInternalServerError, "test error"),
+			expectedFailures: 1,
+		},
+		"only staleness markers, non-HTTP error: still an error": {
+			samples:          []float64{staleNaN},
+			returnedError:    errors.New("test error"),
+			expectedError:    errors.New("test error"),
+			expectedFailures: 1,
+		},
+		"only staleness markers, no error": {
+			samples:       []float64{staleNaN},
+			returnedError: nil,
+			expectedError: nil,
+		},
+		"markers alongside a rule result, 4xx: still an error, the ruler reports rule health from it": {
+			samples:       []float64{staleNaN, 123456},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"rule results only, 4xx: still an error": {
+			samples:       []float64{123456},
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"staleness marker with a histogram, 4xx: still an error, cleanupStaleSeries never appends histograms": {
+			samples:       []float64{staleNaN},
+			withHistogram: true,
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+		"empty transaction, 4xx: still an error": {
+			returnedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+			expectedError: httpgrpc.Errorf(http.StatusBadRequest, "test error"),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			pusher := &fakePusher{err: tc.returnedError, response: &cortexpb.WriteResponse{}}
+
+			writes := prometheus.NewCounter(prometheus.CounterOpts{})
+			failures := prometheus.NewCounter(prometheus.CounterOpts{})
+
+			pa := NewPusherAppendable(pusher, "user-1", &ruleLimits{}, writes, failures)
+
+			lbls, err := parser.ParseMetric("foo_bar")
+			require.NoError(t, err)
+
+			a := pa.Appender(ctx)
+			for _, v := range tc.samples {
+				_, err = a.Append(0, lbls, int64(model.Now()), v)
+				require.NoError(t, err)
+			}
+			if tc.withHistogram {
+				_, err = a.AppendHistogram(0, lbls, int64(model.Now()), tsdbutil.GenerateTestHistogram(1), nil)
+				require.NoError(t, err)
+			}
+
+			if tc.expectedError == nil {
+				require.NoError(t, a.Commit())
+			} else {
+				require.Equal(t, tc.expectedError, a.Commit())
+			}
+
+			require.Equal(t, 1, int(testutil.ToFloat64(writes)))
+			require.Equal(t, tc.expectedFailures, int(testutil.ToFloat64(failures)))
+		})
+	}
+}
+
 func TestMetricsQueryFuncErrors(t *testing.T) {
 	for name, tc := range map[string]struct {
 		returnedError          error
@@ -405,7 +499,7 @@ func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		return promql.Vector{}, nil
 	}
-	qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger())
+	qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewNopLogger(), false)
 	_, _ = qf(context.Background(), "test", time.Now())
 
 	require.GreaterOrEqual(t, testutil.ToFloat64(metrics.RulerQuerySeconds.WithLabelValues("userID")), float64(1))
@@ -414,6 +508,39 @@ func TestRecordAndReportRuleQueryMetrics(t *testing.T) {
 	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryChunkBytes.WithLabelValues("userID")), float64(10))
 	require.Equal(t, testutil.ToFloat64(metrics.RulerQueryDataBytes.WithLabelValues("userID")), float64(14))
 }
+
+func TestRecordAndReportRuleQueryMetrics_LogFields(t *testing.T) {
+	statsFields := []string{"query_wall_time_seconds", "query_storage_wall_time_seconds", "fetched_series_count", "fetched_chunks_count", "fetched_samples_count", "fetched_chunks_bytes", "fetched_data_bytes"}
+
+	for name, queryViaFrontend := range map[string]bool{
+		"query via engine":   false,
+		"query via frontend": true,
+	} {
+		t.Run(name, func(t *testing.T) {
+			metrics := NewRuleEvalMetrics(Config{EnableQueryStats: true}, prometheus.NewPedanticRegistry())
+			buf := &bytes.Buffer{}
+			mockFunc := func(ctx context.Context, q string, t time.Time) (promql.Vector, error) {
+				return promql.Vector{}, nil
+			}
+			ctx := rules.NewOriginContext(context.Background(), rules.RuleDetail{Name: "rule", Kind: "recording"})
+
+			qf := recordAndReportRuleQueryMetrics(mockFunc, "userID", metrics, log.NewLogfmtLogger(buf), queryViaFrontend)
+			_, _ = qf(ctx, "test", time.Now())
+
+			logLine := buf.String()
+			require.Contains(t, logLine, "rule=rule")
+			require.Contains(t, logLine, "cortex_ruler_query_seconds_total=")
+			for _, field := range statsFields {
+				if queryViaFrontend {
+					require.NotContains(t, logLine, field+"=")
+				} else {
+					require.Contains(t, logLine, field+"=")
+				}
+			}
+		})
+	}
+}
+
 func TestPusherAppender_Commit_WithDiscardOutOfOrder(t *testing.T) {
 	pusher := &fakePusher{response: &cortexpb.WriteResponse{}}
 	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "test"})

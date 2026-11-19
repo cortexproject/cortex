@@ -129,6 +129,9 @@ func (r *OverTimeBuffer) SampleCount() int {
 
 func (r *OverTimeBuffer) MaxT() int64 { return r.lastTimestamp }
 
+// Empty reports whether any sample is retained for the current step range.
+func (r *OverTimeBuffer) Empty() bool { return r.firstTimestamps[0] == math.MaxInt64 }
+
 func (r *OverTimeBuffer) Push(t int64, v Value) {
 	if t <= r.stepRanges[0].mint {
 		return

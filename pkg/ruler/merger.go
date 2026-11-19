@@ -10,8 +10,8 @@ import (
 // mergeGroupStateDesc removes duplicates from the provided []*GroupStateDesc by keeping the GroupStateDesc with the
 // latest information. It uses the EvaluationTimestamp of the GroupStateDesc and the EvaluationTimestamp of the
 // ActiveRules in a GroupStateDesc to determine the which GroupStateDesc has the latest information.
-// It also truncates rule groups if maxRuleGroups > 0
-func mergeGroupStateDesc(ruleResponses []*RulesResponse, maxRuleGroups int32, dedup bool) *RulesResponse {
+// It also truncates rule groups if maxRuleGroups > 0 or maxRules > 0
+func mergeGroupStateDesc(ruleResponses []*RulesResponse, maxRuleGroups int32, maxRules uint, dedup bool) *RulesResponse {
 
 	var groupsStateDescs []*GroupStateDesc
 
@@ -44,10 +44,10 @@ func mergeGroupStateDesc(ruleResponses []*RulesResponse, maxRuleGroups int32, de
 		groups = groupsStateDescs
 	}
 
-	if maxRuleGroups > 0 {
+	if maxRuleGroups > 0 || maxRules > 0 {
 		//Need to sort here before we truncate
 		sort.Sort(PaginatedGroupStates(groups))
-		result, nextToken := generatePage(groups, int(maxRuleGroups))
+		result, nextToken := generatePage(groups, int(maxRuleGroups), maxRules)
 		return &RulesResponse{
 			Groups:    result,
 			NextToken: nextToken,

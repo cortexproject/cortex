@@ -46,10 +46,22 @@ func (b *backgrounChunkSeriesSet) run(ctx context.Context) {
 	}
 }
 
+// defaultBackgroundChunkSeriesSetBuffer is the lookahead used for a single
+// background set. A merge tree holds one buffer per subtree, so inner levels
+// pass a smaller value to bound total series held in memory.
+const defaultBackgroundChunkSeriesSetBuffer = 1000
+
 func NewBackgroundChunkSeriesSet(ctx context.Context, cs storage.ChunkSeriesSet) storage.ChunkSeriesSet {
+	return NewBackgroundChunkSeriesSetWithBuffer(ctx, cs, defaultBackgroundChunkSeriesSetBuffer)
+}
+
+func NewBackgroundChunkSeriesSetWithBuffer(ctx context.Context, cs storage.ChunkSeriesSet, buffer int) storage.ChunkSeriesSet {
+	if buffer < 1 {
+		buffer = 1
+	}
 	r := &backgrounChunkSeriesSet{
 		cs:      cs,
-		nextSet: make(chan storage.ChunkSeries, 1000),
+		nextSet: make(chan storage.ChunkSeries, buffer),
 	}
 
 	go func() {

@@ -65,10 +65,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 type Frontend struct {
 	services.Service
 
-	cfg    Config
-	log    log.Logger
-	limits scheduler.Limits
-	retry  *transport.Retry
+	cfg            Config
+	log            log.Logger
+	limits         scheduler.Limits
+	tenantResolver users.Resolver
+	retry          *transport.Retry
 
 	lastQueryID atomic.Uint64
 
@@ -113,7 +114,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, limits scheduler.Limits, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
+func NewFrontend(cfg Config, limits scheduler.Limits, tenantResolver users.Resolver, log log.Logger, reg prometheus.Registerer, retry *transport.Retry) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), requestsCh, log)
@@ -124,6 +125,7 @@ func NewFrontend(cfg Config, limits scheduler.Limits, log log.Logger, reg promet
 	f := &Frontend{
 		cfg:              cfg,
 		limits:           limits,
+		tenantResolver:   tenantResolver,
 		log:              log,
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
@@ -267,6 +269,8 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {
+	ctx = users.InjectResolver(ctx, f.tenantResolver)
+
 	tenantIDs, err := users.TenantIDs(ctx)
 	if err != nil {
 		return nil, err

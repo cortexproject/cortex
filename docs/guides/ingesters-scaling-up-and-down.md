@@ -86,7 +86,7 @@ If you’re running an older version of Cortex that doesn’t support the READON
 The ingesters scale down is deemed an infrequent operation and no automation is currently provided. However, if you need to scale down ingesters, please be aware of the following:
 
 - Configure queriers and rulers to always query the storage
-  - `-limits.query-store-after=0s`
+  - `-querier.query-store-after=0s`
 - Frequently scan the storage bucket
   - `-blocks-storage.bucket-store.sync-interval=5m`
   - `-compactor.cleanup-interval=5m`

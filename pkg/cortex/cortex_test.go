@@ -340,6 +340,25 @@ func TestConfigValidation_DeprecatedLimits(t *testing.T) {
 			},
 		},
 		{
+			name: "old blocks storage YAML field sets the default close-idle TSDB timeout limit",
+			yaml: "blocks_storage:\n  tsdb:\n    close_idle_tsdb_timeout: 14h\n",
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(14*time.Hour), cfg.LimitsConfig.CloseIdleTSDBTimeout)
+			},
+		},
+		{
+			name: "old blocks storage CLI flag sets the default close-idle TSDB timeout limit",
+			args: []string{"-blocks-storage.tsdb.close-idle-tsdb-timeout=14h"},
+			check: func(t *testing.T, cfg *Config) {
+				assert.Equal(t, model.Duration(14*time.Hour), cfg.LimitsConfig.CloseIdleTSDBTimeout)
+			},
+		},
+		{
+			name:          "old and new close-idle TSDB timeout set to different values",
+			yaml:          "blocks_storage:\n  tsdb:\n    close_idle_tsdb_timeout: 14h\nlimits:\n  close_idle_tsdb_timeout: 15h\n",
+			expectedError: "are both set: remove blocks_storage.tsdb.close_idle_tsdb_timeout",
+		},
+		{
 			name: "old and new set to the same value",
 			yaml: "querier:\n  query_store_after: 12h\nlimits:\n  query_store_after: 12h\n",
 			check: func(t *testing.T, cfg *Config) {

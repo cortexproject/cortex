@@ -7,7 +7,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
+
+// TestMain runs the package tests under goleak so that any FragmentTable whose
+// cleanup goroutine is not stopped (via Close) fails the package.
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestNewFragmentTable(t *testing.T) {
 	tests := []struct {
@@ -27,6 +34,7 @@ func TestNewFragmentTable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ft := NewFragmentTable(tt.expiration)
+			t.Cleanup(ft.Close)
 			require.NotNil(t, ft)
 			require.NotNil(t, ft.mappings)
 			assert.Equal(t, tt.expiration, ft.expiration)
@@ -36,6 +44,7 @@ func TestNewFragmentTable(t *testing.T) {
 
 func TestFragmentTable_AddAndGetAddress(t *testing.T) {
 	ft := NewFragmentTable(time.Hour)
+	t.Cleanup(ft.Close)
 
 	tests := []struct {
 		name      string
@@ -84,6 +93,7 @@ func TestFragmentTable_AddAndGetAddress(t *testing.T) {
 func TestFragmentTable_Expiration(t *testing.T) {
 	expiration := 100 * time.Millisecond
 	ft := NewFragmentTable(expiration)
+	t.Cleanup(ft.Close)
 
 	t.Run("entries expire after timeout", func(t *testing.T) {
 		ft.AddAddressByID(1, 1, "addr1")
@@ -106,6 +116,7 @@ func TestFragmentTable_Expiration(t *testing.T) {
 
 func TestFragmentTable_ConcurrentAccess(t *testing.T) {
 	ft := NewFragmentTable(time.Hour)
+	t.Cleanup(ft.Close)
 
 	const (
 		numGoroutines = 10
@@ -140,6 +151,7 @@ func TestFragmentTable_ConcurrentAccess(t *testing.T) {
 func TestFragmentTable_PeriodicCleanup(t *testing.T) {
 	expiration := 100 * time.Millisecond
 	ft := NewFragmentTable(expiration)
+	t.Cleanup(ft.Close)
 
 	ft.AddAddressByID(1, 1, "addr1")
 	ft.AddAddressByID(1, 2, "addr2")
@@ -162,4 +174,16 @@ func TestFragmentTable_PeriodicCleanup(t *testing.T) {
 
 	_, ok = ft.GetAddrByID(1, 2)
 	require.False(t, ok)
+}
+
+// TestFragmentTable_Close verifies that Close stops the background cleanup
+// goroutine — asserted package-wide by goleak in TestMain — and is safe to call
+// more than once.
+func TestFragmentTable_Close(t *testing.T) {
+	ft := NewFragmentTable(time.Hour)
+
+	ft.Close()
+
+	// Close is idempotent: a second call must not panic (e.g. double close).
+	require.NotPanics(t, ft.Close)
 }

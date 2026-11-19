@@ -364,16 +364,17 @@ func (t *Cortex) initTenantFederation() (serv services.Service, err error) {
 
 // wrapInternalQuerierRouter adds the middlewares that the querier would otherwise get from the external HTTP server.
 func (t *Cortex) wrapInternalQuerierRouter(router http.Handler) http.Handler {
+	// Log requests like the external HTTP server does for a standalone querier. It is wrapped inside the
+	// auth middleware, so that the log lines carry the tenant ID, and inside the tracing middleware, so
+	// that they carry the trace ID.
+	logMiddleware := middleware.NewLogMiddleware(logging.GoKit(util_log.Logger), t.Cfg.Server.LogRequestHeaders, t.Cfg.Server.LogRequestAtInfoLevel, nil, strings.Split(t.Cfg.Server.LogRequestExcludeHeadersList, ","))
+	logMiddleware.DisableRequestSuccessLog = t.Cfg.Server.DisableRequestSuccessLog
+	router = logMiddleware.Wrap(router)
+
 	// Add a middleware to extract the trace context and add a header.
 	router = nethttp.MiddlewareFunc(opentracing.GlobalTracer(), router.ServeHTTP, nethttp.OperationNameFunc(func(r *http.Request) string {
 		return "internalQuerier"
 	}))
-
-	// Log requests like the external HTTP server does for a standalone querier. It is wrapped inside the
-	// auth middleware, so that the log lines carry the tenant ID.
-	logMiddleware := middleware.NewLogMiddleware(logging.GoKit(util_log.Logger), t.Cfg.Server.LogRequestHeaders, t.Cfg.Server.LogRequestAtInfoLevel, nil, strings.Split(t.Cfg.Server.LogRequestExcludeHeadersList, ","))
-	logMiddleware.DisableRequestSuccessLog = t.Cfg.Server.DisableRequestSuccessLog
-	router = logMiddleware.Wrap(router)
 
 	// If queries are processed using the external HTTP Server, we need wrap the internal querier with
 	// HTTP router with middleware to parse the tenant ID from the HTTP header and inject it into the

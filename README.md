@@ -96,7 +96,7 @@ Join us in shaping the future of Cortex, and let's build something amazing toget
 - Sep 2020 blog post "[A Tale of Tail Latencies](https://www.weave.works/blog/a-tale-of-tail-latencies)"
 - Aug 2020 blog post "[Scaling Prometheus: How we're pushing Cortex blocks storage to its limit and beyond](https://grafana.com/blog/2020/08/12/scaling-prometheus-how-were-pushing-cortex-blocks-storage-to-its-limit-and-beyond/)"
 - Jul 2020 blog post "[How blocks storage in Cortex reduces operational complexity for running Prometheus at massive scale](https://grafana.com/blog/2020/07/29/how-blocks-storage-in-cortex-reduces-operational-complexity-for-running-prometheus-at-massive-scale/)"
-- Mar 2020 blog post "[Cortex: Zone Aware Replication](https://kenhaines.net/cortex-zone-aware-replication/)"
+- Mar 2020 blog post "Cortex: Zone Aware Replication"
 - Mar 2020 blog post "[How we're using gossip to improve Cortex and Loki availability](https://grafana.com/blog/2020/03/25/how-were-using-gossip-to-improve-cortex-and-loki-availability/)"
 - Jan 2020 blog post "[The Future of Cortex: Into the Next Decade](https://grafana.com/blog/2020/01/21/the-future-of-cortex-into-the-next-decade/)"
 - Feb 2019 blog post & podcast; "[Prometheus Scalability with Bryan Boreham][prometheus-scalability]" ([podcast][prometheus-scalability-podcast])

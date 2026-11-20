@@ -456,7 +456,7 @@ func generateBenchmarkRing(numInstances, numZones, numTokens int) *Desc {
 
 // newBenchmarkRing returns a ring, as the ingester builds it, set to desc.
 func newBenchmarkRing(b *testing.B, desc *Desc) *Ring {
-	r, err := NewRingFromDesc(Config{HeartbeatTimeout: time.Hour, ReplicationFactor: benchmarkRingRF, ZoneAwarenessEnabled: true}, "ingester", log.NewNopLogger())
+	r, err := NewDescFedRing(Config{HeartbeatTimeout: time.Hour, ReplicationFactor: benchmarkRingRF, ZoneAwarenessEnabled: true}, "ingester", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(b, err)
 	r.UpdateDesc(desc)
 	return r

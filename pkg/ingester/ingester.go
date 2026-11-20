@@ -1118,7 +1118,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		// within, including each tenant's shuffle-shard subring. Build them from
 		// the ring the lifecycler already reads on every heartbeat, rather than
 		// watching the KV store a second time from every ingester.
-		ownedSeriesRing, err := ring.NewRingFromDesc(cfg.LifecyclerConfig.RingConfig, "ingester-owned-series", logger)
+		ownedSeriesRing, err := ring.NewDescFedRing(cfg.LifecyclerConfig.RingConfig, "ingester-owned-series", RingKey, i.lifecycler.KVStore, logger)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to create the ring for owned series")
 		}

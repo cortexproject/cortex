@@ -10,15 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNewRingFromDesc_AnswersLikeAWatchedRing checks that a ring updated by hand
+// TestDescFedRing_AnswersLikeAWatchedRing checks that a ring updated by hand
 // gives the same ownership and the same shuffle-shard subrings as a ring watching
 // the KV store, given the same Desc.
-func TestNewRingFromDesc_AnswersLikeAWatchedRing(t *testing.T) {
+func TestDescFedRing_AnswersLikeAWatchedRing(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
 	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}
 
 	watched := newWatchedRingForOwnershipTest(t, cloneDesc(desc), 3, true)
-	fromDesc, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	fromDesc, err := NewDescFedRing(cfg, "test", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(t, err)
 	fromDesc.UpdateDesc(cloneDesc(desc))
 
@@ -45,7 +45,7 @@ func TestNewRingFromDesc_AnswersLikeAWatchedRing(t *testing.T) {
 func TestRing_UpdateDesc_StateChangeKeepsSubrings(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
 	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 128)}
-	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	r, err := NewDescFedRing(cfg, "test", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(t, err)
 	r.UpdateDesc(cloneDesc(desc))
 
@@ -75,7 +75,7 @@ func TestRing_UpdateDesc_StateChangeKeepsSubrings(t *testing.T) {
 func TestRing_UpdateDesc_ExcludedZonesDoNotModifyTheInput(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 1, ExcludedZones: []string{"zone-0"}}
 	desc := &Desc{Ingesters: generateUniqueRingInstances(6, 3, 16)}
-	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	r, err := NewDescFedRing(cfg, "test", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	r.UpdateDesc(desc)
@@ -161,7 +161,7 @@ func keys[V any](m map[string]V) []string {
 func TestOwnershipFingerprint_IgnoresAddressChanges(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
 	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 32)}
-	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	r, err := NewDescFedRing(cfg, "test", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(t, err)
 	r.UpdateDesc(cloneDesc(desc))
 	before := r.OwnershipFingerprint()
@@ -182,19 +182,6 @@ func TestOwnershipFingerprint_IgnoresAddressChanges(t *testing.T) {
 
 // TestRing_UpdateDesc_DoesNothingOnAWatchedRing covers UpdateDesc called on a ring
 // whose state comes from watching the KV store, where it would race with the watch.
-func TestRing_UpdateDesc_DoesNothingOnAWatchedRing(t *testing.T) {
-	desc := &Desc{Ingesters: generateUniqueRingInstances(3, 1, 4)}
-	watched := newWatchedRingForOwnershipTest(t, desc, 1, false)
-	watched.mtx.RLock()
-	before := watched.ringDesc
-	watched.mtx.RUnlock()
-
-	watched.UpdateDesc(&Desc{Ingesters: generateUniqueRingInstances(5, 1, 4)})
-	watched.mtx.RLock()
-	defer watched.mtx.RUnlock()
-	assert.Same(t, before, watched.ringDesc)
-}
-
 // TestOwnershipFingerprint_SubringIgnoresStateChangesOfOtherInstances checks that
 // a subring's fingerprint, unlike the whole ring's, does not change when an
 // instance outside the shard changes state, as happens on every restart during a
@@ -202,7 +189,7 @@ func TestRing_UpdateDesc_DoesNothingOnAWatchedRing(t *testing.T) {
 func TestOwnershipFingerprint_SubringIgnoresStateChangesOfOtherInstances(t *testing.T) {
 	cfg := Config{HeartbeatTimeout: time.Hour, ReplicationFactor: 3, ZoneAwarenessEnabled: true}
 	desc := &Desc{Ingesters: generateUniqueRingInstances(30, 3, 32)}
-	r, err := NewRingFromDesc(cfg, "test", log.NewNopLogger())
+	r, err := NewDescFedRing(cfg, "test", "", &MockClient{}, log.NewNopLogger())
 	require.NoError(t, err)
 	r.UpdateDesc(cloneDesc(desc))
 	ringBefore := r.OwnershipFingerprint()

@@ -8,6 +8,75 @@ import (
 	"github.com/thanos-io/thanos/pkg/querysharding"
 )
 
+func TestDisableVectorFunctionAnalyzer_Analyze(t *testing.T) {
+	tests := []struct {
+		name            string
+		query           string
+		expectShardable bool
+		expectError     bool
+		description     string
+	}{
+		{
+			name:            "aggregation without vector()",
+			query:           `sum(rate(http_requests_total[5m])) by (job)`,
+			expectShardable: true,
+			expectError:     false,
+			description:     "Queries not using vector() are unaffected",
+		},
+		{
+			name:            "or vector() fallback",
+			query:           `sum(rate(http_requests_total[5m])) by (job) or vector(0)`,
+			expectShardable: false,
+			expectError:     false,
+			description:     "vector() is produced by every shard, so the query is not shardable",
+		},
+		{
+			name:            "vector() nested in an or operand",
+			query:           `max without (__name__, job, series) (test_series_a) or (-test_series_b or vector(-0.35))`,
+			expectShardable: false,
+			expectError:     false,
+			description:     "vector() anywhere in the query makes it not shardable",
+		},
+		{
+			name:            "vector() as an argument of another function",
+			query:           `sum(clamp_min(vector(1), 0)) by (job)`,
+			expectShardable: false,
+			expectError:     false,
+			description:     "vector() nested inside a call still makes the query not shardable",
+		},
+		{
+			name:            "series named vector",
+			query:           `sum(vector_series) by (job)`,
+			expectShardable: true,
+			expectError:     false,
+			description:     "A selector whose name merely contains vector must stay shardable",
+		},
+		{
+			name:            "invalid query",
+			query:           "invalid{query",
+			expectShardable: false,
+			expectError:     true,
+			description:     "Invalid queries should return error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			analyzer := NewDisableVectorFunctionAnalyzer(querysharding.NewQueryAnalyzer())
+
+			result, err := analyzer.Analyze(tt.query)
+
+			if tt.expectError {
+				require.Error(t, err, tt.description)
+				return
+			}
+
+			require.NoError(t, err, tt.description)
+			assert.Equal(t, tt.expectShardable, result.IsShardable(), tt.description)
+		})
+	}
+}
+
 func TestDisableBinaryExpressionAnalyzer_Analyze(t *testing.T) {
 	tests := []struct {
 		name            string

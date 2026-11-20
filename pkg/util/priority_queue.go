@@ -15,6 +15,9 @@ type PriorityQueue struct {
 	closed      bool
 	queue       queue
 	lengthGauge prometheus.Gauge
+	// seq is incremented on every Enqueue and breaks ties between ops with
+	// the same priority, so they are dequeued in arrival order.
+	seq uint64
 }
 
 // PriorityOp is an operation on the priority queue.
@@ -22,16 +25,27 @@ type PriorityOp interface {
 	Priority() int64 // The larger the number the higher the priority.
 }
 
-type queue []PriorityOp
+type queueItem struct {
+	op  PriorityOp
+	seq uint64
+}
 
-func (q queue) Len() int           { return len(q) }
-func (q queue) Less(i, j int) bool { return q[i].Priority() > q[j].Priority() }
-func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
+type queue []queueItem
+
+func (q queue) Len() int { return len(q) }
+func (q queue) Less(i, j int) bool {
+	pi, pj := q[i].op.Priority(), q[j].op.Priority()
+	if pi != pj {
+		return pi > pj
+	}
+	return q[i].seq < q[j].seq
+}
+func (q queue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
 
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
 func (q *queue) Push(x any) {
-	*q = append(*q, x.(PriorityOp))
+	*q = append(*q, x.(queueItem))
 }
 
 func (q *queue) Pop() any {
@@ -90,7 +104,8 @@ func (pq *PriorityQueue) Enqueue(op PriorityOp) {
 		panic("enqueue on closed queue")
 	}
 
-	heap.Push(&pq.queue, op)
+	heap.Push(&pq.queue, queueItem{op: op, seq: pq.seq})
+	pq.seq++
 	pq.cond.Broadcast()
 	if pq.lengthGauge != nil {
 		pq.lengthGauge.Inc()
@@ -112,7 +127,7 @@ func (pq *PriorityQueue) Dequeue() PriorityOp {
 		return nil
 	}
 
-	op := heap.Pop(&pq.queue).(PriorityOp)
+	op := heap.Pop(&pq.queue).(queueItem).op
 	if pq.lengthGauge != nil {
 		pq.lengthGauge.Dec()
 	}
@@ -121,6 +136,6 @@ func (pq *PriorityQueue) Dequeue() PriorityOp {
 
 // Peek will return the op with the highest priority without removing it from the queue
 func (pq *PriorityQueue) Peek() PriorityOp {
-	op := pq.queue[0]
+	op := pq.queue[0].op
 	return op
 }

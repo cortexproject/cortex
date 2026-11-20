@@ -226,6 +226,15 @@ func NewQueryTripperware(
 				} else if isQuery {
 					return instantQuery.RoundTrip(r)
 				}
+
+				// The two endpoints above are re-encoded by the codec, which injects the request
+				// metadata into the headers of the request it builds. Every other endpoint is
+				// forwarded as it was received, so the metadata has to be injected here for the
+				// querier to recover it from the headers.
+				if requestMetadataMap := requestmeta.MapFromContext(r.Context()); requestMetadataMap != nil {
+					r = r.Clone(r.Context())
+					requestmeta.InjectMetadataIntoHTTPRequestHeaders(requestMetadataMap, r)
+				}
 				return next.RoundTrip(r)
 			})
 		}

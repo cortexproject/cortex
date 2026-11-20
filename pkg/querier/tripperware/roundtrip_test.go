@@ -23,6 +23,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/util/flagext"
+	"github.com/cortexproject/cortex/pkg/util/requestmeta"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
 
@@ -69,6 +70,18 @@ func (c mockCodec) DecodeRequest(_ context.Context, r *http.Request, _ []string)
 	return mockRequest{}, nil
 }
 
+func (c mockCodec) EncodeRequest(_ context.Context, _ Request) (*http.Request, error) {
+	return http.NewRequest(http.MethodGet, queryAll, http.NoBody)
+}
+
+func (c mockCodec) DecodeResponse(_ context.Context, r *http.Response, _ Request) (Response, error) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	return &mockResponse{resp: string(body)}, nil
+}
+
 func (c mockCodec) EncodeResponse(_ context.Context, _ *http.Request, resp Response) (*http.Response, error) {
 	r := resp.(*mockResponse)
 	return &http.Response{
@@ -98,6 +111,13 @@ var (
 	rangeMiddlewares = []Middleware{
 		MiddlewareFunc(func(next Handler) Handler {
 			return mockMiddleware{}
+		}),
+	}
+	// passthroughMiddlewares leave the handler untouched, so a query reaches the downstream
+	// round tripper instead of being answered by mockMiddleware.
+	passthroughMiddlewares = []Middleware{
+		MiddlewareFunc(func(next Handler) Handler {
+			return next
 		}),
 	}
 )
@@ -388,4 +408,138 @@ cortex_query_frontend_queries_total{op="query", source="api", user="1"} 1
 			}
 		})
 	}
+}
+
+// headerCapturingRoundTripper records the headers of the request it is given.
+type headerCapturingRoundTripper struct {
+	captured http.Header
+}
+
+func (c *headerCapturingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.captured = r.Header.Clone()
+	return &http.Response{
+		Header: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+		Body:          io.NopCloser(bytes.NewBufferString(instantResponseBody)),
+		StatusCode:    http.StatusOK,
+		ContentLength: int64(len(instantResponseBody)),
+	}, nil
+}
+
+func TestRoundTripRequestMetadataPropagation(t *testing.T) {
+	const testRequestID = "test-request-id"
+
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	for _, tc := range []struct {
+		name            string
+		path            string
+		clientRequestID string
+	}{
+		{
+			name: "instant query is re-encoded by the codec",
+			path: queryAll,
+		},
+		{
+			name: "series is passed through",
+			path: seriesQuery,
+		},
+		{
+			name: "label names is passed through",
+			path: labelNamesQuery,
+		},
+		{
+			name: "label values is passed through",
+			path: labelValuesQuery,
+		},
+		{
+			name:            "a client supplied request id does not shadow the one from the context",
+			path:            seriesQuery,
+			clientRequestID: "client-supplied-request-id",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodPost, tc.path, http.NoBody)
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			ctx = requestmeta.ContextWithRequestMetadataMap(ctx, map[string]string{
+				requestmeta.RequestIdKey:     testRequestID,
+				requestmeta.RequestSourceKey: requestmeta.SourceAPI,
+			})
+			req = req.WithContext(ctx)
+			require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
+
+			if tc.clientRequestID != "" {
+				req.Header.Set(requestmeta.RequestIdKey, tc.clientRequestID)
+			}
+
+			downstream := &headerCapturingRoundTripper{}
+			tw := NewQueryTripperware(log.NewNopLogger(),
+				prometheus.NewPedanticRegistry(),
+				nil,
+				passthroughMiddlewares,
+				passthroughMiddlewares,
+				mockCodec{},
+				mockCodec{},
+				overrides,
+				querysharding.NewQueryAnalyzer(),
+				time.Minute,
+				0,
+				0,
+			)
+
+			resp, err := tw(downstream).RoundTrip(req)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.NotNil(t, downstream.captured)
+
+			require.Equal(t, []string{testRequestID}, downstream.captured.Values(requestmeta.RequestIdKey))
+			require.Equal(t, []string{requestmeta.SourceAPI}, downstream.captured.Values(requestmeta.RequestSourceKey))
+
+			// The inbound request is owned by the server, so it must not be modified.
+			require.Equal(t, tc.clientRequestID, req.Header.Get(requestmeta.RequestIdKey))
+		})
+	}
+}
+
+func TestRoundTripRequestMetadataNotInContext(t *testing.T) {
+	limits := validation.Limits{}
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	req, err := http.NewRequest(http.MethodPost, seriesQuery, http.NoBody)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req = req.WithContext(ctx)
+	require.NoError(t, user.InjectOrgIDIntoHTTPRequest(ctx, req))
+	req.Header.Set(requestmeta.RequestIdKey, "client-supplied-request-id")
+
+	downstream := &headerCapturingRoundTripper{}
+	tw := NewQueryTripperware(log.NewNopLogger(),
+		prometheus.NewPedanticRegistry(),
+		nil,
+		passthroughMiddlewares,
+		passthroughMiddlewares,
+		mockCodec{},
+		mockCodec{},
+		overrides,
+		querysharding.NewQueryAnalyzer(),
+		time.Minute,
+		0,
+		0,
+	)
+
+	resp, err := tw(downstream).RoundTrip(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NotNil(t, downstream.captured)
+
+	// Without a metadata map in the context there is nothing to inject, and the headers the
+	// client sent are forwarded as they were received.
+	require.Equal(t, []string{"client-supplied-request-id"}, downstream.captured.Values(requestmeta.RequestIdKey))
 }

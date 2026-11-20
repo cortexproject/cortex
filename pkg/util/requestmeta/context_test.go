@@ -193,3 +193,20 @@ func TestContextWithRequestMetadataMapFromHeaderSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestInjectMetadataIntoHTTPRequestHeadersReplacesExistingValues(t *testing.T) {
+	h := http.Header{}
+	h.Add(RequestIdKey, "client-supplied-request-id")
+
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: "/HTTPHeaderTest",
+		Body:       http.NoBody,
+		Header:     h,
+	}
+	InjectMetadataIntoHTTPRequestHeaders(map[string]string{RequestIdKey: "injected-request-id"}, req)
+
+	// The receiving side only reads the first value of the header, so the injected value has to
+	// replace what the client sent instead of being appended to it.
+	require.Equal(t, []string{"injected-request-id"}, req.Header.Values(RequestIdKey))
+}

@@ -27,6 +27,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
@@ -1968,4 +1969,31 @@ func Test_convertV2RequestToV1_BoundsReportedErrors(t *testing.T) {
 	lines := strings.Split(err.Error(), "\n")
 	assert.Len(t, lines, maxConversionErrs+1)
 	assert.Equal(t, fmt.Sprintf("%d more errors omitted", badSeries-maxConversionErrs), lines[len(lines)-1])
+}
+
+func TestHandler_InjectsClientIDIntoContext(t *testing.T) {
+	var limits validation.Limits
+	flagext.DefaultValues(&limits)
+	overrides := validation.NewOverrides(limits, nil)
+
+	for name, header := range map[string]string{"header present": "team-a", "header absent": ""} {
+		t.Run(name, func(t *testing.T) {
+			var gotClientID string
+			push := func(ctx context.Context, _ *cortexpb.WriteRequest) (*cortexpb.WriteResponse, error) {
+				gotClientID = clientid.FromContext(ctx)
+				return &cortexpb.WriteResponse{}, nil
+			}
+			handler := Handler(true, false, 100000, overrides, nil, push, nil)
+
+			req := createRequest(t, createCortexWriteRequestProtobuf(t, false, cortexpb.API), false)
+			if header != "" {
+				req.Header.Set(clientid.HeaderName, header)
+			}
+			resp := httptest.NewRecorder()
+			handler.ServeHTTP(resp, req)
+
+			assert.Equal(t, http.StatusOK, resp.Code)
+			assert.Equal(t, header, gotClientID)
+		})
+	}
 }

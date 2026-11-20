@@ -20,6 +20,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/cortexpb"
 	"github.com/cortexproject/cortex/pkg/util"
 	util_api "github.com/cortexproject/cortex/pkg/util/api"
+	"github.com/cortexproject/cortex/pkg/util/clientid"
 	"github.com/cortexproject/cortex/pkg/util/extract"
 	"github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/users"
@@ -60,6 +61,7 @@ func Handler(remoteWrite2Enabled bool, acceptUnknownRemoteWriteContentType bool,
 				logger = log.WithSourceIPs(source, logger)
 			}
 		}
+		ctx = clientid.InjectIntoContext(ctx, clientid.ExtractFromHTTPRequest(r))
 
 		handlePRW1 := func() {
 			var req cortexpb.PreallocWriteRequest

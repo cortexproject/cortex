@@ -460,7 +460,7 @@ github.com/fsnotify/fsnotify/internal
 # github.com/go-chi/chi/v5 v5.2.4
 ## explicit; go 1.22
 github.com/go-chi/chi/v5
-# github.com/go-jose/go-jose/v4 v4.1.4
+# github.com/go-jose/go-jose/v4 v4.1.6
 ## explicit; go 1.24.0
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher

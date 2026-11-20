@@ -1458,7 +1458,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 		// isStaleNaN reports whether the failed sample carried the reserved stale NaN
 		// payload. Callers appending native histograms always pass false, because a
 		// staleness marker is only ever appended as a float sample.
-		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, matchedLabelSetLimits []validation.LimitsPerLabelSet, isStaleNaN bool) (rollback bool) {
+		handleAppendFailure = func(err error, timestampMs int64, lbls []cortexpb.LabelAdapter, copiedLabels labels.Labels, isStaleNaN bool) (rollback bool) {
 			// A staleness marker from the ruler is internal bookkeeping rather than
 			// tenant data. Prometheus' rules.Group.cleanupStaleSeries appends one for
 			// every series a rule stopped producing, and treats out-of-order, too-old
@@ -1528,6 +1528,11 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			case errors.As(cause, &errMaxSeriesPerLabelSetLimitExceeded{}):
 				perLabelSetSeriesLimitCount++
 				i.validateMetrics.DiscardedSeriesTracker.Track(perLabelsetSeriesLimit, userID, copiedLabels.Hash())
+				// Resolve the matching label sets only here. This is the sole consumer, and
+				// resolving them for every series on the hot path allocated a slice sized to
+				// the tenant's whole limits_per_label_set list on each push, which was then
+				// discarded whenever the append succeeded.
+				matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
 				for _, matchedLabelset := range matchedLabelSetLimits {
 					i.validateMetrics.DiscardedSeriesPerLabelsetTracker.Track(userID, copiedLabels.Hash(), matchedLabelset.Hash, matchedLabelset.Id)
 				}
@@ -1604,7 +1609,6 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			// Copy the label set because both TSDB and the active series tracker may retain it.
 			copiedLabels = cortexpb.FromLabelAdaptersToLabelsWithCopy(ts.Labels)
 		}
-		matchedLabelSetLimits := i.limiter.limitsPerLabelSets(userID, copiedLabels)
 
 		for _, s := range ts.Samples {
 			var err error
@@ -1636,7 +1640,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 			failedSamplesCount++
 
-			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, value.IsStaleNaN(s.Value)); !rollback {
+			if rollback := handleAppendFailure(err, s.TimestampMs, ts.Labels, copiedLabels, value.IsStaleNaN(s.Value)); !rollback {
 				continue
 			}
 			// The error looks an issue on our side, so we should rollback.
@@ -1694,7 +1698,7 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 
 				failedHistogramsCount++
 
-				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, matchedLabelSetLimits, false); !rollback {
+				if rollback := handleAppendFailure(err, hp.TimestampMs, ts.Labels, copiedLabels, false); !rollback {
 					continue
 				}
 				// The error looks an issue on our side, so we should rollback.

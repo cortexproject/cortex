@@ -152,6 +152,8 @@ Currently experimental features are:
   - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-max-cardinality` (int) CLI flag
   - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-simple-cost-ratio` (int) CLI flag
   - `-blocks-storage.expanded_postings_cache.head.lazy-matcher-complex-cost-ratio` (int) CLI flag
+- Ingester: Ring ownership for limits
+  - `-ingester.use-ring-ownership-for-limits` (boolean) CLI flag
 - Ingester: Head Queried Series Metrics
   - Enable on Ingester via `-ingester.head-queried-series-metrics-enabled=true`
   - Tracks unique series queried from head only (not blocks) using HLL

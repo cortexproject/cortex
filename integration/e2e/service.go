@@ -355,9 +355,11 @@ func (s *ConcreteService) buildDockerRunArgs(networkName, sharedDir string) []st
 		args = append(args, "--workdir", s.workDir)
 	}
 
-	// Published ports
+	// Published ports. Published to loopback only: tests reach services through
+	// 127.0.0.1 (see Endpoint), and a bare host port would publish them on every
+	// interface of the machine running the tests.
 	for _, port := range s.networkPorts {
-		args = append(args, "-p", strconv.Itoa(port))
+		args = append(args, "-p", "127.0.0.1::"+strconv.Itoa(port))
 	}
 
 	// Disable entrypoint if required

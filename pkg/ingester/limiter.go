@@ -43,6 +43,10 @@ type Limiter struct {
 	shardByAllLabels       bool
 	zoneAwarenessEnabled   bool
 	AdminLimitMessage      string
+
+	// When set, global limits are converted to local ones using this
+	// ingester's actual share of the tenant's hash space.
+	ownership *tenantOwnership
 }
 
 // NewLimiter makes a new in-memory series limiter
@@ -313,6 +317,10 @@ func (l *Limiter) convertGlobalToLocalLimit(userID string, globalLimit int) int 
 		return 0
 	}
 
+	if local, ok := l.localLimitFromOwnership(userID, globalLimit); ok {
+		return local
+	}
+
 	// Given we don't need a super accurate count (ie. when the ingesters
 	// topology changes) and we prefer to always be in favor of the tenant,
 	// we can use a per-ingester limit equal to:
@@ -334,6 +342,21 @@ func (l *Limiter) convertGlobalToLocalLimit(userID string, globalLimit int) int 
 	}
 
 	return int((float64(globalLimit) / float64(numIngesters)) * float64(l.replicationFactor))
+}
+
+// localLimitFromOwnership returns the tenant's global limit scaled by this
+// ingester's share of the tenant's hash space within its zone. With zone-aware
+// replication each zone holds one copy of every series, so the shares in a zone
+// sum to 1 and no replication factor applies.
+func (l *Limiter) localLimitFromOwnership(userID string, globalLimit int) (int, bool) {
+	if l.ownership == nil || !l.zoneAwarenessEnabled {
+		return 0, false
+	}
+	share, ok := l.ownership.share(userID)
+	if !ok {
+		return 0, false
+	}
+	return int(float64(globalLimit) * share), true
 }
 
 func (l *Limiter) getShardSize(userID string) int {

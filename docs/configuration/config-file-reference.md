@@ -4252,6 +4252,15 @@ lifecycler:
 # CLI flag: -ingester.upload-compacted-blocks-enabled
 [upload_compacted_blocks_enabled: <boolean> | default = true]
 
+# Experimental: Convert global series and metadata limits to local ones using
+# the share of each tenant's hash space this ingester owns within its zone,
+# instead of assuming every ingester owns an equal share. Requires zone-aware
+# replication. While the number of zones in the ring differs from the
+# replication factor, the equal-share conversion is used. Applies only to the
+# limits that are divided across ingesters.
+# CLI flag: -ingester.use-ring-ownership-for-limits
+[use_ring_ownership_for_limits: <boolean> | default = false]
+
 instance_limits:
   # Max ingestion rate (samples/sec) that ingester will accept. This limit is
   # per-ingester, not per-tenant. Additional push requests will be rejected.

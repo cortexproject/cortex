@@ -96,7 +96,8 @@ func DoBatch(ctx context.Context, op Operation, r ReadRing, e util.AsyncExecutor
 			cleanup()
 			return err
 		}
-		itemTrackers[i].minSuccess = len(replicationSet.Instances) - replicationSet.MaxErrors
+		// record counts a key on the success equal to minSuccess, so it must be at least 1.
+		itemTrackers[i].minSuccess = max(1, len(replicationSet.Instances)-replicationSet.MaxErrors)
 		itemTrackers[i].maxFailures = replicationSet.MaxErrors
 		itemTrackers[i].remaining.Store(int32(len(replicationSet.Instances)))
 
@@ -153,7 +154,7 @@ func (b *batchTracker) record(instance instance, err error) {
 	// number of pending samples by one.
 	//
 	// The use of atomic increments here is needed as:
-	// * rpcsPending and rpcsPending guarantees only a single sendSamples goroutine will write to either channel
+	// * rpcsPending and rpcsFailed guarantees only a single sendSamples goroutine will write to either channel
 	// * succeeded, failed4xx, failed5xx and remaining guarantees that the "return decision" is made atomically
 	// avoiding race condition
 	sampleTrackers := instance.itemTrackers
@@ -185,9 +186,9 @@ func (b *batchTracker) record(instance instance, err error) {
 				continue
 			}
 		} else {
-			// If we successfully push all samples to min success instances,
-			// wake up the waiting rpc so it can return early.
-			if sampleTrackers[i].succeeded.Inc() >= int32(sampleTrackers[i].minSuccess) {
+			// Count each key once, on the success that reaches its quorum.
+			succeeded := sampleTrackers[i].succeeded.Inc()
+			if succeeded == int32(sampleTrackers[i].minSuccess) {
 				if b.rpcsPending.Dec() == 0 {
 					b.done <- struct{}{}
 				}
@@ -197,7 +198,7 @@ func (b *batchTracker) record(instance instance, err error) {
 			// If we succeeded to call this particular ingester but we dont have any remaining ingesters to try
 			// and we did not succeeded calling `minSuccess` ingesters we need to return the last error
 			// Ex: 4xx, 5xx, 2xx
-			if sampleTrackers[i].remaining.Dec() == 0 {
+			if succeeded < int32(sampleTrackers[i].minSuccess) && sampleTrackers[i].remaining.Dec() == 0 {
 				if b.rpcsFailed.Inc() == 1 {
 					b.err <- httpgrpcutil.WrapHTTPGrpcError(
 						sampleTrackers[i].getError(), "not enough remaining instances to try, addr=%s state=%s zone=%s",

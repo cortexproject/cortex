@@ -25,7 +25,7 @@ func NewCompositeHTTPService(services ...*HTTPService) *CompositeHTTPService {
 		retryBackoff: backoff.New(context.Background(), backoff.Config{
 			MinBackoff: 300 * time.Millisecond,
 			MaxBackoff: 600 * time.Millisecond,
-			MaxRetries: 50, // Sometimes the CI is slow ¯\_(ツ)_/¯
+			MaxRetries: 100, // Sometimes the CI is slow ¯\_(ツ)_/¯
 		}),
 	}
 }

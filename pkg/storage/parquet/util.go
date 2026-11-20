@@ -1,8 +1,26 @@
 package parquet
 
-func ShouldConvertBlockToParquet(mint, maxt int64, timeRanges []int64) bool {
-	// We assume timeRanges[0] is the TSDB block duration (2h), and we don't convert them.
-	return getBlockTimeRange(mint, maxt, timeRanges) > timeRanges[0]
+// ShouldConvertBlockToParquet returns whether the block should be converted to parquet.
+// mint, maxt and now are timestamps in milliseconds.
+func ShouldConvertBlockToParquet(mint, maxt, now int64, timeRanges []int64, hasNoCompactMark func() bool) bool {
+	// We assume timeRanges[0] is the TSDB block duration (2h). Bigger blocks are always converted.
+	if getBlockTimeRange(mint, maxt, timeRanges) > timeRanges[0] {
+		return true
+	}
+
+	// We should check if 2h blocks have a `no-compact-mark.json` file
+	// since these will never be compacted to 12h block.
+	// We check if the `no-compact-mark.json` file exists only for blocks older
+	// than the next block range to reduce object storage calls, since younger
+	// blocks are still expected to be compacted.
+	return now-maxt >= noCompactMarkCheckAge(timeRanges) && hasNoCompactMark()
+}
+
+func noCompactMarkCheckAge(timeRanges []int64) int64 {
+	if len(timeRanges) > 1 {
+		return timeRanges[1]
+	}
+	return timeRanges[0]
 }
 
 func getBlockTimeRange(mint, maxt int64, timeRanges []int64) int64 {

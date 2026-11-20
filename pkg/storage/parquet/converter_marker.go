@@ -9,8 +9,10 @@ import (
 
 	"github.com/efficientgo/core/errors"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
+	"github.com/thanos-io/thanos/pkg/block/metadata"
 	"github.com/thanos-io/thanos/pkg/runutil"
 
 	"github.com/cortexproject/cortex/pkg/storage/bucket"
@@ -32,6 +34,15 @@ type ConverterMark struct {
 	// Shards is the number of parquet shards created for this block.
 	// This field is optional for backward compatibility.
 	Shards int `json:"shards,omitempty"`
+}
+
+func ExistBlockNoCompact(ctx context.Context, userBkt objstore.InstrumentedBucket, logger log.Logger, blockID ulid.ULID) bool {
+	noCompactMarkerExists, err := userBkt.Exists(ctx, path.Join(blockID.String(), metadata.NoCompactMarkFilename))
+	if err != nil {
+		level.Warn(logger).Log("msg", "unable to get stats of no-compact-mark.json for block", "block", blockID.String(), "err", err)
+		return false
+	}
+	return noCompactMarkerExists
 }
 
 func ReadConverterMark(ctx context.Context, id ulid.ULID, userBkt objstore.InstrumentedBucket, logger log.Logger) (*ConverterMark, error) {

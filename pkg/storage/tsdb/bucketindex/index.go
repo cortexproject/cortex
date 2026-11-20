@@ -101,6 +101,11 @@ type Block struct {
 	MinTime int64 `json:"min_time"`
 	MaxTime int64 `json:"max_time"`
 
+	// CompactionLevel is the block's TSDB compaction level from meta.json; level 1 is a block
+	// as the ingester uploaded it. Zero means unknown: the entry predates this field, and
+	// existing entries are copied forward rather than re-read.
+	CompactionLevel int `json:"compaction_level,omitempty"`
+
 	// SegmentsFormat and SegmentsNum stores the format and number of chunks segments
 	// in the block, if they match a known pattern. We don't store the full segments
 	// files list in order to keep the index small. SegmentsFormat is empty if segments
@@ -175,13 +180,14 @@ func BlockFromThanosMeta(meta metadata.Meta) *Block {
 	segmentsFormat, segmentsNum := detectBlockSegmentsFormat(meta)
 
 	return &Block{
-		ID:             meta.ULID,
-		MinTime:        meta.MinTime,
-		MaxTime:        meta.MaxTime,
-		SegmentsFormat: segmentsFormat,
-		SegmentsNum:    segmentsNum,
-		SeriesMaxSize:  meta.Thanos.IndexStats.SeriesMaxSize,
-		ChunkMaxSize:   meta.Thanos.IndexStats.ChunkMaxSize,
+		ID:              meta.ULID,
+		MinTime:         meta.MinTime,
+		MaxTime:         meta.MaxTime,
+		CompactionLevel: meta.Compaction.Level,
+		SegmentsFormat:  segmentsFormat,
+		SegmentsNum:     segmentsNum,
+		SeriesMaxSize:   meta.Thanos.IndexStats.SeriesMaxSize,
+		ChunkMaxSize:    meta.Thanos.IndexStats.ChunkMaxSize,
 	}
 }
 

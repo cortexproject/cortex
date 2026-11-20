@@ -47,4 +47,6 @@ Note: `compactor.partition-series-count` is using sum of series count of all par
 - `cortex_compactor_group_partition_count`: can be used to keep track of how many partitions being compacted for each time range.
 - `cortex_compactor_group_compactions_not_planned_total`: can be used to alarm any compaction was failed to be planned due to error.
 - `cortex_compact_group_compaction_duration_seconds`: can be used to monitor compaction duration of each time range compactions.
-- `cortex_compactor_oldest_partition_offset`: can be used to monitor when was the oldest compaction that is still not completed.
+- `cortex_compactor_oldest_partition_offset`: can be used to monitor when was the oldest compaction that is still not completed. The `time_range_milliseconds` label is the compaction time range, so an alert can target one range on its own.
+- `cortex_compactor_remaining_planned_compactions`: can be used to monitor the compaction backlog, per compaction time range in the `time_range_milliseconds` label.
+- `cortex_compactor_oldest_level_1_block_offset_seconds`: can be used to monitor how long the oldest block the ingesters uploaded has been waiting for the smallest range compaction, whether or not it has been planned into a partition group. A block marked for deletion or for no compaction is not counted.

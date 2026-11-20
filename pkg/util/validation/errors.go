@@ -134,14 +134,18 @@ func (e *tooManyLabelsError) Error() string {
 		len(e.series), e.limit, cortexpb.FromLabelAdaptersToMetric(e.series).String())
 }
 
-type noMetricNameError struct{}
+type noMetricNameError struct {
+	series string
+}
 
-func newNoMetricNameError() ValidationError {
-	return &noMetricNameError{}
+func newNoMetricNameError(series []cortexpb.LabelAdapter) ValidationError {
+	return &noMetricNameError{
+		series: formatLabelSet(series),
+	}
 }
 
 func (e *noMetricNameError) Error() string {
-	return "sample missing metric name"
+	return fmt.Sprintf("sample missing metric name metric: %.200q", e.series)
 }
 
 type invalidMetricNameError struct {

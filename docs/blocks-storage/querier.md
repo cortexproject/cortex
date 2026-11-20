@@ -298,9 +298,11 @@ querier:
   # is enabled, or when store-gateways run in parquet mode with
   # `-blocks-storage.bucket-store.honor-projection-hints` enabled. Projection is
   # only applied when not querying ingesters and every queried block has a
-  # parquet converter mark of version 2 or later. With store-gateways, enable it
-  # only after `-blocks-storage.bucket-store.honor-projection-hints` is enabled
-  # on all store-gateways, and disable it first.
+  # parquet converter mark of version 2 or later. When store-gateways serve the
+  # blocks, enable this flag only after
+  # `-blocks-storage.bucket-store.honor-projection-hints` is enabled on all
+  # store-gateways, and disable this flag before disabling that one on any
+  # store-gateway.
   # CLI flag: -querier.honor-projection-hints
   [honor_projection_hints: <boolean> | default = false]
 

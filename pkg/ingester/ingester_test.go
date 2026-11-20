@@ -7955,6 +7955,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			shippedBlocks:        shippedBlocks,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 4, len(blocksToDelete))
@@ -7987,6 +7988,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			shippedBlocks:        shippedBlocks,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 3, len(blocksToDelete))
@@ -8015,6 +8017,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			shippedBlocks:        shippedBlocks,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 0, len(blocksToDelete))
@@ -8047,6 +8050,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			shippedBlocks:        shippedBlocks,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 3, len(blocksToDelete))
@@ -8080,6 +8084,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			shippedBlocks:        shippedBlocks,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 3, len(blocksToDelete))
@@ -8104,6 +8109,7 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 			db:                   db,
 			blockRetentionPeriod: 2 * time.Hour.Milliseconds(),
 		}
+		userDB.blocksToDeleteReady.Store(true)
 
 		blocksToDelete := userDB.blocksToDelete(blocks)
 		require.Equal(t, 4, len(blocksToDelete))
@@ -8112,6 +8118,35 @@ func TestIngester_UserTSDB_BlocksToDelete(t *testing.T) {
 		require.Contains(t, blocksToDelete, block3.Meta().ULID)
 		require.Contains(t, blocksToDelete, block4.Meta().ULID)
 	})
+}
+
+func TestIngester_UserTSDB_BlocksToDeletePublication(t *testing.T) {
+	db, err := tsdb.Open(t.TempDir(), promslog.NewNopLogger(), prometheus.NewPedanticRegistry(), &tsdb.Options{}, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	userDB := &userTSDB{}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				userDB.blocksToDelete(nil)
+			}
+		}
+	}()
+
+	userDB.db = db
+	userDB.shipper = &shipperMock{}
+	userDB.blocksToDeleteReady.Store(true)
+
+	close(stop)
+	<-done
 }
 
 func TestIngester_UpdateLabelSetMetrics(t *testing.T) {

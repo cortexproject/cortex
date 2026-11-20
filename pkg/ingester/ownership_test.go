@@ -119,7 +119,7 @@ func TestOwnershipRefresher(t *testing.T) {
 	overrides := validation.NewOverrides(limits, tenantLimits)
 
 	ingesterID := ownershipTestInstanceID(0, 0)
-	refresher := newOwnershipRefresher(r, ingesterID, true, true, overrides)
+	refresher := newOwnershipRefresher(r, ingesterID, true, true, overrides, nil)
 
 	// Nothing is known before the ring has been fed.
 	refresher.refresh([]string{shuffledTenant, unshuffledTenant})
@@ -154,7 +154,7 @@ func TestOwnershipRefresher_ZoneMissingFromRing(t *testing.T) {
 	r := newOwnershipTestRing(t, 3, nil)
 	r.UpdateDesc(newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), layout))
 
-	refresher := newOwnershipRefresher(r, ownershipTestInstanceID(0, 0), true, false, validation.NewOverrides(validation.Limits{}, nil))
+	refresher := newOwnershipRefresher(r, ownershipTestInstanceID(0, 0), true, false, validation.NewOverrides(validation.Limits{}, nil), nil)
 	refresher.refresh([]string{tenant})
 
 	_, ok := refresher.ownership.share(tenant)
@@ -272,7 +272,7 @@ func TestLimiter_OwnershipAvoidsThrottlingOnUnevenRing(t *testing.T) {
 				throttledByEvenSplit++
 			}
 
-			refresher := newOwnershipRefresher(r, id, true, false, overrides)
+			refresher := newOwnershipRefresher(r, id, true, false, overrides, nil)
 			refresher.refresh([]string{tenant})
 			byOwnership := NewLimiter(overrides, ringCount, util.ShardingStrategyDefault, true, layout.zones, true, "")
 			byOwnership.ownership = refresher.ownership

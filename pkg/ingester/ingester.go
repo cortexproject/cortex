@@ -923,7 +923,7 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 			return nil, errors.Wrap(err, "failed to create the ring for ownership-based limits")
 		}
 		ownershipDelegate.ring.Store(ownershipRing)
-		i.ownershipRefresher = newOwnershipRefresher(ownershipRing, i.lifecycler.ID, cfg.DistributorExtendWrites, i.limiter.shuffleShardingEnabled, limits)
+		i.ownershipRefresher = newOwnershipRefresher(ownershipRing, i.lifecycler.ID, cfg.DistributorExtendWrites, i.limiter.shuffleShardingEnabled, limits, registerer)
 		i.limiter.ownership = i.ownershipRefresher.ownership
 	}
 

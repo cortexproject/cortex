@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/validation"
@@ -56,9 +58,10 @@ type ownershipRefresher struct {
 	shuffleShardingEnabled bool
 	limits                 *validation.Overrides
 	ownership              *tenantOwnership
+	shareGauge             *prometheus.GaugeVec
 }
 
-func newOwnershipRefresher(r *ring.Ring, instanceID string, extendWrites, shuffleShardingEnabled bool, limits *validation.Overrides) *ownershipRefresher {
+func newOwnershipRefresher(r *ring.Ring, instanceID string, extendWrites, shuffleShardingEnabled bool, limits *validation.Overrides, registerer prometheus.Registerer) *ownershipRefresher {
 	// Must match the operation the distributor writes with, or the shares
 	// would not describe where series are sent.
 	writeOp := ring.WriteNoExtend
@@ -72,6 +75,10 @@ func newOwnershipRefresher(r *ring.Ring, instanceID string, extendWrites, shuffl
 		shuffleShardingEnabled: shuffleShardingEnabled,
 		limits:                 limits,
 		ownership:              &tenantOwnership{},
+		shareGauge: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cortex_ingester_ring_ownership_share",
+			Help: "Share of the tenant's hash space this ingester owns within its zone, used to convert global limits to local ones. Only reported for tenants whose limits use it.",
+		}, []string{"user"}),
 	}
 }
 
@@ -97,4 +104,9 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 		shares[userID] = zonal.ZonalOwnership(o.writeOp)[o.instanceID]
 	}
 	o.ownership.shares.Store(&shares)
+
+	o.shareGauge.Reset()
+	for userID, share := range shares {
+		o.shareGauge.WithLabelValues(userID).Set(share)
+	}
 }

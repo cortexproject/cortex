@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	v1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/client_golang/prometheus"
 	promtest "github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -905,6 +907,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryFetchedSamples.WithLabelValues(source, user1).Add(1000)
 	handler.queryScannedSamples.WithLabelValues(source, user1).Add(2000)
 	handler.queryPeakSamples.WithLabelValues(source, user1).Observe(500)
+	handler.queryRangeLength.WithLabelValues(source, user1).Observe(3600)
 	handler.queryChunkBytes.WithLabelValues(source, user1).Add(1024)
 	handler.queryDataBytes.WithLabelValues(source, user1).Add(2048)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user1).Add(5)
@@ -916,6 +919,7 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 	handler.queryFetchedSamples.WithLabelValues(source, user2).Add(2000)
 	handler.queryScannedSamples.WithLabelValues(source, user2).Add(4000)
 	handler.queryPeakSamples.WithLabelValues(source, user2).Observe(1000)
+	handler.queryRangeLength.WithLabelValues(source, user2).Observe(3600)
 	handler.queryChunkBytes.WithLabelValues(source, user2).Add(2048)
 	handler.queryDataBytes.WithLabelValues(source, user2).Add(4096)
 	handler.rejectedQueries.WithLabelValues(reasonTooManySamples, source, user2).Add(10)
@@ -967,8 +971,13 @@ func TestHandlerMetricsCleanup(t *testing.T) {
 		"cortex_query_samples_scanned_total", "cortex_query_peak_samples", "cortex_query_fetched_chunks_bytes_total",
 		"cortex_query_fetched_data_bytes_total", "cortex_rejected_queries_total", "cortex_slow_queries_total"))
 
+	require.Equal(t, 2, promtest.CollectAndCount(handler.queryRangeLength))
+
 	// Clean up metrics for user1
 	handler.cleanupMetricsForInactiveUser(user1)
+
+	// Only user2 should remain for cortex_query_range_length_seconds.
+	require.Equal(t, 1, promtest.CollectAndCount(handler.queryRangeLength))
 
 	// Verify final state - only user2 should have metrics
 	require.NoError(t, promtest.GatherAndCompare(reg, strings.NewReader(`
@@ -1042,4 +1051,178 @@ func TestHandler_RemoteReadRequest_DoesNotParseQueryString(t *testing.T) {
 
 	// Verify that the request body is still readable (not replaced with empty buffer)
 	require.NotEmpty(t, string(bodyBytes))
+}
+
+func TestHandler_QueryRangeLengthMetric(t *testing.T) {
+	userID := "12345"
+
+	for _, tt := range []struct {
+		name            string
+		method          string
+		path            string
+		params          url.Values
+		statusCode      int
+		expectedCount   uint64
+		expectedSeconds float64
+	}{
+		{
+			name:            "range query with unix timestamps",
+			method:          http.MethodGet,
+			path:            "/api/v1/query_range",
+			params:          url.Values{"query": {"up"}, "start": {"1700000000"}, "end": {"1700003600"}, "step": {"60"}},
+			expectedCount:   1,
+			expectedSeconds: 3600,
+		},
+		{
+			name:            "range query with RFC3339 timestamps",
+			method:          http.MethodGet,
+			path:            "/api/v1/query_range",
+			params:          url.Values{"query": {"up"}, "start": {"2026-11-01T00:00:00Z"}, "end": {"2026-11-08T00:00:00Z"}, "step": {"60"}},
+			expectedCount:   1,
+			expectedSeconds: (7 * 24 * time.Hour).Seconds(),
+		},
+		{
+			name:            "range query sent as POST form",
+			method:          http.MethodPost,
+			path:            "/api/v1/query_range",
+			params:          url.Values{"query": {"up"}, "start": {"1700000000.5"}, "end": {"1700000060"}, "step": {"15"}},
+			expectedCount:   1,
+			expectedSeconds: 59.5,
+		},
+		{
+			name:            "very long range is reported without time.Duration overflow",
+			method:          http.MethodGet,
+			path:            "/api/v1/query_range",
+			params:          url.Values{"query": {"up"}, "start": {"-5000000000"}, "end": {"9000000000"}, "step": {"60"}},
+			expectedCount:   1,
+			expectedSeconds: 14000000000,
+		},
+		{
+			name:            "rejected range query is still observed",
+			method:          http.MethodGet,
+			path:            "/api/v1/query_range",
+			params:          url.Values{"query": {"up"}, "start": {"1700000000"}, "end": {"1700086400"}, "step": {"60"}},
+			statusCode:      http.StatusUnprocessableEntity,
+			expectedCount:   1,
+			expectedSeconds: 86400,
+		},
+		{
+			name:   "instant query is not observed",
+			method: http.MethodGet,
+			path:   "/api/v1/query",
+			params: url.Values{"query": {"up"}, "time": {"1700000000"}},
+		},
+		{
+			name:   "range query with invalid start is not observed",
+			method: http.MethodGet,
+			path:   "/api/v1/query_range",
+			params: url.Values{"query": {"up"}, "start": {"invalid"}, "end": {"1700003600"}, "step": {"60"}},
+		},
+		{
+			name:   "range query with end before start is not observed",
+			method: http.MethodGet,
+			path:   "/api/v1/query_range",
+			params: url.Values{"query": {"up"}, "start": {"1700003600"}, "end": {"1700000000"}, "step": {"60"}},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			statusCode := tt.statusCode
+			if statusCode == 0 {
+				statusCode = http.StatusOK
+			}
+			roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: statusCode,
+					Body:       io.NopCloser(strings.NewReader("{}")),
+				}, nil
+			})
+			reg := prometheus.NewPedanticRegistry()
+			handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 1 << 20}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), reg)
+
+			var req *http.Request
+			if tt.method == http.MethodPost {
+				req = httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.params.Encode()))
+				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			} else {
+				req = httptest.NewRequest(http.MethodGet, tt.path+"?"+tt.params.Encode(), nil)
+			}
+			req = req.WithContext(user.InjectOrgID(context.Background(), userID))
+			resp := httptest.NewRecorder()
+
+			handler.ServeHTTP(resp, req)
+			require.Equal(t, statusCode, resp.Code)
+
+			if tt.expectedCount == 0 {
+				assert.Equal(t, 0, promtest.CollectAndCount(handler.queryRangeLength))
+				return
+			}
+
+			metricFamilies, err := reg.Gather()
+			require.NoError(t, err)
+			var found bool
+			for _, mf := range metricFamilies {
+				if mf.GetName() != "cortex_query_range_length_seconds" {
+					continue
+				}
+				require.Len(t, mf.GetMetric(), 1)
+				h := mf.GetMetric()[0].GetHistogram()
+				assert.Equal(t, tt.expectedCount, h.GetSampleCount())
+				assert.Equal(t, tt.expectedSeconds, h.GetSampleSum())
+				found = true
+			}
+			require.True(t, found, "cortex_query_range_length_seconds not found")
+		})
+	}
+}
+
+func TestHandler_QueryRangeLengthMetricNativeHistogram(t *testing.T) {
+	roundTripper := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("{}")),
+		}, nil
+	})
+	reg := prometheus.NewPedanticRegistry()
+	handler := NewHandler(HandlerConfig{QueryStatsEnabled: true, MaxBodySize: 1 << 20}, tenantfederation.Config{}, nil, roundTripper, log.NewNopLogger(), reg)
+
+	// 5m, 1h and 3d range queries.
+	for _, rangeSeconds := range []int64{300, 3600, 3 * 86400} {
+		params := url.Values{"query": {"up"}, "start": {"1700000000"}, "end": {strconv.FormatInt(1700000000+rangeSeconds, 10)}, "step": {"60"}}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/query_range?"+params.Encode(), nil)
+		req = req.WithContext(user.InjectOrgID(context.Background(), "user1"))
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, req)
+		require.Equal(t, http.StatusOK, resp.Code)
+	}
+
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	var h *dto.Histogram
+	for _, mf := range mfs {
+		if mf.GetName() == "cortex_query_range_length_seconds" {
+			require.Len(t, mf.GetMetric(), 1)
+			h = mf.GetMetric()[0].GetHistogram()
+		}
+	}
+	require.NotNil(t, h, "cortex_query_range_length_seconds not found")
+
+	// Native histogram only: no classic buckets are exposed.
+	assert.Empty(t, h.GetBucket())
+	assert.Equal(t, int32(3), h.GetSchema())
+	assert.Equal(t, uint64(3), h.GetSampleCount())
+	assert.Equal(t, float64(263100), h.GetSampleSum())
+
+	// Each observation lands in its own native bucket.
+	var populated int
+	var total, count int64
+	for _, delta := range h.GetPositiveDelta() {
+		count += delta
+		if count > 0 {
+			populated++
+			total += count
+		}
+	}
+	assert.Equal(t, 3, populated)
+	assert.Equal(t, int64(3), total)
 }

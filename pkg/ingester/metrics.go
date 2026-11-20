@@ -32,10 +32,15 @@ const (
 )
 
 type ingesterMetrics struct {
-	ingestedSamples          prometheus.Counter
-	ingestedHistograms       prometheus.Counter
-	ingestedExemplars        prometheus.Counter
-	ingestedMetadata         prometheus.Counter
+	ingestedSamples    prometheus.Counter
+	ingestedHistograms prometheus.Counter
+	ingestedExemplars  prometheus.Counter
+	ingestedMetadata   prometheus.Counter
+
+	// pushCoalesce holds the metrics of the per-tenant push coalescers. They are
+	// shared by every tenant so that enabling coalescing does not add per-user
+	// cardinality.
+	pushCoalesce             *pushCoalescerMetrics
 	ingestedSamplesFail      prometheus.Counter
 	ingestedHistogramsFail   prometheus.Counter
 	startTimestampFail       *prometheus.CounterVec
@@ -99,6 +104,7 @@ func newIngesterMetrics(r prometheus.Registerer,
 	maxInflightQueryRequests *util_math.MaxTracker,
 	postingsCacheEnabled bool,
 	regexMatcherLimitsEnabled bool,
+	pushCoalesceEnabled bool,
 ) *ingesterMetrics {
 	const (
 		instanceLimits     = "cortex_ingester_instance_limits"
@@ -413,6 +419,12 @@ func newIngesterMetrics(r prometheus.Registerer,
 
 	m.startTimestampFail.WithLabelValues(sampleMetricTypeFloat)
 	m.startTimestampFail.WithLabelValues(sampleMetricTypeHistogram)
+
+	// Registered only when the feature is on, so that a disabled feature adds
+	// nothing to the exposed metric set.
+	if pushCoalesceEnabled {
+		m.pushCoalesce = newPushCoalescerMetrics(r)
+	}
 
 	return m
 }

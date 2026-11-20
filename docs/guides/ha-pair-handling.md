@@ -104,10 +104,13 @@ remote_write:
 ```
 
 When Prometheus is executing remote read queries, it will add the external
-labels to the query. In this case, if it asks for the `__replica__` label,
-Cortex will not return any data.
+labels to the query. The replica label is removed from the samples when HA
+deduplication is enabled, so Cortex ignores matchers on the HA replica label
+(`-distributor.ha-tracker.replica`) in remote read requests for tenants that
+have HA deduplication enabled. For other tenants, if the query asks for the
+`__replica__` label, Cortex will not return any data.
 
-Therefore, the `__replica__` label should only be added for remote write.
+Therefore, the `__replica__` label should preferably only be added for remote write.
 
 ## Accept multiple HA pairs in single request
 Let's assume there are two teams (T1 and T2), and each team operates two Prometheus for the HA (T1.a, T1.b for T1 and

@@ -1494,7 +1494,9 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 					newValueForTimestampCount++
 					i.validateMetrics.DiscardedSeriesTracker.Track(newValueForTimestamp, userID, copiedLabels.Hash())
 				}
-				updateFirstPartial(func() error { return wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls) })
+				updateFirstPartial(func() error {
+					return unloggedError{wrappedTSDBIngestErr(err, model.Time(timestampMs), lbls)}
+				})
 
 			case errors.Is(cause, storage.ErrTooOldSample):
 				if !ruleStaleMarker {
@@ -1842,7 +1844,13 @@ func (i *Ingester) Push(ctx context.Context, req *cortexpb.WriteRequest) (*corte
 			code = ve.code
 		}
 		level.Debug(logutil.WithContext(ctx, i.logger)).Log("msg", "partial failures to push", "totalSamples", succeededSamplesCount+failedSamplesCount, "failedSamples", failedSamplesCount, "totalHistograms", succeededHistogramsCount+failedHistogramsCount, "failedHistograms", failedHistogramsCount, "firstPartialErr", firstPartialErr)
-		return &cortexpb.WriteResponse{}, httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
+		pushErr := httpgrpc.Errorf(code, "%s", wrapWithUser(firstPartialErr, userID).Error())
+		var unlogged unloggedError
+		if errors.As(firstPartialErr, &unlogged) {
+			// The samples are already counted in cortex_discarded_samples_total, and the first error is logged above at debug level.
+			return &cortexpb.WriteResponse{}, unloggedError{pushErr}
+		}
+		return &cortexpb.WriteResponse{}, pushErr
 	}
 
 	return &cortexpb.WriteResponse{}, nil

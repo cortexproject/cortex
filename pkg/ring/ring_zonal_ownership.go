@@ -10,6 +10,18 @@ type ZonalOwnershipRing interface {
 	// of its zone's hash space it owns for writes made with op. See
 	// (*Ring).ZonalOwnership for the exact semantics.
 	ZonalOwnership(op Operation) map[string]float64
+
+	// ZonesCount returns the number of zones with at least one instance with
+	// tokens. Only when it equals the replication factor does each zone hold
+	// exactly one copy of every key, which is what ZonalOwnership assumes.
+	ZonesCount() int
+}
+
+// ZonesCount returns the number of zones with at least one instance with tokens.
+func (r *Ring) ZonesCount() int {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	return len(r.ringZones)
 }
 
 // ZonalOwnership returns, for every instance in the ring, the fraction of its
@@ -23,10 +35,10 @@ type ZonalOwnershipRing interface {
 // replacement (such as an ACTIVE instance with a stale heartbeat) keep their
 // tokens, because no other instance in the zone receives those keys.
 //
-// With zone-aware replication and one replica per zone, the values in a zone
-// are the fraction of a tenant's keys each instance receives. Without zone
-// awareness every instance is in the same zone and the values describe only
-// the first replica, so callers should not use them.
+// The values are the fraction of keys each instance receives only with
+// zone-aware replication and a replication factor equal to ZonesCount. With
+// more replicas than zones, Get puts a second copy in some zones, and with
+// fewer it skips some zones, so callers should not use the values then.
 //
 // The returned map is cached until the ring's tokens or instance states
 // change, and must not be modified.

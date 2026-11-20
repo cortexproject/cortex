@@ -4,9 +4,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+var errRingOwnershipRequiresZoneAwareness = errors.New("-ingester.use-ring-ownership-for-limits requires zone-aware replication to be enabled")
 
 // ownershipRefreshPeriod is how often tenant shares are recomputed. The
 // desc-fed ring itself only changes on this ingester's heartbeats.
@@ -83,9 +87,14 @@ func (o *ownershipRefresher) refresh(userIDs []string) {
 			// Same subring the distributor routes the tenant's writes with.
 			sub = o.ring.ShuffleShard(userID, size)
 		}
-		if zonal, ok := sub.(ring.ZonalOwnershipRing); ok {
-			shares[userID] = zonal.ZonalOwnership(o.writeOp)[o.instanceID]
+		zonal, ok := sub.(ring.ZonalOwnershipRing)
+		// Shares describe one copy per zone. When a zone is missing from the
+		// ring, Get puts a second copy in another zone, so leave the tenant out
+		// and let the limiter use the even split, which accounts for it.
+		if !ok || zonal.ZonesCount() != o.ring.ReplicationFactor() {
+			continue
 		}
+		shares[userID] = zonal.ZonalOwnership(o.writeOp)[o.instanceID]
 	}
 	o.ownership.shares.Store(&shares)
 }

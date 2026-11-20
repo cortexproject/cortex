@@ -146,6 +146,32 @@ func TestOwnershipRefresher(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestOwnershipRefresher_ZoneMissingFromRing(t *testing.T) {
+	const tenant = "tenant"
+	// RF 3 over a ring with only 2 zones: Get puts a second copy in one zone,
+	// which zonal shares don't describe.
+	layout := ownershipTestRingLayout{zones: 2, perZone: 4, tokensPerInstance: 16}
+	r := newOwnershipTestRing(t, 3, nil)
+	r.UpdateDesc(newOwnershipTestDesc(rand.New(rand.NewSource(ownershipTestSeed)), layout))
+
+	refresher := newOwnershipRefresher(r, ownershipTestInstanceID(0, 0), true, false, validation.NewOverrides(validation.Limits{}, nil))
+	refresher.refresh([]string{tenant})
+
+	_, ok := refresher.ownership.share(tenant)
+	assert.False(t, ok)
+}
+
+func TestConfig_RingOwnershipRequiresZoneAwareness(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.UseRingOwnershipForLimits = true
+
+	cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = false
+	assert.ErrorIs(t, cfg.Validate(nil), errRingOwnershipRequiresZoneAwareness)
+
+	cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = true
+	assert.NoError(t, cfg.Validate(nil))
+}
+
 func TestLimiter_LocalLimitFromOwnership(t *testing.T) {
 	const (
 		globalLimit       = 1000

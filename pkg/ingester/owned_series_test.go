@@ -112,14 +112,17 @@ func prepareOwnedSeriesTestIngester(t *testing.T, opts ...func(*Config, *validat
 // distributor's view of the ring and the ingester's include it.
 func (i *ownedSeriesTestIngester) addPeer(t *testing.T, id string) {
 	store := i.cfg.LifecyclerConfig.RingConfig.KVStore.Mock
+	// The expected size comes from the ring as written, not from a view of it: a
+	// view read after the write may already include the new instance.
+	want := 0
 	require.NoError(t, store.CAS(context.Background(), RingKey, func(in any) (any, bool, error) {
 		desc := ring.GetOrCreateRingDesc(in)
 		tokens := ring.NewRandomTokenGenerator().GenerateTokens(desc, id, "", ownedSeriesTestTokens, true)
 		desc.AddIngester(id, id, "", tokens, ring.ACTIVE, time.Now())
+		want = len(desc.Ingesters)
 		return desc, true, nil
 	}))
 
-	want := i.distributorRing.InstancesCount() + 1
 	test.Poll(t, 5*time.Second, want, func() any { return i.distributorRing.InstancesCount() })
 	test.Poll(t, 5*time.Second, want, func() any {
 		desc, _ := i.lifecycler.RingDesc()

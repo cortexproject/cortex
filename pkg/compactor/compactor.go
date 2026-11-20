@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -442,7 +443,8 @@ type Compactor struct {
 	// Users scanner, used to discover users from the bucket.
 	usersScanner users.Scanner
 
-	userIndexUpdater *users.UserIndexUpdater
+	userIndexUpdater      *users.UserIndexUpdater
+	userIndexUpdateLoopWg sync.WaitGroup
 
 	// Blocks cleaner is responsible to hard delete blocks marked for deletion.
 	blocksCleaner *BlocksCleaner
@@ -803,6 +805,7 @@ func (c *Compactor) stopping(_ error) error {
 
 	ctx := context.Background()
 
+	c.userIndexUpdateLoopWg.Wait()
 	services.StopAndAwaitTerminated(ctx, c.blocksCleaner) //nolint:errcheck
 	if c.ringSubservices != nil {
 		return services.StopManagerAndAwaitStopped(ctx, c.ringSubservices)
@@ -818,6 +821,7 @@ func (c *Compactor) running(ctx context.Context) error {
 	}
 
 	if c.userIndexUpdater != nil {
+		c.userIndexUpdateLoopWg.Add(1)
 		go c.userIndexUpdateLoop(ctx)
 	}
 
@@ -1239,6 +1243,8 @@ func (c *Compactor) ownUser(userID string, isCleanUp bool) (bool, error) {
 }
 
 func (c *Compactor) userIndexUpdateLoop(ctx context.Context) {
+	defer c.userIndexUpdateLoopWg.Done()
+
 	// Hardcode ID to check which compactor owns updating user index.
 	userID := users.UserIndexCompressedFilename
 	// Align with clean up interval.

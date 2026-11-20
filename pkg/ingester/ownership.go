@@ -1,0 +1,91 @@
+package ingester
+
+import (
+	"sync/atomic"
+	"time"
+
+	"github.com/cortexproject/cortex/pkg/ring"
+	"github.com/cortexproject/cortex/pkg/util/validation"
+)
+
+// ownershipRefreshPeriod is how often tenant shares are recomputed. The
+// desc-fed ring itself only changes on this ingester's heartbeats.
+const ownershipRefreshPeriod = 10 * time.Second
+
+// ringOwnershipDelegate feeds a desc-fed ring with the ring the Lifecycler
+// reads on every heartbeat, so tracking ownership adds no KV store traffic.
+type ringOwnershipDelegate struct {
+	ring atomic.Pointer[ring.Ring]
+}
+
+// OnRingInstanceHeartbeat runs inside the Lifecycler's CAS callback, with the
+// ring about to be written to the KV store. UpdateDesc copies it.
+func (d *ringOwnershipDelegate) OnRingInstanceHeartbeat(_ *ring.Lifecycler, ringDesc *ring.Desc) {
+	if r := d.ring.Load(); r != nil {
+		r.UpdateDesc(ringDesc)
+	}
+}
+
+// tenantOwnership holds this ingester's share of each tenant's hash space
+// within its zone. The map is replaced as a whole on each refresh.
+type tenantOwnership struct {
+	shares atomic.Pointer[map[string]float64]
+}
+
+// share returns the tenant's share. It reports false when the share is unknown
+// or 0, which happens before the first refresh, for a tenant whose shard does
+// not include this ingester, and while this ingester is not receiving writes.
+func (t *tenantOwnership) share(userID string) (float64, bool) {
+	shares := t.shares.Load()
+	if shares == nil {
+		return 0, false
+	}
+	s, ok := (*shares)[userID]
+	return s, ok && s > 0
+}
+
+// ownershipRefresher computes tenantOwnership from the desc-fed ring.
+type ownershipRefresher struct {
+	ring                   *ring.Ring
+	instanceID             string
+	writeOp                ring.Operation
+	shuffleShardingEnabled bool
+	limits                 *validation.Overrides
+	ownership              *tenantOwnership
+}
+
+func newOwnershipRefresher(r *ring.Ring, instanceID string, extendWrites, shuffleShardingEnabled bool, limits *validation.Overrides) *ownershipRefresher {
+	// Must match the operation the distributor writes with, or the shares
+	// would not describe where series are sent.
+	writeOp := ring.WriteNoExtend
+	if extendWrites {
+		writeOp = ring.Write
+	}
+	return &ownershipRefresher{
+		ring:                   r,
+		instanceID:             instanceID,
+		writeOp:                writeOp,
+		shuffleShardingEnabled: shuffleShardingEnabled,
+		limits:                 limits,
+		ownership:              &tenantOwnership{},
+	}
+}
+
+func (o *ownershipRefresher) refresh(userIDs []string) {
+	if o.ring.InstancesCount() == 0 {
+		// No heartbeat has fed the ring yet.
+		return
+	}
+	shares := make(map[string]float64, len(userIDs))
+	for _, userID := range userIDs {
+		var sub ring.ReadRing = o.ring
+		if size := o.limits.IngestionTenantShardSize(userID); o.shuffleShardingEnabled && size > 0 {
+			// Same subring the distributor routes the tenant's writes with.
+			sub = o.ring.ShuffleShard(userID, size)
+		}
+		if zonal, ok := sub.(ring.ZonalOwnershipRing); ok {
+			shares[userID] = zonal.ZonalOwnership(o.writeOp)[o.instanceID]
+		}
+	}
+	o.ownership.shares.Store(&shares)
+}

@@ -154,6 +154,9 @@ type Config struct {
 	// to accurately apply global limits.
 	DistributorShardingStrategy string `yaml:"-"`
 	DistributorShardByAllLabels bool   `yaml:"-"`
+	DistributorExtendWrites     bool   `yaml:"-"`
+
+	UseRingOwnershipForLimits bool `yaml:"use_ring_ownership_for_limits"`
 
 	DefaultLimits    InstanceLimits         `yaml:"instance_limits"`
 	InstanceLimitsFn func() *InstanceLimits `yaml:"-"`
@@ -220,6 +223,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.IgnoreSeriesLimitForMetricNames, "ingester.ignore-series-limit-for-metric-names", "", "Comma-separated list of metric names, for which -ingester.max-series-per-metric and -ingester.max-global-series-per-metric limits will be ignored. Does not affect max-series-per-user or max-global-series-per-metric limits.")
 	f.StringVar(&cfg.AdminLimitMessage, "ingester.admin-limit-message", "please contact administrator to raise it", "Customize the message contained in limit errors")
 	f.BoolVar(&cfg.LabelsStringInterningEnabled, "ingester.labels-string-interning-enabled", false, "Experimental: Enable string interning for metrics labels.")
+	f.BoolVar(&cfg.UseRingOwnershipForLimits, "ingester.use-ring-ownership-for-limits", false, "Experimental: Convert global series and metadata limits to local ones using the share of each tenant's hash space this ingester owns within its zone, instead of assuming every ingester owns an equal share. Requires zone-aware replication; ignored otherwise. Applies only to the limits that are divided across ingesters.")
 
 	f.BoolVar(&cfg.DisableChunkTrimming, "ingester.disable-chunk-trimming", false, "Disable trimming of matching series chunks based on query Start and End time. When disabled, the result may contain samples outside the queried time range but select performances may be improved. Note that certain query results might change by changing this option.")
 	f.IntVar(&cfg.MatchersCacheMaxItems, "ingester.matchers-cache-max-items", 0, "Maximum number of entries in the regex matchers cache. 0 to disable.")
@@ -237,6 +241,10 @@ func (cfg *Config) Validate(monitoredResources flagext.StringSliceCSV) error {
 
 	if cfg.LabelsStringInterningEnabled {
 		logutil.WarnExperimentalUse("String interning for metrics labels Enabled")
+	}
+
+	if cfg.UseRingOwnershipForLimits {
+		logutil.WarnExperimentalUse("Ring ownership for limits")
 	}
 
 	if err := cfg.QueryProtection.Validate(monitoredResources); err != nil {
@@ -313,6 +321,7 @@ type Ingester struct {
 	lifecycler           *ring.Lifecycler
 	limits               *validation.Overrides
 	limiter              *Limiter
+	ownershipRefresher   *ownershipRefresher
 	resourceBasedLimiter *limiter.ResourceBasedLimiter
 	subservicesWatcher   *services.FailureWatcher
 
@@ -886,7 +895,8 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		}, i.getOldestUnshippedBlockMetric)
 	}
 
-	i.lifecycler, err = ring.NewLifecycler(cfg.LifecyclerConfig, i, "ingester", RingKey, false, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
+	ownershipDelegate := &ringOwnershipDelegate{}
+	i.lifecycler, err = ring.NewLifecyclerWithDelegate(cfg.LifecyclerConfig, i, "ingester", RingKey, false, cfg.BlocksStorageConfig.TSDB.FlushBlocksOnShutdown, logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer), ownershipDelegate)
 	if err != nil {
 		return nil, err
 	}
@@ -903,6 +913,16 @@ func New(cfg Config, limits *validation.Overrides, registerer prometheus.Registe
 		cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled,
 		cfg.AdminLimitMessage,
 	)
+
+	if cfg.UseRingOwnershipForLimits && cfg.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled {
+		ownershipRing, err := ring.NewDescFedRing(cfg.LifecyclerConfig.RingConfig, "ingester-ownership", RingKey, i.lifecycler.KVStore, logger)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create the ring for ownership-based limits")
+		}
+		ownershipDelegate.ring.Store(ownershipRing)
+		i.ownershipRefresher = newOwnershipRefresher(ownershipRing, i.lifecycler.ID, cfg.DistributorExtendWrites, i.limiter.shuffleShardingEnabled, limits)
+		i.limiter.ownership = i.ownershipRefresher.ownership
+	}
 
 	i.TSDBState.shipperIngesterID = i.lifecycler.ID
 
@@ -1120,6 +1140,13 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 	labelSetMetricsTicker := time.NewTicker(labelSetMetricsTickInterval)
 	defer labelSetMetricsTicker.Stop()
 
+	var ownershipTickerChan <-chan time.Time
+	if i.ownershipRefresher != nil {
+		t := time.NewTicker(ownershipRefreshPeriod)
+		ownershipTickerChan = t.C
+		defer t.Stop()
+	}
+
 	for {
 		select {
 		case <-metadataPurgeTicker.C:
@@ -1147,6 +1174,8 @@ func (i *Ingester) updateLoop(ctx context.Context) error {
 			i.updateUserTSDBConfigs()
 		case <-labelSetMetricsTicker.C:
 			i.updateLabelSetMetrics()
+		case <-ownershipTickerChan:
+			i.ownershipRefresher.refresh(i.getTSDBUsers())
 		case <-ctx.Done():
 			return nil
 		case err := <-i.subservicesWatcher.Chan():

@@ -191,6 +191,16 @@ func unmarshalNode(data []byte) (logicalplan.Node, error) {
 			return nil, err
 		}
 		return r, nil
+	case ShardedRemoteExecutionNode:
+		s := &ShardedRemoteExecutions{}
+		for _, c := range t.Children {
+			child, err := unmarshalNode(c)
+			if err != nil {
+				return nil, err
+			}
+			s.Expressions = append(s.Expressions, child)
+		}
+		return s, nil
 	}
 	return nil, nil
 }

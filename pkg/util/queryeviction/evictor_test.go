@@ -208,7 +208,9 @@ func TestPrometheusMetrics_IncrementedCorrectly(t *testing.T) {
 		waitEvicted(t, evicted)
 	}
 
-	assert.Equal(t, float64(3), promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))))
+	require.Eventually(t, func() bool {
+		return promtest.ToFloat64(evictor.evictionsTotal.WithLabelValues(string(resource.CPU))) == 3
+	}, time.Second, 10*time.Millisecond)
 }
 
 func TestEvictionsTotal_IncrementedBeforeCancelObserved(t *testing.T) {

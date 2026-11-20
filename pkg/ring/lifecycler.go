@@ -157,6 +157,19 @@ type Lifecycler struct {
 	zonesCount            int
 	zones                 []string
 
+	// ringDesc is a private copy of the ring as last read, kept only once
+	// KeepRingDesc has been called. It is replaced, never modified, and only
+	// when something series ownership depends on has changed, so that heartbeats
+	// alone do not copy the ring. Guarded by countersLock.
+	keepRingDesc atomic.Bool
+	ringDesc     *Desc
+	// ringReads numbers the lifecycler's reads of the ring. It is incremented
+	// before each read starts. ringDescRead is the number of the last read that
+	// completed, which ringDesc is up to date as of, whether or not that read
+	// replaced it. Guarded by countersLock.
+	ringReads    atomic.Uint32
+	ringDescRead uint32
+
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
 
@@ -481,6 +494,40 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 	return <-errCh
 }
 
+// KeepRingDesc makes the lifecycler keep a copy of the ring each time it reads
+// it, returned by RingDesc. This lets a caller which needs its own view of the
+// ring, for example to compute shuffle-shard subrings, use the ring the lifecycler
+// already reads on every heartbeat instead of watching the KV store again.
+func (i *Lifecycler) KeepRingDesc() {
+	i.keepRingDesc.Store(true)
+}
+
+// RingDesc returns the copy of the ring kept since KeepRingDesc was called, as of
+// the last time the lifecycler read the ring, or nil if there is none yet. It is
+// the same view of the ring HealthyInstancesCount and ZonesCount are computed
+// from.
+//
+// It also returns the number of the read the copy is up to date as of. See
+// RingReads. Anything which happened before that read started is reflected in
+// the copy.
+//
+// The returned Desc is shared and must not be modified. It is replaced, rather
+// than modified, when the instances, their zones, tokens or states change, so a
+// caller can tell whether anything changed by comparing pointers.
+func (i *Lifecycler) RingDesc() (*Desc, uint32) {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+	return i.ringDesc, i.ringDescRead
+}
+
+// RingReads returns the number of reads of the ring the lifecycler has started.
+// Comparing it with the read number RingDesc returns tells whether something
+// happened after the copy of the ring was read: anything which saw a number
+// equal to or greater than it may not be reflected in the copy.
+func (i *Lifecycler) RingReads() uint32 {
+	return i.ringReads.Load()
+}
+
 // HealthyInstancesCount returns the number of healthy instances for the Write operation
 // in the ring, updated during the last heartbeat period.
 func (i *Lifecycler) HealthyInstancesCount() int {
@@ -747,6 +794,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 		level.Info(i.logger).Log("msg", "not loading tokens from file, tokens file path is empty")
 	}
 
+	read := i.ringReads.Inc()
 	err = i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -853,7 +901,7 @@ func (i *Lifecycler) initRing(ctx context.Context) (bool, error) {
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return addedInRing, err
@@ -974,6 +1022,7 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, alreadyInRing bool) error {
 	var ringDesc *Desc
 
+	read := i.ringReads.Inc()
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -1023,7 +1072,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return err
@@ -1034,6 +1083,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState, al
 func (i *Lifecycler) updateConsul(ctx context.Context) error {
 	var ringDesc *Desc
 
+	read := i.ringReads.Inc()
 	err := i.KVStore.CAS(ctx, i.RingKey, func(in any) (out any, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
@@ -1061,7 +1111,7 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 
 	// Update counters
 	if err == nil {
-		i.updateCounters(ringDesc)
+		i.updateCounters(ringDesc, read)
 	}
 
 	return err
@@ -1097,7 +1147,7 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 	return i.updateConsul(ctx)
 }
 
-func (i *Lifecycler) updateCounters(ringDesc *Desc) {
+func (i *Lifecycler) updateCounters(ringDesc *Desc, read uint32) {
 	healthyInstancesCount := 0
 	zonesMap := map[string]struct{}{}
 
@@ -1121,11 +1171,42 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 
 	slices.Sort(zones)
 
+	// The ring passed in belongs to the KV client, which may keep or modify it,
+	// so keep a copy. Copy only when it differs in something ownership depends
+	// on: a heartbeat alone changes only timestamps. The copy is made outside the
+	// lock, which HealthyInstancesCount takes on the push path.
+	var (
+		ringDescCopy *Desc
+		prev         *Desc
+	)
+	keep := ringDesc != nil && i.keepRingDesc.Load()
+	if keep {
+		i.countersLock.RLock()
+		prev = i.ringDesc
+		i.countersLock.RUnlock()
+		if ownershipMayHaveChanged(prev, ringDesc) {
+			ringDescCopy = cloneDesc(ringDesc)
+		}
+	}
+
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
 	i.zonesCount = len(zones)
 	i.zones = zones
+	// Reads can overlap, for example the first heartbeat runs on its own timer.
+	// Only the newest read may replace the copy, or an older ring would be
+	// labelled as a newer read.
+	if keep && read > i.ringDescRead {
+		switch {
+		case ringDescCopy != nil:
+			i.ringDesc = ringDescCopy
+		case i.ringDesc != prev && ownershipMayHaveChanged(i.ringDesc, ringDesc):
+			// An older read replaced the copy while this one was deciding. Rare.
+			i.ringDesc = cloneDesc(ringDesc)
+		}
+		i.ringDescRead = read
+	}
 	i.countersLock.Unlock()
 }
 

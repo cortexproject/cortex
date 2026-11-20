@@ -294,9 +294,13 @@ querier:
   [parquet_queryable_fallback_disabled: <boolean> | default = false]
 
   # [Experimental] If true, querier will honor projection hints and only
-  # materialize requested labels. Today, projection is only effective when
-  # Parquet Queryable is enabled. Projection is only applied when not querying
-  # mixed block types (parquet and non-parquet) and not querying ingesters.
+  # materialize requested labels. Projection is effective when Parquet Queryable
+  # is enabled, or when store-gateways run in parquet mode with
+  # `-blocks-storage.bucket-store.honor-projection-hints` enabled. Projection is
+  # only applied when not querying ingesters and every queried block has a
+  # parquet converter mark of version 2 or later. With store-gateways, enable it
+  # only after `-blocks-storage.bucket-store.honor-projection-hints` is enabled
+  # on all store-gateways, and disable it first.
   # CLI flag: -querier.honor-projection-hints
   [honor_projection_hints: <boolean> | default = false]
 
@@ -2187,9 +2191,14 @@ blocks_storage:
     # [Experimental] If enabled, Store Gateway will honor projection hints and
     # only materialize requested labels. It only takes effect when
     # `-blocks-storage.bucket-store.bucket-store-type` is parquet,
-    # `-querier.honor-projection-hints` is enabled and the querier uses the
-    # Thanos engine (`-querier.thanos-engine`) with the `projection` optimizer
-    # (`-querier.optimizers`).
+    # `-querier.honor-projection-hints` is enabled, the querier uses the Thanos
+    # engine (`-querier.thanos-engine`) with the `projection` optimizer
+    # (`-querier.optimizers`), and every queried block has a parquet converter
+    # mark of version 2 or later in the bucket index. Enable it on all
+    # store-gateways before enabling `-querier.honor-projection-hints`, and
+    # disable it in the reverse order, otherwise the same series can come back
+    # from different store-gateways with different label sets and be counted
+    # twice.
     # CLI flag: -blocks-storage.bucket-store.honor-projection-hints
     [honor_projection_hints: <boolean> | default = false]
 

@@ -94,9 +94,10 @@ func TestParquetBucketStore_ProjectionHint(t *testing.T) {
 
 	// Create block
 	now := time.Now()
-	// Time range: [Now - 24h] to [Now - 20h]
+	// Each series gets 100 samples one minute apart from a random start, so keep the block no
+	// longer than that, or the instant queries at end can find no sample within the lookback.
 	start := now.Add(-24 * time.Hour)
-	end := now.Add(-20 * time.Hour)
+	end := start.Add(100 * time.Minute)
 
 	ctx := context.Background()
 
